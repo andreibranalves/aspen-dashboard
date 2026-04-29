@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Netlify
+.netlify/
+
+# OS files
+*:Zone.Identifier
+.DS_Store
+Thumbs.db
+
+# IDE / Tools
+.omc/
+.continue/
+.impeccable-live.json
+
+# Misc
+*.log
