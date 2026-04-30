@@ -25,7 +25,7 @@ export async function handler(event) {
       const quotationTo = doc.data?.quotation_to || '';
       
       let cleanName = customerName;
-      if (quotationTo === 'Lead' && partyName) {
+      if (quotationTo === 'Lead' && partyName && (!customerName || customerName.includes('CRM-LEAD'))) {
         try {
           const leadRes = await fetch(`${ERPNEXT_BASE}/api/resource/Lead/${encodeURIComponent(partyName)}?fields=["first_name","lead_name"]`, { headers: { Authorization: `token ${token}` } });
           if (leadRes.ok) {
@@ -41,6 +41,10 @@ export async function handler(event) {
         const escapedParty = partyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(`(Nome(?:<[^>]+>)*\\s*:(?:\\s|&nbsp;|<[^>]+>)*)${escapedParty}`, 'g');
         html = html.replace(regex, `$1${cleanName}`);
+        html = html.replace(new RegExp(escapedParty, 'g'), cleanName);
+      }
+      if (quotationTo === 'Lead' && partyName && html.includes(partyName)) {
+        console.warn('CRM-LEAD still present in HTML for Quotation', quotationId);
       }
       customerName = cleanName;
     }

@@ -930,15 +930,6 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
       }
       itemsHtml += `</tbody></table>`;
 
-      let printBlobUrl = null;
-      if (data.print_html) {
-        const filename = `${data.quotation_id} - ${data.cliente}`;
-        const html = data.print_html.includes('<title>')
-          ? data.print_html.replace(/<title>[^<]*<\/title>/, `<title>${filename}</title>`)
-          : data.print_html.replace('<head>', `<head><title>${filename}</title>`);
-        printBlobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-      }
-
       const publicUrl = data.short_url || `${location.origin}/api/view?q=${encodeURIComponent(data.quotation_id)}`;
       const waUrl = buildWhatsApp(telefone, data.cliente, data.quotation_id, publicUrl);
       const pdfBtn = `<a class="pdf-link" href="${publicUrl}" target="_blank">Abrir orçamento →</a>`;

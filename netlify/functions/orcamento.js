@@ -289,6 +289,11 @@ export async function handler(event) {
 body > div:first-child:not(.print-format-gutter) { display: none !important; }
 @media print { @page { margin: 0; } body { margin: 0; } }
 </style></head>`);
+        if (entityType === 'Lead' && printHtml && entityId) {
+          const escapedId = entityId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const leadNameRegex = new RegExp(`(Nome(?:<[^>]+>)*\\s*:(?:\\s|&nbsp;|<[^>]+>)*)${escapedId}`, 'g');
+          printHtml = printHtml.replace(leadNameRegex, `$1${nomeCliente}`);
+        }
       }
     } catch (htmlErr) {
       console.error('Printview fetch failed:', htmlErr.message);

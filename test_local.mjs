@@ -1,4 +1,6 @@
 // Test runner for orcamento function — run with: node test_local.mjs
+// Two-scenario regression harness: (a) Lead path (b) Customer path
+// Verifies CRM-LEAD bug is absent.
 import { readFileSync } from 'fs';
 
 // Load .env
@@ -9,51 +11,153 @@ for (const line of env.split('\n')) {
   if (k && v) process.env[k.trim()] = v.trim();
 }
 
+const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
+const ERPNEXT_HEADERS = {
+  'Authorization': `token ${process.env.ERPNEXT_TOKEN}`,
+  'Content-Type': 'application/json',
+};
+
 const { handler: extractHandler } = await import('./netlify/functions/extract.js');
 const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
 
-const text = [
-  'Chapeu CH56 30 PAOLA ALVES 14991234767 paola.contatos@gmail.com',
-  'Chapeu CH56 30 ADRIANO BONDEZAN ANATOLIO 34996448200 adrianoba99@gmail.com',
-  'Chapeu CH44 30 THIAGO 27998139349 tvendas.thiagosouza@gmail.com',
-].join('\n');
+let failures = 0;
 
-console.log('=== Phase 1: extract ===');
-const t0 = Date.now();
-
-const extractResult = await extractHandler({
-  httpMethod: 'POST',
-  body: JSON.stringify({ text }),
-});
-
-const elapsed1 = ((Date.now() - t0) / 1000).toFixed(2);
-const extractBody = JSON.parse(extractResult.body);
-console.log(`Status: ${extractResult.statusCode} | Time: ${elapsed1}s`);
-
-if (extractBody.error) {
-  console.error('Extract error:', extractBody.error);
-  process.exit(1);
+function assert(ok, msg) {
+  if (ok) { console.log(`  \u2713 ${msg}`); }
+  else { console.error(`  \u2717 ASSERT: ${msg}`); failures++; }
 }
 
-const orders = extractBody.orders;
-console.log(`Orders found: ${orders.length}`);
-orders.forEach((o, i) => console.log(`  ${i + 1}. ${o.nome} | ${o.email || '-'} | items: ${o.items.map(x => `${x.qty}x${x.item_code}`).join(', ')}`));
-
-console.log('\n=== Phase 2: process each order ===');
-for (let i = 0; i < orders.length; i++) {
-  const t1 = Date.now();
-  const result = await orcamentoHandler({
+// Run the full extract -> orcamento pipeline for one order text
+async function pipeline(orderText) {
+  const extRes = await extractHandler({
     httpMethod: 'POST',
-    body: JSON.stringify({ extracted: orders[i] }),
+    body: JSON.stringify({ text: orderText }),
   });
-  const elapsed = ((Date.now() - t1) / 1000).toFixed(2);
-  const body = JSON.parse(result.body);
+  const extBody = JSON.parse(extRes.body);
+  if (extBody.error) return { error: `extract: ${extBody.error}` };
+  if (!extBody.orders || extBody.orders.length === 0) return { error: 'No orders extracted' };
+  const orcRes = await orcamentoHandler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ extracted: extBody.orders[0] }),
+  });
+  return JSON.parse(orcRes.body);
+}
+
+// Fetch printview through the view.js handler (/api/view)
+async function fetchPrintviewViaViewHandler(quotationId) {
+  const { handler: viewHandler } = await import('./netlify/functions/view.js');
+  const res = await viewHandler({ queryStringParameters: { q: quotationId } });
+  if (res.statusCode !== 200) { console.error(`  view handler returned ${res.statusCode}`); return null; }
+  return res.body;
+}
+
+// ── Scenario 1: Lead path ──
+// Guaranteed new Lead: unique email never seen before.
+console.log('\n=== Scenario 1: Lead quotation (unique email → new Lead) ===');
+{
+  const ts = Date.now();
+  const email = `crmlead-print-test+${ts}@example.com`;
+  const name = 'Lead Print Test';
+  const orderText = `Chapeu CH56 30 ${name} 11999999999 ${email}`;
+
+  const body = await pipeline(orderText);
   if (body.error) {
-    console.log(`  ${i + 1}/${orders.length} ✗ ${orders[i].nome}: ${body.error} (${elapsed}s)`);
+    console.error(`  \u2717 PIPELINE: ${body.error}`);
+    failures++;
   } else {
-    console.log(`  ${i + 1}/${orders.length} ✓ ${body.cliente} → ${body.quotation_id} (${elapsed}s)`);
+    console.log(`  Quotation: ${body.quotation_id} | customer_id: ${body.customer_id}`);
+    assert(body.success === true, 'body.success === true');
+    assert(!!body.print_html, 'body.print_html exists');
+    assert(body.customer_id.startsWith('CRM-LEAD-'), `customer_id starts with CRM-LEAD- (got: ${body.customer_id})`);
+    assert(!body.print_html.includes('CRM-LEAD'), 'print_html has no CRM-LEAD string');
+
+    // Fetch via view.js handler (/api/view) to verify name resolution works
+    const viewHtml = await fetchPrintviewViaViewHandler(body.quotation_id);
+    if (viewHtml) {
+      assert(!viewHtml.includes('CRM-LEAD'), 'viewHtml (/api/view) has no CRM-LEAD string');
+      assert(viewHtml.includes(name), `viewHtml contains customer name "${name}"`);
+    } else {
+      console.error('  \u2717 viewHtml fetch failed');
+      failures++;
+    }
   }
 }
 
-const totalElapsed = ((Date.now() - t0) / 1000).toFixed(2);
-console.log(`\nTotal: ${totalElapsed}s`);
+// ── Scenario 2: Customer path ──
+// Discover an existing Customer-linked email at runtime, reuse it.
+console.log('\n=== Scenario 2: Customer quotation (existing email → existing Customer) ===');
+{
+  // Query ERPNext for a Contact with an email_id AND a link to Customer doctype
+  const contactListRes = await fetch(
+    `${ERPNEXT_BASE}/api/resource/Contact?fields=${JSON.stringify(['name'])}&limit_page_length=50`,
+    { headers: ERPNEXT_HEADERS }
+  );
+  const contactListData = await contactListRes.json();
+  const contactNames = contactListData.data || [];
+
+  let custEmail = null;
+  let custName = null;
+
+  for (const c of contactNames) {
+    const fullRes = await fetch(
+      `${ERPNEXT_BASE}/api/resource/Contact/${encodeURIComponent(c.name)}`,
+      { headers: ERPNEXT_HEADERS }
+    );
+    const fullData = await fullRes.json();
+    const d = fullData.data;
+    if (!d) continue;
+
+    const custLink = (d.links || []).find(l => l.link_doctype === 'Customer');
+    const emailEntry = (d.email_ids || []).find(e => e.email_id);
+    if (custLink && emailEntry) {
+      custEmail = emailEntry.email_id;
+      // Fetch actual customer_name from Customer doc (not link_name which is doc ID)
+      const custRes = await fetch(
+        `${ERPNEXT_BASE}/api/resource/Customer/${encodeURIComponent(custLink.link_name)}?fields=["customer_name"]`,
+        { headers: ERPNEXT_HEADERS }
+      );
+      const custData = await custRes.json();
+      custName = custData.data?.customer_name || custLink.link_name;
+      break;
+    }
+  }
+
+  if (!custEmail || !custName) {
+    console.error('  \u2717 No Customer-linked email found in ERPNext');
+    failures++;
+  } else {
+    console.log(`  Found: "${custName}" <${custEmail}>`);
+
+    const orderText = `Chapeu CH56 30 ${custName} 11999999999 ${custEmail}`;
+
+    const body = await pipeline(orderText);
+    if (body.error) {
+      console.error(`  \u2717 PIPELINE: ${body.error}`);
+      failures++;
+    } else {
+      console.log(`  Quotation: ${body.quotation_id} | customer_id: ${body.customer_id}`);
+      assert(body.success === true, 'body.success === true');
+      assert(!!body.print_html, 'body.print_html exists');
+      assert(!body.customer_id.startsWith('CRM-LEAD-'), `customer_id does not start with CRM-LEAD- (got: ${body.customer_id})`);
+      assert(!body.print_html.includes('CRM-LEAD'), 'print_html has no CRM-LEAD string');
+      assert(body.print_html.includes(custName), `print_html contains customer name "${custName}"`);
+
+      const viewHtml = await fetchPrintviewViaViewHandler(body.quotation_id);
+      if (viewHtml) {
+        assert(!viewHtml.includes('CRM-LEAD'), 'viewHtml (/api/view) has no CRM-LEAD string');
+        assert(viewHtml.includes(custName), `viewHtml contains customer name "${custName}"`);
+      } else {
+        console.error('  \u2717 viewHtml fetch failed');
+        failures++;
+      }
+    }
+  }
+}
+
+// ── Summary ──
+console.log(`\n=== ${failures} failure(s) ===`);
+if (failures > 0) {
+  process.exit(1);
+} else {
+  console.log('PASS');
+}
