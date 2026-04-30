@@ -1,0 +1,21 @@
+
+=== Scenario 1: Lead quotation (unique email → new Lead) ===
+  Quotation: ORC-20261189 | customer_id: CRM-LEAD-2026-00011
+  ✓ body.success === true
+  ✓ body.print_html exists
+  ✓ customer_id starts with CRM-LEAD- (got: CRM-LEAD-2026-00011)
+  ✗ ASSERT: print_html has no CRM-LEAD string
+  ✗ ASSERT: viewHtml (fresh fetch) has no CRM-LEAD string
+  ✓ viewHtml contains customer name "Lead Print Test"
+
+=== Scenario 2: Customer quotation (existing email → existing Customer) ===
+  Found: "Naiana Stach" <naiana.stach@cristalia.com.br>
+  Quotation: ORC-20261190 | customer_id: Naiana Stach
+  ✓ body.success === true
+  ✓ body.print_html exists
+  ✓ customer_id does not start with CRM-LEAD- (got: Naiana Stach)
+  ✓ print_html contains customer name "Naiana Stach"
+  ✗ ASSERT: intentional break — remove after evidence capture
+  ✓ viewHtml contains customer name "Naiana Stach"
+
+=== 3 failure(s) ===

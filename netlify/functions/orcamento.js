@@ -299,16 +299,13 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
       console.error('Printview fetch failed:', htmlErr.message);
     }
 
-    let shortUrl = `https://${event.headers?.host || 'aspen-orcamento.netlify.app'}/api/view?q=${encodeURIComponent(quotationId)}`;
-    try {
-      const shortRes = await fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(shortUrl)}`);
-      if (shortRes.ok) {
-        const txt = await shortRes.text();
-        if (txt && txt.startsWith('http')) shortUrl = txt;
-      }
-    } catch (err) {
-      console.warn('Falha ao encurtar URL:', err.message);
-    }
+    const host = event.headers?.host || 'aspen-orcamento.netlify.app';
+    const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
+    const protocol = isLocalHost
+      ? 'http'
+      : (event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
+
+    const shortUrl = `${protocol}://${host}/api/view?q=${encodeURIComponent(quotationId)}`;
 
     return {
       statusCode: 200,

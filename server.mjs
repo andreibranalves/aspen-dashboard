@@ -32,6 +32,7 @@ const MIME = {
 // Importa as funções Netlify
 const { handler: extractHandler }   = await import('./netlify/functions/extract.js');
 const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
+const { handler: viewHandler }      = await import('./netlify/functions/view.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -79,6 +80,18 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/view' || pathname === '/.netlify/functions/view') {
+    try {
+      const result = await viewHandler(netlifyEvent(req, null));
+      res.writeHead(result.statusCode, result.headers || { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(e.message);
     }
     return;
   }
