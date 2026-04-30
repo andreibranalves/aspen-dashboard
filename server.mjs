@@ -33,6 +33,7 @@ const MIME = {
 const { handler: extractHandler }   = await import('./netlify/functions/extract.js');
 const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
 const { handler: viewHandler }      = await import('./netlify/functions/view.js');
+const { handler: editDraftHandler } = await import('./netlify/functions/edit-draft.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -75,6 +76,19 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await orcamentoHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/edit-draft' || pathname === '/.netlify/functions/edit-draft') {
+    const body = await readBody(req);
+    try {
+      const result = await editDraftHandler(netlifyEvent(req, body));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {
