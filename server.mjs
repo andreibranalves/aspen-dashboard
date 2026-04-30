@@ -57,15 +57,22 @@ function netlifyEvent(req, body) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  console.log(`${new Date().toISOString()} ${req.method} ${pathname}`);
 
   // ── API routes → Netlify functions
   if (pathname === '/api/extract' || pathname === '/.netlify/functions/extract') {
     const body = await readBody(req);
+    console.log(`  extract body (first 200): ${body.substring(0, 200)}`);
     try {
-      const result = await extractHandler(netlifyEvent(req, body));
+      const result = await Promise.race([
+        extractHandler(netlifyEvent(req, body)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout após 60s')), 60000)),
+      ]);
+      console.log(`  extract done — status ${result.statusCode}`);
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {
+      console.error('  extract ERROR:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }

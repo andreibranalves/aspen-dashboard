@@ -1371,6 +1371,7 @@ function capitalize(str) {
       extractStatusEl.classList.remove('visible');
 
       // ── Phase 2: Draft review ────────────────────────────────────────
+      const prazoVal = document.getElementById('prazoInput').value.trim();
       const drafts = orders.map((order, i) => ({
         index: i,
         original: { ...order },
@@ -1416,7 +1417,6 @@ function capitalize(str) {
       }
 
       // ── Phase 3: Create quotations from approved drafts ───────────────
-      const prazoVal = document.getElementById('prazoInput').value.trim();
 
       for (let di = 0; di < approvedDrafts.length; di++) {
         const draft = approvedDrafts[di];
