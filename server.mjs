@@ -33,6 +33,7 @@ const MIME = {
 const { handler: extractHandler }   = await import('./netlify/functions/extract.js');
 const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
 const { handler: viewHandler }      = await import('./netlify/functions/view.js');
+const { handler: editDraftHandler } = await import('./netlify/functions/edit-draft.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -56,15 +57,22 @@ function netlifyEvent(req, body) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = url.pathname;
+  console.log(`${new Date().toISOString()} ${req.method} ${pathname}`);
 
   // ── API routes → Netlify functions
   if (pathname === '/api/extract' || pathname === '/.netlify/functions/extract') {
     const body = await readBody(req);
+    console.log(`  extract body (first 200): ${body.substring(0, 200)}`);
     try {
-      const result = await extractHandler(netlifyEvent(req, body));
+      const result = await Promise.race([
+        extractHandler(netlifyEvent(req, body)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout após 60s')), 60000)),
+      ]);
+      console.log(`  extract done — status ${result.statusCode}`);
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {
+      console.error('  extract ERROR:', e.message);
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
     }
@@ -75,6 +83,19 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await orcamentoHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/edit-draft' || pathname === '/.netlify/functions/edit-draft') {
+    const body = await readBody(req);
+    try {
+      const result = await editDraftHandler(netlifyEvent(req, body));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {

@@ -389,6 +389,35 @@
     }
     .wa-link:hover { background: #1da851; }
 
+    /* Draft cards */
+    .queue-card.draft { border-color: #c9a93e; background: #fef9ed; }
+    .queue-card.draft .card-icon { color: #c9a93e; }
+    .draft-contacts { display: flex; gap: 8px; margin-top: 4px; padding-left: 26px; }
+    .draft-contacts input { flex: 1; min-width: 0; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+    .draft-nome { width: 100%; font-size: 14px; font-family: 'Lusitana', serif; font-weight: 700; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+    .urgente-toggle { font-size: 11px; color: var(--muted); margin-left: 8px; white-space: nowrap; cursor: pointer; }
+    .draft-items { margin-top: 8px; }
+    .draft-items table td input { width: 100%; font-size: 12px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+    .draft-add-item { margin-top: 4px; font-size: 11px; padding: 2px 8px; background: #f0eeeb; border: none; border-radius: var(--radius); cursor: pointer; color: var(--navy); }
+    .draft-actions { margin-top: 10px; display: flex; gap: 8px; }
+    .draft-approve { padding: 4px 12px; font-size: 12px; font-weight: 600; border: none; border-radius: var(--radius); cursor: pointer; background: var(--green); color: #fff; }
+    .draft-discard { padding: 4px 12px; font-size: 12px; border: none; border-radius: var(--radius); cursor: pointer; background: var(--red); color: #fff; }
+    .draft-prompt { margin-top: 10px; }
+    .draft-prompt-input { width: 100%; font-size: 12px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius); resize: vertical; }
+    .draft-prompt-submit { margin-top: 4px; font-size: 11px; padding: 3px 10px; background: var(--navy); color: #fff; border: none; border-radius: var(--radius); cursor: pointer; }
+    .draft-prompt-preview { margin-top: 8px; padding: 8px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); }
+    .diff-change { font-size: 12px; padding: 2px 0; color: var(--text); }
+    .diff-removed .diff-label { color: var(--red); }
+    .diff-added .diff-label { color: var(--green); }
+    .diff-modified .diff-label { color: #c9a93e; }
+    .diff-old { text-decoration: line-through; color: var(--red); }
+    .diff-new { font-weight: 600; color: var(--green); }
+    .draft-prompt-actions { margin-top: 6px; display: flex; gap: 6px; }
+    .draft-prompt-apply { padding: 3px 10px; font-size: 11px; font-weight: 600; border: none; border-radius: var(--radius); cursor: pointer; background: var(--green); color: #fff; }
+    .draft-prompt-reject { padding: 3px 10px; font-size: 11px; border: none; border-radius: var(--radius); cursor: pointer; background: var(--red); color: #fff; }
+    .draft-prompt-status { font-size: 12px; color: var(--muted); padding: 4px 0; }
+    .draft-remove-item { padding: 0 5px; font-size: 14px; line-height: 1; border: none; background: none; color: var(--red); cursor: pointer; font-weight: 700; }
+
     .urgente-badge {
       display: inline-block;
       background: #b71c1c;
@@ -843,8 +872,58 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
       return `https://wa.me/${waNumber}?text=${msg}`;
     }
 
-    function capitalize(str) {
-      return (str || '').trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+function capitalize(str) {
+  if (!str) return '';
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderDraftDiff(current, proposed) {
+      const changes = [];
+      const curItems = current.items || [];
+      const propItems = proposed.items || [];
+
+      // Compare customer fields
+      if (current.nome !== proposed.nome && proposed.nome) {
+        changes.push(`<div class="diff-change"><span class="diff-label">Nome:</span> <span class="diff-old">${escapeHtml(current.nome)}</span> → <span class="diff-new">${escapeHtml(proposed.nome)}</span></div>`);
+      }
+      if (current.email !== proposed.email && proposed.email) {
+        changes.push(`<div class="diff-change"><span class="diff-label">Email:</span> <span class="diff-old">${escapeHtml(current.email)}</span> → <span class="diff-new">${escapeHtml(proposed.email)}</span></div>`);
+      }
+      if (current.telefone !== proposed.telefone && proposed.telefone) {
+        changes.push(`<div class="diff-change"><span class="diff-label">Tel:</span> <span class="diff-old">${escapeHtml(current.telefone)}</span> → <span class="diff-new">${escapeHtml(proposed.telefone)}</span></div>`);
+      }
+      if (current.urgente !== proposed.urgente) {
+        changes.push(`<div class="diff-change"><span class="diff-label">Urgência:</span> <span class="diff-old">${current.urgente ? 'Sim' : 'Não'}</span> → <span class="diff-new">${proposed.urgente ? 'Sim' : 'Não'}</span></div>`);
+      }
+
+      // Compare items
+      const removedItems = curItems.filter(ci => !propItems.some(pi => pi.item_code === ci.item_code));
+      const addedItems = propItems.filter(pi => !curItems.some(ci => ci.item_code === pi.item_code));
+      const modifiedItems = propItems.filter(pi => {
+        const ci = curItems.find(c => c.item_code === pi.item_code);
+        return ci && ci.qty !== pi.qty;
+      });
+
+      for (const item of removedItems) {
+        changes.push(`<div class="diff-change diff-removed"><span class="diff-label">Removido:</span> ${escapeHtml(item.item_code)} × ${item.qty}</div>`);
+      }
+      for (const item of addedItems) {
+        changes.push(`<div class="diff-change diff-added"><span class="diff-label">Adicionado:</span> ${escapeHtml(item.item_code)} × ${item.qty}</div>`);
+      }
+      for (const item of modifiedItems) {
+        const ci = curItems.find(c => c.item_code === item.item_code);
+        changes.push(`<div class="diff-change diff-modified"><span class="diff-label">Modificado:</span> ${escapeHtml(item.item_code)} <span class="diff-old">× ${ci.qty}</span> → <span class="diff-new">× ${item.qty}</span></div>`);
+      }
+
+      if (changes.length === 0) {
+        return '<div class="diff-change">Nenhuma mudança detectada.</div>';
+      }
+      return changes.join('');
     }
 
     function fmtPhone(phone) {
@@ -957,6 +1036,299 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
       sub.textContent = msg;
     }
 
+    // ── Draft review ────────────────────────────────────────────────────────
+    const DRAFTS_STORAGE_KEY = 'aspen_drafts';
+
+    function saveDrafts(drafts) {
+      try {
+        localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+      } catch (e) { /* quota exceeded — silently skip */ }
+    }
+
+    function clearDraftsStorage() { localStorage.removeItem(DRAFTS_STORAGE_KEY); }
+
+    function restoreDrafts() {
+      let saved;
+      try { saved = localStorage.getItem(DRAFTS_STORAGE_KEY); } catch (e) { return; }
+      if (!saved) return;
+      let drafts;
+      try { drafts = JSON.parse(saved); } catch (e) { clearDraftsStorage(); return; }
+      if (!Array.isArray(drafts) || drafts.length === 0) { clearDraftsStorage(); return; }
+
+      const pending = drafts.filter(d => !d.approved && !d.discarded);
+      if (pending.length === 0) { clearDraftsStorage(); return; }
+
+      const restore = confirm(
+        `Você tem ${pending.length} rascunho(s) não finalizado(s) da última sessão. Deseja restaurá-los para revisão?`
+      );
+      if (!restore) { clearDraftsStorage(); return; }
+
+      // Reset approved flag so operator re-approves
+      drafts.forEach(d => d.approved = false);
+      queueEl.innerHTML = '';
+      renderDraftCards(drafts);
+      queueEl.classList.add('visible');
+
+      const btn = document.getElementById('submitBtn');
+      btn.textContent = `Aguardando revisão (${drafts.filter(d => !d.discarded).length} rascunhos restaurados)`;
+      btn.disabled = false;
+
+      // Re-enter the approval loop
+      (async () => {
+        await new Promise(resolve => {
+          const check = setInterval(() => {
+            const pending2 = drafts.filter(d => !d.approved && !d.discarded);
+            if (pending2.length === 0) {
+              clearInterval(check);
+              btn.textContent = `Processando… (0/${drafts.filter(d => d.approved).length})`;
+              resolve();
+            } else {
+              btn.textContent = `Aguardando revisão (${pending2.length} rascunhos restantes)`;
+            }
+          }, 300);
+        });
+
+        const approvedDrafts = drafts.filter(d => d.approved);
+        if (approvedDrafts.length === 0) {
+          clearDraftsStorage();
+          alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
+          btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+          return;
+        }
+
+        const prazoVal = document.getElementById('prazoInput').value.trim();
+        for (let di = 0; di < approvedDrafts.length; di++) {
+          const draft = approvedDrafts[di];
+          const i = draft.index;
+          setCardProcessing(i, approvedDrafts.length);
+          btn.textContent = `Processando… (${di + 1}/${approvedDrafts.length})`;
+          const orderPayload = {
+            nome: draft.edited.nome,
+            email: draft.edited.email || null,
+            telefone: draft.edited.telefone || null,
+            urgente: draft.edited.urgente,
+            items: draft.edited.items
+              .filter(it => it.item_code && it.qty > 0)
+              .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate })),
+            prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
+          };
+          try {
+            const res = await fetch('/api/orcamento', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ extracted: orderPayload }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+              setCardError(i, data.error || 'Falha desconhecida.');
+            } else {
+              setCardDone(i, data, draft.edited.telefone, draft.edited.email);
+            }
+          } catch (err) {
+            setCardError(i, err.message);
+          }
+        }
+        clearDraftsStorage();
+        btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      })();
+    }
+
+    function renderDraftCards(drafts) {
+      const total = drafts.length;
+
+      for (const draft of drafts) {
+        const i = draft.index;
+        const card = document.createElement('div');
+        card.className = 'queue-card draft';
+        card.id = `card-${i}`;
+
+        const displayEmail = (draft.edited.email || '').toLowerCase();
+        const displayPhone = fmtPhone(draft.edited.telefone);
+        const badge = `${i + 1}/${total}`;
+
+        // Build items table rows
+        const itemsHtml = draft.edited.items.map((it, ii) => `
+          <tr>
+            <td><input class="draft-sku" data-index="${ii}" value="${escapeHtml(it.item_code)}" placeholder="SKU"></td>
+            <td><input class="draft-qty" data-index="${ii}" type="number" min="1" value="${it.qty}" style="width:80px"></td>
+            <td>${it.rate ? 'R$ ' + parseFloat(it.rate).toFixed(2).replace('.', ',') : '—'}</td>
+            <td><button type="button" class="draft-remove-item" data-index="${ii}">×</button></td>
+          </tr>
+        `).join('');
+
+        card.innerHTML = `
+          <div class="card-header">
+            <div class="card-icon" id="icon-${i}">✎</div>
+            <div class="card-name">
+              <input class="draft-nome" value="${escapeHtml(draft.edited.nome)}" placeholder="Nome do cliente">
+              <label class="urgente-toggle"><input type="checkbox" class="draft-urgente" ${draft.edited.urgente ? 'checked' : ''}> Urgente</label>
+            </div>
+            <div class="card-badge" id="badge-${i}">${badge} · revisão</div>
+          </div>
+          <div class="card-sub draft-contacts">
+            <input class="draft-email" value="${escapeHtml(displayEmail)}" placeholder="email@exemplo.com">
+            <input class="draft-telefone" value="${escapeHtml(displayPhone)}" placeholder="(99) 99999-9999">
+          </div>
+          <div class="draft-items">
+            <table class="items-table">
+              <thead><tr><th>SKU</th><th>Qtd</th><th>R$/un</th><th></th></tr></thead>
+              <tbody>${itemsHtml}</tbody>
+            </table>
+            <button type="button" class="draft-add-item">+ Adicionar item</button>
+          </div>
+          <div class="draft-prompt">
+            <textarea class="draft-prompt-input" placeholder="Descreva a mudança: ex: adicione ecobags, remova as cangas, aumente a qtd do SKU X para 200…" rows="2"></textarea>
+            <button type="button" class="draft-prompt-submit">Propor mudanças</button>
+            <div class="draft-prompt-preview" style="display:none">
+              <div class="draft-prompt-diff"></div>
+              <div class="draft-prompt-actions">
+                <button type="button" class="draft-prompt-apply">✓ Aplicar</button>
+                <button type="button" class="draft-prompt-reject">✕ Rejeitar</button>
+              </div>
+            </div>
+            <div class="draft-prompt-status" style="display:none"></div>
+          </div>
+          <div class="draft-actions">
+            <button type="button" class="draft-approve" data-index="${i}">✓ Aprovar e criar</button>
+            <button type="button" class="draft-discard" data-index="${i}">✕ Descartar</button>
+          </div>
+          <div class="card-result" id="result-${i}" style="display:none"></div>
+        `;
+
+        queueEl.appendChild(card);
+
+        // Bind events
+        const syncItem = (ii) => {
+          const skuEl = card.querySelector(`.draft-sku[data-index="${ii}"]`);
+          const qtyEl = card.querySelector(`.draft-qty[data-index="${ii}"]`);
+          if (skuEl) draft.edited.items[ii].item_code = skuEl.value.trim();
+          if (qtyEl) draft.edited.items[ii].qty = parseInt(qtyEl.value, 10) || 0;
+        };
+
+        // Sync customer fields
+        const nomeEl = card.querySelector('.draft-nome');
+        const emailEl = card.querySelector('.draft-email');
+        const telEl = card.querySelector('.draft-telefone');
+        const urgEl = card.querySelector('.draft-urgente');
+
+        nomeEl.addEventListener('input', () => { draft.edited.nome = nomeEl.value.trim(); });
+        emailEl.addEventListener('input', () => { draft.edited.email = emailEl.value.trim(); });
+        telEl.addEventListener('input', () => { draft.edited.telefone = telEl.value.trim(); });
+        urgEl.addEventListener('change', () => { draft.edited.urgente = urgEl.checked; });
+
+        // Sync items
+        card.querySelectorAll('.draft-sku, .draft-qty').forEach(el => {
+          el.addEventListener('input', () => syncItem(parseInt(el.dataset.index, 10)));
+        });
+
+        // Remove item
+        card.querySelectorAll('.draft-remove-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const ii = parseInt(btn.dataset.index, 10);
+            draft.edited.items.splice(ii, 1);
+            queueEl.innerHTML = '';
+            renderDraftCards(drafts);
+          });
+        });
+
+        // Add item
+        card.querySelector('.draft-add-item').addEventListener('click', () => {
+          draft.edited.items.push({ item_code: '', qty: 30 });
+          queueEl.innerHTML = '';
+          renderDraftCards(drafts);
+        });
+
+        // Approve
+        card.querySelector('.draft-approve').addEventListener('click', () => {
+          const itemsWithZeroQty = draft.edited.items.length === 0 || draft.edited.items.every(it => !it.item_code || it.qty <= 0);
+          if (itemsWithZeroQty) {
+            alert('Este rascunho não tem itens válidos. Adicione ao menos um item com SKU e quantidade > 0.');
+            return;
+          }
+          if (!draft.edited.nome.trim()) {
+            alert('Informe o nome do cliente antes de aprovar.');
+            return;
+          }
+          draft.approved = true;
+          const iconEl = document.getElementById(`icon-${i}`);
+          iconEl.textContent = '✓';
+          iconEl.className = 'card-icon done-icon';
+          card.className = 'queue-card done';
+          card.querySelector('.draft-actions').style.display = 'none';
+          card.querySelectorAll('input').forEach(inp => { inp.disabled = true; });
+          card.querySelectorAll('.draft-add-item, .draft-remove-item').forEach(b => { b.disabled = true; });
+        });
+
+        // Discard
+        card.querySelector('.draft-discard').addEventListener('click', () => {
+          draft.discarded = true;
+          card.style.display = 'none';
+        });
+
+        // Prompt box
+        const promptInput = card.querySelector('.draft-prompt-input');
+        const promptSubmit = card.querySelector('.draft-prompt-submit');
+        const promptPreview = card.querySelector('.draft-prompt-preview');
+        const promptDiff = card.querySelector('.draft-prompt-diff');
+        const promptApply = card.querySelector('.draft-prompt-apply');
+        const promptReject = card.querySelector('.draft-prompt-reject');
+        const promptStatus = card.querySelector('.draft-prompt-status');
+        let proposedDraft = null;
+
+        promptSubmit.addEventListener('click', async () => {
+          const cmd = promptInput.value.trim();
+          if (!cmd) return;
+          promptSubmit.disabled = true;
+          promptSubmit.textContent = 'Processando…';
+          promptStatus.style.display = '';
+          promptStatus.textContent = 'Interpretando comando…';
+          promptPreview.style.display = 'none';
+
+          try {
+            const res = await fetch('/api/edit-draft', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: cmd, currentDraft: draft.edited }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+              promptStatus.textContent = 'Erro: ' + (data.error || 'Falha na edição.');
+              return;
+            }
+            proposedDraft = data.proposed;
+            promptStatus.style.display = 'none';
+            promptPreview.style.display = '';
+            promptDiff.innerHTML = renderDraftDiff(draft.edited, proposedDraft);
+          } catch (err) {
+            promptStatus.textContent = 'Erro de conexão: ' + err.message;
+          } finally {
+            promptSubmit.disabled = false;
+            promptSubmit.textContent = 'Propor mudanças';
+          }
+        });
+
+        promptApply.addEventListener('click', () => {
+          if (!proposedDraft) return;
+          draft.edited.nome = proposedDraft.nome || draft.edited.nome;
+          draft.edited.email = proposedDraft.email || draft.edited.email;
+          draft.edited.telefone = proposedDraft.telefone || draft.edited.telefone;
+          draft.edited.urgente = proposedDraft.urgente || false;
+          draft.edited.items = (proposedDraft.items || []).map(it => ({ item_code: it.item_code || '', qty: it.qty || 0, rate: null }));
+          promptPreview.style.display = 'none';
+          promptInput.value = '';
+          proposedDraft = null;
+          queueEl.innerHTML = '';
+          renderDraftCards(drafts);
+        });
+
+        promptReject.addEventListener('click', () => {
+          promptPreview.style.display = 'none';
+          promptInput.value = '';
+          proposedDraft = null;
+        });
+      }
+    }
+
     // ── Form submit
     document.getElementById('form').addEventListener('submit', async e => {
       e.preventDefault();
@@ -998,23 +1370,69 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
       extractStatusEl.classList.remove('visible');
 
-      // Render cards
-      const total = orders.length;
-      queueEl.innerHTML = '';
-      for (let i = 0; i < total; i++) {
-        queueEl.appendChild(createCard(orders[i], i, total));
-      }
-      queueEl.classList.add('visible');
-
-      btn.textContent = `Processando… (0/${total})`;
-
+      // ── Phase 2: Draft review ────────────────────────────────────────
       const prazoVal = document.getElementById('prazoInput').value.trim();
+      const drafts = orders.map((order, i) => ({
+        index: i,
+        original: { ...order },
+        edited: {
+          nome: order.nome,
+          email: order.email || '',
+          telefone: order.telefone || '',
+          urgente: order.urgente || false,
+          items: (order.items || []).map(it => ({ item_code: it.item_code || '', qty: it.qty || 0, rate: it.rate || null })),
+          prazo_producao: prazoVal || '',
+        },
+        approved: false,
+        discarded: false,
+      }));
+      const total = orders.length;
 
-      // Phase 2: process each order sequentially
-      for (let i = 0; i < total; i++) {
-        setCardProcessing(i, total);
-        btn.textContent = `Processando… (${i + 1}/${total})`;
-        const orderPayload = prazoVal ? { ...orders[i], prazo_producao: prazoVal } : orders[i];
+      queueEl.innerHTML = '';
+      renderDraftCards(drafts);
+      queueEl.classList.add('visible');
+      saveDrafts(drafts);
+
+      btn.textContent = `Aguardando revisão (${drafts.filter(d => !d.discarded).length} rascunhos)`;
+
+      // Wait for operator to approve/discard all drafts
+      await new Promise(resolve => {
+        const check = setInterval(() => {
+          const pending = drafts.filter(d => !d.approved && !d.discarded);
+          if (pending.length === 0) {
+            clearInterval(check);
+            btn.textContent = `Processando… (0/${drafts.filter(d => d.approved).length})`;
+            resolve();
+          } else {
+            btn.textContent = `Aguardando revisão (${pending.length} rascunhos restantes)`;
+          }
+        }, 300);
+      });
+
+      const approvedDrafts = drafts.filter(d => d.approved);
+      if (approvedDrafts.length === 0) {
+        alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
+        btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+        return;
+      }
+
+      // ── Phase 3: Create quotations from approved drafts ───────────────
+
+      for (let di = 0; di < approvedDrafts.length; di++) {
+        const draft = approvedDrafts[di];
+        const i = draft.index;
+        setCardProcessing(i, approvedDrafts.length);
+        btn.textContent = `Processando… (${di + 1}/${approvedDrafts.length})`;
+        const orderPayload = {
+          nome: draft.edited.nome,
+          email: draft.edited.email || null,
+          telefone: draft.edited.telefone || null,
+          urgente: draft.edited.urgente,
+          items: draft.edited.items
+            .filter(it => it.item_code && it.qty > 0)
+            .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate })),
+          prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
+        };
         try {
           const res = await fetch('/api/orcamento', {
             method: 'POST',
@@ -1025,15 +1443,19 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
           if (!res.ok || data.error) {
             setCardError(i, data.error || 'Falha desconhecida.');
           } else {
-            setCardDone(i, data, orders[i].telefone, orders[i].email);
+            setCardDone(i, data, draft.edited.telefone, draft.edited.email);
           }
         } catch (err) {
           setCardError(i, err.message);
         }
       }
 
+      clearDraftsStorage();
       btn.disabled = false; btn.textContent = 'Gerar Orçamento';
     });
+
+    // Restore drafts from last session if page was refreshed during review
+    restoreDrafts();
   </script>
 </body>
 </html>

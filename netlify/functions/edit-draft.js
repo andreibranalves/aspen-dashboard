@@ -1,0 +1,137 @@
+// POST /api/edit-draft — interpret a natural-language edit prompt against
+// a current draft and return proposed changes.
+
+const EDIT_SYSTEM_PROMPT = `Você é um assistente de edição de cotação da Aspen Estamparia.
+Receba um rascunho de cotação e um comando em linguagem natural do operador.
+Retorne o rascunho COMPLETO com as alterações aplicadas — preserve todos os campos
+que o operador não mencionou. Não expanda produtos nem aplique regras de negócio
+automáticas; apenas aplique exatamente o que o operador pediu.
+
+RETORNE APENAS JSON válido — um objeto com o rascunho editado:
+{
+  "nome": "string",
+  "email": "string ou null",
+  "telefone": "string ou null",
+  "urgente": false,
+  "items": [{"item_code": "SKU", "qty": N}]
+}`;
+
+function createHttpError(statusCode, publicMessage, logMessage) {
+  const error = new Error(publicMessage);
+  error.statusCode = statusCode;
+  error.logMessage = logMessage || publicMessage;
+  return error;
+}
+
+function parseJsonSafely(raw) {
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function unwrapJsonText(raw) {
+  const trimmed = String(raw || '').trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
+}
+
+function extractAssistantText(data) {
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(part => part?.type === 'text' && typeof part.text === 'string')
+      .map(part => part.text)
+      .join('');
+  }
+  return '';
+}
+
+async function editDraftWithOpenRouter(prompt, currentDraft) {
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
+  const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
+
+  if (!OPENROUTER_API_KEY) {
+    throw createHttpError(500, 'Serviço de edição indisponível.', 'OPENROUTER_API_KEY não configurada');
+  }
+
+  if (!prompt?.trim()) {
+    throw createHttpError(400, 'Informe um comando de edição.');
+  }
+
+  const headers = {
+    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+    'Content-Type': 'application/json',
+    'X-OpenRouter-Title': 'Aspen Orcamento App',
+  };
+
+  const referer = process.env.OPENROUTER_SITE_URL?.trim() || process.env.URL?.trim() || process.env.DEPLOY_PRIME_URL?.trim();
+  if (referer) headers['HTTP-Referer'] = referer;
+
+  const userContent = [
+    { type: 'text', text: `Rascunho atual:\n${JSON.stringify(currentDraft, null, 2)}\n\nComando do operador:\n${prompt}` },
+  ];
+
+  const body = {
+    model: OPENROUTER_MODEL,
+    messages: [
+      { role: 'system', content: EDIT_SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+    temperature: 0.1,
+  };
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  const responseText = await res.text();
+  const data = parseJsonSafely(responseText);
+
+  if (!res.ok) {
+    const upstreamMessage = data?.error?.message || responseText || `OpenRouter retornou HTTP ${res.status}`;
+    throw createHttpError(502, 'Falha ao interpretar edição.', `OpenRouter HTTP ${res.status}: ${upstreamMessage}`);
+  }
+
+  const raw = extractAssistantText(data);
+  if (!raw) {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Resposta sem conteúdo textual');
+  }
+
+  const parsed = parseJsonSafely(unwrapJsonText(raw));
+  if (parsed == null) {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'JSON inválido retornado pela IA');
+  }
+
+  return parsed;
+}
+
+export async function handler(event) {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(event.body);
+  } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
+  }
+
+  try {
+    const proposed = await editDraftWithOpenRouter(payload.prompt, payload.currentDraft);
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposed }),
+    };
+  } catch (err) {
+    const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+    console.error('[edit-draft]', err?.logMessage || err?.message || err);
+    return {
+      statusCode,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: err?.message || 'Erro interno na edição.' }),
+    };
+  }
+}

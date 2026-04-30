@@ -36,52 +36,12 @@ async function erpPut(doctype, name, payload) {
   return body.data || {};
 }
 
-// ── Pricing ──────────────────────────────────────────────────────────────────
+// ── Pricing (delegated to shared module) ─────────────────────────────────────
 
-function getBracket(qty) {
-  if (qty >= 1000) return 1000;
-  if (qty >= 500) return 500;
-  if (qty >= 300) return 300;
-  if (qty >= 100) return 100;
-  return 30;
-}
+import { getBracket, getRate, getUrgentRate } from './pricing.js';
 
-async function getRate(itemCode, qty) {
-  const bracket = getBracket(qty);
-
-  // 1. Tiered rule (e.g. LNC-SED-70-30)
-  let data = await erpGet('Pricing Rule', [['title', '=', `${itemCode}-${bracket}`]]);
-  if (data.length > 0) {
-    const full = await fetch(
-      `${ERPNEXT_BASE}/api/resource/Pricing%20Rule/${encodeURIComponent(data[0].name)}`,
-      { headers: ERPNEXT_HEADERS }
-    ).then(r => r.json());
-    const rate = full.data?.rate;
-    if (rate) return rate;
-  }
-
-  // 2. SKU rule
-  data = await erpGet('Pricing Rule', [['title', '=', itemCode]]);
-  if (data.length > 0) {
-    const full = await fetch(
-      `${ERPNEXT_BASE}/api/resource/Pricing%20Rule/${encodeURIComponent(data[0].name)}`,
-      { headers: ERPNEXT_HEADERS }
-    ).then(r => r.json());
-    const rate = full.data?.rate;
-    if (rate) return rate;
-  }
-
-  // 3. Item Price fallback
-  const params = new URLSearchParams({
-    filters: JSON.stringify([['item_code', '=', itemCode], ['price_list', '=', 'Standard Selling']]),
-    fields: JSON.stringify(['price_list_rate']),
-  });
-  const res = await fetch(
-    `${ERPNEXT_BASE}/api/resource/Item%20Price?${params}`,
-    { headers: ERPNEXT_HEADERS }
-  );
-  const body = await res.json();
-  return body.data?.[0]?.price_list_rate || 0;
+async function localGetRate(itemCode, qty) {
+  return getRate(itemCode, qty, ERPNEXT_BASE, ERPNEXT_TOKEN);
 }
 
 // ── Name helpers ─────────────────────────────────────────────────────────────
@@ -134,10 +94,10 @@ export async function handler(event) {
     // 1. Busca preços
     for (const item of items) {
       if (!item.rate) {
-        item.rate = await getRate(item.item_code, item.qty);
+        item.rate = await localGetRate(item.item_code, item.qty);
       }
       if (urgente) {
-        item.rate = Math.round(item.rate * 1.30 * 100) / 100;
+        item.rate = getUrgentRate(item.rate);
       }
     }
 

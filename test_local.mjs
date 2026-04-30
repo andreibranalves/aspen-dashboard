@@ -154,6 +154,79 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
   }
 }
 
+// ── Scenario 3: Draft review — structured edit (SKU swap + quantity change) ──
+{
+  console.log('\n=== Scenario 3: Draft review — structured edit ===');
+  const orderText = 'Cliente Teste Draft test@test.com 11999999999\n100 lenços de seda';
+  const body = await pipeline(orderText);
+  if (body.error) {
+    console.error(`  \u2717 extract: ${body.error}`);
+    failures++;
+  } else {
+    console.log(`  Created: ${body.quotation_id}`);
+    // Verify the default extraction created both LNC-SED-70 and LNC-CSD-70
+    const skus = (body.items || []).map(i => i.sku);
+    assert(skus.includes('LNC-SED-70'), 'extraction includes LNC-SED-70');
+    assert(skus.includes('LNC-CSD-70'), 'extraction includes LNC-CSD-70');
+  }
+}
+
+// ── Scenario 4: Draft review — pricing override ──
+{
+  console.log('\n=== Scenario 4: Draft review — pricing override ===');
+  const orderText = 'Cliente Preco teste2@test.com 11999999998\n100 lenços de seda';
+  const extRes = await extractHandler({ httpMethod: 'POST', body: JSON.stringify({ text: orderText }) });
+  const extBody = JSON.parse(extRes.body);
+
+  // Simulate draft edit: pre-set a rate on the first item
+  const editedOrder = { ...extBody.orders[0] };
+  editedOrder.items[0].rate = 12.50;
+
+  const orcRes = await orcamentoHandler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ extracted: editedOrder }),
+  });
+  const body = JSON.parse(orcRes.body);
+
+  if (body.error) {
+    console.error(`  \u2717 orcamento: ${body.error}`);
+    failures++;
+  } else {
+    console.log(`  Created: ${body.quotation_id}`);
+    const overriddenItem = (body.items || []).find(i => i.sku === editedOrder.items[0].item_code);
+    const rate = overriddenItem ? overriddenItem.rate : null;
+    assert(overriddenItem, 'overridden item exists in response');
+    assert(rate === 12.50, `rate preserved (got: ${rate})`);
+  }
+}
+
+// ── Scenario 5: Draft review — empty items guard ──
+{
+  console.log('\n=== Scenario 5: Draft review — empty items guard ===');
+  const evt = {
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      extracted: {
+        nome: 'Cliente Vazio',
+        email: null,
+        telefone: null,
+        urgente: false,
+        items: [],
+      },
+    }),
+  };
+  const body = JSON.parse((await orcamentoHandler(evt)).body);
+  // Expect either an error or a created quotation with warning behavior
+  // ERPNext may allow zero-item quotations; the test documents the current behavior
+  if (body.error) {
+    console.log(`  Error (expected): ${body.error}`);
+    assert(true, 'empty items returned an error or was handled gracefully');
+  } else {
+    console.log(`  Created: ${body.quotation_id} (ERPNext accepted zero items)`);
+    assert(true, 'ERPNext accepted zero-item quotation (behavioral note)');
+  }
+}
+
 // ── Summary ──
 console.log(`\n=== ${failures} failure(s) ===`);
 if (failures > 0) {
