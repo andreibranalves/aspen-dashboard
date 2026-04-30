@@ -1037,6 +1037,101 @@ function capitalize(str) {
     }
 
     // ── Draft review ────────────────────────────────────────────────────────
+    const DRAFTS_STORAGE_KEY = 'aspen_drafts';
+
+    function saveDrafts(drafts) {
+      try {
+        localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+      } catch (e) { /* quota exceeded — silently skip */ }
+    }
+
+    function clearDraftsStorage() { localStorage.removeItem(DRAFTS_STORAGE_KEY); }
+
+    function restoreDrafts() {
+      let saved;
+      try { saved = localStorage.getItem(DRAFTS_STORAGE_KEY); } catch (e) { return; }
+      if (!saved) return;
+      let drafts;
+      try { drafts = JSON.parse(saved); } catch (e) { clearDraftsStorage(); return; }
+      if (!Array.isArray(drafts) || drafts.length === 0) { clearDraftsStorage(); return; }
+
+      const pending = drafts.filter(d => !d.approved && !d.discarded);
+      if (pending.length === 0) { clearDraftsStorage(); return; }
+
+      const restore = confirm(
+        `Você tem ${pending.length} rascunho(s) não finalizado(s) da última sessão. Deseja restaurá-los para revisão?`
+      );
+      if (!restore) { clearDraftsStorage(); return; }
+
+      // Reset approved flag so operator re-approves
+      drafts.forEach(d => d.approved = false);
+      queueEl.innerHTML = '';
+      renderDraftCards(drafts);
+      queueEl.classList.add('visible');
+
+      const btn = document.getElementById('submitBtn');
+      btn.textContent = `Aguardando revisão (${drafts.filter(d => !d.discarded).length} rascunhos restaurados)`;
+      btn.disabled = false;
+
+      // Re-enter the approval loop
+      (async () => {
+        await new Promise(resolve => {
+          const check = setInterval(() => {
+            const pending2 = drafts.filter(d => !d.approved && !d.discarded);
+            if (pending2.length === 0) {
+              clearInterval(check);
+              btn.textContent = `Processando… (0/${drafts.filter(d => d.approved).length})`;
+              resolve();
+            } else {
+              btn.textContent = `Aguardando revisão (${pending2.length} rascunhos restantes)`;
+            }
+          }, 300);
+        });
+
+        const approvedDrafts = drafts.filter(d => d.approved);
+        if (approvedDrafts.length === 0) {
+          clearDraftsStorage();
+          alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
+          btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+          return;
+        }
+
+        const prazoVal = document.getElementById('prazoInput').value.trim();
+        for (let di = 0; di < approvedDrafts.length; di++) {
+          const draft = approvedDrafts[di];
+          const i = draft.index;
+          setCardProcessing(i, approvedDrafts.length);
+          btn.textContent = `Processando… (${di + 1}/${approvedDrafts.length})`;
+          const orderPayload = {
+            nome: draft.edited.nome,
+            email: draft.edited.email || null,
+            telefone: draft.edited.telefone || null,
+            urgente: draft.edited.urgente,
+            items: draft.edited.items
+              .filter(it => it.item_code && it.qty > 0)
+              .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate })),
+            prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
+          };
+          try {
+            const res = await fetch('/api/orcamento', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ extracted: orderPayload }),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+              setCardError(i, data.error || 'Falha desconhecida.');
+            } else {
+              setCardDone(i, data, draft.edited.telefone, draft.edited.email);
+            }
+          } catch (err) {
+            setCardError(i, err.message);
+          }
+        }
+        clearDraftsStorage();
+        btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      })();
+    }
 
     function renderDraftCards(drafts) {
       const total = drafts.length;
@@ -1295,6 +1390,7 @@ function capitalize(str) {
       queueEl.innerHTML = '';
       renderDraftCards(drafts);
       queueEl.classList.add('visible');
+      saveDrafts(drafts);
 
       btn.textContent = `Aguardando revisão (${drafts.filter(d => !d.discarded).length} rascunhos)`;
 
@@ -1354,8 +1450,12 @@ function capitalize(str) {
         }
       }
 
+      clearDraftsStorage();
       btn.disabled = false; btn.textContent = 'Gerar Orçamento';
     });
+
+    // Restore drafts from last session if page was refreshed during review
+    restoreDrafts();
   </script>
 </body>
 </html>
