@@ -72,9 +72,9 @@ export async function getRate(itemCode, qty, erpnextBase, token) {
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-async function erpGet(baseUrl, doctype, filters, headers) {
+async function erpGet(baseUrl, filters, headers) {
   const params = new URLSearchParams({ filters: JSON.stringify(filters) });
-  const res = await fetch(`${baseUrl}/${encodeURIComponent(doctype)}?${params}`, { headers });
+  const res = await fetch(`${baseUrl}?${params}`, { headers });
   const body = await res.json();
   return body.data || [];
 }

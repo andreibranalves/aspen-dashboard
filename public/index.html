@@ -348,6 +348,11 @@
     }
     .items-table tr:last-child td { border-bottom: none; }
 
+    /* Rate cell: inline numeric input + formatted BRL readout */
+    .rate-cell { display: flex; align-items: center; gap: 4px; }
+    .rate-cell input { width: 72px; }
+    .rate-display { font-size: 11px; color: var(--navy); font-weight: 600; white-space: nowrap; min-width: 62px; }
+
     /* Drag-and-drop item reorder */
     .drag-handle {
       cursor: grab;
@@ -746,8 +751,8 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
     // ── Tabs
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(t => { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-panel').forEach(p => { p.classList.remove('active'); });
         tab.classList.add('active');
         document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
       });
@@ -902,6 +907,12 @@ function capitalize(str) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
+    function formatBRL(value) {
+      const amount = Number(value);
+      if (value == null || Number.isNaN(amount)) return '—';
+      return `R$ ${amount.toFixed(2).replace('.', ',')}`;
+    }
+
     function escapeHtml(str) {
       if (!str) return '';
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -999,11 +1010,28 @@ function capitalize(str) {
         // Map results back to draft items
         for (let i = 0; i < data.items.length && i < itemRefs.length; i++) {
           const ref = itemRefs[i];
-          drafts[ref.draftIdx].edited.items[ref.itemIdx].rate = data.items[i].rate;
+          if (!drafts[ref.draftIdx].edited.items[ref.itemIdx]._rateManual) {
+            drafts[ref.draftIdx].edited.items[ref.itemIdx].rate = data.items[i].rate;
+          }
         }
       } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('[fetchPricing]', err);
+      }
+    }
+
+    async function refreshDraftPricing(targetDrafts) {
+      const nonUrgentDrafts = targetDrafts.filter(draft => !draft.edited.urgente);
+      const urgentDrafts = targetDrafts.filter(draft => draft.edited.urgente);
+
+      if (nonUrgentDrafts.length > 0) {
+        await fetchPricing(nonUrgentDrafts, false);
+        updatePricingDisplay(nonUrgentDrafts);
+      }
+
+      if (urgentDrafts.length > 0) {
+        await fetchPricing(urgentDrafts, true);
+        updatePricingDisplay(urgentDrafts);
       }
     }
 
@@ -1016,11 +1044,17 @@ function capitalize(str) {
         draft.edited.items.forEach((item, idx) => {
           const row = rows[idx];
           if (!row) return;
-          const rateCell = row.querySelector('td:nth-child(4)');
-          if (rateCell) {
-            rateCell.textContent = item.rate != null && item.rate > 0
-              ? 'R$ ' + Number(item.rate).toFixed(2).replace('.', ',')
-              : '—';
+          const rateInput = row.querySelector('.draft-rate');
+          const rateDisplay = row.querySelector('.rate-display');
+          if (item._rateManual) {
+            // Manual items: keep input as-is, just refresh display span
+            if (rateDisplay) rateDisplay.textContent = formatBRL(rateInput?.value || item.rate);
+          } else {
+            // Auto-priced items: update both input and formatted display
+            if (rateInput) {
+              rateInput.value = item.rate != null && item.rate > 0 ? item.rate : '';
+            }
+            if (rateDisplay) rateDisplay.textContent = formatBRL(item.rate);
           }
         });
       }
@@ -1154,10 +1188,12 @@ function capitalize(str) {
       if (!restore) { clearDraftsStorage(); return; }
 
       // Reset approved flag so operator re-approves
-      drafts.forEach(d => d.approved = false);
+      drafts.forEach(d => {
+        d.approved = false;
+      });
       queueEl.innerHTML = '';
       renderDraftCards(drafts);
-      fetchPricing(drafts, false).then(() => updatePricingDisplay(drafts));
+      refreshDraftPricing(drafts);
       queueEl.classList.add('visible');
 
       const btn = document.getElementById('submitBtn');
@@ -1200,7 +1236,7 @@ function capitalize(str) {
             urgente: draft.edited.urgente,
             items: draft.edited.items
               .filter(it => it.item_code && it.qty > 0)
-              .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate })),
+              .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate, manual_rate: it._rateManual === true })),
             prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
           };
           try {
@@ -1243,7 +1279,7 @@ function capitalize(str) {
             <td class="drag-handle">⠿</td>
             <td><input class="draft-sku" data-index="${ii}" value="${escapeHtml(it.item_code)}" placeholder="SKU"></td>
             <td><input class="draft-qty" data-index="${ii}" type="number" min="1" value="${it.qty}" style="width:80px"></td>
-            <td>${it.rate ? 'R$ ' + parseFloat(it.rate).toFixed(2).replace('.', ',') : '—'}</td>
+            <td><div class="rate-cell"><input class="draft-rate" data-index="${ii}" type="number" step="any" min="0" value="${it.rate || ''}" placeholder="—" style="width:72px"><span class="rate-display" data-index="${ii}">${formatBRL(it.rate)}</span></div></td>
             <td><button type="button" class="draft-remove-item" data-index="${ii}">×</button></td>
           </tr>
         `).join('');
@@ -1303,7 +1339,9 @@ function capitalize(str) {
           e.preventDefault();
           const tr = e.target.closest('tr[draggable]');
           if (!tr) return;
-          tbody.querySelectorAll('tr.drag-over').forEach(r => r.classList.remove('drag-over'));
+          tbody.querySelectorAll('tr.drag-over').forEach(r => {
+            r.classList.remove('drag-over');
+          });
           tr.classList.add('drag-over');
           e.dataTransfer.dropEffect = 'move';
         });
@@ -1358,11 +1396,41 @@ function capitalize(str) {
         });
 
         // Bind events
-        const syncItem = (ii) => {
+        const syncItem = (ii, changedField) => {
           const skuEl = card.querySelector(`.draft-sku[data-index="${ii}"]`);
           const qtyEl = card.querySelector(`.draft-qty[data-index="${ii}"]`);
-          if (skuEl) draft.edited.items[ii].item_code = skuEl.value.trim();
-          if (qtyEl) draft.edited.items[ii].qty = parseInt(qtyEl.value, 10) || 0;
+          const rateEl = card.querySelector(`.draft-rate[data-index="${ii}"]`);
+          if (skuEl) {
+            const newSku = skuEl.value.trim();
+            if (draft.edited.items[ii].item_code !== newSku) {
+              delete draft.edited.items[ii]._rateManual;
+              draft.edited.items[ii].rate = null;
+            }
+            draft.edited.items[ii].item_code = newSku;
+          }
+          if (qtyEl) {
+            const newQty = parseInt(qtyEl.value, 10) || 0;
+            if (draft.edited.items[ii].qty !== newQty) {
+              delete draft.edited.items[ii]._rateManual;
+              draft.edited.items[ii].rate = null;
+            }
+            draft.edited.items[ii].qty = newQty;
+          }
+          if (rateEl && changedField === 'rate') {
+            const val = rateEl.value.trim();
+            if (val !== '') {
+              draft.edited.items[ii].rate = parseFloat(val.replace(',', '.')) || 0;
+              draft.edited.items[ii]._rateManual = true;
+            } else {
+              draft.edited.items[ii].rate = null;
+              delete draft.edited.items[ii]._rateManual;
+            }
+          }
+          // Update formatted BRL readout
+          const displayEl = card.querySelector(`.rate-display[data-index="${ii}"]`);
+          if (displayEl) displayEl.textContent = formatBRL(draft.edited.items[ii]?.rate);
+          // Persist changes immediately
+          saveDrafts(drafts);
         };
 
         // Sync customer fields
@@ -1371,18 +1439,29 @@ function capitalize(str) {
         const telEl = card.querySelector('.draft-telefone');
         const urgEl = card.querySelector('.draft-urgente');
 
-        nomeEl.addEventListener('input', () => { draft.edited.nome = nomeEl.value.trim(); });
-        emailEl.addEventListener('input', () => { draft.edited.email = emailEl.value.trim(); });
-        telEl.addEventListener('input', () => { draft.edited.telefone = telEl.value.trim(); });
+        nomeEl.addEventListener('input', () => { draft.edited.nome = nomeEl.value.trim(); saveDrafts(drafts); });
+        emailEl.addEventListener('input', () => { draft.edited.email = emailEl.value.trim(); saveDrafts(drafts); });
+        telEl.addEventListener('input', () => { draft.edited.telefone = telEl.value.trim(); saveDrafts(drafts); });
         urgEl.addEventListener('change', async () => {
           draft.edited.urgente = urgEl.checked;
-          await fetchPricing(drafts, urgEl.checked);
-          updatePricingDisplay(drafts);
+          await refreshDraftPricing([draft]);
+          saveDrafts(drafts);
         });
 
         // Sync items
-        card.querySelectorAll('.draft-sku, .draft-qty').forEach(el => {
-          el.addEventListener('input', () => syncItem(parseInt(el.dataset.index, 10)));
+        card.querySelectorAll('.draft-sku, .draft-qty, .draft-rate').forEach(el => {
+          el.addEventListener('input', () => {
+            const changedField = el.classList.contains('draft-rate') ? 'rate' : el.classList.contains('draft-qty') ? 'qty' : 'sku';
+            syncItem(parseInt(el.dataset.index, 10), changedField);
+          });
+          el.addEventListener('change', async () => {
+            const ii = parseInt(el.dataset.index, 10);
+            const item = draft.edited.items[ii];
+            if (el.classList.contains('draft-sku') || el.classList.contains('draft-qty') || !item?._rateManual) {
+              await refreshDraftPricing([draft]);
+              saveDrafts(drafts);
+            }
+          });
         });
 
         // Remove item
@@ -1390,6 +1469,7 @@ function capitalize(str) {
           btn.addEventListener('click', () => {
             const ii = parseInt(btn.dataset.index, 10);
             draft.edited.items.splice(ii, 1);
+            saveDrafts(drafts);
             queueEl.innerHTML = '';
             renderDraftCards(drafts);
           });
@@ -1398,6 +1478,7 @@ function capitalize(str) {
         // Add item
         card.querySelector('.draft-add-item').addEventListener('click', () => {
           draft.edited.items.push({ item_code: '', qty: 30 });
+          saveDrafts(drafts);
           queueEl.innerHTML = '';
           renderDraftCards(drafts);
         });
@@ -1414,6 +1495,7 @@ function capitalize(str) {
             return;
           }
           draft.approved = true;
+          saveDrafts(drafts);
           const iconEl = document.getElementById(`icon-${i}`);
           iconEl.textContent = '✓';
           iconEl.className = 'card-icon done-icon';
@@ -1426,6 +1508,7 @@ function capitalize(str) {
         // Discard
         card.querySelector('.draft-discard').addEventListener('click', () => {
           draft.discarded = true;
+          saveDrafts(drafts);
           card.style.display = 'none';
         });
 
@@ -1477,14 +1560,21 @@ function capitalize(str) {
           draft.edited.email = proposedDraft.email || draft.edited.email;
           draft.edited.telefone = proposedDraft.telefone || draft.edited.telefone;
           draft.edited.urgente = proposedDraft.urgente || false;
-          draft.edited.items = (proposedDraft.items || []).map(it => ({ item_code: it.item_code || '', qty: it.qty || 0, rate: null }));
+          // Preserve manual rates for items where item_code+qty remain unchanged
+          draft.edited.items = (proposedDraft.items || []).map(it => {
+            const old = draft.edited.items.find(o => o.item_code === it.item_code && o.qty === it.qty);
+            if (old?._rateManual) {
+              return { item_code: it.item_code || '', qty: it.qty || 0, rate: old.rate, _rateManual: true };
+            }
+            return { item_code: it.item_code || '', qty: it.qty || 0, rate: null };
+          });
           promptPreview.style.display = 'none';
           promptInput.value = '';
           proposedDraft = null;
           queueEl.innerHTML = '';
           renderDraftCards(drafts);
-          await fetchPricing(drafts, draft.edited.urgente);
-          updatePricingDisplay(drafts);
+          await refreshDraftPricing([draft]);
+          saveDrafts(drafts);
         });
 
         promptReject.addEventListener('click', () => {
@@ -1555,7 +1645,7 @@ function capitalize(str) {
       const total = orders.length;
 
       queueEl.innerHTML = '';
-      await fetchPricing(drafts, drafts.some(d => d.edited.urgente));
+      await refreshDraftPricing(drafts);
       renderDraftCards(drafts);
       queueEl.classList.add('visible');
       saveDrafts(drafts);
@@ -1597,7 +1687,7 @@ function capitalize(str) {
           urgente: draft.edited.urgente,
           items: draft.edited.items
             .filter(it => it.item_code && it.qty > 0)
-            .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate })),
+            .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate, manual_rate: it._rateManual === true })),
           prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
         };
         try {

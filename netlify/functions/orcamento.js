@@ -6,6 +6,13 @@ const ERPNEXT_HEADERS = {
   'Content-Type': 'application/json',
 };
 
+function createHttpError(statusCode, publicMessage, logMessage) {
+  const error = new Error(publicMessage);
+  error.statusCode = statusCode;
+  error.logMessage = logMessage || publicMessage;
+  return error;
+}
+
 // ── ERPNext helpers ──────────────────────────────────────────────────────────
 
 async function erpGet(doctype, filters) {
@@ -16,6 +23,15 @@ async function erpGet(doctype, filters) {
   );
   const body = await res.json();
   return body.data || [];
+}
+
+async function erpGetDoc(doctype, name) {
+  const res = await fetch(
+    `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+    { headers: ERPNEXT_HEADERS }
+  );
+  const body = await res.json();
+  return body.data || null;
 }
 
 async function erpPost(doctype, payload) {
@@ -89,17 +105,30 @@ export async function handler(event) {
     const email = extracted.email?.trim().toLowerCase() || '';
     const telefone = formatPhone(extracted.telefone || '');
     const urgente = extracted.urgente || false;
-    let items = extracted.items;
+    let items = (extracted.items || []).map(item => ({
+      item_code: item.item_code,
+      qty: item.qty,
+      rate: item.rate,
+      manual_rate: item.manual_rate === true,
+    }));
+    items = items.filter(item => item.item_code && item.qty > 0);
+    if (items.length === 0) {
+      throw createHttpError(400, 'Nenhum item válido informado para criar o orçamento.');
+    }
+    const hasAnyManualRate = items.some(item => item.manual_rate === true);
 
     // 1. Busca preços
     for (const item of items) {
-      if (!item.rate) {
+      const isManualRate = item.manual_rate === true;
+      if (!isManualRate) {
         item.rate = await localGetRate(item.item_code, item.qty);
       }
-      if (urgente) {
+      if (urgente && !isManualRate) {
         item.rate = getUrgentRate(item.rate);
       }
     }
+
+    items = items.map(({ manual_rate, ...item }) => item);
 
     let entityId;
     let entityType = 'Customer';
@@ -199,15 +228,18 @@ export async function handler(event) {
       items,
       remarks: `Contato: ${nomeCliente} | ${email} | ${telefone}${urgente ? ' | URGENTE' : ''}`,
     };
+    if (hasAnyManualRate || urgente) quotePayload.ignore_pricing_rule = 1;
     if (prazo) quotePayload.custom_prazo_producao = prazo;
     if (email) quotePayload.contact_email = email;
     if (telefone) quotePayload.contact_mobile = telefone;
 
     const q = await erpPost('Quotation', quotePayload);
     const quotationId = q.name;
+    const savedQuotation = await erpGetDoc('Quotation', quotationId);
+    const savedItems = savedQuotation?.items || items;
 
     // 6. CRM Deal update/create
-    const nextStep = items.map(i => `${i.qty}x ${i.item_code}`).join(', ');
+    const nextStep = savedItems.map(i => `${i.qty}x ${i.item_code}`).join(', ');
     if (dealId) {
       const upd = {
         status: 'Orcamento Enviado',
@@ -231,7 +263,7 @@ export async function handler(event) {
         custom_quotation_sent_date: hoje,
         custom_follow_up_stage: 0,
         next_step: nextStep,
-        products: items.map(i => ({ product_name: i.item_code, qty: i.qty, rate: i.rate })),
+        products: savedItems.map(i => ({ product_name: i.item_code, qty: i.qty, rate: i.rate })),
       };
       if (email) dp.email = email;
       if (contactId) dp.contacts = [{ contact: contactId, is_primary: 1 }];
@@ -278,18 +310,19 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
         customer_new: customerIsNew,
         cliente: nomeCliente,
         urgente,
-        items: items.map(i => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
+        items: savedItems.map(i => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
         pdf_url: pdfUrl,
         print_html: printHtml,
         short_url: shortUrl,
       }),
     };
   } catch (err) {
-    console.error(err);
+    const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+    console.error('[orcamento]', err?.logMessage || err?.message || err);
     return {
-      statusCode: 500,
+      statusCode,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err.message }),
+      body: JSON.stringify({ error: err?.statusCode ? err.message : 'Erro interno.' }),
     };
   }
 }

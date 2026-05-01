@@ -19,6 +19,7 @@ const ERPNEXT_HEADERS = {
 
 const { handler: extractHandler } = await import('./netlify/functions/extract.js');
 const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
+const { handler: pricingLookupHandler } = await import('./netlify/functions/pricing-lookup.js');
 
 let failures = 0;
 
@@ -41,6 +42,14 @@ async function pipeline(orderText) {
     body: JSON.stringify({ extracted: extBody.orders[0] }),
   });
   return JSON.parse(orcRes.body);
+}
+
+async function lookupPricing(items, urgent = false) {
+  const res = await pricingLookupHandler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ items, urgent }),
+  });
+  return JSON.parse(res.body);
 }
 
 // Fetch printview through the view.js handler (/api/view)
@@ -181,6 +190,7 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
   // Simulate draft edit: pre-set a rate on the first item
   const editedOrder = { ...extBody.orders[0] };
   editedOrder.items[0].rate = 12.50;
+  editedOrder.items[0].manual_rate = true;
 
   const orcRes = await orcamentoHandler({
     httpMethod: 'POST',
@@ -200,9 +210,77 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
   }
 }
 
-// ── Scenario 5: Draft review — empty items guard ──
+// ── Scenario 5: Preview pricing parity — 60 cangas ──
 {
-  console.log('\n=== Scenario 5: Draft review — empty items guard ===');
+  console.log('\n=== Scenario 5: Preview pricing parity — 60 cangas ===');
+  const orderText = 'Cliente Canga testecanga@test.com 11999999997\n60 cangas';
+  const extRes = await extractHandler({ httpMethod: 'POST', body: JSON.stringify({ text: orderText }) });
+  const extBody = JSON.parse(extRes.body);
+
+  if (extBody.error || !extBody.orders?.[0]) {
+    console.error(`  \u2717 extract: ${extBody.error || 'No order extracted'}`);
+    failures++;
+  } else {
+    const extracted = extBody.orders[0];
+    const preview = await lookupPricing(extracted.items, extracted.urgente || false);
+    const orcBody = JSON.parse((await orcamentoHandler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ extracted }),
+    })).body);
+
+    if (preview.error || orcBody.error) {
+      console.error(`  \u2717 pricing parity: ${preview.error || orcBody.error}`);
+      failures++;
+    } else {
+      const previewMap = new Map((preview.items || []).map(item => [`${item.item_code}:${item.qty}`, item.rate]));
+      const finalMap = new Map((orcBody.items || []).map(item => [`${item.sku}:${item.qty}`, item.rate]));
+      for (const [key, previewRate] of previewMap.entries()) {
+        const finalRate = finalMap.get(key);
+        assert(finalMap.has(key), `final quotation contains ${key}`);
+        assert(finalRate === previewRate, `preview and final rates match for ${key} (preview=${previewRate}, final=${finalRate})`);
+      }
+    }
+  }
+}
+
+// ── Scenario 6: Override reset after qty change reprices server-side ──
+{
+  console.log('\n=== Scenario 6: Override reset after qty change reprices server-side ===');
+  const orderText = 'Cliente Auto taxaauto@test.com 11999999997\n100 lenços de seda';
+  const extRes = await extractHandler({ httpMethod: 'POST', body: JSON.stringify({ text: orderText }) });
+  const extBody = JSON.parse(extRes.body);
+
+  if (extBody.error || !extBody.orders?.[0]) {
+    console.error(`  \u2717 extract: ${extBody.error || 'No order extracted'}`);
+    failures++;
+  } else {
+    const extracted = extBody.orders[0];
+    const itemCode = extracted.items[0].item_code;
+    extracted.items[0].rate = 12.50;
+    extracted.items[0].manual_rate = false;
+    extracted.items[0].qty = 300;
+
+    const preview = await lookupPricing([{ item_code: itemCode, qty: extracted.items[0].qty }], false);
+    const orcBody = JSON.parse((await orcamentoHandler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ extracted }),
+    })).body);
+
+    if (preview.error || orcBody.error) {
+      console.error(`  \u2717 stale rate repricing: ${preview.error || orcBody.error}`);
+      failures++;
+    } else {
+      const finalItem = (orcBody.items || []).find(item => item.sku === itemCode);
+      assert(!!finalItem, `final quotation contains ${itemCode}`);
+      assert(finalItem?.rate === preview.items?.[0]?.rate, `reset override is ignored and repriced for ${itemCode} at qty 300 (preview=${preview.items?.[0]?.rate}, final=${finalItem?.rate})`);
+      assert(finalItem?.rate !== 12.5, `stale manual rate 12.5 was not preserved after qty change (got: ${finalItem?.rate})`);
+    }
+  }
+}
+
+// ── Scenario 7: Draft review — empty items guard ──
+{
+  console.log('\n=== Scenario 7: Draft review — empty items guard ===');
   const evt = {
     httpMethod: 'POST',
     body: JSON.stringify({
@@ -215,16 +293,10 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
       },
     }),
   };
-  const body = JSON.parse((await orcamentoHandler(evt)).body);
-  // Expect either an error or a created quotation with warning behavior
-  // ERPNext may allow zero-item quotations; the test documents the current behavior
-  if (body.error) {
-    console.log(`  Error (expected): ${body.error}`);
-    assert(true, 'empty items returned an error or was handled gracefully');
-  } else {
-    console.log(`  Created: ${body.quotation_id} (ERPNext accepted zero items)`);
-    assert(true, 'ERPNext accepted zero-item quotation (behavioral note)');
-  }
+  const res = await orcamentoHandler(evt);
+  const body = JSON.parse(res.body);
+  assert(res.statusCode === 400, `empty items returns HTTP 400 (got: ${res.statusCode})`);
+  assert(body.error === 'Nenhum item válido informado para criar o orçamento.', `empty items returns PT-BR validation error (got: ${body.error})`);
 }
 
 // ── Summary ──
