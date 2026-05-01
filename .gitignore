@@ -17,5 +17,9 @@ Thumbs.db
 .continue/
 .impeccable-live.json
 
+# Playwright
+.playwright-cli/
+.sisyphus/
+
 # Misc
 *.log
