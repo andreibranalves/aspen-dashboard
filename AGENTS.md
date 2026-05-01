@@ -14,8 +14,9 @@ Instructions for code agents working in the Orcamento App subproject. This appli
 ```bash
 netlify dev
 ```
-
 Runs at `http://localhost:8888`. Functions are served at `/.netlify/functions/*` and proxied via `/api/*` (defined in `netlify.toml`).
+
+Alternative: `node server.mjs` — standalone Node HTTP server on port 8888 that imports function handlers directly. Useful when Netlify CLI is unavailable.
 
 ## Testing
 
@@ -37,14 +38,16 @@ Runs both functions end-to-end against real ERPNext. Edit the `text` array at th
 
 ## Architecture
 
-Single-page app (`public/index.html`) + four Netlify Functions:
+Single-page app (`public/index.html`) + five Netlify Functions:
 
 | Function | Route | Purpose |
 |----------|-------|---------|
 | `extract.js` | `POST /api/extract` | Sends text/image to OpenRouter; returns structured orders |
 | `orcamento.js` | `POST /api/orcamento` | Creates ERPNext Quotation + CRM Deal |
-| `send-email.js` | `POST /api/send-email` | Sends email via Hostinger SMTP with PDF attachment |
+| `edit-draft.js` | `POST /api/edit-draft` | Natural-language editing of draft quotations via OpenRouter |
 | `view.js` | `GET /api/view?q={id}` | Renders quotation HTML for browser/print preview |
+| `pricing.js` | _(shared lib)_ | Pricing bracket/rate logic; imported by `orcamento.js` — no handler export |
+| `send-email.js` | _(MISSING)_ | ⚠️ Source file deleted — only `:Zone.Identifier` artifact remains. Function is not deployed. |
 
 ### Two-phase pipeline
 
@@ -98,6 +101,72 @@ Format: `ORC-YYYY####` (e.g. `ORC-20261143`). Configured in ERPNext at `/app/nam
 - `custom_quotation` — linked Quotation name
 - `custom_quotation_sent_date` — ISO date when quotation was created
 - `custom_follow_up_stage` — integer 0–4 tracking which follow-up email was last sent
+
+## Conventions
+
+### Module System
+- **ESM everywhere** (`package.json` has `"type": "module"`)
+- Local imports use explicit `.js` extension: `import { getRate } from './pricing.js'`
+- `server.mjs` and `test_local.mjs` use `.mjs` extension for standalone scripts; function files use `.js`
+
+### Handler Skeleton (all Netlify functions)
+```js
+export async function handler(event) {
+  if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
+  let payload;
+  try { payload = JSON.parse(event.body); }
+  catch { return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) }; }
+  try {
+    // ... core logic ...
+    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: true }) };
+  } catch (err) {
+    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+    console.error('[function]', err?.logMessage || err?.message || err);
+    return { statusCode: code, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: err?.message || 'Erro interno.' }) };
+  }
+}
+```
+Exception: `view.js` is a GET handler — skips method guard, returns `text/html`.
+
+### Error Handling
+- **Preferred**: `createHttpError(statusCode, publicMsg, logMsg)` pattern (see `extract.js`, `edit-draft.js`)
+- Catch block reads `err?.statusCode` and `err?.logMessage || err?.message || err`
+- All user-facing error messages in Brazilian Portuguese
+- Never expose raw ERPNext error details to HTTP responses
+
+### Logging
+- `console.error('[functionName]', msg)` — tagged format (extract.js, edit-draft.js)
+- `console.warn(...)` for non-fatal issues
+- `server.mjs`: ISO timestamp + method + path for request logging
+
+### Naming
+| Scope | Convention | Examples |
+|-------|-----------|---------|
+| Functions | camelCase | `extractWithOpenRouter`, `sanitizeName` |
+| Constants | UPPER_SNAKE_CASE | `ERPNEXT_BASE`, `MAX_TEXT_LENGTH` |
+| Files | kebab-case or short word | `edit-draft.js`, `view.js` |
+| HTML IDs | kebab-case | `inputArea`, `customer-dot` |
+| localStorage keys | snake_case, `aspen_` prefix | `aspen_rules`, `aspen_wa_template` |
+| DOM element vars | `el` suffix | `queueEl`, `extractStatusEl` |
+
+### Code Organization
+- Helper functions before `handler` export
+- Section dividers: `// ── Section Name ──`
+- One `handler` export per function file (pricing.js is the exception — exports named utilities)
+
+## Anti-Patterns
+
+- **Do not use ERPNext `download_pdf` API** for final PDFs — `wkhtmltopdf` renders differently. Use Chrome/Edge headless with `--headless=new`.
+- **Do not use legacy `--headless` mode** — always `--headless=new`.
+- **Do not deploy after every small change** — validate with `netlify dev` first.
+- **Do not use `require()`** — ESM only.
+- **Do not skip `.js` extension** on local imports — ESM requires it.
+- **Do not suppress errors silently** — always log + return structured error response.
+- **Do not expose internal ERPNext error messages** to HTTP responses.
+- **Do not modify `pricing.js`** without testing against all SKU × bracket combinations.
+- **Do not add dependencies** to `package.json` without explicit approval.
+- **Do not commit `.env`** (gitignored; `.env.example` is the template).
+- **Do not use `@ts-ignore`, `@ts-expect-error`, `as any`** — project is plain JS, type safety via convention.
 
 ## Deploy
 
