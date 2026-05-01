@@ -1,0 +1,1 @@
+{"scenario":"happy-path","url":"POST /api/pricing-lookup","payload":{"items":[{"item_code":"LNC-SED-70","qty":100}]},"response":{"success":true,"items":[{"item_code":"LNC-SED-70","qty":100,"rate":27.55}]},"result":"PASS"}

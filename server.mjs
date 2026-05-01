@@ -30,10 +30,11 @@ const MIME = {
 };
 
 // Importa as funções Netlify
-const { handler: extractHandler }   = await import('./netlify/functions/extract.js');
-const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
-const { handler: viewHandler }      = await import('./netlify/functions/view.js');
-const { handler: editDraftHandler } = await import('./netlify/functions/edit-draft.js');
+const { handler: extractHandler }        = await import('./netlify/functions/extract.js');
+const { handler: orcamentoHandler }      = await import('./netlify/functions/orcamento.js');
+const { handler: viewHandler }           = await import('./netlify/functions/view.js');
+const { handler: editDraftHandler }      = await import('./netlify/functions/edit-draft.js');
+const { handler: pricingLookupHandler }  = await import('./netlify/functions/pricing-lookup.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -96,6 +97,19 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await editDraftHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/pricing-lookup' || pathname === '/.netlify/functions/pricing-lookup') {
+    const body = await readBody(req);
+    try {
+      const result = await pricingLookupHandler(netlifyEvent(req, body));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {

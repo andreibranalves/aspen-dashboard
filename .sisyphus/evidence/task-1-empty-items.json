@@ -1,0 +1,1 @@
+{"scenario":"empty-items","url":"POST /api/pricing-lookup","payload":{"items":[]},"response":{"success":true,"items":[]},"result":"PASS"}

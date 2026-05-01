@@ -1,0 +1,1 @@
+{"scenario":"empty-sku","url":"POST /api/pricing-lookup","payload":{"items":[{"item_code":"","qty":30}]},"response":{"success":true,"items":[{"item_code":"","qty":30,"rate":null}]},"result":"PASS"}
