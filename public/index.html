@@ -348,6 +348,31 @@
     }
     .items-table tr:last-child td { border-bottom: none; }
 
+    /* Drag-and-drop item reorder */
+    .drag-handle {
+      cursor: grab;
+      color: var(--muted);
+      font-size: 16px;
+      padding: 4px 6px 4px 0 !important;
+      width: 24px;
+      user-select: none;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .items-table tr[draggable="true"] { cursor: default; }
+    .items-table tr[draggable="true"]:hover .drag-handle { color: var(--text); }
+    .items-table tr.dragging {
+      opacity: 0.4;
+      background: var(--border);
+    }
+    .items-table tr.drag-over {
+      border-top: 2px solid var(--navy);
+    }
+    .items-table tr.drag-over td {
+      padding-top: 2px;
+    }
+
     .pdf-link {
       display: inline-block;
       margin-top: 10px;
@@ -1148,7 +1173,8 @@ function capitalize(str) {
 
         // Build items table rows
         const itemsHtml = draft.edited.items.map((it, ii) => `
-          <tr>
+          <tr draggable="true" data-index="${ii}">
+            <td class="drag-handle">⠿</td>
             <td><input class="draft-sku" data-index="${ii}" value="${escapeHtml(it.item_code)}" placeholder="SKU"></td>
             <td><input class="draft-qty" data-index="${ii}" type="number" min="1" value="${it.qty}" style="width:80px"></td>
             <td>${it.rate ? 'R$ ' + parseFloat(it.rate).toFixed(2).replace('.', ',') : '—'}</td>
@@ -1171,8 +1197,8 @@ function capitalize(str) {
           </div>
           <div class="draft-items">
             <table class="items-table">
-              <thead><tr><th>SKU</th><th>Qtd</th><th>R$/un</th><th></th></tr></thead>
-              <tbody>${itemsHtml}</tbody>
+              <thead><tr><th></th><th>SKU</th><th>Qtd</th><th>R$/un</th><th></th></tr></thead>
+              <tbody class="items-tbody">${itemsHtml}</tbody>
             </table>
             <button type="button" class="draft-add-item">+ Adicionar item</button>
           </div>
@@ -1196,6 +1222,74 @@ function capitalize(str) {
         `;
 
         queueEl.appendChild(card);
+
+        // ── Drag-and-drop item reorder ──
+        const tbody = card.querySelector('.items-tbody');
+        tbody.addEventListener('dragstart', (e) => {
+          const tr = e.target.closest('tr[draggable]');
+          if (!tr) { e.preventDefault(); return; }
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', tr.dataset.index);
+          tr.classList.add('dragging');
+        });
+
+        tbody.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          const tr = e.target.closest('tr[draggable]');
+          if (!tr) return;
+          tbody.querySelectorAll('tr.drag-over').forEach(r => r.classList.remove('drag-over'));
+          tr.classList.add('drag-over');
+          e.dataTransfer.dropEffect = 'move';
+        });
+
+        tbody.addEventListener('dragleave', (e) => {
+          const tr = e.target.closest('tr[draggable]');
+          if (tr) tr.classList.remove('drag-over');
+        });
+
+        tbody.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+          const targetTr = e.target.closest('tr[draggable]');
+          if (!targetTr || Number.isNaN(sourceIndex)) return;
+          const targetIndex = parseInt(targetTr.dataset.index, 10);
+          if (sourceIndex === targetIndex) return;
+
+          // Reorder the array
+          const [moved] = draft.edited.items.splice(sourceIndex, 1);
+          draft.edited.items.splice(targetIndex, 0, moved);
+
+          // Reorder the DOM: move source row
+          const sourceRow = tbody.querySelector(`tr[data-index="${sourceIndex}"]`);
+          if (sourceRow) {
+            if (sourceIndex < targetIndex) {
+              targetTr.after(sourceRow);
+            } else {
+              targetTr.before(sourceRow);
+            }
+          }
+
+          // Update data-index attributes on all rows and their children
+          tbody.querySelectorAll('tr[draggable]').forEach((row, idx) => {
+            row.dataset.index = idx;
+            row.querySelectorAll('[data-index]').forEach(el => {
+              el.dataset.index = idx;
+            });
+          });
+
+          // Cleanup
+          tbody.querySelectorAll('tr').forEach(r => {
+            r.classList.remove('dragging', 'drag-over');
+          });
+
+          saveDrafts(drafts);
+        });
+
+        tbody.addEventListener('dragend', () => {
+          tbody.querySelectorAll('tr').forEach(r => {
+            r.classList.remove('dragging', 'drag-over');
+          });
+        });
 
         // Bind events
         const syncItem = (ii) => {
