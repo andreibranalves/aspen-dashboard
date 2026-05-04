@@ -5,14 +5,9 @@ REGRAS DE NEGÓCIO:
 
 Rule 0 — SKU Explícito tem Precedência: Se o usuário informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
 
-Rule 1 — Quantidade Mínima: Se a quantidade solicitada for < 30, use 30.
+Rule 1 — Quantidade Mínima: Se a quantidade solicitada for < 30, use 30 (mínimo para produção).
 
-Rule 2 — Faixas de Quantidade: Mapeie a quantidade para a faixa mais próxima inferior:
-- 1-99 → faixa 30
-- 100-299 → faixa 100
-- 300-499 → faixa 300
-- 500-999 → faixa 500
-- 1000+ → faixa 1000
+Rule 2 — Quantidade no campo qty: Use a quantidade EXATA solicitada pelo cliente. NÃO mapeie a quantidade para faixas — o sistema já aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente para calcular o preço unitário. Ex: se o cliente pedir 50, use qty:50.
 
 Rule 3 — Regras por Produto:
 - Lenços: Se o cliente mencionar "laser", usar LNC-SED-LAS-70 (ou o tamanho correspondente). Caso contrário, cotar DUAS opções: LNC-SED-70 (Sedinha 70x70 - econômico) e LNC-CSD-70 (Cetim de Seda 70x70 - premium). Se 55x55cm pedido, cotar 50x50cm.
