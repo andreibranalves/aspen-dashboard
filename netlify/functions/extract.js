@@ -18,7 +18,8 @@ Rule 3 — Regras por Produto:
 - Lenços: Se o cliente mencionar "laser", usar LNC-SED-LAS-70 (ou o tamanho correspondente). Caso contrário, cotar DUAS opções: LNC-SED-70 (Sedinha 70x70 - econômico) e LNC-CSD-70 (Cetim de Seda 70x70 - premium). Se 55x55cm pedido, cotar 50x50cm.
 - Chapéus: Sempre cotar TRÊS opções: CHP-PAN, CHP-PNR, CHP-BAM (exceto se SKU especificado).
 - Cangas: Se mencionar "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100. Caso contrário (se < 100 unidades): Cotar CNG-SAL-70 e CNG-SAL-100. Cangas >= 100: Cotar CNG-SAL-70, CNG-SAL-100, CNG-VIS-70, CNG-VIS-100.
-- Toalhas: Sempre duas opções: TWL-210 e TWL-280.
+- Toalhas (Praia): Sempre duas opções: TWL-210 e TWL-280.
+- Toalhas de Banho: Sempre três opções: TBH-LEM (Leme 375g/m² - econômico), TBH-URC (Urca 405g/m² - intermediário), TBH-IPA (Ipanema 450g/m² - premium).
 - Bonés < 100: Cotar apenas BNE-TAC-VNL. Bonés >= 100: Cotar BNE-TAC-SUB, BNE-BRI, BNE-PRE.
 - Ecobags: Sempre três opções: ECO-30, ECO-35, ECO-50.
 
