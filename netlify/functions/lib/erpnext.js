@@ -77,16 +77,18 @@ async function erpRequest(url, options = {}) {
  * @param {object} [opts]
  * @param {string[]} [opts.fields] - Fields to include in the response
  * @param {Array} [opts.filters] - ERPNext filter array, e.g. [['status', '=', 'Draft']]
+ * @param {Array} [opts.or_filters] - ERPNext OR filter array (OR-joined with each other, AND-joined with filters)
  * @param {string} [opts.order_by='creation desc'] - Sort order. Do NOT omit for paginated queries.
  * @param {number} [opts.limit] - Page size (limit_page_length, default 20)
  * @param {number} [opts.start] - Offset (limit_start, default 0)
  * @returns {Promise<Array>} Array of document objects
  */
 export async function erpGetList(doctype, opts = {}) {
-  const { fields, filters, order_by = 'creation desc', limit, start } = opts;
+  const { fields, filters, or_filters, order_by = 'creation desc', limit, start } = opts;
   const params = new URLSearchParams();
   params.set('order_by', order_by);
   if (filters) params.set('filters', JSON.stringify(filters));
+  if (or_filters) params.set('or_filters', JSON.stringify(or_filters));
   if (fields) params.set('fields', JSON.stringify(fields));
   if (limit != null) params.set('limit_page_length', String(limit));
   if (start != null) params.set('limit_start', String(start));

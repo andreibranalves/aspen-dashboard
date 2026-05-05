@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Aspen Estamparia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Lusitana:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* ══════════════════════════════════════════════
+       DESIGN TOKENS (match index.html)
+       ══════════════════════════════════════════════ */
+    :root {
+      --navy: #1D2F56;
+      --navy-hover: #162344;
+      --navy-light: #eef1f7;
+      --border: #ddd9d3;
+      --text: #1a1a1a;
+      --muted: #888;
+      --bg: #f5f4f1;
+      --radius: 5px;
+      --green: #2e7d32;
+      --green-bg: #f1f8f2;
+      --green-border: #b5d9b8;
+      --red: #b71c1c;
+      --red-bg: #fdf2f2;
+      --red-border: #f0b8b8;
+
+      --sidebar-width: 230px;
+      --header-height: 56px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ══════════════════════════════════════════════
+       LAYOUT
+       ══════════════════════════════════════════════ */
+    .app {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--sidebar-width);
+      height: 100vh;
+      background: var(--navy);
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+      transition: transform 0.25s ease;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 20px 20px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .sidebar-brand-name {
+      font-family: 'Lusitana', serif;
+      font-weight: 700;
+      font-size: 20px;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .sidebar-brand-sub {
+      font-family: 'Lusitana', serif;
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
+      font-weight: 400;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 0;
+      overflow-y: auto;
+    }
+
+    .nav-section-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.3);
+      padding: 16px 20px 6px;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.7);
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+      border-left: 3px solid transparent;
+      cursor: pointer;
+    }
+
+    .nav-link:hover {
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+    }
+
+    .nav-link.active {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border-left-color: #fff;
+    }
+
+    .nav-link .nav-icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .nav-divider {
+      height: 1px;
+      background: rgba(255,255,255,0.1);
+      margin: 8px 20px;
+    }
+
+    .nav-link-external {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.7);
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+      border-left: 3px solid transparent;
+      cursor: pointer;
+    }
+
+    .nav-link-external:hover {
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+    }
+
+    .nav-link-external .nav-icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    /* ── Main content ── */
+    .main {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      height: var(--header-height);
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .topbar-title {
+      font-family: 'Lusitana', serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .topbar-hamburger {
+      display: none;
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: var(--navy);
+      cursor: pointer;
+      padding: 4px;
+      margin-right: 12px;
+    }
+
+    /* ── Content ── */
+    .content {
+      flex: 1;
+      padding: 28px 28px 40px;
+    }
+
+    /* ══════════════════════════════════════════════
+       PAGE ROUTING
+       ══════════════════════════════════════════════ */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ══════════════════════════════════════════════
+       PLACEHOLDER PAGE STYLES
+       ══════════════════════════════════════════════ */
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .page-title {
+      font-family: 'Lusitana', serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .page-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn {
+      font-family: 'Lusitana', serif;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: var(--radius);
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .btn:hover { border-color: var(--navy); }
+
+    .btn-primary {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+
+    .btn-primary:hover { background: var(--navy-hover); border-color: var(--navy-hover); }
+
+    .btn-success {
+      background: var(--green);
+      color: #fff;
+      border-color: var(--green);
+    }
+
+    .btn-success:hover { background: #256d29; border-color: #256d29; }
+
+    .btn-auto {
+      background: #fff;
+      color: var(--navy);
+      border-color: var(--navy);
+      border-style: dashed;
+    }
+
+    .btn-auto:hover {
+      background: var(--navy-light);
+      border-style: solid;
+    }
+
+    /* ── Placeholder card ── */
+    .placeholder-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      border-top: 3px solid var(--navy);
+      padding: 48px 32px;
+      text-align: center;
+    }
+
+    .placeholder-card .icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+
+    .placeholder-card h3 {
+      font-family: 'Lusitana', serif;
+      font-size: 18px;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .placeholder-card p {
+      font-size: 13px;
+      color: var(--muted);
+      max-width: 360px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    /* ── Quotations table shell ── */
+    .quotations-table-wrap {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .quotations-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .quotations-table th {
+      text-align: left;
+      padding: 10px 14px;
+      font-family: 'Lusitana', serif;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .quotations-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .quotations-table tr:last-child td { border-bottom: none; }
+    .quotations-table tr:hover td { background: var(--navy-light); }
+
+    .quotations-table .status-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 99px;
+    }
+    .status-badge.draft {
+      background: #f0f0ee;
+      color: var(--muted);
+    }
+    .status-badge.sent {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+    .status-badge.accepted {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+    .status-badge.lost {
+      background: var(--red-bg);
+      color: var(--red);
+    }
+
+    .quotations-table .customer-name {
+      font-weight: 600;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 56px 24px;
+    }
+
+    .empty-state .icon {
+      font-size: 36px;
+      opacity: 0.3;
+      margin-bottom: 8px;
+    }
+
+    .empty-state h3 {
+      font-family: 'Lusitana', serif;
+      font-size: 16px;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+
+    .empty-state p {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* ══════════════════════════════════════════════
+       TOOLTIP OVERLAY (mobile sidebar backdrop)
+       ══════════════════════════════════════════════ */
+    .sidebar-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 99;
+    }
+
+    .sidebar-backdrop.visible { display: block; }
+
+    /* ── Status Chips ── */
+    .status-chips {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .status-chip {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.12s;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .status-chip:hover { border-color: var(--navy); color: var(--navy); }
+    .status-chip.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+    .status-chip .chip-count {
+      font-size: 11px;
+      opacity: 0.65;
+      font-weight: 400;
+    }
+    .status-chip.active .chip-count { opacity: 0.8; }
+
+    /* ── Search Bar ── */
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .search-input-wrap {
+      flex: 1;
+      min-width: 180px;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px 8px 34px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s;
+      font-family: inherit;
+    }
+    .search-input:focus { border-color: var(--navy); }
+    .search-input::placeholder { color: #bbb; }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #bbb;
+      font-size: 13px;
+      pointer-events: none;
+    }
+
+    /* ── Table enhancements ── */
+    .quotations-table .col-num {
+      font-weight: 600;
+      color: var(--navy);
+      white-space: nowrap;
+    }
+    .quotations-table .col-valor {
+      font-weight: 600;
+      white-space: nowrap;
+      text-align: right;
+    }
+    .quotations-table .col-data { white-space: nowrap; }
+
+    .quotations-table tr {
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    /* Status badges overhaul */
+    .quotations-table .status-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+    .quotations-table .status-badge.Draft { background: #f0eeeb; color: #666; }
+    .quotations-table .status-badge.Open { background: #e3f0ff; color: #1a5fb4; }
+    .quotations-table .status-badge.Replied { background: #fef3cd; color: #856404; }
+    .quotations-table .status-badge.Ordered { background: var(--green-bg); color: var(--green); }
+    .quotations-table .status-badge.Lost { background: var(--red-bg); color: var(--red); }
+    .quotations-table .status-badge.Expired { background: #f5f5f5; color: #999; }
+    .quotations-table .status-badge.Cancelled { background: #f0f0f0; color: #bbb; text-decoration: line-through; }
+
+    /* ── Pagination ── */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px 4px;
+      font-size: 13px;
+      color: var(--muted);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pagination-info {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .page-btns {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .page-btn {
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.1s;
+      font-family: inherit;
+      min-width: 32px;
+      text-align: center;
+    }
+    .page-btn:hover:not(:disabled):not(.active) { border-color: var(--navy); color: var(--navy); }
+    .page-btn.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Loading / Error / Empty ── */
+    .state-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 64px 20px;
+      text-align: center;
+    }
+    .state-box .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #ddd;
+      border-top-color: var(--navy);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .state-box .state-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+    .state-box .state-text { font-size: 14px; color: var(--muted); }
+    .state-box .state-hint { font-size: 12px; color: #bbb; margin-top: 4px; }
+
+    .state-box.error .state-icon { opacity: 1; }
+    .state-box.error .state-text { color: var(--red); font-weight: 600; }
+    .state-box .retry-btn {
+      margin-top: 12px;
+      padding: 6px 16px;
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .state-box .retry-btn:hover { opacity: 0.9; }
+
+    /* ══════════════════════════════════════════════
+       RESPONSIVE
+       ══════════════════════════════════════════════ */
+    @media (max-width: 720px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .sidebar-backdrop.visible {
+        display: block;
+      }
+
+      .main {
+        margin-left: 0;
+      }
+
+      .topbar-hamburger {
+        display: inline-flex;
+      }
+
+      .topbar {
+        padding: 0 16px;
+      }
+
+      .content {
+        padding: 20px 16px 32px;
+      }
+
+      .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .page-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        flex: 1;
+        justify-content: center;
+        min-width: 0;
+        text-align: center;
+      }
+
+      .placeholder-card {
+        padding: 32px 20px;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .content {
+        padding: 16px 12px 28px;
+      }
+
+      .page-title {
+        font-size: 18px;
+      }
+
+      .btn {
+        font-size: 12px;
+        padding: 7px 12px;
+      }
+
+      .quotations-table th,
+      .quotations-table td {
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-brand-name">Aspen</span>
+      <span class="sidebar-brand-sub">Estamparia</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Operações</div>
+
+      <a class="nav-link active" href="#quotations" data-nav>
+        <span class="nav-icon">📋</span>
+        Orçamentos
+      </a>
+      <a class="nav-link" href="#products" data-nav>
+        <span class="nav-icon">🏷️</span>
+        Produtos
+      </a>
+      <a class="nav-link" href="#leads" data-nav>
+        <span class="nav-icon">👥</span>
+        Leads / Clientes
+      </a>
+      <a class="nav-link" href="#freight" data-nav>
+        <span class="nav-icon">🚚</span>
+        Cotação de Frete
+      </a>
+
+      <div class="nav-divider"></div>
+      <div class="nav-section-label">Criar</div>
+
+      <a class="nav-link" href="#create" data-nav>
+        <span class="nav-icon">✏️</span>
+        Novo Orçamento
+        <span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:auto;">Manual</span>
+      </a>
+      <a class="nav-link-external" href="/index.html" target="_self">
+        <span class="nav-icon">✨</span>
+        Orçamento Automático
+        <span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:auto;">IA</span>
+      </a>
+    </nav>
+  </aside>
+
+  <div class="main">
+
+    <header class="topbar">
+      <button type="button" class="topbar-hamburger" id="hamburgerBtn" aria-label="Abrir menu">☰</button>
+      <span class="topbar-title" id="pageTitle">Orçamentos</span>
+    </header>
+
+    <main class="content">
+
+      <section class="page active" id="page-quotations">
+        <div class="page-header">
+          <h1 class="page-title">Orçamentos</h1>
+          <div class="page-actions">
+            <a href="#create" class="btn btn-primary" data-nav>+ Novo Manual</a>
+            <a href="/index.html" class="btn btn-auto">✨ Automático</a>
+          </div>
+        </div>
+
+        <!-- Status summary chips -->
+        <div class="status-chips" id="statusChips">
+          <span class="status-chip active" data-status="">Todos <span class="chip-count" id="chipTotal"></span></span>
+          <span class="status-chip" data-status="Draft">Rascunho <span class="chip-count" data-sk="Draft"></span></span>
+          <span class="status-chip" data-status="Open">Aberto <span class="chip-count" data-sk="Open"></span></span>
+          <span class="status-chip" data-status="Replied">Respondido <span class="chip-count" data-sk="Replied"></span></span>
+          <span class="status-chip" data-status="Ordered">Convertido <span class="chip-count" data-sk="Ordered"></span></span>
+          <span class="status-chip" data-status="Lost">Perdido <span class="chip-count" data-sk="Lost"></span></span>
+          <span class="status-chip" data-status="Expired">Expirado <span class="chip-count" data-sk="Expired"></span></span>
+          <span class="status-chip" data-status="Cancelled">Cancelado <span class="chip-count" data-sk="Cancelled"></span></span>
+        </div>
+
+        <!-- Search -->
+        <div class="search-bar">
+          <div class="search-input-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="searchInput" placeholder="Buscar por Nº ou Cliente…" />
+          </div>
+        </div>
+
+        <!-- Table area -->
+        <div class="quotations-table-wrap" id="tableArea">
+          <!-- Loading state -->
+          <div class="state-box" id="loadingState">
+            <div class="spinner"></div>
+            <div class="state-text">Carregando orçamentos…</div>
+          </div>
+
+          <!-- Empty state -->
+          <div class="state-box" id="emptyState" style="display:none">
+            <div class="state-icon">📋</div>
+            <div class="state-text">Nenhum orçamento encontrado</div>
+            <div class="state-hint">Tente ajustar os filtros ou criar um novo orçamento.</div>
+          </div>
+
+          <!-- Error state -->
+          <div class="state-box error" id="errorState" style="display:none">
+            <div class="state-icon">⚠️</div>
+            <div class="state-text">Erro ao carregar orçamentos</div>
+            <div class="state-hint" id="errorMsg">Falha na comunicação com o servidor.</div>
+            <button type="button" class="retry-btn" id="retryBtn">Tentar novamente</button>
+          </div>
+
+          <!-- Table -->
+          <table class="quotations-table" id="quotationsTable" style="display:none">
+            <thead>
+              <tr>
+                <th>Nº</th>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th style="text-align:right">Valor</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+
+          <!-- Pagination -->
+          <div class="pagination" id="pagination" style="display:none">
+            <div class="pagination-info" id="paginationInfo"></div>
+            <div class="page-btns">
+              <button type="button" class="page-btn" id="prevBtn" disabled>‹ Anterior</button>
+              <span id="pageNumbers"></span>
+              <button type="button" class="page-btn" id="nextBtn" disabled>Próximo ›</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-products">
+        <div class="page-header">
+          <h1 class="page-title">Produtos</h1>
+          <div class="page-actions">
+            <button type="button" class="btn btn-primary">+ Novo Produto</button>
+          </div>
+        </div>
+
+        <div class="placeholder-card">
+          <div class="icon">🏷️</div>
+          <h3>Catálogo de Produtos</h3>
+          <p>Visualização e gerenciamento do catálogo de SKUs, preços e regras de precificação. Disponível em breve.</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-leads">
+        <div class="page-header">
+          <h1 class="page-title">Leads / Clientes</h1>
+          <div class="page-actions">
+            <button type="button" class="btn btn-primary">+ Novo Cliente</button>
+          </div>
+        </div>
+
+        <div class="placeholder-card">
+          <div class="icon">👥</div>
+          <h3>Leads e Clientes</h3>
+          <p>Consulta e gestão de leads do CRM, clientes cadastrados e histórico de orçamentos. Disponível em breve.</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-freight">
+        <div class="page-header">
+          <h1 class="page-title">Cotação de Frete</h1>
+          <div class="page-actions">
+            <button type="button" class="btn btn-primary">+ Nova Cotação</button>
+          </div>
+        </div>
+
+        <div class="placeholder-card">
+          <div class="icon">🚚</div>
+          <h3>Cotação de Frete</h3>
+          <p>Simulação e consulta de fretes para as regiões de entrega. Disponível em breve.</p>
+        </div>
+      </section>
+
+      <section class="page" id="page-create">
+        <div class="page-header">
+          <h1 class="page-title">Novo Orçamento</h1>
+          <div class="page-actions">
+            <a href="/index.html" class="btn btn-auto">✨ Usar Automático</a>
+          </div>
+        </div>
+
+        <div class="placeholder-card">
+          <div class="icon">✏️</div>
+          <h3>Orçamento Manual</h3>
+          <p>Formulário para criação manual de orçamentos com seleção de produtos, quantidades e preços. Disponível em breve.</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+// ── Status label map (ERPNext → Portuguese) ──
+const STATUS_LABELS = {
+  Draft: 'Rascunho',
+  Open: 'Aberto',
+  Replied: 'Respondido',
+  Ordered: 'Convertido',
+  Lost: 'Perdido',
+  Expired: 'Expirado',
+  Cancelled: 'Cancelado',
+};
+
+// ── Page title map ──
+var pageTitles = {
+  '#quotations': 'Orçamentos',
+  '#products': 'Produtos',
+  '#leads': 'Leads / Clientes',
+  '#freight': 'Cotação de Frete',
+  '#create': 'Novo Orçamento',
+};
+
+// ── Quotations State ──
+var currentPage = 1;
+var currentSearch = '';
+var currentStatus = '';
+var totalPages = 0;
+var totalRecords = 0;
+var loading = false;
+var LIMIT = 25;
+
+// ── Debounce helper ──
+function debounce(fn, ms) {
+  var timer;
+  return function () {
+    var args = arguments;
+    var ctx = this;
+    clearTimeout(timer);
+    timer = setTimeout(function () { fn.apply(ctx, args); }, ms);
+  };
+}
+
+// ── Format helpers ──
+function formatDate(iso) {
+  if (!iso) return '—';
+  var d = new Date(iso + (iso.indexOf('T') !== -1 ? '' : 'T12:00:00'));
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('pt-BR');
+}
+
+function formatBRL(value) {
+  var n = Number(value);
+  if (value == null || isNaN(n)) return '—';
+  return 'R$ ' + n.toFixed(2).replace('.', ',');
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Mock data for development (Task 6 endpoint not deployed yet) ──
+var ALL_MOCK_QUOTATIONS = (function () {
+  var now = new Date();
+  var d = function (offset) { var date = new Date(now); date.setDate(date.getDate() + offset); return date.toISOString().slice(0, 10); };
+  return [
+    { id: 'ORC-20261143', data: d(-1), cliente: 'João Silva', tipo_entidade: 'Customer', entidade_id: 'CUST-00001', valor: 1250.00, status: 'Open', docstatus: 1, validade: d(14) },
+    { id: 'ORC-20261142', data: d(-2), cliente: 'Maria Souza', tipo_entidade: 'Lead', entidade_id: 'CRM-LEAD-2026-00042', valor: 890.50, status: 'Open', docstatus: 1, validade: d(13) },
+    { id: 'ORC-20261141', data: d(-3), cliente: 'Distribuidora ABC Ltda', tipo_entidade: 'Customer', entidade_id: 'CUST-00047', valor: 4200.00, status: 'Replied', docstatus: 1, validade: d(12) },
+    { id: 'ORC-20261140', data: d(-4), cliente: 'Ana Beatriz Costa', tipo_entidade: 'Lead', entidade_id: 'CRM-LEAD-2026-00041', valor: 350.00, status: 'Draft', docstatus: 0, validade: d(11) },
+    { id: 'ORC-20261139', data: d(-5), cliente: 'Carlos Oliveira', tipo_entidade: 'Customer', entidade_id: 'CUST-00089', valor: 6780.00, status: 'Ordered', docstatus: 1, validade: d(10) },
+    { id: 'ORC-20261138', data: d(-7), cliente: 'Fernanda Lima', tipo_entidade: 'Lead', entidade_id: 'CRM-LEAD-2026-00038', valor: 125.00, status: 'Lost', docstatus: 1, validade: d(-5) },
+    { id: 'ORC-20261137', data: d(-8), cliente: 'Empresa Exemplo Ltda', tipo_entidade: 'Customer', entidade_id: 'CUST-00123', valor: 3200.00, status: 'Expired', docstatus: 1, validade: d(-1) },
+    { id: 'ORC-20261136', data: d(-10), cliente: 'Pedro Alves', tipo_entidade: 'Lead', entidade_id: 'CRM-LEAD-2026-00035', valor: 2250.00, status: 'Cancelled', docstatus: 2, validade: d(-3) },
+    { id: 'ORC-20261135', data: d(-12), cliente: 'Luciana Mendes', tipo_entidade: 'Customer', entidade_id: 'CUST-00156', valor: 1850.00, status: 'Replied', docstatus: 1, validade: d(7) },
+    { id: 'ORC-20261134', data: d(-14), cliente: 'Ricardo Barbosa', tipo_entidade: 'Lead', entidade_id: 'CRM-LEAD-2026-00032', valor: 560.00, status: 'Draft', docstatus: 0, validade: d(5) },
+  ];
+})();
+
+function getMockQuotations(search, status) {
+  var filtered = ALL_MOCK_QUOTATIONS.slice();
+  if (search) {
+    var q = search.toLowerCase();
+    filtered = filtered.filter(function (r) {
+      return r.id.toLowerCase().indexOf(q) !== -1 || r.cliente.toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  if (status) {
+    filtered = filtered.filter(function (r) { return r.status === status; });
+  }
+  var summary = { Draft: 0, Open: 0, Replied: 0, Ordered: 0, Lost: 0, Expired: 0, Cancelled: 0 };
+  ALL_MOCK_QUOTATIONS.forEach(function (r) { if (summary[r.status] !== undefined) summary[r.status]++; });
+  return {
+    data: filtered,
+    pagination: { page: 1, limit: 25, total: filtered.length, total_pages: Math.ceil(filtered.length / 25) || 1 },
+    status_summary: summary,
+  };
+}
+
+// ── API fetch (with demo fallback) ──
+function fetchQuotations() {
+  if (loading) return;
+  loading = true;
+  showLoading();
+
+  var params = new URLSearchParams();
+  params.set('page', String(currentPage));
+  params.set('limit', String(LIMIT));
+  if (currentSearch) params.set('search', currentSearch);
+  if (currentStatus) params.set('status', currentStatus);
+
+  // NOTE: The GET /api/quotations endpoint is created in parallel (Task 6).
+  // If it's not yet deployed, this fetch will fail and fall back to demo data
+  // so the UI can be verified in isolation.
+  fetch('/api/quotations?' + params.toString(), {
+    headers: { 'Accept': 'application/json' },
+  })
+    .then(function (res) {
+      if (!res.ok) {
+        return res.json().then(function (errBody) {
+          throw new Error(errBody.error || 'Erro ' + res.status);
+        }).catch(function (parseErr) {
+          if (parseErr instanceof SyntaxError) throw new Error('Erro ' + res.status);
+          throw parseErr;
+        });
+      }
+      return res.json();
+    })
+    .then(function (body) {
+      if (!body || !Array.isArray(body.data)) {
+        throw new Error('Resposta inválida do servidor.');
+      }
+      applyQuotations(body);
+      loading = false;
+    })
+    .catch(function (err) {
+      console.error('[fetchQuotations]', err);
+      // Fall back to demo data when endpoint is unavailable
+      console.warn('[fetchQuotations] Endpoint unavailable, using demo data.');
+      applyQuotations(getMockQuotations(currentSearch, currentStatus));
+      loading = false;
+    });
+}
+
+function applyQuotations(body) {
+  totalPages = body.pagination ? body.pagination.total_pages || 0 : 0;
+  totalRecords = body.pagination ? body.pagination.total || 0 : 0;
+  updateChipCounts(body.status_summary);
+  renderTable(body.data);
+  renderPagination();
+}
+
+// ── Chip count updates ──
+function updateChipCounts(summary) {
+  if (!summary) return;
+  var totalChip = document.getElementById('chipTotal');
+  if (totalChip) totalChip.textContent = '(' + totalRecords + ')';
+  Object.keys(summary).forEach(function (key) {
+    var chip = document.querySelector('.status-chip[data-status="' + key + '"]');
+    if (chip) {
+      var countEl = chip.querySelector('.chip-count');
+      if (countEl) countEl.textContent = '(' + summary[key] + ')';
+    }
+  });
+}
+
+// ── Render table rows ──
+function renderTable(rows) {
+  var tbody = document.getElementById('tableBody');
+  var table = document.getElementById('quotationsTable');
+  var emptyState = document.getElementById('emptyState');
+  var errorState = document.getElementById('errorState');
+  var loadingState = document.getElementById('loadingState');
+
+  loadingState.style.display = 'none';
+  errorState.style.display = 'none';
+
+  if (!rows || rows.length === 0) {
+    table.style.display = 'none';
+    document.getElementById('pagination').style.display = 'none';
+    emptyState.style.display = 'flex';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  table.style.display = '';
+  document.getElementById('pagination').style.display = '';
+
+  tbody.innerHTML = rows.map(function (row) {
+    var statusLabel = STATUS_LABELS[row.status] || row.status;
+    return '<tr data-id="' + escapeHtml(row.id) + '">'
+      + '<td class="col-num">' + escapeHtml(row.id) + '</td>'
+      + '<td class="col-data">' + formatDate(row.data) + '</td>'
+      + '<td>' + escapeHtml(row.cliente) + '</td>'
+      + '<td class="col-valor">' + formatBRL(row.valor) + '</td>'
+      + '<td><span class="status-badge ' + escapeHtml(row.status) + '">' + escapeHtml(statusLabel) + '</span></td>'
+      + '</tr>';
+  }).join('');
+}
+
+// ── Pagination ──
+function renderPagination() {
+  var info = document.getElementById('paginationInfo');
+  var prevBtn = document.getElementById('prevBtn');
+  var nextBtn = document.getElementById('nextBtn');
+  var pageNumbers = document.getElementById('pageNumbers');
+
+  if (totalPages <= 1) {
+    if (totalPages === 0) {
+      document.getElementById('pagination').style.display = 'none';
+      return;
+    }
+    info.textContent = 'Página 1 de 1 · ' + totalRecords + ' orçamento' + (totalRecords !== 1 ? 's' : '');
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    pageNumbers.innerHTML = '';
+    return;
+  }
+
+  info.textContent = 'Página ' + currentPage + ' de ' + totalPages + ' · ' + totalRecords + ' orçamento' + (totalRecords !== 1 ? 's' : '');
+  prevBtn.disabled = currentPage <= 1;
+  nextBtn.disabled = currentPage >= totalPages;
+
+  // Show up to 7 page numbers
+  var start = Math.max(1, currentPage - 3);
+  var end = Math.min(totalPages, start + 6);
+  if (end - start < 6) start = Math.max(1, end - 6);
+
+  var html = '';
+  for (var i = start; i <= end; i++) {
+    html += '<button class="page-btn' + (i === currentPage ? ' active' : '') + '" data-page="' + i + '">' + i + '</button>';
+  }
+  pageNumbers.innerHTML = html;
+
+  // Bind page number clicks
+  pageNumbers.querySelectorAll('.page-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var page = parseInt(btn.dataset.page, 10);
+      if (page !== currentPage) {
+        currentPage = page;
+        fetchQuotations();
+        saveState();
+        document.getElementById('quotationsTable').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+}
+
+// ── Loading / Error / Empty ──
+function showLoading() {
+  document.getElementById('loadingState').style.display = 'flex';
+  document.getElementById('quotationsTable').style.display = 'none';
+  document.getElementById('errorState').style.display = 'none';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('pagination').style.display = 'none';
+}
+
+function showError(msg) {
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('quotationsTable').style.display = 'none';
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('errorState').style.display = 'flex';
+  document.getElementById('pagination').style.display = 'none';
+  document.getElementById('errorMsg').textContent = msg;
+}
+
+// ── Navigation ──
+function navigate() {
+  var hash = window.location.hash || '#quotations';
+
+  // Show/hide pages
+  document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
+  var target = document.getElementById('page-' + hash.slice(1));
+  if (target) target.classList.add('active');
+
+  // Update nav links
+  document.querySelectorAll('[data-nav]').forEach(function (l) { l.classList.remove('active'); });
+  var activeLink = document.querySelector('[data-nav][href="' + hash + '"]');
+  if (activeLink) activeLink.classList.add('active');
+
+  // Update topbar title
+  var titleEl = document.getElementById('pageTitle');
+  if (titleEl) titleEl.textContent = pageTitles[hash] || 'Dashboard';
+
+  // Trigger data load for quotations page
+  if (hash === '#quotations') {
+    fetchQuotations();
+  }
+
+  // Close mobile sidebar
+  closeSidebar();
+}
+
+// ── State persistence ──
+function restoreQuotationState() {
+  try {
+    var savedPage = localStorage.getItem('dash_quotations_page');
+    var savedSearch = localStorage.getItem('dash_quotations_search');
+    var savedStatus = localStorage.getItem('dash_quotations_status');
+    if (savedPage) currentPage = parseInt(savedPage, 10) || 1;
+    if (savedSearch) {
+      currentSearch = savedSearch;
+      document.getElementById('searchInput').value = savedSearch;
+    }
+    if (savedStatus) currentStatus = savedStatus;
+  } catch (e) { /* localStorage not available */ }
+}
+
+function saveQuotationState() {
+  try {
+    localStorage.setItem('dash_quotations_page', String(currentPage));
+    localStorage.setItem('dash_quotations_search', currentSearch);
+    localStorage.setItem('dash_quotations_status', currentStatus);
+    localStorage.setItem('dash_last_visit', new Date().toISOString());
+  } catch (e) { /* ignore */ }
+}
+
+// ── Sidebar (mobile) ──
+var sidebar = document.getElementById('sidebar');
+var backdrop = document.getElementById('sidebarBackdrop');
+
+function openSidebar() {
+  sidebar.classList.add('open');
+  backdrop.classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  backdrop.classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+document.getElementById('hamburgerBtn').addEventListener('click', openSidebar);
+backdrop.addEventListener('click', closeSidebar);
+
+// ── Bind hash navigation to data-nav links ──
+document.querySelectorAll('[data-nav]').forEach(function (link) {
+  link.addEventListener('click', function (e) {
+    var href = link.getAttribute('href');
+    if (href && href.indexOf('#') === 0) {
+      e.preventDefault();
+      window.location.hash = href;
+    }
+  });
+});
+
+// ── Listen for hash changes ──
+window.addEventListener('hashchange', navigate);
+
+// ── DOM ready ──
+document.addEventListener('DOMContentLoaded', function () {
+  restoreQuotationState();
+
+  // Set active chip for saved status
+  if (currentStatus) {
+    document.querySelectorAll('.status-chip').forEach(function (c) { c.classList.remove('active'); });
+    var activeChip = document.querySelector('.status-chip[data-status="' + currentStatus + '"]');
+    if (activeChip) activeChip.classList.add('active');
+  }
+
+  // Default hash
+  if (!window.location.hash) {
+    window.location.hash = '#quotations';
+  } else {
+    navigate();
+  }
+});
+
+// ── Quotations: search ──
+var searchInput = document.getElementById('searchInput');
+var debouncedSearch = debounce(function () {
+  currentSearch = searchInput.value.trim();
+  currentPage = 1;
+  saveQuotationState();
+  fetchQuotations();
+}, 400);
+
+searchInput.addEventListener('input', debouncedSearch);
+
+// ── Quotations: status chip clicks ──
+document.querySelectorAll('.status-chip').forEach(function (chip) {
+  chip.addEventListener('click', function () {
+    var status = chip.dataset.status || '';
+    if (status === currentStatus) return;
+    currentStatus = status;
+    currentPage = 1;
+    saveQuotationState();
+    document.querySelectorAll('.status-chip').forEach(function (c) { c.classList.remove('active'); });
+    chip.classList.add('active');
+    fetchQuotations();
+  });
+});
+
+// ── Quotations: pagination prev/next ──
+document.getElementById('prevBtn').addEventListener('click', function () {
+  if (currentPage > 1) {
+    currentPage--;
+    saveQuotationState();
+    fetchQuotations();
+    document.getElementById('quotationsTable').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+
+document.getElementById('nextBtn').addEventListener('click', function () {
+  if (currentPage < totalPages) {
+    currentPage++;
+    saveQuotationState();
+    fetchQuotations();
+    document.getElementById('quotationsTable').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+});
+
+// ── Quotations: retry ──
+document.getElementById('retryBtn').addEventListener('click', fetchQuotations);
+
+// ── Quotations: row click → open detail view (placeholder for Task 11) ──
+document.getElementById('tableBody').addEventListener('click', function (e) {
+  var tr = e.target.closest('tr[data-id]');
+  if (!tr) return;
+  var id = tr.dataset.id;
+  // Task 11: Navigate to quotation detail within dashboard
+  // For now, open the view page in a new tab
+  window.open('/api/view?q=' + encodeURIComponent(id), '_blank');
+});
+
+// ── Save state on navigate away ──
+window.addEventListener('beforeunload', saveQuotationState);
+</script>
+
+</body>
+</html>
