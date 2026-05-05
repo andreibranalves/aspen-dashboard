@@ -80,6 +80,7 @@ Quantity brackets: 30, 100, 300, 500, 1000. Urgent orders: +30% on all rates.
 - Cangas < 100 → CNG-SAL-70 + CNG-SAL-100; ≥ 100 → adds CNG-VIS-70 + CNG-VIS-100
 - Toalhas → TWL-210 + TWL-280
 - Bonés < 100 → BNE-TAC-VNL; ≥ 100 → BNE-TAC-SUB + BNE-BRI + BNE-PRE
+- Cachecóis → always quote CHC-SOF-140 + CHC-SOF-180 + CHC-LAA-COU + CHC-LAA-BOR (four options)
 - Ecobags → ECO-30 + ECO-35 + ECO-50
 - Explicit SKUs always take precedence (Rule 0)
 

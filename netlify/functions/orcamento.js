@@ -1,56 +1,12 @@
 const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
+import { createHttpError, erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
+
 const ERPNEXT_HEADERS = {
   'Authorization': `token ${ERPNEXT_TOKEN}`,
   'Content-Type': 'application/json',
 };
-
-function createHttpError(statusCode, publicMessage, logMessage) {
-  const error = new Error(publicMessage);
-  error.statusCode = statusCode;
-  error.logMessage = logMessage || publicMessage;
-  return error;
-}
-
-// ── ERPNext helpers ──────────────────────────────────────────────────────────
-
-async function erpGet(doctype, filters) {
-  const params = new URLSearchParams({ filters: JSON.stringify(filters) });
-  const res = await fetch(
-    `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}?${params}`,
-    { headers: ERPNEXT_HEADERS }
-  );
-  const body = await res.json();
-  return body.data || [];
-}
-
-async function erpGetDoc(doctype, name) {
-  const res = await fetch(
-    `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
-    { headers: ERPNEXT_HEADERS }
-  );
-  const body = await res.json();
-  return body.data || null;
-}
-
-async function erpPost(doctype, payload) {
-  const res = await fetch(
-    `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}`,
-    { method: 'POST', headers: ERPNEXT_HEADERS, body: JSON.stringify(payload) }
-  );
-  const body = await res.json();
-  return body.data || {};
-}
-
-async function erpPut(doctype, name, payload) {
-  const res = await fetch(
-    `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
-    { method: 'PUT', headers: ERPNEXT_HEADERS, body: JSON.stringify(payload) }
-  );
-  const body = await res.json();
-  return body.data || {};
-}
 
 // ── Pricing (delegated to shared module) ─────────────────────────────────────
 
@@ -136,14 +92,11 @@ export async function handler(event) {
     let customerIsNew = false;
 
     if (email) {
-      const contData = await erpGet('Contact', [['email_id', '=', email]]);
+      const contData = await erpGetList('Contact', { filters: [['email_id', '=', email]] });
       if (contData.length > 0) {
         contactId = contData[0].name;
-        const fullContact = await fetch(
-          `${ERPNEXT_BASE}/api/resource/Contact/${encodeURIComponent(contactId)}`,
-          { headers: ERPNEXT_HEADERS }
-        ).then(r => r.json());
-        const customerLink = fullContact.data?.links?.find(l => l.link_doctype === 'Customer');
+        const fullContact = await erpGetDoc('Contact', contactId);
+        const customerLink = fullContact?.links?.find(l => l.link_doctype === 'Customer');
         if (customerLink) {
           entityId = customerLink.link_name;
           entityType = 'Customer';
@@ -152,7 +105,7 @@ export async function handler(event) {
     }
 
     if (!entityId && email) {
-      const leadData = await erpGet('Lead', [['email_id', '=', email]]);
+      const leadData = await erpGetList('Lead', { filters: [['email_id', '=', email]] });
       if (leadData.length > 0) {
         entityId = leadData[0].name;
         entityType = 'Lead';
@@ -171,12 +124,12 @@ export async function handler(event) {
       });
       entityId = l.name;
     } else if (entityType === 'Customer') {
-      const custData = await erpGet('Customer', [['name', '=', entityId]]);
+      const custData = await erpGetList('Customer', { filters: [['name', '=', entityId]] });
       if (custData.length > 0 && custData[0].customer_name !== nomeCliente) {
         await erpPut('Customer', entityId, { customer_name: nomeCliente });
       }
     } else if (entityType === 'Lead') {
-      const leadData = await erpGet('Lead', [['name', '=', entityId]]);
+      const leadData = await erpGetList('Lead', { filters: [['name', '=', entityId]] });
       if (leadData.length > 0 && leadData[0].first_name !== nomeCliente) {
         await erpPut('Lead', entityId, { first_name: nomeCliente });
       }
@@ -201,12 +154,12 @@ export async function handler(event) {
     // 4. CRM Deal
     let dealId = null;
     if (email) {
-      const dealData = await erpGet('CRM Deal', [['email', '=', email]]);
+      const dealData = await erpGetList('CRM Deal', { filters: [['email', '=', email]] });
       if (dealData.length > 0) dealId = dealData[0].name;
     }
     if (!dealId) {
       for (const nomeBusca of [extracted.nome.trim(), nomeCliente]) {
-        const dd = await erpGet('CRM Deal', [['lead_name', '=', nomeBusca]]);
+        const dd = await erpGetList('CRM Deal', { filters: [['lead_name', '=', nomeBusca]] });
         if (dd.length > 0) { dealId = dd[0].name; break; }
       }
     }

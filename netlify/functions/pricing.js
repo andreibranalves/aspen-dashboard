@@ -1,5 +1,7 @@
 // Shared pricing — imported by orcamento.js and available for frontend use
-// via a pricing-cache endpoint. All functions accept erpnextBase + token.
+// via a pricing-cache endpoint.
+
+import { erpGetList, erpGetDoc } from './lib/erpnext.js';
 
 /**
  * Map a quantity to the closest-lower pricing bracket.
@@ -26,65 +28,47 @@ export function getUrgentRate(baseRate) {
  * ERPNext Pricing Rules (tiered + flat) with an Item Price fallback.
  *
  * Returns 0 when no pricing data is found.
+ *
+ * @param {string} itemCode
+ * @param {number} qty
+ * @param {string} _erpnextBase - unused; shared module uses global config
+ * @param {string} _token - unused; shared module uses process.env.ERPNEXT_TOKEN
  */
-export async function getRate(itemCode, qty, erpnextBase, token) {
-  const headers = {
-    'Authorization': `token ${token}`,
-    'Content-Type': 'application/json',
-  };
-
+export async function getRate(itemCode, qty, _erpnextBase, _token) {
   const bracket = getBracket(qty);
 
   // 1. Tiered rule (e.g. LNC-SED-70-30)
-  const tiered = await erpGet(
-    `${erpnextBase}/api/resource/Pricing%20Rule`,
-    [['title', '=', `${itemCode}-${bracket}`]],
-    headers
-  );
+  const tiered = await erpGetList('Pricing Rule', {
+    filters: [['title', '=', `${itemCode}-${bracket}`]],
+    limit: 1,
+  });
   if (tiered.length > 0) {
-    const rate = await fetchPricingRuleRate(erpnextBase, headers, tiered[0].name);
+    const rate = await fetchPricingRuleRate(tiered[0].name);
     if (rate != null) return rate;
   }
 
   // 2. Flat SKU rule
-  const flat = await erpGet(
-    `${erpnextBase}/api/resource/Pricing%20Rule`,
-    [['title', '=', itemCode]],
-    headers
-  );
+  const flat = await erpGetList('Pricing Rule', {
+    filters: [['title', '=', itemCode]],
+    limit: 1,
+  });
   if (flat.length > 0) {
-    const rate = await fetchPricingRuleRate(erpnextBase, headers, flat[0].name);
+    const rate = await fetchPricingRuleRate(flat[0].name);
     if (rate != null) return rate;
   }
 
   // 3. Item Price fallback (Standard Selling)
-  const params = new URLSearchParams({
-    filters: JSON.stringify([['item_code', '=', itemCode], ['price_list', '=', 'Standard Selling']]),
-    fields: JSON.stringify(['price_list_rate']),
+  const prices = await erpGetList('Item Price', {
+    filters: [['item_code', '=', itemCode], ['price_list', '=', 'Standard Selling']],
+    fields: ['price_list_rate'],
+    limit: 1,
   });
-  const res = await fetch(
-    `${erpnextBase}/api/resource/Item%20Price?${params}`,
-    { headers }
-  );
-  const body = await res.json();
-  return body.data?.[0]?.price_list_rate || 0;
+  return prices[0]?.price_list_rate || 0;
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-async function erpGet(baseUrl, filters, headers) {
-  const params = new URLSearchParams({ filters: JSON.stringify(filters) });
-  const res = await fetch(`${baseUrl}?${params}`, { headers });
-  const body = await res.json();
-  return body.data || [];
-}
-
-async function fetchPricingRuleRate(erpnextBase, headers, ruleName) {
-  const res = await fetch(
-    `${erpnextBase}/api/resource/Pricing%20Rule/${encodeURIComponent(ruleName)}`,
-    { headers }
-  );
-  const body = await res.json();
-  const rate = body.data?.rate;
-  return rate != null ? rate : null;
+async function fetchPricingRuleRate(ruleName) {
+  const doc = await erpGetDoc('Pricing Rule', ruleName);
+  return doc?.rate != null ? doc.rate : null;
 }
