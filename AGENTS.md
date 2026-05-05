@@ -86,7 +86,7 @@ Quantity brackets: 30, 100, 300, 500, 1000. Urgent orders: +30% on all rates.
 ### Frontend (public/index.html)
 Single file — all CSS, HTML, and JS inline. Key functions:
 - `setImage` / `clearImage` — handles paste and drag-drop image input
-- `renderWaTemplate(template, nome, numeroPedido)` — resolves `(nome)`, `(primeiro_nome)`, `(numero_pedido)`, `(empresa)` tags
+- `renderWaTemplate(template, nome, numeroPedido)` — resolves `(Saudacao)` (Bom dia/Boa tarde/Boa noite by hour), `(nome)`, `(primeiro_nome)`, `(numero_pedido)`, `(empresa)`, `(link_orcamento)` tags
 - `buildWhatsApp(telefone, nome, quotationId)` — builds wa.me link with pre-filled message
 - `capitalize(str)` / `fmtPhone(phone)` — display sanitizers (proper case, `(99) 99999-9999`)
 - `createCard / setCardProcessing / setCardDone / setCardError` — per-order result UI; `setCardDone` shows colored dot (green = new customer, red = returning) and "Cliente novo/antigo" label
