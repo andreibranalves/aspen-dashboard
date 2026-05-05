@@ -1499,7 +1499,7 @@ function capitalize(str) {
             alert('Este rascunho não tem itens válidos. Adicione ao menos um item com SKU e quantidade > 0.');
             return;
           }
-          if (!draft.edited.nome.trim()) {
+          if (!draft.edited.nome || !draft.edited.nome.trim()) {
             alert('Informe o nome do cliente antes de aprovar.');
             return;
           }
