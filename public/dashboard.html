@@ -957,6 +957,21 @@
       font-weight: 400;
     }
 
+    .form-error {
+      font-size: 11px;
+      color: var(--red);
+      font-weight: 500;
+      margin-top: 2px;
+      display: none;
+    }
+
+    .form-error.visible { display: block; }
+
+    .form-input.has-error {
+      border-color: var(--red);
+      background: var(--red-bg);
+    }
+
     .form-checkbox {
       display: inline-flex;
       align-items: center;
@@ -1449,6 +1464,7 @@
                 <div class="form-group flex-2">
                   <label class="form-label" for="mfNome">Nome <span class="required">*</span></label>
                   <input type="text" id="mfNome" class="form-input" required placeholder="Nome do cliente ou lead" />
+                  <span class="form-error" id="mfNomeError"></span>
                 </div>
                 <div class="form-group flex-1">
                   <label class="form-label" for="mfEmail">E-mail</label>
@@ -1495,7 +1511,8 @@
                   <tbody id="itemsTbody"></tbody>
                 </table>
               </div>
-              <button type="button" class="btn btn-add-item" id="addItemBtn">+ Adicionar Item</button>
+              <button type="button" class="btn btn-add-item" id="mfAddItemBtn">+ Adicionar Item</button>
+              <span class="form-error" id="mfItemsError"></span>
             </div>
 
             <!-- ── Totals ── -->
@@ -1606,7 +1623,7 @@
             <div id="detailEditActions" style="display:none">
               <button type="button" class="btn btn-success" id="saveBtn">Salvar</button>
               <button type="button" class="btn" id="cancelEditBtn">Cancelar</button>
-              <button type="button" class="btn btn-auto" id="addItemBtn">+ Item</button>
+              <button type="button" class="btn btn-auto" id="detailAddItemBtn">+ Item</button>
             </div>
             <span id="detailSaveStatus" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
           </div>
@@ -1924,9 +1941,24 @@ function navigate() {
     fetchQuotations();
   }
 
+  // Trigger data load for products page
+  if (hash === '#products') {
+    fetchProducts();
+  }
+
+  // Trigger data load for leads page
+  if (hash === '#leads') {
+    fetchLeads();
+  }
+
   // Trigger data load for detail page
   if (hash === '#quotation-detail') {
     loadQuotationDetail();
+  }
+
+  // Initialize manual form for create page
+  if (hash === '#create') {
+    initManualForm();
   }
 
   // Close mobile sidebar
@@ -1948,12 +1980,55 @@ function restoreQuotationState() {
   } catch (e) { /* localStorage not available */ }
 }
 
+function restoreProductsState() {
+  try {
+    var s = localStorage.getItem('dash_products_search');
+    if (s) {
+      productsSearch = s;
+      var el = document.getElementById('productsSearch');
+      if (el) el.value = s;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function restoreLeadsState() {
+  try {
+    var s = localStorage.getItem('dash_leads_search');
+    var t = localStorage.getItem('dash_leads_tipo');
+    if (s) {
+      leadsSearch = s;
+      var el = document.getElementById('leadsSearch');
+      if (el) el.value = s;
+    }
+    if (t) {
+      leadsTipo = t;
+      document.querySelectorAll('#leadsStatusChips .status-chip').forEach(function (c) {
+        c.classList.remove('active');
+        if ((c.dataset.tipo || '') === t) c.classList.add('active');
+      });
+    }
+  } catch (e) { /* ignore */ }
+}
+
 function saveQuotationState() {
   try {
     localStorage.setItem('dash_quotations_page', String(currentPage));
     localStorage.setItem('dash_quotations_search', currentSearch);
     localStorage.setItem('dash_quotations_status', currentStatus);
     localStorage.setItem('dash_last_visit', new Date().toISOString());
+  } catch (e) { /* ignore */ }
+}
+
+function saveProductsState() {
+  try {
+    localStorage.setItem('dash_products_search', productsSearch);
+  } catch (e) { /* ignore */ }
+}
+
+function saveLeadsState() {
+  try {
+    localStorage.setItem('dash_leads_search', leadsSearch);
+    localStorage.setItem('dash_leads_tipo', leadsTipo);
   } catch (e) { /* ignore */ }
 }
 
@@ -2284,6 +2359,8 @@ window.addEventListener('hashchange', navigate);
 // ── DOM ready ──
 document.addEventListener('DOMContentLoaded', function () {
   restoreQuotationState();
+  restoreProductsState();
+  restoreLeadsState();
 
   // Set active chip for saved status
   if (currentStatus) {
@@ -2411,7 +2488,17 @@ function loadQuotationDetail() {
     })
     .catch(function (err) {
       console.error('[detail]', err);
-      showDetailError(err.message || 'Erro ao carregar orçamento.');
+      // Fallback to mock data when API endpoint is unavailable
+      var mockData = getMockDetail(detailState.id);
+      if (mockData) {
+        console.warn('[detail] Endpoint unavailable, using demo data.');
+        detailState.data = mockData;
+        detailState.originalItems = (mockData.items || []).slice();
+        detailState.mode = 'view';
+        renderDetail();
+      } else {
+        showDetailError(err.message || 'Erro ao carregar orçamento.');
+      }
     });
 }
 
@@ -2661,7 +2748,7 @@ document.getElementById('detailBackLink').addEventListener('click', function (e)
 
 document.getElementById('editBtn').addEventListener('click', enterEditMode);
 document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
-document.getElementById('addItemBtn').addEventListener('click', addItemRow);
+document.getElementById('detailAddItemBtn').addEventListener('click', addDetailItemRow);
 document.getElementById('saveBtn').addEventListener('click', saveChanges);
 document.getElementById('detailRetryBtn').addEventListener('click', loadQuotationDetail);
 
@@ -2677,6 +2764,7 @@ var productsSearchInput = document.getElementById('productsSearch');
 var debouncedProductsSearch = debounce(function () {
   productsSearch = productsSearchInput.value.trim();
   productsPage = 1;
+  saveProductsState();
   fetchProducts();
 }, 400);
 if (productsSearchInput) productsSearchInput.addEventListener('input', debouncedProductsSearch);
@@ -2703,6 +2791,7 @@ var leadsSearchInput = document.getElementById('leadsSearch');
 var debouncedLeadsSearch = debounce(function () {
   leadsSearch = leadsSearchInput.value.trim();
   leadsPage = 1;
+  saveLeadsState();
   fetchLeads();
 }, 400);
 if (leadsSearchInput) leadsSearchInput.addEventListener('input', debouncedLeadsSearch);
@@ -2714,6 +2803,7 @@ document.querySelectorAll('#leadsStatusChips .status-chip').forEach(function (ch
     if (tipo === leadsTipo) return;
     leadsTipo = tipo;
     leadsPage = 1;
+    saveLeadsState();
     document.querySelectorAll('#leadsStatusChips .status-chip').forEach(function (c) { c.classList.remove('active'); });
     chip.classList.add('active');
     fetchLeads();
@@ -2740,6 +2830,11 @@ document.getElementById('leadsRetryBtn').addEventListener('click', fetchLeads);
 // ── Manual Form: State ──
 var manualFormInited = false;
 var manualItemCount = 0;
+var formDirty = false;
+
+function markFormDirty() {
+  formDirty = true;
+}
 
 function initManualForm() {
   if (manualFormInited) return;
@@ -2752,13 +2847,24 @@ function initManualForm() {
   addItemRow();
 
   // Bind events
-document.getElementById('addItemBtn').addEventListener('click', addDetailItemRow);
+  document.getElementById('mfAddItemBtn').addEventListener('click', addItemRow);
   document.getElementById('mfSaveBtn').addEventListener('click', submitManualForm);
 
-  // Item table delegation: input changes → recalc
+  // Mark form dirty on any field change
+  var clientFields = ['mfNome', 'mfEmail', 'mfTelefone', 'mfData', 'mfVendedor'];
+  clientFields.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', markFormDirty);
+  });
+  var urgentEl = document.getElementById('mfUrgente');
+  if (urgentEl) urgentEl.addEventListener('change', markFormDirty);
+
+  // Item table delegation: input changes → recalc + mark dirty
   document.getElementById('itemsTbody').addEventListener('input', function (e) {
     var input = e.target.closest('.item-input');
     if (!input) return;
+    markFormDirty();
+    clearFieldErrors();
     recalcTotals();
   });
 
@@ -2822,11 +2928,16 @@ function recalcTotals() {
 }
 
 function validateManualForm() {
+  var valid = true;
+
+  // Clear previous errors
+  clearFieldErrors();
+
   var nome = document.getElementById('mfNome').value.trim();
   if (!nome) {
-    alert('Informe o nome do cliente.');
+    showFieldError('mfNome', 'mfNomeError', 'Informe o nome do cliente.');
     document.getElementById('mfNome').focus();
-    return false;
+    valid = false;
   }
 
   var hasItem = false;
@@ -2839,11 +2950,39 @@ function validateManualForm() {
   }
 
   if (!hasItem) {
-    alert('Adicione pelo menos um item com SKU e quantidade.');
-    return false;
+    showFieldError('mfItemsError', 'mfItemsError', 'Adicione pelo menos um item com SKU e quantidade.');
+    valid = false;
   }
 
-  return true;
+  return valid;
+}
+
+function showFieldError(inputId, errorId, message) {
+  var errEl = document.getElementById(errorId);
+  if (errEl) {
+    errEl.textContent = message;
+    errEl.classList.add('visible');
+  }
+  // inputId may be different from errorId (for standalone error spans like items)
+  if (inputId !== errorId) {
+    var inputEl = document.getElementById(inputId);
+    if (inputEl) {
+      inputEl.classList.add('has-error');
+    }
+  }
+}
+
+function clearFieldErrors() {
+  document.querySelectorAll('.form-error').forEach(function (el) {
+    el.classList.remove('visible');
+    el.textContent = '';
+  });
+  document.querySelectorAll('.form-input.has-error').forEach(function (el) {
+    el.classList.remove('has-error');
+  });
+  // Also clear items error if element not found via query
+  var mfItemsErr = document.getElementById('mfItemsError');
+  if (mfItemsErr) { mfItemsErr.classList.remove('visible'); mfItemsErr.textContent = ''; }
 }
 
 function buildManualPayload() {
@@ -2904,6 +3043,7 @@ function submitManualForm() {
 }
 
 function showCreateResult(data) {
+  formDirty = false;
   document.getElementById('createFormArea').style.display = 'none';
   var resultEl = document.getElementById('createResult');
 
@@ -2945,6 +3085,8 @@ function showCreateError(msg) {
 }
 
 function resetManualForm() {
+  formDirty = false;
+  clearFieldErrors();
   document.getElementById('createFormArea').style.display = '';
   document.getElementById('createResult').style.display = 'none';
 
@@ -2990,8 +3132,25 @@ function buildWhatsAppLink(publicUrl) {
   return 'https://wa.me/55' + cleaned + '?text=' + encodeURIComponent(text);
 }
 
-// ── Save state on navigate away ──
-window.addEventListener('beforeunload', saveQuotationState);
+// ── Save state + dirty form protection on navigate away ──
+window.addEventListener('beforeunload', function (e) {
+  saveQuotationState();
+  saveProductsState();
+  saveLeadsState();
+
+  // Check for unsaved changes
+  if (formDirty) {
+    e.preventDefault();
+    e.returnValue = 'Você tem alterações não salvas no formulário. Deseja realmente sair?';
+    return e.returnValue;
+  }
+
+  if (detailState.mode === 'edit' && detailState.editedItems.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'Você tem alterações não salvas no orçamento. Deseja realmente sair?';
+    return e.returnValue;
+  }
+});
 </script>
 
 </body>
