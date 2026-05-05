@@ -5,7 +5,7 @@
 //
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
-import { erpGetList, erpGetDoc, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpGetDoc, erpPut, createHttpError } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -265,6 +265,58 @@ async function handleDetail(quotationId) {
   };
 }
 
+// ── Update Endpoint ─────────────────────────────────────────────────────────
+
+/**
+ * PUT /api/quotations?id=ORC-20261143
+ * Replaces quotation items (child table) via ERPNext PUT.
+ * Always sets ignore_pricing_rule=1 to prevent rate recalculation.
+ */
+async function handleUpdate(quotationId, payload) {
+  const items = payload.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    throw createHttpError(400, 'Campo "items" obrigatório (array não vazio).');
+  }
+
+  // Validate each item
+  for (const item of items) {
+    if (!item.item_code) {
+      throw createHttpError(400, 'Cada item deve ter "item_code".');
+    }
+    if (typeof item.qty !== 'number' || item.qty <= 0) {
+      throw createHttpError(400, 'Cada item deve ter "qty" (número > 0).');
+    }
+    if (typeof item.rate !== 'number' || item.rate < 0) {
+      throw createHttpError(400, 'Cada item deve ter "rate" (número >= 0).');
+    }
+  }
+
+  // Build update payload — child table replacement
+  const updatePayload = {
+    items: items.map(item => ({
+      item_code: item.item_code,
+      item_name: item.item_name || '',  // ERPNext requires item_name on child table rows
+      qty: item.qty,
+      rate: item.rate,
+      uom: item.uom || 'und',
+    })),
+    ignore_pricing_rule: 1,
+  };
+
+  try {
+    await erpPut('Quotation', quotationId, updatePayload);
+  } catch (err) {
+    throw createHttpError(
+      err?.statusCode === 400 ? 400 : 502,
+      'Erro ao salvar alterações no orçamento.',
+      `[quotations] erpPut(${quotationId}) failed: ${err?.logMessage || err?.message || err}`
+    );
+  }
+
+  // Fetch and return the updated quotation (same shape as detail)
+  return handleDetail(quotationId);
+}
+
 // ── List Endpoint ───────────────────────────────────────────────────────────
 
 async function handleList(query) {
@@ -325,14 +377,30 @@ async function handleList(query) {
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event) {
-  if (event.httpMethod !== 'GET') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
-
   const query = event.queryStringParameters || {};
 
   try {
-    // Detail: /api/quotations?id=ORC-20261143
+    // PUT: Update quotation items — /api/quotations?id=ORC-20261143
+    if (event.httpMethod === 'PUT' && query.id) {
+      let payload;
+      try {
+        payload = JSON.parse(event.body);
+      } catch {
+        return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
+      }
+      const detail = await handleUpdate(query.id, payload);
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(detail),
+      };
+    }
+
+    if (event.httpMethod !== 'GET') {
+      return { statusCode: 405, body: 'Method Not Allowed' };
+    }
+
+    // GET Detail: /api/quotations?id=ORC-20261143
     if (query.id) {
       const detail = await handleDetail(query.id);
       return {
@@ -342,7 +410,7 @@ export async function handler(event) {
       };
     }
 
-    // List: /api/quotations?page=1&limit=50...
+    // GET List: /api/quotations?page=1&limit=50...
     const list = await handleList(query);
     return {
       statusCode: 200,
