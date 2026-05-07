@@ -35,6 +35,9 @@ const { handler: orcamentoHandler }      = await import('./netlify/functions/orc
 const { handler: viewHandler }           = await import('./netlify/functions/view.js');
 const { handler: editDraftHandler }      = await import('./netlify/functions/edit-draft.js');
 const { handler: pricingLookupHandler }  = await import('./netlify/functions/pricing-lookup.js');
+const { handler: quotationsHandler }    = await import('./netlify/functions/quotations.js');
+const { handler: leadsClientsHandler }  = await import('./netlify/functions/leads-clients.js');
+const { handler: productsHandler }      = await import('./netlify/functions/products.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -119,6 +122,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/quotations' || pathname === '/.netlify/functions/quotations') {
+    const body = await readBody(req);
+    try {
+      const result = await quotationsHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/products' || pathname === '/.netlify/functions/products') {
+    const body = await readBody(req);
+    try {
+      const result = await productsHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/leads-clients' || pathname === '/.netlify/functions/leads-clients') {
+    const body = await readBody(req);
+    try {
+      const result = await leadsClientsHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   if (pathname === '/api/view' || pathname === '/.netlify/functions/view') {
     try {
       const result = await viewHandler(netlifyEvent(req, null));
@@ -132,11 +174,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ── Static files
-  let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
+  let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'dashboard.html' : pathname);
 
-  // Fallback para index.html
+  // Fallback para dashboard.html
   if (!fs.existsSync(filePath)) {
-    filePath = path.join(PUBLIC_DIR, 'index.html');
+    filePath = path.join(PUBLIC_DIR, 'dashboard.html');
   }
 
   const ext  = path.extname(filePath);

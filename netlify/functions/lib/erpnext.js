@@ -94,7 +94,7 @@ export async function erpGetList(doctype, opts = {}) {
   if (start != null) params.set('limit_start', String(start));
 
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}?${params}`;
-  const body = await erpRequest(url);
+  const body = await erpRequest(url, { headers: buildHeaders() });
   return body.data || [];
 }
 
@@ -114,7 +114,7 @@ export async function erpGetDoc(doctype, name, opts = {}) {
 
   const qs = params.toString();
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}${qs ? '?' + qs : ''}`;
-  const body = await erpRequest(url);
+  const body = await erpRequest(url, { headers: buildHeaders() });
   return body.data || null;
 }
 
