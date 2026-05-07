@@ -2402,7 +2402,13 @@ function formatDate(iso) {
 function formatBRL(value) {
   var n = Number(value);
   if (value == null || isNaN(n)) return '—';
-  return 'R$ ' + n.toFixed(2).replace('.', ',');
+  // Brazilian locale: dots for thousands, comma for decimals
+  var parts = n.toFixed(2).split('.');
+  var intPart = parts[0];
+  var decPart = parts[1];
+  // Add thousand separators
+  intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return 'R$ ' + intPart + ',' + decPart;
 }
 
 function escapeHtml(s) {
@@ -3795,7 +3801,7 @@ function recalcTotals() {
     var rate = parseFloat(document.getElementById('itemRate-' + i)?.value) || 0;
     var itemTotal = qty * rate;
     var totalEl = document.getElementById('itemTotal-' + i);
-    if (totalEl) totalEl.textContent = 'R$ ' + itemTotal.toFixed(2).replace('.', ',');
+    if (totalEl) totalEl.textContent = formatBRL(itemTotal);
     subtotal += itemTotal;
     qtyTotal += qty;
   }
@@ -3806,8 +3812,8 @@ function recalcTotals() {
   var descValor = subtotal * (descPct / 100);
   var total = subtotal - descValor + frete;
 
-  document.getElementById('mfSubtotal').textContent = 'R$ ' + subtotal.toFixed(2).replace('.', ',');
-  document.getElementById('mfTotal').textContent = 'R$ ' + total.toFixed(2).replace('.', ',');
+  document.getElementById('mfSubtotal').textContent = formatBRL(subtotal);
+  document.getElementById('mfTotal').textContent = formatBRL(total);
 }
 
 function validateManualForm() {
@@ -4385,9 +4391,9 @@ function setAutoCardDone(index, data, telefone, email) {
 
   let itemsHtml = '<table class="auto-items-table"><thead><tr><th>SKU</th><th>Qtd</th><th>R$/un</th><th>Total</th></tr></thead><tbody>';
   for (const item of data.items) {
-    const total = (item.qty * item.rate).toFixed(2).replace('.', ',');
-    const rate  = parseFloat(item.rate).toFixed(2).replace('.', ',');
-    itemsHtml += '<tr><td>' + escapeHtml(item.sku) + '</td><td>' + item.qty + '</td><td>R$ ' + rate + '</td><td>R$ ' + total + '</td></tr>';
+    const total = formatBRL(item.qty * item.rate);
+    const rate  = formatBRL(parseFloat(item.rate));
+    itemsHtml += '<tr><td>' + escapeHtml(item.sku) + '</td><td>' + item.qty + '</td><td>' + rate + '</td><td>' + total + '</td></tr>';
   }
   itemsHtml += '</tbody></table>';
 
