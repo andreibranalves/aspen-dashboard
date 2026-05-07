@@ -745,7 +745,7 @@
     .detail-items-table input.item-qty  { width: 70px; }
     .detail-items-table input.item-rate { width: 100px; }
     .detail-items-table input.item-sku  {
-      width: 120px;
+      width: 130px;
       font-size: 12px;
       padding: 3px 6px;
       border: 1px solid var(--border);
@@ -1220,6 +1220,49 @@
       gap: 10px;
       justify-content: center;
       flex-wrap: wrap;
+    }
+
+    /* ══════════════════════════════════════════════
+       SKU AUTOCOMPLETE DROPDOWN
+       ══════════════════════════════════════════════ */
+    .sku-autocomplete-wrap {
+      position: relative;
+      display: inline-block;
+    }
+    .sku-autocomplete-wrap .sku-autocomplete { width: 130px; }
+    .sku-dropdown {
+      position: absolute;
+      z-index: 10000;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      max-height: 320px;
+      overflow-y: auto;
+    }
+    .sku-dd-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      border-bottom: 1px solid #f0eeeb;
+      transition: background 0.1s;
+    }
+    .sku-dd-item:last-child { border-bottom: none; }
+    .sku-dd-item:hover { background: var(--navy-light); }
+    .sku-dd-code {
+      font-family: monospace;
+      font-weight: 700;
+      color: var(--navy);
+      min-width: 85px;
+    }
+    .sku-dd-name {
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     /* ══════════════════════════════════════════════
        ORÇAMENTO AUTOMÁTICO (embedded from index.html)
@@ -3017,6 +3060,9 @@ window.addEventListener('hashchange', navigate);
 
 // ── DOM ready ──
 document.addEventListener('DOMContentLoaded', function () {
+  // One-time init: SKU autocomplete global listeners
+  initSkuAutocomplete();
+
   restoreQuotationState();
   restoreProductsState();
   restoreLeadsState();
@@ -3228,7 +3274,7 @@ function renderDetail() {
     total += amount;
 
     if (editable) {
-      var sku = '<td class="col-sku"><input type="text" class="item-sku detail-sku-input" value="' + escapeHtml(item.item_code) + '" placeholder="SKU" list="productSkuList" data-idx="' + idx + '" data-field="item_code" autocomplete="off" /></td>';
+      var sku = '<td class="col-sku"><div class="sku-autocomplete-wrap"><input type="text" class="item-sku detail-sku-input sku-autocomplete" value="' + escapeHtml(item.item_code) + '" placeholder="Buscar SKU ou nome…" data-idx="' + idx + '" data-field="item_code" autocomplete="off" /><input type="hidden" class="sku-hidden" value="' + escapeHtml(item.item_code) + '" data-idx="' + idx + '" /></div></td>';
       var name = '<td><input type="text" class="item-name detail-name-input" value="' + escapeHtml(item.item_name || '') + '" placeholder="Nome do produto" data-idx="' + idx + '" data-field="item_name" /></td>';
       var qty = '<td class="col-right"><input type="number" class="item-qty detail-qty-input" value="' + item.qty + '" min="1" step="1" data-idx="' + idx + '" data-field="qty" /></td>';
       var rate = '<td class="col-right"><input type="number" class="item-rate detail-rate-input" value="' + item.rate.toFixed(2) + '" min="0" step="0.01" data-idx="' + idx + '" data-field="rate" /></td>';
@@ -3337,37 +3383,125 @@ function detailFetchPricingForItem(idx) {
 }
 
 // ── Product SKU datalist (shared across all autocomplete inputs) ──
+// ── Product SKU Autocomplete (replaces datalist — searches SKU + name) ──
 var allProductsCache = null;
-function ensureProductDatalist() {
-  if (document.getElementById('productSkuList')) return;
-  var dl = document.createElement('datalist');
-  dl.id = 'productSkuList';
-  document.body.appendChild(dl);
-  loadProductDatalistOptions();
+var skuDropdownEl = null;
+var skuDropdownTimer = null;
+var lastSkuInput = null;
+
+function ensureProductAutocomplete() {
+  if (skuDropdownEl) return;
+  skuDropdownEl = document.createElement('div');
+  skuDropdownEl.className = 'sku-dropdown';
+  skuDropdownEl.style.display = 'none';
+  document.body.appendChild(skuDropdownEl);
+
+  // Preload product cache
+  if (!allProductsCache) {
+    fetch('/api/products?limit=200')
+      .then(function (res) { return res.json(); })
+      .then(function (body) {
+        if (body && Array.isArray(body.data)) allProductsCache = body.data;
+      })
+      .catch(function () {});
+  }
+
+  // Global click to close dropdown
+  document.addEventListener('click', function (e) {
+    if (skuDropdownEl && !e.target.closest('.sku-autocomplete-wrap')) {
+      skuDropdownEl.style.display = 'none';
+    }
+  });
 }
 
-function loadProductDatalistOptions() {
-  if (allProductsCache) { populateDatalist(allProductsCache); return; }
-  fetch('/api/products?limit=200')
-    .then(function (res) { return res.json(); })
-    .then(function (body) {
-      if (body && Array.isArray(body.data)) {
-        allProductsCache = body.data;
-        populateDatalist(body.data);
+function filterProducts(query) {
+  if (!allProductsCache || !query) return [];
+  var q = query.toLowerCase();
+  return allProductsCache.filter(function (p) {
+    return p.sku.toLowerCase().indexOf(q) !== -1 || p.nome.toLowerCase().indexOf(q) !== -1;
+  }).slice(0, 15);
+}
+
+function showSkuDropdown(inputEl) {
+  var query = inputEl.value.trim();
+  if (!query || query.length < 1) { skuDropdownEl.style.display = 'none'; return; }
+  var matches = filterProducts(query);
+  if (!matches.length) { skuDropdownEl.style.display = 'none'; return; }
+
+  var rect = inputEl.getBoundingClientRect();
+  skuDropdownEl.style.top = (rect.bottom + window.scrollY + 2) + 'px';
+  skuDropdownEl.style.left = (rect.left + window.scrollX) + 'px';
+  skuDropdownEl.style.minWidth = Math.max(rect.width, 260) + 'px';
+
+  skuDropdownEl.innerHTML = matches.map(function (p) {
+    return '<div class="sku-dd-item" data-sku="' + escapeHtml(p.sku) + '" data-nome="' + escapeHtml(p.nome) + '">' +
+      '<span class="sku-dd-code">' + escapeHtml(p.sku) + '</span>' +
+      '<span class="sku-dd-name">' + escapeHtml(p.nome) + '</span>' +
+    '</div>';
+  }).join('');
+
+  skuDropdownEl.querySelectorAll('.sku-dd-item').forEach(function (item) {
+    item.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      var sku = item.dataset.sku;
+      var nome = item.dataset.nome;
+      var wrap = inputEl.closest('.sku-autocomplete-wrap');
+
+      // 1. Set input value to SKU (for display)
+      inputEl.value = sku;
+
+      // 2. Set hidden input to SKU
+      var hidden = wrap ? wrap.querySelector('.sku-hidden, .auto-draft-sku-hidden, [id^="itemSkuHidden"]') : null;
+      if (hidden) hidden.value = sku;
+
+      // 3. Trigger input event for data syncing
+      inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // 4. Try to fill product name field in same row
+      var row = inputEl.closest('tr');
+      if (row) {
+        var nameInput = row.querySelector('.item-name, .detail-name-input');
+        if (nameInput && !nameInput.value.trim()) {
+          nameInput.value = nome;
+          nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
       }
-    })
-    .catch(function (err) { console.error('[productDatalist]', err); });
+
+      // 5. For manual form, try itemNome field
+      var inputId = inputEl.id;
+      if (inputId && inputId.indexOf('itemSku-') === 0) {
+        var idx = inputId.replace('itemSku-', '');
+        var nomeEl = document.getElementById('itemNome-' + idx);
+        if (nomeEl && !nomeEl.value.trim()) {
+          nomeEl.value = nome;
+          nomeEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+
+      skuDropdownEl.style.display = 'none';
+    });
+  });
+
+  skuDropdownEl.style.display = 'block';
 }
 
-function populateDatalist(products) {
-  var dl = document.getElementById('productSkuList');
-  if (!dl) return;
-  dl.innerHTML = '';
-  products.forEach(function (p) {
-    var opt = document.createElement('option');
-    opt.value = p.sku;
-    opt.textContent = p.sku + ' — ' + p.nome;
-    dl.appendChild(opt);
+function initSkuAutocomplete() {
+  ensureProductAutocomplete();
+
+  document.addEventListener('focusin', function (e) {
+    var input = e.target.closest('.sku-autocomplete');
+    if (!input) return;
+    lastSkuInput = input;
+    showSkuDropdown(input);
+  });
+
+  document.addEventListener('input', function (e) {
+    var input = e.target.closest('.sku-autocomplete');
+    if (!input) return;
+    lastSkuInput = input;
+    clearTimeout(skuDropdownTimer);
+    skuDropdownTimer = setTimeout(function () { showSkuDropdown(input); }, 250);
   });
 }
 
@@ -3400,7 +3534,7 @@ function enterEditMode() {
     };
   });
   detailState.mode = 'edit';
-  ensureProductDatalist();
+  ensureProductAutocomplete();
   renderDetail();
 }
 
@@ -3580,7 +3714,7 @@ function initManualForm() {
   manualFormInited = true;
 
   // Ensure product datalist for SKU autocomplete
-  ensureProductDatalist();
+  ensureProductAutocomplete();
 
   // Default date to today
   document.getElementById('mfData').value = new Date().toISOString().slice(0, 10);
@@ -3629,7 +3763,7 @@ function addItemRow() {
   var tr = document.createElement('tr');
   tr.id = 'itemRow-' + index;
   tr.innerHTML = '<td><button type="button" class="item-remove-btn" data-index="' + index + '" title="Remover">✕</button></td>'
-    + '<td><input type="text" class="item-input" id="itemSku-' + index + '" placeholder="SKU" list="productSkuList" /></td>'
+    + '<td><div class="sku-autocomplete-wrap"><input type="text" class="item-input sku-autocomplete" id="itemSku-' + index + '" placeholder="Buscar SKU ou nome…" autocomplete="off" /><input type="hidden" id="itemSkuHidden-' + index + '" /></div></td>'
     + '<td><input type="text" class="item-input" id="itemNome-' + index + '" placeholder="Nome do produto" /></td>'
     + '<td><input type="number" class="item-input" id="itemQty-' + index + '" min="1" step="1" placeholder="0" /></td>'
     + '<td><input type="number" class="item-input" id="itemRate-' + index + '" min="0" step="0.01" placeholder="0,00" /></td>'
@@ -4294,7 +4428,7 @@ function renderAutoDraftCards(drafts) {
     const itemsHtml = draft.edited.items.map((it, ii) => ''
       + '<tr draggable="true" data-index="' + ii + '">'
       + '<td class="auto-drag-handle">⠿</td>'
-      + '<td><input class="auto-draft-sku" data-index="' + ii + '" value="' + escapeHtml(it.item_code) + '" placeholder="SKU" list="productSkuList"></td>'
+      + '<td><div class="sku-autocomplete-wrap"><input class="auto-draft-sku sku-autocomplete" data-index="' + ii + '" value="' + escapeHtml(it.item_code) + '" placeholder="Buscar SKU ou nome…" autocomplete="off" /><input type="hidden" class="auto-draft-sku-hidden" value="' + escapeHtml(it.item_code) + '" data-index="' + ii + '" /></div></td>'
       + '<td><input class="auto-draft-qty" data-index="' + ii + '" type="number" min="1" value="' + it.qty + '" style="width:80px"></td>'
       + '<td><div class="auto-rate-cell"><input class="auto-draft-rate" data-index="' + ii + '" type="number" step="any" min="0" value="' + (it.rate || '') + '" placeholder="—" style="width:72px"><span class="auto-rate-display" data-index="' + ii + '">' + formatBRL(it.rate) + '</span></div></td>'
       + '<td><button type="button" class="auto-draft-remove-item" data-index="' + ii + '">×</button></td>'
@@ -4578,7 +4712,7 @@ function initAutoPage() {
   window._autoPageInited = true;
 
   // Ensure product datalist for SKU autocomplete
-  ensureProductDatalist();
+  ensureProductAutocomplete();
 
   // Tabs
   document.querySelectorAll('#page-auto .auto-tab').forEach(tab => {
