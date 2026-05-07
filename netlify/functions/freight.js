@@ -27,29 +27,37 @@ export async function handler(event) {
   }
   try {
     const dest = payload.destination || {};
+    const orig = payload.origin || {};
+    if (!orig.cep) throw createHttpError(400, 'Informe o CEP de origem.');
     if (!dest.cep) throw createHttpError(400, 'Informe o CEP de destino.');
+
     const packages = payload.packages || [];
     if (!Array.isArray(packages) || packages.length === 0) throw createHttpError(400, 'Informe pelo menos um pacote.');
     for (let i = 0; i < packages.length; i++) {
       if (!packages[i].weight || packages[i].weight <= 0) throw createHttpError(400, `Pacote ${i + 1}: informe o peso (kg).`);
     }
+
     const requestedCarrier = payload.carrier || null;
     const carriers = requestedCarrier ? [requestedCarrier] : BR_CARRIERS;
+
     const envPackages = packages.map(pkg => ({
       type: 'box', content: pkg.content || 'Produtos personalizados', amount: pkg.amount || 1,
       declaredValue: pkg.declaredValue || 100, lengthUnit: 'CM', weightUnit: 'KG', weight: pkg.weight,
       dimensions: { length: pkg.length || 30, width: pkg.width || 20, height: pkg.height || 10 },
     }));
+
+    const origin = { ...ASPEN_ORIGIN, postalCode: orig.cep.replace(/\D/g, '') };
     const destination = {
       name: dest.name || 'Cliente', street: dest.street || `${dest.cep}`, city: dest.city || '',
       state: dest.state || '', country: 'BR', postalCode: dest.cep.replace(/\D/g, ''),
     };
+
     const rates = [];
     for (const carrier of carriers) {
       try {
         const res = await fetch(`${ENVIA_BASE}/ship/rate/`, {
           method: 'POST', headers: { 'Authorization': `Bearer ${ENVIA_TOKEN}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ origin: ASPEN_ORIGIN, destination, packages: envPackages, shipment: { type: 1, carrier } }),
+          body: JSON.stringify({ origin, destination, packages: envPackages, shipment: { type: 1, carrier } }),
         });
         if (!res.ok) { console.warn(`[freight] ${carrier}: ${res.status}`); continue; }
         const data = await res.json();
@@ -62,9 +70,12 @@ export async function handler(event) {
         }
       } catch (err) { console.error(`[freight] ${carrier} error:`, err.message); }
     }
+
     rates.sort((a, b) => a.totalPrice - b.totalPrice);
+
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      success: true, rates, origin: { city: ASPEN_ORIGIN.city, state: ASPEN_ORIGIN.state, cep: ASPEN_ORIGIN.postalCode },
+      success: true, rates,
+      origin: { cep: orig.cep.replace(/\D/g, ''), city: ASPEN_ORIGIN.city, state: ASPEN_ORIGIN.state },
       destination: { cep: dest.cep.replace(/\D/g, ''), city: dest.city || destination.city, state: dest.state || destination.state },
     })};
   } catch (err) {

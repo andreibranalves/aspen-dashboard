@@ -782,28 +782,6 @@
       background: var(--red-bg);
     }
 
-    /* Drag-and-drop */
-    .col-drag { width: 28px; padding: 4px 0 !important; text-align: center; }
-    .detail-drag-handle {
-      cursor: grab;
-      color: var(--muted);
-      font-size: 16px;
-      user-select: none;
-    }
-    .detail-drag-handle:active { cursor: grabbing; }
-    .detail-items-table tr[draggable="true"] { cursor: default; }
-    .detail-items-table tr[draggable="true"]:hover .detail-drag-handle { color: var(--text); }
-    .detail-items-table tr.drag-dragging {
-      opacity: 0.4;
-      background: var(--border);
-    }
-    .detail-items-table tr.drag-over {
-      border-top: 2px solid var(--navy);
-    }
-    .detail-items-table tr.drag-over td {
-      padding-top: 2px;
-    }
-
     .detail-totals {
       padding: 12px 20px;
       border-top: 1px solid var(--border);
@@ -1816,165 +1794,6 @@
       margin-bottom: 6px;
     }
 
-    /* ── End auto styles ── */
-
-    /* ── Brindice Leads ── */
-    .brindice-filters {
-      display: flex;
-      gap: 8px;
-      padding: 12px 0;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-    .brindice-filter-chip {
-      font-size: 13px;
-      padding: 6px 14px;
-      border-radius: 20px;
-      border: 1px solid var(--border);
-      background: #fff;
-      cursor: pointer;
-      transition: all 0.15s;
-      color: var(--text);
-      font-weight: 500;
-    }
-    .brindice-filter-chip:hover { background: var(--navy-light); }
-    .brindice-filter-chip.active {
-      background: var(--navy);
-      color: #fff;
-      border-color: var(--navy);
-    }
-    .brindice-filter-chip .chip-count {
-      font-size: 11px;
-      opacity: 0.7;
-    }
-    .brindice-filter-chip.active .chip-count { opacity: 1; }
-
-    .brindice-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 20px;
-      color: var(--muted);
-    }
-    .brindice-lead-card {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 10px;
-      transition: box-shadow 0.15s;
-    }
-    .brindice-lead-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .brindice-lead-card.pendente { border-left: 4px solid #d69e2e; }
-    .brindice-lead-card.aprovado { border-left: 4px solid var(--green); background: var(--green-bg); opacity: 0.75; }
-    .brindice-lead-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 10px;
-    }
-    .brindice-lead-nome {
-      font-weight: 600;
-      font-size: 15px;
-      color: var(--navy);
-    }
-    .brindice-lead-meta {
-      display: flex;
-      gap: 14px;
-      flex-wrap: wrap;
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 8px;
-    }
-    .brindice-lead-meta span { display: inline-flex; align-items: center; gap: 4px; }
-    .brindice-lead-produto {
-      background: var(--navy-light);
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 500;
-      display: inline-block;
-      margin-bottom: 10px;
-    }
-    .brindice-lead-actions {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-    }
-    .brindice-btn-approve {
-      background: var(--green);
-      color: #fff;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .brindice-btn-approve:hover { opacity: 0.85; }
-    .brindice-btn-reject {
-      background: #fff;
-      color: var(--red);
-      border: 1px solid var(--red-border);
-      padding: 6px 16px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .brindice-btn-reject:hover { background: var(--red-bg); }
-    .brindice-btn-auto {
-      background: var(--navy);
-      color: #fff;
-      border: none;
-      padding: 6px 16px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .brindice-btn-auto:hover { opacity: 0.85; }
-    .brindice-btn-auto:disabled { opacity: 0.4; cursor: not-allowed; }
-    .brindice-lead-status {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 10px;
-    }
-    .brindice-lead-status.pendente { background: #fefcbf; color: #975a16; }
-    .brindice-lead-status.aprovado { background: var(--green-bg); color: var(--green); }
-    .brindice-toast {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: var(--navy);
-      color: #fff;
-      padding: 12px 20px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      z-index: 999;
-      animation: fadeInUp 0.3s ease;
-    }
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .nav-badge {
-      background: #fc8181;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 700;
-      padding: 1px 6px;
-      border-radius: 8px;
-      margin-left: auto;
-    }
-
   </style>
 </head>
 <body>
@@ -2021,15 +1840,6 @@
         <span class="nav-icon">✨</span>
         Orçamento Automático
         <span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:auto;">IA</span>
-      </a>
-
-      <div class="nav-divider"></div>
-      <div class="nav-section-label">Brindice</div>
-
-      <a class="nav-link" href="#brindice-leads" data-nav>
-        <span class="nav-icon">🧵</span>
-        Leads do Brindice
-        <span class="nav-badge" id="brindiceBadge" style="display:none;"></span>
       </a>
     </nav>
   </aside>
@@ -2235,22 +2045,39 @@
           <div class="page-actions"></div>
         </div>
 
-        <div class="freight-form-area" id="freightFormArea">
+        <!-- Form -->
+        <div id="freightFormArea">
           <form id="freightForm" onsubmit="return false;">
             <div class="form-card">
-              <h2 class="form-card-title">CEP de Destino</h2>
+              <h2 class="form-card-title">CEP de Origem (Aspen)</h2>
               <div class="form-row">
                 <div class="form-group flex-1">
-                  <label class="form-label" for="freightCep">CEP</label>
-                  <input type="text" id="freightCep" class="form-input" placeholder="00000-000" maxlength="10" />
+                  <label class="form-label" for="freightCepOrigem">CEP</label>
+                  <input type="text" id="freightCepOrigem" class="form-input" placeholder="00000-000" maxlength="10" />
                 </div>
                 <div class="form-group flex-2">
-                  <label class="form-label" for="freightCity">Cidade / Estado</label>
-                  <input type="text" id="freightCity" class="form-input" placeholder="Preenchido automaticamente" readonly />
+                  <label class="form-label" for="freightCityOrigem">Cidade / Estado</label>
+                  <input type="text" id="freightCityOrigem" class="form-input" placeholder="Preenchido automaticamente" readonly />
                 </div>
               </div>
-              <button type="button" class="btn btn-outline btn-sm" id="freightLookupCepBtn" style="margin-top:8px">🔍 Buscar CEP</button>
-              <span id="freightCepStatus" style="font-size:11px;color:var(--muted);margin-left:10px"></span>
+              <button type="button" class="btn btn-outline btn-sm" id="freightLookupCepOrigemBtn" style="margin-top:8px">🔍 Buscar CEP Origem</button>
+              <span id="freightCepOrigemStatus" style="font-size:11px;color:var(--muted);margin-left:10px"></span>
+            </div>
+
+            <div class="form-card">
+              <h2 class="form-card-title">CEP de Destino (Cliente)</h2>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label" for="freightCepDestino">CEP</label>
+                  <input type="text" id="freightCepDestino" class="form-input" placeholder="00000-000" maxlength="10" />
+                </div>
+                <div class="form-group flex-2">
+                  <label class="form-label" for="freightCityDestino">Cidade / Estado</label>
+                  <input type="text" id="freightCityDestino" class="form-input" placeholder="Preenchido automaticamente" readonly />
+                </div>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="freightLookupCepDestinoBtn" style="margin-top:8px">🔍 Buscar CEP Destino</button>
+              <span id="freightCepDestinoStatus" style="font-size:11px;color:var(--muted);margin-left:10px"></span>
             </div>
 
             <div class="form-card">
@@ -2271,10 +2098,10 @@
                   <tbody id="freightItemsBody">
                     <tr id="freightRow-0">
                       <td><button type="button" class="item-remove-btn" onclick="removeFreightRow(0)" style="display:none" title="Remover">✕</button></td>
-                      <td><input type="number" class="form-input" id="freightWeight-0" min="0.1" step="0.1" value="1" style="width:70px" /></td>
-                      <td><input type="number" class="form-input" id="freightLength-0" min="1" step="1" value="30" style="width:70px" /></td>
-                      <td><input type="number" class="form-input" id="freightWidth-0" min="1" step="1" value="20" style="width:70px" /></td>
-                      <td><input type="number" class="form-input" id="freightHeight-0" min="1" step="1" value="10" style="width:70px" /></td>
+                      <td><input type="number" class="form-input freight-weight" id="freightWeight-0" min="0.1" step="0.1" value="1" placeholder="Kg" style="width:70px" /></td>
+                      <td><input type="number" class="form-input freight-dim" id="freightLength-0" min="1" step="1" value="30" placeholder="cm" style="width:70px" /></td>
+                      <td><input type="number" class="form-input freight-dim" id="freightWidth-0" min="1" step="1" value="20" placeholder="cm" style="width:70px" /></td>
+                      <td><input type="number" class="form-input freight-dim" id="freightHeight-0" min="1" step="1" value="10" placeholder="cm" style="width:70px" /></td>
                       <td><input type="number" class="form-input" id="freightAmount-0" min="1" step="1" value="1" style="width:50px" /></td>
                       <td><input type="text" class="form-input" id="freightContent-0" value="Produtos personalizados" placeholder="Descrição" /></td>
                     </tr>
@@ -2287,10 +2114,22 @@
             <div class="form-card">
               <h2 class="form-card-title">Transportadora</h2>
               <div class="form-row" style="gap:12px;flex-wrap:wrap">
-                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="" checked /><span>Todas</span></label>
-                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="correios" /><span>Correios</span></label>
-                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="jadlog" /><span>Jadlog</span></label>
-                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="loggi" /><span>Loggi</span></label>
+                <label class="form-checkbox">
+                  <input type="radio" name="freightCarrier" value="" checked />
+                  <span>Todas</span>
+                </label>
+                <label class="form-checkbox">
+                  <input type="radio" name="freightCarrier" value="correios" />
+                  <span>Correios</span>
+                </label>
+                <label class="form-checkbox">
+                  <input type="radio" name="freightCarrier" value="jadlog" />
+                  <span>Jadlog</span>
+                </label>
+                <label class="form-checkbox">
+                  <input type="radio" name="freightCarrier" value="loggi" />
+                  <span>Loggi</span>
+                </label>
               </div>
             </div>
 
@@ -2300,12 +2139,13 @@
           </form>
         </div>
 
-        <!-- Loading -->
+        <!-- Loading state -->
         <div class="state-box" id="freightLoadingState" style="display:none">
-          <div class="spinner"></div><div class="state-text">Consultando transportadoras…</div>
+          <div class="spinner"></div>
+          <div class="state-text">Consultando transportadoras…</div>
         </div>
 
-        <!-- Error -->
+        <!-- Error state -->
         <div class="state-box error" id="freightErrorState" style="display:none">
           <div class="state-icon">⚠️</div>
           <div class="state-text" id="freightErrorMsg">Erro ao cotar frete.</div>
@@ -2314,7 +2154,9 @@
 
         <!-- Results -->
         <div id="freightResults" style="display:none;margin-top:20px">
-          <h3 style="font-family:'Lusitana',serif;font-size:16px;color:var(--navy);margin-bottom:12px">Resultados — <span id="freightResultDest"></span></h3>
+          <h3 style="font-family:'Lusitana',serif;font-size:16px;color:var(--navy);margin-bottom:12px">
+            Resultados — <span id="freightResultDest"></span>
+          </h3>
           <div id="freightResultsTable"></div>
         </div>
       </section>
@@ -2474,7 +2316,6 @@
             <table class="detail-items-table" id="detailItemsTable">
               <thead>
                 <tr>
-                  <th class="col-drag" id="detailDragColH" style="display:none"></th>
                   <th>SKU</th>
                   <th>Produto</th>
                   <th class="col-right">Qtd</th>
@@ -2493,7 +2334,6 @@
             <!-- View mode buttons -->
             <div id="detailViewActions">
               <button type="button" class="btn btn-primary" id="editBtn">Editar</button>
-              <a href="" target="_blank" class="btn" id="viewPdfBtn">📄 Visualizar</a>
             </div>
             <!-- Edit mode buttons -->
             <div id="detailEditActions" style="display:none">
@@ -2595,44 +2435,6 @@
         </div>
       </section>
 
-      <!-- ══════════════════════════════════════════════
-           BRINDICE LEADS — fila de aprovação
-           ══════════════════════════════════════════════ -->
-      <section class="page" id="page-brindice-leads">
-        <div class="page-header">
-          <h1 class="page-title">Leads do Brindice</h1>
-          <div class="page-actions">
-            <span class="page-stats" id="brindiceStats"></span>
-            <button class="btn btn-primary" id="btnBrindiceRefresh">🔄 Atualizar</button>
-          </div>
-        </div>
-
-        <!-- Filtros -->
-        <div class="brindice-filters">
-          <span class="brindice-filter-chip active" data-brindice-status="pendentes">⏳ Pendentes <span class="chip-count" id="chipBrindicePending"></span></span>
-          <span class="brindice-filter-chip" data-brindice-status="aprovados">✅ Aprovados <span class="chip-count" id="chipBrindiceApproved"></span></span>
-          <span class="brindice-filter-chip" data-brindice-status="todos">📋 Todos <span class="chip-count" id="chipBrindiceAll"></span></span>
-        </div>
-
-        <div id="brindiceLoading" class="brindice-state" style="display:none;">
-          <div class="spinner"></div>
-          <span>Carregando leads do Brindice…</span>
-        </div>
-        <div id="brindiceEmpty" class="brindice-state" style="display:none;">
-          <div style="font-size:40px;margin-bottom:8px;">📋</div>
-          <p>Nenhum lead do Brindice encontrado.</p>
-          <p style="font-size:12px;color:var(--muted);">Use a extensão do Chrome para importar leads.</p>
-        </div>
-        <div id="brindiceError" class="brindice-state" style="display:none;color:var(--red);">
-          <span id="brindiceErrorMsg"></span>
-        </div>
-
-        <div id="brindiceLeadList"></div>
-
-        <!-- Toast de confirmação -->
-        <div class="brindice-toast" id="brindiceToast" style="display:none;"></div>
-      </section>
-
     </main>
   </div>
 </div>
@@ -2658,7 +2460,6 @@ var pageTitles = {
   '#create': 'Novo Orçamento',
   '#quotation-detail': 'Detalhe do Orçamento',
   '#auto': 'Orçamento Automático',
-  '#brindice-leads': 'Brindice - Leads',
 };
 
 // ── Quotations State ──
@@ -2975,11 +2776,6 @@ function navigate() {
   // Initialize auto page
   if (hash === '#auto') {
     initAutoPage();
-  }
-
-  // Initialize brindice leads page
-  if (hash === '#brindice-leads') {
-    fetchBrindiceLeads();
   }
 
   // Initialize freight page
@@ -3591,7 +3387,6 @@ function renderDetail() {
   var total = 0;
 
   document.getElementById('detailActionsColH').style.display = editable ? '' : 'none';
-  document.getElementById('detailDragColH').style.display = editable ? '' : 'none';
   document.getElementById('detailRateColH').textContent = editable ? 'Preço Unit. (R$)' : 'Preço Unit.';
 
   tbody.innerHTML = items.map(function (item, idx) {
@@ -3599,13 +3394,12 @@ function renderDetail() {
     total += amount;
 
     if (editable) {
-      var dragHandle = '<td class="col-drag detail-drag-handle">⠿</td>';
       var sku = '<td class="col-sku"><div class="sku-autocomplete-wrap"><input type="text" class="item-sku detail-sku-input sku-autocomplete" value="' + escapeHtml(item.item_code) + '" placeholder="Buscar SKU ou nome…" data-idx="' + idx + '" data-field="item_code" autocomplete="off" /><input type="hidden" class="sku-hidden" value="' + escapeHtml(item.item_code) + '" data-idx="' + idx + '" /></div></td>';
       var name = '<td><input type="text" class="item-name detail-name-input" value="' + escapeHtml(item.item_name || '') + '" placeholder="Nome do produto" data-idx="' + idx + '" data-field="item_name" /></td>';
       var qty = '<td class="col-right"><input type="number" class="item-qty detail-qty-input" value="' + item.qty + '" min="1" step="1" data-idx="' + idx + '" data-field="qty" /></td>';
       var rate = '<td class="col-right"><input type="number" class="item-rate detail-rate-input" value="' + item.rate.toFixed(2) + '" min="0" step="0.01" data-idx="' + idx + '" data-field="rate" /></td>';
       var removeBtn = '<td class="col-center"><button type="button" class="btn-remove" data-idx="' + idx + '" title="Remover">&times;</button></td>';
-      return '<tr draggable="true" data-index="' + idx + '">' + dragHandle + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
+      return '<tr>' + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
     } else {
       var sku = '<td class="col-sku">' + escapeHtml(item.item_code) + '</td>';
       var name = '<td>' + escapeHtml(item.item_name || item.item_code) + '</td>';
@@ -3625,12 +3419,6 @@ function renderDetail() {
   document.getElementById('detailViewActions').style.display = editable ? 'none' : '';
   document.getElementById('detailEditActions').style.display = editable ? '' : 'none';
   document.getElementById('detailSaveStatus').textContent = '';
-
-  // PDF button link
-  var pdfBtn = document.getElementById('viewPdfBtn');
-  if (pdfBtn && d.id) {
-    pdfBtn.href = '/api/view?q=' + encodeURIComponent(d.id);
-  }
 
   // Bind edit-mode events
   if (editable) {
@@ -3676,51 +3464,6 @@ function bindEditEvents() {
       detailState.editedItems.splice(idx, 1);
       renderDetail();
     });
-  });
-
-  // ── Drag-and-drop item reorder ──
-  var tbody = document.getElementById('detailItemsBody');
-  tbody.addEventListener('dragstart', function (e) {
-    var tr = e.target.closest('tr[draggable]');
-    if (!tr) { e.preventDefault(); return; }
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', tr.dataset.index);
-    tr.classList.add('drag-dragging');
-  });
-
-  tbody.addEventListener('dragover', function (e) {
-    e.preventDefault();
-    var tr = e.target.closest('tr[draggable]');
-    if (!tr) return;
-    tbody.querySelectorAll('tr.drag-over').forEach(function (r) { r.classList.remove('drag-over'); });
-    tr.classList.add('drag-over');
-    e.dataTransfer.dropEffect = 'move';
-  });
-
-  tbody.addEventListener('dragleave', function (e) {
-    var tr = e.target.closest('tr[draggable]');
-    if (tr) tr.classList.remove('drag-over');
-  });
-
-  tbody.addEventListener('drop', function (e) {
-    e.preventDefault();
-    var sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    var targetTr = e.target.closest('tr[draggable]');
-    if (!targetTr || isNaN(sourceIndex)) return;
-    var targetIndex = parseInt(targetTr.dataset.index, 10);
-    if (sourceIndex === targetIndex) return;
-
-    // Reorder the array
-    var moved = detailState.editedItems.splice(sourceIndex, 1)[0];
-    detailState.editedItems.splice(targetIndex, 0, moved);
-
-    // Re-render to update data-index and DOM
-    renderDetail();
-    detailState.mode = 'edit';
-  });
-
-  tbody.addEventListener('dragend', function () {
-    tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('drag-dragging', 'drag-over'); });
   });
 }
 
@@ -4087,36 +3830,26 @@ function markFormDirty() {
 }
 
 // ══════════════════════════════════════════════
-// FREIGHT QUOTATION — Envia.com
+// FREIGHT QUOTATION — Envia.com integration
 // ══════════════════════════════════════════════
+
 var freightCount = 1;
 var freightCepData = null;
 
 function initFreightPage() {
   if (window._freightInited) return;
   window._freightInited = true;
-  document.getElementById('freightLookupCepBtn').addEventListener('click', lookupCep);
-  document.getElementById('freightCep').addEventListener('blur', function () { var c = this.value.replace(/\D/g,''); if (c.length===8) lookupCep(); });
+
+  document.getElementById('freightLookupCepOrigemBtn').addEventListener('click', function() { lookupCep('Origem'); });
+  document.getElementById('freightCepOrigem').addEventListener('blur', function() { var c=this.value.replace(/\D/g,''); if(c.length===8) lookupCep('Origem'); });
+  document.getElementById('freightLookupCepDestinoBtn').addEventListener('click', function() { lookupCep('Destino'); });
+  document.getElementById('freightCepDestino').addEventListener('blur', function() { var c=this.value.replace(/\D/g,''); if(c.length===8) lookupCep('Destino'); });
   document.getElementById('freightAddPackageBtn').addEventListener('click', addFreightRow);
   document.getElementById('freightQuoteBtn').addEventListener('click', quoteFreight);
   document.getElementById('freightRetryBtn').addEventListener('click', quoteFreight);
 }
 
-function lookupCep() {
-  var cep = document.getElementById('freightCep').value.replace(/\D/g, '');
-  if (cep.length !== 8) { document.getElementById('freightCepStatus').textContent = 'CEP deve ter 8 dígitos.'; return; }
-  document.getElementById('freightCepStatus').textContent = 'Buscando…';
-  fetch('https://viacep.com.br/ws/' + cep + '/json/')
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (d.erro) { document.getElementById('freightCepStatus').textContent = 'CEP não encontrado.'; return; }
-      freightCepData = d;
-      document.getElementById('freightCity').value = d.localidade + ' / ' + d.uf + (d.bairro ? ' — ' + d.bairro : '');
-      document.getElementById('freightCepStatus').textContent = '✓ ' + (d.logradouro || '');
-    })
-    .catch(function () { document.getElementById('freightCepStatus').textContent = 'Erro ao consultar CEP.'; });
-}
-
+// ── Pacotes ──
 function addFreightRow() {
   var idx = freightCount++;
   var tr = document.createElement('tr'); tr.id = 'freightRow-' + idx;
@@ -4137,23 +3870,38 @@ function removeFreightRow(idx) {
   if (tr) tr.remove();
 }
 
+// ── CEP lookup (ViaCEP) ──
+function lookupCep(prefix) {
+  var cepEl = document.getElementById('freightCep' + prefix);
+  var statusEl = document.getElementById('freightCep' + prefix + 'Status');
+  var cityEl = document.getElementById('freightCity' + prefix);
+  var cep = cepEl.value.replace(/\D/g, '');
+  if (cep.length !== 8) { statusEl.textContent = 'CEP deve ter 8 dígitos.'; return; }
+  statusEl.textContent = 'Buscando…';
+  fetch('https://viacep.com.br/ws/' + cep + '/json/')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.erro) { statusEl.textContent = 'CEP não encontrado.'; return; }
+      cityEl.value = d.localidade + ' / ' + d.uf + (d.bairro ? ' — ' + d.bairro : '');
+      statusEl.textContent = '✓ ' + (d.logradouro || '');
+    })
+    .catch(function() { statusEl.textContent = 'Erro ao consultar CEP.'; });
+}
+
+// ── Cotar frete ──
 function quoteFreight() {
-  var cep = document.getElementById('freightCep').value.replace(/\D/g, '');
-  if (cep.length !== 8) { alert('Informe um CEP válido de 8 dígitos.'); return; }
+  var cepOrigem = document.getElementById('freightCepOrigem').value.replace(/\D/g, '');
+  var cepDestino = document.getElementById('freightCepDestino').value.replace(/\D/g, '');
+  if (cepOrigem.length !== 8) { alert('Informe o CEP de origem (8 dígitos).'); return; }
+  if (cepDestino.length !== 8) { alert('Informe o CEP de destino (8 dígitos).'); return; }
 
   var packages = [];
-  document.querySelectorAll('#freightItemsBody tr').forEach(function (row) {
+  document.querySelectorAll('#freightItemsBody tr').forEach(function(row) {
     var m = row.id.match(/freightRow-(\d+)/); if (!m) return;
     var idx = m[1];
     var w = parseFloat(document.getElementById('freightWeight-' + idx)?.value) || 0;
     if (w <= 0) return;
-    packages.push({
-      weight: w, length: parseInt(document.getElementById('freightLength-' + idx)?.value) || 30,
-      width: parseInt(document.getElementById('freightWidth-' + idx)?.value) || 20,
-      height: parseInt(document.getElementById('freightHeight-' + idx)?.value) || 10,
-      amount: parseInt(document.getElementById('freightAmount-' + idx)?.value) || 1,
-      content: document.getElementById('freightContent-' + idx)?.value || 'Produtos personalizados'
-    });
+    packages.push({ weight: w, length: parseInt(document.getElementById('freightLength-' + idx)?.value) || 30, width: parseInt(document.getElementById('freightWidth-' + idx)?.value) || 20, height: parseInt(document.getElementById('freightHeight-' + idx)?.value) || 10, amount: parseInt(document.getElementById('freightAmount-' + idx)?.value) || 1, content: document.getElementById('freightContent-' + idx)?.value || 'Produtos personalizados' });
   });
   if (!packages.length) { alert('Informe pelo menos um pacote com peso > 0.'); return; }
 
@@ -4166,36 +3914,51 @@ function quoteFreight() {
   document.getElementById('freightResults').style.display = 'none';
 
   fetch('/api/freight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-    destination: { cep: cep, city: freightCepData?.localidade || '', state: freightCepData?.uf || '', street: freightCepData?.logradouro || '' },
+    origin: { cep: cepOrigem },
+    destination: { cep: cepDestino },
     packages: packages, carrier: carrier || undefined
-  })})
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      document.getElementById('freightLoadingState').style.display = 'none';
-      document.getElementById('freightFormArea').style.display = '';
-      if (data.success && data.rates && data.rates.length) {
-        document.getElementById('freightResults').style.display = '';
-        document.getElementById('freightResultDest').textContent = (data.destination?.city || '') + '/' + (data.destination?.state || '');
-        var h = '<table class="quotations-table"><thead><tr><th>Transportadora</th><th>Serviço</th><th>Prazo</th><th class="col-right">Valor</th></tr></thead><tbody>';
-        data.rates.forEach(function (r) {
-          var label = r.carrier === 'correios' ? '📦 Correios' : r.carrier === 'jadlog' ? '📦 Jadlog' : r.carrier === 'loggi' ? '📦 Loggi' : r.carrier;
-          var prazo = r.deliveryEstimate || (r.deliveryDays ? r.deliveryDays + ' dias' : '—');
-          h += '<tr><td>' + escapeHtml(label) + '</td><td>' + escapeHtml(r.serviceDescription || r.service) + '</td><td>' + escapeHtml(prazo) + '</td><td class="col-valor">' + formatBRL(r.totalPrice) + '</td></tr>';
-        });
-        h += '</tbody></table>';
-        document.getElementById('freightResultsTable').innerHTML = h;
-      } else {
-        document.getElementById('freightErrorMsg').textContent = data.error || 'Nenhuma transportadora disponível.';
-        document.getElementById('freightErrorState').style.display = 'flex';
-      }
-    })
-    .catch(function (err) {
-      document.getElementById('freightLoadingState').style.display = 'none';
-      document.getElementById('freightFormArea').style.display = '';
-      document.getElementById('freightErrorMsg').textContent = 'Erro: ' + err.message;
+  })}).then(function(r) { return r.json(); }).then(function(data) {
+    document.getElementById('freightLoadingState').style.display = 'none';
+    document.getElementById('freightFormArea').style.display = '';
+    if (data.success && data.rates && data.rates.length) {
+      document.getElementById('freightResults').style.display = '';
+      document.getElementById('freightResultDest').textContent = (data.origin?.cep || cepOrigem) + ' → ' + (data.destination?.cep || cepDestino);
+      var h = '<table class="quotations-table"><thead><tr><th>Transportadora</th><th>Serviço</th><th>Prazo</th><th class="col-right">Valor</th></tr></thead><tbody>';
+      data.rates.forEach(function(r) {
+        var label = r.carrier === 'correios' ? '📦 Correios' : r.carrier === 'jadlog' ? '📦 Jadlog' : r.carrier === 'loggi' ? '📦 Loggi' : r.carrier;
+        var prazo = r.deliveryEstimate || (r.deliveryDays ? r.deliveryDays + ' dias' : '—');
+        h += '<tr><td>' + escapeHtml(label) + '</td><td>' + escapeHtml(r.serviceDescription || r.service) + '</td><td>' + escapeHtml(prazo) + '</td><td class="col-valor">' + formatBRL(r.totalPrice) + '</td></tr>';
+      });
+      h += '</tbody></table>';
+      document.getElementById('freightResultsTable').innerHTML = h;
+    } else {
+      document.getElementById('freightErrorMsg').textContent = data.error || 'Nenhuma transportadora disponível.';
       document.getElementById('freightErrorState').style.display = 'flex';
-    });
+    }
+  }).catch(function(err) {
+    document.getElementById('freightLoadingState').style.display = 'none';
+    document.getElementById('freightFormArea').style.display = '';
+    document.getElementById('freightErrorMsg').textContent = 'Erro: ' + err.message;
+    document.getElementById('freightErrorState').style.display = 'flex';
+  });
 }
+
+function renderFreightResults(data) {
+  document.getElementById('freightResults').style.display = '';
+  var label = (data.origin?.cep || '') + ' → ' + (data.destination?.cep || '');
+  document.getElementById('freightResultDest').textContent = label;
+  var h = '<table class="quotations-table"><thead><tr><th>Transportadora</th><th>Serviço</th><th>Prazo</th><th class="col-right">Valor</th></tr></thead><tbody>';
+  data.rates.forEach(function(r) {
+    var carrierLabel = r.carrier === 'correios' ? '📦 Correios' : r.carrier === 'jadlog' ? '📦 Jadlog' : r.carrier === 'loggi' ? '📦 Loggi' : r.carrier;
+    var prazo = r.deliveryEstimate || (r.deliveryDays ? r.deliveryDays + ' dias' : '—');
+    h += '<tr><td>' + escapeHtml(carrierLabel) + '</td><td>' + escapeHtml(r.serviceDescription || r.service) + '</td><td>' + escapeHtml(prazo) + '</td><td class="col-valor">' + formatBRL(r.totalPrice) + '</td></tr>';
+  });
+  h += '</tbody></table>';
+  document.getElementById('freightResultsTable').innerHTML = h;
+}
+
+// ── Init on page enter ──
+// Handled in navigate() below.
 
 function initManualForm() {
   if (manualFormInited) return;
@@ -5454,7 +5217,252 @@ window.addEventListener('beforeunload', function (e) {
     return e.returnValue;
   }
 });
-</script>
 
+// ══════════════════════════════════════════════
+// BRINDICE LEADS — fila de aprovação
+// ══════════════════════════════════════════════
+
+var brindiceStatus = 'pendentes';
+var brindiceAllLeads = [];
+
+// ── Fetch leads from API ─────────────────────────────────────────────────
+
+function fetchBrindiceLeads() {
+  showBrindiceLoading();
+  if (brindiceAllLeads.length > 0 && brindiceStatus === 'pendentes') {
+    renderBrindiceLeads();
+    return;
+  }
+
+  var apiPath = '/api/brindice-leads?status=todos';
+  fetch(apiPath)
+    .then(function (r) {
+      if (!r.ok) throw new Error('Erro ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      if (!data.success) throw new Error(data.error || 'Erro desconhecido');
+      brindiceAllLeads = data.leads || [];
+      updateBrindiceBadge();
+      renderBrindiceLeads();
+      updateBrindiceChips(data.total_pendentes);
+    })
+    .catch(function (err) {
+      showBrindiceError('Erro ao carregar leads: ' + err.message);
+    });
+}
+
+function showBrindiceLoading() {
+  document.getElementById('brindiceLoading').style.display = 'flex';
+  document.getElementById('brindiceEmpty').style.display = 'none';
+  document.getElementById('brindiceError').style.display = 'none';
+  document.getElementById('brindiceLeadList').innerHTML = '';
+}
+
+function showBrindiceError(msg) {
+  document.getElementById('brindiceLoading').style.display = 'none';
+  document.getElementById('brindiceEmpty').style.display = 'none';
+  document.getElementById('brindiceError').style.display = 'flex';
+  document.getElementById('brindiceErrorMsg').textContent = msg;
+  document.getElementById('brindiceLeadList').innerHTML = '';
+}
+
+// ── Render ────────────────────────────────────────────────────────────────
+
+function renderBrindiceLeads() {
+  document.getElementById('brindiceLoading').style.display = 'none';
+  document.getElementById('brindiceError').style.display = 'none';
+
+  var filtered = brindiceAllLeads;
+  if (brindiceStatus === 'pendentes') {
+    filtered = brindiceAllLeads.filter(function (l) { return l.status_aprovacao === 'pendente'; });
+  } else if (brindiceStatus === 'aprovados') {
+    filtered = brindiceAllLeads.filter(function (l) { return l.status_aprovacao === 'aprovado'; });
+  }
+
+  if (filtered.length === 0) {
+    document.getElementById('brindiceEmpty').style.display = 'flex';
+    document.getElementById('brindiceLeadList').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('brindiceEmpty').style.display = 'none';
+
+  var totalPendentes = brindiceAllLeads.filter(function (l) { return l.status_aprovacao === 'pendente'; }).length;
+  document.getElementById('brindiceStats').textContent =
+    filtered.length + ' lead(s)' + (brindiceStatus === 'pendentes' ? ' · ' + totalPendentes + ' pendentes' : '');
+
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    html += renderBrindiceCard(filtered[i]);
+  }
+  document.getElementById('brindiceLeadList').innerHTML = html;
+
+  bindBrindiceEvents();
+}
+
+function renderBrindiceCard(lead) {
+  var isPending = lead.status_aprovacao === 'pendente';
+  var statusClass = isPending ? 'pendente' : 'aprovado';
+  var statusLabel = isPending ? '⏳ Pendente' : '✓ Aprovado';
+
+  var metaHtml = '';
+  if (lead.produto) metaHtml += '<div class="brindice-lead-produto">' + escHtml(lead.produto) + (lead.codigo ? ' · ' + escHtml(lead.codigo) : '') + ' · ' + lead.quantidade + ' un</div>';
+  metaHtml += '<div class="brindice-lead-meta">';
+  if (lead.email) metaHtml += '<span>✉️ ' + escHtml(lead.email) + '</span>';
+  if (lead.telefone) metaHtml += '<span>📞 ' + escHtml(lead.telefone) + '</span>';
+  if (lead.canal) metaHtml += '<span>📡 ' + escHtml(lead.canal) + '</span>';
+  if (lead.data_pedido) metaHtml += '<span>📅 ' + escHtml(lead.data_pedido) + '</span>';
+  if (lead.importado_em) metaHtml += '<span>📥 ' + escHtml(lead.importado_em.slice(0, 10)) + '</span>';
+  metaHtml += '</div>';
+
+  var actionsHtml = '';
+  if (isPending) {
+    actionsHtml = '<div class="brindice-lead-actions">'
+      + '<button class="brindice-btn-auto" data-action="autoquote" data-id="' + escHtml(lead.id) + '">✨ Criar Orçamento</button>'
+      + '<button class="brindice-btn-approve" data-action="approve" data-id="' + escHtml(lead.id) + '" data-nome="' + escHtml(lead.nome) + '" data-email="' + escHtml(lead.email || '') + '" data-produto="' + escHtml(lead.produto || '') + '" data-codigo="' + escHtml(lead.codigo || '') + '" data-qtd="' + lead.quantidade + '">✓ Aprovar</button>'
+      + '<button class="brindice-btn-reject" data-action="reject" data-id="' + escHtml(lead.id) + '">✕ Descartar</button>'
+      + '</div>';
+  } else {
+    actionsHtml = '<div class="brindice-lead-meta"><span style="color:var(--green);">✓ Aprovado em ' + escHtml(lead.importado_em ? lead.importado_em.slice(0, 10) : '') + '</span></div>';
+  }
+
+  return '<div class="brindice-lead-card ' + statusClass + '" id="brindice-card-' + escHtml(lead.id) + '">'
+    + '<div class="brindice-lead-card-header">'
+    + '<span class="brindice-lead-nome">' + escHtml(lead.nome || 'Sem nome') + '</span>'
+    + '<span class="brindice-lead-status ' + statusClass + '">' + statusLabel + '</span>'
+    + '</div>'
+    + metaHtml
+    + actionsHtml
+    + '</div>';
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+
+function bindBrindiceEvents() {
+  document.querySelectorAll('.brindice-filter-chip').forEach(function (chip) {
+    chip.onclick = function () {
+      document.querySelectorAll('.brindice-filter-chip').forEach(function (c) { c.classList.remove('active'); });
+      chip.classList.add('active');
+      brindiceStatus = chip.dataset.brindiceStatus;
+      fetchBrindiceLeads();
+    };
+  });
+
+  document.querySelectorAll('[data-action="approve"]').forEach(function (btn) {
+    btn.onclick = function () { approveBrindiceLead(btn); };
+  });
+
+  document.querySelectorAll('[data-action="reject"]').forEach(function (btn) {
+    btn.onclick = function () { rejectBrindiceLead(btn); };
+  });
+
+  document.querySelectorAll('[data-action="autoquote"]').forEach(function (btn) {
+    btn.onclick = function () { autoQuoteBrindiceLead(btn); };
+  });
+}
+
+// ── Approval / Rejection / Auto-quote ─────────────────────────────────────
+
+function approveBrindiceLead(btn) {
+  var id = btn.dataset.id;
+  var nome = btn.dataset.nome;
+  btn.disabled = true;
+  btn.textContent = '⏳ Aprovando...';
+
+  var idx = brindiceAllLeads.findIndex(function (l) { return l.id === id; });
+  if (idx >= 0) brindiceAllLeads[idx].status_aprovacao = 'aprovado';
+  updateBrindiceBadge();
+  showBrindiceToast('✅ Lead de "' + nome + '" aprovado! Redirecionando...');
+  setTimeout(function () { window.location.hash = '#create'; }, 1200);
+}
+
+function rejectBrindiceLead(btn) {
+  var id = btn.dataset.id;
+  var nome = btn.dataset.nome || 'lead';
+  if (!confirm('Descartar o lead de "' + nome + '"? Esta ação não pode ser desfeita.')) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ Descartando...';
+  brindiceAllLeads = brindiceAllLeads.filter(function (l) { return l.id !== id; });
+  updateBrindiceBadge();
+  renderBrindiceLeads();
+  showBrindiceToast('🗑️ Lead de "' + nome + '" descartado.');
+}
+
+function autoQuoteBrindiceLead(btn) {
+  var nome = btn.dataset.nome;
+  var email = btn.dataset.email;
+  var produto = btn.dataset.produto;
+  var codigo = btn.dataset.codigo;
+  var qtd = parseInt(btn.dataset.qtd, 10) || 0;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+
+  var extractText = 'PRODUTO: ' + produto + (codigo ? ' | CÓD: ' + codigo : '') +
+    ' | QTD: ' + qtd +
+    ' | NOME: ' + nome +
+    (email ? ' | E-MAIL: ' + email : '');
+
+  showBrindiceToast('✨ Enviando para extração automática...');
+  localStorage.setItem('brindice_auto_text', extractText);
+
+  setTimeout(function () { window.location.hash = '#auto'; }, 500);
+}
+
+// ── Badge ─────────────────────────────────────────────────────────────────
+
+function updateBrindiceBadge() {
+  var pending = brindiceAllLeads.filter(function (l) { return l.status_aprovacao === 'pendente'; });
+  var badge = document.getElementById('brindiceBadge');
+  if (badge) {
+    if (pending.length > 0) {
+      badge.textContent = pending.length;
+      badge.style.display = 'inline';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+function updateBrindiceChips(apiPendentes) {
+  var pending = apiPendentes || brindiceAllLeads.filter(function (l) { return l.status_aprovacao === 'pendente'; }).length;
+  var approved = brindiceAllLeads.filter(function (l) { return l.status_aprovacao === 'aprovado'; }).length;
+
+  var chipP = document.getElementById('chipBrindicePending');
+  var chipA = document.getElementById('chipBrindiceApproved');
+  var chipAll = document.getElementById('chipBrindiceAll');
+
+  if (chipP) chipP.textContent = pending;
+  if (chipA) chipA.textContent = approved;
+  if (chipAll) chipAll.textContent = brindiceAllLeads.length;
+}
+
+function showBrindiceToast(msg) {
+  var toast = document.getElementById('brindiceToast');
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(function () { toast.style.display = 'none'; }, 4000);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', function () {
+  var refreshBtn = document.getElementById('btnBrindiceRefresh');
+  if (refreshBtn) {
+    refreshBtn.onclick = function () { brindiceAllLeads = []; fetchBrindiceLeads(); };
+  }
+});
+
+</script>
 </body>
 </html>
