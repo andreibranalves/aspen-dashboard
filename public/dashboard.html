@@ -1187,11 +1187,541 @@
       justify-content: center;
       flex-wrap: wrap;
     }
+    /* ══════════════════════════════════════════════
+       ORÇAMENTO AUTOMÁTICO (embedded from index.html)
+       ══════════════════════════════════════════════ */
+
+    /* ── Tabs ── */
+    .auto-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 22px;
+    }
+    .auto-tab {
+      font-family: 'Lusitana', serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 8px 16px 9px;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+      letter-spacing: 0.01em;
+    }
+    .auto-tab:first-child { padding-left: 0; }
+    .auto-tab:hover { color: var(--navy); }
+    .auto-tab.active { color: var(--navy); border-bottom-color: var(--navy); }
+    .auto-tab-panel { display: none; }
+    .auto-tab-panel.active { display: block; }
+
+    /* ── Form elements ── */
+    .auto-field-label {
+      display: block;
+      font-family: 'Lusitana', serif;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 5px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .auto-input-area {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      transition: border-color 0.15s;
+    }
+    .auto-input-area:focus-within { border-color: var(--navy); }
+    .auto-input-area.drag-over { border-color: var(--navy); background: var(--navy-light); }
+
+    #autoTextInput {
+      width: 100%;
+      border: none;
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      resize: vertical;
+      min-height: 110px;
+      font-family: inherit;
+      background: transparent;
+      line-height: 1.5;
+    }
+    #autoTextInput::placeholder { color: #bbb; }
+
+    .auto-image-preview {
+      display: none;
+      padding: 6px 12px 10px;
+      border-top: 1px solid #f0eeeb;
+      position: relative;
+    }
+    .auto-image-preview.visible { display: block; }
+    .auto-image-preview img {
+      max-height: 150px;
+      max-width: 100%;
+      border-radius: var(--radius);
+      display: block;
+    }
+    .auto-remove-img {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      background: rgba(0,0,0,0.45);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .auto-remove-img:hover { background: rgba(0,0,0,0.7); }
+
+    .auto-input-hint {
+      font-size: 11px;
+      color: #c8c4bc;
+      padding: 4px 12px 8px;
+      user-select: none;
+    }
+
+    /* ── Auto primary button ── */
+    .auto-btn-primary {
+      margin-top: 16px;
+      width: 100%;
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 11px;
+      font-family: 'Lusitana', serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auto-btn-primary:hover { background: var(--navy-hover); }
+    .auto-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* ── Auto extract status ── */
+    #auto-extract-status {
+      display: none;
+      margin-top: 20px;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fafaf9;
+      font-size: 13px;
+      color: var(--muted);
+      align-items: center;
+      gap: 10px;
+    }
+    #auto-extract-status.visible { display: flex; }
+
+    /* ── Auto queue ── */
+    #auto-queue {
+      display: none;
+      margin-top: 20px;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #auto-queue.visible { display: flex; }
+
+    .auto-queue-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      background: #fafaf9;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .auto-queue-card.processing {
+      border-color: var(--navy);
+      background: var(--navy-light);
+    }
+    .auto-queue-card.done {
+      border-color: var(--green-border);
+      background: var(--green-bg);
+    }
+    .auto-queue-card.error {
+      border-color: var(--red-border);
+      background: var(--red-bg);
+    }
+
+    .auto-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .auto-card-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+    .auto-card-icon.done-icon  { color: var(--green); }
+    .auto-card-icon.error-icon { color: var(--red); }
+
+    .auto-card-name {
+      font-family: 'Lusitana', serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--navy);
+      flex: 1;
+    }
+    .auto-card-badge {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .auto-card-badge.processing { color: var(--navy); font-weight: 600; }
+
+    .auto-customer-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .auto-customer-dot.new       { background: var(--green); }
+    .auto-customer-dot.returning { background: var(--red); }
+    .auto-card-badge.new       { color: var(--green); font-weight: 600; }
+    .auto-card-badge.returning { color: var(--red);   font-weight: 600; }
+
+    .auto-card-sub {
+      margin-top: 4px;
+      padding-left: 26px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .auto-card-result {
+      margin-top: 8px;
+      padding-left: 26px;
+    }
+    .auto-card-quotation {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    /* Auto items table */
+    .auto-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .auto-items-table th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 3px 0 5px;
+      border-bottom: 1px solid var(--border);
+    }
+    .auto-items-table td {
+      padding: 4px 0;
+      border-bottom: 1px solid #f0eeeb;
+      color: var(--text);
+    }
+    .auto-items-table tr:last-child td { border-bottom: none; }
+
+    /* Rate cell */
+    .auto-rate-cell { display: flex; align-items: center; gap: 4px; }
+    .auto-rate-cell input { width: 72px; }
+    .auto-rate-display { font-size: 11px; color: var(--navy); font-weight: 600; white-space: nowrap; min-width: 62px; }
+
+    /* Drag-and-drop */
+    .auto-drag-handle {
+      cursor: grab;
+      color: var(--muted);
+      font-size: 16px;
+      padding: 4px 6px 4px 0 !important;
+      width: 24px;
+      user-select: none;
+      text-align: center;
+      vertical-align: middle;
+    }
+    .auto-drag-handle:active { cursor: grabbing; }
+    .auto-items-table tr[draggable="true"] { cursor: default; }
+    .auto-items-table tr[draggable="true"]:hover .auto-drag-handle { color: var(--text); }
+    .auto-items-table tr.auto-dragging {
+      opacity: 0.4;
+      background: var(--border);
+    }
+    .auto-items-table tr.auto-drag-over {
+      border-top: 2px solid var(--navy);
+    }
+    .auto-items-table tr.auto-drag-over td {
+      padding-top: 2px;
+    }
+
+    /* PDF/WA links */
+    .auto-pdf-link {
+      display: inline-block;
+      margin-top: 10px;
+      background: var(--navy);
+      color: #fff;
+      text-decoration: none;
+      padding: 5px 14px;
+      border-radius: var(--radius);
+      font-family: 'Lusitana', serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      transition: background 0.15s;
+    }
+    .auto-pdf-link:hover { background: var(--navy-hover); }
+
+    .auto-action-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .auto-action-buttons .auto-pdf-link { margin-top: 0; }
+
+    .auto-wa-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #25D366;
+      color: #fff;
+      text-decoration: none;
+      padding: 5px 14px;
+      border-radius: var(--radius);
+      font-family: 'Lusitana', serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      transition: background 0.15s;
+    }
+    .auto-wa-link:hover { background: #1da851; }
+
+    /* Draft cards */
+    .auto-queue-card.auto-draft { border-color: #c9a93e; background: #fef9ed; }
+    .auto-queue-card.auto-draft .auto-card-icon { color: #c9a93e; }
+    .auto-draft-contacts { display: flex; gap: 8px; margin-top: 4px; padding-left: 26px; }
+    .auto-draft-contacts input { flex: 1; min-width: 0; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+    .auto-draft-nome { width: 100%; font-size: 14px; font-family: 'Lusitana', serif; font-weight: 700; padding: 3px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+    .auto-urgente-toggle { font-size: 11px; color: var(--muted); margin-left: 8px; white-space: nowrap; cursor: pointer; }
+    .auto-draft-items { margin-top: 8px; }
+    .auto-draft-items table td input { width: 100%; font-size: 12px; padding: 2px 4px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; }
+    .auto-draft-add-item { margin-top: 4px; font-size: 11px; padding: 2px 8px; background: #f0eeeb; border: none; border-radius: var(--radius); cursor: pointer; color: var(--navy); }
+    .auto-draft-actions { margin-top: 10px; display: flex; gap: 8px; }
+    .auto-draft-approve { padding: 4px 12px; font-size: 12px; font-weight: 600; border: none; border-radius: var(--radius); cursor: pointer; background: var(--green); color: #fff; }
+    .auto-draft-discard { padding: 4px 12px; font-size: 12px; border: none; border-radius: var(--radius); cursor: pointer; background: var(--red); color: #fff; }
+    .auto-draft-prompt { margin-top: 10px; }
+    .auto-draft-prompt-input { width: 100%; font-size: 12px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius); resize: vertical; }
+    .auto-draft-prompt-submit { margin-top: 4px; font-size: 11px; padding: 3px 10px; background: var(--navy); color: #fff; border: none; border-radius: var(--radius); cursor: pointer; }
+    .auto-draft-prompt-preview { margin-top: 8px; padding: 8px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); }
+    .auto-diff-change { font-size: 12px; padding: 2px 0; color: var(--text); }
+    .auto-diff-removed .auto-diff-label { color: var(--red); }
+    .auto-diff-added .auto-diff-label { color: var(--green); }
+    .auto-diff-modified .auto-diff-label { color: #c9a93e; }
+    .auto-diff-old { text-decoration: line-through; color: var(--red); }
+    .auto-diff-new { font-weight: 600; color: var(--green); }
+    .auto-draft-prompt-actions { margin-top: 6px; display: flex; gap: 6px; }
+    .auto-draft-prompt-apply { padding: 3px 10px; font-size: 11px; font-weight: 600; border: none; border-radius: var(--radius); cursor: pointer; background: var(--green); color: #fff; }
+    .auto-draft-prompt-reject { padding: 3px 10px; font-size: 11px; border: none; border-radius: var(--radius); cursor: pointer; background: var(--red); color: #fff; }
+    .auto-draft-prompt-status { font-size: 12px; color: var(--muted); padding: 4px 0; }
+    .auto-draft-remove-item { padding: 0 5px; font-size: 14px; line-height: 1; border: none; background: none; color: var(--red); cursor: pointer; font-weight: 700; }
+
+    .auto-urgente-badge {
+      display: inline-block;
+      background: #b71c1c;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: var(--radius);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-family: inherit;
+    }
+
+    /* ── Auto error block ── */
+    #auto-error-block {
+      display: none;
+      margin-top: 20px;
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      font-size: 14px;
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      border-left: 3px solid var(--red);
+      color: var(--text);
+    }
+    #auto-error-block.visible { display: block; }
+    .auto-error-title {
+      font-family: 'Lusitana', serif;
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: var(--red);
+    }
+
+    /* ── Auto rules tab ── */
+    .auto-rules-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .auto-rules-actions { display: flex; gap: 8px; }
+
+    .auto-btn-secondary {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .auto-btn-secondary:hover { border-color: var(--navy); color: var(--navy); }
+
+    .auto-btn-save {
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 5px 14px;
+      font-family: 'Lusitana', serif;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auto-btn-save:hover { background: var(--navy-hover); }
+
+    #autoRulesTextarea {
+      width: 100%;
+      min-height: 320px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      outline: none;
+      resize: vertical;
+      line-height: 1.65;
+      transition: border-color 0.15s;
+      background: #fafaf9;
+    }
+    #autoRulesTextarea:focus { border-color: var(--navy); background: #fff; }
+
+    .auto-rules-hint {
+      font-size: 11px;
+      color: #bbb;
+      margin-top: 7px;
+      line-height: 1.5;
+    }
+
+    .auto-save-toast {
+      display: none;
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 600;
+      margin-top: 7px;
+    }
+    .auto-save-toast.visible { display: block; }
+
+    /* ── Auto WhatsApp tab ── */
+    .auto-wa-template-textarea {
+      width: 100%;
+      min-height: 90px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      outline: none;
+      resize: vertical;
+      line-height: 1.65;
+      transition: border-color 0.15s;
+      background: #fafaf9;
+    }
+    .auto-wa-template-textarea:focus { border-color: var(--navy); background: #fff; }
+
+    .auto-tags-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin: 10px 0 6px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .auto-tags-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .auto-tag-chip {
+      display: inline-block;
+      background: var(--navy-light);
+      color: var(--navy);
+      border: 1px solid #c8d0e0;
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-size: 12px;
+      font-family: 'Lusitana', serif;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      user-select: none;
+    }
+    .auto-tag-chip:hover { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+    .auto-wa-preview-box {
+      background: #f0faf2;
+      border: 1px solid var(--green-border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 48px;
+    }
+
+    .auto-wa-preview-label {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+
   </style>
 </head>
 <body>
 
-<div class="app">
+<div class="app"> 
 
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
@@ -1229,7 +1759,7 @@
         Novo Orçamento
         <span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:auto;">Manual</span>
       </a>
-      <a class="nav-link-external" href="/index.html" target="_self">
+      <a class="nav-link" href="#auto" data-nav>
         <span class="nav-icon">✨</span>
         Orçamento Automático
         <span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:auto;">IA</span>
@@ -1251,7 +1781,7 @@
           <h1 class="page-title">Orçamentos</h1>
           <div class="page-actions">
             <a href="#create" class="btn btn-primary" data-nav>+ Novo Manual</a>
-            <a href="/index.html" class="btn btn-auto">✨ Automático</a>
+            <a href="#auto" class="btn btn-auto">✨ Automático</a>
           </div>
         </div>
 
@@ -1449,7 +1979,7 @@
         <div class="page-header">
           <h1 class="page-title">Novo Orçamento</h1>
           <div class="page-actions">
-            <a href="/index.html" class="btn btn-auto">✨ Usar Automático</a>
+            <a href="#auto" class="btn btn-auto">✨ Usar Automático</a>
           </div>
         </div>
 
@@ -1630,6 +2160,95 @@
         </div>
       </section>
 
+      <!-- ══════════════════════════════════════════════
+           ORÇAMENTO AUTOMÁTICO (embedded from index.html)
+           ══════════════════════════════════════════════ -->
+      <section class="page" id="page-auto">
+        <div class="page-header">
+          <h1 class="page-title">Orçamento Automático</h1>
+          <div class="page-actions">
+            <a href="#quotations" class="btn" data-nav>← Lista</a>
+          </div>
+        </div>
+
+        <div class="auto-tabs">
+          <div class="auto-tab active" data-tab="pedido">Pedido</div>
+          <div class="auto-tab" data-tab="regras">Regras</div>
+          <div class="auto-tab" data-tab="whatsapp">WhatsApp</div>
+        </div>
+
+        <!-- Tab: Pedido -->
+        <div class="auto-tab-panel active" id="auto-panel-pedido">
+          <form id="auto-form">
+            <label class="auto-field-label">Pedido</label>
+            <div class="auto-input-area" id="autoInputArea">
+              <textarea id="autoTextInput" placeholder="Cole o texto ou imagem do pedido aqui (Ctrl+V)…"></textarea>
+              <div class="auto-image-preview" id="autoImagePreview">
+                <img id="autoPreviewImg" src="" alt="imagem colada" />
+                <button type="button" class="auto-remove-img" id="autoRemoveImg" title="Remover imagem">✕</button>
+              </div>
+              <div class="auto-input-hint">Ctrl+V para colar imagem · arraste aqui</div>
+            </div>
+            <label class="auto-field-label" style="margin-top:12px">Prazo de produção <span style="font-weight:400;text-transform:none;color:var(--muted);font-size:11px;">(opcional — substitui o padrão no orçamento)</span></label>
+            <input type="text" id="autoPrazoInput" placeholder="Ex: 10 a 15 dias úteis após confirmação do pagamento" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box;margin-bottom:12px;">
+            <button type="submit" class="auto-btn-primary" id="autoSubmitBtn">Gerar Orçamento</button>
+          </form>
+
+          <div id="auto-extract-status">
+            <div class="spinner"></div>
+            <span>Analisando pedido com IA…</span>
+          </div>
+
+          <div id="auto-queue"></div>
+
+          <div id="auto-error-block"></div>
+        </div>
+
+        <!-- Tab: WhatsApp -->
+        <div class="auto-tab-panel" id="auto-panel-whatsapp">
+          <div class="auto-rules-header">
+            <label class="auto-field-label" style="margin:0">Mensagem do WhatsApp</label>
+            <div class="auto-rules-actions">
+              <button class="auto-btn-secondary" id="btnAutoWaReset">Restaurar padrão</button>
+              <button class="auto-btn-save" id="btnAutoWaSave">Salvar</button>
+            </div>
+          </div>
+          <textarea class="auto-wa-template-textarea" id="autoWaTextarea"></textarea>
+
+          <div class="auto-tags-label">Inserir tag dinâmica</div>
+          <div class="auto-tags-row">
+            <span class="auto-tag-chip" data-tag="(nome)">(nome)</span>
+            <span class="auto-tag-chip" data-tag="(primeiro_nome)">(primeiro_nome)</span>
+            <span class="auto-tag-chip" data-tag="(numero_pedido)">(numero_pedido)</span>
+            <span class="auto-tag-chip" data-tag="(empresa)">(empresa)</span>
+            <span class="auto-tag-chip" data-tag="(link_orcamento)">(link_orcamento)</span>
+            <span class="auto-tag-chip" data-tag="(Saudacao)">(Saudacao)</span>
+          </div>
+
+          <div class="auto-wa-preview-label">Pré-visualização</div>
+          <div class="auto-wa-preview-box" id="autoWaPreview"></div>
+
+          <div class="auto-rules-hint" style="margin-top:10px">
+            Clique nas tags para inserir na mensagem. A prévia usa dados de exemplo.
+          </div>
+          <div class="auto-save-toast" id="autoWaToast">Mensagem salva.</div>
+        </div>
+
+        <!-- Tab: Regras -->
+        <div class="auto-tab-panel" id="auto-panel-regras">
+          <div class="auto-rules-header">
+            <label class="auto-field-label" style="margin:0">Regras de cotação</label>
+            <div class="auto-rules-actions">
+              <button class="auto-btn-secondary" id="btnAutoReset">Restaurar padrão</button>
+              <button class="auto-btn-save" id="btnAutoSave">Salvar</button>
+            </div>
+          </div>
+          <textarea id="autoRulesTextarea"></textarea>
+          <div class="auto-rules-hint">Essas regras são enviadas para a IA em cada orçamento. Edite livremente e clique em Salvar.</div>
+          <div class="auto-save-toast" id="autoSaveToast">Regras salvas.</div>
+        </div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -1654,6 +2273,7 @@ var pageTitles = {
   '#freight': 'Cotação de Frete',
   '#create': 'Novo Orçamento',
   '#quotation-detail': 'Detalhe do Orçamento',
+  '#auto': 'Orçamento Automático',
 };
 
 // ── Quotations State ──
@@ -1959,6 +2579,11 @@ function navigate() {
   // Initialize manual form for create page
   if (hash === '#create') {
     initManualForm();
+  }
+
+  // Initialize auto page
+  if (hash === '#auto') {
+    initAutoPage();
   }
 
   // Close mobile sidebar
@@ -3130,6 +3755,942 @@ function buildWhatsAppLink(publicUrl) {
     + '\n\nAguardamos seu retorno!';
 
   return 'https://wa.me/55' + cleaned + '?text=' + encodeURIComponent(text);
+}
+
+// ══════════════════════════════════════════════
+// ORÇAMENTO AUTOMÁTICO (embedded from index.html)
+// ══════════════════════════════════════════════
+
+// ── Shared state (same localStorage keys as index.html) ──
+const AUTO_DEFAULT_RULES = `Rule 0 — SKU Explícito tem Precedência
+Se o usuário informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
+
+Rule 1 — Quantidade Mínima
+Se a quantidade solicitada for < 30, use 30 (mínimo para produção).
+
+Rule 2 — Quantidade no campo qty
+Use a quantidade EXATA solicitada pelo cliente. Ex: se o cliente pedir 50, use qty:50. NÃO mapeie a quantidade para faixas de preço — o sistema já aplica as faixas automaticamente.
+
+Rule 3 — Regras por Produto
+- Lenços: Sempre cotar LNC-SED-70 (Sedinha 70x70 - econômico) e LNC-CSD-70 (Cetim de Seda 70x70 - premium). Se 55x55cm pedido, cotar 50x50cm.
+- Chapéus: Sempre cotar CHP-PAN, CHP-PNR, CHP-BAM (exceto se SKU especificado).
+- Cangas < 100 unidades: Cotar CNG-SAL-70 e CNG-SAL-100. Cangas >= 100: Cotar CNG-SAL-70, CNG-SAL-100, CNG-VIS-70, CNG-VIS-100.
+- Toalhas (Praia): Sempre duas opções: TWL-210 e TWL-280.
+- Toalhas de Banho: Sempre três opções: TBH-LEM (Leme 375g/m² - econômico), TBH-URC (Urca 405g/m² - intermediário), TBH-IPA (Ipanema 450g/m² - premium).
+- Bonés < 100: Cotar apenas BNE-TAC-VNL. Bonés >= 100: Cotar BNE-TAC-SUB, BNE-BRI, BNE-PRE.
+- Cachecóis: Sempre quatro opções: CHC-SOF-140 (Soft 140x20cm - econômico), CHC-SOF-180 (Soft 180x20cm - intermediário), CHC-LAA-COU (Lã com etiqueta de couro) e CHC-LAA-BOR (Lã com bordado - premium).
+- Ecobags: Sempre três opções: ECO-30, ECO-35, ECO-50.
+
+Rule 4 — Múltiplas Quantidades
+Se o cliente pedir o mesmo produto em quantidades diferentes (ex: "80 e 100 lenços"), inclua TODAS as combinações como linhas separadas no MESMO objeto de pedido. Ex: LNC-SED-70 qty:80, LNC-CSD-70 qty:80, LNC-SED-70 qty:100, LNC-CSD-70 qty:100 — tudo num único objeto do array.
+
+Formato Brindice
+Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
+
+Urgência
+urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
+
+const AUTO_STORAGE_KEY = 'aspen_rules';
+const loadAutoRules = () => localStorage.getItem(AUTO_STORAGE_KEY) || AUTO_DEFAULT_RULES;
+const saveAutoRules = t => localStorage.setItem(AUTO_STORAGE_KEY, t);
+
+const AUTO_WA_DEFAULT = `Olá, (nome)! Segue seu orçamento (numero_pedido). Qualquer dúvida estamos à disposição. — (empresa)`;
+const AUTO_WA_KEY = 'aspen_wa_template';
+const loadAutoWaTemplate = () => localStorage.getItem(AUTO_WA_KEY) || AUTO_WA_DEFAULT;
+const saveAutoWaTemplate = t => localStorage.setItem(AUTO_WA_KEY, t);
+
+// ── Helper: fmtPhone (not in dashboard already) ──
+function fmtPhone(phone) {
+  if (!phone) return '';
+  const d = (phone + '').replace(/\D/g, '')
+    .replace(/^55(\d{10,11})$/, '$1')
+    .replace(/^0(\d+)$/, '$1');
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return phone;
+}
+
+// ── Helper: capitalize ──
+function capitalize(str) {
+  if (!str) return '';
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ── Draft diff renderer ──
+function renderAutoDraftDiff(current, proposed) {
+  const changes = [];
+  const curItems = current.items || [];
+  const propItems = proposed.items || [];
+
+  if (current.nome !== proposed.nome && proposed.nome) {
+    changes.push('<div class="auto-diff-change"><span class="auto-diff-label">Nome:</span> <span class="auto-diff-old">' + escapeHtml(current.nome) + '</span> → <span class="auto-diff-new">' + escapeHtml(proposed.nome) + '</span></div>');
+  }
+  if (current.email !== proposed.email && proposed.email) {
+    changes.push('<div class="auto-diff-change"><span class="auto-diff-label">Email:</span> <span class="auto-diff-old">' + escapeHtml(current.email) + '</span> → <span class="auto-diff-new">' + escapeHtml(proposed.email) + '</span></div>');
+  }
+  if (current.telefone !== proposed.telefone && proposed.telefone) {
+    changes.push('<div class="auto-diff-change"><span class="auto-diff-label">Tel:</span> <span class="auto-diff-old">' + escapeHtml(current.telefone) + '</span> → <span class="auto-diff-new">' + escapeHtml(proposed.telefone) + '</span></div>');
+  }
+  if (current.urgente !== proposed.urgente) {
+    changes.push('<div class="auto-diff-change"><span class="auto-diff-label">Urgência:</span> <span class="auto-diff-old">' + (current.urgente ? 'Sim' : 'Não') + '</span> → <span class="auto-diff-new">' + (proposed.urgente ? 'Sim' : 'Não') + '</span></div>');
+  }
+
+  const removedItems = curItems.filter(ci => !propItems.some(pi => pi.item_code === ci.item_code));
+  const addedItems = propItems.filter(pi => !curItems.some(ci => ci.item_code === pi.item_code));
+  const modifiedItems = propItems.filter(pi => {
+    const ci = curItems.find(c => c.item_code === pi.item_code);
+    return ci && ci.qty !== pi.qty;
+  });
+
+  for (const item of removedItems) {
+    changes.push('<div class="auto-diff-change auto-diff-removed"><span class="auto-diff-label">Removido:</span> ' + escapeHtml(item.item_code) + ' × ' + item.qty + '</div>');
+  }
+  for (const item of addedItems) {
+    changes.push('<div class="auto-diff-change auto-diff-added"><span class="auto-diff-label">Adicionado:</span> ' + escapeHtml(item.item_code) + ' × ' + item.qty + '</div>');
+  }
+  for (const item of modifiedItems) {
+    const ci = curItems.find(c => c.item_code === item.item_code);
+    changes.push('<div class="auto-diff-change auto-diff-modified"><span class="auto-diff-label">Modificado:</span> ' + escapeHtml(item.item_code) + ' <span class="auto-diff-old">× ' + ci.qty + '</span> → <span class="auto-diff-new">× ' + item.qty + '</span></div>');
+  }
+
+  if (changes.length === 0) {
+    return '<div class="auto-diff-change">Nenhuma mudança detectada.</div>';
+  }
+  return changes.join('');
+}
+
+// ── WhatsApp template renderer ──
+function renderAutoWaTemplate(template, nome, numeroPedido, linkOrcamento) {
+  const primeiroNome = (nome || '').split(' ')[0];
+  const hora = new Date().getHours();
+  let saudacao = 'Boa noite';
+  if (hora >= 5 && hora < 12) saudacao = 'Bom dia';
+  else if (hora >= 12 && hora < 18) saudacao = 'Boa tarde';
+  return template
+    .replace(/\(Saudacao\)/gi, saudacao)
+    .replace(/\(nome\)/g, nome || '')
+    .replace(/\(primeiro_nome\)/g, primeiroNome)
+    .replace(/\(numero_pedido\)/g, numeroPedido || '')
+    .replace(/\(empresa\)/g, 'Aspen Estamparia')
+    .replace(/\(link_orcamento\)/g, linkOrcamento || '');
+}
+
+function buildAutoWhatsApp(telefone, nome, quotationId, publicUrl) {
+  if (!telefone) return null;
+  const digits = telefone.replace(/\D/g, '')
+    .replace(/^55(\d{10,11})$/, '$1');
+  if (digits.length < 10) return null;
+  const waNumber = '55' + digits;
+  if (!publicUrl) publicUrl = location.origin + '/api/view?q=' + encodeURIComponent(quotationId);
+  const template = loadAutoWaTemplate();
+  const text = renderAutoWaTemplate(template, nome, quotationId, publicUrl);
+  return 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent(text);
+}
+
+// ── Auto pricing lookup ──
+let autoPricingController = null;
+
+async function autoFetchPricing(drafts, urgent) {
+  if (autoPricingController) autoPricingController.abort();
+  autoPricingController = new AbortController();
+
+  const allItems = [];
+  const itemRefs = [];
+  for (let di = 0; di < drafts.length; di++) {
+    const items = drafts[di].edited.items;
+    for (let ii = 0; ii < items.length; ii++) {
+      const it = items[ii];
+      if (it.item_code && it.qty > 0) {
+        allItems.push({ item_code: it.item_code, qty: it.qty });
+        itemRefs.push({ draftIdx: di, itemIdx: ii });
+      }
+    }
+  }
+  if (allItems.length === 0) return;
+
+  try {
+    const res = await fetch('/api/pricing-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: allItems, urgent }),
+      signal: autoPricingController.signal,
+    });
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.items)) return;
+
+    for (let i = 0; i < data.items.length && i < itemRefs.length; i++) {
+      const ref = itemRefs[i];
+      if (!drafts[ref.draftIdx].edited.items[ref.itemIdx]._rateManual) {
+        drafts[ref.draftIdx].edited.items[ref.itemIdx].rate = data.items[i].rate;
+      }
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    console.error('[autoFetchPricing]', err);
+  }
+}
+
+async function refreshAutoDraftPricing(targetDrafts) {
+  const nonUrgent = targetDrafts.filter(d => !d.edited.urgente);
+  const urgent = targetDrafts.filter(d => d.edited.urgente);
+  if (nonUrgent.length > 0) {
+    await autoFetchPricing(nonUrgent, false);
+    updateAutoPricingDisplay(nonUrgent);
+  }
+  if (urgent.length > 0) {
+    await autoFetchPricing(urgent, true);
+    updateAutoPricingDisplay(urgent);
+  }
+}
+
+function updateAutoPricingDisplay(drafts) {
+  for (const draft of drafts) {
+    const card = document.getElementById('auto-card-' + draft.index);
+    if (!card) continue;
+    const rows = card.querySelectorAll('.auto-items-tbody tr[draggable]');
+    draft.edited.items.forEach((item, idx) => {
+      const row = rows[idx];
+      if (!row) return;
+      const rateInput = row.querySelector('.auto-draft-rate');
+      const rateDisplay = row.querySelector('.auto-rate-display');
+      if (item._rateManual) {
+        if (rateDisplay) rateDisplay.textContent = formatBRL(rateInput?.value || item.rate);
+      } else {
+        if (rateInput) rateInput.value = item.rate != null && item.rate > 0 ? item.rate : '';
+        if (rateDisplay) rateDisplay.textContent = formatBRL(item.rate);
+      }
+    });
+  }
+}
+
+// ── Drafts persistence ──
+const AUTO_DRAFTS_KEY = 'aspen_drafts';
+function saveAutoDrafts(drafts) {
+  try { localStorage.setItem(AUTO_DRAFTS_KEY, JSON.stringify(drafts)); } catch (e) {}
+}
+function clearAutoDrafts() { localStorage.removeItem(AUTO_DRAFTS_KEY); }
+function restoreAutoDrafts() {
+  let saved;
+  try { saved = localStorage.getItem(AUTO_DRAFTS_KEY); } catch (e) { return; }
+  if (!saved) return;
+  let drafts;
+  try { drafts = JSON.parse(saved); } catch (e) { clearAutoDrafts(); return; }
+  if (!Array.isArray(drafts) || drafts.length === 0) { clearAutoDrafts(); return; }
+  const pending = drafts.filter(d => !d.approved && !d.discarded);
+  if (pending.length === 0) { clearAutoDrafts(); return; }
+
+  const restore = confirm('Você tem ' + pending.length + ' rascunho(s) não finalizado(s) da última sessão. Deseja restaurá-los para revisão?');
+  if (!restore) { clearAutoDrafts(); return; }
+  drafts.forEach(d => { d.approved = false; });
+  const queueEl = document.getElementById('auto-queue');
+  queueEl.innerHTML = '';
+  renderAutoDraftCards(drafts);
+  refreshAutoDraftPricing(drafts);
+  queueEl.classList.add('visible');
+
+  const btn = document.getElementById('autoSubmitBtn');
+  btn.textContent = 'Aguardando revisão (' + drafts.filter(d => !d.discarded).length + ' rascunhos restaurados)';
+  btn.disabled = false;
+
+  (async () => {
+    await new Promise(resolve => {
+      const check = setInterval(() => {
+        const pending2 = drafts.filter(d => !d.approved && !d.discarded);
+        if (pending2.length === 0) {
+          clearInterval(check);
+          btn.textContent = 'Processando… (0/' + drafts.filter(d => d.approved).length + ')';
+          resolve();
+        } else {
+          btn.textContent = 'Aguardando revisão (' + pending2.length + ' rascunhos restantes)';
+        }
+      }, 300);
+    });
+    const approvedDrafts = drafts.filter(d => d.approved);
+    if (approvedDrafts.length === 0) {
+      clearAutoDrafts();
+      alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
+      btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      return;
+    }
+    const prazoVal = document.getElementById('autoPrazoInput').value.trim();
+    for (let di = 0; di < approvedDrafts.length; di++) {
+      const draft = approvedDrafts[di];
+      const i = draft.index;
+      setAutoCardProcessing(i, approvedDrafts.length);
+      btn.textContent = 'Processando… (' + (di + 1) + '/' + approvedDrafts.length + ')';
+      const orderPayload = {
+        nome: draft.edited.nome,
+        email: draft.edited.email || null,
+        telefone: draft.edited.telefone || null,
+        urgente: draft.edited.urgente,
+        items: draft.edited.items
+          .filter(it => it.item_code && it.qty > 0)
+          .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate, manual_rate: it._rateManual === true })),
+        prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
+      };
+      try {
+        const res = await fetch('/api/orcamento', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ extracted: orderPayload }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setAutoCardError(i, data.error || 'Falha desconhecida.');
+        } else {
+          setAutoCardDone(i, data, draft.edited.telefone, draft.edited.email);
+        }
+      } catch (err) {
+        setAutoCardError(i, err.message);
+      }
+    }
+    clearAutoDrafts();
+    btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+  })();
+}
+
+// ── Auto queue UI helpers ──
+function resetAutoUI() {
+  const q = document.getElementById('auto-queue');
+  q.classList.remove('visible');
+  q.innerHTML = '';
+  const es = document.getElementById('auto-extract-status');
+  es.classList.remove('visible');
+  const eb = document.getElementById('auto-error-block');
+  eb.classList.remove('visible');
+  eb.innerHTML = '';
+}
+
+function showAutoError(title, msg) {
+  const eb = document.getElementById('auto-error-block');
+  eb.innerHTML = '<div class="auto-error-title">' + escapeHtml(title) + '</div><p>' + escapeHtml(msg) + '</p>';
+  eb.classList.add('visible');
+}
+
+function createAutoCard(order, index, total) {
+  const card = document.createElement('div');
+  card.className = 'auto-queue-card';
+  card.id = 'auto-card-' + index;
+
+  const displayEmail = (order.email || '').toLowerCase();
+  const displayPhone = fmtPhone(order.telefone);
+  const sub = [displayEmail, displayPhone].filter(Boolean).join(' · ');
+  const badge = (index + 1) + '/' + total;
+
+  card.innerHTML = ''
+    + '<div class="auto-card-header">'
+    + '<div class="auto-card-icon" id="auto-icon-' + index + '">○</div>'
+    + '<div class="auto-card-name" id="auto-name-' + index + '">' + capitalize(order.nome) + (order.urgente ? ' <span class="auto-urgente-badge">Urgente</span>' : '') + '</div>'
+    + '<div class="auto-card-badge" id="auto-badge-' + index + '">' + badge + ' · aguardando</div>'
+    + '</div>'
+    + (sub ? '<div class="auto-card-sub" id="auto-sub-' + index + '">' + sub + '</div>' : '<div class="auto-card-sub" id="auto-sub-' + index + '"></div>')
+    + '<div class="auto-card-result" id="auto-result-' + index + '" style="display:none"></div>';
+  return card;
+}
+
+function setAutoCardProcessing(index, total) {
+  const card = document.getElementById('auto-card-' + index);
+  card.className = 'auto-queue-card processing';
+  document.getElementById('auto-icon-' + index).innerHTML = '<div class="spinner"></div>';
+  const badge = document.getElementById('auto-badge-' + index);
+  badge.textContent = (index + 1) + '/' + total + ' · em processo';
+  badge.className = 'auto-card-badge processing';
+}
+
+function setAutoCardDone(index, data, telefone, email) {
+  const card = document.getElementById('auto-card-' + index);
+  card.className = 'auto-queue-card done';
+  const iconEl = document.getElementById('auto-icon-' + index);
+  iconEl.className = 'auto-card-icon done-icon';
+  iconEl.textContent = '✓';
+  const nameEl = document.getElementById('auto-name-' + index);
+  if (nameEl && data.cliente) {
+    const urgenteBadge = nameEl.querySelector('.auto-urgente-badge');
+    nameEl.textContent = capitalize(data.cliente);
+    if (urgenteBadge) nameEl.appendChild(urgenteBadge);
+  }
+  const subEl = document.getElementById('auto-sub-' + index);
+  if (subEl) {
+    const subParts = [data.quotation_id, (email || '').toLowerCase(), fmtPhone(telefone)].filter(Boolean);
+    subEl.textContent = subParts.join(' · ');
+  }
+  const badge = document.getElementById('auto-badge-' + index);
+  if (data.customer_new !== undefined) {
+    const cls = data.customer_new ? 'new' : 'returning';
+    const label = data.customer_new ? 'Cliente novo' : 'Cliente antigo';
+    badge.innerHTML = '<span class="auto-customer-dot ' + cls + '"></span>' + label;
+    badge.className = 'auto-card-badge ' + cls;
+  } else {
+    badge.textContent = '';
+    badge.className = 'auto-card-badge';
+  }
+
+  let itemsHtml = '<table class="auto-items-table"><thead><tr><th>SKU</th><th>Qtd</th><th>R$/un</th><th>Total</th></tr></thead><tbody>';
+  for (const item of data.items) {
+    const total = (item.qty * item.rate).toFixed(2).replace('.', ',');
+    const rate  = parseFloat(item.rate).toFixed(2).replace('.', ',');
+    itemsHtml += '<tr><td>' + escapeHtml(item.sku) + '</td><td>' + item.qty + '</td><td>R$ ' + rate + '</td><td>R$ ' + total + '</td></tr>';
+  }
+  itemsHtml += '</tbody></table>';
+
+  const publicUrl = data.short_url || (location.origin + '/api/view?q=' + encodeURIComponent(data.quotation_id));
+  const waUrl = buildAutoWhatsApp(telefone, data.cliente, data.quotation_id, publicUrl);
+  const pdfBtn = '<a class="auto-pdf-link" href="' + escapeHtml(publicUrl) + '" target="_blank">Abrir orçamento →</a>';
+  const waBtn = waUrl
+    ? '<a class="auto-wa-link" href="' + escapeHtml(waUrl) + '" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg> Enviar WhatsApp</a>'
+    : '';
+  const frappeBtn = data.quotation_id
+    ? '<a class="auto-pdf-link" href="https://aspenestamparia.l.frappe.cloud/desk/quotation/' + encodeURIComponent(data.quotation_id) + '" target="_blank">Ver no Frappe ↗</a>'
+    : '';
+  const resultEl = document.getElementById('auto-result-' + index);
+  resultEl.style.display = '';
+  resultEl.innerHTML = itemsHtml + '<div class="auto-action-buttons">' + pdfBtn + waBtn + frappeBtn + '</div>';
+}
+
+function setAutoCardError(index, msg) {
+  const card = document.getElementById('auto-card-' + index);
+  card.className = 'auto-queue-card error';
+  const iconEl = document.getElementById('auto-icon-' + index);
+  iconEl.className = 'auto-card-icon error-icon';
+  iconEl.textContent = '✕';
+  const badge = document.getElementById('auto-badge-' + index);
+  badge.textContent = 'erro';
+  badge.className = 'auto-card-badge';
+  document.getElementById('auto-sub-' + index).textContent = msg;
+}
+
+// ── Render draft cards ──
+function renderAutoDraftCards(drafts) {
+  const queueEl = document.getElementById('auto-queue');
+  const total = drafts.length;
+
+  for (const draft of drafts) {
+    const i = draft.index;
+    const card = document.createElement('div');
+    card.className = 'auto-queue-card auto-draft';
+    card.id = 'auto-card-' + i;
+
+    const displayEmail = (draft.edited.email || '').toLowerCase();
+    const displayPhone = fmtPhone(draft.edited.telefone);
+    const badge = (i + 1) + '/' + total;
+
+    const itemsHtml = draft.edited.items.map((it, ii) => ''
+      + '<tr draggable="true" data-index="' + ii + '">'
+      + '<td class="auto-drag-handle">⠿</td>'
+      + '<td><input class="auto-draft-sku" data-index="' + ii + '" value="' + escapeHtml(it.item_code) + '" placeholder="SKU"></td>'
+      + '<td><input class="auto-draft-qty" data-index="' + ii + '" type="number" min="1" value="' + it.qty + '" style="width:80px"></td>'
+      + '<td><div class="auto-rate-cell"><input class="auto-draft-rate" data-index="' + ii + '" type="number" step="any" min="0" value="' + (it.rate || '') + '" placeholder="—" style="width:72px"><span class="auto-rate-display" data-index="' + ii + '">' + formatBRL(it.rate) + '</span></div></td>'
+      + '<td><button type="button" class="auto-draft-remove-item" data-index="' + ii + '">×</button></td>'
+      + '</tr>'
+    ).join('');
+
+    card.innerHTML = ''
+      + '<div class="auto-card-header">'
+      + '<div class="auto-card-icon" id="auto-icon-' + i + '">✎</div>'
+      + '<div class="auto-card-name">'
+      + '<input class="auto-draft-nome" value="' + escapeHtml(draft.edited.nome) + '" placeholder="Nome do cliente">'
+      + '<label class="auto-urgente-toggle"><input type="checkbox" class="auto-draft-urgente" ' + (draft.edited.urgente ? 'checked' : '') + '> Urgente</label>'
+      + '</div>'
+      + '<div class="auto-card-badge" id="auto-badge-' + i + '">' + badge + ' · revisão</div>'
+      + '</div>'
+      + '<div class="auto-card-sub auto-draft-contacts">'
+      + '<input class="auto-draft-email" value="' + escapeHtml(displayEmail) + '" placeholder="email@exemplo.com">'
+      + '<input class="auto-draft-telefone" value="' + escapeHtml(displayPhone) + '" placeholder="(99) 99999-9999">'
+      + '</div>'
+      + '<div class="auto-draft-items">'
+      + '<table class="auto-items-table">'
+      + '<thead><tr><th></th><th>SKU</th><th>Qtd</th><th>R$/un</th><th></th></tr></thead>'
+      + '<tbody class="auto-items-tbody">' + itemsHtml + '</tbody>'
+      + '</table>'
+      + '<button type="button" class="auto-draft-add-item">+ Adicionar item</button>'
+      + '</div>'
+      + '<div class="auto-draft-prompt">'
+      + '<textarea class="auto-draft-prompt-input" placeholder="Descreva a mudança: ex: adicione ecobags, remova as cangas, aumente a qtd do SKU X para 200…" rows="2"></textarea>'
+      + '<button type="button" class="auto-draft-prompt-submit">Propor mudanças</button>'
+      + '<div class="auto-draft-prompt-preview" style="display:none">'
+      + '<div class="auto-draft-prompt-diff"></div>'
+      + '<div class="auto-draft-prompt-actions">'
+      + '<button type="button" class="auto-draft-prompt-apply">✓ Aplicar</button>'
+      + '<button type="button" class="auto-draft-prompt-reject">✕ Rejeitar</button>'
+      + '</div>'
+      + '</div>'
+      + '<div class="auto-draft-prompt-status" style="display:none"></div>'
+      + '</div>'
+      + '<div class="auto-draft-actions">'
+      + '<button type="button" class="auto-draft-approve" data-index="' + i + '">✓ Aprovar e criar</button>'
+      + '<button type="button" class="auto-draft-discard" data-index="' + i + '">✕ Descartar</button>'
+      + '</div>'
+      + '<div class="auto-card-result" id="auto-result-' + i + '" style="display:none"></div>';
+
+    queueEl.appendChild(card);
+
+    // Drag-and-drop
+    const tbody = card.querySelector('.auto-items-tbody');
+    tbody.addEventListener('dragstart', (e) => {
+      const tr = e.target.closest('tr[draggable]');
+      if (!tr) { e.preventDefault(); return; }
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', tr.dataset.index);
+      tr.classList.add('auto-dragging');
+    });
+    tbody.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      const tr = e.target.closest('tr[draggable]');
+      if (!tr) return;
+      tbody.querySelectorAll('tr.auto-drag-over').forEach(r => r.classList.remove('auto-drag-over'));
+      tr.classList.add('auto-drag-over');
+      e.dataTransfer.dropEffect = 'move';
+    });
+    tbody.addEventListener('dragleave', (e) => {
+      const tr = e.target.closest('tr[draggable]');
+      if (tr) tr.classList.remove('auto-drag-over');
+    });
+    tbody.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const targetTr = e.target.closest('tr[draggable]');
+      if (!targetTr || Number.isNaN(sourceIndex)) return;
+      const targetIndex = parseInt(targetTr.dataset.index, 10);
+      if (sourceIndex === targetIndex) return;
+      const [moved] = draft.edited.items.splice(sourceIndex, 1);
+      draft.edited.items.splice(targetIndex, 0, moved);
+      const sourceRow = tbody.querySelector('tr[data-index="' + sourceIndex + '"]');
+      if (sourceRow) {
+        if (sourceIndex < targetIndex) targetTr.after(sourceRow);
+        else targetTr.before(sourceRow);
+      }
+      tbody.querySelectorAll('tr[draggable]').forEach((row, idx) => {
+        row.dataset.index = idx;
+        row.querySelectorAll('[data-index]').forEach(el => { el.dataset.index = idx; });
+      });
+      tbody.querySelectorAll('tr').forEach(r => { r.classList.remove('auto-dragging', 'auto-drag-over'); });
+      saveAutoDrafts(drafts);
+    });
+    tbody.addEventListener('dragend', () => {
+      tbody.querySelectorAll('tr').forEach(r => { r.classList.remove('auto-dragging', 'auto-drag-over'); });
+    });
+
+    // Sync item
+    const syncItem = (ii, changedField) => {
+      const skuEl = card.querySelector('.auto-draft-sku[data-index="' + ii + '"]');
+      const qtyEl = card.querySelector('.auto-draft-qty[data-index="' + ii + '"]');
+      const rateEl = card.querySelector('.auto-draft-rate[data-index="' + ii + '"]');
+      if (skuEl) {
+        const newSku = skuEl.value.trim();
+        if (draft.edited.items[ii].item_code !== newSku) {
+          delete draft.edited.items[ii]._rateManual;
+          draft.edited.items[ii].rate = null;
+        }
+        draft.edited.items[ii].item_code = newSku;
+      }
+      if (qtyEl) {
+        const newQty = parseInt(qtyEl.value, 10) || 0;
+        if (draft.edited.items[ii].qty !== newQty) {
+          delete draft.edited.items[ii]._rateManual;
+          draft.edited.items[ii].rate = null;
+        }
+        draft.edited.items[ii].qty = newQty;
+      }
+      if (rateEl && changedField === 'rate') {
+        const val = rateEl.value.trim();
+        if (val !== '') {
+          draft.edited.items[ii].rate = parseFloat(val.replace(',', '.')) || 0;
+          draft.edited.items[ii]._rateManual = true;
+        } else {
+          draft.edited.items[ii].rate = null;
+          delete draft.edited.items[ii]._rateManual;
+        }
+      }
+      const displayEl = card.querySelector('.auto-rate-display[data-index="' + ii + '"]');
+      if (displayEl) displayEl.textContent = formatBRL(draft.edited.items[ii]?.rate);
+      saveAutoDrafts(drafts);
+    };
+
+    // Customer fields
+    const nomeEl = card.querySelector('.auto-draft-nome');
+    const emailEl = card.querySelector('.auto-draft-email');
+    const telEl = card.querySelector('.auto-draft-telefone');
+    const urgEl = card.querySelector('.auto-draft-urgente');
+    nomeEl.addEventListener('input', () => { draft.edited.nome = nomeEl.value.trim(); saveAutoDrafts(drafts); });
+    emailEl.addEventListener('input', () => { draft.edited.email = emailEl.value.trim(); saveAutoDrafts(drafts); });
+    telEl.addEventListener('input', () => { draft.edited.telefone = telEl.value.trim(); saveAutoDrafts(drafts); });
+    urgEl.addEventListener('change', async () => {
+      draft.edited.urgente = urgEl.checked;
+      await refreshAutoDraftPricing([draft]);
+      saveAutoDrafts(drafts);
+    });
+
+    // Item inputs
+    card.querySelectorAll('.auto-draft-sku, .auto-draft-qty, .auto-draft-rate').forEach(el => {
+      el.addEventListener('input', () => {
+        const changedField = el.classList.contains('auto-draft-rate') ? 'rate' : el.classList.contains('auto-draft-qty') ? 'qty' : 'sku';
+        syncItem(parseInt(el.dataset.index, 10), changedField);
+      });
+      el.addEventListener('change', async () => {
+        const ii = parseInt(el.dataset.index, 10);
+        const item = draft.edited.items[ii];
+        if (el.classList.contains('auto-draft-sku') || el.classList.contains('auto-draft-qty') || !item?._rateManual) {
+          await refreshAutoDraftPricing([draft]);
+          saveAutoDrafts(drafts);
+        }
+      });
+    });
+
+    // Remove item
+    card.querySelectorAll('.auto-draft-remove-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ii = parseInt(btn.dataset.index, 10);
+        draft.edited.items.splice(ii, 1);
+        saveAutoDrafts(drafts);
+        queueEl.innerHTML = '';
+        renderAutoDraftCards(drafts);
+      });
+    });
+
+    // Add item
+    card.querySelector('.auto-draft-add-item').addEventListener('click', () => {
+      draft.edited.items.push({ item_code: '', qty: 30 });
+      saveAutoDrafts(drafts);
+      queueEl.innerHTML = '';
+      renderAutoDraftCards(drafts);
+    });
+
+    // Approve
+    card.querySelector('.auto-draft-approve').addEventListener('click', () => {
+      const itemsValid = draft.edited.items.length > 0 && draft.edited.items.some(it => it.item_code && it.qty > 0);
+      if (!itemsValid) {
+        alert('Este rascunho não tem itens válidos. Adicione ao menos um item com SKU e quantidade > 0.');
+        return;
+      }
+      if (!draft.edited.nome || !draft.edited.nome.trim()) {
+        alert('Informe o nome do cliente antes de aprovar.');
+        return;
+      }
+      draft.approved = true;
+      saveAutoDrafts(drafts);
+      const iconEl = document.getElementById('auto-icon-' + i);
+      iconEl.textContent = '✓';
+      iconEl.className = 'auto-card-icon done-icon';
+      card.className = 'auto-queue-card done';
+      card.querySelector('.auto-draft-actions').style.display = 'none';
+      card.querySelectorAll('input').forEach(inp => { inp.disabled = true; });
+      card.querySelectorAll('.auto-draft-add-item, .auto-draft-remove-item').forEach(b => { b.disabled = true; });
+    });
+
+    // Discard
+    card.querySelector('.auto-draft-discard').addEventListener('click', () => {
+      draft.discarded = true;
+      saveAutoDrafts(drafts);
+      card.style.display = 'none';
+    });
+
+    // Prompt box
+    const promptInput = card.querySelector('.auto-draft-prompt-input');
+    const promptSubmit = card.querySelector('.auto-draft-prompt-submit');
+    const promptPreview = card.querySelector('.auto-draft-prompt-preview');
+    const promptDiff = card.querySelector('.auto-draft-prompt-diff');
+    const promptApply = card.querySelector('.auto-draft-prompt-apply');
+    const promptReject = card.querySelector('.auto-draft-prompt-reject');
+    const promptStatus = card.querySelector('.auto-draft-prompt-status');
+    let proposedDraft = null;
+
+    promptSubmit.addEventListener('click', async () => {
+      const cmd = promptInput.value.trim();
+      if (!cmd) return;
+      promptSubmit.disabled = true;
+      promptSubmit.textContent = 'Processando…';
+      promptStatus.style.display = '';
+      promptStatus.textContent = 'Interpretando comando…';
+      promptPreview.style.display = 'none';
+      try {
+        const res = await fetch('/api/edit-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: cmd, currentDraft: draft.edited }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          promptStatus.textContent = 'Erro: ' + (data.error || 'Falha na edição.');
+          return;
+        }
+        proposedDraft = data.proposed;
+        promptStatus.style.display = 'none';
+        promptPreview.style.display = '';
+        promptDiff.innerHTML = renderAutoDraftDiff(draft.edited, proposedDraft);
+      } catch (err) {
+        promptStatus.textContent = 'Erro de conexão: ' + err.message;
+      } finally {
+        promptSubmit.disabled = false;
+        promptSubmit.textContent = 'Propor mudanças';
+      }
+    });
+
+    promptApply.addEventListener('click', async () => {
+      if (!proposedDraft) return;
+      draft.edited.nome = proposedDraft.nome || draft.edited.nome;
+      draft.edited.email = proposedDraft.email || draft.edited.email;
+      draft.edited.telefone = proposedDraft.telefone || draft.edited.telefone;
+      draft.edited.urgente = proposedDraft.urgente || false;
+      draft.edited.items = (proposedDraft.items || []).map(it => {
+        const old = draft.edited.items.find(o => o.item_code === it.item_code && o.qty === it.qty);
+        if (old?._rateManual) {
+          return { item_code: it.item_code || '', qty: it.qty || 0, rate: old.rate, _rateManual: true };
+        }
+        return { item_code: it.item_code || '', qty: it.qty || 0, rate: null };
+      });
+      promptPreview.style.display = 'none';
+      promptInput.value = '';
+      proposedDraft = null;
+      queueEl.innerHTML = '';
+      renderAutoDraftCards(drafts);
+      await refreshAutoDraftPricing([draft]);
+      saveAutoDrafts(drafts);
+    });
+
+    promptReject.addEventListener('click', () => {
+      promptPreview.style.display = 'none';
+      promptInput.value = '';
+      proposedDraft = null;
+    });
+  }
+}
+
+// ── Auto form submit ──
+function initAutoPage() {
+  if (window._autoPageInited) return;
+  window._autoPageInited = true;
+
+  // Tabs
+  document.querySelectorAll('#page-auto .auto-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('#page-auto .auto-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('#page-auto .auto-tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('auto-panel-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Rules
+  const rulesTextarea = document.getElementById('autoRulesTextarea');
+  rulesTextarea.value = loadAutoRules();
+  document.getElementById('btnAutoSave').addEventListener('click', () => {
+    saveAutoRules(rulesTextarea.value);
+    const toast = document.getElementById('autoSaveToast');
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2000);
+  });
+  document.getElementById('btnAutoReset').addEventListener('click', () => {
+    if (confirm('Restaurar as regras padrão?')) {
+      rulesTextarea.value = AUTO_DEFAULT_RULES;
+      saveAutoRules(AUTO_DEFAULT_RULES);
+    }
+  });
+
+  // WhatsApp template
+  const waTextarea = document.getElementById('autoWaTextarea');
+  const waPreview = document.getElementById('autoWaPreview');
+  function updateWaPreview() {
+    waPreview.textContent = renderAutoWaTemplate(waTextarea.value, 'Maria Silva', 'SAL-0042');
+  }
+  waTextarea.value = loadAutoWaTemplate();
+  updateWaPreview();
+  waTextarea.addEventListener('input', updateWaPreview);
+  document.querySelectorAll('#page-auto .auto-tag-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const tag = chip.dataset.tag;
+      const start = waTextarea.selectionStart;
+      const end = waTextarea.selectionEnd;
+      const val = waTextarea.value;
+      waTextarea.value = val.slice(0, start) + tag + val.slice(end);
+      waTextarea.selectionStart = waTextarea.selectionEnd = start + tag.length;
+      waTextarea.focus();
+      updateWaPreview();
+    });
+  });
+  document.getElementById('btnAutoWaSave').addEventListener('click', () => {
+    saveAutoWaTemplate(waTextarea.value);
+    const toast = document.getElementById('autoWaToast');
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2000);
+  });
+  document.getElementById('btnAutoWaReset').addEventListener('click', () => {
+    if (confirm('Restaurar a mensagem padrão?')) {
+      waTextarea.value = AUTO_WA_DEFAULT;
+      saveAutoWaTemplate(AUTO_WA_DEFAULT);
+      updateWaPreview();
+    }
+  });
+
+  // Image handling
+  let autoFileData = null, autoFileMime = null;
+  const inputArea = document.getElementById('autoInputArea');
+  const textInput = document.getElementById('autoTextInput');
+  const imagePreview = document.getElementById('autoImagePreview');
+  const previewImg = document.getElementById('autoPreviewImg');
+
+  function setImage(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    autoFileMime = file.type;
+    const reader = new FileReader();
+    reader.onload = e => {
+      autoFileData = e.target.result.split(',')[1];
+      previewImg.src = e.target.result;
+      imagePreview.classList.add('visible');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearImage() {
+    autoFileData = null; autoFileMime = null;
+    previewImg.src = '';
+    imagePreview.classList.remove('visible');
+  }
+
+  document.getElementById('autoRemoveImg').addEventListener('click', clearImage);
+
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) { e.preventDefault(); setImage(item.getAsFile()); return; }
+    }
+  });
+
+  inputArea.addEventListener('dragover', e => { e.preventDefault(); inputArea.classList.add('drag-over'); });
+  inputArea.addEventListener('dragleave', () => inputArea.classList.remove('drag-over'));
+  inputArea.addEventListener('drop', e => {
+    e.preventDefault(); inputArea.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) setImage(e.dataTransfer.files[0]);
+  });
+
+  // Form submit
+  document.getElementById('auto-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const text = textInput.value.trim();
+    if (!text && !autoFileData) { alert('Cole o texto ou uma imagem do pedido.'); return; }
+
+    const btn = document.getElementById('autoSubmitBtn');
+    btn.disabled = true; btn.textContent = 'Analisando…';
+    resetAutoUI();
+
+    const extractStatusEl = document.getElementById('auto-extract-status');
+    extractStatusEl.classList.add('visible');
+    let orders;
+
+    try {
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: text || null,
+          imageBase64: autoFileData || null,
+          imageMimeType: autoFileMime || null,
+          rules: loadAutoRules(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        extractStatusEl.classList.remove('visible');
+        showAutoError('Erro na extração', data.error || 'Falha desconhecida.');
+        btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+        return;
+      }
+      orders = data.orders;
+    } catch (err) {
+      extractStatusEl.classList.remove('visible');
+      showAutoError('Erro de conexão', err.message);
+      btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      return;
+    }
+
+    extractStatusEl.classList.remove('visible');
+
+    // Phase 2: Draft review
+    const prazoVal = document.getElementById('autoPrazoInput').value.trim();
+    const drafts = orders.map((order, i) => ({
+      index: i,
+      original: { ...order },
+      edited: {
+        nome: order.nome,
+        email: order.email || '',
+        telefone: order.telefone || '',
+        urgente: order.urgente || false,
+        items: (order.items || []).map(it => ({ item_code: it.item_code || '', qty: it.qty || 0, rate: it.rate || null })),
+        prazo_producao: prazoVal || '',
+      },
+      approved: false,
+      discarded: false,
+    }));
+    const total = orders.length;
+
+    const queueEl = document.getElementById('auto-queue');
+    queueEl.innerHTML = '';
+    await refreshAutoDraftPricing(drafts);
+    renderAutoDraftCards(drafts);
+    queueEl.classList.add('visible');
+    saveAutoDrafts(drafts);
+
+    btn.textContent = 'Aguardando revisão (' + drafts.filter(d => !d.discarded).length + ' rascunhos)';
+
+    await new Promise(resolve => {
+      const check = setInterval(() => {
+        const pending = drafts.filter(d => !d.approved && !d.discarded);
+        if (pending.length === 0) {
+          clearInterval(check);
+          btn.textContent = 'Processando… (0/' + drafts.filter(d => d.approved).length + ')';
+          resolve();
+        } else {
+          btn.textContent = 'Aguardando revisão (' + pending.length + ' rascunhos restantes)';
+        }
+      }, 300);
+    });
+
+    const approvedDrafts = drafts.filter(d => d.approved);
+    if (approvedDrafts.length === 0) {
+      alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
+      btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      return;
+    }
+
+    // Phase 3: Create quotations
+    for (let di = 0; di < approvedDrafts.length; di++) {
+      const draft = approvedDrafts[di];
+      const i = draft.index;
+      setAutoCardProcessing(i, approvedDrafts.length);
+      btn.textContent = 'Processando… (' + (di + 1) + '/' + approvedDrafts.length + ')';
+      const orderPayload = {
+        nome: draft.edited.nome,
+        email: draft.edited.email || null,
+        telefone: draft.edited.telefone || null,
+        urgente: draft.edited.urgente,
+        items: draft.edited.items
+          .filter(it => it.item_code && it.qty > 0)
+          .map(it => ({ item_code: it.item_code, qty: it.qty, rate: it.rate, manual_rate: it._rateManual === true })),
+        prazo_producao: draft.edited.prazo_producao || prazoVal || undefined,
+      };
+      try {
+        const res = await fetch('/api/orcamento', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ extracted: orderPayload }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setAutoCardError(i, data.error || 'Falha desconhecida.');
+        } else {
+          setAutoCardDone(i, data, draft.edited.telefone, draft.edited.email);
+        }
+      } catch (err) {
+        setAutoCardError(i, err.message);
+      }
+    }
+
+    clearAutoDrafts();
+    btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+  });
+
+  // Restore drafts from previous session
+  restoreAutoDrafts();
 }
 
 // ── Save state + dirty form protection on navigate away ──
