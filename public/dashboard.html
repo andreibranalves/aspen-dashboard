@@ -782,6 +782,28 @@
       background: var(--red-bg);
     }
 
+    /* Drag-and-drop */
+    .col-drag { width: 28px; padding: 4px 0 !important; text-align: center; }
+    .detail-drag-handle {
+      cursor: grab;
+      color: var(--muted);
+      font-size: 16px;
+      user-select: none;
+    }
+    .detail-drag-handle:active { cursor: grabbing; }
+    .detail-items-table tr[draggable="true"] { cursor: default; }
+    .detail-items-table tr[draggable="true"]:hover .detail-drag-handle { color: var(--text); }
+    .detail-items-table tr.drag-dragging {
+      opacity: 0.4;
+      background: var(--border);
+    }
+    .detail-items-table tr.drag-over {
+      border-top: 2px solid var(--navy);
+    }
+    .detail-items-table tr.drag-over td {
+      padding-top: 2px;
+    }
+
     .detail-totals {
       padding: 12px 20px;
       border-top: 1px solid var(--border);
@@ -1794,6 +1816,165 @@
       margin-bottom: 6px;
     }
 
+    /* ── End auto styles ── */
+
+    /* ── Brindice Leads ── */
+    .brindice-filters {
+      display: flex;
+      gap: 8px;
+      padding: 12px 0;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .brindice-filter-chip {
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      transition: all 0.15s;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .brindice-filter-chip:hover { background: var(--navy-light); }
+    .brindice-filter-chip.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+    .brindice-filter-chip .chip-count {
+      font-size: 11px;
+      opacity: 0.7;
+    }
+    .brindice-filter-chip.active .chip-count { opacity: 1; }
+
+    .brindice-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 20px;
+      color: var(--muted);
+    }
+    .brindice-lead-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 10px;
+      transition: box-shadow 0.15s;
+    }
+    .brindice-lead-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .brindice-lead-card.pendente { border-left: 4px solid #d69e2e; }
+    .brindice-lead-card.aprovado { border-left: 4px solid var(--green); background: var(--green-bg); opacity: 0.75; }
+    .brindice-lead-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .brindice-lead-nome {
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--navy);
+    }
+    .brindice-lead-meta {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .brindice-lead-meta span { display: inline-flex; align-items: center; gap: 4px; }
+    .brindice-lead-produto {
+      background: var(--navy-light);
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+    .brindice-lead-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .brindice-btn-approve {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .brindice-btn-approve:hover { opacity: 0.85; }
+    .brindice-btn-reject {
+      background: #fff;
+      color: var(--red);
+      border: 1px solid var(--red-border);
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .brindice-btn-reject:hover { background: var(--red-bg); }
+    .brindice-btn-auto {
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .brindice-btn-auto:hover { opacity: 0.85; }
+    .brindice-btn-auto:disabled { opacity: 0.4; cursor: not-allowed; }
+    .brindice-lead-status {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 10px;
+    }
+    .brindice-lead-status.pendente { background: #fefcbf; color: #975a16; }
+    .brindice-lead-status.aprovado { background: var(--green-bg); color: var(--green); }
+    .brindice-toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--navy);
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 999;
+      animation: fadeInUp 0.3s ease;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .nav-badge {
+      background: #fc8181;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 8px;
+      margin-left: auto;
+    }
+
   </style>
 </head>
 <body>
@@ -1840,6 +2021,15 @@
         <span class="nav-icon">✨</span>
         Orçamento Automático
         <span style="font-size:10px;color:rgba(255,255,255,0.4);margin-left:auto;">IA</span>
+      </a>
+
+      <div class="nav-divider"></div>
+      <div class="nav-section-label">Brindice</div>
+
+      <a class="nav-link" href="#brindice-leads" data-nav>
+        <span class="nav-icon">🧵</span>
+        Leads do Brindice
+        <span class="nav-badge" id="brindiceBadge" style="display:none;"></span>
       </a>
     </nav>
   </aside>
@@ -2207,6 +2397,7 @@
             <table class="detail-items-table" id="detailItemsTable">
               <thead>
                 <tr>
+                  <th class="col-drag" id="detailDragColH" style="display:none"></th>
                   <th>SKU</th>
                   <th>Produto</th>
                   <th class="col-right">Qtd</th>
@@ -2327,6 +2518,44 @@
         </div>
       </section>
 
+      <!-- ══════════════════════════════════════════════
+           BRINDICE LEADS — fila de aprovação
+           ══════════════════════════════════════════════ -->
+      <section class="page" id="page-brindice-leads">
+        <div class="page-header">
+          <h1 class="page-title">Leads do Brindice</h1>
+          <div class="page-actions">
+            <span class="page-stats" id="brindiceStats"></span>
+            <button class="btn btn-primary" id="btnBrindiceRefresh">🔄 Atualizar</button>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="brindice-filters">
+          <span class="brindice-filter-chip active" data-brindice-status="pendentes">⏳ Pendentes <span class="chip-count" id="chipBrindicePending"></span></span>
+          <span class="brindice-filter-chip" data-brindice-status="aprovados">✅ Aprovados <span class="chip-count" id="chipBrindiceApproved"></span></span>
+          <span class="brindice-filter-chip" data-brindice-status="todos">📋 Todos <span class="chip-count" id="chipBrindiceAll"></span></span>
+        </div>
+
+        <div id="brindiceLoading" class="brindice-state" style="display:none;">
+          <div class="spinner"></div>
+          <span>Carregando leads do Brindice…</span>
+        </div>
+        <div id="brindiceEmpty" class="brindice-state" style="display:none;">
+          <div style="font-size:40px;margin-bottom:8px;">📋</div>
+          <p>Nenhum lead do Brindice encontrado.</p>
+          <p style="font-size:12px;color:var(--muted);">Use a extensão do Chrome para importar leads.</p>
+        </div>
+        <div id="brindiceError" class="brindice-state" style="display:none;color:var(--red);">
+          <span id="brindiceErrorMsg"></span>
+        </div>
+
+        <div id="brindiceLeadList"></div>
+
+        <!-- Toast de confirmação -->
+        <div class="brindice-toast" id="brindiceToast" style="display:none;"></div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -2352,6 +2581,7 @@ var pageTitles = {
   '#create': 'Novo Orçamento',
   '#quotation-detail': 'Detalhe do Orçamento',
   '#auto': 'Orçamento Automático',
+  '#brindice-leads': 'Brindice - Leads',
 };
 
 // ── Quotations State ──
@@ -2668,6 +2898,11 @@ function navigate() {
   // Initialize auto page
   if (hash === '#auto') {
     initAutoPage();
+  }
+
+  // Initialize brindice leads page
+  if (hash === '#brindice-leads') {
+    fetchBrindiceLeads();
   }
 
   // Close mobile sidebar
@@ -3274,6 +3509,7 @@ function renderDetail() {
   var total = 0;
 
   document.getElementById('detailActionsColH').style.display = editable ? '' : 'none';
+  document.getElementById('detailDragColH').style.display = editable ? '' : 'none';
   document.getElementById('detailRateColH').textContent = editable ? 'Preço Unit. (R$)' : 'Preço Unit.';
 
   tbody.innerHTML = items.map(function (item, idx) {
@@ -3281,12 +3517,13 @@ function renderDetail() {
     total += amount;
 
     if (editable) {
+      var dragHandle = '<td class="col-drag detail-drag-handle">⠿</td>';
       var sku = '<td class="col-sku"><div class="sku-autocomplete-wrap"><input type="text" class="item-sku detail-sku-input sku-autocomplete" value="' + escapeHtml(item.item_code) + '" placeholder="Buscar SKU ou nome…" data-idx="' + idx + '" data-field="item_code" autocomplete="off" /><input type="hidden" class="sku-hidden" value="' + escapeHtml(item.item_code) + '" data-idx="' + idx + '" /></div></td>';
       var name = '<td><input type="text" class="item-name detail-name-input" value="' + escapeHtml(item.item_name || '') + '" placeholder="Nome do produto" data-idx="' + idx + '" data-field="item_name" /></td>';
       var qty = '<td class="col-right"><input type="number" class="item-qty detail-qty-input" value="' + item.qty + '" min="1" step="1" data-idx="' + idx + '" data-field="qty" /></td>';
       var rate = '<td class="col-right"><input type="number" class="item-rate detail-rate-input" value="' + item.rate.toFixed(2) + '" min="0" step="0.01" data-idx="' + idx + '" data-field="rate" /></td>';
       var removeBtn = '<td class="col-center"><button type="button" class="btn-remove" data-idx="' + idx + '" title="Remover">&times;</button></td>';
-      return '<tr>' + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
+      return '<tr draggable="true" data-index="' + idx + '">' + dragHandle + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
     } else {
       var sku = '<td class="col-sku">' + escapeHtml(item.item_code) + '</td>';
       var name = '<td>' + escapeHtml(item.item_name || item.item_code) + '</td>';
@@ -3357,6 +3594,51 @@ function bindEditEvents() {
       detailState.editedItems.splice(idx, 1);
       renderDetail();
     });
+  });
+
+  // ── Drag-and-drop item reorder ──
+  var tbody = document.getElementById('detailItemsBody');
+  tbody.addEventListener('dragstart', function (e) {
+    var tr = e.target.closest('tr[draggable]');
+    if (!tr) { e.preventDefault(); return; }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tr.dataset.index);
+    tr.classList.add('drag-dragging');
+  });
+
+  tbody.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    var tr = e.target.closest('tr[draggable]');
+    if (!tr) return;
+    tbody.querySelectorAll('tr.drag-over').forEach(function (r) { r.classList.remove('drag-over'); });
+    tr.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'move';
+  });
+
+  tbody.addEventListener('dragleave', function (e) {
+    var tr = e.target.closest('tr[draggable]');
+    if (tr) tr.classList.remove('drag-over');
+  });
+
+  tbody.addEventListener('drop', function (e) {
+    e.preventDefault();
+    var sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    var targetTr = e.target.closest('tr[draggable]');
+    if (!targetTr || isNaN(sourceIndex)) return;
+    var targetIndex = parseInt(targetTr.dataset.index, 10);
+    if (sourceIndex === targetIndex) return;
+
+    // Reorder the array
+    var moved = detailState.editedItems.splice(sourceIndex, 1)[0];
+    detailState.editedItems.splice(targetIndex, 0, moved);
+
+    // Re-render to update data-index and DOM
+    renderDetail();
+    detailState.mode = 'edit';
+  });
+
+  tbody.addEventListener('dragend', function () {
+    tbody.querySelectorAll('tr').forEach(function (r) { r.classList.remove('drag-dragging', 'drag-over'); });
   });
 }
 
