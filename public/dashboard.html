@@ -2316,6 +2316,7 @@
             <table class="detail-items-table" id="detailItemsTable">
               <thead>
                 <tr>
+                  <th class="col-drag" id="detailDragColH" style="display:none"></th>
                   <th>SKU</th>
                   <th>Produto</th>
                   <th class="col-right">Qtd</th>
@@ -3388,6 +3389,7 @@ function renderDetail() {
   var total = 0;
 
   document.getElementById('detailActionsColH').style.display = editable ? '' : 'none';
+  document.getElementById('detailDragColH').style.display = editable ? '' : 'none';
   document.getElementById('detailRateColH').textContent = editable ? 'Preço Unit. (R$)' : 'Preço Unit.';
 
   tbody.innerHTML = items.map(function (item, idx) {
@@ -3395,12 +3397,13 @@ function renderDetail() {
     total += amount;
 
     if (editable) {
+      var dragHandle = '<td class="col-drag detail-drag-handle">⠿</td>';
       var sku = '<td class="col-sku"><div class="sku-autocomplete-wrap"><input type="text" class="item-sku detail-sku-input sku-autocomplete" value="' + escapeHtml(item.item_code) + '" placeholder="Buscar SKU ou nome…" data-idx="' + idx + '" data-field="item_code" autocomplete="off" /><input type="hidden" class="sku-hidden" value="' + escapeHtml(item.item_code) + '" data-idx="' + idx + '" /></div></td>';
       var name = '<td><input type="text" class="item-name detail-name-input" value="' + escapeHtml(item.item_name || '') + '" placeholder="Nome do produto" data-idx="' + idx + '" data-field="item_name" /></td>';
       var qty = '<td class="col-right"><input type="number" class="item-qty detail-qty-input" value="' + item.qty + '" min="1" step="1" data-idx="' + idx + '" data-field="qty" /></td>';
       var rate = '<td class="col-right"><input type="number" class="item-rate detail-rate-input" value="' + item.rate.toFixed(2) + '" min="0" step="0.01" data-idx="' + idx + '" data-field="rate" /></td>';
       var removeBtn = '<td class="col-center"><button type="button" class="btn-remove" data-idx="' + idx + '" title="Remover">&times;</button></td>';
-      return '<tr>' + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
+      return '<tr draggable="true" data-index="' + idx + '">' + dragHandle + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
     } else {
       var sku = '<td class="col-sku">' + escapeHtml(item.item_code) + '</td>';
       var name = '<td>' + escapeHtml(item.item_name || item.item_code) + '</td>';
@@ -3469,6 +3472,42 @@ function bindEditEvents() {
       detailState.editedItems.splice(idx, 1);
       renderDetail();
     });
+  });
+
+  // ── Drag-and-drop ──
+  var tbody = document.getElementById('detailItemsBody');
+  tbody.addEventListener('dragstart', function(e) {
+    var tr = e.target.closest('tr[draggable]');
+    if (!tr) { e.preventDefault(); return; }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tr.dataset.index);
+    tr.classList.add('drag-dragging');
+  });
+  tbody.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    var tr = e.target.closest('tr[draggable]');
+    if (!tr) return;
+    tbody.querySelectorAll('tr.drag-over').forEach(function(r){r.classList.remove('drag-over')});
+    tr.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'move';
+  });
+  tbody.addEventListener('dragleave', function(e) {
+    var tr = e.target.closest('tr[draggable]');
+    if (tr) tr.classList.remove('drag-over');
+  });
+  tbody.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var src = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    var tgt = e.target.closest('tr[draggable]');
+    if (!tgt || isNaN(src)) return;
+    var tgtIdx = parseInt(tgt.dataset.index, 10);
+    if (src === tgtIdx) return;
+    var m = detailState.editedItems.splice(src, 1)[0];
+    detailState.editedItems.splice(tgtIdx, 0, m);
+    renderDetail(); detailState.mode = 'edit';
+  });
+  tbody.addEventListener('dragend', function() {
+    tbody.querySelectorAll('tr').forEach(function(r){r.classList.remove('drag-dragging','drag-over')});
   });
 }
 
