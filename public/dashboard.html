@@ -290,6 +290,16 @@
       border-style: solid;
     }
 
+    .btn-outline {
+      background: transparent;
+      color: var(--navy);
+      border: 1px solid var(--navy);
+    }
+
+    .btn-outline:hover {
+      background: var(--navy-light);
+    }
+
     /* ── Placeholder card ── */
     .placeholder-card {
       background: #fff;
@@ -732,7 +742,31 @@
       box-shadow: 0 0 0 2px var(--navy-light);
     }
     .detail-items-table input.item-qty { width: 70px; }
+    .detail-items-table input.item-qty  { width: 70px; }
     .detail-items-table input.item-rate { width: 100px; }
+    .detail-items-table input.item-sku  {
+      width: 120px;
+      font-size: 12px;
+      padding: 3px 6px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    .detail-items-table input.item-name {
+      width: 100%;
+      min-width: 180px;
+      font-size: 12px;
+      padding: 3px 6px;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+    }
+    .detail-items-table input.item-sku:focus,
+    .detail-items-table input.item-name:focus,
+    .detail-items-table input.item-qty:focus,
+    .detail-items-table input.item-rate:focus {
+      border-color: var(--navy);
+      outline: none;
+    }
 
     .detail-items-table .btn-remove {
       background: none;
@@ -2153,7 +2187,7 @@
             <div id="detailEditActions" style="display:none">
               <button type="button" class="btn btn-success" id="saveBtn">Salvar</button>
               <button type="button" class="btn" id="cancelEditBtn">Cancelar</button>
-              <button type="button" class="btn btn-auto" id="detailAddItemBtn">+ Item</button>
+              <button type="button" class="btn btn-outline" id="detailAddItemBtn">+ Item</button>
             </div>
             <span id="detailSaveStatus" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
           </div>
@@ -3192,15 +3226,17 @@ function renderDetail() {
   tbody.innerHTML = items.map(function (item, idx) {
     var amount = (item.qty || 0) * (item.rate || 0);
     total += amount;
-    var sku = '<td class="col-sku">' + escapeHtml(item.item_code) + '</td>';
-    var name = '<td>' + escapeHtml(item.item_name || item.item_code) + '</td>';
 
     if (editable) {
-      var qty = '<td class="col-right"><input type="number" class="item-qty" value="' + item.qty + '" min="1" step="1" data-idx="' + idx + '" data-field="qty" /></td>';
-      var rate = '<td class="col-right"><input type="number" class="item-rate" value="' + item.rate.toFixed(2) + '" min="0" step="0.01" data-idx="' + idx + '" data-field="rate" /></td>';
+      var sku = '<td class="col-sku"><input type="text" class="item-sku detail-sku-input" value="' + escapeHtml(item.item_code) + '" placeholder="SKU" list="productSkuList" data-idx="' + idx + '" data-field="item_code" autocomplete="off" /></td>';
+      var name = '<td><input type="text" class="item-name detail-name-input" value="' + escapeHtml(item.item_name || '') + '" placeholder="Nome do produto" data-idx="' + idx + '" data-field="item_name" /></td>';
+      var qty = '<td class="col-right"><input type="number" class="item-qty detail-qty-input" value="' + item.qty + '" min="1" step="1" data-idx="' + idx + '" data-field="qty" /></td>';
+      var rate = '<td class="col-right"><input type="number" class="item-rate detail-rate-input" value="' + item.rate.toFixed(2) + '" min="0" step="0.01" data-idx="' + idx + '" data-field="rate" /></td>';
       var removeBtn = '<td class="col-center"><button type="button" class="btn-remove" data-idx="' + idx + '" title="Remover">&times;</button></td>';
       return '<tr>' + sku + name + qty + rate + '<td class="col-right">' + formatBRL(amount) + '</td>' + removeBtn + '</tr>';
     } else {
+      var sku = '<td class="col-sku">' + escapeHtml(item.item_code) + '</td>';
+      var name = '<td>' + escapeHtml(item.item_name || item.item_code) + '</td>';
       return '<tr>' + sku + name
         + '<td class="col-right">' + item.qty + '</td>'
         + '<td class="col-right">' + formatBRL(item.rate) + '</td>'
@@ -3227,17 +3263,32 @@ function renderDetail() {
 // ── Detail: edit mode bindings ──
 
 function bindEditEvents() {
-  // Item input changes
-  document.querySelectorAll('.item-qty, .item-rate').forEach(function (input) {
+  // Item input changes — qty, rate, sku, name
+  document.querySelectorAll('.item-qty, .item-rate, .item-sku, .item-name').forEach(function (input) {
     input.addEventListener('input', function () {
       var idx = parseInt(input.dataset.idx, 10);
       var field = input.dataset.field;
-      var val = parseFloat(input.value);
-      if (!isNaN(val)) {
-        detailState.editedItems[idx][field] = val;
+      if (field === 'qty' || field === 'rate') {
+        var val = parseFloat(input.value);
+        if (!isNaN(val)) {
+          detailState.editedItems[idx][field] = val;
+          // Mark as manual if user edits rate directly
+          if (field === 'rate') detailState.editedItems[idx]._rateManual = true;
+        }
+      } else {
+        detailState.editedItems[idx][field] = input.value;
+        // Reset auto-pricing flag when SKU changes
+        if (field === 'item_code') delete detailState.editedItems[idx]._rateManual;
       }
       refreshEditTotals();
     });
+    // On blur (SKU or qty change): auto-fetch pricing
+    if (input.classList.contains('item-sku') || input.classList.contains('item-qty')) {
+      input.addEventListener('change', function () {
+        var idx = parseInt(input.dataset.idx, 10);
+        detailFetchPricingForItem(idx);
+      });
+    }
   });
 
   // Remove buttons
@@ -3256,6 +3307,68 @@ function refreshEditTotals() {
     total += (item.qty || 0) * (item.rate || 0);
   });
   document.getElementById('detailTotals').textContent = 'Total: ' + formatBRL(total);
+}
+
+// ── Detail: auto-pricing for a single item ──
+var detailPricingTimer = null;
+function detailFetchPricingForItem(idx) {
+  var item = detailState.editedItems[idx];
+  if (!item || !item.item_code || !item.qty || item.qty <= 0) return;
+  // Don't overwrite manually-set rates
+  if (item._rateManual) return;
+
+  clearTimeout(detailPricingTimer);
+  detailPricingTimer = setTimeout(function () {
+    fetch('/api/pricing-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ item_code: item.item_code, qty: item.qty }], urgent: false }),
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.success && data.items && data.items[0] && data.items[0].rate) {
+          detailState.editedItems[idx].rate = data.items[0].rate;
+          detailState.editedItems[idx]._rateAuto = true;
+          renderDetail();
+        }
+      })
+      .catch(function (err) { console.error('[detailPricing]', err); });
+  }, 400);
+}
+
+// ── Product SKU datalist (shared across all autocomplete inputs) ──
+var allProductsCache = null;
+function ensureProductDatalist() {
+  if (document.getElementById('productSkuList')) return;
+  var dl = document.createElement('datalist');
+  dl.id = 'productSkuList';
+  document.body.appendChild(dl);
+  loadProductDatalistOptions();
+}
+
+function loadProductDatalistOptions() {
+  if (allProductsCache) { populateDatalist(allProductsCache); return; }
+  fetch('/api/products?limit=200')
+    .then(function (res) { return res.json(); })
+    .then(function (body) {
+      if (body && Array.isArray(body.data)) {
+        allProductsCache = body.data;
+        populateDatalist(body.data);
+      }
+    })
+    .catch(function (err) { console.error('[productDatalist]', err); });
+}
+
+function populateDatalist(products) {
+  var dl = document.getElementById('productSkuList');
+  if (!dl) return;
+  dl.innerHTML = '';
+  products.forEach(function (p) {
+    var opt = document.createElement('option');
+    opt.value = p.sku;
+    opt.textContent = p.sku + ' — ' + p.nome;
+    dl.appendChild(opt);
+  });
 }
 
 // ── Detail: state helpers ──
@@ -3287,6 +3400,7 @@ function enterEditMode() {
     };
   });
   detailState.mode = 'edit';
+  ensureProductDatalist();
   renderDetail();
 }
 
@@ -3465,6 +3579,9 @@ function initManualForm() {
   if (manualFormInited) return;
   manualFormInited = true;
 
+  // Ensure product datalist for SKU autocomplete
+  ensureProductDatalist();
+
   // Default date to today
   document.getElementById('mfData').value = new Date().toISOString().slice(0, 10);
 
@@ -3512,7 +3629,7 @@ function addItemRow() {
   var tr = document.createElement('tr');
   tr.id = 'itemRow-' + index;
   tr.innerHTML = '<td><button type="button" class="item-remove-btn" data-index="' + index + '" title="Remover">✕</button></td>'
-    + '<td><input type="text" class="item-input" id="itemSku-' + index + '" placeholder="SKU" /></td>'
+    + '<td><input type="text" class="item-input" id="itemSku-' + index + '" placeholder="SKU" list="productSkuList" /></td>'
     + '<td><input type="text" class="item-input" id="itemNome-' + index + '" placeholder="Nome do produto" /></td>'
     + '<td><input type="number" class="item-input" id="itemQty-' + index + '" min="1" step="1" placeholder="0" /></td>'
     + '<td><input type="number" class="item-input" id="itemRate-' + index + '" min="0" step="0.01" placeholder="0,00" /></td>'
@@ -4177,7 +4294,7 @@ function renderAutoDraftCards(drafts) {
     const itemsHtml = draft.edited.items.map((it, ii) => ''
       + '<tr draggable="true" data-index="' + ii + '">'
       + '<td class="auto-drag-handle">⠿</td>'
-      + '<td><input class="auto-draft-sku" data-index="' + ii + '" value="' + escapeHtml(it.item_code) + '" placeholder="SKU"></td>'
+      + '<td><input class="auto-draft-sku" data-index="' + ii + '" value="' + escapeHtml(it.item_code) + '" placeholder="SKU" list="productSkuList"></td>'
       + '<td><input class="auto-draft-qty" data-index="' + ii + '" type="number" min="1" value="' + it.qty + '" style="width:80px"></td>'
       + '<td><div class="auto-rate-cell"><input class="auto-draft-rate" data-index="' + ii + '" type="number" step="any" min="0" value="' + (it.rate || '') + '" placeholder="—" style="width:72px"><span class="auto-rate-display" data-index="' + ii + '">' + formatBRL(it.rate) + '</span></div></td>'
       + '<td><button type="button" class="auto-draft-remove-item" data-index="' + ii + '">×</button></td>'
@@ -4459,6 +4576,9 @@ function renderAutoDraftCards(drafts) {
 function initAutoPage() {
   if (window._autoPageInited) return;
   window._autoPageInited = true;
+
+  // Ensure product datalist for SKU autocomplete
+  ensureProductDatalist();
 
   // Tabs
   document.querySelectorAll('#page-auto .auto-tab').forEach(tab => {
