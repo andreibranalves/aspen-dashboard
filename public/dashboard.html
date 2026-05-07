@@ -2334,6 +2334,7 @@
             <!-- View mode buttons -->
             <div id="detailViewActions">
               <button type="button" class="btn btn-primary" id="editBtn">Editar</button>
+              <a href="" target="_blank" class="btn" id="viewPdfBtn">📄 Visualizar</a>
             </div>
             <!-- Edit mode buttons -->
             <div id="detailEditActions" style="display:none">
@@ -3419,6 +3420,10 @@ function renderDetail() {
   document.getElementById('detailViewActions').style.display = editable ? 'none' : '';
   document.getElementById('detailEditActions').style.display = editable ? '' : 'none';
   document.getElementById('detailSaveStatus').textContent = '';
+
+  // PDF button link
+  var pdfBtn = document.getElementById('viewPdfBtn');
+  if (pdfBtn && d.id) { pdfBtn.href = '/api/view?q=' + encodeURIComponent(d.id); }
 
   // Bind edit-mode events
   if (editable) {
