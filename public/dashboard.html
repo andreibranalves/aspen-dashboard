@@ -2235,10 +2235,87 @@
           <div class="page-actions"></div>
         </div>
 
-        <div class="placeholder-card">
-          <div class="icon">🚚</div>
-          <h3>Em breve</h3>
-          <p>Integração com Frenet/Envia.com para cotação de frete.</p>
+        <div class="freight-form-area" id="freightFormArea">
+          <form id="freightForm" onsubmit="return false;">
+            <div class="form-card">
+              <h2 class="form-card-title">CEP de Destino</h2>
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label class="form-label" for="freightCep">CEP</label>
+                  <input type="text" id="freightCep" class="form-input" placeholder="00000-000" maxlength="10" />
+                </div>
+                <div class="form-group flex-2">
+                  <label class="form-label" for="freightCity">Cidade / Estado</label>
+                  <input type="text" id="freightCity" class="form-input" placeholder="Preenchido automaticamente" readonly />
+                </div>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="freightLookupCepBtn" style="margin-top:8px">🔍 Buscar CEP</button>
+              <span id="freightCepStatus" style="font-size:11px;color:var(--muted);margin-left:10px"></span>
+            </div>
+
+            <div class="form-card">
+              <h2 class="form-card-title">Pacotes</h2>
+              <div class="items-table-wrap">
+                <table class="form-items-table" id="freightItemsTable">
+                  <thead>
+                    <tr>
+                      <th style="width:28px"></th>
+                      <th>Peso (kg)</th>
+                      <th>Compr. (cm)</th>
+                      <th>Larg. (cm)</th>
+                      <th>Alt. (cm)</th>
+                      <th>Qtd</th>
+                      <th>Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="freightItemsBody">
+                    <tr id="freightRow-0">
+                      <td><button type="button" class="item-remove-btn" onclick="removeFreightRow(0)" style="display:none" title="Remover">✕</button></td>
+                      <td><input type="number" class="form-input" id="freightWeight-0" min="0.1" step="0.1" value="1" style="width:70px" /></td>
+                      <td><input type="number" class="form-input" id="freightLength-0" min="1" step="1" value="30" style="width:70px" /></td>
+                      <td><input type="number" class="form-input" id="freightWidth-0" min="1" step="1" value="20" style="width:70px" /></td>
+                      <td><input type="number" class="form-input" id="freightHeight-0" min="1" step="1" value="10" style="width:70px" /></td>
+                      <td><input type="number" class="form-input" id="freightAmount-0" min="1" step="1" value="1" style="width:50px" /></td>
+                      <td><input type="text" class="form-input" id="freightContent-0" value="Produtos personalizados" placeholder="Descrição" /></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" id="freightAddPackageBtn" style="margin-top:8px">+ Adicionar Pacote</button>
+            </div>
+
+            <div class="form-card">
+              <h2 class="form-card-title">Transportadora</h2>
+              <div class="form-row" style="gap:12px;flex-wrap:wrap">
+                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="" checked /><span>Todas</span></label>
+                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="correios" /><span>Correios</span></label>
+                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="jadlog" /><span>Jadlog</span></label>
+                <label class="form-checkbox"><input type="radio" name="freightCarrier" value="loggi" /><span>Loggi</span></label>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="freightQuoteBtn">🚚 Cotar Frete</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Loading -->
+        <div class="state-box" id="freightLoadingState" style="display:none">
+          <div class="spinner"></div><div class="state-text">Consultando transportadoras…</div>
+        </div>
+
+        <!-- Error -->
+        <div class="state-box error" id="freightErrorState" style="display:none">
+          <div class="state-icon">⚠️</div>
+          <div class="state-text" id="freightErrorMsg">Erro ao cotar frete.</div>
+          <button type="button" class="retry-btn" id="freightRetryBtn">Tentar novamente</button>
+        </div>
+
+        <!-- Results -->
+        <div id="freightResults" style="display:none;margin-top:20px">
+          <h3 style="font-family:'Lusitana',serif;font-size:16px;color:var(--navy);margin-bottom:12px">Resultados — <span id="freightResultDest"></span></h3>
+          <div id="freightResultsTable"></div>
         </div>
       </section>
 
@@ -2903,6 +2980,11 @@ function navigate() {
   // Initialize brindice leads page
   if (hash === '#brindice-leads') {
     fetchBrindiceLeads();
+  }
+
+  // Initialize freight page
+  if (hash === '#freight') {
+    initFreightPage();
   }
 
   // Close mobile sidebar
@@ -4002,6 +4084,117 @@ var formDirty = false;
 
 function markFormDirty() {
   formDirty = true;
+}
+
+// ══════════════════════════════════════════════
+// FREIGHT QUOTATION — Envia.com
+// ══════════════════════════════════════════════
+var freightCount = 1;
+var freightCepData = null;
+
+function initFreightPage() {
+  if (window._freightInited) return;
+  window._freightInited = true;
+  document.getElementById('freightLookupCepBtn').addEventListener('click', lookupCep);
+  document.getElementById('freightCep').addEventListener('blur', function () { var c = this.value.replace(/\D/g,''); if (c.length===8) lookupCep(); });
+  document.getElementById('freightAddPackageBtn').addEventListener('click', addFreightRow);
+  document.getElementById('freightQuoteBtn').addEventListener('click', quoteFreight);
+  document.getElementById('freightRetryBtn').addEventListener('click', quoteFreight);
+}
+
+function lookupCep() {
+  var cep = document.getElementById('freightCep').value.replace(/\D/g, '');
+  if (cep.length !== 8) { document.getElementById('freightCepStatus').textContent = 'CEP deve ter 8 dígitos.'; return; }
+  document.getElementById('freightCepStatus').textContent = 'Buscando…';
+  fetch('https://viacep.com.br/ws/' + cep + '/json/')
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.erro) { document.getElementById('freightCepStatus').textContent = 'CEP não encontrado.'; return; }
+      freightCepData = d;
+      document.getElementById('freightCity').value = d.localidade + ' / ' + d.uf + (d.bairro ? ' — ' + d.bairro : '');
+      document.getElementById('freightCepStatus').textContent = '✓ ' + (d.logradouro || '');
+    })
+    .catch(function () { document.getElementById('freightCepStatus').textContent = 'Erro ao consultar CEP.'; });
+}
+
+function addFreightRow() {
+  var idx = freightCount++;
+  var tr = document.createElement('tr'); tr.id = 'freightRow-' + idx;
+  tr.innerHTML = '<td><button type="button" class="item-remove-btn" onclick="removeFreightRow(' + idx + ')" title="Remover">✕</button></td>'
+    + '<td><input type="number" class="form-input" id="freightWeight-' + idx + '" min="0.1" step="0.1" value="1" style="width:70px" /></td>'
+    + '<td><input type="number" class="form-input" id="freightLength-' + idx + '" min="1" step="1" value="30" style="width:70px" /></td>'
+    + '<td><input type="number" class="form-input" id="freightWidth-' + idx + '" min="1" step="1" value="20" style="width:70px" /></td>'
+    + '<td><input type="number" class="form-input" id="freightHeight-' + idx + '" min="1" step="1" value="10" style="width:70px" /></td>'
+    + '<td><input type="number" class="form-input" id="freightAmount-' + idx + '" min="1" step="1" value="1" style="width:50px" /></td>'
+    + '<td><input type="text" class="form-input" id="freightContent-' + idx + '" value="Produtos personalizados" placeholder="Descrição" /></td>';
+  document.getElementById('freightItemsBody').appendChild(tr);
+}
+
+function removeFreightRow(idx) {
+  var rows = document.querySelectorAll('#freightItemsBody tr');
+  if (rows.length <= 1) return;
+  var tr = document.getElementById('freightRow-' + idx);
+  if (tr) tr.remove();
+}
+
+function quoteFreight() {
+  var cep = document.getElementById('freightCep').value.replace(/\D/g, '');
+  if (cep.length !== 8) { alert('Informe um CEP válido de 8 dígitos.'); return; }
+
+  var packages = [];
+  document.querySelectorAll('#freightItemsBody tr').forEach(function (row) {
+    var m = row.id.match(/freightRow-(\d+)/); if (!m) return;
+    var idx = m[1];
+    var w = parseFloat(document.getElementById('freightWeight-' + idx)?.value) || 0;
+    if (w <= 0) return;
+    packages.push({
+      weight: w, length: parseInt(document.getElementById('freightLength-' + idx)?.value) || 30,
+      width: parseInt(document.getElementById('freightWidth-' + idx)?.value) || 20,
+      height: parseInt(document.getElementById('freightHeight-' + idx)?.value) || 10,
+      amount: parseInt(document.getElementById('freightAmount-' + idx)?.value) || 1,
+      content: document.getElementById('freightContent-' + idx)?.value || 'Produtos personalizados'
+    });
+  });
+  if (!packages.length) { alert('Informe pelo menos um pacote com peso > 0.'); return; }
+
+  var carrierEl = document.querySelector('input[name="freightCarrier"]:checked');
+  var carrier = carrierEl ? carrierEl.value : '';
+
+  document.getElementById('freightFormArea').style.display = 'none';
+  document.getElementById('freightLoadingState').style.display = 'flex';
+  document.getElementById('freightErrorState').style.display = 'none';
+  document.getElementById('freightResults').style.display = 'none';
+
+  fetch('/api/freight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    destination: { cep: cep, city: freightCepData?.localidade || '', state: freightCepData?.uf || '', street: freightCepData?.logradouro || '' },
+    packages: packages, carrier: carrier || undefined
+  })})
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      document.getElementById('freightLoadingState').style.display = 'none';
+      document.getElementById('freightFormArea').style.display = '';
+      if (data.success && data.rates && data.rates.length) {
+        document.getElementById('freightResults').style.display = '';
+        document.getElementById('freightResultDest').textContent = (data.destination?.city || '') + '/' + (data.destination?.state || '');
+        var h = '<table class="quotations-table"><thead><tr><th>Transportadora</th><th>Serviço</th><th>Prazo</th><th class="col-right">Valor</th></tr></thead><tbody>';
+        data.rates.forEach(function (r) {
+          var label = r.carrier === 'correios' ? '📦 Correios' : r.carrier === 'jadlog' ? '📦 Jadlog' : r.carrier === 'loggi' ? '📦 Loggi' : r.carrier;
+          var prazo = r.deliveryEstimate || (r.deliveryDays ? r.deliveryDays + ' dias' : '—');
+          h += '<tr><td>' + escapeHtml(label) + '</td><td>' + escapeHtml(r.serviceDescription || r.service) + '</td><td>' + escapeHtml(prazo) + '</td><td class="col-valor">' + formatBRL(r.totalPrice) + '</td></tr>';
+        });
+        h += '</tbody></table>';
+        document.getElementById('freightResultsTable').innerHTML = h;
+      } else {
+        document.getElementById('freightErrorMsg').textContent = data.error || 'Nenhuma transportadora disponível.';
+        document.getElementById('freightErrorState').style.display = 'flex';
+      }
+    })
+    .catch(function (err) {
+      document.getElementById('freightLoadingState').style.display = 'none';
+      document.getElementById('freightFormArea').style.display = '';
+      document.getElementById('freightErrorMsg').textContent = 'Erro: ' + err.message;
+      document.getElementById('freightErrorState').style.display = 'flex';
+    });
 }
 
 function initManualForm() {
