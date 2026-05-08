@@ -6096,6 +6096,12 @@ function showBrindiceToast(msg) {
 var crmColumns = [];       // colunas com deals
 var crmDragging = null;    // card sendo arrastado
 
+// Pipeline order must match backend crm-deals.js PIPELINE_ORDER
+var PIPELINE = [
+  'Novo Lead', 'Contato Feito', 'Orcamento Enviado',
+  'Em Negociacao', 'Arte Aprovada', 'Pedido Fechado', 'Perdido'
+];
+
 function fetchCrmPipeline(search) {
   var board = document.getElementById('kanbanBoard');
   var loading = document.getElementById('crmLoading');
@@ -6286,8 +6292,13 @@ function updateKanbanLocal(dealId, newStatus) {
     crmColumns.push({ status: newStatus, count: 1, deals: [deal] });
   }
 
-  // Remove colunas vazias
-  crmColumns = crmColumns.filter(function (c) { return c.count > 0; });
+  // Preserva a ordem do pipeline (não remove colunas vazias)
+  crmColumns.sort(function (a, b) {
+    var ia = PIPELINE.indexOf(a.status), ib = PIPELINE.indexOf(b.status);
+    if (ia === -1) ia = 999;
+    if (ib === -1) ib = 999;
+    return ia - ib || a.status.localeCompare(b.status);
+  });
 
   // Re-render
   renderKanban();
