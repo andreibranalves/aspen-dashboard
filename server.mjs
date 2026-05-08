@@ -39,6 +39,8 @@ const { handler: quotationsHandler }    = await import('./netlify/functions/quot
 const { handler: leadsClientsHandler }  = await import('./netlify/functions/leads-clients.js');
 const { handler: productsHandler }      = await import('./netlify/functions/products.js');
 const { handler: freightHandler }      = await import('./netlify/functions/freight.js');
+const { handler: crmDealsHandler }       = await import('./netlify/functions/crm-deals.js');
+const { handler: crmUpdateDealHandler }  = await import('./netlify/functions/crm-update-deal.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -183,6 +185,31 @@ const server = http.createServer(async (req, res) => {
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(e.message);
+    }
+    return;
+  }
+
+  if (pathname === '/api/crm-deals' || pathname === '/.netlify/functions/crm-deals') {
+    try {
+      const result = await crmDealsHandler(netlifyEvent(req, null));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/crm-update-deal' || pathname === '/.netlify/functions/crm-update-deal') {
+    const body = await readBody(req);
+    try {
+      const result = await crmUpdateDealHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }

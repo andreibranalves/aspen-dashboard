@@ -1958,6 +1958,170 @@
       margin-bottom: 6px;
     }
 
+    /* ══════════════════════════════════════════════
+       CRM KANBAN
+       ══════════════════════════════════════════════ */
+    .kanban-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding-bottom: 8px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .kanban-board {
+      display: flex;
+      gap: 16px;
+      min-height: 300px;
+      align-items: flex-start;
+    }
+
+    .kanban-column {
+      flex: 0 0 280px;
+      min-width: 260px;
+      max-width: 320px;
+      background: #fafaf8;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 200px);
+    }
+
+    .kanban-column-header {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .kanban-column-title {
+      font-family: 'Lusitana', serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .kanban-column-count {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      background: var(--border);
+      border-radius: 10px;
+      padding: 1px 8px;
+      min-width: 24px;
+      text-align: center;
+    }
+
+    .kanban-cards {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 60px;
+    }
+
+    .kanban-cards.drag-over {
+      background: var(--navy-light);
+    }
+
+    .kanban-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      cursor: grab;
+      transition: box-shadow 0.15s, transform 0.1s;
+      user-select: none;
+    }
+
+    .kanban-card:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .kanban-card:active {
+      cursor: grabbing;
+    }
+
+    .kanban-card.dragging {
+      opacity: 0.5;
+      transform: scale(0.97);
+    }
+
+    .kanban-card-name {
+      font-family: 'Lusitana', serif;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+
+    .kanban-card-email {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kanban-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      font-size: 11px;
+    }
+
+    .kanban-card-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .badge-quotation {
+      background: #e8f0fe;
+      color: #1a56db;
+    }
+
+    .badge-followup {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .badge-new {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    .badge-date {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .kanban-empty {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .kanban-search-wrap {
+      margin-bottom: 16px;
+    }
+
+    .kanban-search-wrap .search-input {
+      width: 100%;
+      max-width: 400px;
+    }
+
   </style>
 </head>
 <body>
@@ -1973,6 +2137,14 @@
     </div>
 
     <nav class="sidebar-nav">
+      <div class="nav-section-label">CRM</div>
+
+      <a class="nav-link" href="#crm" data-nav>
+        <span class="nav-icon">📊</span>
+        Pipeline
+      </a>
+
+      <div class="nav-divider"></div>
       <div class="nav-section-label">Operações</div>
 
       <a class="nav-link active" href="#quotations" data-nav>
@@ -2629,6 +2801,49 @@
         </div>
       </section>
 
+      <section class="page" id="page-crm">
+        <div class="page-header">
+          <h1 class="page-title">Pipeline CRM</h1>
+          <div class="page-actions">
+            <button class="btn btn-primary" id="btnCrmRefresh" title="Atualizar">🔄 Atualizar</button>
+          </div>
+        </div>
+
+        <div class="kanban-search-wrap">
+          <div class="search-input-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" id="crmSearch" placeholder="Buscar por nome do lead…" />
+          </div>
+        </div>
+
+        <div class="kanban-scroll" id="kanbanScroll">
+          <div class="kanban-board" id="kanbanBoard">
+            <!-- Populado por JS -->
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="state-box" id="crmLoading" style="display:none">
+          <div class="spinner"></div>
+          <div class="state-text">Carregando pipeline…</div>
+        </div>
+
+        <!-- Empty -->
+        <div class="state-box" id="crmEmpty" style="display:none">
+          <div class="state-icon">📊</div>
+          <div class="state-text">Nenhum deal encontrado</div>
+          <div class="state-hint">Os deals do CRM aparecerão aqui.</div>
+        </div>
+
+        <!-- Error -->
+        <div class="state-box error" id="crmError" style="display:none">
+          <div class="state-icon">⚠️</div>
+          <div class="state-text">Erro ao carregar pipeline</div>
+          <div class="state-hint" id="crmErrorMsg">Falha na comunicação com o servidor.</div>
+          <button type="button" class="retry-btn" id="btnCrmRetry">Tentar novamente</button>
+        </div>
+      </section>
+
     </main>
   </div>
 </div>
@@ -2654,6 +2869,7 @@ var pageTitles = {
   '#create': 'Novo Orçamento',
   '#quotation-detail': 'Detalhe do Orçamento',
   '#auto': 'Orçamento Automático',
+  '#crm': 'Pipeline CRM',
 };
 
 // ── Quotations State ──
@@ -2975,6 +3191,11 @@ function navigate() {
   // Initialize freight page
   if (hash === '#freight') {
     initFreightPage();
+  }
+
+  // Initialize CRM kanban
+  if (hash === '#crm') {
+    fetchCrmPipeline();
   }
 
   // Close mobile sidebar
@@ -5729,12 +5950,261 @@ function showBrindiceToast(msg) {
   toast._timeout = setTimeout(function () { toast.style.display = 'none'; }, 4000);
 }
 
+// ── CRM Kanban ────────────────────────────────────────────────────────────
+
+var crmColumns = [];       // colunas com deals
+var crmDragging = null;    // card sendo arrastado
+
+function fetchCrmPipeline(search) {
+  var board = document.getElementById('kanbanBoard');
+  var loading = document.getElementById('crmLoading');
+  var empty = document.getElementById('crmEmpty');
+  var error = document.getElementById('crmError');
+  var scroll = document.getElementById('kanbanScroll');
+
+  // Mostra loading
+  board.style.display = 'none';
+  scroll.style.display = 'none';
+  empty.style.display = 'none';
+  error.style.display = 'none';
+  loading.style.display = 'flex';
+
+  var url = '/api/crm-deals';
+  if (search) url += '?search=' + encodeURIComponent(search);
+
+  fetch(url, { cache: 'no-cache' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      loading.style.display = 'none';
+
+      if (!data.columns || data.columns.length === 0) {
+        empty.style.display = 'flex';
+        return;
+      }
+
+      crmColumns = data.columns;
+      renderKanban();
+      scroll.style.display = 'block';
+      board.style.display = 'flex';
+    })
+    .catch(function (err) {
+      loading.style.display = 'none';
+      error.style.display = 'flex';
+      document.getElementById('crmErrorMsg').textContent = err.message || 'Erro de rede.';
+    });
+}
+
+function renderKanban() {
+  var board = document.getElementById('kanbanBoard');
+  board.innerHTML = '';
+
+  crmColumns.forEach(function (col) {
+    var colEl = document.createElement('div');
+    colEl.className = 'kanban-column';
+
+    colEl.innerHTML =
+      '<div class="kanban-column-header">' +
+        '<span class="kanban-column-title">' + escapeHtml(col.status) + '</span>' +
+        '<span class="kanban-column-count">' + col.count + '</span>' +
+      '</div>' +
+      '<div class="kanban-cards" data-status="' + escapeHtml(col.status) + '"></div>';
+
+    var cardsEl = colEl.querySelector('.kanban-cards');
+
+    col.deals.forEach(function (deal) {
+      var card = buildKanbanCard(deal);
+      cardsEl.appendChild(card);
+    });
+
+    // Drag-and-drop events na coluna
+    cardsEl.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      cardsEl.classList.add('drag-over');
+    });
+
+    cardsEl.addEventListener('dragleave', function () {
+      cardsEl.classList.remove('drag-over');
+    });
+
+    cardsEl.addEventListener('drop', function (e) {
+      e.preventDefault();
+      cardsEl.classList.remove('drag-over');
+      var dealId = e.dataTransfer.getData('text/plain');
+      var newStatus = cardsEl.getAttribute('data-status');
+      if (dealId && newStatus) {
+        moveDeal(dealId, newStatus);
+      }
+    });
+
+    board.appendChild(colEl);
+  });
+}
+
+function buildKanbanCard(deal) {
+  var card = document.createElement('div');
+  card.className = 'kanban-card';
+  card.draggable = true;
+  card.setAttribute('data-deal-id', deal.id);
+
+  var badges = [];
+
+  if (deal.quotation) {
+    badges.push('<span class="kanban-card-badge badge-quotation">📋 ' + escapeHtml(deal.quotation) + '</span>');
+  }
+
+  if (deal.follow_up_stage > 0) {
+    badges.push('<span class="kanban-card-badge badge-followup">📨 Follow-up ' + deal.follow_up_stage + '</span>');
+  }
+
+  // Data relativa
+  var dias = daysAgo(deal.modificado_em || deal.criado_em);
+  badges.push('<span class="kanban-card-badge badge-date">' + dias + '</span>');
+
+  card.innerHTML =
+    '<div class="kanban-card-name">' + escapeHtml(deal.lead_name) + '</div>' +
+    (deal.email ? '<div class="kanban-card-email" title="' + escapeHtml(deal.email) + '">' + escapeHtml(deal.email) + '</div>' : '') +
+    '<div class="kanban-card-meta">' + badges.join('') + '</div>';
+
+  // Drag events no card
+  card.addEventListener('dragstart', function (e) {
+    crmDragging = card;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', deal.id);
+  });
+
+  card.addEventListener('dragend', function () {
+    card.classList.remove('dragging');
+    crmDragging = null;
+  });
+
+  return card;
+}
+
+function moveDeal(dealId, newStatus) {
+  // Otimista: move visualmente antes da confirmação
+  updateKanbanLocal(dealId, newStatus);
+
+  fetch('/api/crm-update-deal', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deal_id: dealId, status: newStatus }),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.success) {
+        console.warn('[crm] Falha ao mover deal:', data.error);
+        // Recarrega para corrigir
+        fetchCrmPipeline(crmSearchTerm || '');
+      }
+    })
+    .catch(function () {
+      // Recarrega para corrigir estado
+      fetchCrmPipeline(crmSearchTerm || '');
+    });
+}
+
+// Move deal entre colunas localmente (otimista)
+function updateKanbanLocal(dealId, newStatus) {
+  var deal = null;
+  var oldColIdx = -1;
+
+  for (var i = 0; i < crmColumns.length; i++) {
+    var col = crmColumns[i];
+    for (var j = 0; j < col.deals.length; j++) {
+      if (col.deals[j].id === dealId) {
+        deal = col.deals[j];
+        oldColIdx = i;
+        break;
+      }
+    }
+    if (deal) break;
+  }
+
+  if (!deal) return;
+
+  // Remove da coluna antiga
+  deal.status = newStatus;
+  crmColumns[oldColIdx].deals = crmColumns[oldColIdx].deals.filter(function (d) { return d.id !== dealId; });
+  crmColumns[oldColIdx].count = crmColumns[oldColIdx].deals.length;
+
+  // Adiciona na nova coluna (ou cria coluna)
+  var newCol = null;
+  for (var k = 0; k < crmColumns.length; k++) {
+    if (crmColumns[k].status === newStatus) {
+      newCol = crmColumns[k];
+      break;
+    }
+  }
+
+  if (newCol) {
+    newCol.deals.unshift(deal);
+    newCol.count = newCol.deals.length;
+  } else {
+    crmColumns.push({ status: newStatus, count: 1, deals: [deal] });
+  }
+
+  // Remove colunas vazias
+  crmColumns = crmColumns.filter(function (c) { return c.count > 0; });
+
+  // Re-render
+  renderKanban();
+}
+
+// ── CRM Search (debounced) ──
+
+var crmSearchTerm = '';
+var crmSearchTimer = null;
+
+function onCrmSearchInput() {
+  var el = document.getElementById('crmSearch');
+  if (!el) return;
+  crmSearchTerm = el.value.trim();
+  clearTimeout(crmSearchTimer);
+  crmSearchTimer = setTimeout(function () {
+    fetchCrmPipeline(crmSearchTerm);
+  }, 350);
+}
+
+// ── Helpers ──
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function daysAgo(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr.replace(' ', 'T'));
+  var now = new Date();
+  var diff = Math.floor((now - d) / 86400000);
+  if (diff < 1) return 'hoje';
+  if (diff === 1) return '1 dia';
+  return diff + ' dias';
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
   var refreshBtn = document.getElementById('btnBrindiceRefresh');
   if (refreshBtn) {
     refreshBtn.onclick = function () { brindiceAllLeads = []; fetchBrindiceLeads(); };
+  }
+
+  // CRM Kanban bindings
+  var crmRefresh = document.getElementById('btnCrmRefresh');
+  if (crmRefresh) {
+    crmRefresh.onclick = function () { fetchCrmPipeline(crmSearchTerm || ''); };
+  }
+
+  var crmRetry = document.getElementById('btnCrmRetry');
+  if (crmRetry) {
+    crmRetry.onclick = function () { fetchCrmPipeline(crmSearchTerm || ''); };
+  }
+
+  var crmSearch = document.getElementById('crmSearch');
+  if (crmSearch) {
+    crmSearch.addEventListener('input', onCrmSearchInput);
   }
 });
 
