@@ -11,6 +11,7 @@ import { erpGetList, erpGetDoc, erpPut, createHttpError } from './lib/erpnext.js
 
 const VALID_STATUSES = ['Draft', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled'];
 const ORDER_BY_ALLOWLIST = new Set([
+  'creation desc', 'creation asc',
   'transaction_date desc', 'transaction_date asc',
   'name desc', 'name asc',
   'grand_total desc', 'grand_total asc',
@@ -203,7 +204,7 @@ function validateListParams(query) {
     throw createHttpError(400, 'Limite máximo é 200 registros por página.', `[quotations] limit exceeds 200: ${limit}`);
   }
 
-  return { status, orderBy: orderBy || 'transaction_date desc', page, limit };
+  return { status, orderBy: orderBy || 'creation desc', page, limit };
 }
 
 // ── Detail Endpoint ─────────────────────────────────────────────────────────
