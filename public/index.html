@@ -684,7 +684,7 @@
         <span class="tag-chip" data-tag="(numero_pedido)">(numero_pedido)</span>
         <span class="tag-chip" data-tag="(empresa)">(empresa)</span>
         <span class="tag-chip" data-tag="(link_orcamento)">(link_orcamento)</span>
-        <span class="tag-chip" data-tag="(saudacao)">(saudacao)</span>
+        <span class="tag-chip" data-tag="(Saudacao)">(Saudacao)</span>
       </div>
 
       <div class="wa-preview-label">Pré-visualização</div>
@@ -728,6 +728,7 @@ Rule 3 — Regras por Produto
 - Toalhas (Praia): Sempre duas opções: TWL-210 e TWL-280.
 - Toalhas de Banho: Sempre três opções: TBH-LEM (Leme 375g/m² - econômico), TBH-URC (Urca 405g/m² - intermediário), TBH-IPA (Ipanema 450g/m² - premium).
 - Bonés < 100: Cotar apenas BNE-TAC-VNL. Bonés >= 100: Cotar BNE-TAC-SUB, BNE-BRI, BNE-PRE.
+- Cachecóis: Sempre quatro opções: CHC-SOF-140 (Soft 140x20cm - econômico), CHC-SOF-180 (Soft 180x20cm - intermediário), CHC-LAA-COU (Lã com etiqueta de couro) e CHC-LAA-BOR (Lã com bordado - premium).
 - Ecobags: Sempre três opções: ECO-30, ECO-35, ECO-50.
 
 Rule 4 — Múltiplas Quantidades
@@ -882,7 +883,12 @@ urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
     function renderWaTemplate(template, nome, numeroPedido, linkOrcamento) {
       const primeiroNome = (nome || '').split(' ')[0];
+      const hora = new Date().getHours();
+      let saudacao = 'Boa noite';
+      if (hora >= 5 && hora < 12) saudacao = 'Bom dia';
+      else if (hora >= 12 && hora < 18) saudacao = 'Boa tarde';
       return template
+        .replace(/\(Saudacao\)/gi, saudacao)
         .replace(/\(nome\)/g, nome || '')
         .replace(/\(primeiro_nome\)/g, primeiroNome)
         .replace(/\(numero_pedido\)/g, numeroPedido || '')
@@ -1494,7 +1500,7 @@ function capitalize(str) {
             alert('Este rascunho não tem itens válidos. Adicione ao menos um item com SKU e quantidade > 0.');
             return;
           }
-          if (!draft.edited.nome.trim()) {
+          if (!draft.edited.nome || !draft.edited.nome.trim()) {
             alert('Informe o nome do cliente antes de aprovar.');
             return;
           }

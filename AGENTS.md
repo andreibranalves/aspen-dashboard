@@ -80,13 +80,14 @@ Quantity brackets: 30, 100, 300, 500, 1000. Urgent orders: +30% on all rates.
 - Cangas < 100 → CNG-SAL-70 + CNG-SAL-100; ≥ 100 → adds CNG-VIS-70 + CNG-VIS-100
 - Toalhas → TWL-210 + TWL-280
 - Bonés < 100 → BNE-TAC-VNL; ≥ 100 → BNE-TAC-SUB + BNE-BRI + BNE-PRE
+- Cachecóis → always quote CHC-SOF-140 + CHC-SOF-180 + CHC-LAA-COU + CHC-LAA-BOR (four options)
 - Ecobags → ECO-30 + ECO-35 + ECO-50
 - Explicit SKUs always take precedence (Rule 0)
 
 ### Frontend (public/index.html)
 Single file — all CSS, HTML, and JS inline. Key functions:
 - `setImage` / `clearImage` — handles paste and drag-drop image input
-- `renderWaTemplate(template, nome, numeroPedido)` — resolves `(nome)`, `(primeiro_nome)`, `(numero_pedido)`, `(empresa)` tags
+- `renderWaTemplate(template, nome, numeroPedido)` — resolves `(Saudacao)` (Bom dia/Boa tarde/Boa noite by hour), `(nome)`, `(primeiro_nome)`, `(numero_pedido)`, `(empresa)`, `(link_orcamento)` tags
 - `buildWhatsApp(telefone, nome, quotationId)` — builds wa.me link with pre-filled message
 - `capitalize(str)` / `fmtPhone(phone)` — display sanitizers (proper case, `(99) 99999-9999`)
 - `createCard / setCardProcessing / setCardDone / setCardError` — per-order result UI; `setCardDone` shows colored dot (green = new customer, red = returning) and "Cliente novo/antigo" label
