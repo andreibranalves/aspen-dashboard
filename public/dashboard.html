@@ -2166,6 +2166,7 @@
 
     .row-action-btn.whatsapp:hover { border-color: #25D366; color: #25D366; background: #e8f5e9; }
     .row-action-btn.pdf:hover     { border-color: var(--red);  color: var(--red);  background: var(--red-bg); }
+    .row-action-btn.row-delete:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
 
     .quotations-table tbody tr {
       cursor: pointer;
@@ -3184,6 +3185,7 @@ function renderTable(rows) {
         + '<a href="' + whatsappUrl + '" target="_blank" class="row-action-btn whatsapp" title="WhatsApp">📱</a>'
         + '<a href="#quotation-detail?' + escapeHtml(row.id) + '" class="row-action-btn" title="Editar" onclick="event.stopPropagation()">✏️</a>'
         + '<a href="/api/view?q=' + encodeURIComponent(row.id) + '" target="_blank" class="row-action-btn pdf" title="PDF">📄</a>'
+        + '<button class="row-action-btn row-delete" title="Excluir" onclick="deleteFromList(\'' + escapeHtml(row.id) + '\', this)">🗑️</button>'
       + '</td>'
       + '</tr>';
   }).join('');
@@ -4340,6 +4342,79 @@ function saveChanges() {
       statusEl.textContent = 'Erro ao salvar: ' + (err.message || 'Tente novamente.');
       statusEl.style.color = 'var(--red)';
     });
+}
+
+// ── List: delete from row action ──
+
+function deleteFromList(id, btn) {
+  var confirmed = confirm(
+    'Tem certeza que deseja excluir o orçamento ' + id + '?\n\n' +
+    'Esta ação não pode ser desfeita.'
+  );
+  if (!confirmed) return;
+
+  // Disable the button
+  btn.disabled = true;
+  var originalHtml = btn.innerHTML;
+  btn.innerHTML = '⏳';
+
+  fetch('/api/quotations?id=' + encodeURIComponent(id), {
+    method: 'DELETE',
+    headers: { 'Accept': 'application/json' },
+  })
+    .then(function (res) {
+      if (!res.ok) {
+        return res.json().then(function (err) {
+          throw new Error(err.error || 'Erro ' + res.status);
+        });
+      }
+      return res.json();
+    })
+    .then(function () {
+      // Remove row with animation, then recalc totals
+      var row = btn.closest('tr');
+      if (row) {
+        row.style.opacity = '0';
+        row.style.transition = 'opacity 0.3s';
+        setTimeout(function () {
+          row.remove();
+          updateTotalsFromDOM();
+        }, 300);
+      } else {
+        fetchQuotations(); // fallback: reload
+      }
+    })
+    .catch(function (err) {
+      console.error('[list delete]', err);
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
+    });
+}
+
+// Recalculate totals bar from visible DOM rows
+function updateTotalsFromDOM() {
+  var rows = document.querySelectorAll('#tableBody tr');
+  var count = rows.length;
+  var sum = 0;
+  rows.forEach(function (r) {
+    var valEl = r.querySelector('.col-valor');
+    if (valEl) {
+      var raw = valEl.textContent.replace(/[^\\d,\\-]/g, '').replace(',', '.');
+      var n = parseFloat(raw);
+      if (!isNaN(n)) sum += n;
+    }
+  });
+  var bar = document.getElementById('totalsBar');
+  if (!bar) return;
+  if (count === 0) {
+    bar.style.display = 'none';
+    document.getElementById('emptyState').style.display = 'flex';
+    document.getElementById('quotationsTable').style.display = 'none';
+    return;
+  }
+  document.getElementById('totalsQty').textContent = count + ' orçamento' + (count !== 1 ? 's' : '');
+  document.getElementById('totalsValue').textContent = formatBRL(sum);
 }
 
 // ── Detail: delete ──
