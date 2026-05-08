@@ -2122,6 +2122,94 @@
       max-width: 400px;
     }
 
+    /* ══════════════════════════════════════════════
+       ROW ACTIONS + TOTALS BAR (Olist-inspired)
+       ══════════════════════════════════════════════ */
+    .col-actions {
+      white-space: nowrap;
+      text-align: right;
+      width: 1%;
+    }
+
+    .row-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+      margin-left: 2px;
+    }
+
+    .row-action-btn:hover {
+      border-color: var(--navy);
+      color: var(--navy);
+      background: var(--navy-light);
+    }
+
+    .row-action-btn.whatsapp:hover { border-color: #25D366; color: #25D366; background: #e8f5e9; }
+    .row-action-btn.pdf:hover     { border-color: var(--red);  color: var(--red);  background: var(--red-bg); }
+
+    .quotations-table tbody tr {
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .quotations-table tbody tr:hover {
+      background: var(--navy-light);
+    }
+
+    .quotations-table tbody tr:hover .row-action-btn {
+      border-color: #ccc;
+    }
+
+    /* ── Totals Bar ── */
+    .totals-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      margin-top: 12px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .totals-bar-left {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .totals-bar-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .totals-bar-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+
+    .totals-bar-value {
+      font-family: 'Lusitana', serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+    }
+
   </style>
 </head>
 <body>
@@ -2250,6 +2338,7 @@
                 <th>Cliente</th>
                 <th style="text-align:right">Valor</th>
                 <th>Status</th>
+                <th class="col-actions">Ações</th>
               </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -2263,6 +2352,21 @@
               <span id="pageNumbers"></span>
               <button type="button" class="page-btn" id="nextBtn" disabled>Próximo ›</button>
             </div>
+          </div>
+
+          <!-- Totals Bar -->
+          <div class="totals-bar" id="totalsBar" style="display:none">
+            <div class="totals-bar-left">
+              <div class="totals-bar-item">
+                <span class="totals-bar-label">Quantidade</span>
+                <span class="totals-bar-value" id="totalsQty">—</span>
+              </div>
+              <div class="totals-bar-item">
+                <span class="totals-bar-label">Valor Total</span>
+                <span class="totals-bar-value" id="totalsValue">—</span>
+              </div>
+            </div>
+            <span class="totals-bar-label" id="totalsPeriod">todos os status</span>
           </div>
         </div>
       </section>
@@ -3017,14 +3121,6 @@ function fetchQuotations() {
     });
 }
 
-function applyQuotations(body) {
-  totalPages = body.pagination ? body.pagination.total_pages || 0 : 0;
-  totalRecords = body.pagination ? body.pagination.total || 0 : 0;
-  updateChipCounts(body.status_summary);
-  renderTable(body.data);
-  renderPagination();
-}
-
 // ── Chip count updates ──
 function updateChipCounts(summary) {
   if (!summary) return;
@@ -3053,6 +3149,7 @@ function renderTable(rows) {
   if (!rows || rows.length === 0) {
     table.style.display = 'none';
     document.getElementById('pagination').style.display = 'none';
+    document.getElementById('totalsBar').style.display = 'none';
     emptyState.style.display = 'flex';
     return;
   }
@@ -3060,17 +3157,61 @@ function renderTable(rows) {
   emptyState.style.display = 'none';
   table.style.display = '';
   document.getElementById('pagination').style.display = '';
+  document.getElementById('totalsBar').style.display = '';
 
   tbody.innerHTML = rows.map(function (row) {
     var statusLabel = STATUS_LABELS[row.status] || row.status;
-    return '<tr data-id="' + escapeHtml(row.id) + '">'
+    var whatsappUrl = 'https://wa.me/?text=' + encodeURIComponent('Olá ' + escapeHtml(row.cliente) + '! Segue orçamento ' + escapeHtml(row.id));
+    return '<tr data-id="' + escapeHtml(row.id) + '" onclick="window.location.hash=\'#quotation-detail?' + escapeHtml(row.id) + '\'">'
       + '<td class="col-num">' + escapeHtml(row.id) + '</td>'
       + '<td class="col-data">' + formatDate(row.data) + '</td>'
       + '<td>' + escapeHtml(row.cliente) + '</td>'
       + '<td class="col-valor">' + formatBRL(row.valor) + '</td>'
       + '<td><span class="status-badge ' + escapeHtml(row.status) + '">' + escapeHtml(statusLabel) + '</span></td>'
+      + '<td class="col-actions" onclick="event.stopPropagation()">'
+        + '<a href="' + whatsappUrl + '" target="_blank" class="row-action-btn whatsapp" title="WhatsApp">📱</a>'
+        + '<a href="#quotation-detail?' + escapeHtml(row.id) + '" class="row-action-btn" title="Editar" onclick="event.stopPropagation()">✏️</a>'
+        + '<a href="/api/view?q=' + encodeURIComponent(row.id) + '" target="_blank" class="row-action-btn pdf" title="PDF">📄</a>'
+      + '</td>'
       + '</tr>';
   }).join('');
+}
+
+// ── Totals Bar ──
+
+var _totalsQty = 0;
+var _totalsSum = 0;
+
+function updateTotalsBar(rows, statusFilter) {
+  var bar = document.getElementById('totalsBar');
+  if (!bar) return;
+
+  if (!rows || rows.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  // Count items from the API side isn't available in each row.
+  // Use total_records * avg as approximation, or keep as "N orçamentos"
+  _totalsQty = rows.length;
+  _totalsSum = rows.reduce(function (s, r) { return s + (r.valor || 0); }, 0);
+
+  document.getElementById('totalsQty').textContent = _totalsQty + ' orçamento' + (_totalsQty !== 1 ? 's' : '');
+  document.getElementById('totalsValue').textContent = formatBRL(_totalsSum);
+
+  var statusLabel = statusFilter ? (STATUS_LABELS[statusFilter] || statusFilter) : 'todos os status';
+  document.getElementById('totalsPeriod').textContent = statusLabel;
+}
+
+// ── Apply quotations data ──
+
+function applyQuotations(body) {
+  totalPages = body.pagination ? body.pagination.total_pages || 0 : 0;
+  totalRecords = body.pagination ? body.pagination.total || 0 : 0;
+  updateChipCounts(body.status_summary);
+  renderTable(body.data);
+  updateTotalsBar(body.data, currentStatus);
+  renderPagination();
 }
 
 // ── Pagination ──
