@@ -278,6 +278,17 @@
 
     .btn-success:hover { background: #256d29; border-color: #256d29; }
 
+    .btn-danger-outline {
+      background: #fff;
+      color: var(--red);
+      border: 1px solid var(--red-border);
+      transition: all 0.15s;
+    }
+    .btn-danger-outline:hover {
+      background: var(--red-bg);
+      border-color: var(--red);
+    }
+
     .btn-auto {
       background: #fff;
       color: var(--navy);
@@ -2776,6 +2787,7 @@
             <div id="detailViewActions">
               <button type="button" class="btn btn-primary" id="editBtn">Editar</button>
               <a href="" target="_blank" class="btn" id="viewPdfBtn">📄 Visualizar</a>
+              <button type="button" class="btn btn-danger-outline" id="deleteBtn" title="Excluir orçamento">🗑️ Excluir</button>
             </div>
             <!-- Edit mode buttons -->
             <div id="detailEditActions" style="display:none">
@@ -4330,6 +4342,45 @@ function saveChanges() {
     });
 }
 
+// ── Detail: delete ──
+
+function deleteQuotation() {
+  if (!detailState.id) return;
+
+  var confirmed = confirm(
+    'Tem certeza que deseja excluir o orçamento ' + detailState.id + '?\n\n' +
+    'Esta ação não pode ser desfeita.'
+  );
+  if (!confirmed) return;
+
+  var btn = document.getElementById('deleteBtn');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo…';
+
+  fetch('/api/quotations?id=' + encodeURIComponent(detailState.id), {
+    method: 'DELETE',
+    headers: { 'Accept': 'application/json' },
+  })
+    .then(function (res) {
+      if (!res.ok) {
+        return res.json().then(function (err) {
+          throw new Error(err.error || 'Erro ' + res.status);
+        });
+      }
+      return res.json();
+    })
+    .then(function () {
+      // Volta para a lista — a tabela vai recarregar automaticamente
+      window.location.hash = '#quotations';
+    })
+    .catch(function (err) {
+      console.error('[detail delete]', err);
+      btn.disabled = false;
+      btn.textContent = '🗑️ Excluir';
+      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
+    });
+}
+
 // ── Detail: event bindings ──
 
 document.getElementById('detailBackLink').addEventListener('click', function (e) {
@@ -4341,6 +4392,7 @@ document.getElementById('editBtn').addEventListener('click', enterEditMode);
 document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
 document.getElementById('detailAddItemBtn').addEventListener('click', addDetailItemRow);
 document.getElementById('saveBtn').addEventListener('click', saveChanges);
+document.getElementById('deleteBtn').addEventListener('click', deleteQuotation);
 document.getElementById('detailRetryBtn').addEventListener('click', loadQuotationDetail);
 
 // ── Quotations: row click → navigate to detail ──

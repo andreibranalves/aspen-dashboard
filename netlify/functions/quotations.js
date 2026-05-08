@@ -5,7 +5,7 @@
 //
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
-import { erpGetList, erpGetDoc, erpPut, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpGetDoc, erpPut, erpDelete, createHttpError } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -381,6 +381,16 @@ export async function handler(event) {
   const query = event.queryStringParameters || {};
 
   try {
+    // DELETE: Remove quotation — DELETE /api/quotations?id=ORC-20261143
+    if (event.httpMethod === 'DELETE' && query.id) {
+      await erpDelete('Quotation', query.id);
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, id: query.id }),
+      };
+    }
+
     // PUT: Update quotation items — /api/quotations?id=ORC-20261143
     if (event.httpMethod === 'PUT' && query.id) {
       let payload;
