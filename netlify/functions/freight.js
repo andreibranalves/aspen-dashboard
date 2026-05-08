@@ -49,8 +49,15 @@ export async function handler(event) {
     const origin = { ...ASPEN_ORIGIN, postalCode: orig.cep.replace(/\D/g, '') };
     const destination = {
       name: dest.name || 'Cliente', street: dest.street || `${dest.cep}`, city: dest.city || '',
-      state: dest.state || '', country: 'BR', postalCode: dest.cep.replace(/\D/g, ''),
+      state: dest.state || (dest.cep.replace(/\D/g, '').startsWith('01') ? 'SP' : ''), country: 'BR', postalCode: dest.cep.replace(/\D/g, ''),
     };
+    if (!origin.state || origin.state.length < 2) origin.state = 'RJ';
+    if (!destination.state || destination.state.length < 2) {
+      // Try to infer state from CEP prefix
+      const cepClean = dest.cep.replace(/\D/g, '');
+      const stateMap = { '01':'SP', '20':'RJ', '30':'MG', '40':'BA', '50':'PE', '60':'CE', '70':'DF', '80':'PR', '90':'RS' };
+      destination.state = stateMap[cepClean.substring(0, 2)] || 'SP';
+    }
 
     const rates = [];
     for (const carrier of carriers) {

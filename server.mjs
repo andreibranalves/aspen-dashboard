@@ -38,6 +38,7 @@ const { handler: pricingLookupHandler }  = await import('./netlify/functions/pri
 const { handler: quotationsHandler }    = await import('./netlify/functions/quotations.js');
 const { handler: leadsClientsHandler }  = await import('./netlify/functions/leads-clients.js');
 const { handler: productsHandler }      = await import('./netlify/functions/products.js');
+const { handler: freightHandler }      = await import('./netlify/functions/freight.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -152,6 +153,19 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await leadsClientsHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/freight' || pathname === '/.netlify/functions/freight') {
+    const body = await readBody(req);
+    try {
+      const result = await freightHandler(netlifyEvent(req, body));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {
