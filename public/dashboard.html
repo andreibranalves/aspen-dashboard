@@ -1268,31 +1268,76 @@
        ORÇAMENTO AUTOMÁTICO (embedded from index.html)
        ══════════════════════════════════════════════ */
 
-    /* ── Tabs ── */
-    .auto-tabs {
+    /* ── Auto flow layout ── */
+    .auto-phase-indicator {
       display: flex;
-      gap: 0;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 22px;
-    }
-    .auto-tab {
-      font-family: 'Lusitana', serif;
-      font-size: 13px;
-      font-weight: 700;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
       color: var(--muted);
-      cursor: pointer;
-      padding: 8px 16px 9px;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      transition: color 0.15s, border-color 0.15s;
-      user-select: none;
-      letter-spacing: 0.01em;
+      font-size: 12px;
     }
-    .auto-tab:first-child { padding-left: 0; }
-    .auto-tab:hover { color: var(--navy); }
-    .auto-tab.active { color: var(--navy); border-bottom-color: var(--navy); }
-    .auto-tab-panel { display: none; }
-    .auto-tab-panel.active { display: block; }
+    .auto-phase-step {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #f0eeeb;
+      border: 1px solid transparent;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .auto-phase-step.is-active {
+      background: var(--navy-light);
+      color: var(--navy);
+      border-color: rgba(53,77,114,0.18);
+    }
+    .auto-phase-step.is-complete {
+      background: var(--green-bg);
+      color: var(--green);
+      border-color: var(--green-border);
+    }
+    .auto-phase-step.is-error {
+      background: var(--red-bg);
+      color: var(--red);
+      border-color: var(--red-border);
+    }
+    .auto-phase-arrow {
+      color: #b7b1a8;
+      font-size: 14px;
+    }
+
+    .auto-flow-card {
+      padding: 22px;
+      margin-bottom: 18px;
+    }
+    .auto-flow-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .auto-flow-heading {
+      font-family: 'Lusitana', serif;
+      font-size: 24px;
+      line-height: 1.2;
+      color: var(--navy);
+      margin-bottom: 8px;
+    }
+    .auto-flow-subheading {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin-bottom: 14px;
+      max-width: 62ch;
+    }
+    .auto-flow-side {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
 
     /* ── Form elements ── */
     .auto-field-label {
@@ -1310,9 +1355,13 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       background: #fff;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
     }
-    .auto-input-area:focus-within { border-color: var(--navy); }
+    .auto-input-area:focus-within {
+      border-color: var(--navy);
+      box-shadow: 0 0 0 3px rgba(53,77,114,0.08);
+    }
     .auto-input-area.drag-over { border-color: var(--navy); background: var(--navy-light); }
 
     #autoTextInput {
@@ -1324,61 +1373,137 @@
       color: var(--text);
       outline: none;
       resize: vertical;
-      min-height: 110px;
+      min-height: 220px;
       font-family: inherit;
       background: transparent;
       line-height: 1.5;
+      box-sizing: border-box;
     }
     #autoTextInput::placeholder { color: #bbb; }
 
+    .auto-image-drop {
+      width: 100%;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: #fcfbfa;
+      color: var(--muted);
+      padding: 26px 18px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, transform 0.15s;
+      font-family: inherit;
+    }
+    .auto-image-drop:hover,
+    .auto-image-drop.drag-over {
+      border-color: var(--navy);
+      background: var(--navy-light);
+    }
+    .auto-image-drop.has-image {
+      border-style: solid;
+      border-color: var(--green);
+      background: var(--green-bg);
+    }
+    .auto-image-drop-icon {
+      display: block;
+      font-size: 26px;
+      margin-bottom: 6px;
+    }
+    .auto-image-drop-title {
+      display: block;
+      font-family: 'Lusitana', serif;
+      font-size: 14px;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+    .auto-image-drop-subtitle {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
     .auto-image-preview {
       display: none;
-      padding: 6px 12px 10px;
-      border-top: 1px solid #f0eeeb;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
       position: relative;
+      flex-direction: column;
+      gap: 8px;
     }
-    .auto-image-preview.visible { display: block; }
+    .auto-image-preview.visible { display: flex; }
     .auto-image-preview img {
-      max-height: 150px;
+      max-height: 220px;
       max-width: 100%;
       border-radius: var(--radius);
       display: block;
+      object-fit: contain;
+      background: #fafaf9;
+    }
+    .auto-image-preview-meta {
+      font-size: 11px;
+      color: var(--muted);
     }
     .auto-remove-img {
-      position: absolute;
-      top: 10px;
-      right: 14px;
-      background: rgba(0,0,0,0.45);
-      color: #fff;
+      align-self: flex-start;
+      background: #f3efe9;
+      color: var(--navy);
       border: none;
-      border-radius: 50%;
-      width: 20px;
-      height: 20px;
+      border-radius: 999px;
+      padding: 6px 10px;
       font-size: 11px;
+      font-weight: 600;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       transition: background 0.15s;
     }
-    .auto-remove-img:hover { background: rgba(0,0,0,0.7); }
+    .auto-remove-img:hover { background: #e6ded3; }
 
     .auto-input-hint {
       font-size: 11px;
-      color: #c8c4bc;
-      padding: 4px 12px 8px;
+      color: #9f998f;
+      padding: 8px 2px 0;
       user-select: none;
+    }
+
+    .auto-prazo-row {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      margin-top: 18px;
+    }
+    .auto-prazo-row input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--bg);
+      box-sizing: border-box;
+    }
+    .auto-prazo-hint {
+      grid-column: 2;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: -4px;
+    }
+    .auto-submit-row {
+      margin-top: 18px;
+      display: flex;
+      justify-content: flex-start;
     }
 
     /* ── Auto primary button ── */
     .auto-btn-primary {
-      margin-top: 16px;
-      width: 100%;
+      width: auto;
+      min-width: 220px;
       background: var(--navy);
       color: #fff;
       border: none;
       border-radius: var(--radius);
-      padding: 11px;
+      padding: 12px 24px;
       font-family: 'Lusitana', serif;
       font-size: 14px;
       font-weight: 700;
@@ -1392,17 +1517,19 @@
     /* ── Auto extract status ── */
     #auto-extract-status {
       display: none;
-      margin-top: 20px;
-      padding: 12px 16px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: #fafaf9;
-      font-size: 13px;
-      color: var(--muted);
-      align-items: center;
-      gap: 10px;
+      margin-top: 18px;
     }
-    #auto-extract-status.visible { display: flex; }
+    #auto-extract-status.visible { display: block; }
+
+    .auto-settings-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .auto-settings-card {
+      padding: 18px;
+    }
 
     /* ── Auto queue ── */
     #auto-queue {
@@ -1645,6 +1772,43 @@
       color: var(--text);
     }
     #auto-error-block.visible { display: block; }
+
+    @media (max-width: 960px) {
+      .auto-flow-grid {
+        grid-template-columns: 1fr;
+      }
+      .auto-settings-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .auto-flow-card {
+        padding: 16px;
+      }
+      .auto-flow-heading {
+        font-size: 20px;
+      }
+      .auto-prazo-row {
+        grid-template-columns: 1fr;
+      }
+      .auto-prazo-hint {
+        grid-column: auto;
+        margin-top: 0;
+      }
+      .auto-btn-primary {
+        width: 100%;
+      }
+      .auto-submit-row {
+        display: block;
+      }
+      .auto-phase-arrow {
+        display: none;
+      }
+      .auto-draft-contacts {
+        flex-direction: column;
+      }
+    }
     .auto-error-title {
       font-family: 'Lusitana', serif;
       font-weight: 700;
@@ -2359,81 +2523,109 @@
           </div>
         </div>
 
-        <div class="auto-tabs">
-          <div class="auto-tab active" data-tab="pedido">Pedido</div>
-          <div class="auto-tab" data-tab="regras">Regras</div>
-          <div class="auto-tab" data-tab="whatsapp">WhatsApp</div>
+        <div class="auto-phase-indicator" id="autoPhaseIndicator">
+          <span class="auto-phase-step is-active" data-auto-phase="input">1. Entrada</span>
+          <span class="auto-phase-arrow">→</span>
+          <span class="auto-phase-step" data-auto-phase="extracting">2. Extração</span>
+          <span class="auto-phase-arrow">→</span>
+          <span class="auto-phase-step" data-auto-phase="review">3. Revisão</span>
+          <span class="auto-phase-arrow">→</span>
+          <span class="auto-phase-step" data-auto-phase="creating">4. Criação</span>
+          <span class="auto-phase-arrow">→</span>
+          <span class="auto-phase-step" data-auto-phase="complete">5. Concluído</span>
         </div>
 
-        <!-- Tab: Pedido -->
-        <div class="auto-tab-panel active" id="auto-panel-pedido">
+        <div class="form-card auto-flow-card">
           <form id="auto-form">
-            <label class="auto-field-label">Pedido</label>
-            <div class="auto-input-area" id="autoInputArea">
-              <textarea id="autoTextInput" placeholder="Cole o texto ou imagem do pedido aqui (Ctrl+V)…"></textarea>
-              <div class="auto-image-preview" id="autoImagePreview">
-                <img id="autoPreviewImg" src="" alt="imagem colada" />
-                <button type="button" class="auto-remove-img" id="autoRemoveImg" title="Remover imagem">✕</button>
+            <div class="auto-flow-grid">
+              <div class="auto-flow-main">
+                <label class="auto-field-label">Pedido</label>
+                <div class="auto-flow-heading">Cole a mensagem do cliente</div>
+                <div class="auto-flow-subheading">Texto livre, lista de itens ou print. A IA extrai nome, contato, urgência e os produtos sugeridos.</div>
+                <div class="auto-input-area" id="autoInputArea">
+                  <textarea id="autoTextInput" placeholder="Ex: 200 lenços seda 70cm para João Silva, joao@email.com, (11) 99999-9999&#10;&#10;Ou descreva o pedido em linguagem natural…"></textarea>
+                </div>
+                <div class="auto-input-hint">Você pode colar texto, usar Ctrl+V com imagem ou arrastar um arquivo para a área lateral.</div>
               </div>
-              <div class="auto-input-hint">Ctrl+V para colar imagem · arraste aqui</div>
+
+              <div class="auto-flow-side">
+                <label class="auto-field-label">Imagem do pedido</label>
+                <button type="button" class="auto-image-drop" id="autoImageDrop">
+                  <span class="auto-image-drop-icon">📎</span>
+                  <span class="auto-image-drop-title">Arraste uma imagem aqui</span>
+                  <span class="auto-image-drop-subtitle">ou clique para selecionar PNG, JPG ou WEBP</span>
+                </button>
+                <input type="file" id="autoImageInput" accept="image/*" hidden>
+                <div class="auto-image-preview" id="autoImagePreview">
+                  <img id="autoPreviewImg" src="" alt="imagem do pedido" />
+                  <div class="auto-image-preview-meta">Pré-visualização da imagem anexada</div>
+                  <button type="button" class="auto-remove-img" id="autoRemoveImg" title="Remover imagem">✕ Remover imagem</button>
+                </div>
+              </div>
             </div>
-            <label class="auto-field-label" style="margin-top:12px">Prazo de produção <span style="font-weight:400;text-transform:none;color:var(--muted);font-size:11px;">(opcional — substitui o padrão no orçamento)</span></label>
-            <input type="text" id="autoPrazoInput" placeholder="Ex: 10 a 15 dias úteis após confirmação do pagamento" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;color:var(--text);background:var(--bg);box-sizing:border-box;margin-bottom:12px;">
-            <button type="submit" class="auto-btn-primary" id="autoSubmitBtn">Gerar Orçamento</button>
+
+            <div class="auto-prazo-row">
+              <label class="auto-field-label" for="autoPrazoInput" style="margin:0">Prazo de produção</label>
+              <input type="text" id="autoPrazoInput" placeholder="Ex: 10 a 15 dias úteis após confirmação do pagamento">
+              <span class="auto-prazo-hint">Opcional — substitui o prazo padrão no orçamento gerado.</span>
+            </div>
+
+            <div class="auto-submit-row">
+              <button type="submit" class="auto-btn-primary" id="autoSubmitBtn">✨ Gerar Orçamento</button>
+            </div>
           </form>
+        </div>
 
-          <div id="auto-extract-status">
+        <div id="auto-extract-status">
+          <div class="state-box">
             <div class="spinner"></div>
-            <span>Analisando pedido com IA…</span>
+            <div class="state-text">Analisando pedido com IA…</div>
+            <div class="state-hint">Isso pode levar alguns segundos.</div>
           </div>
-
-          <div id="auto-queue"></div>
-
-          <div id="auto-error-block"></div>
         </div>
 
-        <!-- Tab: WhatsApp -->
-        <div class="auto-tab-panel" id="auto-panel-whatsapp">
-          <div class="auto-rules-header">
-            <label class="auto-field-label" style="margin:0">Mensagem do WhatsApp</label>
-            <div class="auto-rules-actions">
-              <button class="auto-btn-secondary" id="btnAutoWaReset">Restaurar padrão</button>
-              <button class="auto-btn-save" id="btnAutoWaSave">Salvar</button>
+        <div id="auto-error-block"></div>
+        <div id="auto-queue"></div>
+
+        <div class="auto-settings-grid">
+          <div class="form-card auto-settings-card">
+            <div class="auto-rules-header">
+              <label class="auto-field-label" style="margin:0">Regras de cotação</label>
+              <div class="auto-rules-actions">
+                <button class="auto-btn-secondary" id="btnAutoReset">Restaurar padrão</button>
+                <button class="auto-btn-save" id="btnAutoSave">Salvar</button>
+              </div>
             </div>
-          </div>
-          <textarea class="auto-wa-template-textarea" id="autoWaTextarea"></textarea>
-
-          <div class="auto-tags-label">Inserir tag dinâmica</div>
-          <div class="auto-tags-row">
-            <span class="auto-tag-chip" data-tag="(nome)">(nome)</span>
-            <span class="auto-tag-chip" data-tag="(primeiro_nome)">(primeiro_nome)</span>
-            <span class="auto-tag-chip" data-tag="(numero_pedido)">(numero_pedido)</span>
-            <span class="auto-tag-chip" data-tag="(empresa)">(empresa)</span>
-            <span class="auto-tag-chip" data-tag="(link_orcamento)">(link_orcamento)</span>
-            <span class="auto-tag-chip" data-tag="(Saudacao)">(Saudacao)</span>
+            <textarea id="autoRulesTextarea"></textarea>
+            <div class="auto-rules-hint">Essas regras são enviadas para a IA em cada orçamento. Edite livremente e clique em Salvar.</div>
+            <div class="auto-save-toast" id="autoSaveToast">Regras salvas.</div>
           </div>
 
-          <div class="auto-wa-preview-label">Pré-visualização</div>
-          <div class="auto-wa-preview-box" id="autoWaPreview"></div>
-
-          <div class="auto-rules-hint" style="margin-top:10px">
-            Clique nas tags para inserir na mensagem. A prévia usa dados de exemplo.
-          </div>
-          <div class="auto-save-toast" id="autoWaToast">Mensagem salva.</div>
-        </div>
-
-        <!-- Tab: Regras -->
-        <div class="auto-tab-panel" id="auto-panel-regras">
-          <div class="auto-rules-header">
-            <label class="auto-field-label" style="margin:0">Regras de cotação</label>
-            <div class="auto-rules-actions">
-              <button class="auto-btn-secondary" id="btnAutoReset">Restaurar padrão</button>
-              <button class="auto-btn-save" id="btnAutoSave">Salvar</button>
+          <div class="form-card auto-settings-card">
+            <div class="auto-rules-header">
+              <label class="auto-field-label" style="margin:0">Mensagem do WhatsApp</label>
+              <div class="auto-rules-actions">
+                <button class="auto-btn-secondary" id="btnAutoWaReset">Restaurar padrão</button>
+                <button class="auto-btn-save" id="btnAutoWaSave">Salvar</button>
+              </div>
             </div>
+            <textarea class="auto-wa-template-textarea" id="autoWaTextarea"></textarea>
+
+            <div class="auto-tags-label">Inserir tag dinâmica</div>
+            <div class="auto-tags-row">
+              <span class="auto-tag-chip" data-tag="(nome)">(nome)</span>
+              <span class="auto-tag-chip" data-tag="(primeiro_nome)">(primeiro_nome)</span>
+              <span class="auto-tag-chip" data-tag="(numero_pedido)">(numero_pedido)</span>
+              <span class="auto-tag-chip" data-tag="(empresa)">(empresa)</span>
+              <span class="auto-tag-chip" data-tag="(link_orcamento)">(link_orcamento)</span>
+              <span class="auto-tag-chip" data-tag="(Saudacao)">(Saudacao)</span>
+            </div>
+
+            <div class="auto-wa-preview-label">Pré-visualização</div>
+            <div class="auto-wa-preview-box" id="autoWaPreview"></div>
+            <div class="auto-rules-hint" style="margin-top:10px">Clique nas tags para inserir na mensagem. A prévia usa dados de exemplo.</div>
+            <div class="auto-save-toast" id="autoWaToast">Mensagem salva.</div>
           </div>
-          <textarea id="autoRulesTextarea"></textarea>
-          <div class="auto-rules-hint">Essas regras são enviadas para a IA em cada orçamento. Edite livremente e clique em Salvar.</div>
-          <div class="auto-save-toast" id="autoSaveToast">Regras salvas.</div>
         </div>
       </section>
 
@@ -4555,7 +4747,7 @@ function restoreAutoDrafts() {
     if (approvedDrafts.length === 0) {
       clearAutoDrafts();
       alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
-      btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      btn.disabled = false; btn.textContent = '✨ Gerar Orçamento';
       return;
     }
     const prazoVal = document.getElementById('autoPrazoInput').value.trim();
@@ -4591,11 +4783,24 @@ function restoreAutoDrafts() {
       }
     }
     clearAutoDrafts();
-    btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+    btn.disabled = false; btn.textContent = '✨ Gerar Orçamento';
   })();
 }
 
 // ── Auto queue UI helpers ──
+function updateAutoPhase(phase, opts) {
+  opts = opts || {};
+  const order = ['input', 'extracting', 'review', 'creating', 'complete'];
+  const phaseIndex = order.indexOf(phase);
+  document.querySelectorAll('#autoPhaseIndicator .auto-phase-step').forEach(step => {
+    const stepPhase = step.dataset.autoPhase;
+    const idx = order.indexOf(stepPhase);
+    step.classList.remove('is-active', 'is-complete', 'is-error');
+    if (idx !== -1 && phaseIndex !== -1 && idx < phaseIndex) step.classList.add('is-complete');
+    if (stepPhase === phase) step.classList.add(opts.error ? 'is-error' : 'is-active');
+  });
+}
+
 function resetAutoUI() {
   const q = document.getElementById('auto-queue');
   q.classList.remove('visible');
@@ -4605,12 +4810,14 @@ function resetAutoUI() {
   const eb = document.getElementById('auto-error-block');
   eb.classList.remove('visible');
   eb.innerHTML = '';
+  updateAutoPhase('input');
 }
 
 function showAutoError(title, msg) {
   const eb = document.getElementById('auto-error-block');
   eb.innerHTML = '<div class="auto-error-title">' + escapeHtml(title) + '</div><p>' + escapeHtml(msg) + '</p>';
   eb.classList.add('visible');
+  updateAutoPhase('extracting', { error: true });
 }
 
 function createAutoCard(order, index, total) {
@@ -4641,6 +4848,7 @@ function setAutoCardProcessing(index, total) {
   const badge = document.getElementById('auto-badge-' + index);
   badge.textContent = (index + 1) + '/' + total + ' · em processo';
   badge.className = 'auto-card-badge processing';
+  updateAutoPhase('creating');
 }
 
 function setAutoCardDone(index, data, telefone, email) {
@@ -4691,6 +4899,9 @@ function setAutoCardDone(index, data, telefone, email) {
   const resultEl = document.getElementById('auto-result-' + index);
   resultEl.style.display = '';
   resultEl.innerHTML = itemsHtml + '<div class="auto-action-buttons">' + pdfBtn + waBtn + frappeBtn + '</div>';
+
+  const pendingCards = document.querySelectorAll('#auto-queue .auto-queue-card.processing, #auto-queue .auto-queue-card.auto-draft').length;
+  if (pendingCards <= 1) updateAutoPhase('complete');
 }
 
 function setAutoCardError(index, msg) {
@@ -4703,12 +4914,14 @@ function setAutoCardError(index, msg) {
   badge.textContent = 'erro';
   badge.className = 'auto-card-badge';
   document.getElementById('auto-sub-' + index).textContent = msg;
+  updateAutoPhase('creating', { error: true });
 }
 
 // ── Render draft cards ──
 function renderAutoDraftCards(drafts) {
   const queueEl = document.getElementById('auto-queue');
   const total = drafts.length;
+  updateAutoPhase('review');
 
   for (const draft of drafts) {
     const i = draft.index;
@@ -5076,6 +5289,8 @@ function initAutoPage() {
   const textInput = document.getElementById('autoTextInput');
   const imagePreview = document.getElementById('autoImagePreview');
   const previewImg = document.getElementById('autoPreviewImg');
+  const imageDrop = document.getElementById('autoImageDrop');
+  const imageInput = document.getElementById('autoImageInput');
 
   function setImage(file) {
     if (!file || !file.type.startsWith('image/')) return;
@@ -5085,6 +5300,7 @@ function initAutoPage() {
       autoFileData = e.target.result.split(',')[1];
       previewImg.src = e.target.result;
       imagePreview.classList.add('visible');
+      imageDrop.classList.add('has-image');
     };
     reader.readAsDataURL(file);
   }
@@ -5093,9 +5309,15 @@ function initAutoPage() {
     autoFileData = null; autoFileMime = null;
     previewImg.src = '';
     imagePreview.classList.remove('visible');
+    imageDrop.classList.remove('has-image');
+    imageInput.value = '';
   }
 
   document.getElementById('autoRemoveImg').addEventListener('click', clearImage);
+  imageDrop.addEventListener('click', () => imageInput.click());
+  imageInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) setImage(e.target.files[0]);
+  });
 
   document.addEventListener('paste', e => {
     const items = e.clipboardData?.items;
@@ -5112,6 +5334,14 @@ function initAutoPage() {
     if (e.dataTransfer.files[0]) setImage(e.dataTransfer.files[0]);
   });
 
+  imageDrop.addEventListener('dragover', e => { e.preventDefault(); imageDrop.classList.add('drag-over'); });
+  imageDrop.addEventListener('dragleave', () => imageDrop.classList.remove('drag-over'));
+  imageDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    imageDrop.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) setImage(e.dataTransfer.files[0]);
+  });
+
   // Form submit
   document.getElementById('auto-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -5121,6 +5351,7 @@ function initAutoPage() {
     const btn = document.getElementById('autoSubmitBtn');
     btn.disabled = true; btn.textContent = 'Analisando…';
     resetAutoUI();
+    updateAutoPhase('extracting');
 
     const extractStatusEl = document.getElementById('auto-extract-status');
     extractStatusEl.classList.add('visible');
@@ -5141,14 +5372,14 @@ function initAutoPage() {
       if (!res.ok || data.error) {
         extractStatusEl.classList.remove('visible');
         showAutoError('Erro na extração', data.error || 'Falha desconhecida.');
-        btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+        btn.disabled = false; btn.textContent = '✨ Gerar Orçamento';
         return;
       }
       orders = data.orders;
     } catch (err) {
       extractStatusEl.classList.remove('visible');
       showAutoError('Erro de conexão', err.message);
-      btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      btn.disabled = false; btn.textContent = '✨ Gerar Orçamento';
       return;
     }
 
@@ -5197,7 +5428,7 @@ function initAutoPage() {
     const approvedDrafts = drafts.filter(d => d.approved);
     if (approvedDrafts.length === 0) {
       alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
-      btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+      btn.disabled = false; btn.textContent = '✨ Gerar Orçamento';
       return;
     }
 
@@ -5235,7 +5466,7 @@ function initAutoPage() {
     }
 
     clearAutoDrafts();
-    btn.disabled = false; btn.textContent = 'Gerar Orçamento';
+    btn.disabled = false; btn.textContent = '✨ Gerar Orçamento';
   });
 
   // Restore drafts from previous session
