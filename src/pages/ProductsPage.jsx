@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search } from 'lucide-react';
+import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
@@ -16,6 +17,7 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const searchTimer = useRef(null);
+  const [, navigate] = useHashRoute();
 
   const fetchData = useCallback(async (searchVal, pageNum) => {
     setLoading(true);
@@ -112,7 +114,11 @@ export default function ProductsPage() {
             </TableHeader>
             <TableBody>
               {data.map(p => (
-                <TableRow key={p.id || p.sku}>
+                <TableRow
+                  key={p.id || p.sku}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => navigate(`/products/${encodeURIComponent(p.sku || p.item_code)}`)}
+                >
                   <TableCell className="font-mono text-sm">{p.sku || p.item_code}</TableCell>
                   <TableCell>{p.nome || p.item_name}</TableCell>
                   <TableCell className="text-muted-foreground">{p.categoria || p.item_group || '—'}</TableCell>

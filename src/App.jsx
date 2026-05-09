@@ -6,6 +6,7 @@ import AutoQuotePage from '@/pages/AutoQuotePage.jsx';
 import FreightPage from '@/pages/FreightPage.jsx';
 import CrmKanbanPage from '@/pages/CrmKanbanPage.jsx';
 import ProductsPage from '@/pages/ProductsPage.jsx';
+import ProductDetailPage from '@/pages/ProductDetailPage.jsx';
 import LeadsPage from '@/pages/LeadsPage.jsx';
 import SettingsPage from '@/pages/SettingsPage.jsx';
 
@@ -14,6 +15,12 @@ function renderPage(route, navigate) {
   if (route.startsWith('/quotations/')) {
     const id = route.split('/quotations/')[1];
     return <QuotationDetailPage id={id} navigate={navigate} />;
+  }
+
+  // Product detail page: #/products/LNC-SED-70
+  if (route.startsWith('/products/')) {
+    const sku = route.split('/products/')[1];
+    return <ProductDetailPage sku={sku} navigate={navigate} />;
   }
 
   switch (route) {
