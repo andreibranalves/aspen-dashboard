@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
+import { cn } from '@/lib/utils.js';
 
 export default function Layout({ route, onNavigate, children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    // Em mobile, começa fechado
     if (typeof window !== 'undefined') {
       return window.innerWidth < 1024;
     }
@@ -15,7 +15,7 @@ export default function Layout({ route, onNavigate, children }) {
     setSidebarCollapsed(prev => !prev);
   }, []);
 
-  // Fecha sidebar automaticamente em mobile ao navegar
+  // Auto-collapse on mobile after navigation
   useEffect(() => {
     if (window.innerWidth < 1024) {
       setSidebarCollapsed(true);
@@ -33,11 +33,14 @@ export default function Layout({ route, onNavigate, children }) {
 
       {/* Main content area */}
       <div
-        className="flex-1 flex flex-col min-w-0 transition-all duration-300"
-        style={{ marginLeft: sidebarCollapsed ? '4rem' : '16rem' }}
+        className={cn(
+          'flex-1 flex flex-col min-w-0 transition-all duration-300',
+          'ml-0 lg:ml-16', // mobile: 0, desktop collapsed: 4rem
+          !sidebarCollapsed && 'lg:ml-64', // desktop open: 16rem
+        )}
       >
-        <TopBar route={route} />
-        <main className="flex-1 overflow-auto p-6">
+        <TopBar route={route} onMenuClick={toggleSidebar} />
+        <main className="flex-1 overflow-auto p-4 md:p-6">
           {children}
         </main>
       </div>
