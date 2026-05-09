@@ -214,24 +214,46 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── Static files
-  let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'dashboard.html' : pathname);
+  // ── Static files + React SPA fallback
+  let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
 
-  // Fallback para dashboard.html
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(PUBLIC_DIR, 'dashboard.html');
+  // Serve static file if it exists
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext  = path.extname(filePath);
+    const mime = MIME[ext] || 'application/octet-stream';
+    try {
+      const content = fs.readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': mime });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+    return;
   }
 
-  const ext  = path.extname(filePath);
-  const mime = MIME[ext] || 'application/octet-stream';
-
-  try {
-    const content = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': mime });
-    res.end(content);
-  } catch {
-    res.writeHead(404);
-    res.end('Not found');
+  // SPA fallback — serve index.html for all non-API routes
+  const spaIndex = path.join(PUBLIC_DIR, 'index.html');
+  if (fs.existsSync(spaIndex)) {
+    try {
+      const content = fs.readFileSync(spaIndex);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+  } else {
+    // No React build yet — fallback to old dashboard
+    const oldDashboard = path.join(PUBLIC_DIR, 'dashboard-old.html');
+    if (fs.existsSync(oldDashboard)) {
+      const content = fs.readFileSync(oldDashboard);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    } else {
+      res.writeHead(404);
+      res.end('Not found');
+    }
   }
 });
 
