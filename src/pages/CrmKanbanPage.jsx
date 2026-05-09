@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api.js';
 import { cn } from '@/lib/utils.js';
@@ -23,6 +23,7 @@ export default function CrmKanbanPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [draggingId, setDraggingId] = useState(null);
+  const searchTimer = useRef(null);
 
   const fetchData = useCallback(async (searchVal) => {
     setLoading(true);
@@ -40,7 +41,16 @@ export default function CrmKanbanPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(search); }, [fetchData, search]);
+  useEffect(() => { fetchData(search); }, [fetchData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearch(val);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      fetchData(val);
+    }, 350);
+  }, [fetchData]);
 
   const moveDeal = useCallback(async (dealId, newStatus) => {
     // Optimistic update
@@ -107,7 +117,7 @@ export default function CrmKanbanPage() {
         <Input
           placeholder="Buscar por nome do lead…"
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={onSearchChange}
           className="pl-9"
         />
       </div>
