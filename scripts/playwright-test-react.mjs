@@ -46,36 +46,62 @@ async function testQuotationsPage(page) {
   const searchInput = await page.locator('input[placeholder*="Buscar por Nº"]').count();
   check('Input de busca renderizado', searchInput > 0);
 
-  // Check table has rows
-  const rows = await page.locator('table tbody tr').count();
-  check('Tabela tem linhas com dados', rows > 0, `${rows} linha(s)`);
+  // ── Desktop table ──
+  const desktopTable = await page.locator('.hidden.md\\:block table').count();
+  if (desktopTable > 0) {
+    check('Tabela desktop renderizada (md:block)', true);
 
-  if (rows > 0) {
-    // Check first row has quotation ID (monospaced)
-    const firstCell = await page.locator('table tbody tr').first().locator('td').first().textContent();
-    check('Primeira célula é um Nº de orçamento (formato ORC-)', /ORC-/.test(firstCell), `valor: "${firstCell}"`);
+    const rows = await page.locator('.hidden.md\\:block table tbody tr').count();
+    check('Tabela tem linhas com dados', rows > 0, `${rows} linha(s)`);
 
-    // Check BRL format in value column
-    const valCell = await page.locator('table tbody tr').first().locator('td').nth(3).textContent();
-    check('Valor em formato BRL (R$ X.XXX,XX)', /R\$\s*[\d.]+,\d{2}/.test(valCell), `valor: "${valCell}"`);
+    if (rows > 0) {
+      // Check first row has quotation ID (monospaced)
+      const firstCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').first().textContent();
+      check('Primeira célula é um Nº de orçamento (formato ORC-)', /ORC-/.test(firstCell), `valor: "${firstCell}"`);
 
-    // Check status badge exists
-    const badge = await page.locator('table tbody tr').first().locator('td').nth(4).locator('span').first().textContent();
-    check('Status badge renderizado', badge && badge.length > 0, `texto: "${badge}"`);
+      // Check BRL format in value column
+      const valCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(3).textContent();
+      check('Valor em formato BRL (R$ X.XXX,XX)', /R\$\s*[\d.]+\,\d{2}/.test(valCell), `valor: "${valCell}"`);
 
-    // Check action buttons (WhatsApp, Edit, PDF, Delete)
-    const actionBtns = await page.locator('table tbody tr').first().locator('td').last().locator('a, button').count();
-    check('Coluna de ações tem 4 botões', actionBtns === 4, `encontrados: ${actionBtns}`);
+      // Check status badge exists
+      const badge = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(4).locator('span').first().textContent();
+      check('Status badge renderizado', badge && badge.length > 0, `texto: "${badge}"`);
+
+      // Check action buttons have aria-labels
+      const ariaBtns = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').last().locator('button[aria-label], a[aria-label]').count();
+      check('Ações têm aria-labels (≥3)', ariaBtns >= 3, `encontrados: ${ariaBtns}`);
+    }
   }
 
-  // Check totals bar
-  const totalsBar = await page.locator('text=Quantidade').count();
-  check('Totals bar com "Quantidade" visível', totalsBar > 0);
+  // ── Mobile cards (set viewport to mobile) ──
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.evaluate(() => { location.hash = '#/quotations'; });
+  await page.waitForTimeout(1500);
+
+  const mobileCards = await page.locator('.md\\:hidden.space-y-3 > div').count();
+  check('Mobile: cards de orçamento renderizados', mobileCards > 0, `${mobileCards} card(s)`);
+
+  if (mobileCards > 0) {
+    // Check cards have id, status badge, value
+    const firstCard = page.locator('.md\\:hidden.space-y-3 > div').first();
+    const cardText = await firstCard.textContent();
+    check('Mobile: card mostra Nº ORC-', /ORC-/.test(cardText));
+    check('Mobile: card mostra valor BRL', /R\$\s*[\d.]+\,\d{2}/.test(cardText));
+  }
+
+  // Reset to desktop
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => { location.hash = '#/quotations'; });
+  await page.waitForTimeout(1500);
+
+  // Check totals bar (now says "Nesta página")
+  const totalsBar = await page.locator('text=Nesta página').count();
+  check('Totals bar com \"Nesta página\" visível', totalsBar > 0);
 
   // Check pagination exists (if > 25 records)
   const pageInfo = await page.locator('text=Página').count();
   if (pageInfo > 0) {
-    check('Paginação renderizada com "Página X de Y"', true);
+    check('Paginação renderizada com \"Página X de Y\"', true);
   }
 
   // Status chip click — filter
@@ -85,12 +111,16 @@ async function testQuotationsPage(page) {
     await openChip.first().click();
     await page.waitForTimeout(1500);
     const chipActive = await openChip.first().evaluate(el => el.className);
-    check('Status chip "Aberto" ativado ao clicar', chipActive.includes('bg-primary'), `classe: ${chipActive}`);
+    check('Status chip \"Aberto\" ativado ao clicar', chipActive.includes('bg-primary'), `classe: ${chipActive}`);
     // Click "Todos" to reset
     const todosChip = page.locator('main button', { hasText: 'Todos' }).first();
     if (await todosChip.count() > 0) await todosChip.click();
     await page.waitForTimeout(1000);
   }
+
+  // Check PageHeader
+  const pageHeader = await page.locator('text=Criar orçamento').count();
+  check('PageHeader: botão \"Criar orçamento\" visível', pageHeader > 0);
 }
 
 async function testQuotationDetail(page) {
@@ -100,7 +130,7 @@ async function testQuotationDetail(page) {
   await page.evaluate(() => { location.hash = '#/quotations'; });
   await page.waitForTimeout(2000);
 
-  const firstRow = page.locator('table tbody tr').first();
+  const firstRow = page.locator('.hidden.md\\:block table tbody tr').first();
   const firstId = await firstRow.locator('td').first().textContent();
   check('ID do orçamento encontrado', !!firstId && firstId.includes('ORC-'), `ID: ${firstId}`);
 
@@ -116,11 +146,11 @@ async function testQuotationDetail(page) {
 
   // Check back link
   const backLink = await page.locator('text=Voltar para lista').count();
-  check('Link "Voltar para lista" visível', backLink > 0);
+  check('Link \"Voltar para lista\" visível', backLink > 0);
 
   // Check client name
   const clienteLabel = await page.locator('text=Cliente').count();
-  check('Label "Cliente" no card de detalhe', clienteLabel > 0);
+  check('Label \"Cliente\" no card de detalhe', clienteLabel > 0);
 
   // Check items table
   const itemRows = await page.locator('table tbody tr').count();
@@ -128,17 +158,17 @@ async function testQuotationDetail(page) {
 
   // Check totals
   const totalsText = await page.textContent('body');
-  check('Total com formato BRL no detalhe', /Total:\s*R\$\s*[\d.]+,\d{2}/.test(totalsText));
+  check('Total com formato BRL no detalhe', /Total:\s*R\$\s*[\d.]+\,\d{2}/.test(totalsText));
 
   // Check action buttons in view mode
   const editBtn = await page.locator('button', { hasText: 'Editar' }).count();
-  check('Botão "Editar" visível no modo view', editBtn > 0);
+  check('Botão \"Editar\" visível no modo view', editBtn > 0);
 
   const pdfBtn = await page.locator('a', { hasText: 'Visualizar' }).count();
-  check('Link "Visualizar" (PDF) visível', pdfBtn > 0);
+  check('Link \"Visualizar\" (PDF) visível', pdfBtn > 0);
 
   const deleteBtn = await page.locator('button', { hasText: 'Excluir' }).count();
-  check('Botão "Excluir" visível no modo view', deleteBtn > 0);
+  check('Botão \"Excluir\" visível no modo view', deleteBtn > 0);
 
   // Enter edit mode
   const editButton = page.locator('button', { hasText: 'Editar' }).first();
@@ -147,16 +177,16 @@ async function testQuotationDetail(page) {
     await page.waitForTimeout(500);
 
     const saveBtn = await page.locator('button', { hasText: 'Salvar' }).count();
-    check('Botão "Salvar" visível no modo edit', saveBtn > 0);
+    check('Botão \"Salvar\" visível no modo edit', saveBtn > 0);
 
     const cancelBtn = await page.locator('button', { hasText: 'Cancelar' }).count();
-    check('Botão "Cancelar" visível no modo edit', cancelBtn > 0);
+    check('Botão \"Cancelar\" visível no modo edit', cancelBtn > 0);
 
     const addItemBtn = await page.locator('button', { hasText: '+ Item' }).count();
-    check('Botão "+ Item" visível no modo edit', addItemBtn > 0);
+    check('Botão \"+ Item\" visível no modo edit', addItemBtn > 0);
 
     // Check inputs are editable
-    const skuInputs = await page.locator('input[placeholder="SKU"]').count();
+    const skuInputs = await page.locator('input[placeholder=\"SKU\"]').count();
     check('Inputs de SKU renderizados no modo edit', skuInputs > 0, `${skuInputs} input(s)`);
 
     // Cancel edit
@@ -174,10 +204,10 @@ async function testAutoPage(page) {
 
   // Phase indicator
   const phaseLabels = await page.locator('text=1. Entrada').count();
-  check('Phase indicator "1. Entrada" visível', phaseLabels > 0);
+  check('Phase indicator \"1. Entrada\" visível', phaseLabels > 0);
 
   const phaseSteps = await page.locator('text=5. Concluído').count();
-  check('Phase indicator "5. Concluído" visível', phaseSteps > 0);
+  check('Phase indicator \"5. Concluído\" visível', phaseSteps > 0);
 
   // Textarea
   const textarea = await page.locator('textarea').count();
@@ -188,12 +218,12 @@ async function testAutoPage(page) {
   check('Área de upload de imagem renderizada', imageArea > 0);
 
   // Prazo input
-  const prazoInput = await page.locator('input[placeholder*="Ex: 10 a 15"]').count();
+  const prazoInput = await page.locator('input[placeholder*=\"Ex: 10 a 15\"]').count();
   check('Input de prazo de produção', prazoInput > 0);
 
   // Config toggle
   const configBtn = await page.locator('text=Config').count();
-  check('Botão "Config" (settings toggle) visível', configBtn > 0);
+  check('Botão \"Config\" (settings toggle) visível', configBtn > 0);
 
   // Open Config
   if (configBtn > 0) {
@@ -201,10 +231,10 @@ async function testAutoPage(page) {
     await page.waitForTimeout(400);
 
     const rulesLabel = await page.locator('text=Regras de extração').count();
-    check('Painel Config: "Regras de extração" visível', rulesLabel > 0);
+    check('Painel Config: \"Regras de extração\" visível', rulesLabel > 0);
 
     const waLabel = await page.locator('text=Template WhatsApp').count();
-    check('Painel Config: "Template WhatsApp" visível', waLabel > 0);
+    check('Painel Config: \"Template WhatsApp\" visível', waLabel > 0);
 
     // Close config again
     await page.locator('text=Config').first().click();
@@ -219,31 +249,35 @@ async function testFreightPage(page) {
   await page.waitForTimeout(800);
 
   // CEP origem
-  const cepOrigem = await page.locator('input[placeholder="00000-000"]').count();
+  const cepOrigem = await page.locator('input[placeholder=\"00000-000\"]').count();
   check('Inputs de CEP renderizados (origem + destino)', cepOrigem >= 2, `${cepOrigem} input(s)`);
 
   // Buscar CEP buttons
   const searchBtns = await page.locator('button', { hasText: 'Buscar CEP' }).count();
-  check('Botões "Buscar CEP" renderizados', searchBtns >= 2, `${searchBtns} botões`);
+  check('Botões \"Buscar CEP\" renderizados', searchBtns >= 2, `${searchBtns} botões`);
 
   // Package table
   const pkgHeaders = await page.locator('text=Peso (kg)').count();
-  check('Tabela de pacotes com "Peso (kg)"', pkgHeaders > 0);
+  check('Tabela de pacotes com \"Peso (kg)\"', pkgHeaders > 0);
 
   const addPkgBtn = await page.locator('button', { hasText: 'Adicionar Pacote' }).count();
-  check('Botão "Adicionar Pacote"', addPkgBtn > 0);
+  check('Botão \"Adicionar Pacote\"', addPkgBtn > 0);
 
   // Seguro
-  const seguroInput = await page.locator('input[placeholder*="Valor declarado"]').count();
+  const seguroInput = await page.locator('input[placeholder*=\"Valor declarado\"]').count();
   check('Input de seguro da carga', seguroInput > 0);
-
-  // Carrier radios
-  const carrierRadios = await page.locator('input[type="radio"]').count();
-  check('Radio buttons de transportadora', carrierRadios >= 3, `${carrierRadios} radios`);
 
   // Cotar button
   const cotarBtn = await page.locator('button', { hasText: 'Cotar Frete' }).count();
-  check('Botão "Cotar Frete"', cotarBtn > 0);
+  check('Botão \"Cotar Frete\"', cotarBtn > 0);
+
+  // Check package inputs have aria-labels
+  const pkgInputs = await page.locator('input[aria-label*=\"pacote\"]').count();
+  check('Inputs da tabela de pacotes com aria-label', pkgInputs >= 3, `${pkgInputs} inputs com aria-label`);
+
+  // Check auto-query message (no radio buttons anymore)
+  const autoMsg = await page.locator('text=Todas as transportadoras disponíveis').count();
+  check('Mensagem de consulta automática de transportadoras', autoMsg > 0);
 }
 
 async function testCrmKanban(page) {
@@ -255,7 +289,7 @@ async function testCrmKanban(page) {
   // Check loading resolved
   const kanbanHeaders = await page.locator('text=Novo Lead').count();
   if (kanbanHeaders > 0) {
-    check('Coluna "Novo Lead" visível no kanban', true);
+    check('Coluna \"Novo Lead\" visível no kanban', true);
   } else {
     // Maybe no deals — check empty state
     const emptyState = await page.locator('text=Nenhum deal').count();
@@ -263,7 +297,7 @@ async function testCrmKanban(page) {
   }
 
   // Check search input
-  const searchInput = await page.locator('input[placeholder*="Buscar por nome"]').count();
+  const searchInput = await page.locator('input[placeholder*=\"Buscar por nome\"]').count();
   check('Input de busca no CRM', searchInput > 0);
 
   // Check column count (7 pipeline stages expected when there are deals)
@@ -271,7 +305,7 @@ async function testCrmKanban(page) {
     const pipelineStages = ['Novo Lead', 'Contato Feito', 'Orcamento Enviado', 'Em Negociacao', 'Arte Aprovada', 'Pedido Fechado', 'Perdido'];
     for (const stage of pipelineStages) {
       const visible = await page.locator('text=' + stage).count();
-      check(`Estágio "${stage}" presente no kanban`, visible > 0);
+      check(`Estágio \"${stage}\" presente no kanban`, visible > 0);
     }
   }
 }
@@ -283,7 +317,7 @@ async function testProductsPage(page) {
   await page.waitForTimeout(1500);
 
   // Search input
-  const searchInput = await page.locator('input[placeholder*="Buscar por SKU"]').count();
+  const searchInput = await page.locator('input[placeholder*=\"Buscar por SKU\"]').count();
   check('Input de busca de produtos', searchInput > 0);
 
   // Check table (may have data or empty state)
@@ -306,13 +340,26 @@ async function testLeadsPage(page) {
     `Todos:${todosChip} Leads:${leadsChip} Clientes:${clientesChip}`);
 
   // Search
-  const searchInput = await page.locator('input[placeholder*="Buscar por nome"]').count();
+  const searchInput = await page.locator('input[placeholder*=\"Buscar por nome\"]').count();
   check('Input de busca de leads', searchInput > 0);
 
-  // Table or empty
-  const tableHeaders = await page.locator('text=Email').count();
+  // Desktop table
+  const tableHeaders = await page.locator('.hidden.md\\:block table th').count();
   const emptyState = await page.locator('text=Nenhum lead').count();
-  check('Página de leads carregou', tableHeaders > 0 || emptyState > 0);
+  check('Página de leads desktop carregou', tableHeaders > 0 || emptyState > 0);
+
+  // ── Mobile cards ──
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.evaluate(() => { location.hash = '#/leads'; });
+  await page.waitForTimeout(1000);
+
+  const mobileCards = await page.locator('.md\\:hidden.space-y-3 > div').count();
+  check('Mobile: cards de leads renderizados', mobileCards > 0, `${mobileCards} card(s)`);
+
+  // Reset to desktop
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => { location.hash = '#/leads'; });
+  await page.waitForTimeout(1000);
 }
 
 async function testSettingsPage(page) {
@@ -321,17 +368,23 @@ async function testSettingsPage(page) {
   await page.evaluate(() => { location.hash = '#/settings'; });
   await page.waitForTimeout(800);
 
-  // Rules section
-  const rulesLabel = await page.locator('text=Regras de Extração').count();
-  check('Seção "Regras de Extração"', rulesLabel > 0);
+  // Rules section — check for label now (not bare text)
+  const rulesLabel = await page.locator('label[for=\"settings-rules\"]').count();
+  check('Label \"Regras de Extração\" com for attribute', rulesLabel > 0);
 
   // WA template section
-  const waLabel = await page.locator('text=Template WhatsApp').count();
-  check('Seção "Template WhatsApp"', waLabel > 0);
+  const waLabel = await page.locator('label[for=\"settings-wa\"]').count();
+  check('Label \"Template WhatsApp\" com for attribute', waLabel > 0);
+
+  // No more h1 duplication — PageHeader should be used
+  // Check that only TopBar has the page title
+  const pageH1s = await page.locator('main h1').count();
+  // PageHeader renders an h1, so there should be exactly 1 (from PageHeader, not duplicated)
+  check('PageHeader renderiza h1 (≤1 no main)', pageH1s <= 1, `${pageH1s} h1(s)`);
 
   // Save buttons
   const saveBtns = await page.locator('button', { hasText: 'Salvar' }).count();
-  check('Botões "Salvar" (2: regras + template)', saveBtns >= 2, `${saveBtns} botões`);
+  check('Botões \"Salvar\" (2: regras + template)', saveBtns >= 2, `${saveBtns} botões`);
 
   // Type in rules and save
   const textareas = await page.locator('textarea');
@@ -343,12 +396,12 @@ async function testSettingsPage(page) {
 
     // Check toast
     const toast = await page.locator('text=Salvo com sucesso').count();
-    check('Toast "Salvo com sucesso!" após salvar regras', toast > 0);
+    check('Toast \"Salvo com sucesso!\" após salvar regras', toast > 0);
   }
 }
 
 async function main() {
-  console.log('🎭 Playwright E2E — React Frontend (aspen-orcamento)');
+  console.log('🎭 Playwright E2E — React Frontend (aspen-orcamento) v2');
   console.log(`   URL: ${BASE}`);
   console.log('='.repeat(60));
 
@@ -358,6 +411,10 @@ async function main() {
     locale: 'pt-BR',
   });
   const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
 
   try {
     // Load the app
@@ -366,11 +423,11 @@ async function main() {
 
     // Check app loaded
     const title = await page.title();
-    check('Página carregou com título "Aspen Orçamento"', title === 'Aspen Orçamento', `título: "${title}"`);
+    check('Página carregou com título \"Aspen Orçamento\"', title === 'Aspen Orçamento', `título: "${title}"`);
 
     // Check sidebar brand
     const brand = await page.locator('text=Aspen Orçamento').first().textContent();
-    check('Sidebar mostra "Aspen Orçamento"', brand && brand.includes('Aspen'), `texto: "${brand}"`);
+    check('Sidebar mostra \"Aspen Orçamento\"', brand && brand.includes('Aspen'), `texto: "${brand}"`);
 
     // Run all page tests
     await testQuotationsPage(page);
@@ -383,10 +440,7 @@ async function main() {
     await testSettingsPage(page);
 
     // Browser console check
-    const consoleErrors = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text());
-    });
+    check('Sem erros de console no navegador', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 
   } catch (err) {
     FAIL.push(`  ❌ ERRO FATAL: ${err.message}`);

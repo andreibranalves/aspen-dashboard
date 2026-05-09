@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search } from 'lucide-react';
+import { Search, Phone, Mail } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
 import { fmtPhone } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import PageHeader from '@/components/PageHeader.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
@@ -68,8 +69,21 @@ export default function LeadsPage() {
     return nums;
   };
 
+  const TipoBadge = ({ tipo: t }) => (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+      ${t === 'lead' ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700'}
+    `}>
+      {t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—'}
+    </span>
+  );
+
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="Leads / Clientes"
+        description={`${totalRecords} registro${totalRecords !== 1 ? 's' : ''}`}
+      />
+
       {/* Tipo chips */}
       <div className="flex gap-2">
         {TIPOS.map((t, i) => (
@@ -93,6 +107,7 @@ export default function LeadsPage() {
           value={search}
           onChange={onSearchChange}
           className="pl-9"
+          aria-label="Buscar leads e clientes"
         />
       </div>
 
@@ -123,9 +138,9 @@ export default function LeadsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* ── Desktop Table ── */}
       {!loading && !error && data.length > 0 && (
-        <div className="bg-white rounded-lg border shadow-sm">
+        <div className="hidden md:block bg-white rounded-lg border shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
@@ -133,6 +148,7 @@ export default function LeadsPage() {
                 <TableHead>Email</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Tipo</TableHead>
+                <TableHead className="w-[120px] text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -141,17 +157,75 @@ export default function LeadsPage() {
                   <TableCell className="font-medium">{row.nome || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{row.email || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{fmtPhone(row.telefone)}</TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-                      ${row.tipo === 'lead' ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700'}
-                    `}>
-                      {row.tipo === 'lead' ? 'Lead' : row.tipo === 'cliente' ? 'Cliente' : row.tipo || '—'}
-                    </span>
+                  <TableCell><TipoBadge tipo={row.tipo} /></TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
+                      {row.telefone && (
+                        <a
+                          href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                          aria-label={`WhatsApp ${row.nome || row.email}`}
+                          title={`WhatsApp ${row.nome || row.email}`}
+                        >
+                          <Phone size={18} />
+                        </a>
+                      )}
+                      {row.email && (
+                        <a
+                          href={`mailto:${row.email}`}
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-muted transition-colors"
+                          aria-label={`Email ${row.nome || row.email}`}
+                          title={`Email ${row.nome || row.email}`}
+                        >
+                          <Mail size={18} />
+                        </a>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {/* ── Mobile Cards ── */}
+      {!loading && !error && data.length > 0 && (
+        <div className="md:hidden space-y-3">
+          {data.map(row => (
+            <div key={row.id || row.email} className="bg-white rounded-lg border shadow-sm p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-sm">{row.nome || '—'}</span>
+                <TipoBadge tipo={row.tipo} />
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                {row.email && <div className="flex items-center gap-1"><Mail size={12} /> {row.email}</div>}
+                {row.telefone && <div className="flex items-center gap-1"><Phone size={12} /> {fmtPhone(row.telefone)}</div>}
+              </div>
+              <div className="flex items-center gap-1 pt-1">
+                {row.telefone && (
+                  <a
+                    href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                    aria-label={`WhatsApp ${row.nome || row.email}`}
+                  >
+                    <Phone size={18} />
+                  </a>
+                )}
+                {row.email && (
+                  <a
+                    href={`mailto:${row.email}`}
+                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-muted transition-colors"
+                    aria-label={`Email ${row.nome || row.email}`}
+                  >
+                    <Mail size={18} />
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
