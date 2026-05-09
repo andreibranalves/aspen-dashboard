@@ -174,6 +174,8 @@ export default function FreightPage() {
       const data = await apiPost('/freight', payload);
       if (data.success && data.rates?.length) {
         setResults({ ...data, quoteRequest: payload });
+      } else if (data.success && Number(seguro) > 0 && (!data.rates || data.rates.length === 0)) {
+        setError('Nenhuma transportadora disponível para esse valor declarado. Tente reduzir o valor do seguro ou cotar sem seguro.');
       } else {
         setError(data.error || 'Nenhuma transportadora disponível para este trecho.');
       }
@@ -229,7 +231,7 @@ export default function FreightPage() {
 
             <div className="space-y-2">
               <div className="text-xs font-bold uppercase tracking-wide">
-                <span className="rounded bg-amber-400 px-3 py-1 text-white">Valor do seguro da carga</span>
+                <span className="rounded bg-amber-400 px-3 py-1 text-white">Valor declarado da carga</span>
               </div>
               <div className="text-2xl font-bold">{formatBRL(Number(results.insuranceValue || seguro || 0))}*</div>
               <div className="max-w-[240px] text-xs leading-tight text-white/95">
@@ -286,6 +288,13 @@ export default function FreightPage() {
             </div>
           </div>
 
+          {results.insuranceValue > 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex items-start gap-2">
+              <ShieldCheck size={16} className="mt-0.5 shrink-0" />
+              <span>Algumas transportadoras foram ocultadas porque não retornaram cobertura para o valor declarado informado.</span>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full min-w-[780px] border-separate border-spacing-y-3 text-sm">
               <thead>
@@ -294,7 +303,6 @@ export default function FreightPage() {
                   <th className="px-5 py-2">Modalidade</th>
                   <th className="px-5 py-2">Prazo estimado*</th>
                   <th className="px-5 py-2">Preço</th>
-                  <th className="px-5 py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -318,9 +326,14 @@ export default function FreightPage() {
                         )}
                       </td>
                       <td className="px-5 py-4 font-semibold text-slate-900">{formatPrazo(rate)}</td>
-                      <td className="px-5 py-4 font-mono font-bold text-slate-900">{formatBRL(rate.totalPrice)}</td>
-                      <td className="rounded-r-lg px-5 py-4 text-right">
-                        <Button type="button" className="min-w-[150px] bg-[#005bab] hover:bg-[#004b8f]">Selecionar</Button>
+                      <td className="rounded-r-lg px-5 py-4">
+                        <div className="font-mono font-bold text-slate-900">{formatBRL(rate.totalPrice)}</div>
+                        {rate.insurance > 0 && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-amber-700">
+                            <ShieldCheck size={12} />
+                            Seguro Envia: {formatBRL(rate.insurance)}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

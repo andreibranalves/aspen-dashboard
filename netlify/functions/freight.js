@@ -5,6 +5,15 @@ import { createHttpError } from './lib/erpnext.js';
 const ENVIA_TOKEN = process.env.ENVIA_TOKEN || '';
 const ENVIA_BASE = process.env.ENVIA_BASE_URL || 'https://api.envia.com';
 
+// ── Braspress ──
+const BRASPRESS_USER = process.env.BRASPRESS_USER || '';
+const BRASPRESS_PASSWORD = process.env.BRASPRESS_PASSWORD || '';
+const BRASPRESS_BASE = 'https://api.braspress.com';
+const BRASPRESS_AUTH = BRASPRESS_USER && BRASPRESS_PASSWORD
+  ? 'Basic ' + Buffer.from(`${BRASPRESS_USER}:${BRASPRESS_PASSWORD}`).toString('base64')
+  : '';
+const BRASPRESS_MODALS = ['R', 'A']; // Rodoviário e Aéreo
+
 const ASPEN_ORIGIN = {
   name: 'Aspen Estamparia',
   street: process.env.ASPEN_STREET || 'Rua Exemplo, 123',
@@ -60,6 +69,72 @@ function normalizePrice(value) {
   return Number.isFinite(number) ? number : 0;
 }
 
+// ── Braspress Quote ──
+// Consulta Braspress para um determinado modal (R=rodoviário, A=aéreo).
+// Retorna array de rates normalizados ou array vazio em caso de erro/indisponibilidade.
+async function fetchBraspressRates(originCep, destinationCep, totalWeight, totalVolumes, cubagemArray, declaredValue, tipoFrete = '1') {
+  if (!BRASPRESS_AUTH) return [];
+  const sanitizeCnpj = (v) => String(v || '').replace(/\D/g, '');
+  const cnpjRemetente = sanitizeCnpj(BRASPRESS_USER);
+  if (!cnpjRemetente) return [];
+
+  // Sem CNPJ/CPF do destinatário (cliente PF), a Braspress faz cotação só pelo CEP para CIF.
+  const cnpjDest = sanitizeCnpj(destinationCep) || '00000000000';
+
+  const rates = [];
+  for (const modal of BRASPRESS_MODALS) {
+    try {
+      const body = {
+        cnpjRemetente,
+        cnpjDestinatario: cnpjDest,
+        modal,
+        tipoFrete,
+        cepOrigem: sanitizeCnpj(originCep),
+        cepDestino: sanitizeCnpj(destinationCep),
+        vlrMercadoria: declaredValue || 100,
+        peso: totalWeight,
+        volumes: totalVolumes,
+        cubagem: cubagemArray,
+      };
+      const res = await fetch(`${BRASPRESS_BASE}/v1/cotacao/calcular/json`, {
+        method: 'POST',
+        headers: { 'Authorization': BRASPRESS_AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        console.warn(`[freight] braspress ${modal}: HTTP ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      if (data.statusCode && data.statusCode >= 400) {
+        console.warn(`[freight] braspress ${modal}: ${data.message || 'erro'}`);
+        continue;
+      }
+      if (!data.id && !data.totalFrete) continue;
+
+      const modalLabel = modal === 'R' ? 'Rodoviário' : 'Aéreo';
+      rates.push({
+        carrier: 'braspress',
+        service: modal === 'R' ? 'RODOVIARIO' : 'AEREO',
+        serviceDescription: `Braspress ${modalLabel}`,
+        deliveryEstimate: `${data.prazo || '?'} dias úteis`,
+        deliveryDays: data.prazo ?? null,
+        basePrice: normalizePrice(data.totalFrete),
+        insurance: 0,
+        additionalServices: [],
+        additionalCharges: 0,
+        taxes: 0,
+        totalPrice: normalizePrice(data.totalFrete),
+        currency: 'BRL',
+        insuranceApplied: false,
+      });
+    } catch (err) {
+      console.warn(`[freight] braspress ${modal} error:`, err.message);
+    }
+  }
+  return rates;
+}
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -86,6 +161,7 @@ export async function handler(event) {
     // O campo payload.carrier é mantido ignorado de propósito para evitar filtro manual no frontend.
     const carriers = BR_CARRIERS;
     const insuranceValue = positiveNumber(payload.insuranceValue ?? payload.insurance, 0);
+    const insuranceRequested = insuranceValue > 0;
     const packageUnitCount = packages.reduce((sum, pkg) => sum + positiveNumber(pkg.amount, 1), 0) || packages.length;
     const declaredValuePerUnit = insuranceValue > 0 ? Number((insuranceValue / packageUnitCount).toFixed(2)) : 100;
 
@@ -128,7 +204,28 @@ export async function handler(event) {
       ? [{ service: 'envia_insurance', data: { amount: String(insuranceValue) } }]
       : undefined;
 
+    console.info('[freight] quote', {
+      carriers: carriers.length,
+      insuranceValue,
+      packages: packages.length,
+      originCep,
+      destinationCep,
+    });
+
+    // ── Braspress (paralelo) ──
+    const totalWeight = envPackages.reduce((sum, p) => sum + p.weight * p.amount, 0);
+    const totalVolumes = envPackages.reduce((sum, p) => sum + p.amount, 0);
+    const cubagemArray = envPackages.map(p => ({
+      altura: (p.dimensions.height / 100).toFixed(4),
+      largura: (p.dimensions.width / 100).toFixed(4),
+      comprimento: (p.dimensions.length / 100).toFixed(4),
+      volumes: p.amount,
+    }));
+    const braspressPromise = fetchBraspressRates(originCep, destinationCep, totalWeight, totalVolumes, cubagemArray, insuranceValue || 100);
+    // ── fim Braspress ──
+
     const rates = [];
+    let filteredCount = 0;
     for (const carrier of carriers) {
       try {
         const requestBody = {
@@ -150,24 +247,59 @@ export async function handler(event) {
           continue;
         }
         if (data.data && Array.isArray(data.data)) {
+          console.info('[freight] carrier_result', { carrier, rates: data.data.length });
           for (const r of data.data) {
+            const insuranceCharge = normalizePrice(r.insurance);
+
+            // Filtra tarifas sem seguro quando seguro foi solicitado
+            if (insuranceRequested && insuranceCharge <= 0) {
+              console.info('[freight] filtered_no_insurance', {
+                carrier: r.carrier || carrier,
+                service: r.service || '',
+                totalPrice: normalizePrice(r.totalPrice),
+              });
+              filteredCount++;
+              continue;
+            }
+
             rates.push({
               carrier: r.carrier || carrier,
               service: r.service || '',
               serviceDescription: r.serviceDescription || r.service || carrier,
               deliveryEstimate: r.deliveryEstimate || '',
               deliveryDays: r.deliveryDate?.dateDifference ?? null,
+              basePrice: normalizePrice(r.basePrice),
+              insurance: insuranceCharge,
+              additionalServices: r.additionalServices || [],
+              additionalCharges: normalizePrice(r.additionalCharges),
+              taxes: normalizePrice(r.taxes),
               totalPrice: normalizePrice(r.totalPrice),
               currency: r.currency || 'BRL',
-              insurance: normalizePrice(r.insurance),
-              additionalCharges: normalizePrice(r.additionalCharges),
+              insuranceApplied: insuranceRequested && insuranceCharge > 0,
             });
           }
         }
       } catch (err) { console.error(`[freight] ${carrier} error:`, err.message); }
     }
 
+    // ── Merge Braspress ──
+    try {
+      const bpRates = await braspressPromise;
+      if (bpRates.length) {
+        console.info('[freight] braspress_result', { rates: bpRates.length });
+        rates.push(...bpRates);
+      }
+    } catch (err) {
+      console.warn('[freight] braspress error:', err.message);
+    }
+
     rates.sort((a, b) => a.totalPrice - b.totalPrice);
+
+    console.info('[freight] result', {
+      totalRates: rates.length,
+      filteredNoInsurance: filteredCount,
+      insuranceRequested,
+    });
 
     return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       success: true,
