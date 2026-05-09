@@ -5,6 +5,7 @@ import { formatBRL } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import SkeletonTable from '@/components/SkeletonTable.jsx';
 
 const CARRIER_BRANDS = {
   correios: { label: 'Correios', logo: '/logos/carriers/correios.svg' },
@@ -510,12 +511,7 @@ export default function FreightPage() {
       </form>
 
       {/* ── Loading ── */}
-      {loading && (
-        <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-          Consultando todas as transportadoras disponíveis…
-        </div>
-      )}
+      {loading && <SkeletonTable cols={5} rows={6} title="Consultando todas as transportadoras disponíveis…" size="lg" />}
 
       {/* ── Error ── */}
       {!loading && error && (

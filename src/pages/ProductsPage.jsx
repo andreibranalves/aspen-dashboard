@@ -4,6 +4,7 @@ import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import SkeletonTable from '@/components/SkeletonTable.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
@@ -74,12 +75,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-          Carregando produtos…
-        </div>
-      )}
+      {loading && <SkeletonTable cols={4} rows={6} title="Carregando produtos…" />}
 
       {/* Error */}
       {!loading && error && (

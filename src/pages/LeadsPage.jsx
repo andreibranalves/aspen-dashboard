@@ -8,6 +8,7 @@ import PageHeader from '@/components/PageHeader.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
+import SkeletonTable from '@/components/SkeletonTable.jsx';
 
 const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
@@ -112,12 +113,7 @@ export default function LeadsPage() {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-          Carregando leads e clientes…
-        </div>
-      )}
+      {loading && <SkeletonTable cols={5} rows={8} title="Carregando leads e clientes…" />}
 
       {/* Error */}
       {!loading && error && (

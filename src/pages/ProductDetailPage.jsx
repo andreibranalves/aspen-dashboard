@@ -5,6 +5,8 @@ import { formatBRL, formatDate } from '@/lib/formatters.js';
 import PageHeader from '@/components/PageHeader.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import SkeletonDetail from '@/components/SkeletonDetail.jsx';
+import Skeleton from '@/components/Skeleton.jsx';
 
 const BRACKETS = [30, 100, 300, 500, 1000];
 
@@ -124,12 +126,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   }, [toast]);
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-        Carregando produto…
-      </div>
-    );
+    return <SkeletonDetail title="Carregando produto…" />;
   }
 
   if (error === 'not_found') {
@@ -289,7 +286,7 @@ export default function ProductDetailPage({ sku, navigate }) {
             {editing && (
               <div className="flex gap-2 pt-2 flex-wrap">
                 <Button onClick={saveRates} disabled={saving} size="sm" className="min-h-10" aria-label="Salvar preços">
-                  {saving ? <><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-background border-t-transparent mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
+                  {saving ? <><Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
                 </Button>
                 <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} className="min-h-10" aria-label="Cancelar edição de preços">
                   <X size={14} className="mr-1.5" />

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { PIPELINE } from '@/lib/constants.js';
+import SkeletonKanban from '@/components/SkeletonKanban.jsx';
 
 function daysAgo(dateStr) {
   if (!dateStr) return '—';
@@ -123,12 +124,7 @@ export default function CrmKanbanPage() {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-          Carregando pipeline CRM…
-        </div>
-      )}
+      {loading && <SkeletonKanban title="Carregando pipeline CRM…" />}
 
       {/* Error */}
       {!loading && error && (

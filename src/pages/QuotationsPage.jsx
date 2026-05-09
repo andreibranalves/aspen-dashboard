@@ -9,6 +9,7 @@ import PageHeader from '@/components/PageHeader.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
+import SkeletonTable from '@/components/SkeletonTable.jsx';
 
 const STATUS_LABELS = {
   Draft: 'Rascunho',
@@ -200,12 +201,7 @@ export default function QuotationsPage({ navigate }) {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-          Carregando orçamentos…
-        </div>
-      )}
+      {loading && <SkeletonTable cols={6} rows={8} title="Carregando orçamentos…" />}
 
       {/* Error */}
       {!loading && error && (

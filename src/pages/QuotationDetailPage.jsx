@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/badge.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
+import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 
 const STATUS_LABELS = {
   Draft: 'Rascunho',
@@ -151,12 +152,7 @@ export default function QuotationDetailPage({ id, navigate }) {
 
   // ── Loading / Error ──
   if (loading) {
-    return (
-      <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-        Carregando orçamento…
-      </div>
-    );
+    return <SkeletonDetail title="Carregando orçamento…" />;
   }
 
   if (error) {
