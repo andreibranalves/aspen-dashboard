@@ -9,6 +9,7 @@ import ProductsPage from '@/pages/ProductsPage.jsx';
 import ProductDetailPage from '@/pages/ProductDetailPage.jsx';
 import LeadsPage from '@/pages/LeadsPage.jsx';
 import SettingsPage from '@/pages/SettingsPage.jsx';
+import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage.jsx';
 
 function renderPage(route, navigate) {
   // Detail page: #/quotations/ORC-20261143
@@ -31,6 +32,7 @@ function renderPage(route, navigate) {
     case '/products':   return <ProductsPage />;
     case '/leads':      return <LeadsPage />;
     case '/settings':   return <SettingsPage />;
+    case '/manual':     return <ManualOrcamentoPage />;
     default:            return <QuotationsPage navigate={navigate} />;
   }
 }

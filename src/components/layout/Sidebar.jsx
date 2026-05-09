@@ -8,12 +8,14 @@ import {
   Settings,
   Menu,
   X,
+  PlusCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
 const NAV_ITEMS = [
   { hash: '/quotations', label: 'Orçamentos', icon: FileText },
   { hash: '/auto',       label: 'Auto',        icon: Sparkles },
+  { hash: '/manual',     label: 'Novo Orçamento', icon: PlusCircle },
   { hash: '/freight',    label: 'Frete',       icon: Truck },
   { hash: '/crm',        label: 'CRM',         icon: Columns3 },
   { hash: '/products',   label: 'Produtos',    icon: Package },

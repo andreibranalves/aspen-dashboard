@@ -5,6 +5,7 @@ import { capitalize, fmtPhone, formatBRL } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import Skeleton from '@/components/Skeleton.jsx';
 
 // ── Phase constants ──
 const PHASES = ['input', 'extracting', 'review', 'creating', 'complete'];
@@ -63,7 +64,7 @@ function CardIcon({ status }) {
     case 'done':     return <span className="text-green-600 text-lg font-bold">✓</span>;
     case 'error':    return <span className="text-red-600 text-lg font-bold">✕</span>;
     case 'processing':
-    default:         return <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />;
+    default:         return <Skeleton className="h-4 w-4 rounded-full" />;
   }
 }
 
@@ -408,6 +409,26 @@ export default function AutoQuotePage() {
         ))}
       </div>
 
+      {/* Manual flow link */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium text-gray-700">Fluxo:</span>
+        <a
+          href="#/auto"
+          onClick={e => { e.preventDefault(); window.location.hash = '#/auto'; }}
+          className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary text-primary-foreground"
+        >
+          Automático
+        </a>
+        <a
+          href="#/manual"
+          onClick={e => { e.preventDefault(); window.location.hash = '#/manual'; }}
+          className="px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:bg-muted transition-colors"
+          aria-label="Montar orçamento manualmente"
+        >
+          Manual
+        </a>
+      </div>
+
       {/* Input form (phase input) */}
       {(phase === 'input' || phase === 'extracting') && (
         <form onSubmit={handleSubmit} className="bg-white rounded-lg border shadow-sm p-6 space-y-4">
@@ -552,10 +573,15 @@ export default function AutoQuotePage() {
 
       {/* Extracting indicator */}
       {phase === 'extracting' && !error && (
-        <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-          <p>Analisando pedido com IA…</p>
-          <p className="text-sm">Isso pode levar alguns segundos.</p>
+        <div className="flex flex-col items-center py-12 text-muted-foreground gap-4" aria-label="Analisando pedido com IA">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-lg" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-56" />
+            </div>
+          </div>
+          <p className="text-sm">Analisando pedido com IA… Isso pode levar alguns segundos.</p>
         </div>
       )}
 

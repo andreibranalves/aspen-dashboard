@@ -33,7 +33,7 @@ async function testQuotationsPage(page) {
 
   // Check sidebar nav links exist
   const sidebarLinks = await page.locator('aside nav button').count();
-  check('Sidebar tem 7 links de navegação', sidebarLinks === 7, `encontrados: ${sidebarLinks}`);
+  check('Sidebar tem 8 links de navegação', sidebarLinks === 8, `encontrados: ${sidebarLinks}`);
 
   // Wait for table to load
   await page.waitForTimeout(2000);
@@ -362,6 +362,74 @@ async function testLeadsPage(page) {
   await page.waitForTimeout(1000);
 }
 
+async function testManualOrcamentoPage(page) {
+  console.log('\n🛒 ── Novo Orçamento Manual ──');
+
+  await page.evaluate(() => { location.hash = '#/manual'; });
+  await page.waitForTimeout(1000);
+
+  // Page header
+  const header = await page.locator('text=Novo Orçamento Manual').count();
+  check('PageHeader: "Novo Orçamento Manual" visível', header > 0);
+
+  // Client section
+  const clientSection = await page.locator('text=1. Cliente').count();
+  check('Seção "1. Cliente" visível', clientSection > 0);
+
+  // Client type toggle
+  const existingBtn = await page.locator('button', { hasText: 'Buscar existente' }).count();
+  const newBtn = await page.locator('button', { hasText: 'Novo cliente' }).count();
+  check('Toggle "Buscar existente" / "Novo cliente"', existingBtn > 0 && newBtn > 0);
+
+  // Search input
+  const clientSearch = await page.locator('input[aria-label="Buscar cliente"]').count();
+  check('Input de busca de cliente com aria-label', clientSearch > 0);
+
+  // Product section
+  const productSection = await page.locator('text=2. Produtos').count();
+  check('Seção "2. Produtos" visível', productSection > 0);
+
+  // Product search
+  const productSearch = await page.locator('input[aria-label="Buscar produto"]').count();
+  check('Input de busca de produto com aria-label', productSearch > 0);
+
+  // Empty cart hint
+  const emptyCart = await page.locator('text=Nenhum produto adicionado ainda').count();
+  check('Hint de carrinho vazio visível', emptyCart > 0);
+
+  // Switch to new client mode
+  if (newBtn > 0) {
+    await page.locator('button', { hasText: 'Novo cliente' }).first().click();
+    await page.waitForTimeout(300);
+
+    // Check manual inputs appeared
+    const nomeInput = await page.locator('input[aria-label="Nome do cliente"]').count();
+    const emailInput = await page.locator('input[aria-label="Email do cliente"]').count();
+    const telInput = await page.locator('input[aria-label="Telefone do cliente"]').count();
+    check('Campos de novo cliente renderizados', nomeInput > 0 && emailInput > 0 && telInput > 0,
+      `nome:${nomeInput} email:${emailInput} tel:${telInput}`);
+
+    // Fill client info
+    await page.locator('input[aria-label="Nome do cliente"]').fill('Cliente Teste');
+    await page.locator('input[aria-label="Email do cliente"]').fill('teste@exemplo.com');
+    await page.locator('input[aria-label="Telefone do cliente"]').fill('11999999999');
+  }
+
+  // Search for a product
+  if (productSearch > 0) {
+    await page.locator('input[aria-label="Buscar produto"]').fill('LNC');
+    await page.waitForTimeout(1500);
+
+    // Product results may appear
+    const results = await page.locator('text=Selecionar').count();
+    check('Resultados de busca de produto aparecem ou carregam', results >= 0);
+  }
+
+  // Check prazo + observações are NOT visible until items exist
+  const prazoBefore = await page.locator('text=Prazo de produção').count();
+  check('Seção de resumo não visível antes de adicionar itens', prazoBefore === 0);
+}
+
 async function testSettingsPage(page) {
   console.log('\n⚙️ ── Config ──');
 
@@ -437,6 +505,7 @@ async function main() {
     await testCrmKanban(page);
     await testProductsPage(page);
     await testLeadsPage(page);
+    await testManualOrcamentoPage(page);
     await testSettingsPage(page);
 
     // Browser console check

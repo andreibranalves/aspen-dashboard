@@ -169,6 +169,10 @@ export async function handler(event) {
     const validade = new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10);
 
     const prazo = extracted.prazo_producao?.trim() || '';
+    const observacoes = extracted.observacoes?.trim() || '';
+    const remarksParts = [`Contato: ${nomeCliente} | ${email} | ${telefone}`];
+    if (urgente) remarksParts.push('URGENTE');
+    if (observacoes) remarksParts.push(`Obs: ${observacoes}`);
     const quotePayload = {
       quotation_to: entityType,
       party_name: entityId,
@@ -179,7 +183,7 @@ export async function handler(event) {
       currency: 'BRL',
       exchange_rate: 1,
       items,
-      remarks: `Contato: ${nomeCliente} | ${email} | ${telefone}${urgente ? ' | URGENTE' : ''}`,
+      remarks: remarksParts.join(' | '),
     };
     if (hasAnyManualRate || urgente) quotePayload.ignore_pricing_rule = 1;
     if (prazo) quotePayload.custom_prazo_producao = prazo;
