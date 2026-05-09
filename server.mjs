@@ -42,6 +42,7 @@ const { handler: freightHandler }      = await import('./netlify/functions/freig
 const { handler: crmDealsHandler }       = await import('./netlify/functions/crm-deals.js');
 const { handler: crmUpdateDealHandler }  = await import('./netlify/functions/crm-update-deal.js');
 const { handler: productDetailHandler } = await import('./netlify/functions/product-detail.js');
+const { handler: productPricingHandler } = await import('./netlify/functions/product-pricing.js');
 const { handler: productPricingUpdateHandler } = await import('./netlify/functions/product-pricing-update.js');
 
 async function readBody(req) {
@@ -207,6 +208,19 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await crmUpdateDealHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/product-pricing' || pathname === '/.netlify/functions/product-pricing') {
+    const body = req.method === 'GET' ? null : await readBody(req);
+    try {
+      const result = await productPricingHandler(netlifyEvent(req, body));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {

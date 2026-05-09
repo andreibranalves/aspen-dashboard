@@ -1,29 +1,6 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
-import { erpGetList, erpGetDoc, createHttpError } from './lib/erpnext.js';
-
-// ── Constants ───────────────────────────────────────────────────────────────
-const BRACKETS = [30, 100, 300, 500, 1000];
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Fetch a single Pricing Rule by its title (SKU-bracket).
- * Returns { faixa: number, rate: number|null }.
- * rate is null if the rule does not exist.
- */
-async function fetchBracketPrice(sku, bracket) {
-  const title = `${sku}-${bracket}`;
-  const rules = await erpGetList('Pricing Rule', {
-    filters: [['title', '=', title]],
-    limit: 1,
-  });
-  if (rules.length === 0) {
-    return { faixa: bracket, rate: null };
-  }
-  // Fetch full doc to get the rate field
-  const doc = await erpGetDoc('Pricing Rule', rules[0].name);
-  return { faixa: bracket, rate: doc?.rate != null ? doc.rate : null };
-}
+import { erpGetDoc } from './lib/erpnext.js';
+import { resolveProductPricing } from './product-pricing.js';
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
@@ -70,10 +47,9 @@ export async function handler(event) {
       };
     }
 
-    // Buscar precos de todas as faixas em paralelo
-    const precos = await Promise.all(
-      BRACKETS.map(bracket => fetchBracketPrice(sku, bracket))
-    );
+    // Buscar preços de todas as faixas com ordem de resolução:
+    // Pricing Rule SKU-faixa → Pricing Rule SKU → Item Price Standard Selling.
+    const precos = await resolveProductPricing(sku);
 
     const produto = {
       sku: itemDoc.item_code,

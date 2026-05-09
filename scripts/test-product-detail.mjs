@@ -48,29 +48,28 @@ async function testProductDetail(page) {
   check('Linha de produto tem cursor pointer', rowCursor === 'pointer', `cursor: ${rowCursor}`);
 
   await page.locator('table tbody tr').first().click();
-  await page.waitForTimeout(1000);
+  await page.locator('button:has-text("Editar preços")').waitFor({ timeout: 20000 });
 
   // ── Step 3: Verify detail page loaded ──
-  // Should have breadcrumb "Voltar para produtos"
-  const breadcrumb = await page.locator('button:has-text("Voltar para produtos")').count();
-  check('Breadcrumb "Voltar para produtos" visível', breadcrumb > 0);
+  const backButton = await page.locator('button[aria-label="Voltar para produtos"], button:has-text("Voltar")').count();
+  check('Botão de voltar visível', backButton > 0);
 
   // Should show SKU label
   const skuLabel = await page.locator('text=SKU:').count();
   check('Label "SKU:" visível no detalhe', skuLabel > 0);
 
   // Should show product name
-  const h2Count = await page.locator('h2').count();
-  if (h2Count > 0) {
-    const productName = await page.locator('h2').first().textContent();
+  const h1Count = await page.locator('h1').count();
+  if (h1Count > 0) {
+    const productName = await page.locator('h1').first().textContent();
     check('Nome do produto renderizado', productName && productName.length > 0, `nome: "${productName}"`);
   } else {
-    check('Nome do produto renderizado', false, 'nenhum h2 encontrado');
+    check('Nome do produto renderizado', false, 'nenhum h1 encontrado');
   }
 
   // ── Step 4: Check pricing table ──
-  const pricingHeader = await page.locator('h3:has-text("Preços")').count();
-  check('Seção "Preços" existe', pricingHeader > 0);
+  const pricingHeader = await page.locator('h2:has-text("Tabela de preços")').count();
+  check('Seção "Tabela de preços" existe', pricingHeader > 0);
 
   // Find pricing rows using broader locator — look for tbody inside any table
   const allTables = await page.locator('table').count();
@@ -79,6 +78,14 @@ async function testProductDetail(page) {
   // Count pricing rows by looking for rows with "un." text (the faixa label)
   const faixaRows = await page.locator('td:has-text("un.")').count();
   check('Tabela de preços tem faixas visíveis', faixaRows === 5, `${faixaRows} faixa(s)`);
+
+  // Check origin badges and urgent visual state
+  const originBadges = await page.locator('text=/Pricing Rule|Item Price|Não encontrado/').count();
+  check('Origem do preço visível em cada faixa', originBadges >= 5, `${originBadges} badge(s)`);
+
+  const urgentBadges = await page.locator('text=urgente').count();
+  const missingBadges = await page.locator('text=sem preço').count();
+  check('Validação visual mostra urgente ou sem preço', urgentBadges + missingBadges >= 5, `${urgentBadges} urgente, ${missingBadges} sem preço`);
 
   // Check edit button exists
   const editBtn = await page.locator('button:has-text("Editar preços")').count();
@@ -112,7 +119,8 @@ async function testProductDetail(page) {
   check('Botão "Editar preços" reaparece após cancelar', editBtnAfterCancel > 0);
 
   // ── Step 7: Navigate back ──
-  await page.locator('button:has-text("Voltar para produtos")').click();
+  const voltarButtons = await page.locator('button[aria-label="Voltar para produtos"], button:has-text("Voltar")').all();
+  await voltarButtons[0].click();
   await page.waitForTimeout(500);
 
   const backHasRows = await page.locator('table tbody tr').count();
@@ -126,7 +134,7 @@ async function testProductDetail(page) {
   if (notFoundMsg > 0) {
     check('Mensagem "Produto não encontrado" para SKU inválido', true);
 
-    const voltarBtn = await page.locator('button:has-text("Voltar para produtos")').count();
+    const voltarBtn = await page.locator('button[aria-label="Voltar para produtos"], button:has-text("Voltar")').count();
     check('Botão de voltar disponível na página 404', voltarBtn > 0);
   } else {
     // Maybe still loading? Check for any error state
