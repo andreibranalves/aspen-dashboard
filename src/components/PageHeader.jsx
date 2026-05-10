@@ -13,7 +13,7 @@ export default function PageHeader({ title, description, action, className }) {
   return (
     <div className={cn('flex items-start justify-between gap-4 flex-wrap', className)}>
       <div className="space-y-1 min-w-0">
-        <h1 className="text-lg font-semibold text-gray-800">{title}</h1>
+        <h1 className="text-lg font-semibold text-framer-ink">{title}</h1>
         {description && (
           <p className="text-sm text-muted-foreground">{description}</p>
         )}

@@ -57,7 +57,7 @@ export default function SettingsPage() {
         </div>
         <textarea
           id="settings-rules"
-          className="w-full min-h-[120px] rounded-md border bg-background px-3 py-2 text-sm resize-y"
+          className="w-full min-h-[120px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm resize-y text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
           value={rules}
           onChange={e => setRules(e.target.value)}
           placeholder="Ex: Sempre incluir SKU-XYZ para pedidos acima de 100 unidades…"
@@ -88,7 +88,7 @@ export default function SettingsPage() {
         </div>
         <textarea
           id="settings-wa"
-          className="w-full min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm resize-y"
+          className="w-full min-h-[100px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm resize-y text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
           value={waTemplate}
           onChange={e => setWaTemplate(e.target.value)}
           aria-label="Template WhatsApp"
@@ -105,8 +105,8 @@ export default function SettingsPage() {
 
       {/* Saved toast */}
       {saved && (
-        <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2 rounded-lg text-sm shadow-lg animate-in">
-          <Check size={20} className="text-green-500 inline mr-1" />Salvo com sucesso!
+        <div className="fixed bottom-6 right-6 bg-framer-success text-white px-4 py-2 rounded-lg text-sm shadow-lg animate-in">
+          <Check size={20} className="text-white inline mr-1" />Salvo com sucesso!
         </div>
       )}
     </div>

@@ -275,14 +275,14 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Success Result ══ */}
       {result && (
-        <div className="bg-emerald-500/10 border border-emerald-200 dark:border-emerald-900/40 rounded-lg p-4 space-y-3">
+        <div className="bg-framer-success/10 border border-framer-success/30 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-framer-success flex items-center justify-center">
               <Check size={18} className="text-white" />
             </div>
             <div>
-              <p className="font-medium text-emerald-800 dark:text-emerald-200">Orçamento criado com sucesso!</p>
-              <p className="text-sm text-emerald-700 dark:text-emerald-300">
+              <p className="font-medium text-framer-success">Orçamento criado com sucesso!</p>
+              <p className="text-sm text-framer-success/70">
                 {capitalize(result.cliente)} · {result.quotation_id}
               </p>
             </div>
@@ -317,7 +317,7 @@ export default function ManualOrcamentoPage() {
                   href={waLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-success text-white rounded-full text-sm hover:bg-framer-success/90 transition-colors"
                 >
                   <MessageCircle size={14} /> WhatsApp
                 </a>
@@ -520,7 +520,7 @@ export default function ManualOrcamentoPage() {
                 <div className="border rounded-lg p-3 bg-muted/20 space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-semibold text-primary">{selectedProduct.sku}</span>
-                    <span className="text-sm text-gray-600">{selectedProduct.nome}</span>
+                    <span className="text-sm text-framer-ink-muted">{selectedProduct.nome}</span>
                   </div>
 
                   <div className="flex flex-wrap items-end gap-2">
@@ -659,7 +659,7 @@ export default function ManualOrcamentoPage() {
 
               {/* Subtotal */}
               <div className="flex items-center justify-between border-t pt-3">
-                <span className="text-sm font-medium text-gray-600">Subtotal</span>
+                <span className="text-sm font-medium text-framer-ink-muted">Subtotal</span>
                 <span className="text-lg font-bold">{formatBRL(subtotal)}</span>
               </div>
 

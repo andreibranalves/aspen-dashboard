@@ -1,8 +1,12 @@
 import { cn } from '@/lib/utils.js';
 import { forwardRef } from 'react';
 
+/**
+ * Table — Framer dark data table.
+ * surface-1 rows, hairline borders, ink text.
+ */
 const Table = forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+  <div className="relative w-full overflow-auto rounded-xl border border-framer-hairline">
     <table
       ref={ref}
       className={cn('w-full caption-bottom text-sm', className)}
@@ -13,7 +17,7 @@ const Table = forwardRef(({ className, ...props }, ref) => (
 Table.displayName = 'Table';
 
 const TableHeader = forwardRef(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props} />
+  <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-framer-hairline', className)} {...props} />
 ));
 TableHeader.displayName = 'TableHeader';
 
@@ -30,7 +34,7 @@ const TableRow = forwardRef(({ className, ...props }, ref) => (
   <tr
     ref={ref}
     className={cn(
-      'border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
+      'border-b border-framer-hairline transition-colors hover:bg-framer-surface-2 data-[state=selected]:bg-framer-surface-2',
       className,
     )}
     {...props}
@@ -42,7 +46,8 @@ const TableHead = forwardRef(({ className, ...props }, ref) => (
   <th
     ref={ref}
     className={cn(
-      'h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0',
+      'h-10 px-4 text-left align-middle text-xs font-medium text-framer-ink-muted uppercase tracking-wider',
+      '[&:has([role=checkbox])]:pr-0',
       className,
     )}
     {...props}
@@ -53,7 +58,7 @@ TableHead.displayName = 'TableHead';
 const TableCell = forwardRef(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn('p-4 align-middle [&:has([role=checkbox])]:pr-0', className)}
+    className={cn('p-4 align-middle text-framer-ink [&:has([role=checkbox])]:pr-0', className)}
     {...props}
   />
 ));

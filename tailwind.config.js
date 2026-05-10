@@ -1,12 +1,15 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ['class'],
+  darkMode: ['class'], // kept for compatibility — all tokens are dark-only in :root
   content: [
     './index.html',
     './src/**/*.{js,jsx}',
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'Inter Variable', 'system-ui', '-apple-system', 'sans-serif'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -41,17 +44,41 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+
+        // ── Framer named tokens (for direct use in components) ──
+        framer: {
+          canvas: '#090909',
+          'surface-1': '#141414',
+          'surface-2': '#1c1c1c',
+          hairline: '#262626',
+          'hairline-soft': '#1a1a1a',
+          ink: '#ffffff',
+          'ink-muted': '#999999',
+          'accent-blue': '#0099ff',
+          success: '#22c55e',
+          'gradient-violet': '#6a4cf5',
+          'gradient-magenta': '#d44df0',
+          'gradient-orange': '#ff7a3d',
+          'gradient-coral': '#ff5577',
+        },
+
+        // ── Sidebar (Framer dark) ──
         sidebar: {
-          DEFAULT: '#1a1a2e',
-          foreground: '#e0e0e0',
-          hover: '#16213e',
-          active: '#0f3460',
+          DEFAULT: '#141414',        // surface-1
+          foreground: '#ffffff',     // ink
+          hover: '#1c1c1c',         // surface-2
+          active: '#262626',        // hairline
         },
       },
       borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+        xs: '4px',
+        sm: '6px',
+        md: '10px',
+        lg: '15px',
+        xl: '20px',
+        '2xl': '30px',
+        '3xl': '40px',
+        pill: '100px',
       },
       keyframes: {
         'accordion-down': {
@@ -62,10 +89,15 @@ export default {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        'fade-in': {
+          from: { opacity: '0', transform: 'translateY(4px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'fade-in': 'fade-in 0.3s ease-out',
       },
     },
   },

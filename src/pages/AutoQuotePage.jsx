@@ -60,9 +60,9 @@ function buildWaLink(telefone, nome, quotationId) {
 function CardIcon({ status }) {
   switch (status) {
     case 'draft':    return <Pencil size={16} />;
-    case 'approved': return <Check size={18} className="text-green-600" />;
-    case 'done':     return <Check size={18} className="text-green-600 font-bold" />;
-    case 'error':    return <X size={18} className="text-red-600 font-bold" />;
+    case 'approved': return <Check size={18} className="text-framer-success" />;
+    case 'done':     return <Check size={18} className="text-framer-success font-bold" />;
+    case 'error':    return <X size={18} className="text-red-400 font-bold" />;
     case 'processing':
     default:         return <Skeleton className="h-4 w-4 rounded-full" />;
   }
@@ -395,10 +395,10 @@ export default function AutoQuotePage() {
           <div key={i} className="flex items-center gap-2">
             <span className={cn(
               'px-3 py-1 rounded-full text-xs font-medium transition-colors',
-              i < phaseIndex && 'bg-emerald-100 text-emerald-700',
-              i === phaseIndex && 'bg-primary text-primary-foreground',
-              i > phaseIndex && 'bg-muted text-muted-foreground',
-              phase === 'extracting' && error && i === phaseIndex && 'bg-red-100 text-red-700',
+              i < phaseIndex && 'bg-framer-success/10 text-framer-success',
+              i === phaseIndex && 'bg-framer-surface-2 text-framer-ink',
+              i > phaseIndex && 'bg-framer-canvas text-framer-ink-muted',
+              phase === 'extracting' && error && i === phaseIndex && 'bg-red-500/10 text-red-300',
             )}>
               {label}
             </span>
@@ -418,7 +418,7 @@ export default function AutoQuotePage() {
               Cole a mensagem do cliente ou descreva o pedido. A IA extrai nome, contato, urgência e os produtos sugeridos.
             </p>
             <textarea
-              className="w-full min-h-[160px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+              className="w-full min-h-[160px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 resize-y"
               placeholder={'Ex: 200 lenços seda 70cm para João Silva, joao@email.com, (11) 99999-9999\n\nOu descreva o pedido em linguagem natural…'}
               value={text}
               onChange={e => setText(e.target.value)}
@@ -484,7 +484,7 @@ export default function AutoQuotePage() {
 
           {/* Error */}
           {error && (
-<div className="bg-red-500/10 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+<div className="rounded-lg border border-red-800/40 bg-red-950/30 p-4 text-sm text-red-300">
               <p className="font-medium">Erro na extração</p>
               <p>{error}</p>
             </div>
@@ -517,7 +517,7 @@ export default function AutoQuotePage() {
               Instruções adicionais enviadas ao modelo na extração (uma por linha).
             </p>
             <textarea
-              className="w-full min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm resize-y"
+              className="w-full min-h-[100px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 resize-y"
               value={rules}
               onChange={e => { setRulesState(e.target.value); saveRules(e.target.value); }}
               placeholder="Ex: Sempre incluir SKU-XYZ para pedidos acima de 100 unidades…"
@@ -536,7 +536,7 @@ export default function AutoQuotePage() {
               Variáveis: (nome), (primeiro_nome), (numero_pedido), (empresa), (Saudacao), (link_orcamento)
             </p>
             <textarea
-              className="w-full min-h-[80px] rounded-md border bg-background px-3 py-2 text-sm resize-y"
+              className="w-full min-h-[80px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 resize-y"
               value={waTemplate}
               onChange={e => { setWaTemplate(e.target.value); saveWaTemplate(e.target.value); }}
             />
@@ -578,7 +578,7 @@ export default function AutoQuotePage() {
                 key={i}
                 className={cn(
                   'bg-card rounded-lg border border-border shadow-sm p-5 space-y-3 transition-all',
-                  isApproved && 'border-emerald-300 bg-emerald-500/5',
+                  isApproved && 'border-framer-success/30 bg-framer-success/5',
                 )}
               >
                 {/* Header */}
@@ -619,7 +619,7 @@ export default function AutoQuotePage() {
                         }}
                         disabled={isApproved}
                       />
-                      {draft.edited.urgente && <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded">Urgente</span>}
+                      {draft.edited.urgente && <span className="bg-red-500/10 text-red-300 text-xs font-bold px-2 py-0.5 rounded">Urgente</span>}
                       {!draft.edited.urgente && 'Urgente'}
                     </label>
                   </div>
@@ -785,11 +785,11 @@ export default function AutoQuotePage() {
 
                 {/* Result (after creation) */}
                 {(draft.status === 'done' && draft.result?.data) && (
-                  <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-200 rounded space-y-2">
+                  <div className="mt-3 p-3 bg-framer-success/10 border border-framer-success/30 rounded-lg space-y-2">
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         'inline-block w-2.5 h-2.5 rounded-full',
-                        draft.result.data.customer_new ? 'bg-emerald-500' : 'bg-red-400',
+                        draft.result.data.customer_new ? 'bg-framer-success' : 'bg-red-500',
                       )} />
                       <span className="text-sm font-medium">
                         {capitalize(draft.result.data.cliente || draft.edited.nome)}
@@ -838,7 +838,7 @@ export default function AutoQuotePage() {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
-                          <Button variant="outline" size="sm" className="text-green-600">
+                          <Button variant="outline" size="sm" className="text-framer-success">
                             <Phone size={14} /> Enviar WhatsApp
                           </Button>
                         </a>
@@ -857,7 +857,7 @@ export default function AutoQuotePage() {
                 )}
 
                 {draft.status === 'error' && (
-<div className="bg-red-500/10 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+<div className="rounded-lg border border-red-800/40 bg-red-950/30 p-4 text-sm text-red-300">
                     Erro: {draft.result?.error || 'Falha desconhecida'}
                   </div>
                 )}
@@ -917,14 +917,14 @@ export default function AutoQuotePage() {
                     </a>
                     {buildWaLink(draft.edited.telefone, draft.result.data.cliente, draft.result.data.quotation_id) && (
                       <a href={buildWaLink(draft.edited.telefone, draft.result.data.cliente, draft.result.data.quotation_id)} target="_blank" rel="noopener noreferrer">
-                        <Button variant="outline" size="sm" className="text-green-600"><Phone size={14} /> WhatsApp</Button>
+                        <Button variant="outline" size="sm" className="text-framer-success"><Phone size={14} /> WhatsApp</Button>
                       </a>
                     )}
                   </div>
                 </div>
               )}
               {draft.status === 'error' && (
-                <div className="text-red-700 text-sm">
+                <div className="text-red-300 text-sm">
                   <span className="font-medium">{capitalize(draft.edited.nome)}</span> — Erro: {draft.result?.error || 'Falha desconhecida'}
                 </div>
               )}

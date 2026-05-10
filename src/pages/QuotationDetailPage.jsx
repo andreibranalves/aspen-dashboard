@@ -362,12 +362,12 @@ export default function QuotationDetailPage({ id, navigate }) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <Button variant="outline" size="sm" className="text-green-600">
+                <Button variant="outline" size="sm" className="text-framer-success">
                   <Phone size={14} /> WhatsApp
                 </Button>
               </a>
               <div className="flex-1" />
-              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-500/10">
+              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-400 border-red-800/40 hover:bg-red-500/10">
                 <Trash2 size={14} /> Excluir
               </Button>
             </>
@@ -385,7 +385,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 <Plus size={14} /> + Item
               </Button>
               {saveStatus && (
-                <span className={`text-xs ${saveStatus.startsWith('Erro') ? 'text-red-600' : 'text-muted-foreground'}`}>
+                <span className={`text-xs ${saveStatus.startsWith('Erro') ? 'text-red-400' : 'text-muted-foreground'}`}>
                   {saveStatus}
                 </span>
               )}

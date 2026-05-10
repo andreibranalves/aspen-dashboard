@@ -23,34 +23,39 @@ const NAV_ITEMS = [
   { hash: '/settings',   label: 'Config',      icon: Settings },
 ];
 
+/**
+ * Sidebar — Framer dark navigation.
+ * surface-1 background, hairline borders, ink text,
+ * surface-2 hover, hairline active indicator.
+ */
 export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate }) {
   return (
     <>
       {/* Overlay mobile */}
       {!collapsed && (
         <div
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black/60 z-20 lg:hidden backdrop-blur-sm"
           onClick={onToggle}
         />
       )}
 
       <aside
         className={cn(
-          'fixed top-0 left-0 z-30 h-full bg-sidebar text-sidebar-foreground',
+          'fixed top-0 left-0 z-30 h-full bg-framer-surface-1 text-framer-ink',
           'flex flex-col transition-all duration-300 overflow-hidden',
           collapsed ? 'w-0 lg:w-16' : 'w-64',
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-4 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between h-14 px-4 border-b border-framer-hairline shrink-0">
           {!collapsed && (
-            <span className="font-bold text-base whitespace-nowrap">
+            <span className="font-semibold text-[15px] whitespace-nowrap tracking-[-0.8px]">
               Aspen Orçamento
             </span>
           )}
           <button
             onClick={onToggle}
-            className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-md hover:bg-framer-surface-2 transition-colors"
             aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
           >
             {collapsed ? <Menu size={20} /> : <X size={20} />}
@@ -65,10 +70,10 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate 
               onClick={() => onNavigate(hash)}
               className={cn(
                 'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
-                'hover:bg-sidebar-hover',
+                'hover:bg-framer-surface-2',
                 currentRoute === hash
-                  ? 'bg-sidebar-active text-white font-medium'
-                  : 'text-sidebar-foreground/80',
+                  ? 'bg-framer-hairline text-framer-ink font-medium'
+                  : 'text-framer-ink-muted',
               )}
               title={collapsed ? label : undefined}
             >
@@ -80,8 +85,8 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate 
 
         {/* Footer */}
         {!collapsed && (
-          <div className="px-4 py-3 border-t border-white/10 text-xs text-sidebar-foreground/50 shrink-0">
-            v2.0.0
+          <div className="px-4 py-3 border-t border-framer-hairline text-xs text-framer-ink-muted shrink-0">
+            v3.0 · Framer
           </div>
         )}
       </aside>

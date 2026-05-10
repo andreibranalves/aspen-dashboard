@@ -83,7 +83,7 @@ export default function LeadsPage() {
 
   const TipoBadge = ({ tipo: t }) => (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-      ${t === 'lead' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}
+      ${t === 'lead' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-success/10 text-framer-success'}
     `}>
       {t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—'}
     </span>
@@ -103,7 +103,7 @@ export default function LeadsPage() {
             key={t}
             onClick={() => onTipoClick(t)}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${tipo === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}
+              ${tipo === t ? 'bg-framer-surface-2 text-framer-ink' : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'}
             `}
           >
             {TIPO_DISPLAY[i]}
@@ -128,7 +128,7 @@ export default function LeadsPage() {
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border rounded px-2 py-1.5 text-sm bg-background"
+            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>

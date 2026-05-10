@@ -89,7 +89,7 @@ export default function ProductsPage() {
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border rounded px-2 py-1.5 text-sm bg-background"
+            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>

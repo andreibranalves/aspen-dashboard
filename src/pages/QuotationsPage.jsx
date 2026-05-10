@@ -168,7 +168,7 @@ export default function QuotationsPage({ navigate }) {
 
   // Action button component (reusable) — 40x40 hit area
   const ActionBtn = ({ icon: Icon, label, href, onClick, colorClass = '' }) => {
-    const cls = `inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-muted transition-colors ${colorClass}`;
+    const cls = `inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-framer-surface-2 transition-colors ${colorClass}`;
     if (href) {
       return (
         <a href={href} target="_blank" rel="noopener noreferrer" className={cls}
@@ -227,8 +227,8 @@ export default function QuotationsPage({ navigate }) {
             onClick={() => onStatusClick(s)}
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors
               ${status === s
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                ? 'bg-framer-surface-2 text-framer-ink'
+                : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'
               }`}
           >
             {STATUS_DISPLAY[i]}
@@ -259,7 +259,7 @@ export default function QuotationsPage({ navigate }) {
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border rounded px-2 py-1.5 text-sm bg-background"
+            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>
@@ -476,7 +476,7 @@ export default function QuotationsPage({ navigate }) {
 
       <div className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}>
         <div className="mx-auto max-w-7xl px-4 pb-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-border bg-background/95 shadow-2xl backdrop-blur">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-framer-hairline bg-framer-surface-1/95 backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
               <div className="flex flex-wrap items-center gap-6">
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">

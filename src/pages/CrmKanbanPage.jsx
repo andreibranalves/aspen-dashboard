@@ -147,17 +147,17 @@ export default function CrmKanbanPage() {
 
       {/* Kanban board — constrained height with own scroll */}
       {!loading && !error && orderedColumns.some(c => c.count > 0) && (
-        <div className="overflow-auto rounded-lg border border-border bg-background max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
+        <div className="overflow-auto rounded-lg border border-framer-hairline bg-framer-canvas max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
           <div className="flex gap-4 p-3 min-h-[55vh]">
           {orderedColumns.map(col => (
             <div
               key={col.status}
-              className="flex-shrink-0 w-72 bg-card border border-border rounded-lg flex flex-col"
+              className="flex-shrink-0 w-72 bg-framer-surface-1 border border-framer-hairline rounded-lg flex flex-col"
             >
               {/* Column header */}
               <div className="px-4 py-3 font-medium text-sm flex items-center justify-between">
                 <span>{col.status}</span>
-                <span className="bg-muted text-muted-foreground text-xs rounded-full px-2 py-0.5">
+                <span className="bg-framer-surface-2 text-framer-ink-muted text-xs rounded-full px-2 py-0.5">
                   {col.count}
                 </span>
               </div>
@@ -166,7 +166,7 @@ export default function CrmKanbanPage() {
               <div
                 className={cn(
                   'flex-1 px-2 pb-2 space-y-2 min-h-[120px] rounded-b-lg transition-colors',
-                  draggingId && 'bg-primary/5',
+                  draggingId && 'bg-framer-accent-blue/5',
                 )}
                 onDragOver={e => {
                   e.preventDefault();
@@ -192,7 +192,7 @@ export default function CrmKanbanPage() {
                     }}
                     onDragEnd={() => setDraggingId(null)}
                     className={cn(
-                      'bg-background rounded-lg border border-border shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow',
+                      'bg-framer-surface-1 rounded-lg border border-framer-hairline p-3 cursor-grab active:cursor-grabbing hover:border-framer-ink-muted/30 transition-all',
                       draggingId === deal.id && 'opacity-50',
                     )}
                   >
@@ -202,12 +202,12 @@ export default function CrmKanbanPage() {
                     )}
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       {deal.quotation && (
-                        <span className="inline-flex items-center text-xs bg-primary/10 text-primary rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center text-xs bg-framer-accent-blue/10 text-framer-accent-blue rounded px-1.5 py-0.5">
                           <Clipboard size={12} className="mr-1" />{deal.quotation}
                         </span>
                       )}
                       {deal.follow_up_stage > 0 && (
-                        <span className="inline-flex items-center text-xs bg-secondary/70 text-secondary-foreground rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center text-xs bg-framer-surface-2 text-framer-ink rounded px-1.5 py-0.5">
                           <Send size={12} className="mr-1" /> Follow-up {deal.follow_up_stage}
                         </span>
                       )}
