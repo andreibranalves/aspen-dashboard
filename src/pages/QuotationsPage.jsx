@@ -294,7 +294,7 @@ export default function QuotationsPage({ navigate }) {
 
       {/* ── Desktop Table (hidden on mobile) ── */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block bg-card rounded-lg border border-border shadow-sm">
+        <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>

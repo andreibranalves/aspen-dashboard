@@ -161,7 +161,7 @@ export default function LeadsPage() {
 
       {/* ── Desktop Table ── */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block bg-card rounded-lg border border-border shadow-sm">
+        <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>

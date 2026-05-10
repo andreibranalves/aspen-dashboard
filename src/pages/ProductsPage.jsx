@@ -122,7 +122,7 @@ export default function ProductsPage() {
 
       {/* Table */}
       {!loading && !error && data.length > 0 && (
-        <div className="bg-card rounded-lg border border-border shadow-sm">
+        <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>

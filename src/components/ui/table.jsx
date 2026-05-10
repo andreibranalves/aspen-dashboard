@@ -6,7 +6,7 @@ import { forwardRef } from 'react';
  * surface-1 rows, hairline borders, ink text.
  */
 const Table = forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto rounded-xl border border-framer-hairline">
+  <div className="relative w-full overflow-auto rounded-lg border border-border bg-card shadow-sm">
     <table
       ref={ref}
       className={cn('w-full caption-bottom text-sm', className)}
