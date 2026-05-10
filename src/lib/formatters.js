@@ -11,17 +11,26 @@ export function formatBRL(value) {
   return `${num < 0 ? '-' : ''}R$ ${intFormatted},${dec}`;
 }
 
+export function normalizePhoneDigits(phone, maxDigits = 11) {
+  return String(phone ?? '').replace(/\D/g, '').slice(0, maxDigits);
+}
+
 /** (99) 99999-9999 */
 export function fmtPhone(phone) {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 11) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  const digits = normalizePhoneDigits(phone);
+  if (!digits) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
   }
-  if (digits.length === 10) {
+  if (digits.length <= 10) {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
   }
-  return phone;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+export function formatPhoneInput(phone) {
+  return fmtPhone(normalizePhoneDigits(phone));
 }
 
 /** Nome Próprio → Cada Palavra Capitalizada */

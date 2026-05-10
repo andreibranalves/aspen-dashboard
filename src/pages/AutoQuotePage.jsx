@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, Copy, AlertTriangle } from 'lucide-react';
 import { apiPost } from '@/lib/api.js';
-import { capitalize, fmtPhone, formatBRL } from '@/lib/formatters.js';
+import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
@@ -761,11 +761,11 @@ export default function AutoQuotePage() {
                             <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
                             <Input
                               className="h-10 pl-9 text-sm"
-                              value={fmtPhone(draft.edited.telefone)}
+                              value={formatPhoneInput(draft.edited.telefone)}
                               onChange={e => {
                                 setDrafts(prev => {
                                   const next = [...prev];
-                                  next[i] = { ...next[i], edited: { ...next[i].edited, telefone: e.target.value } };
+                                  next[i] = { ...next[i], edited: { ...next[i].edited, telefone: normalizePhoneDigits(e.target.value) } };
                                   return next;
                                 });
                               }}

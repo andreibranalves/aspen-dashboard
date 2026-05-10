@@ -16,11 +16,10 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
-import { formatBRL, fmtPhone, capitalize } from '@/lib/formatters.js';
+import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
-import PageHeader from '@/components/PageHeader.jsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.jsx';
 
 // ── Constants ──
@@ -38,7 +37,7 @@ function makeItemKey(sku) {
 
 export default function ManualOrcamentoPage() {
   // ── Client state ──
-  const [clientType, setClientType] = useState(CLIENT_TYPE.EXISTING);
+  const [clientType, setClientType] = useState(CLIENT_TYPE.NEW);
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState([]);
   const [clientSearching, setClientSearching] = useState(false);
@@ -328,7 +327,7 @@ export default function ManualOrcamentoPage() {
     setClientSearch('');
     setClientResults([]);
     setNewClient({ nome: '', email: '', telefone: '' });
-    setClientType(CLIENT_TYPE.EXISTING);
+    setClientType(CLIENT_TYPE.NEW);
     setProductSearch('');
     setProductResults([]);
     setAddingSku(null);
@@ -338,11 +337,6 @@ export default function ManualOrcamentoPage() {
   // ── Render ──
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Novo Orçamento Manual"
-        description="Escolha o cliente, adicione produtos e edite quantidades e preços direto na tabela."
-      />
-
       {/* ══ Success Result ══ */}
       {result && (
         <div className="bg-framer-success/10 border border-framer-success/30 rounded-xl p-5 space-y-4">
@@ -428,16 +422,6 @@ export default function ManualOrcamentoPage() {
 
                   <div className="flex gap-1 bg-muted rounded-lg p-0.5 w-fit">
                     <button
-                      onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
-                      className={cn(
-                        'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.EXISTING ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
-                      )}
-                      aria-label="Buscar cliente existente"
-                    >
-                      Buscar existente
-                    </button>
-                    <button
                       onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
@@ -447,18 +431,28 @@ export default function ManualOrcamentoPage() {
                     >
                       Novo cliente
                     </button>
+                    <button
+                      onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
+                      className={cn(
+                        'px-3 py-1.5 text-sm rounded-md transition-colors',
+                        clientType === CLIENT_TYPE.EXISTING ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
+                      )}
+                      aria-label="Buscar cliente existente"
+                    >
+                      Buscar existente
+                    </button>
                   </div>
                 </div>
 
                 {clientType === CLIENT_TYPE.EXISTING ? (
                   <div className="space-y-3">
-                    <div className="relative max-w-xl">
+                    <div className="relative w-full">
                       <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         placeholder="Buscar por nome, email ou telefone…"
                         value={clientSearch}
                         onChange={onClientSearchChange}
-                        className="pl-9"
+                        className="pl-9 w-full"
                         aria-label="Buscar cliente"
                       />
                       {clientSearching && (
@@ -523,8 +517,10 @@ export default function ManualOrcamentoPage() {
                       <label className="text-xs text-muted-foreground mb-1 block">Telefone</label>
                       <Input
                         placeholder="(11) 99999-9999"
-                        value={newClient.telefone}
-                        onChange={e => setNewClient(prev => ({ ...prev, telefone: e.target.value }))}
+                        value={formatPhoneInput(newClient.telefone)}
+                        onChange={e => setNewClient(prev => ({ ...prev, telefone: normalizePhoneDigits(e.target.value) }))}
+                        inputMode="tel"
+                        autoComplete="tel"
                         aria-label="Telefone do cliente"
                       />
                     </div>
@@ -558,13 +554,13 @@ export default function ManualOrcamentoPage() {
                   </div>
                 </div>
 
-                <div className="relative max-w-2xl">
+                <div className="relative w-full">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Digite SKU ou nome para adicionar um produto…"
                     value={productSearch}
                     onChange={onProductSearchChange}
-                    className="pl-9 pr-10"
+                    className="pl-9 pr-10 w-full"
                     aria-label="Buscar produto para adicionar ao orçamento"
                   />
                   {productSearching && (
@@ -847,7 +843,7 @@ export default function ManualOrcamentoPage() {
             </div>
 
             {/* ══ Side Summary ══ */}
-            <aside className="xl:sticky xl:top-6 bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+            <aside className="xl:sticky xl:top-0 bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
                 <Calculator size={17} /> Resumo
               </div>
