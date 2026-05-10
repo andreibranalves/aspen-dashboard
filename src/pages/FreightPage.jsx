@@ -530,7 +530,7 @@ export default function FreightPage() {
 
       {/* ── Error ── */}
       {!loading && error && (
-        <div className="rounded-lg border border-red-800/40 bg-red-950/30 p-4 text-sm text-red-300 space-y-2">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300 space-y-2">
           <p className="font-medium"><AlertTriangle size={16} className="inline mr-1" />Erro ao cotar frete</p>
           <p>{error}</p>
           <Button variant="outline" size="sm" onClick={() => setError(null)}>

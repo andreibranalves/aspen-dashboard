@@ -398,7 +398,7 @@ export default function AutoQuotePage() {
               i < phaseIndex && 'bg-framer-success/10 text-framer-success',
               i === phaseIndex && 'bg-framer-surface-2 text-framer-ink',
               i > phaseIndex && 'bg-framer-canvas text-framer-ink-muted',
-              phase === 'extracting' && error && i === phaseIndex && 'bg-red-500/10 text-red-300',
+              phase === 'extracting' && error && i === phaseIndex && 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300',
             )}>
               {label}
             </span>
@@ -484,7 +484,7 @@ export default function AutoQuotePage() {
 
           {/* Error */}
           {error && (
-<div className="rounded-lg border border-red-800/40 bg-red-950/30 p-4 text-sm text-red-300">
+<div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300">
               <p className="font-medium">Erro na extração</p>
               <p>{error}</p>
             </div>
@@ -619,7 +619,7 @@ export default function AutoQuotePage() {
                         }}
                         disabled={isApproved}
                       />
-                      {draft.edited.urgente && <span className="bg-red-500/10 text-red-300 text-xs font-bold px-2 py-0.5 rounded">Urgente</span>}
+                      {draft.edited.urgente && <span className="bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300 text-xs font-bold px-2 py-0.5 rounded">Urgente</span>}
                       {!draft.edited.urgente && 'Urgente'}
                     </label>
                   </div>
@@ -857,7 +857,7 @@ export default function AutoQuotePage() {
                 )}
 
                 {draft.status === 'error' && (
-<div className="rounded-lg border border-red-800/40 bg-red-950/30 p-4 text-sm text-red-300">
+<div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300">
                     Erro: {draft.result?.error || 'Falha desconhecida'}
                   </div>
                 )}
@@ -924,7 +924,7 @@ export default function AutoQuotePage() {
                 </div>
               )}
               {draft.status === 'error' && (
-                <div className="text-red-300 text-sm">
+                <div className="text-red-700 dark:text-red-300 text-sm">
                   <span className="font-medium">{capitalize(draft.edited.nome)}</span> — Erro: {draft.result?.error || 'Falha desconhecida'}
                 </div>
               )}

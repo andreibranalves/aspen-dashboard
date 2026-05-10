@@ -7,9 +7,9 @@ import { cn } from '@/lib/utils.js';
 const badgeVariants = {
   Draft:     'bg-framer-surface-2 text-framer-ink-muted',
   Open:      'bg-framer-accent-blue/10 text-framer-accent-blue',
-  Replied:   'bg-amber-500/10 text-amber-300',
+  Replied:   'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
   Ordered:   'bg-framer-success/10 text-framer-success',
-  Lost:      'bg-red-500/10 text-red-400',
+  Lost:      'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   Expired:   'bg-framer-surface-2 text-framer-ink-muted/50',
   Cancelled: 'bg-framer-surface-2 text-framer-ink-muted/40 line-through',
 };

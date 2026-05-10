@@ -9,17 +9,16 @@ const PAGE_TITLES = {
   '/settings':   'Configurações',
 };
 
-import { Menu } from 'lucide-react';
+import { Menu, Moon, Sun } from 'lucide-react';
 
 /**
- * TopBar — Framer dark top navigation bar.
- * canvas background, hairline bottom border, no light-mode toggle.
+ * TopBar — Framer-inspired top navigation bar with light/dark toggle.
  */
-export default function TopBar({ route, onMenuClick }) {
+export default function TopBar({ route, onMenuClick, darkMode, toggleDarkMode }) {
   const title = PAGE_TITLES[route] || 'Aspen Orçamento';
 
   return (
-    <header className="h-14 border-b border-[hsl(var(--hairline))] bg-framer-canvas flex items-center justify-between px-4 md:px-6 shrink-0">
+    <header className="h-14 border-b border-framer-hairline bg-framer-canvas flex items-center justify-between px-4 md:px-6 shrink-0">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
@@ -32,6 +31,16 @@ export default function TopBar({ route, onMenuClick }) {
       </div>
       <div className="flex items-center gap-3">
         <span className="text-xs text-framer-ink-muted hidden sm:inline">Aspen Estamparia</span>
+        <button
+          type="button"
+          onClick={toggleDarkMode}
+          className="inline-flex h-9 items-center gap-2 rounded-full border border-framer-hairline bg-framer-surface-1 px-3 text-xs font-medium text-framer-ink transition-colors hover:bg-framer-surface-2 focus-visible:ring-2 focus-visible:ring-framer-accent-blue/40"
+          aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
+          title={darkMode ? 'Modo claro' : 'Modo escuro'}
+        >
+          {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+          <span className="hidden sm:inline">{darkMode ? 'Claro' : 'Escuro'}</span>
+        </button>
       </div>
     </header>
   );

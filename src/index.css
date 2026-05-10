@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
-   Framer Dark-Only Design System — Aspen Orçamento
-   Tokens per /DESIGN.md — dark-only, no light mode
+   Framer-inspired Design System — Aspen Orçamento
+   Dark + light tokens built from /DESIGN.md
    ═══════════════════════════════════════════════════════ */
 
 /* Inter Variable — Framer body typeface */
@@ -12,36 +12,38 @@
 
 @layer base {
   :root {
-    /* ── Framer surface tokens (dark-only, no .dark override) ── */
-    --background: 0 0% 3.5%;           /* canvas     #090909 */
-    --foreground: 0 0% 100%;            /* ink        #ffffff */
-    --card: 0 0% 7.8%;                  /* surface-1  #141414 */
-    --card-foreground: 0 0% 100%;       /* ink */
-    --popover: 0 0% 7.8%;               /* surface-1  */
-    --popover-foreground: 0 0% 100%;    /* ink */
-    --primary: 0 0% 100%;               /* white pill */
-    --primary-foreground: 0 0% 0%;      /* black on white */
-    --secondary: 0 0% 7.8%;            /* surface-1  */
-    --secondary-foreground: 0 0% 100%;  /* ink */
-    --muted: 0 0% 7.8%;                /* surface-1  */
-    --muted-foreground: 0 0% 60%;      /* ink-muted  #999999 */
-    --accent: 0 0% 7.8%;               /* surface-1  */
-    --accent-foreground: 0 0% 100%;     /* ink */
-    --destructive: 0 62.8% 30.6%;       /* red (kept from shadcn) */
+    /* ── Light Framer surface tokens ── */
+    --background: 0 0% 97.6%;           /* canvas     #f9f9f9 */
+    --foreground: 0 0% 7%;              /* ink        #121212 */
+    --card: 0 0% 100%;                  /* surface-1  #ffffff */
+    --card-foreground: 0 0% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 0 0% 7%;                 /* dark pill on light */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 94.5%;
+    --secondary-foreground: 0 0% 7%;
+    --muted: 0 0% 94.5%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 0 0% 94.5%;
+    --accent-foreground: 0 0% 7%;
+    --destructive: 0 74% 42%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 14.9%;              /* hairline   #262626 */
-    --input: 0 0% 14.9%;               /* hairline   */
-    --ring: 205 100% 50%;              /* accent-blue #0099FF */
-    --radius: 0.625rem;                 /* 10px = Framer md */
+    --border: 0 0% 86%;
+    --input: 0 0% 86%;
+    --ring: 205 100% 45%;
+    --radius: 0.625rem;
 
-    /* ── Framer-specific extras ── */
-    --surface-1: 0 0% 7.8%;            /* #141414 */
-    --surface-2: 0 0% 11%;             /* #1c1c1c */
-    --hairline: 0 0% 14.9%;            /* #262626 */
-    --hairline-soft: 0 0% 10.2%;       /* #1a1a1a */
-    --accent-blue: 205 100% 50%;       /* #0099ff */
-    --ink-muted: 0 0% 60%;             /* #999999 */
-    --success: 142 71% 45%;            /* #22c55e */
+    /* ── Framer-specific extras consumed by tailwind.config.js ── */
+    --canvas: 0 0% 97.6%;               /* #f9f9f9 */
+    --surface-1: 0 0% 100%;             /* #ffffff */
+    --surface-2: 0 0% 94.5%;            /* #f1f1f1 */
+    --hairline: 0 0% 86%;               /* #dbdbdb */
+    --hairline-soft: 0 0% 92%;          /* #ebebeb */
+    --ink: 0 0% 7%;                     /* #121212 */
+    --ink-muted: 0 0% 42%;              /* #6b6b6b */
+    --accent-blue: 205 100% 45%;        /* accessible blue on light */
+    --success: 142 71% 32%;
 
     /* Gradient anchors */
     --gradient-violet: #6a4cf5;
@@ -50,7 +52,38 @@
     --gradient-coral: #ff5577;
   }
 
-  /* No .dark class — Framer is dark-only. All tokens stay as :root. */
+  .dark {
+    /* ── Framer dark surface tokens ── */
+    --background: 0 0% 3.5%;            /* canvas     #090909 */
+    --foreground: 0 0% 100%;            /* ink        #ffffff */
+    --card: 0 0% 7.8%;                  /* surface-1  #141414 */
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 7.8%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;               /* white pill on dark */
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 7.8%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 7.8%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 7.8%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 205 100% 50%;
+
+    --canvas: 0 0% 3.5%;                /* #090909 */
+    --surface-1: 0 0% 7.8%;             /* #141414 */
+    --surface-2: 0 0% 11%;              /* #1c1c1c */
+    --hairline: 0 0% 14.9%;             /* #262626 */
+    --hairline-soft: 0 0% 10.2%;        /* #1a1a1a */
+    --ink: 0 0% 100%;                   /* #ffffff */
+    --ink-muted: 0 0% 60%;              /* #999999 */
+    --accent-blue: 205 100% 50%;        /* #0099ff */
+    --success: 142 71% 45%;
+  }
 }
 
 @layer base {
@@ -66,7 +99,7 @@
   }
 }
 
-/* ══ Scrollbar — Framer dark ══ */
+/* ══ Scrollbar ══ */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -91,7 +124,6 @@
 
 /* ══ Utility classes for Framer patterns ══ */
 @layer components {
-  /* Pill button — white on dark (maps to Button variant='default') */
   .btn-pill {
     @apply inline-flex items-center justify-center gap-2 rounded-full;
     @apply text-sm font-medium transition-all duration-200;
@@ -99,30 +131,25 @@
     @apply disabled:pointer-events-none disabled:opacity-50;
   }
 
-  /* Surface lift card */
   .card-framer {
     @apply rounded-xl border border-[hsl(var(--hairline))];
     @apply bg-[hsl(var(--surface-1))];
   }
 
-  /* Featured card (surface-2 lift) */
   .card-framer-featured {
     @apply rounded-xl border border-[hsl(var(--hairline))];
     @apply bg-[hsl(var(--surface-2))];
   }
 
-  /* Spotlight card (gradient — use sparingly per spec) */
   .spotlight-violet {
     background: linear-gradient(135deg, var(--gradient-violet), var(--gradient-magenta));
     @apply rounded-3xl text-white p-8;
   }
 
-  /* Hairline divider */
   .divider-hairline {
     @apply border-t border-[hsl(var(--hairline))];
   }
 
-  /* Input field (Framer style) */
   .input-framer {
     @apply rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--surface-1))];
     @apply text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))];
@@ -132,7 +159,6 @@
   }
 }
 
-/* ══ Selection color — accent-blue, subtle ══ */
 ::selection {
   background: hsl(var(--ring) / 0.25);
   color: hsl(var(--foreground));

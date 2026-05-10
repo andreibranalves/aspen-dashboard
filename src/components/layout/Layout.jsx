@@ -9,8 +9,7 @@ import { useDarkMode } from '@/hooks/useDarkMode.js';
  * Canvas background, responsive sidebar with Framer surface-1 styling.
  */
 export default function Layout({ route, onNavigate, children }) {
-  // Keep hook for dark class application (always dark in Framer)
-  useDarkMode();
+  const { darkMode, toggleDarkMode } = useDarkMode();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -47,7 +46,12 @@ export default function Layout({ route, onNavigate, children }) {
           !sidebarCollapsed && 'lg:ml-64', // desktop open: 16rem
         )}
       >
-        <TopBar route={route} onMenuClick={toggleSidebar} />
+        <TopBar
+          route={route}
+          onMenuClick={toggleSidebar}
+          darkMode={darkMode}
+          toggleDarkMode={toggleDarkMode}
+        />
         <main className="flex-1 overflow-auto p-4 md:p-6">
           {children}
         </main>

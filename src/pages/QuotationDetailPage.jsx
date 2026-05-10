@@ -367,7 +367,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 </Button>
               </a>
               <div className="flex-1" />
-              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-400 border-red-800/40 hover:bg-red-500/10">
+              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800/40 dark:hover:bg-red-500/10">
                 <Trash2 size={14} /> Excluir
               </Button>
             </>

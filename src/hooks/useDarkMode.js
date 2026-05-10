@@ -1,28 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const STORAGE_KEY = 'aspen_theme';
 
+function getInitialTheme() {
+  if (typeof window === 'undefined') return true;
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'dark') return true;
+    if (stored === 'light') return false;
+  } catch {
+    // localStorage unavailable — fall back to system preference
+  }
+
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+}
+
 /**
- * useDarkMode — Framer dark-only.
- * Always applies 'dark' class to <html>. The toggle is retired
- * because Framer's identity is dark-only (per DESIGN.md §Dos and Don'ts).
- * Returns { darkMode: true, toggleDarkMode: no-op } for API compatibility.
+ * useDarkMode — user-selectable light/dark theme.
+ * Persists in localStorage and applies/removes the `dark` class on <html>.
  */
 export function useDarkMode() {
-  const [darkMode] = useState(true);
+  const [darkMode, setDarkMode] = useState(getInitialTheme);
 
-  // Apply 'dark' class on mount (always)
   useEffect(() => {
-    document.documentElement.classList.add('dark');
+    document.documentElement.classList.toggle('dark', darkMode);
+    document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
+
     try {
-      localStorage.setItem(STORAGE_KEY, 'dark');
+      localStorage.setItem(STORAGE_KEY, darkMode ? 'dark' : 'light');
     } catch {
       // localStorage unavailable
     }
-  }, []);
+  }, [darkMode]);
 
-  // No-op toggle — Framer is dark-only
-  const toggleDarkMode = () => {};
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode(prev => !prev);
+  }, []);
 
   return { darkMode, toggleDarkMode };
 }

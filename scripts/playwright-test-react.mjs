@@ -55,16 +55,16 @@ async function testQuotationsPage(page) {
     check('Tabela tem linhas com dados', rows > 0, `${rows} linha(s)`);
 
     if (rows > 0) {
-      // Check first row has quotation ID (monospaced)
-      const firstCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').first().textContent();
+      // Check first row has quotation ID (monospaced) — column 1 (Nº), column 0 is checkbox
+      const firstCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(1).textContent();
       check('Primeira célula é um Nº de orçamento (formato ORC-)', /ORC-/.test(firstCell), `valor: "${firstCell}"`);
 
-      // Check BRL format in value column
-      const valCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(3).textContent();
+      // Check BRL format in value column (column 4: Valor)
+      const valCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(4).textContent();
       check('Valor em formato BRL (R$ X.XXX,XX)', /R\$\s*[\d.]+\,\d{2}/.test(valCell), `valor: "${valCell}"`);
 
-      // Check status badge exists
-      const badge = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(4).locator('span').first().textContent();
+      // Check status badge exists (column 5: Status)
+      const badge = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(5).locator('span').first().textContent();
       check('Status badge renderizado', badge && badge.length > 0, `texto: "${badge}"`);
 
       // Check action buttons have aria-labels
@@ -111,7 +111,7 @@ async function testQuotationsPage(page) {
     await openChip.first().click();
     await page.waitForTimeout(1500);
     const chipActive = await openChip.first().evaluate(el => el.className);
-    check('Status chip \"Aberto\" ativado ao clicar', chipActive.includes('bg-primary'), `classe: ${chipActive}`);
+    check('Status chip "Aberto" ativado ao clicar', chipActive.includes('bg-framer-surface-2'), `classe: ${chipActive}`);
     // Click "Todos" to reset
     const todosChip = page.locator('main button', { hasText: 'Todos' }).first();
     if (await todosChip.count() > 0) await todosChip.click();
@@ -131,7 +131,7 @@ async function testQuotationDetail(page) {
   await page.waitForTimeout(2000);
 
   const firstRow = page.locator('.hidden.md\\:block table tbody tr').first();
-  const firstId = await firstRow.locator('td').first().textContent();
+  const firstId = await firstRow.locator('td').nth(1).textContent(); // column 1 = Nº (column 0 is checkbox)
   check('ID do orçamento encontrado', !!firstId && firstId.includes('ORC-'), `ID: ${firstId}`);
 
   if (!firstId) return;

@@ -12,23 +12,23 @@ const BRACKETS = [30, 100, 300, 500, 1000];
 
 function priceTone(row) {
   if (row?.status === 'missing' || row?.rate == null) {
-    return 'bg-red-500/10 text-red-300 border-red-800/40';
+    return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40';
   }
   return 'bg-framer-success/10 text-framer-success border-framer-success/30';
 }
 
 function urgentTone(row) {
   if (row?.status === 'missing' || row?.urgent_rate == null) {
-    return 'bg-red-500/10 text-red-300 border-red-800/40';
+    return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40';
   }
-  return 'bg-amber-500/10 text-amber-300 border-amber-800/30';
+  return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-800/30';
 }
 
 function sourceBadgeClass(origem) {
   if (origem === 'pricing_rule_bracket') return 'bg-framer-success/10 text-framer-success border-framer-success/30';
   if (origem === 'pricing_rule_sku') return 'bg-framer-accent-blue/10 text-framer-accent-blue border-framer-accent-blue/30';
   if (origem === 'item_price') return 'bg-framer-surface-2 text-framer-ink-muted border-framer-hairline';
-  return 'bg-red-500/10 text-red-300 border-red-800/40';
+  return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40';
 }
 
 function SourceBadge({ row }) {
@@ -170,7 +170,7 @@ export default function ProductDetailPage({ sku, navigate }) {
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
           toast.type === 'success'
             ? 'bg-framer-success/10 text-framer-success border border-framer-success/30'
-            : 'bg-red-500/10 text-red-300 border border-red-800/40'
+            : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40'
         }`}>
           {toast.type === 'success' ? <Check size={16} className="inline" /> : <X size={16} className="inline" />} {toast.message}
         </div>
@@ -212,7 +212,7 @@ export default function ProductDetailPage({ sku, navigate }) {
               <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{produto.categoria || 'Sem grupo'}</span>
               <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.unidade || 'und'}</span>
               {produto.marca && <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.marca}</span>}
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${produto.ativo ? 'bg-framer-success/10 text-framer-success' : 'bg-red-500/10 text-red-300'}`}>
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${produto.ativo ? 'bg-framer-success/10 text-framer-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
                 {produto.ativo ? 'Ativo' : 'Inativo'}
               </span>
             </div>
@@ -270,7 +270,7 @@ export default function ProductDetailPage({ sku, navigate }) {
                         <td className="py-3 pr-4 text-right">
                           <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono ${urgentTone(row)}`}>
                             {row.urgent_rate != null ? formatBRL(row.urgent_rate) : 'sem preço'}
-                            {row.urgent_rate != null ? <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-300">urgente</span> : <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-red-300">sem preço</span>}
+                            {row.urgent_rate != null ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">urgente</span> : <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-300">sem preço</span>}
                           </span>
                         </td>
                         <td className="py-3">

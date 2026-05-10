@@ -45,29 +45,29 @@ export default {
           foreground: 'hsl(var(--card-foreground))',
         },
 
-        // ── Framer named tokens (for direct use in components) ──
+        // ── Framer named tokens (theme-aware via CSS variables) ──
         framer: {
-          canvas: '#090909',
-          'surface-1': '#141414',
-          'surface-2': '#1c1c1c',
-          hairline: '#262626',
-          'hairline-soft': '#1a1a1a',
-          ink: '#ffffff',
-          'ink-muted': '#999999',
-          'accent-blue': '#0099ff',
-          success: '#22c55e',
+          canvas: 'hsl(var(--canvas))',
+          'surface-1': 'hsl(var(--surface-1))',
+          'surface-2': 'hsl(var(--surface-2))',
+          hairline: 'hsl(var(--hairline))',
+          'hairline-soft': 'hsl(var(--hairline-soft))',
+          ink: 'hsl(var(--ink))',
+          'ink-muted': 'hsl(var(--ink-muted))',
+          'accent-blue': 'hsl(var(--accent-blue))',
+          success: 'hsl(var(--success))',
           'gradient-violet': '#6a4cf5',
           'gradient-magenta': '#d44df0',
           'gradient-orange': '#ff7a3d',
           'gradient-coral': '#ff5577',
         },
 
-        // ── Sidebar (Framer dark) ──
+        // ── Sidebar (theme-aware Framer shell) ──
         sidebar: {
-          DEFAULT: '#141414',        // surface-1
-          foreground: '#ffffff',     // ink
-          hover: '#1c1c1c',         // surface-2
-          active: '#262626',        // hairline
+          DEFAULT: 'hsl(var(--surface-1))',
+          foreground: 'hsl(var(--ink))',
+          hover: 'hsl(var(--surface-2))',
+          active: 'hsl(var(--hairline))',
         },
       },
       borderRadius: {

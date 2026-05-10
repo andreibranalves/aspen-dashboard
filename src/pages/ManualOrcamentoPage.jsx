@@ -294,7 +294,7 @@ export default function ManualOrcamentoPage() {
                 href={result.pdf_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded text-sm text-emerald-700 dark:text-emerald-300 hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
               >
                 <ExternalLink size={14} /> Visualizar PDF
               </a>
@@ -304,7 +304,7 @@ export default function ManualOrcamentoPage() {
                 href={result.short_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded text-sm text-emerald-700 dark:text-emerald-300 hover:bg-muted transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
               >
                 <ExternalLink size={14} /> Link do Orçamento
               </a>
@@ -333,11 +333,11 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Error ══ */}
       {error && !result && (
-        <div className="bg-red-500/10 border border-red-200 dark:border-red-900/40 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3">
           <AlertTriangle size={20} className="text-red-500 shrink-0" />
           <div>
-            <p className="font-medium text-red-800">Erro ao criar orçamento</p>
-            <p className="text-sm text-red-700">{error}</p>
+            <p className="font-medium text-red-800 dark:text-red-200">Erro ao criar orçamento</p>
+            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
           </div>
         </div>
       )}
@@ -356,7 +356,7 @@ export default function ManualOrcamentoPage() {
                 onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
                 className={cn(
                   'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  clientType === CLIENT_TYPE.EXISTING ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground',
+                  clientType === CLIENT_TYPE.EXISTING ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
                 )}
                 aria-label="Buscar cliente existente"
               >
@@ -366,7 +366,7 @@ export default function ManualOrcamentoPage() {
                 onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
                 className={cn(
                   'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  clientType === CLIENT_TYPE.NEW ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground',
+                  clientType === CLIENT_TYPE.NEW ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
                 )}
                 aria-label="Cadastrar novo cliente"
               >
@@ -414,7 +414,7 @@ export default function ManualOrcamentoPage() {
                         </div>
                         <span className={cn(
                           'text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ml-2',
-                          c.tipo === 'lead' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                          c.tipo === 'lead' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-success/10 text-framer-success',
                         )}>
                           {c.tipo === 'lead' ? 'Lead' : 'Cliente'}
                         </span>
@@ -458,11 +458,11 @@ export default function ManualOrcamentoPage() {
 
             {/* Selected client indicator */}
             {selectedClient && clientType === CLIENT_TYPE.EXISTING && (
-              <div className="flex items-center gap-2 text-sm bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded px-3 py-1.5">
-                <Check size={14} />
+              <div className="flex items-center gap-2 text-sm bg-framer-surface-1 border border-framer-hairline text-framer-ink rounded-full px-3 py-1.5">
+                <Check size={14} className="text-framer-success" />
                 <span className="font-medium">{selectedClient.nome}</span>
-                {selectedClient.email && <span className="text-blue-500">· {selectedClient.email}</span>}
-                {selectedClient.telefone && <span className="text-blue-500">· {fmtPhone(selectedClient.telefone)}</span>}
+                {selectedClient.email && <span className="text-framer-ink-muted">· {selectedClient.email}</span>}
+                {selectedClient.telefone && <span className="text-framer-ink-muted">· {fmtPhone(selectedClient.telefone)}</span>}
               </div>
             )}
           </section>
@@ -692,7 +692,7 @@ export default function ManualOrcamentoPage() {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Observações</label>
                 <textarea
-                  className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+                  className="w-full min-h-[80px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 resize-y"
                   placeholder="Observações adicionais…"
                   value={observacoes}
                   onChange={e => setObservacoes(e.target.value)}
