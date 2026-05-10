@@ -54,7 +54,7 @@ export default {
           'hairline-soft': 'hsl(var(--hairline-soft))',
           ink: 'hsl(var(--ink))',
           'ink-muted': 'hsl(var(--ink-muted))',
-          'accent-blue': 'hsl(var(--accent-blue))',
+          'accent-blue': 'oklch(var(--accent-blue) / <alpha-value>)',
           success: 'hsl(var(--success))',
           'gradient-violet': '#6a4cf5',
           'gradient-magenta': '#d44df0',

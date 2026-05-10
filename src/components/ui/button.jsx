@@ -3,7 +3,7 @@ import { forwardRef } from 'react';
 
 /**
  * Button — Framer pill button system.
- * DEFAULT: white pill on dark (primary CTA)
+ * DEFAULT: accent-blue pill (primary CTA)
  * SECONDARY: surface-1 pill (charcoal)
  * OUTLINE: hairline border pill
  * GHOST: transparent with hover
@@ -12,17 +12,17 @@ import { forwardRef } from 'react';
  */
 const variants = {
   default:
-    'bg-framer-ink text-framer-canvas hover:bg-framer-ink/90 active:scale-[0.97]',
+    'bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.97]',
   destructive:
     'bg-red-600 text-white hover:bg-red-700 active:scale-[0.97]',
   outline:
-    'border border-framer-hairline bg-transparent text-framer-ink hover:bg-framer-surface-2 active:scale-[0.97]',
+    'border border-framer-hairline bg-transparent text-framer-ink hover:bg-primary/5 active:scale-[0.97]',
   secondary:
     'bg-framer-surface-1 text-framer-ink hover:bg-framer-surface-2 active:scale-[0.97]',
   ghost:
-    'text-framer-ink hover:bg-framer-surface-2',
+    'text-framer-ink hover:bg-primary/5',
   link:
-    'text-framer-accent-blue underline-offset-4 hover:underline',
+    'text-primary underline-offset-4 hover:underline',
   success:
     'bg-framer-success text-white hover:bg-framer-success/90 active:scale-[0.97]',
 };
