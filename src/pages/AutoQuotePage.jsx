@@ -390,7 +390,7 @@ export default function AutoQuotePage() {
   return (
     <div className="space-y-6">
       {/* Phase indicator */}
-      <div className="flex items-center gap-2 text-sm flex-wrap">
+      <div className="flex w-full items-center justify-center gap-2 text-sm flex-wrap">
         {PHASE_LABELS.map((label, i) => (
           <div key={i} className="flex items-center gap-2">
             <span className={cn(
@@ -407,26 +407,6 @@ export default function AutoQuotePage() {
             )}
           </div>
         ))}
-      </div>
-
-      {/* Manual flow link */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-gray-700">Fluxo:</span>
-        <a
-          href="#/auto"
-          onClick={e => { e.preventDefault(); window.location.hash = '#/auto'; }}
-          className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary text-primary-foreground"
-        >
-          Automático
-        </a>
-        <a
-          href="#/manual"
-          onClick={e => { e.preventDefault(); window.location.hash = '#/manual'; }}
-          className="px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:bg-muted transition-colors"
-          aria-label="Montar orçamento manualmente"
-        >
-          Manual
-        </a>
       </div>
 
       {/* Input form (phase input) */}

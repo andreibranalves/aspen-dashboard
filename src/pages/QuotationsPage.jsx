@@ -36,11 +36,14 @@ export default function QuotationsPage({ navigate }) {
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const [statusSummary, setStatusSummary] = useState({});
+  const [selectedIds, setSelectedIds] = useState([]);
   const searchTimer = useRef(null);
+  const selectAllRef = useRef(null);
 
   const fetchData = useCallback(async (searchVal, statusVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
+    setSelectedIds([]);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageNum));
@@ -107,8 +110,51 @@ export default function QuotationsPage({ navigate }) {
     }
   }, []);
 
+  const toggleSelected = useCallback((id) => {
+    setSelectedIds(prev => (
+      prev.includes(id)
+        ? prev.filter(itemId => itemId !== id)
+        : [...prev, id]
+    ));
+  }, []);
+
+  const toggleSelectAll = useCallback((checked) => {
+    setSelectedIds(checked ? data.map(row => row.id) : []);
+  }, [data]);
+
+  const handleBulkDelete = useCallback(async () => {
+    const selectedRows = data.filter(row => selectedIds.includes(row.id));
+    if (selectedRows.length === 0) return;
+
+    const totalSelected = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+    if (!confirm(
+      `Tem certeza que deseja excluir ${selectedRows.length} proposta${selectedRows.length !== 1 ? 's' : ''}?\n\n` +
+      `Valor total: ${formatBRL(totalSelected)}\n\nEssa ação não pode ser desfeita.`
+    )) return;
+
+    try {
+      await Promise.all(selectedRows.map(row => apiDelete(`/quotations?id=${encodeURIComponent(row.id)}`)));
+      const nextPage = selectedRows.length === data.length && page > 1 ? page - 1 : page;
+      setPage(nextPage);
+      await fetchData(search, status, nextPage, limit);
+    } catch (err) {
+      alert('Erro ao excluir propostas selecionadas: ' + (err.message || 'Tente novamente.'));
+    }
+  }, [data, selectedIds, page, search, status, limit, fetchData]);
+
   const totalsQty = data.length;
   const totalsSum = data.reduce((s, r) => s + (r.valor || 0), 0);
+  const selectedRows = data.filter(row => selectedIds.includes(row.id));
+  const selectedCount = selectedRows.length;
+  const selectedTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+  const allSelected = data.length > 0 && selectedCount === data.length;
+  const someSelected = selectedCount > 0 && !allSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
 
   // Pagination helpers
   const getPageNumbers = () => {
@@ -160,7 +206,7 @@ export default function QuotationsPage({ navigate }) {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-28">
       {/* PageHeader + primary action */}
       <PageHeader
         title="Orçamentos"
@@ -252,6 +298,16 @@ export default function QuotationsPage({ navigate }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12 px-3">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={e => toggleSelectAll(e.target.checked)}
+                    aria-label="Selecionar todos os orçamentos desta página"
+                    className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                  />
+                </TableHead>
                 <TableHead className="w-[160px]">Nº</TableHead>
                 <TableHead>Data</TableHead>
                 <TableHead>Cliente</TableHead>
@@ -264,9 +320,18 @@ export default function QuotationsPage({ navigate }) {
               {data.map(row => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer"
+                  className={`cursor-pointer ${selectedIds.includes(row.id) ? 'bg-primary/5' : ''}`}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
+                  <TableCell className="w-12 px-3" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(row.id)}
+                      onChange={() => toggleSelected(row.id)}
+                      aria-label={`Selecionar orçamento ${row.id}`}
+                      className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                    />
+                  </TableCell>
                   <TableCell className="font-mono text-sm">{row.id}</TableCell>
                   <TableCell className="whitespace-nowrap text-muted-foreground">
                     {formatDate(row.data)}
@@ -297,11 +362,20 @@ export default function QuotationsPage({ navigate }) {
           {data.map(row => (
             <div
               key={row.id}
-              className="bg-white rounded-lg border shadow-sm p-4 space-y-3 cursor-pointer"
+              className={`bg-white rounded-lg border shadow-sm p-4 space-y-3 cursor-pointer ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm font-semibold">{row.id}</span>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(row.id)}
+                    onChange={() => toggleSelected(row.id)}
+                    aria-label={`Selecionar orçamento ${row.id}`}
+                    className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                  />
+                  <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
+                </div>
                 <StatusBadge
                   status={row.status}
                   label={STATUS_LABELS[row.status] || row.status}
@@ -399,6 +473,41 @@ export default function QuotationsPage({ navigate }) {
           </div>
         </div>
       )}
+
+      <div className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}>
+        <div className="mx-auto max-w-7xl px-4 pb-4">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-gray-200 bg-background/95 shadow-2xl backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
+              <div className="flex flex-wrap items-center gap-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={e => toggleSelectAll(e.target.checked)}
+                    aria-label="Selecionar todos os orçamentos desta página"
+                    className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                  />
+                  <span>{selectedCount} proposta{selectedCount !== 1 ? 's' : ''} selecionada{selectedCount !== 1 ? 's' : ''}</span>
+                </div>
+                <div>
+                  <span className="block text-xs text-muted-foreground">Valor total selecionado</span>
+                  <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setSelectedIds([])} disabled={selectedCount === 0}>
+                  Limpar seleção
+                </Button>
+                <Button variant="destructive" onClick={handleBulkDelete} disabled={selectedCount === 0}>
+                  <Trash2 size={16} className="mr-2" />
+                  Excluir propostas
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
