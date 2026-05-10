@@ -1,0 +1,913 @@
+import { useState, useCallback, useRef } from 'react';
+import {
+  AlertTriangle,
+  Calculator,
+  Check,
+  ExternalLink,
+  FileText,
+  Loader2,
+  MessageCircle,
+  PackagePlus,
+  Plus,
+  RotateCcw,
+  Search,
+  ShoppingCart,
+  Trash2,
+  UserPlus,
+} from 'lucide-react';
+import { apiGet, apiPost } from '@/lib/api.js';
+import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import { cn } from '@/lib/utils.js';
+import { Button } from '@/components/ui/button.jsx';
+import { Input } from '@/components/ui/input.jsx';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.jsx';
+
+// ── Constants ──
+const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' };
+const DEFAULT_QTY = 100;
+
+function toNumber(value, fallback = 0) {
+  const parsed = Number(String(value).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function makeItemKey(sku) {
+  return `${sku}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export default function ManualOrcamentoPage() {
+  // ── Client state ──
+  const [clientType, setClientType] = useState(CLIENT_TYPE.NEW);
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientResults, setClientResults] = useState([]);
+  const [clientSearching, setClientSearching] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [newClient, setNewClient] = useState({ nome: '', email: '', telefone: '' });
+  const clientTimer = useRef(null);
+
+  // ── Product state ──
+  const [productSearch, setProductSearch] = useState('');
+  const [productResults, setProductResults] = useState([]);
+  const [productSearching, setProductSearching] = useState(false);
+  const [addingSku, setAddingSku] = useState(null);
+  const [pricingRows, setPricingRows] = useState(new Set());
+  const productTimer = useRef(null);
+
+  // ── Cart state ──
+  const [items, setItems] = useState([]); // { sku, nome, qty, rate, _key, _rateManual }
+
+  // ── Form state ──
+  const [prazo, setPrazo] = useState('');
+  const [observacoes, setObservacoes] = useState('');
+  const [urgente, setUrgente] = useState(false);
+
+  // ── Submit state ──
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  // ── Pricing helpers ──
+  const lookupRate = useCallback(async (sku, qty, urgentValue = urgente) => {
+    const res = await apiPost('/pricing-lookup', {
+      items: [{ item_code: sku, qty }],
+      urgent: urgentValue,
+    });
+    const priced = res.items?.[0];
+    return priced?.rate != null ? Number(priced.rate) : 0;
+  }, [urgente]);
+
+  const repriceAutoItems = useCallback(async (urgentValue) => {
+    const autoItems = items.filter(item => !item._rateManual);
+    if (autoItems.length === 0) return;
+
+    setPricingRows(new Set(autoItems.map(item => item._key)));
+    try {
+      const pricedItems = await Promise.all(autoItems.map(async (item) => ({
+        _key: item._key,
+        rate: await lookupRate(item.sku, item.qty, urgentValue),
+      })));
+      const priceMap = new Map(pricedItems.map(item => [item._key, item.rate]));
+      setItems(prev => prev.map(item => (
+        priceMap.has(item._key) ? { ...item, rate: priceMap.get(item._key) } : item
+      )));
+    } catch {
+      // mantém os preços atuais se o ERP não responder
+    } finally {
+      setPricingRows(new Set());
+    }
+  }, [items, lookupRate]);
+
+  // ── Client search ──
+  const searchClients = useCallback(async (term) => {
+    if (!term || term.length < 2) { setClientResults([]); return; }
+    setClientSearching(true);
+    try {
+      const res = await apiGet(`/leads-clients?search=${encodeURIComponent(term)}&limit=10&tipo=todos`);
+      setClientResults(res.data || []);
+    } catch {
+      setClientResults([]);
+    } finally {
+      setClientSearching(false);
+    }
+  }, []);
+
+  const onClientSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setClientSearch(val);
+    setSelectedClient(null);
+    clearTimeout(clientTimer.current);
+    clientTimer.current = setTimeout(() => searchClients(val), 300);
+  }, [searchClients]);
+
+  const selectClient = useCallback((c) => {
+    setSelectedClient(c);
+    setClientSearch(`${c.nome} (${c.email || c.telefone || c.id})`);
+    setClientResults([]);
+    setClientType(CLIENT_TYPE.EXISTING);
+  }, []);
+
+  // ── Product search ──
+  const searchProducts = useCallback(async (term) => {
+    if (!term || term.length < 2) { setProductResults([]); return; }
+    setProductSearching(true);
+    try {
+      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=8`);
+      setProductResults(res.data || []);
+    } catch {
+      setProductResults([]);
+    } finally {
+      setProductSearching(false);
+    }
+  }, []);
+
+  const onProductSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setProductSearch(val);
+    clearTimeout(productTimer.current);
+    productTimer.current = setTimeout(() => searchProducts(val), 300);
+  }, [searchProducts]);
+
+  // ── Item operations ──
+  const addProduct = useCallback(async (product) => {
+    if (!product?.sku || addingSku) return;
+    setAddingSku(product.sku);
+    setError(null);
+
+    try {
+      const rate = await lookupRate(product.sku, DEFAULT_QTY, urgente);
+      setItems(prev => [
+        ...prev,
+        {
+          _key: makeItemKey(product.sku),
+          sku: product.sku,
+          nome: product.nome,
+          qty: DEFAULT_QTY,
+          rate,
+          _rateManual: false,
+        },
+      ]);
+      setProductSearch('');
+      setProductResults([]);
+    } catch {
+      setItems(prev => [
+        ...prev,
+        {
+          _key: makeItemKey(product.sku),
+          sku: product.sku,
+          nome: product.nome,
+          qty: DEFAULT_QTY,
+          rate: 0,
+          _rateManual: false,
+        },
+      ]);
+      setProductSearch('');
+      setProductResults([]);
+    } finally {
+      setAddingSku(null);
+    }
+  }, [addingSku, lookupRate, urgente]);
+
+  const updateItemQty = useCallback(async (_key, value) => {
+    const qty = Math.max(1, toNumber(value, 1));
+    const current = items.find(item => item._key === _key);
+    if (!current) return;
+
+    setItems(prev => prev.map(item => (item._key === _key ? { ...item, qty } : item)));
+    if (current._rateManual) return;
+
+    setPricingRows(prev => new Set(prev).add(_key));
+    try {
+      const rate = await lookupRate(current.sku, qty, urgente);
+      setItems(prev => prev.map(item => (item._key === _key ? { ...item, rate } : item)));
+    } catch {
+      // mantém preço atual
+    } finally {
+      setPricingRows(prev => {
+        const next = new Set(prev);
+        next.delete(_key);
+        return next;
+      });
+    }
+  }, [items, lookupRate, urgente]);
+
+  const updateItemRate = useCallback((_key, value) => {
+    const rate = Math.max(0, toNumber(value, 0));
+    setItems(prev => prev.map(item => (
+      item._key === _key ? { ...item, rate, _rateManual: true } : item
+    )));
+  }, []);
+
+  const resetItemRate = useCallback(async (_key) => {
+    const current = items.find(item => item._key === _key);
+    if (!current) return;
+    setPricingRows(prev => new Set(prev).add(_key));
+    try {
+      const rate = await lookupRate(current.sku, current.qty, urgente);
+      setItems(prev => prev.map(item => (
+        item._key === _key ? { ...item, rate, _rateManual: false } : item
+      )));
+    } catch {
+      // mantém preço atual
+    } finally {
+      setPricingRows(prev => {
+        const next = new Set(prev);
+        next.delete(_key);
+        return next;
+      });
+    }
+  }, [items, lookupRate, urgente]);
+
+  const removeItem = useCallback((_key) => {
+    setItems(prev => prev.filter(item => item._key !== _key));
+  }, []);
+
+  const onUrgenteChange = useCallback((checked) => {
+    setUrgente(checked);
+    repriceAutoItems(checked);
+  }, [repriceAutoItems]);
+
+  // ── Computed ──
+  const subtotal = items.reduce((sum, item) => sum + item.qty * item.rate, 0);
+  const manualPriceCount = items.filter(item => item._rateManual).length;
+  const hasZeroPrice = items.some(item => Number(item.rate) === 0);
+
+  // ── Active client info ──
+  const getClientInfo = useCallback(() => {
+    if (clientType === CLIENT_TYPE.EXISTING && selectedClient) {
+      return {
+        nome: selectedClient.nome,
+        email: selectedClient.email || '',
+        telefone: selectedClient.telefone || '',
+      };
+    }
+    return {
+      nome: newClient.nome.trim(),
+      email: newClient.email.trim(),
+      telefone: newClient.telefone.trim(),
+    };
+  }, [clientType, selectedClient, newClient]);
+
+  const canSubmit = Boolean(getClientInfo().nome) && items.length > 0 && !submitting;
+
+  // ── Submit ──
+  const handleSubmit = useCallback(async () => {
+    const { nome, email, telefone } = getClientInfo();
+    if (!nome) { alert('Informe o nome do cliente.'); return; }
+    if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
+
+    setSubmitting(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const payload = {
+        extracted: {
+          nome,
+          email: email || undefined,
+          telefone: telefone || undefined,
+          urgente,
+          items: items.map(item => ({
+            item_code: item.sku,
+            qty: item.qty,
+            rate: item.rate,
+            manual_rate: true,
+          })),
+          prazo_producao: prazo || undefined,
+          ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
+        },
+      };
+
+      const res = await apiPost('/orcamento', payload);
+      setResult(res);
+    } catch (err) {
+      setError(err.message || 'Erro ao criar orçamento.');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [getClientInfo, items, urgente, prazo, observacoes]);
+
+  // ── WhatsApp link builder ──
+  const buildWaLink = useCallback((telefone, nome, quotationId) => {
+    if (!telefone) return null;
+    const digits = telefone.replace(/\D/g, '').replace(/^55(\d{10,11})$/, '$1');
+    if (digits.length < 10) return null;
+    const text = `Olá, ${nome}! Segue seu orçamento ${quotationId}. Qualquer dúvida estamos à disposição. Aspen Estamparia`;
+    return `https://wa.me/55${digits}?text=${encodeURIComponent(text)}`;
+  }, []);
+
+  // ── Reset all ──
+  const resetForm = useCallback(() => {
+    setItems([]);
+    setResult(null);
+    setError(null);
+    setPrazo('');
+    setObservacoes('');
+    setUrgente(false);
+    setSelectedClient(null);
+    setClientSearch('');
+    setClientResults([]);
+    setNewClient({ nome: '', email: '', telefone: '' });
+    setClientType(CLIENT_TYPE.NEW);
+    setProductSearch('');
+    setProductResults([]);
+    setAddingSku(null);
+    setPricingRows(new Set());
+  }, []);
+
+  // ── Render ──
+  return (
+    <div className="space-y-6">
+      {/* ══ Success Result ══ */}
+      {result && (
+        <div className="bg-framer-success/10 border border-framer-success/30 rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-framer-success flex items-center justify-center">
+              <Check size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-framer-success">Orçamento criado com sucesso</p>
+              <p className="text-sm text-framer-success/70">
+                {capitalize(result.cliente)} · {result.quotation_id}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {result.pdf_url && (
+              <a
+                href={result.pdf_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
+              >
+                <ExternalLink size={14} /> Visualizar PDF
+              </a>
+            )}
+            {result.short_url && (
+              <a
+                href={result.short_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
+              >
+                <ExternalLink size={14} /> Link do orçamento
+              </a>
+            )}
+            {(() => {
+              const info = getClientInfo();
+              const waLink = buildWaLink(info.telefone, result.cliente, result.quotation_id);
+              return waLink ? (
+                <a
+                  href={waLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-success text-white rounded-full text-sm hover:bg-framer-success/90 transition-colors"
+                >
+                  <MessageCircle size={14} /> WhatsApp
+                </a>
+              ) : null;
+            })()}
+          </div>
+
+          <Button variant="outline" size="sm" onClick={resetForm}>
+            Novo orçamento
+          </Button>
+        </div>
+      )}
+
+      {/* ══ Error ══ */}
+      {error && !result && (
+        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle size={20} className="text-red-500 shrink-0" />
+          <div>
+            <p className="font-medium text-red-800 dark:text-red-200">Erro ao criar orçamento</p>
+            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {!result && (
+        <>
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+            <div className="space-y-5 min-w-0">
+              {/* ══ 1. Cliente ══ */}
+              <section aria-label="Seleção de cliente" className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
+                      <UserPlus size={18} /> 1. Cliente
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">Use um cadastro existente ou crie o contato nesta venda.</p>
+                  </div>
+
+                  <div className="flex gap-1 bg-muted rounded-lg p-0.5 w-fit">
+                    <button
+                      onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
+                      className={cn(
+                        'px-3 py-1.5 text-sm rounded-md transition-colors',
+                        clientType === CLIENT_TYPE.NEW ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
+                      )}
+                      aria-label="Cadastrar novo cliente"
+                    >
+                      Novo cliente
+                    </button>
+                    <button
+                      onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
+                      className={cn(
+                        'px-3 py-1.5 text-sm rounded-md transition-colors',
+                        clientType === CLIENT_TYPE.EXISTING ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
+                      )}
+                      aria-label="Buscar cliente existente"
+                    >
+                      Buscar existente
+                    </button>
+                  </div>
+                </div>
+
+                {clientType === CLIENT_TYPE.EXISTING ? (
+                  <div className="space-y-3">
+                    <div className="relative w-full">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar por nome, email ou telefone…"
+                        value={clientSearch}
+                        onChange={onClientSearchChange}
+                        className="pl-9 w-full"
+                        aria-label="Buscar cliente"
+                      />
+                      {clientSearching && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+
+                    {clientResults.length > 0 && (
+                      <div className="border border-border rounded-xl divide-y divide-border max-h-60 overflow-y-auto bg-card">
+                        {clientResults.map(client => (
+                          <button
+                            key={client.id}
+                            onClick={() => selectClient(client)}
+                            className={cn(
+                              'w-full text-left px-3 py-3 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3',
+                              selectedClient?.id === client.id && 'bg-primary/5',
+                            )}
+                            aria-label={`Selecionar ${client.nome}`}
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{client.nome || client.id}</p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {[client.email, client.telefone ? fmtPhone(client.telefone) : '', client.tipo === 'lead' ? 'Lead' : 'Cliente']
+                                  .filter(Boolean).join(' · ')}
+                              </p>
+                            </div>
+                            <span className={cn(
+                              'text-[10px] px-2 py-1 rounded-full shrink-0',
+                              client.tipo === 'lead' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-success/10 text-framer-success',
+                            )}>
+                              {client.tipo === 'lead' ? 'Lead' : 'Cliente'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Nome *</label>
+                      <Input
+                        placeholder="Nome completo"
+                        value={newClient.nome}
+                        onChange={e => setNewClient(prev => ({ ...prev, nome: e.target.value }))}
+                        aria-label="Nome do cliente"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                      <Input
+                        type="email"
+                        placeholder="email@exemplo.com"
+                        value={newClient.email}
+                        onChange={e => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                        aria-label="Email do cliente"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Telefone</label>
+                      <Input
+                        placeholder="(11) 99999-9999"
+                        value={formatPhoneInput(newClient.telefone)}
+                        onChange={e => setNewClient(prev => ({ ...prev, telefone: normalizePhoneDigits(e.target.value) }))}
+                        inputMode="tel"
+                        autoComplete="tel"
+                        aria-label="Telefone do cliente"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {selectedClient && clientType === CLIENT_TYPE.EXISTING && (
+                  <div className="flex flex-wrap items-center gap-2 text-sm bg-framer-accent-blue/5 border border-framer-accent-blue/20 text-framer-ink rounded-xl px-3 py-2">
+                    <Check size={14} className="text-framer-accent-blue" />
+                    <span className="font-medium">{selectedClient.nome}</span>
+                    {selectedClient.email && <span className="text-framer-ink-muted">· {selectedClient.email}</span>}
+                    {selectedClient.telefone && <span className="text-framer-ink-muted">· {fmtPhone(selectedClient.telefone)}</span>}
+                  </div>
+                )}
+              </section>
+
+              {/* ══ 2. Itens ══ */}
+              <section aria-label="Itens do orçamento" className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
+                      <PackagePlus size={18} /> 2. Itens do orçamento
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Busque o produto e ajuste quantidade ou preço na própria tabela.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <ShoppingCart size={15} />
+                    {items.length} {items.length === 1 ? 'item' : 'itens'}
+                  </div>
+                </div>
+
+                <div className="relative w-full">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Digite SKU ou nome para adicionar um produto…"
+                    value={productSearch}
+                    onChange={onProductSearchChange}
+                    className="pl-9 pr-10 w-full"
+                    aria-label="Buscar produto para adicionar ao orçamento"
+                  />
+                  {productSearching && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+
+                {productResults.length > 0 && (
+                  <div className="border border-border rounded-xl overflow-hidden bg-card divide-y divide-border max-h-72 overflow-y-auto">
+                    {productResults.map(product => (
+                      <div key={product.sku} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between hover:bg-muted/30 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-framer-ink">
+                            <span className="font-mono text-framer-accent-blue">{product.sku}</span>
+                            <span className="text-framer-ink-muted"> · </span>
+                            {product.nome}
+                          </p>
+                          {product.categoria && <p className="text-xs text-muted-foreground mt-0.5">{product.categoria}</p>}
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => addProduct(product)}
+                          disabled={Boolean(addingSku)}
+                          className="w-full sm:w-auto"
+                          aria-label={`Adicionar ${product.sku} ao orçamento`}
+                        >
+                          {addingSku === product.sku ? (
+                            <Loader2 size={14} className="animate-spin mr-1.5" />
+                          ) : (
+                            <Plus size={14} className="mr-1.5" />
+                          )}
+                          Adicionar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {items.length > 0 ? (
+                  <>
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Produto</TableHead>
+                            <TableHead className="w-28 text-right">Qtd</TableHead>
+                            <TableHead className="w-40 text-right">Unitário</TableHead>
+                            <TableHead className="w-36 text-right">Total</TableHead>
+                            <TableHead className="w-16" />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {items.map(item => {
+                            const rowLoading = pricingRows.has(item._key);
+                            return (
+                              <TableRow key={item._key}>
+                                <TableCell className="min-w-[280px]">
+                                  <div className="space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="font-mono text-xs text-framer-accent-blue">{item.sku}</span>
+                                      {item._rateManual && (
+                                        <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-300">
+                                          preço manual
+                                        </span>
+                                      )}
+                                      {Number(item.rate) === 0 && (
+                                        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-300">
+                                          sem preço
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm font-medium text-framer-ink">{item.nome}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    className="h-9 w-24 ml-auto text-right"
+                                    value={item.qty}
+                                    onChange={e => updateItemQty(item._key, e.target.value)}
+                                    aria-label={`Quantidade de ${item.sku}`}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-end gap-2">
+                                    {rowLoading && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
+                                    <div className="relative w-32">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        className="h-9 w-full pl-7 text-right font-mono"
+                                        value={item.rate}
+                                        onChange={e => updateItemRate(item._key, e.target.value)}
+                                        aria-label={`Preço unitário de ${item.sku}`}
+                                      />
+                                    </div>
+                                    {item._rateManual && (
+                                      <button
+                                        type="button"
+                                        onClick={() => resetItemRate(item._key)}
+                                        className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-framer-accent-blue transition-colors"
+                                        aria-label={`Recalcular preço de ${item.sku}`}
+                                      >
+                                        <RotateCcw size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {formatBRL(item.qty * item.rate)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeItem(item._key)}
+                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                                    aria-label={`Remover ${item.sku}`}
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    <div className="md:hidden space-y-3">
+                      {items.map(item => {
+                        const rowLoading = pricingRows.has(item._key);
+                        return (
+                          <div key={item._key} className="border border-border rounded-xl p-3 space-y-3 bg-framer-surface-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-xs text-framer-accent-blue">{item.sku}</span>
+                                  {item._rateManual && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-300">preço manual</span>}
+                                </div>
+                                <p className="text-sm font-medium mt-1">{item.nome}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeItem(item._key)}
+                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                                aria-label={`Remover ${item.sku}`}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Quantidade</label>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  className="h-9"
+                                  value={item.qty}
+                                  onChange={e => updateItemQty(item._key, e.target.value)}
+                                  aria-label={`Quantidade de ${item.sku}`}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                  Unitário {rowLoading && <Loader2 size={11} className="animate-spin" />}
+                                </label>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="h-9 pl-7"
+                                    value={item.rate}
+                                    onChange={e => updateItemRate(item._key, e.target.value)}
+                                    aria-label={`Preço unitário de ${item.sku}`}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-border pt-2">
+                              {item._rateManual ? (
+                                <button
+                                  type="button"
+                                  onClick={() => resetItemRate(item._key)}
+                                  className="inline-flex items-center gap-1.5 text-xs text-framer-accent-blue"
+                                >
+                                  <RotateCcw size={12} /> Recalcular tabela
+                                </button>
+                              ) : <span className="text-xs text-muted-foreground">Preço da tabela</span>}
+                              <span className="font-semibold">{formatBRL(item.qty * item.rate)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border bg-muted/20 overflow-hidden">
+                    <div className="grid grid-cols-[1fr_88px_120px_120px] gap-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground max-md:hidden">
+                      <span>Produto</span>
+                      <span className="text-right">Qtd</span>
+                      <span className="text-right">Unitário</span>
+                      <span className="text-right">Total</span>
+                    </div>
+                    <div className="px-4 py-10 text-center text-muted-foreground">
+                      <ShoppingCart size={36} className="mx-auto text-muted-foreground/40" />
+                      <p className="mt-3 font-medium text-framer-ink">Nenhum produto na tabela</p>
+                      <p className="mt-1 text-sm">Pesquise acima e clique em Adicionar. Depois edite quantidade e preço direto nas colunas da linha.</p>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* ══ 3. Condições ══ */}
+              <section aria-label="Condições do orçamento" className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+                <div>
+                  <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
+                    <FileText size={18} /> 3. Condições e fechamento
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">Defina prazo, urgência e observações antes de criar.</p>
+                </div>
+
+                {hasZeroPrice && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-500/10 dark:text-red-200 flex items-start gap-2">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                    Existe item com preço R$ 0,00. Revise o preço unitário antes de criar o orçamento.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Prazo de produção</label>
+                    <Input
+                      placeholder="Ex: 10 a 15 dias"
+                      value={prazo}
+                      onChange={e => setPrazo(e.target.value)}
+                      aria-label="Prazo de produção"
+                    />
+                  </div>
+                  <div className="rounded-xl border border-border bg-framer-surface-1 px-3 py-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Pedido urgente</p>
+                      <p className="text-xs text-muted-foreground">Recalcula itens com preço automático em +30%.</p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        checked={urgente}
+                        onChange={e => onUrgenteChange(e.target.checked)}
+                        className="peer sr-only"
+                      />
+                      <span className="h-6 w-11 rounded-full bg-muted transition-colors peer-checked:bg-framer-accent-blue" />
+                      <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Observações</label>
+                  <textarea
+                    className="w-full min-h-[88px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 resize-y"
+                    placeholder="Detalhes de arte, entrega, acabamentos ou condições comerciais…"
+                    value={observacoes}
+                    onChange={e => setObservacoes(e.target.value)}
+                    aria-label="Observações do orçamento"
+                  />
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                  {canSubmit ? 'Revise o resumo ao lado e crie o orçamento.' : 'Informe cliente e ao menos um item para liberar a criação.'}
+                </div>
+              </section>
+            </div>
+
+            {/* ══ Side Summary ══ */}
+            <aside className="xl:sticky xl:top-0 bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
+                <Calculator size={17} /> Resumo
+              </div>
+
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="font-medium text-right truncate max-w-[180px]">
+                    {getClientInfo().nome || 'Não informado'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Itens</span>
+                  <span className="font-medium">{items.length}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Urgência</span>
+                  <span className={cn('font-medium', urgente ? 'text-framer-accent-blue' : 'text-framer-ink')}>{urgente ? '+30%' : 'Normal'}</span>
+                </div>
+                {manualPriceCount > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Preços manuais</span>
+                    <span className="font-medium text-amber-600 dark:text-amber-300">{manualPriceCount}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <div className="flex items-end justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">Subtotal</span>
+                  <span className="text-2xl font-bold tracking-tight">{formatBRL(subtotal)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  O valor enviado usa exatamente os preços visíveis na tabela.
+                </p>
+              </div>
+
+              <div className="border-t border-border pt-4 space-y-2">
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                  className="min-h-[44px] w-full"
+                  aria-label="Criar orçamento"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin mr-2" />
+                      Criando…
+                    </>
+                  ) : (
+                    'Criar orçamento'
+                  )}
+                </Button>
+                <Button variant="outline" onClick={resetForm} disabled={submitting} className="w-full">
+                  Limpar tudo
+                </Button>
+                <p className="text-xs text-muted-foreground text-center">
+                  {canSubmit ? 'Pronto para criar no ERPNext.' : 'Cliente e itens são obrigatórios.'}
+                </p>
+              </div>
+            </aside>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

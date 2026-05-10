@@ -41,6 +41,9 @@ const { handler: productsHandler }      = await import('./netlify/functions/prod
 const { handler: freightHandler }      = await import('./netlify/functions/freight.js');
 const { handler: crmDealsHandler }       = await import('./netlify/functions/crm-deals.js');
 const { handler: crmUpdateDealHandler }  = await import('./netlify/functions/crm-update-deal.js');
+const { handler: productDetailHandler } = await import('./netlify/functions/product-detail.js');
+const { handler: productPricingHandler } = await import('./netlify/functions/product-pricing.js');
+const { handler: productPricingUpdateHandler } = await import('./netlify/functions/product-pricing-update.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -214,24 +217,117 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── Static files
-  let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'dashboard.html' : pathname);
-
-  // Fallback para dashboard.html
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(PUBLIC_DIR, 'dashboard.html');
+  if (pathname === '/api/product-pricing' || pathname === '/.netlify/functions/product-pricing') {
+    const body = req.method === 'GET' ? null : await readBody(req);
+    try {
+      const result = await productPricingHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
   }
 
-  const ext  = path.extname(filePath);
-  const mime = MIME[ext] || 'application/octet-stream';
+  // ── Product detail: GET /api/products/:sku ──
+  if ((pathname.startsWith('/api/products/') && !pathname.endsWith('/pricing')) ||
+      pathname.startsWith('/.netlify/functions/product-detail')) {
+    // Extrai SKU da path; ignora /api/products (listagem, já tratado acima)
+    if (pathname === '/api/products' || pathname === '/.netlify/functions/products') {
+      // Já tratado — não deveria chegar aqui, mas por segurança
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
 
-  try {
-    const content = fs.readFileSync(filePath);
-    res.writeHead(200, { 'Content-Type': mime });
-    res.end(content);
-  } catch {
-    res.writeHead(404);
-    res.end('Not found');
+    let sku;
+    if (pathname.startsWith('/api/products/')) {
+      sku = pathname.replace('/api/products/', '');
+    } else {
+      // /.netlify/functions/product-detail?sku=...
+      const qp = Object.fromEntries(new URL(req.url, 'http://localhost').searchParams);
+      sku = qp.sku || '';
+    }
+
+    try {
+      const event = netlifyEvent(req, null);
+      event.queryStringParameters = { ...event.queryStringParameters, sku };
+      const result = await productDetailHandler(event);
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // ── Product pricing update: PUT /api/products/:sku/pricing ──
+  if ((pathname.startsWith('/api/products/') && pathname.endsWith('/pricing')) ||
+      pathname.startsWith('/.netlify/functions/product-pricing-update')) {
+    const body = await readBody(req);
+    let sku;
+    if (pathname.startsWith('/api/products/')) {
+      sku = pathname.replace('/api/products/', '').replace('/pricing', '');
+    } else {
+      const qp = Object.fromEntries(new URL(req.url, 'http://localhost').searchParams);
+      sku = qp.sku || '';
+    }
+
+    try {
+      const event = netlifyEvent(req, body);
+      event.queryStringParameters = { ...event.queryStringParameters, sku };
+      const result = await productPricingUpdateHandler(event);
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // ── Static files + React SPA fallback
+  let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
+
+  // Serve static file if it exists
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext  = path.extname(filePath);
+    const mime = MIME[ext] || 'application/octet-stream';
+    try {
+      const content = fs.readFileSync(filePath);
+      res.writeHead(200, { 'Content-Type': mime });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+    return;
+  }
+
+  // SPA fallback — serve index.html for all non-API routes
+  const spaIndex = path.join(PUBLIC_DIR, 'index.html');
+  if (fs.existsSync(spaIndex)) {
+    try {
+      const content = fs.readFileSync(spaIndex);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    } catch {
+      res.writeHead(404);
+      res.end('Not found');
+    }
+  } else {
+    // No React build yet — fallback to old dashboard
+    const oldDashboard = path.join(PUBLIC_DIR, 'dashboard-old.html');
+    if (fs.existsSync(oldDashboard)) {
+      const content = fs.readFileSync(oldDashboard);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    } else {
+      res.writeHead(404);
+      res.end('Not found');
+    }
   }
 });
 
