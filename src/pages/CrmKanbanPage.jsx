@@ -145,9 +145,10 @@ export default function CrmKanbanPage() {
         </div>
       )}
 
-      {/* Kanban board */}
+      {/* Kanban board — constrained height with own scroll */}
       {!loading && !error && orderedColumns.some(c => c.count > 0) && (
-        <div className="flex gap-4 overflow-x-auto pb-4 min-h-[60vh]">
+        <div className="overflow-auto rounded-lg border border-gray-200 bg-gray-100/20 max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
+          <div className="flex gap-4 p-3 min-h-[55vh]">
           {orderedColumns.map(col => (
             <div
               key={col.status}
@@ -219,6 +220,7 @@ export default function CrmKanbanPage() {
               </div>
             </div>
           ))}
+        </div>
         </div>
       )}
     </div>

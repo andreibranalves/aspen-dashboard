@@ -23,7 +23,7 @@ const STATUS_LABELS = {
 
 const STATUSES = ['', 'Draft', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled'];
 const STATUS_DISPLAY = ['Todos', 'Rascunho', 'Aberto', 'Respondido', 'Convertido', 'Perdido', 'Expirado', 'Cancelado'];
-const LIMIT = 25;
+const PAGE_SIZES = [10, 25, 50];
 
 export default function QuotationsPage({ navigate }) {
   const [data, setData] = useState([]);
@@ -32,18 +32,19 @@ export default function QuotationsPage({ navigate }) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const [statusSummary, setStatusSummary] = useState({});
   const searchTimer = useRef(null);
 
-  const fetchData = useCallback(async (searchVal, statusVal, pageNum) => {
+  const fetchData = useCallback(async (searchVal, statusVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageNum));
-      params.set('limit', String(LIMIT));
+      params.set('limit', String(limitVal));
       if (searchVal) params.set('search', searchVal);
       if (statusVal) params.set('status', statusVal);
 
@@ -67,26 +68,33 @@ export default function QuotationsPage({ navigate }) {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
-      fetchData(val, status, 1);
+      fetchData(val, status, 1, limit);
     }, 350);
-  }, [status, fetchData]);
+  }, [status, limit, fetchData]);
 
   const onStatusClick = useCallback((s) => {
     setStatus(s);
     setPage(1);
-    fetchData(search, s, 1);
-  }, [search, fetchData]);
+    fetchData(search, s, 1, limit);
+  }, [search, limit, fetchData]);
 
   const onPageChange = useCallback((p) => {
     setPage(p);
-    fetchData(search, status, p);
+    fetchData(search, status, p, limit);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [search, status, limit, fetchData]);
+
+  const onLimitChange = useCallback((e) => {
+    const newLimit = parseInt(e.target.value, 10);
+    setLimit(newLimit);
+    setPage(1);
+    fetchData(search, status, 1, newLimit);
   }, [search, status, fetchData]);
 
   // Initial load
   useEffect(() => {
-    fetchData('', '', 1);
-  }, [fetchData]);
+    fetchData('', '', 1, limit);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = useCallback(async (id) => {
     if (!confirm(`Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`)) return;
@@ -188,16 +196,30 @@ export default function QuotationsPage({ navigate }) {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por Nº ou Cliente…"
-          value={search}
-          onChange={onSearchChange}
-          className="pl-9"
-          aria-label="Buscar orçamentos"
-        />
+      {/* Search + Page size */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-md flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por Nº ou Cliente…"
+            value={search}
+            onChange={onSearchChange}
+            className="pl-9"
+            aria-label="Buscar orçamentos"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Itens por página</span>
+          <select
+            value={limit}
+            onChange={onLimitChange}
+            className="border rounded px-2 py-1.5 text-sm bg-white"
+          >
+            {PAGE_SIZES.map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Loading */}
@@ -209,7 +231,7 @@ export default function QuotationsPage({ navigate }) {
           <span className="text-2xl">⚠️</span>
           <p>Erro ao carregar orçamentos</p>
           <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => fetchData(search, status, page)}>
+          <Button variant="outline" onClick={() => fetchData(search, status, page, limit)}>
             Tentar novamente
           </Button>
         </div>

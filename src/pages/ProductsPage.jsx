@@ -9,24 +9,27 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
 
+const PAGE_SIZES = [10, 25, 50];
+
 export default function ProductsPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const searchTimer = useRef(null);
   const [, navigate] = useHashRoute();
 
-  const fetchData = useCallback(async (searchVal, pageNum) => {
+  const fetchData = useCallback(async (searchVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageNum));
-      params.set('limit', '50');
+      params.set('limit', String(limitVal));
       if (searchVal) params.set('search', searchVal);
 
       const result = await apiGet(`/products?${params.toString()}`);
@@ -40,7 +43,7 @@ export default function ProductsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(search, page); }, [fetchData, search, page]);
+  useEffect(() => { fetchData(search, page, limit); }, [fetchData, search, page, limit]);
 
   const onSearchChange = useCallback((e) => {
     const val = e.target.value;
@@ -48,9 +51,16 @@ export default function ProductsPage() {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
-      fetchData(val, 1);
+      fetchData(val, 1, limit);
     }, 350);
-  }, [fetchData]);
+  }, [limit, fetchData]);
+
+  const onLimitChange = useCallback((e) => {
+    const newLimit = parseInt(e.target.value, 10);
+    setLimit(newLimit);
+    setPage(1);
+    fetchData(search, 1, newLimit);
+  }, [search, fetchData]);
 
   const getPageNumbers = () => {
     if (totalPages <= 1) return [];
@@ -63,15 +73,29 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por SKU ou nome…"
-          value={search}
-          onChange={onSearchChange}
-          className="pl-9"
-        />
+      {/* Search + Page size */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-md flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por SKU ou nome…"
+            value={search}
+            onChange={onSearchChange}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Itens por página</span>
+          <select
+            value={limit}
+            onChange={onLimitChange}
+            className="border rounded px-2 py-1.5 text-sm bg-white"
+          >
+            {PAGE_SIZES.map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Loading */}
@@ -83,7 +107,7 @@ export default function ProductsPage() {
           <span className="text-2xl">⚠️</span>
           <p>Erro ao carregar produtos</p>
           <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => fetchData(search, page)}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => fetchData(search, page, limit)}>Tentar novamente</Button>
         </div>
       )}
 

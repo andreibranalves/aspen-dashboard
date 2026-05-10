@@ -12,6 +12,7 @@ import SkeletonTable from '@/components/SkeletonTable.jsx';
 
 const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
+const PAGE_SIZES = [10, 25, 50];
 
 export default function LeadsPage() {
   const [data, setData] = useState([]);
@@ -20,17 +21,18 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('');
   const [tipo, setTipo] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const searchTimer = useRef(null);
 
-  const fetchData = useCallback(async (searchVal, tipoVal, pageNum) => {
+  const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageNum));
-      params.set('limit', '50');
+      params.set('limit', String(limitVal));
       if (searchVal) params.set('search', searchVal);
       if (tipoVal) params.set('tipo', tipoVal);
 
@@ -45,7 +47,7 @@ export default function LeadsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchData(search, tipo, page); }, [fetchData, search, tipo, page]);
+  useEffect(() => { fetchData(search, tipo, page, limit); }, [fetchData, search, tipo, page, limit]);
 
   const onSearchChange = useCallback((e) => {
     const val = e.target.value;
@@ -53,13 +55,22 @@ export default function LeadsPage() {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
+      fetchData(val, tipo, 1, limit);
     }, 350);
-  }, []);
+  }, [tipo, limit, fetchData]);
 
   const onTipoClick = useCallback((t) => {
     setTipo(t);
     setPage(1);
-  }, []);
+    fetchData(search, t, 1, limit);
+  }, [search, limit, fetchData]);
+
+  const onLimitChange = useCallback((e) => {
+    const newLimit = parseInt(e.target.value, 10);
+    setLimit(newLimit);
+    setPage(1);
+    fetchData(search, tipo, 1, newLimit);
+  }, [search, tipo, fetchData]);
 
   const getPageNumbers = () => {
     if (totalPages <= 1) return [];
@@ -100,16 +111,30 @@ export default function LeadsPage() {
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome…"
-          value={search}
-          onChange={onSearchChange}
-          className="pl-9"
-          aria-label="Buscar leads e clientes"
-        />
+      {/* Search + Page size */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-md flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome…"
+            value={search}
+            onChange={onSearchChange}
+            className="pl-9"
+            aria-label="Buscar leads e clientes"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Itens por página</span>
+          <select
+            value={limit}
+            onChange={onLimitChange}
+            className="border rounded px-2 py-1.5 text-sm bg-white"
+          >
+            {PAGE_SIZES.map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Loading */}
@@ -121,7 +146,7 @@ export default function LeadsPage() {
           <span className="text-2xl">⚠️</span>
           <p>Erro ao carregar leads e clientes</p>
           <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => fetchData(search, tipo, page)}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => fetchData(search, tipo, page, limit)}>Tentar novamente</Button>
         </div>
       )}
 
