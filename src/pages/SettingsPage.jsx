@@ -38,7 +38,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <PageHeader
         title="Configurações"
         description="Estas configurações ficam salvas neste navegador."

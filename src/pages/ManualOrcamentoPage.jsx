@@ -267,7 +267,7 @@ export default function ManualOrcamentoPage() {
 
   // ── Render ──
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <PageHeader
         title="Novo Orçamento Manual"
         description="Monte seu orçamento selecionando cliente e produtos do catálogo."

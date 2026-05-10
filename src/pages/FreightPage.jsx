@@ -203,7 +203,7 @@ export default function FreightPage() {
 
   if (results && !loading) {
     return (
-      <div className="space-y-6 max-w-6xl">
+      <div className="space-y-6">
         <div className="rounded-xl bg-[#3498d5] text-white shadow-sm overflow-hidden">
           <div className="grid gap-5 p-6 md:grid-cols-[1fr_1fr_1fr_1.2fr]">
             <div className="space-y-2">
@@ -347,7 +347,7 @@ export default function FreightPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-2">

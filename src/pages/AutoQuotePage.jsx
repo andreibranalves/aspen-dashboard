@@ -388,7 +388,7 @@ export default function AutoQuotePage() {
   const phaseIndex = PHASES.indexOf(phase);
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       {/* Phase indicator */}
       <div className="flex items-center gap-2 text-sm flex-wrap">
         {PHASE_LABELS.map((label, i) => (
