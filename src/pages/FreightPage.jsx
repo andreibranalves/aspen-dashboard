@@ -267,10 +267,10 @@ export default function FreightPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border bg-white p-6 shadow-sm space-y-6">
+        <div className="rounded-xl border bg-card p-6 shadow-sm space-y-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="space-y-2">
-              <h2 className="text-xl font-bold text-slate-900">Transportadoras disponíveis</h2>
+              <h2 className="text-xl font-bold text-card-foreground">Transportadoras disponíveis</h2>
               <p className="text-sm text-muted-foreground">
                 Listando todos os serviços retornados pela Envia.com para o trecho, sem agrupar por transportadora.
               </p>
@@ -289,7 +289,7 @@ export default function FreightPage() {
           </div>
 
           {results.insuranceValue > 0 && (
-            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex items-start gap-2">
+            <div className="rounded-lg bg-amber-500/10 border border-amber-200 dark:border-amber-900/40 p-3 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
               <ShieldCheck size={16} className="mt-0.5 shrink-0" />
               <span>Algumas transportadoras foram ocultadas porque não retornaram cobertura para o valor declarado informado.</span>
             </div>
@@ -309,7 +309,7 @@ export default function FreightPage() {
                 {rates.map((rate, index) => {
                   const brand = carrierBrand(rate.carrier);
                   return (
-                    <tr key={`${rate.carrier}-${rate.service}-${index}`} className="rounded-lg bg-white shadow-sm ring-1 ring-slate-100">
+                    <tr key={`${rate.carrier}-${rate.service}-${index}`} className="rounded-lg bg-card shadow-sm ring-1 ring-border">
                       <td className="rounded-l-lg px-5 py-4">
                         <div className="flex h-10 w-28 items-center">
                           {brand.logo ? (
@@ -322,12 +322,12 @@ export default function FreightPage() {
                       <td className="px-5 py-4">
                         <span className="font-medium text-[#005bab] underline underline-offset-2">{cleanServiceName(rate)}</span>
                         {index === 0 && sortMode === 'price' && (
-                          <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Mais barato</span>
+                          <span className="ml-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Mais barato</span>
                         )}
                       </td>
-                      <td className="px-5 py-4 font-semibold text-slate-900">{formatPrazo(rate)}</td>
+                      <td className="px-5 py-4 font-semibold text-card-foreground">{formatPrazo(rate)}</td>
                       <td className="rounded-r-lg px-5 py-4">
-                        <div className="font-mono font-bold text-slate-900">{formatBRL(rate.totalPrice)}</div>
+                        <div className="font-mono font-bold text-card-foreground">{formatBRL(rate.totalPrice)}</div>
                         {rate.insurance > 0 && (
                           <div className="flex items-center gap-1 mt-1 text-xs text-amber-700">
                             <ShieldCheck size={12} />
@@ -352,7 +352,7 @@ export default function FreightPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-2">
           {/* ── Origem ── */}
-          <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+          <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
             <h2 className="text-sm font-semibold flex items-center gap-2">
               <Truck size={16} /> CEP de Origem (Aspen)
             </h2>
@@ -388,7 +388,7 @@ export default function FreightPage() {
           </div>
 
           {/* ── Destino ── */}
-          <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+          <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
             <h2 className="text-sm font-semibold flex items-center gap-2"><MapPin size={16} /> CEP de Destino (Cliente)</h2>
             <div className="grid gap-3 sm:grid-cols-[150px_1fr]">
               <Input
@@ -423,7 +423,7 @@ export default function FreightPage() {
         </div>
 
         {/* ── Pacotes ── */}
-        <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+        <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Package size={16} /> Pacotes
           </h2>
@@ -448,7 +448,7 @@ export default function FreightPage() {
                         <button
                           type="button"
                           onClick={() => removePackage(idx)}
-                          className="inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
+                          className="inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded text-muted-foreground hover:bg-red-500/10 hover:text-red-600 transition-colors"
                           aria-label={`Remover pacote ${idx + 1}`}
                         >
                           <X size={16} />
@@ -501,7 +501,7 @@ export default function FreightPage() {
         </div>
 
         {/* ── Seguro ── */}
-        <div className="bg-white rounded-lg border shadow-sm p-5 space-y-4">
+        <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-4">
           <div>
             <h2 className="text-sm font-semibold mb-2 flex items-center gap-2"><ShieldCheck size={16} /> Seguro da Carga (R$)</h2>
             <Input
@@ -514,7 +514,7 @@ export default function FreightPage() {
             />
             <p className="text-xs text-muted-foreground mt-1">Opcional — enviado para a Envia.com como seguro/valor declarado da carga.</p>
           </div>
-          <div className="rounded-lg bg-slate-50 border p-3 text-sm text-slate-700">
+          <div className="rounded-lg bg-slate-500/10 border p-3 text-sm text-slate-700 dark:text-slate-200">
             Todas as transportadoras disponíveis no Brasil serão consultadas automaticamente.
           </div>
         </div>
@@ -530,7 +530,7 @@ export default function FreightPage() {
 
       {/* ── Error ── */}
       {!loading && error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800 space-y-2">
+        <div className="bg-red-500/10 border border-red-200 dark:border-red-900/40 rounded-lg p-4 text-sm text-red-800 dark:text-red-200 space-y-2">
           <p className="font-medium"><AlertTriangle size={16} className="inline mr-1" />Erro ao cotar frete</p>
           <p>{error}</p>
           <Button variant="outline" size="sm" onClick={() => setError(null)}>

@@ -15,7 +15,7 @@ export default function SkeletonDetail({ title = 'Carregando…' }) {
       </div>
 
       {/* Detail card */}
-      <div className="bg-white rounded-lg border shadow-sm w-full">
+      <div className="bg-card rounded-lg border border-border shadow-sm w-full">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-3">

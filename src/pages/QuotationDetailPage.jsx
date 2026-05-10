@@ -184,7 +184,7 @@ export default function QuotationDetailPage({ id, navigate }) {
       </button>
 
       {/* Detail card */}
-      <div className="bg-white rounded-lg border shadow-sm">
+      <div className="bg-card rounded-lg border border-border shadow-sm">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -367,7 +367,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 </Button>
               </a>
               <div className="flex-1" />
-              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
+              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-500/10">
                 <Trash2 size={14} /> Excluir
               </Button>
             </>

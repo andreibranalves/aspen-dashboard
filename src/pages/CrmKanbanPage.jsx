@@ -139,7 +139,7 @@ export default function CrmKanbanPage() {
       {/* Empty */}
       {!loading && !error && orderedColumns.every(c => c.count === 0) && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <BarChart3 size={36} className="text-gray-300" />
+          <BarChart3 size={36} className="text-muted-foreground/40" />
           <p>Nenhum deal no pipeline</p>
           <p className="text-sm">Os deals do CRM aparecerão aqui.</p>
         </div>
@@ -147,17 +147,17 @@ export default function CrmKanbanPage() {
 
       {/* Kanban board — constrained height with own scroll */}
       {!loading && !error && orderedColumns.some(c => c.count > 0) && (
-        <div className="overflow-auto rounded-lg border border-gray-200 bg-gray-100/20 max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
+        <div className="overflow-auto rounded-lg border border-border bg-background max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
           <div className="flex gap-4 p-3 min-h-[55vh]">
           {orderedColumns.map(col => (
             <div
               key={col.status}
-              className="flex-shrink-0 w-72 bg-gray-100 rounded-lg flex flex-col"
+              className="flex-shrink-0 w-72 bg-card border border-border rounded-lg flex flex-col"
             >
               {/* Column header */}
               <div className="px-4 py-3 font-medium text-sm flex items-center justify-between">
                 <span>{col.status}</span>
-                <span className="bg-muted-foreground/10 text-muted-foreground text-xs rounded-full px-2 py-0.5">
+                <span className="bg-muted text-muted-foreground text-xs rounded-full px-2 py-0.5">
                   {col.count}
                 </span>
               </div>
@@ -166,7 +166,7 @@ export default function CrmKanbanPage() {
               <div
                 className={cn(
                   'flex-1 px-2 pb-2 space-y-2 min-h-[120px] rounded-b-lg transition-colors',
-                  draggingId && 'bg-blue-50/50',
+                  draggingId && 'bg-primary/5',
                 )}
                 onDragOver={e => {
                   e.preventDefault();
@@ -192,7 +192,7 @@ export default function CrmKanbanPage() {
                     }}
                     onDragEnd={() => setDraggingId(null)}
                     className={cn(
-                      'bg-white rounded-lg border shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow',
+                      'bg-background rounded-lg border border-border shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow',
                       draggingId === deal.id && 'opacity-50',
                     )}
                   >
@@ -202,12 +202,12 @@ export default function CrmKanbanPage() {
                     )}
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       {deal.quotation && (
-                        <span className="inline-flex items-center text-xs bg-blue-50 text-blue-700 rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center text-xs bg-primary/10 text-primary rounded px-1.5 py-0.5">
                           <Clipboard size={12} className="mr-1" />{deal.quotation}
                         </span>
                       )}
                       {deal.follow_up_stage > 0 && (
-                        <span className="inline-flex items-center text-xs bg-purple-50 text-purple-700 rounded px-1.5 py-0.5">
+                        <span className="inline-flex items-center text-xs bg-secondary/70 text-secondary-foreground rounded px-1.5 py-0.5">
                           <Send size={12} className="mr-1" /> Follow-up {deal.follow_up_stage}
                         </span>
                       )}

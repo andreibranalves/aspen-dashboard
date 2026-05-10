@@ -89,7 +89,7 @@ export default function ProductsPage() {
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border rounded px-2 py-1.5 text-sm bg-white"
+            className="border rounded px-2 py-1.5 text-sm bg-background"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>
@@ -114,7 +114,7 @@ export default function ProductsPage() {
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <Tag size={36} className="text-gray-300" />
+          <Tag size={36} className="text-muted-foreground/40" />
           <p>Nenhum produto encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>
@@ -122,7 +122,7 @@ export default function ProductsPage() {
 
       {/* Table */}
       {!loading && !error && data.length > 0 && (
-        <div className="bg-white rounded-lg border shadow-sm">
+        <div className="bg-card rounded-lg border border-border shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

@@ -275,14 +275,14 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Success Result ══ */}
       {result && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 space-y-3">
+        <div className="bg-emerald-500/10 border border-emerald-200 dark:border-emerald-900/40 rounded-lg p-4 space-y-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
               <Check size={18} className="text-white" />
             </div>
             <div>
-              <p className="font-medium text-emerald-800">Orçamento criado com sucesso!</p>
-              <p className="text-sm text-emerald-700">
+              <p className="font-medium text-emerald-800 dark:text-emerald-200">Orçamento criado com sucesso!</p>
+              <p className="text-sm text-emerald-700 dark:text-emerald-300">
                 {capitalize(result.cliente)} · {result.quotation_id}
               </p>
             </div>
@@ -294,7 +294,7 @@ export default function ManualOrcamentoPage() {
                 href={result.pdf_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-300 rounded text-sm text-emerald-700 hover:bg-emerald-100 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded text-sm text-emerald-700 dark:text-emerald-300 hover:bg-muted transition-colors"
               >
                 <ExternalLink size={14} /> Visualizar PDF
               </a>
@@ -304,7 +304,7 @@ export default function ManualOrcamentoPage() {
                 href={result.short_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-300 rounded text-sm text-emerald-700 hover:bg-emerald-100 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded text-sm text-emerald-700 dark:text-emerald-300 hover:bg-muted transition-colors"
               >
                 <ExternalLink size={14} /> Link do Orçamento
               </a>
@@ -333,7 +333,7 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Error ══ */}
       {error && !result && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-red-500/10 border border-red-200 dark:border-red-900/40 rounded-lg p-4 flex items-start gap-3">
           <AlertTriangle size={20} className="text-red-500 shrink-0" />
           <div>
             <p className="font-medium text-red-800">Erro ao criar orçamento</p>
@@ -345,8 +345,8 @@ export default function ManualOrcamentoPage() {
       {!result && (
         <>
           {/* ══ 1. Cliente ══ */}
-          <section aria-label="Seleção de cliente" className="bg-white rounded-lg border shadow-sm p-4 space-y-3">
-            <h2 className="text-base font-semibold text-gray-700 flex items-center gap-2">
+          <section aria-label="Seleção de cliente" className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-3">
+            <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
               <UserPlus size={18} /> 1. Cliente
             </h2>
 
@@ -356,7 +356,7 @@ export default function ManualOrcamentoPage() {
                 onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
                 className={cn(
                   'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  clientType === CLIENT_TYPE.EXISTING ? 'bg-white shadow-sm font-medium' : 'text-muted-foreground',
+                  clientType === CLIENT_TYPE.EXISTING ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground',
                 )}
                 aria-label="Buscar cliente existente"
               >
@@ -366,7 +366,7 @@ export default function ManualOrcamentoPage() {
                 onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
                 className={cn(
                   'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  clientType === CLIENT_TYPE.NEW ? 'bg-white shadow-sm font-medium' : 'text-muted-foreground',
+                  clientType === CLIENT_TYPE.NEW ? 'bg-background shadow-sm font-medium text-foreground' : 'text-muted-foreground',
                 )}
                 aria-label="Cadastrar novo cliente"
               >
@@ -414,7 +414,7 @@ export default function ManualOrcamentoPage() {
                         </div>
                         <span className={cn(
                           'text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ml-2',
-                          c.tipo === 'lead' ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700',
+                          c.tipo === 'lead' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
                         )}>
                           {c.tipo === 'lead' ? 'Lead' : 'Cliente'}
                         </span>
@@ -458,7 +458,7 @@ export default function ManualOrcamentoPage() {
 
             {/* Selected client indicator */}
             {selectedClient && clientType === CLIENT_TYPE.EXISTING && (
-              <div className="flex items-center gap-2 text-sm bg-blue-50 text-blue-700 rounded px-3 py-1.5">
+              <div className="flex items-center gap-2 text-sm bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded px-3 py-1.5">
                 <Check size={14} />
                 <span className="font-medium">{selectedClient.nome}</span>
                 {selectedClient.email && <span className="text-blue-500">· {selectedClient.email}</span>}
@@ -468,8 +468,8 @@ export default function ManualOrcamentoPage() {
           </section>
 
           {/* ══ 2. Produtos ══ */}
-          <section aria-label="Adição de produtos" className="bg-white rounded-lg border shadow-sm p-4 space-y-3">
-            <h2 className="text-base font-semibold text-gray-700 flex items-center gap-2">
+          <section aria-label="Adição de produtos" className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-3">
+            <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
               <Plus size={18} /> 2. Produtos
             </h2>
 
@@ -571,8 +571,8 @@ export default function ManualOrcamentoPage() {
 
           {/* ══ 3. Resumo ══ */}
           {items.length > 0 && (
-            <section aria-label="Resumo do orçamento" className="bg-white rounded-lg border shadow-sm p-4 space-y-4">
-              <h2 className="text-base font-semibold text-gray-700">
+            <section aria-label="Resumo do orçamento" className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-4">
+              <h2 className="text-base font-semibold text-card-foreground">
                 3. Resumo ({items.length} {items.length === 1 ? 'item' : 'itens'})
               </h2>
 
@@ -727,7 +727,7 @@ export default function ManualOrcamentoPage() {
           {/* Empty cart hint */}
           {items.length === 0 && (
             <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
-              <ShoppingCart size={36} className="text-gray-300" />
+              <ShoppingCart size={36} className="text-muted-foreground/40" />
               <p>Nenhum produto adicionado ainda.</p>
               <p className="text-sm">Busque por SKU ou nome e selecione produtos para montar o orçamento.</p>
             </div>

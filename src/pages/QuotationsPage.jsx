@@ -193,15 +193,15 @@ export default function QuotationsPage({ navigate }) {
     <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
       <ActionBtn icon={Phone} label={`Enviar WhatsApp para ${row.cliente || row.id}`}
         href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id)}`}
-        colorClass="hover:bg-green-50 hover:text-green-600" />
+        colorClass="hover:bg-green-500/10 hover:text-green-600" />
       <ActionBtn icon={Pencil} label={`Editar orçamento ${row.id}`}
         onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)} />
       <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`}
         href={`/api/view?q=${encodeURIComponent(row.id)}`}
-        colorClass="hover:bg-red-50 hover:text-red-600" />
+        colorClass="hover:bg-red-500/10 hover:text-red-600" />
       <ActionBtn icon={Trash2} label={`Excluir orçamento ${row.id}`}
         onClick={() => handleDelete(row.id)}
-        colorClass="hover:bg-red-50 hover:text-red-600" />
+        colorClass="hover:bg-red-500/10 hover:text-red-600" />
     </div>
   );
 
@@ -259,7 +259,7 @@ export default function QuotationsPage({ navigate }) {
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border rounded px-2 py-1.5 text-sm bg-white"
+            className="border rounded px-2 py-1.5 text-sm bg-background"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>
@@ -286,7 +286,7 @@ export default function QuotationsPage({ navigate }) {
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <Clipboard size={36} className="text-gray-300" />
+          <Clipboard size={36} className="text-muted-foreground/40" />
           <p>Nenhum orçamento encontrado</p>
           <p className="text-sm">Tente ajustar os filtros ou criar um novo orçamento.</p>
         </div>
@@ -294,7 +294,7 @@ export default function QuotationsPage({ navigate }) {
 
       {/* ── Desktop Table (hidden on mobile) ── */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block bg-white rounded-lg border shadow-sm">
+        <div className="hidden md:block bg-card rounded-lg border border-border shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
@@ -305,7 +305,7 @@ export default function QuotationsPage({ navigate }) {
                     checked={allSelected}
                     onChange={e => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
                 </TableHead>
                 <TableHead className="w-[160px]">Nº</TableHead>
@@ -320,7 +320,7 @@ export default function QuotationsPage({ navigate }) {
               {data.map(row => (
                 <TableRow
                   key={row.id}
-                  className={`cursor-pointer ${selectedIds.includes(row.id) ? 'bg-primary/5' : ''}`}
+                  className={`cursor-pointer bg-card ${selectedIds.includes(row.id) ? 'bg-primary/5' : ''}`}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
                   <TableCell className="w-12 px-3" onClick={e => e.stopPropagation()}>
@@ -329,7 +329,7 @@ export default function QuotationsPage({ navigate }) {
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Selecionar orçamento ${row.id}`}
-                      className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                   </TableCell>
                   <TableCell className="font-mono text-sm">{row.id}</TableCell>
@@ -362,7 +362,7 @@ export default function QuotationsPage({ navigate }) {
           {data.map(row => (
             <div
               key={row.id}
-              className={`bg-white rounded-lg border shadow-sm p-4 space-y-3 cursor-pointer ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              className={`bg-card rounded-lg border border-border shadow-sm p-4 space-y-3 cursor-pointer ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
               <div className="flex items-center justify-between gap-3">
@@ -372,7 +372,7 @@ export default function QuotationsPage({ navigate }) {
                     checked={selectedIds.includes(row.id)}
                     onChange={() => toggleSelected(row.id)}
                     aria-label={`Selecionar orçamento ${row.id}`}
-                    className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
                   <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
                 </div>
@@ -390,10 +390,10 @@ export default function QuotationsPage({ navigate }) {
                 <div className="flex items-center gap-0.5">
                   <ActionBtn icon={Phone} label={`WhatsApp ${row.id}`}
                     href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id)}`}
-                    colorClass="hover:bg-green-50 hover:text-green-600" />
+                    colorClass="hover:bg-green-500/10 hover:text-green-600" />
                   <ActionBtn icon={FileText} label={`PDF ${row.id}`}
                     href={`/api/view?q=${encodeURIComponent(row.id)}`}
-                    colorClass="hover:bg-red-50 hover:text-red-600" />
+                    colorClass="hover:bg-red-500/10 hover:text-red-600" />
                 </div>
               </div>
             </div>
@@ -403,7 +403,7 @@ export default function QuotationsPage({ navigate }) {
 
       {/* Totals bar + Pagination (desktop only, mobile cards are self-contained) */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:flex bg-white rounded-lg border shadow-sm p-4 items-center justify-between flex-wrap gap-4">
+        <div className="hidden md:flex bg-card rounded-lg border border-border shadow-sm p-4 items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-6">
             <div>
               <span className="text-xs text-muted-foreground">Nesta página</span>
@@ -476,7 +476,7 @@ export default function QuotationsPage({ navigate }) {
 
       <div className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}>
         <div className="mx-auto max-w-7xl px-4 pb-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-gray-200 bg-background/95 shadow-2xl backdrop-blur">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-border bg-background/95 shadow-2xl backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
               <div className="flex flex-wrap items-center gap-6">
                 <div className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -486,7 +486,7 @@ export default function QuotationsPage({ navigate }) {
                     checked={allSelected}
                     onChange={e => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
                   <span>{selectedCount} proposta{selectedCount !== 1 ? 's' : ''} selecionada{selectedCount !== 1 ? 's' : ''}</span>
                 </div>

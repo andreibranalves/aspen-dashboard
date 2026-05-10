@@ -83,7 +83,7 @@ export default function LeadsPage() {
 
   const TipoBadge = ({ tipo: t }) => (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-      ${t === 'lead' ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700'}
+      ${t === 'lead' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}
     `}>
       {t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—'}
     </span>
@@ -128,7 +128,7 @@ export default function LeadsPage() {
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border rounded px-2 py-1.5 text-sm bg-white"
+            className="border rounded px-2 py-1.5 text-sm bg-background"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>
@@ -153,7 +153,7 @@ export default function LeadsPage() {
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <Users size={36} className="text-gray-300" />
+          <Users size={36} className="text-muted-foreground/40" />
           <p>Nenhum lead ou cliente encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>
@@ -161,7 +161,7 @@ export default function LeadsPage() {
 
       {/* ── Desktop Table ── */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block bg-white rounded-lg border shadow-sm">
+        <div className="hidden md:block bg-card rounded-lg border border-border shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
@@ -185,7 +185,7 @@ export default function LeadsPage() {
                         <a
                           href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
                           target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-green-600 transition-colors"
                           aria-label={`WhatsApp ${row.nome || row.email}`}
                           title={`WhatsApp ${row.nome || row.email}`}
                         >
@@ -215,7 +215,7 @@ export default function LeadsPage() {
       {!loading && !error && data.length > 0 && (
         <div className="md:hidden space-y-3">
           {data.map(row => (
-            <div key={row.id || row.email} className="bg-white rounded-lg border shadow-sm p-4 space-y-2">
+            <div key={row.id || row.email} className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{row.nome || '—'}</span>
                 <TipoBadge tipo={row.tipo} />
@@ -229,7 +229,7 @@ export default function LeadsPage() {
                   <a
                     href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
                     target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-green-600 transition-colors"
                     aria-label={`WhatsApp ${row.nome || row.email}`}
                   >
                     <Phone size={18} />

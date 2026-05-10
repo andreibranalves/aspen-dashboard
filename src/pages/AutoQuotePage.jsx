@@ -411,7 +411,7 @@ export default function AutoQuotePage() {
 
       {/* Input form (phase input) */}
       {(phase === 'input' || phase === 'extracting') && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg border shadow-sm p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-card rounded-lg border border-border shadow-sm p-6 space-y-4">
           <div>
             <label className="block text-sm font-medium mb-2">Pedido</label>
             <p className="text-sm text-muted-foreground mb-2">
@@ -484,7 +484,7 @@ export default function AutoQuotePage() {
 
           {/* Error */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+<div className="bg-red-500/10 border border-red-200 rounded-lg p-4 text-sm text-red-800">
               <p className="font-medium">Erro na extração</p>
               <p>{error}</p>
             </div>
@@ -509,7 +509,7 @@ export default function AutoQuotePage() {
 
       {/* Settings panel */}
       {showSettings && (
-        <div className="bg-white rounded-lg border shadow-sm p-6 space-y-4">
+        <div className="bg-card rounded-lg border border-border shadow-sm p-6 space-y-4">
           <h3 className="font-medium">Configurações</h3>
           <div>
             <label className="text-sm font-medium">Regras de extração</label>
@@ -577,8 +577,8 @@ export default function AutoQuotePage() {
               <div
                 key={i}
                 className={cn(
-                  'bg-white rounded-lg border shadow-sm p-5 space-y-3 transition-all',
-                  isApproved && 'border-green-300 bg-green-50/30',
+                  'bg-card rounded-lg border border-border shadow-sm p-5 space-y-3 transition-all',
+                  isApproved && 'border-emerald-300 bg-emerald-500/5',
                 )}
               >
                 {/* Header */}
@@ -785,11 +785,11 @@ export default function AutoQuotePage() {
 
                 {/* Result (after creation) */}
                 {(draft.status === 'done' && draft.result?.data) && (
-                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded space-y-2">
+                  <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-200 rounded space-y-2">
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         'inline-block w-2.5 h-2.5 rounded-full',
-                        draft.result.data.customer_new ? 'bg-green-500' : 'bg-red-400',
+                        draft.result.data.customer_new ? 'bg-emerald-500' : 'bg-red-400',
                       )} />
                       <span className="text-sm font-medium">
                         {capitalize(draft.result.data.cliente || draft.edited.nome)}
@@ -857,7 +857,7 @@ export default function AutoQuotePage() {
                 )}
 
                 {draft.status === 'error' && (
-                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+<div className="bg-red-500/10 border border-red-200 rounded-lg p-4 text-sm text-red-800">
                     Erro: {draft.result?.error || 'Falha desconhecida'}
                   </div>
                 )}
@@ -872,8 +872,8 @@ export default function AutoQuotePage() {
         <div className="space-y-4">
           {drafts.filter(d => d.status === 'done' || d.status === 'error').map(draft => (
             <div key={draft.index} className={cn(
-              'bg-white rounded-lg border shadow-sm p-5',
-              draft.status === 'done' && 'border-green-300',
+              'bg-card rounded-lg border border-border shadow-sm p-5',
+              draft.status === 'done' && 'border-emerald-300',
               draft.status === 'error' && 'border-red-300',
             )}>
               {draft.status === 'done' && draft.result?.data && (
@@ -881,7 +881,7 @@ export default function AutoQuotePage() {
                   <div className="flex items-center gap-2">
                     <span className={cn(
                       'inline-block w-2.5 h-2.5 rounded-full',
-                      draft.result.data.customer_new ? 'bg-green-500' : 'bg-red-400',
+                      draft.result.data.customer_new ? 'bg-emerald-500' : 'bg-red-400',
                     )} />
                     <span className="font-medium">{capitalize(draft.result.data.cliente || draft.edited.nome)}</span>
                     <span className="text-xs text-muted-foreground">

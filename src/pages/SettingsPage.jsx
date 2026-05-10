@@ -46,7 +46,7 @@ export default function SettingsPage() {
       />
 
       {/* Regras de extração */}
-      <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+      <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
         <div>
           <label htmlFor="settings-rules" className="font-medium">
             Regras de Extração
@@ -74,7 +74,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Template WhatsApp */}
-      <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+      <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
         <div>
           <label htmlFor="settings-wa" className="font-medium">
             Template WhatsApp

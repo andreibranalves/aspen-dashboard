@@ -21,7 +21,7 @@ export default function SkeletonTable({ cols = 4, rows = 8, title = 'Carregandoâ
 
   return (
     <div className="flex flex-col items-center gap-3" aria-label="Carregando tabela">
-      <div className="bg-white rounded-lg border shadow-sm w-full overflow-hidden">
+      <div className="bg-card rounded-lg border border-border shadow-sm w-full overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b flex gap-4">
           {colWidths.map((w, i) => (

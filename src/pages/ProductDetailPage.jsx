@@ -12,23 +12,23 @@ const BRACKETS = [30, 100, 300, 500, 1000];
 
 function priceTone(row) {
   if (row?.status === 'missing' || row?.rate == null) {
-    return 'bg-red-50 text-red-800 border-red-200';
+    return 'bg-red-500/10 text-red-800 dark:text-red-200 border-red-200 dark:border-red-900/40';
   }
-  return 'bg-green-50 text-green-800 border-green-200';
+  return 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-900/40';
 }
 
 function urgentTone(row) {
   if (row?.status === 'missing' || row?.urgent_rate == null) {
-    return 'bg-red-50 text-red-800 border-red-200';
+    return 'bg-red-500/10 text-red-800 dark:text-red-200 border-red-200 dark:border-red-900/40';
   }
-  return 'bg-amber-50 text-amber-900 border-amber-200';
+  return 'bg-amber-500/10 text-amber-900 dark:text-amber-200 border-amber-200 dark:border-amber-900/40';
 }
 
 function sourceBadgeClass(origem) {
-  if (origem === 'pricing_rule_bracket') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (origem === 'pricing_rule_sku') return 'bg-blue-50 text-blue-700 border-blue-200';
-  if (origem === 'item_price') return 'bg-slate-50 text-slate-700 border-slate-200';
-  return 'bg-red-50 text-red-700 border-red-200';
+  if (origem === 'pricing_rule_bracket') return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/40';
+  if (origem === 'pricing_rule_sku') return 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/40';
+  if (origem === 'item_price') return 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+  return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-200 dark:border-red-900/40';
 }
 
 function SourceBadge({ row }) {
@@ -132,7 +132,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   if (error === 'not_found') {
     return (
       <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-        <Search size={40} className="text-gray-300" />
+        <Search size={40} className="text-muted-foreground/40" />
         <p className="text-lg font-medium">Produto não encontrado</p>
         <p className="text-sm">O SKU &quot;{decodedSku}&quot; não existe no catálogo.</p>
         <Button variant="outline" className="min-h-10" onClick={() => navigate('/products')}>
@@ -169,8 +169,8 @@ export default function ProductDetailPage({ sku, navigate }) {
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
           toast.type === 'success'
-            ? 'bg-green-50 text-green-800 border border-green-200'
-            : 'bg-red-50 text-red-800 border border-red-200'
+            ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-900/40'
+            : 'bg-red-500/10 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900/40'
         }`}>
           {toast.type === 'success' ? <Check size={16} className="inline" /> : <X size={16} className="inline" />} {toast.message}
         </div>
@@ -189,7 +189,7 @@ export default function ProductDetailPage({ sku, navigate }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-4">
-          <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+          <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
             {hasImage ? (
               <img
                 src={produto.imagem}
@@ -207,18 +207,18 @@ export default function ProductDetailPage({ sku, navigate }) {
         </div>
 
         <div className="lg:col-span-8 space-y-5">
-          <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+          <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{produto.categoria || 'Sem grupo'}</span>
               <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.unidade || 'und'}</span>
               {produto.marca && <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.marca}</span>}
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${produto.ativo ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${produto.ativo ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-red-500/10 text-red-700 dark:text-red-300'}`}>
                 {produto.ativo ? 'Ativo' : 'Inativo'}
               </span>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border shadow-sm p-4 md:p-5 space-y-4">
+          <div className="bg-card rounded-lg border border-border shadow-sm p-4 md:p-5 space-y-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-lg font-semibold">Tabela de preços por quantidade</h2>
@@ -297,7 +297,7 @@ export default function ProductDetailPage({ sku, navigate }) {
           </div>
 
           {produto.descricao && (
-            <div className="bg-white rounded-lg border shadow-sm p-5 space-y-3">
+            <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
               <h2 className="text-lg font-semibold">Descrição</h2>
               <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: produto.descricao }} />
             </div>

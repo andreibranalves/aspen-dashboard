@@ -14,7 +14,7 @@ export default function TopBar({ route, onMenuClick, darkMode, onToggleDarkMode 
   const title = PAGE_TITLES[route] || 'Aspen Orçamento';
 
   return (
-    <header className="h-14 border-b bg-white dark:bg-background flex items-center justify-between px-4 md:px-6 shrink-0">
+    <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 md:px-6 shrink-0">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
