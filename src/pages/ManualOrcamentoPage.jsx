@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Plus, Trash2, UserPlus, Check, Loader2, ExternalLink, MessageCircle } from 'lucide-react';
+import { Search, Plus, Trash2, UserPlus, Check, Loader2, ExternalLink, MessageCircle, AlertTriangle, ShoppingCart } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
 import { formatBRL, fmtPhone, capitalize } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
@@ -334,7 +334,7 @@ export default function ManualOrcamentoPage() {
       {/* ══ Error ══ */}
       {error && !result && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-          <span className="text-red-500 text-lg shrink-0">⚠</span>
+          <AlertTriangle size={20} className="text-red-500 shrink-0" />
           <div>
             <p className="font-medium text-red-800">Erro ao criar orçamento</p>
             <p className="text-sm text-red-700">{error}</p>
@@ -727,7 +727,7 @@ export default function ManualOrcamentoPage() {
           {/* Empty cart hint */}
           {items.length === 0 && (
             <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
-              <span className="text-3xl">🛒</span>
+              <ShoppingCart size={36} className="text-gray-300" />
               <p>Nenhum produto adicionado ainda.</p>
               <p className="text-sm">Busque por SKU ou nome e selecione produtos para montar o orçamento.</p>
             </div>

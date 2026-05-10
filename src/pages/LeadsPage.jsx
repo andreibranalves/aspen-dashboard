@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Phone, Mail } from 'lucide-react';
+import { Search, Phone, Mail, AlertTriangle, Users } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
 import { fmtPhone } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -143,7 +143,7 @@ export default function LeadsPage() {
       {/* Error */}
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-2xl">⚠️</span>
+          <AlertTriangle size={32} className="text-red-400" />
           <p>Erro ao carregar leads e clientes</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, tipo, page, limit)}>Tentar novamente</Button>
@@ -153,7 +153,7 @@ export default function LeadsPage() {
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-3xl">👥</span>
+          <Users size={36} className="text-gray-300" />
           <p>Nenhum lead ou cliente encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search } from 'lucide-react';
+import { Search, AlertTriangle, Tag } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -104,7 +104,7 @@ export default function ProductsPage() {
       {/* Error */}
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-2xl">⚠️</span>
+          <AlertTriangle size={32} className="text-red-400" />
           <p>Erro ao carregar produtos</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, page, limit)}>Tentar novamente</Button>
@@ -114,7 +114,7 @@ export default function ProductsPage() {
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-3xl">🏷️</span>
+          <Tag size={36} className="text-gray-300" />
           <p>Nenhum produto encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>

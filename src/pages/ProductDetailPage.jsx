@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle, Search } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -132,7 +132,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   if (error === 'not_found') {
     return (
       <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-        <span className="text-4xl">🔍</span>
+        <Search size={40} className="text-gray-300" />
         <p className="text-lg font-medium">Produto não encontrado</p>
         <p className="text-sm">O SKU &quot;{decodedSku}&quot; não existe no catálogo.</p>
         <Button variant="outline" className="min-h-10" onClick={() => navigate('/products')}>
@@ -172,7 +172,7 @@ export default function ProductDetailPage({ sku, navigate }) {
             ? 'bg-green-50 text-green-800 border border-green-200'
             : 'bg-red-50 text-red-800 border border-red-200'
         }`}>
-          {toast.type === 'success' ? '✅' : '❌'} {toast.message}
+          {toast.type === 'success' ? <Check size={16} className="inline" /> : <X size={16} className="inline" />} {toast.message}
         </div>
       )}
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Check } from 'lucide-react';
 import PageHeader from '@/components/PageHeader.jsx';
 
 const WA_DEFAULT = 'Olá, (nome)! Segue seu orçamento (numero_pedido). Qualquer dúvida estamos à disposição. — (empresa)';
@@ -105,7 +106,7 @@ export default function SettingsPage() {
       {/* Saved toast */}
       {saved && (
         <div className="fixed bottom-6 right-6 bg-green-600 text-white px-4 py-2 rounded-lg text-sm shadow-lg animate-in">
-          ✓ Salvo com sucesso!
+          <Check size={20} className="text-green-500 inline mr-1" />Salvo com sucesso!
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Plus, Sparkles, Phone, Pencil, FileText, Trash2 } from 'lucide-react';
+import { Search, Plus, Sparkles, Phone, Pencil, FileText, Trash2, AlertTriangle, Clipboard } from 'lucide-react';
 import { apiGet, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -228,7 +228,7 @@ export default function QuotationsPage({ navigate }) {
       {/* Error */}
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-2xl">⚠️</span>
+          <AlertTriangle size={32} className="text-red-400" />
           <p>Erro ao carregar orçamentos</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, status, page, limit)}>
@@ -240,7 +240,7 @@ export default function QuotationsPage({ navigate }) {
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-3xl">📋</span>
+          <Clipboard size={36} className="text-gray-300" />
           <p>Nenhum orçamento encontrado</p>
           <p className="text-sm">Tente ajustar os filtros ou criar um novo orçamento.</p>
         </div>

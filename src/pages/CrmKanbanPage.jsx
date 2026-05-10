@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search } from 'lucide-react';
+import { Search, AlertTriangle, BarChart3, Clipboard, Send } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -129,7 +129,7 @@ export default function CrmKanbanPage() {
       {/* Error */}
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-2xl">⚠️</span>
+          <AlertTriangle size={32} className="text-red-400" />
           <p>Erro ao carregar pipeline CRM</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search)}>Tentar novamente</Button>
@@ -139,7 +139,7 @@ export default function CrmKanbanPage() {
       {/* Empty */}
       {!loading && !error && orderedColumns.every(c => c.count === 0) && (
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-3xl">📊</span>
+          <BarChart3 size={36} className="text-gray-300" />
           <p>Nenhum deal no pipeline</p>
           <p className="text-sm">Os deals do CRM aparecerão aqui.</p>
         </div>
@@ -203,12 +203,12 @@ export default function CrmKanbanPage() {
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       {deal.quotation && (
                         <span className="inline-flex items-center text-xs bg-blue-50 text-blue-700 rounded px-1.5 py-0.5">
-                          📋 {deal.quotation}
+                          <Clipboard size={12} className="mr-1" />{deal.quotation}
                         </span>
                       )}
                       {deal.follow_up_stage > 0 && (
                         <span className="inline-flex items-center text-xs bg-purple-50 text-purple-700 rounded px-1.5 py-0.5">
-                          📨 Follow-up {deal.follow_up_stage}
+                          <Send size={12} className="mr-1" /> Follow-up {deal.follow_up_stage}
                         </span>
                       )}
                       <span className="text-xs text-muted-foreground">

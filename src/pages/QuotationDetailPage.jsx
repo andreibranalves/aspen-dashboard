@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -162,7 +162,7 @@ export default function QuotationDetailPage({ id, navigate }) {
           ← Voltar para Orçamentos
         </button>
         <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <span className="text-2xl">⚠️</span>
+          <AlertTriangle size={32} className="text-red-400" />
           <p>Erro ao carregar orçamento</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={loadDetail}>Tentar novamente</Button>

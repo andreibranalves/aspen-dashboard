@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Truck, Search, Plus, X, ArrowLeft, RefreshCw, Package, ShieldCheck, MapPin, Info } from 'lucide-react';
+import { Truck, Search, Plus, X, ArrowLeft, RefreshCw, Package, ShieldCheck, MapPin, Info, Check, AlertTriangle } from 'lucide-react';
 import { apiPost } from '@/lib/api.js';
 import { formatBRL } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
@@ -98,7 +98,7 @@ export default function FreightPage() {
     try {
       const info = await lookupCep(cepOrigem);
       setOrigemInfo(info);
-      setOrigemStatus(`✓ ${info.street || info.display}`);
+      setOrigemStatus(info.street || info.display);
     } catch (err) {
       setOrigemStatus(err.message);
     }
@@ -109,7 +109,7 @@ export default function FreightPage() {
     try {
       const info = await lookupCep(cepDestino);
       setDestinoInfo(info);
-      setDestinoStatus(`✓ ${info.street || info.display}`);
+      setDestinoStatus(info.street || info.display);
     } catch (err) {
       setDestinoStatus(err.message);
     }
@@ -379,7 +379,8 @@ export default function FreightPage() {
                 <Search size={14} /> Buscar CEP Origem
               </Button>
               {origemStatus && (
-                <span className={cn('text-xs', origemStatus.startsWith('✓') ? 'text-green-600' : 'text-muted-foreground')}>
+                <span className={cn('text-xs flex items-center gap-1', origemInfo ? 'text-green-600' : 'text-muted-foreground')}>
+                  {origemInfo && <Check size={12} />}
                   {origemStatus}
                 </span>
               )}
@@ -412,7 +413,8 @@ export default function FreightPage() {
                 <Search size={14} /> Buscar CEP Destino
               </Button>
               {destinoStatus && (
-                <span className={cn('text-xs', destinoStatus.startsWith('✓') ? 'text-green-600' : 'text-muted-foreground')}>
+                <span className={cn('text-xs flex items-center gap-1', destinoInfo ? 'text-green-600' : 'text-muted-foreground')}>
+                  {destinoInfo && <Check size={12} />}
                   {destinoStatus}
                 </span>
               )}
@@ -529,7 +531,7 @@ export default function FreightPage() {
       {/* ── Error ── */}
       {!loading && error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800 space-y-2">
-          <p className="font-medium">⚠️ Erro ao cotar frete</p>
+          <p className="font-medium"><AlertTriangle size={16} className="inline mr-1" />Erro ao cotar frete</p>
           <p>{error}</p>
           <Button variant="outline" size="sm" onClick={() => setError(null)}>
             Tentar novamente

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Plus, Trash2, GripVertical, Phone, FileText, ExternalLink } from 'lucide-react';
+import { Sparkles, Upload, X, Plus, Trash2, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil } from 'lucide-react';
 import { apiPost } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
@@ -59,10 +59,10 @@ function buildWaLink(telefone, nome, quotationId) {
 // ── Card status helpers ──
 function CardIcon({ status }) {
   switch (status) {
-    case 'draft':    return <span className="text-lg">✎</span>;
-    case 'approved': return <span className="text-green-600 text-lg">✓</span>;
-    case 'done':     return <span className="text-green-600 text-lg font-bold">✓</span>;
-    case 'error':    return <span className="text-red-600 text-lg font-bold">✕</span>;
+    case 'draft':    return <Pencil size={16} />;
+    case 'approved': return <Check size={18} className="text-green-600" />;
+    case 'done':     return <Check size={18} className="text-green-600 font-bold" />;
+    case 'error':    return <X size={18} className="text-red-600 font-bold" />;
     case 'processing':
     default:         return <Skeleton className="h-4 w-4 rounded-full" />;
   }
@@ -77,7 +77,7 @@ export default function AutoQuotePage() {
   const [imagePreview, setImagePreview] = useState(null); // data URL for <img>
   const [drafts, setDrafts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const [btnLabel, setBtnLabel] = useState('✨ Gerar Orçamento');
+  const [btnLabel, setBtnLabel] = useState('Gerar Orçamento');
   const [error, setError] = useState(null);
   const [waTemplate, setWaTemplate] = useState(loadWaTemplate);
   const [rules, setRulesState] = useState(loadRules);
@@ -263,7 +263,7 @@ export default function AutoQuotePage() {
       setError(err.message || 'Erro na extração.');
       setPhase('input');
       setSubmitting(false);
-      setBtnLabel('✨ Gerar Orçamento');
+      setBtnLabel('Gerar Orçamento');
       return;
     }
 
@@ -328,7 +328,7 @@ export default function AutoQuotePage() {
     if (approvedDrafts.length === 0) {
       alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
       setSubmitting(false);
-      setBtnLabel('✨ Gerar Orçamento');
+      setBtnLabel('Gerar Orçamento');
       return;
     }
 
@@ -381,7 +381,7 @@ export default function AutoQuotePage() {
     });
     setPhase(allDone ? 'complete' : 'creating');
     setSubmitting(false);
-    setBtnLabel('✨ Gerar Orçamento');
+    setBtnLabel('Gerar Orçamento');
   }, [text, imageData, prazo, rules, drafts, fetchPricing]);
 
   // ── Render phases indicator ──
@@ -519,9 +519,9 @@ export default function AutoQuotePage() {
             <button
               type="button"
               onClick={() => setShowSettings(!showSettings)}
-              className="text-xs text-muted-foreground hover:underline"
+              className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
             >
-              ⚙️ Config
+              <Settings size={14} /> Config
             </button>
           </div>
         </form>
@@ -795,10 +795,10 @@ export default function AutoQuotePage() {
                 {!isApproved && (
                   <div className="flex gap-2">
                     <Button onClick={() => approveDraft(i)} variant="default" size="sm">
-                      ✓ Aprovar e criar
+                      <Check size={16} className="mr-1" /> Aprovar e criar
                     </Button>
                     <Button onClick={() => discardDraft(i)} variant="ghost" size="sm">
-                      ✕ Descartar
+                      <X size={16} className="mr-1" /> Descartar
                     </Button>
                   </div>
                 )}
