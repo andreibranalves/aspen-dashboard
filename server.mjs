@@ -44,6 +44,7 @@ const { handler: crmUpdateDealHandler }  = await import('./netlify/functions/crm
 const { handler: productDetailHandler } = await import('./netlify/functions/product-detail.js');
 const { handler: productPricingHandler } = await import('./netlify/functions/product-pricing.js');
 const { handler: productPricingUpdateHandler } = await import('./netlify/functions/product-pricing-update.js');
+const { handler: sendWhatsappHandler } = await import('./netlify/functions/send-whatsapp.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -171,6 +172,19 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       const result = await freightHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/send-whatsapp' || pathname === '/.netlify/functions/send-whatsapp') {
+    const body = await readBody(req);
+    try {
+      const result = await sendWhatsappHandler(netlifyEvent(req, body));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {

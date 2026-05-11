@@ -32,7 +32,7 @@ function saveWaTemplate(val) {
 }
 
 // ── WA template renderer ──
-function renderWaTemplate(template, nome, numeroPedido) {
+function renderWaTemplate(template, nome, numeroPedido, linkOrcamento = '') {
   if (!template) return '';
   const h = new Date().getHours();
   const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
@@ -43,16 +43,16 @@ function renderWaTemplate(template, nome, numeroPedido) {
     .replace(/\(primeiro_nome\)/g, primeiroNome)
     .replace(/\(numero_pedido\)/g, numeroPedido || '')
     .replace(/\(empresa\)/g, 'Aspen Estamparia')
-    .replace(/\(link_orcamento\)/g, '');
+    .replace(/\(link_orcamento\)/g, linkOrcamento || '');
 }
 
-function buildWaLink(telefone, nome, quotationId) {
+function buildWaLink(telefone, nome, quotationId, linkOrcamento = '') {
   if (!telefone) return null;
   const digits = telefone.replace(/\D/g, '').replace(/^55(\d{10,11})$/, '$1');
   if (digits.length < 10) return null;
   const waNumber = '55' + digits;
   const template = loadWaTemplate();
-  const text = renderWaTemplate(template, nome, quotationId);
+  const text = renderWaTemplate(template, nome, quotationId, linkOrcamento);
   return 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent(text);
 }
 
@@ -76,9 +76,9 @@ function calculateResultTotal(items = []) {
   return items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.rate) || 0)), 0);
 }
 
-function copyWaMessage(nome, quotationId) {
+function copyWaMessage(nome, quotationId, linkOrcamento = '') {
   const template = loadWaTemplate();
-  const text = renderWaTemplate(template, nome, quotationId);
+  const text = renderWaTemplate(template, nome, quotationId, linkOrcamento);
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text);
   }
@@ -98,6 +98,7 @@ export default function AutoQuotePage() {
   const [waTemplate, setWaTemplate] = useState(loadWaTemplate);
   const [rules, setRulesState] = useState(loadRules);
   const [showSettings, setShowSettings] = useState(false);
+  const [waSendStatus, setWaSendStatus] = useState({});
 
   const imageInputRef = useRef(null);
   const dropZoneRef = useRef(null);
@@ -254,6 +255,30 @@ export default function AutoQuotePage() {
       return next;
     });
   }, []);
+
+  // ── WhatsApp API send ──
+  const handleSendWhatsApp = useCallback(async (draft, resultData) => {
+    if (!resultData?.quotation_id) return;
+    const key = resultData.quotation_id;
+    const linkOrcamento = resultData.short_url || `${window.location.origin}/api/view?q=${encodeURIComponent(resultData.quotation_id)}`;
+    setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sending', message: 'Enviando…' } }));
+    try {
+      await apiPost('/send-whatsapp', {
+        quotation_id: resultData.quotation_id,
+        deal_id: resultData.deal_id,
+        nome: resultData.cliente || draft.edited.nome,
+        telefone: draft.edited.telefone,
+        template: waTemplate,
+        link_orcamento: linkOrcamento,
+      });
+      setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sent', message: 'Mensagem enviada pelo WhatsApp.' } }));
+    } catch (err) {
+      setWaSendStatus(prev => ({
+        ...prev,
+        [key]: { state: 'error', message: err.message || 'Falha ao enviar WhatsApp.' },
+      }));
+    }
+  }, [waTemplate]);
 
   // ── Form submit ──
   const handleSubmit = useCallback(async (e) => {
@@ -946,7 +971,9 @@ export default function AutoQuotePage() {
           {drafts.filter(d => d.status === 'done' || d.status === 'error').map(draft => {
             const data = draft.result?.data;
             const total = calculateResultTotal(data?.items || []);
-            const waLink = data ? buildWaLink(draft.edited.telefone, data.cliente, data.quotation_id) : null;
+            const linkOrcamento = data?.short_url || (data?.quotation_id ? `${window.location.origin}/api/view?q=${encodeURIComponent(data.quotation_id)}` : '');
+            const waLink = data ? buildWaLink(draft.edited.telefone, data.cliente, data.quotation_id, linkOrcamento) : null;
+            const waStatus = data?.quotation_id ? waSendStatus[data.quotation_id] : null;
             return (
               <div key={draft.index} className={cn(
                 'overflow-hidden rounded-[24px] border border-framer-hairline bg-card shadow-sm',
@@ -1008,10 +1035,28 @@ export default function AutoQuotePage() {
                       <p className="text-xs font-medium text-framer-ink-muted">Total</p>
                       <p className="mt-1 text-3xl font-semibold tracking-tight text-framer-ink">{formatBRL(total)}</p>
                       <div className="mt-5 space-y-2">
+                        <Button
+                          type="button"
+                          size="lg"
+                          className="w-full"
+                          disabled={waStatus?.state === 'sending'}
+                          onClick={() => handleSendWhatsApp(draft, data)}
+                        >
+                          <Phone size={16} />
+                          {waStatus?.state === 'sent' ? 'Enviado pelo WhatsApp' : waStatus?.state === 'sending' ? 'Enviando…' : 'Enviar via WhatsApp'}
+                        </Button>
+                        {waStatus?.message && (
+                          <p className={cn(
+                            'text-xs leading-5',
+                            waStatus.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
+                          )}>
+                            {waStatus.message}
+                          </p>
+                        )}
                         {waLink && (
                           <a href={waLink} target="_blank" rel="noopener noreferrer" className="block">
-                            <Button size="lg" className="w-full">
-                              <Phone size={16} /> Enviar WhatsApp
+                            <Button variant="outline" size="lg" className="w-full">
+                              <Phone size={16} /> Abrir WhatsApp manual
                             </Button>
                           </a>
                         )}
@@ -1025,7 +1070,7 @@ export default function AutoQuotePage() {
                           variant="outline"
                           size="lg"
                           className="w-full"
-                          onClick={() => copyWaMessage(data.cliente || draft.edited.nome, data.quotation_id)}
+                          onClick={() => copyWaMessage(data.cliente || draft.edited.nome, data.quotation_id, linkOrcamento)}
                         >
                           <Copy size={16} /> Copiar mensagem
                         </Button>
