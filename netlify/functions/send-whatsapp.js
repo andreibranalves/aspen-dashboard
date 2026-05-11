@@ -7,6 +7,42 @@ const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
 const DEFAULT_TEMPLATE = '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
+const DEFAULT_SEQUENCE_STEPS = [
+  { type: 'text', template: 'Olá, (primeiro_nome), tudo bem?' },
+  { type: 'text', template: 'Meu nome é (vendedora), da (empresa). Estou entrando em contato sobre o seu orçamento de (produto_resumo) personalizado(a).' },
+  { type: 'text', template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)' },
+  { type: 'text', template: 'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.' },
+  { type: 'product_images' },
+];
+const PRODUCT_CATEGORY_BY_PREFIX = {
+  CNG: 'canga',
+  LNC: 'lenço',
+  BNE: 'boné',
+  TWL: 'toalha',
+  CHP: 'chapéu',
+  ECO: 'ecobag',
+  CHC: 'cachecol',
+};
+const CATEGORY_ALIASES = {
+  canga: 'canga',
+  cangas: 'canga',
+  lenco: 'lenço',
+  lenço: 'lenço',
+  lenços: 'lenço',
+  bone: 'boné',
+  boné: 'boné',
+  bonés: 'boné',
+  chapeu: 'chapéu',
+  chapéu: 'chapéu',
+  chapéus: 'chapéu',
+  toalha: 'toalha',
+  toalhas: 'toalha',
+  ecobag: 'ecobag',
+  ecobags: 'ecobag',
+  cachecol: 'cachecol',
+  cachecóis: 'cachecol',
+  cachecois: 'cachecol',
+};
 
 // ── Basic helpers ───────────────────────────────────────────────────────────
 
@@ -30,6 +66,12 @@ function firstNonEmpty(...values) {
   return values.find(value => typeof value === 'string' && value.trim())?.trim() || '';
 }
 
+function toPositiveInt(value, fallback, min, max) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(num)));
+}
+
 function publicBaseUrl(event) {
   const host = event.headers?.host || 'aspen-orcamento.netlify.app';
   const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
@@ -39,17 +81,28 @@ function publicBaseUrl(event) {
   return `${protocol}://${host}`;
 }
 
-function renderTemplate(template, { nome, quotationId, link }) {
+function absoluteUrl(url, baseUrl) {
+  if (!url) return '';
+  const value = String(url).trim();
+  if (/^https?:\/\//i.test(value) || /^data:/i.test(value)) return value;
+  if (value.startsWith('/')) return `${baseUrl}${value}`;
+  return `${baseUrl}/${value}`;
+}
+
+function renderTemplate(template, context) {
   const h = new Date().getHours();
   const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-  const primeiroNome = (nome || '').trim().split(/\s+/)[0] || nome || '';
-  return (template || DEFAULT_TEMPLATE)
+  const nome = context.nome || '';
+  const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
+  return String(template || DEFAULT_TEMPLATE)
     .replace(/\(Saudacao\)/g, saudacao)
-    .replace(/\(nome\)/g, nome || '')
+    .replace(/\(nome\)/g, nome)
     .replace(/\(primeiro_nome\)/g, primeiroNome)
-    .replace(/\(numero_pedido\)/g, quotationId || '')
+    .replace(/\(numero_pedido\)/g, context.quotationId || '')
     .replace(/\(empresa\)/g, 'Aspen Estamparia')
-    .replace(/\(link_orcamento\)/g, link || '');
+    .replace(/\(link_orcamento\)/g, context.link || '')
+    .replace(/\(vendedora\)/g, context.vendorName || 'Juliana')
+    .replace(/\(produto_resumo\)/g, context.productSummary || 'produtos');
 }
 
 function parseContactFromRemarks(remarks = '') {
@@ -60,6 +113,117 @@ function parseContactFromRemarks(remarks = '') {
     email: match[2]?.trim() || '',
     telefone: match[3]?.trim() || '',
   };
+}
+
+function normalizeCategory(value) {
+  const key = String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return CATEGORY_ALIASES[key] || value;
+}
+
+function detectCategories(items = []) {
+  const categories = [];
+  for (const item of items || []) {
+    const sku = String(item?.sku || item?.item_code || item?.itemCode || '').trim().toUpperCase();
+    const prefix = sku.split('-')[0];
+    const category = PRODUCT_CATEGORY_BY_PREFIX[prefix];
+    if (category && !categories.includes(category)) categories.push(category);
+  }
+  return categories;
+}
+
+function productSummaryFromCategories(categories = []) {
+  if (!categories.length) return 'produtos';
+  if (categories.length === 1) return categories[0];
+  if (categories.length === 2) return `${categories[0]} e ${categories[1]}`;
+  return `${categories.slice(0, -1).join(', ')} e ${categories.at(-1)}`;
+}
+
+function normalizeSampleImages(sampleImages = {}, baseUrl) {
+  const normalized = {};
+  for (const [rawCategory, rawUrls] of Object.entries(sampleImages || {})) {
+    const category = normalizeCategory(rawCategory);
+    const urls = Array.isArray(rawUrls)
+      ? rawUrls
+      : String(rawUrls || '').split(/\n|,/);
+    normalized[category] = urls
+      .map(url => absoluteUrl(url, baseUrl))
+      .filter(Boolean);
+  }
+  return normalized;
+}
+
+function buildSequenceSteps({ payload, sequence, context, baseUrl }) {
+  const rawSteps = Array.isArray(sequence?.steps) && sequence.steps.length > 0
+    ? sequence.steps
+    : DEFAULT_SEQUENCE_STEPS;
+  const maxImagesPerCategory = toPositiveInt(sequence?.max_images_per_category, 2, 0, 6);
+  const categories = context.categories;
+  const sampleImages = normalizeSampleImages(sequence?.sample_images || payload.sample_images || {}, baseUrl);
+  const planned = [];
+
+  for (const rawStep of rawSteps.slice(0, 12)) {
+    const type = String(rawStep?.type || 'text');
+    if (type === 'product_images') {
+      for (const category of categories) {
+        const urls = (sampleImages[category] || []).slice(0, maxImagesPerCategory);
+        for (let i = 0; i < urls.length; i++) {
+          planned.push({
+            type: 'image',
+            media: urls[i],
+            mimetype: rawStep.mimetype || 'image/jpeg',
+            fileName: `${category}-${i + 1}.jpg`,
+            caption: rawStep.caption ? renderTemplate(rawStep.caption, context) : '',
+            category,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (type === 'image') {
+      const media = absoluteUrl(rawStep.media || rawStep.url, baseUrl);
+      if (!media) continue;
+      planned.push({
+        type: 'image',
+        media,
+        mimetype: rawStep.mimetype || 'image/jpeg',
+        fileName: rawStep.fileName || 'referencia.jpg',
+        caption: rawStep.caption ? renderTemplate(rawStep.caption, context) : '',
+      });
+      continue;
+    }
+
+    if (type === 'document') {
+      const media = absoluteUrl(rawStep.media || rawStep.url || (rawStep.source === 'quotation_pdf' ? context.pdfUrl : ''), baseUrl);
+      if (!media) continue;
+      planned.push({
+        type: 'document',
+        media,
+        mimetype: rawStep.mimetype || 'application/pdf',
+        fileName: rawStep.fileName || `${context.quotationId || 'orcamento'} - ${context.nome || 'cliente'}.pdf`,
+        caption: rawStep.caption ? renderTemplate(rawStep.caption, context) : '',
+      });
+      continue;
+    }
+
+    const text = renderTemplate(rawStep.template || rawStep.text || '', context).trim();
+    if (text) planned.push({ type: 'text', text });
+  }
+
+  return planned;
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function randomDelay(minMs, maxMs) {
+  if (maxMs <= minMs) return minMs;
+  return Math.round(minMs + Math.random() * (maxMs - minMs));
 }
 
 // ── Quotation context resolution ────────────────────────────────────────────
@@ -162,10 +326,10 @@ function assertEvolutionConfig() {
   }
 }
 
-async function sendText(number, text) {
-  const url = `${EVOLUTION_BASE_URL}/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`;
+async function evolutionPost(path, body) {
+  const url = `${EVOLUTION_BASE_URL}${path}`;
   let res;
-  let body;
+  let responseBody;
   try {
     res = await fetch(url, {
       method: 'POST',
@@ -173,9 +337,9 @@ async function sendText(number, text) {
         'Content-Type': 'application/json',
         apikey: EVOLUTION_API_KEY,
       },
-      body: JSON.stringify({ number, text }),
+      body: JSON.stringify(body),
     });
-    body = await res.json().catch(() => null);
+    responseBody = await res.json().catch(() => null);
   } catch (err) {
     throw createHttpError(
       502,
@@ -185,7 +349,7 @@ async function sendText(number, text) {
   }
 
   if (!res.ok) {
-    const detail = body?.message || body?.error || body?.response?.message || JSON.stringify(body || {});
+    const detail = responseBody?.message || responseBody?.error || responseBody?.response?.message || JSON.stringify(responseBody || {});
     throw createHttpError(
       res.status === 401 || res.status === 403 ? 502 : 400,
       'Não foi possível enviar a mensagem pelo WhatsApp. Verifique se a instância está conectada.',
@@ -193,7 +357,33 @@ async function sendText(number, text) {
     );
   }
 
-  return body;
+  return responseBody;
+}
+
+async function sendText(number, text) {
+  return evolutionPost(
+    `/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+    { number, text }
+  );
+}
+
+async function sendMedia(number, step) {
+  return evolutionPost(
+    `/message/sendMedia/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+    {
+      number,
+      mediatype: step.type === 'document' ? 'document' : 'image',
+      mimetype: step.mimetype,
+      caption: step.caption || '',
+      media: step.media,
+      fileName: step.fileName,
+    }
+  );
+}
+
+async function sendStep(number, step) {
+  if (step.type === 'text') return sendText(number, step.text);
+  return sendMedia(number, step);
 }
 
 async function markDealAsSent(dealId, quotationId) {
@@ -225,10 +415,12 @@ export async function handler(event) {
   }
 
   try {
-    assertEvolutionConfig();
+    const dryRun = payload.dry_run === true || payload.dryRun === true;
+    if (!dryRun) assertEvolutionConfig();
 
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
-    const resolved = quotationId ? await resolveContactFromQuotation(quotationId) : {};
+    const shouldResolveQuotation = quotationId && !dryRun;
+    const resolved = shouldResolveQuotation ? await resolveContactFromQuotation(quotationId) : {};
 
     const nome = firstNonEmpty(payload.nome, resolved.nome);
     const rawPhone = firstNonEmpty(payload.telefone, payload.phone, resolved.telefone);
@@ -237,22 +429,76 @@ export async function handler(event) {
       throw createHttpError(400, 'Telefone inválido ou ausente para envio via WhatsApp.');
     }
 
+    const baseUrl = publicBaseUrl(event);
     const link = firstNonEmpty(
       payload.link_orcamento,
       payload.short_url,
-      quotationId ? `${publicBaseUrl(event)}/api/view?q=${encodeURIComponent(quotationId)}` : ''
+      quotationId ? `${baseUrl}/api/view?q=${encodeURIComponent(quotationId)}` : ''
     );
-    const text = firstNonEmpty(payload.mensagem, payload.message) || renderTemplate(payload.template, { nome, quotationId, link });
 
+    const sequence = payload.whatsapp_sequence || payload.sequence || null;
+    const items = payload.items || payload.order_items || payload.quotation_items || resolved.quotation?.items || [];
+    const categories = detectCategories(items);
+    const productSummary = firstNonEmpty(
+      payload.produto_resumo,
+      payload.product_summary,
+      sequence?.product_summary,
+      productSummaryFromCategories(categories)
+    );
+    const context = {
+      nome,
+      quotationId,
+      link,
+      vendorName: sequence?.vendor_name || payload.vendedora || payload.vendor_name || 'Juliana',
+      productSummary,
+      categories,
+      pdfUrl: firstNonEmpty(payload.pdf_url, payload.pdfUrl, sequence?.pdf_url),
+    };
+
+    if (sequence) {
+      const delayMinMs = toPositiveInt(sequence.delay_min_ms ?? sequence.delayMinMs, 5000, 0, 30000);
+      const delayMaxMs = toPositiveInt(sequence.delay_max_ms ?? sequence.delayMaxMs, Math.max(delayMinMs, 8000), delayMinMs, 45000);
+      const steps = buildSequenceSteps({ payload, sequence, context, baseUrl });
+      if (steps.length === 0) {
+        throw createHttpError(400, 'Sequência de WhatsApp vazia. Configure ao menos uma mensagem ou mídia.');
+      }
+
+      const evolution = [];
+      if (!dryRun) {
+        for (let i = 0; i < steps.length; i++) {
+          if (i > 0) await wait(randomDelay(delayMinMs, delayMaxMs));
+          const response = await sendStep(number, steps[i]);
+          evolution.push(response);
+        }
+        await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
+      }
+
+      return jsonResponse(200, {
+        success: true,
+        dry_run: dryRun,
+        quotation_id: quotationId || null,
+        deal_id: payload.deal_id || resolved.dealId || null,
+        number,
+        delay_min_ms: delayMinMs,
+        delay_max_ms: delayMaxMs,
+        product_summary: productSummary,
+        categories,
+        steps,
+        evolution,
+      });
+    }
+
+    const text = firstNonEmpty(payload.mensagem, payload.message) || renderTemplate(payload.template, context);
     if (!text.trim()) {
       throw createHttpError(400, 'Mensagem vazia.');
     }
 
-    const evolution = await sendText(number, text);
-    await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
+    const evolution = dryRun ? null : await sendText(number, text);
+    if (!dryRun) await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
 
     return jsonResponse(200, {
       success: true,
+      dry_run: dryRun,
       quotation_id: quotationId || null,
       deal_id: payload.deal_id || resolved.dealId || null,
       number,

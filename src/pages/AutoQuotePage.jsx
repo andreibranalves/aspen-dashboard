@@ -13,10 +13,23 @@ const PHASE_LABELS = ['1. Entrada', '2. Extração', '3. Revisão', '4. Criaçã
 
 // ── WhatsApp default template ──
 const WA_DEFAULT = 'Olá, (nome)! Segue seu orçamento (numero_pedido). Qualquer dúvida estamos à disposição. — (empresa)';
+const WA_SEQUENCE_DEFAULT = {
+  enabled: true,
+  vendor_name: 'Juliana',
+  delay_min_seconds: 5,
+  delay_max_seconds: 8,
+  max_images_per_category: 2,
+  greeting_template: 'Olá, (primeiro_nome), tudo bem?',
+  context_template: 'Meu nome é (vendedora), da (empresa). Estou entrando em contato sobre o seu orçamento de (produto_resumo) personalizado(a).',
+  quotation_template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)',
+  samples_intro_template: 'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.',
+  sample_images_text: '',
+};
 
 // ── LocalStorage ──
 const LS_RULES = 'aspen_rules';
 const LS_WA = 'aspen_wa_template';
+const LS_WA_SEQUENCE = 'aspen_wa_sequence_config';
 
 function loadRules() {
   try { return localStorage.getItem(LS_RULES) || ''; } catch { return ''; }
@@ -29,6 +42,50 @@ function loadWaTemplate() {
 }
 function saveWaTemplate(val) {
   try { localStorage.setItem(LS_WA, val); } catch {}
+}
+function loadWaSequenceConfig() {
+  try {
+    const raw = localStorage.getItem(LS_WA_SEQUENCE);
+    return raw ? { ...WA_SEQUENCE_DEFAULT, ...JSON.parse(raw) } : WA_SEQUENCE_DEFAULT;
+  } catch {
+    return WA_SEQUENCE_DEFAULT;
+  }
+}
+function saveWaSequenceConfig(val) {
+  try { localStorage.setItem(LS_WA_SEQUENCE, JSON.stringify({ ...WA_SEQUENCE_DEFAULT, ...val })); } catch {}
+}
+function parseSampleImages(text = '') {
+  const map = {};
+  String(text || '').split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const separatorIndex = trimmed.includes('=') ? trimmed.indexOf('=') : trimmed.indexOf(':');
+    if (separatorIndex <= 0) return;
+    const category = trimmed.slice(0, separatorIndex).trim();
+    const urlsRaw = trimmed.slice(separatorIndex + 1).trim();
+    if (!category || !urlsRaw) return;
+    const urls = urlsRaw.split(',').map(url => url.trim()).filter(Boolean);
+    if (urls.length) map[category] = urls;
+  });
+  return map;
+}
+function buildWaSequencePayload(config = WA_SEQUENCE_DEFAULT) {
+  const sampleImages = parseSampleImages(config.sample_images_text);
+  const hasSampleImages = Object.keys(sampleImages).length > 0;
+  return {
+    vendor_name: config.vendor_name || 'Juliana',
+    delay_min_ms: Math.max(0, Math.round((Number(config.delay_min_seconds) || 0) * 1000)),
+    delay_max_ms: Math.max(0, Math.round((Number(config.delay_max_seconds) || 0) * 1000)),
+    max_images_per_category: Math.max(0, Math.round(Number(config.max_images_per_category) || 0)),
+    sample_images: sampleImages,
+    steps: [
+      { type: 'text', template: config.greeting_template },
+      { type: 'text', template: config.context_template },
+      { type: 'text', template: config.quotation_template },
+      hasSampleImages ? { type: 'text', template: config.samples_intro_template } : null,
+      hasSampleImages ? { type: 'product_images' } : null,
+    ].filter(step => step && (step.type === 'product_images' || String(step.template || '').trim())),
+  };
 }
 
 // ── WA template renderer ──
@@ -96,6 +153,7 @@ export default function AutoQuotePage() {
   const [btnLabel, setBtnLabel] = useState('Gerar Orçamento');
   const [error, setError] = useState(null);
   const [waTemplate, setWaTemplate] = useState(loadWaTemplate);
+  const [waSequence, setWaSequence] = useState(loadWaSequenceConfig);
   const [rules, setRulesState] = useState(loadRules);
   const [showSettings, setShowSettings] = useState(false);
   const [waSendStatus, setWaSendStatus] = useState({});
@@ -257,28 +315,41 @@ export default function AutoQuotePage() {
   }, []);
 
   // ── WhatsApp API send ──
+  const updateWaSequence = useCallback((patch) => {
+    setWaSequence(prev => {
+      const next = { ...prev, ...patch };
+      saveWaSequenceConfig(next);
+      return next;
+    });
+  }, []);
+
   const handleSendWhatsApp = useCallback(async (draft, resultData) => {
     if (!resultData?.quotation_id) return;
     const key = resultData.quotation_id;
     const linkOrcamento = resultData.short_url || `${window.location.origin}/api/view?q=${encodeURIComponent(resultData.quotation_id)}`;
-    setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sending', message: 'Enviando…' } }));
+    setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sending', message: 'Enviando sequência…' } }));
     try {
-      await apiPost('/send-whatsapp', {
+      const sequencePayload = waSequence.enabled ? buildWaSequencePayload(waSequence) : null;
+      const response = await apiPost('/send-whatsapp', {
         quotation_id: resultData.quotation_id,
         deal_id: resultData.deal_id,
         nome: resultData.cliente || draft.edited.nome,
         telefone: draft.edited.telefone,
         template: waTemplate,
         link_orcamento: linkOrcamento,
+        pdf_url: resultData.pdf_url,
+        items: resultData.items || draft.edited.items,
+        whatsapp_sequence: sequencePayload,
       });
-      setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sent', message: 'Mensagem enviada pelo WhatsApp.' } }));
+      const count = response.steps?.length || 1;
+      setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sent', message: `${count} envio(s) realizados pelo WhatsApp.` } }));
     } catch (err) {
       setWaSendStatus(prev => ({
         ...prev,
         [key]: { state: 'error', message: err.message || 'Falha ao enviar WhatsApp.' },
       }));
     }
-  }, [waTemplate]);
+  }, [waTemplate, waSequence]);
 
   // ── Form submit ──
   const handleSubmit = useCallback(async (e) => {
@@ -631,6 +702,66 @@ export default function AutoQuotePage() {
                 Restaurar padrão
               </button>
             </div>
+          </div>
+          <div className="mt-6 rounded-[20px] border border-framer-hairline bg-framer-surface-1/40 p-4">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h4 className="text-sm font-semibold text-framer-ink">Sequência de WhatsApp</h4>
+                <p className="mt-1 text-xs text-framer-ink-muted">Envia mensagens separadas com intervalo e fotos por produto. Variáveis extras: (vendedora), (produto_resumo).</p>
+              </div>
+              <label className="inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium">
+                <input
+                  type="checkbox"
+                  checked={waSequence.enabled}
+                  onChange={e => updateWaSequence({ enabled: e.target.checked })}
+                />
+                Usar sequência
+              </label>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-4">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-framer-ink-muted">Vendedora</span>
+                <Input value={waSequence.vendor_name} onChange={e => updateWaSequence({ vendor_name: e.target.value })} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-framer-ink-muted">Intervalo mín. (s)</span>
+                <Input type="number" min="0" value={waSequence.delay_min_seconds} onChange={e => updateWaSequence({ delay_min_seconds: e.target.value })} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-framer-ink-muted">Intervalo máx. (s)</span>
+                <Input type="number" min="0" value={waSequence.delay_max_seconds} onChange={e => updateWaSequence({ delay_max_seconds: e.target.value })} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-framer-ink-muted">Fotos/categoria</span>
+                <Input type="number" min="0" max="6" value={waSequence.max_images_per_category} onChange={e => updateWaSequence({ max_images_per_category: e.target.value })} />
+              </label>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {[
+                ['greeting_template', 'Mensagem 1 — saudação'],
+                ['context_template', 'Mensagem 2 — contexto'],
+                ['quotation_template', 'Mensagem 3 — orçamento/link'],
+                ['samples_intro_template', 'Mensagem 4 — introdução das fotos'],
+              ].map(([key, label]) => (
+                <label key={key} className="space-y-1">
+                  <span className="text-xs font-medium text-framer-ink-muted">{label}</span>
+                  <textarea
+                    className="min-h-[74px] w-full resize-y rounded-[16px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                    value={waSequence[key] || ''}
+                    onChange={e => updateWaSequence({ [key]: e.target.value })}
+                  />
+                </label>
+              ))}
+            </div>
+            <label className="mt-4 block space-y-1">
+              <span className="text-xs font-medium text-framer-ink-muted">Fotos por categoria</span>
+              <textarea
+                className="min-h-[92px] w-full resize-y rounded-[16px] border border-framer-hairline bg-card px-3 py-2 font-mono text-xs text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                value={waSequence.sample_images_text || ''}
+                onChange={e => updateWaSequence({ sample_images_text: e.target.value })}
+                placeholder={'canga: https://site/canga-01.jpg, https://site/canga-02.jpg\nlenço: https://site/lenco-01.jpg'}
+              />
+            </label>
           </div>
         </div>
       )}
