@@ -405,39 +405,6 @@ export default function AutoQuotePage() {
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <div className="rounded-[24px] border border-framer-hairline bg-gradient-to-br from-primary/10 via-framer-surface-1 to-framer-canvas p-5 shadow-sm md:p-7">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              <Sparkles size={14} />
-              Orçamento automático
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-framer-ink md:text-3xl">
-                Cole o pedido. Revise com confiança. Crie no ERP.
-              </h1>
-              <p className="max-w-2xl text-sm leading-6 text-framer-ink-muted md:text-base">
-                A IA identifica cliente, contato, urgência e produtos sugeridos antes de qualquer orçamento ser criado.
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-xs text-framer-ink-muted sm:min-w-[360px]">
-            <div className="rounded-2xl border border-framer-hairline bg-framer-surface-1/80 p-3">
-              <div className="text-lg font-semibold text-framer-ink">{text.trim() ? '1' : '0'}</div>
-              <div>texto</div>
-            </div>
-            <div className="rounded-2xl border border-framer-hairline bg-framer-surface-1/80 p-3">
-              <div className="text-lg font-semibold text-framer-ink">{imageData ? '1' : '0'}</div>
-              <div>imagem</div>
-            </div>
-            <div className="rounded-2xl border border-framer-hairline bg-framer-surface-1/80 p-3">
-              <div className="text-lg font-semibold text-framer-ink">{drafts.filter(d => !d.discarded).length}</div>
-              <div>pedidos</div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Phase indicator */}
       <div className="rounded-[20px] border border-framer-hairline bg-card p-3 shadow-sm">
