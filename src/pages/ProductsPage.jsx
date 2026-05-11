@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, AlertTriangle, Tag } from 'lucide-react';
+import { Search, AlertTriangle, Tag, Package, ChevronRight } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -120,34 +120,69 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table / Mobile cards */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Unidade</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map(p => (
-                <TableRow
-                  key={p.id || p.sku}
-                  className="cursor-pointer hover:bg-muted/50 transition-colors"
-                  onClick={() => navigate(`/products/${encodeURIComponent(p.sku || p.item_code)}`)}
-                >
-                  <TableCell className="font-mono text-sm">{p.sku || p.item_code}</TableCell>
-                  <TableCell>{p.nome || p.item_name}</TableCell>
-                  <TableCell className="text-muted-foreground">{p.categoria || p.item_group || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{p.unidade || p.stock_uom || 'und'}</TableCell>
+        <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Unidade</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {data.map(p => (
+                  <TableRow
+                    key={p.id || p.sku}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => navigate(`/products/${encodeURIComponent(p.sku || p.item_code)}`)}
+                  >
+                    <TableCell className="font-mono text-sm">{p.sku || p.item_code}</TableCell>
+                    <TableCell>{p.nome || p.item_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.categoria || p.item_group || '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.unidade || p.stock_uom || 'und'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="md:hidden space-y-3">
+            {data.map(p => {
+              const sku = p.sku || p.item_code;
+              return (
+                <button
+                  key={p.id || sku}
+                  type="button"
+                  onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
+                  className="w-full rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                  aria-label={`Abrir produto ${sku}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-framer-accent-blue/10 text-framer-accent-blue">
+                          <Package size={16} />
+                        </span>
+                        <span className="font-mono text-xs font-medium text-framer-accent-blue">{sku}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-card-foreground line-clamp-2">{p.nome || p.item_name}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {[p.categoria || p.item_group || 'Sem categoria', p.unidade || p.stock_uom || 'und'].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight size={17} className="mt-1 shrink-0 text-muted-foreground" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Pagination */}

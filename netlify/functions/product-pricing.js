@@ -8,6 +8,11 @@ const STANDARD_SELLING = 'Standard Selling';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+function isErpNotFound(err) {
+  const msg = `${err?.statusCode || ''} ${err?.message || ''} ${err?.logMessage || ''}`;
+  return msg.includes('404');
+}
+
 async function fetchPricingRuleByTitle(title) {
   const rules = await erpGetList('Pricing Rule', {
     fields: ['name', 'title'],
@@ -139,7 +144,17 @@ async function upsertBracketPricingRule(sku, faixa, rate) {
 }
 
 async function saveProductPricing(sku, precos) {
-  const item = await erpGetDoc('Item', sku);
+  let item;
+  try {
+    item = await erpGetDoc('Item', sku);
+  } catch (err) {
+    if (isErpNotFound(err)) {
+      const notFound = new Error('Produto não encontrado.');
+      notFound.statusCode = 404;
+      throw notFound;
+    }
+    throw err;
+  }
   if (!item) {
     const err = new Error('Produto não encontrado.');
     err.statusCode = 404;

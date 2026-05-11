@@ -230,8 +230,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── Product detail: GET /api/products/:sku ──
-  if ((pathname.startsWith('/api/products/') && !pathname.endsWith('/pricing')) ||
+  // ── Product detail: GET /api/product-detail?sku=... or /api/products/:sku ──
+  if (pathname === '/api/product-detail' ||
+      (pathname.startsWith('/api/products/') && !pathname.endsWith('/pricing')) ||
       pathname.startsWith('/.netlify/functions/product-detail')) {
     // Extrai SKU da path; ignora /api/products (listagem, já tratado acima)
     if (pathname === '/api/products' || pathname === '/.netlify/functions/products') {
@@ -243,9 +244,9 @@ const server = http.createServer(async (req, res) => {
 
     let sku;
     if (pathname.startsWith('/api/products/')) {
-      sku = pathname.replace('/api/products/', '');
+      sku = decodeURIComponent(pathname.replace('/api/products/', ''));
     } else {
-      // /.netlify/functions/product-detail?sku=...
+      // /api/product-detail?sku=... or /.netlify/functions/product-detail?sku=...
       const qp = Object.fromEntries(new URL(req.url, 'http://localhost').searchParams);
       sku = qp.sku || '';
     }

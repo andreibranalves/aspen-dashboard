@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle, Search } from 'lucide-react';
+import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle, Search, Check } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -56,7 +56,7 @@ export default function ProductDetailPage({ sku, navigate }) {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiGet(`/products/${encodeURIComponent(decodedSku)}?sku=${encodeURIComponent(decodedSku)}`);
+      const result = await apiGet(`/product-detail?sku=${encodeURIComponent(decodedSku)}`);
       setProduct(result);
     } catch (err) {
       if (err.status === 404) setError('not_found');

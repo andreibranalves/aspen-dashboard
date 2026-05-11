@@ -74,7 +74,7 @@ export async function handler(event) {
     return {
       statusCode: code,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.message || 'Erro ao buscar produto.' }),
+      body: JSON.stringify({ error: code === 404 ? 'Produto não encontrado.' : 'Erro ao buscar produto.' }),
     };
   }
 }
