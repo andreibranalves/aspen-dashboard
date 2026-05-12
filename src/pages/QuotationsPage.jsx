@@ -214,11 +214,11 @@ export default function QuotationsPage({ navigate }) {
         action={
           <div className="flex items-center gap-2">
             <Button onClick={() => navigate('/auto')} variant="default" size="sm">
-              <Sparkles size={16} className="mr-2" />
+              <Sparkles size={16} />
               Auto
             </Button>
             <Button onClick={() => navigate('/manual')} variant="outline" size="sm">
-              <PlusCircle size={16} className="mr-2" />
+              <PlusCircle size={16} />
               Novo Orçamento
             </Button>
           </div>
