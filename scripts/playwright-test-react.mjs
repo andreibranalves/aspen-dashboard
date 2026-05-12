@@ -33,7 +33,7 @@ async function testQuotationsPage(page) {
 
   // Check sidebar nav links exist
   const sidebarLinks = await page.locator('aside nav button').count();
-  check('Sidebar tem 8 links de navegação', sidebarLinks === 8, `encontrados: ${sidebarLinks}`);
+  check('Sidebar tem 7 links de navegação', sidebarLinks === 7, `encontrados: ${sidebarLinks}`);
 
   // Wait for table to load
   await page.waitForTimeout(2000);
@@ -118,9 +118,10 @@ async function testQuotationsPage(page) {
     await page.waitForTimeout(1000);
   }
 
-  // Check PageHeader
-  const pageHeader = await page.locator('text=Criar orçamento').count();
-  check('PageHeader: botão \"Criar orçamento\" visível', pageHeader > 0);
+  // Check PageHeader — two CTA buttons: "Auto" + "Novo Orçamento"
+  const autoBtn = await page.locator('button', { hasText: 'Auto' }).count();
+  const manualBtn = await page.locator('button', { hasText: 'Novo Orçamento' }).count();
+  check('PageHeader: botões "Auto" + "Novo Orçamento"', autoBtn > 0 && manualBtn > 0);
 }
 
 async function testQuotationDetail(page) {

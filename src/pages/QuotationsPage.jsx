@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Plus, Sparkles, Phone, Pencil, FileText, Trash2, AlertTriangle, Clipboard } from 'lucide-react';
+import { Search, Plus, Sparkles, Phone, Pencil, FileText, Trash2, AlertTriangle, Clipboard, PlusCircle } from 'lucide-react';
 import { apiGet, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -212,10 +212,16 @@ export default function QuotationsPage({ navigate }) {
         title="Orçamentos"
         description={`${totalRecords} orçamento${totalRecords !== 1 ? 's' : ''} — ${status ? (STATUS_LABELS[status] || status) : 'todos os status'}`}
         action={
-          <Button onClick={() => navigate('/auto')} variant="default" size="sm">
-            <Sparkles size={16} className="mr-2" />
-            Criar orçamento
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => navigate('/auto')} variant="default" size="sm">
+              <Sparkles size={16} className="mr-2" />
+              Auto
+            </Button>
+            <Button onClick={() => navigate('/manual')} variant="outline" size="sm">
+              <PlusCircle size={16} className="mr-2" />
+              Novo Orçamento
+            </Button>
+          </div>
         }
       />
 
