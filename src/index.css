@@ -19,7 +19,7 @@
     --card-foreground: 0 0% 7%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 7%;
-    --primary: 221.3 91.6% 46.7%;       /* accent blue CTA */
+    --primary: 212.8 100% 18.6%;            /* #002b5f accent blue */
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 94.5%;
     --secondary-foreground: 0 0% 7%;
@@ -31,7 +31,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 86%;
     --input: 0 0% 86%;
-    --ring: 221.3 91.6% 46.7%;
+    --ring: 212.8 100% 18.6%;
     --radius: 0.625rem;
 
     /* ── Framer-specific extras consumed by tailwind.config.js ── */
@@ -42,7 +42,7 @@
     --hairline-soft: 0 0% 92%;          /* #ebebeb */
     --ink: 0 0% 7%;                     /* #121212 */
     --ink-muted: 0 0% 42%;              /* #6b6b6b */
-    --accent-blue: 49.41% 0.2768 213.82;   /* #0a4ee4 in OKLCH channels */
+    --accent-blue: 31.18% 0.1162 264.1;     /* #002b5f in OKLCH */
     --success: 142 71% 32%;
 
     /* Gradient anchors */
@@ -60,7 +60,7 @@
     --card-foreground: 0 0% 100%;
     --popover: 0 0% 7.8%;
     --popover-foreground: 0 0% 100%;
-    --primary: 221.3 91.6% 46.7%;       /* accent blue CTA */
+    --primary: 212.8 100% 18.6%;            /* #002b5f accent blue */
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 7.8%;
     --secondary-foreground: 0 0% 100%;
@@ -72,7 +72,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
-    --ring: 221.3 91.6% 46.7%;
+    --ring: 212.8 100% 18.6%;
 
     --canvas: 0 0% 3.5%;                /* #090909 */
     --surface-1: 0 0% 7.8%;             /* #141414 */
@@ -81,7 +81,7 @@
     --hairline-soft: 0 0% 10.2%;        /* #1a1a1a */
     --ink: 0 0% 100%;                   /* #ffffff */
     --ink-muted: 0 0% 60%;              /* #999999 */
-    --accent-blue: 49.41% 0.2768 213.82;   /* #0a4ee4 in OKLCH channels */
+    --accent-blue: 31.18% 0.1162 264.1;     /* #002b5f in OKLCH */
     --success: 142 71% 45%;
   }
 }
