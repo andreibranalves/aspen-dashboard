@@ -1282,7 +1282,7 @@ export default function AutoQuotePage() {
                         </a>
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="ghost"
                           size="lg"
                           className="w-full"
                           onClick={handleReset}
