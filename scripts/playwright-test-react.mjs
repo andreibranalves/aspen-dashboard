@@ -218,7 +218,7 @@ async function testAutoPage(page) {
   check('Textarea para input do pedido', textarea > 0);
 
   // Image upload area
-  const imageArea = await page.locator('text=Arraste uma imagem aqui').count();
+  const imageArea = await page.locator('text=Arraste um print').count();
   check('Área de upload de imagem renderizada', imageArea > 0);
 
   // Prazo input

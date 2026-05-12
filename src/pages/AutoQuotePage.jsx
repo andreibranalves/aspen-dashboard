@@ -158,49 +158,9 @@ export default function AutoQuotePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [waSendStatus, setWaSendStatus] = useState({});
 
-  // ── Product search (for review phase SKU autocomplete) ──
+  // ── Product search state (callbacks defined after pricing/mutation helpers) ──
   const [productSearch, setProductSearch] = useState({});     // { [draftIdx]: { term, results, loading, open } }
   const productTimer = useRef(null);
-
-  const searchProducts = useCallback(async (draftIdx, term) => {
-    if (!term || term.length < 2) {
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: false } }));
-      return;
-    }
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term, loading: true, open: true } }));
-    try {
-      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: res.data || [], loading: false, open: true } }));
-    } catch {
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: true } }));
-    }
-  }, []);
-
-  const onProductSearchChange = useCallback((draftIdx, val) => {
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term: val, open: true } }));
-    clearTimeout(productTimer.current);
-    productTimer.current = setTimeout(() => searchProducts(draftIdx, val), 300);
-  }, [searchProducts]);
-
-  const selectProduct = useCallback(async (draftIdx, itemIdx, product) => {
-    updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
-    updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { term: product.sku, results: [], loading: false, open: false } }));
-    // Trigger pricing
-    const draft = drafts.find(d => d.index === draftIdx);
-    if (draft) {
-      const priced = await fetchPricing([draft], draft.edited.urgente);
-      setDrafts(prev => {
-        const next = [...prev];
-        next[draftIdx] = priced[0];
-        return next;
-      });
-    }
-  }, [drafts, fetchPricing, updateDraftItem]);
-
-  const closeProductSearch = useCallback((draftIdx) => {
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], open: false } }));
-  }, []);
 
   const imageInputRef = useRef(null);
   const dropZoneRef = useRef(null);
@@ -356,6 +316,47 @@ export default function AutoQuotePage() {
       next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
       return next;
     });
+  }, []);
+
+  // ── Product search (review phase SKU autocomplete — after all deps) ──
+  const searchProducts = useCallback(async (draftIdx, term) => {
+    if (!term || term.length < 2) {
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: false } }));
+      return;
+    }
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term, loading: true, open: true } }));
+    try {
+      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: res.data || [], loading: false, open: true } }));
+    } catch {
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: true } }));
+    }
+  }, []);
+
+  const onProductSearchChange = useCallback((draftIdx, val) => {
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term: val, open: true } }));
+    clearTimeout(productTimer.current);
+    productTimer.current = setTimeout(() => searchProducts(draftIdx, val), 300);
+  }, [searchProducts]);
+
+  const selectProduct = useCallback(async (draftIdx, itemIdx, product) => {
+    updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
+    updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { term: product.sku, results: [], loading: false, open: false } }));
+    // Trigger pricing
+    const draft = drafts.find(d => d.index === draftIdx);
+    if (draft) {
+      const priced = await fetchPricing([draft], draft.edited.urgente);
+      setDrafts(prev => {
+        const next = [...prev];
+        next[draftIdx] = priced[0];
+        return next;
+      });
+    }
+  }, [drafts, fetchPricing, updateDraftItem]);
+
+  const closeProductSearch = useCallback((draftIdx) => {
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], open: false } }));
   }, []);
 
   // ── WhatsApp API send ──
