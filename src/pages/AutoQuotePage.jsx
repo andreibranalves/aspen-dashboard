@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, Copy, AlertTriangle, Loader2, Search } from 'lucide-react';
+import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, Search, RotateCcw } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
@@ -131,14 +131,6 @@ function calculateItemsTotal(items = []) {
 
 function calculateResultTotal(items = []) {
   return items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.rate) || 0)), 0);
-}
-
-function copyWaMessage(nome, quotationId, linkOrcamento = '') {
-  const template = loadWaTemplate();
-  const text = renderWaTemplate(template, nome, quotationId, linkOrcamento);
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text);
-  }
 }
 
 export default function AutoQuotePage() {
@@ -540,6 +532,22 @@ export default function AutoQuotePage() {
     setSubmitting(false);
     setBtnLabel('Gerar Orçamento');
   }, [text, imageData, prazo, rules, drafts, fetchPricing]);
+
+  // ── Reset ──
+  const handleReset = useCallback(() => {
+    setPhase('input');
+    setText('');
+    setPrazo('');
+    setImageData(null);
+    setImagePreview(null);
+    setDrafts([]);
+    setError(null);
+    setSubmitting(false);
+    setBtnLabel('Gerar Orçamento');
+    setWaSendStatus({});
+    setProductSearch({});
+    try { localStorage.removeItem('aspen_drafts'); } catch {}
+  }, []);
 
   // ── Render phases indicator ──
   const phaseIndex = PHASES.indexOf(phase);
@@ -1262,16 +1270,14 @@ export default function AutoQuotePage() {
                             {waStatus.message}
                           </p>
                         )}
-                        {waLink && (
-                          <a href={waLink} target="_blank" rel="noopener noreferrer" className="block">
-                            <Button variant="outline" size="lg" className="w-full">
-                              <Phone size={16} /> Abrir WhatsApp manual
-                            </Button>
-                          </a>
-                        )}
                         <a href={`/api/view?q=${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
                           <Button variant="outline" size="lg" className="w-full">
                             <FileText size={16} /> Abrir orçamento
+                          </Button>
+                        </a>
+                        <a href={`https://aspenestamparia.l.frappe.cloud/desk/quotation/${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
+                          <Button variant="ghost" size="lg" className="w-full">
+                            <ExternalLink size={16} /> Ver no Frappe
                           </Button>
                         </a>
                         <Button
@@ -1279,15 +1285,10 @@ export default function AutoQuotePage() {
                           variant="outline"
                           size="lg"
                           className="w-full"
-                          onClick={() => copyWaMessage(data.cliente || draft.edited.nome, data.quotation_id, linkOrcamento)}
+                          onClick={handleReset}
                         >
-                          <Copy size={16} /> Copiar mensagem
+                          <RotateCcw size={16} /> Novo orçamento
                         </Button>
-                        <a href={`https://aspenestamparia.l.frappe.cloud/desk/quotation/${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
-                          <Button variant="ghost" size="lg" className="w-full">
-                            <ExternalLink size={16} /> Ver no Frappe
-                          </Button>
-                        </a>
                       </div>
                     </aside>
                   </div>
