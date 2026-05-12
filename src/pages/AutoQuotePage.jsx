@@ -582,7 +582,7 @@ export default function AutoQuotePage() {
       </div>
 
       {/* Input form */}
-      {(phase === 'input' || phase === 'extracting') && (
+      {phase === 'input' && (
         <form onSubmit={handleSubmit} className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
           <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm md:p-6">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -819,24 +819,92 @@ export default function AutoQuotePage() {
         </div>
       )}
 
-      {/* Extracting indicator */}
+      {/* Extracting — inline inside same card layout */}
       {phase === 'extracting' && !error && (
-        <div className="rounded-[24px] border border-framer-hairline bg-card p-6 shadow-sm">
-          <div className="mx-auto max-w-xl space-y-5 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Sparkles size={24} />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
+          <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm md:p-6">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <label className="text-base font-semibold text-framer-ink">Pedido do cliente</label>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-framer-ink-muted">
+                  Cole a conversa do WhatsApp, email ou briefing. Você ainda vai revisar tudo antes de criar.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Texto</span>
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Print</span>
+                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">SKUs</span>
+              </div>
             </div>
-            <div>
+            <div className="min-h-[300px] flex flex-col items-center justify-center rounded-[18px] border border-framer-hairline bg-framer-surface-1 px-4 py-12 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5">
+                <Sparkles size={24} />
+              </div>
               <h2 className="text-lg font-semibold text-framer-ink">Analisando pedido</h2>
-              <p className="mt-1 text-sm text-framer-ink-muted">Estou preparando uma revisão antes de criar qualquer orçamento.</p>
+              <p className="mt-1 text-sm text-framer-ink-muted max-w-md">
+                Estou preparando uma revisão antes de criar qualquer orçamento.
+              </p>
+              <div className="mt-6 grid gap-2 text-left sm:grid-cols-2 w-full max-w-lg">
+                {['Lendo mensagem', 'Identificando cliente', 'Sugerindo produtos', 'Consultando preços'].map((item) => (
+                  <div key={item} className="flex items-center gap-3 rounded-2xl bg-framer-surface-2 p-3 text-sm text-framer-ink-muted">
+                    <Skeleton className="h-4 w-4 rounded-full" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="grid gap-2 text-left sm:grid-cols-2">
-              {['Lendo mensagem', 'Identificando cliente', 'Sugerindo produtos', 'Consultando preços'].map((item, idx) => (
-                <div key={item} className="flex items-center gap-3 rounded-2xl bg-framer-surface-1 p-3 text-sm text-framer-ink-muted">
-                  <Skeleton className="h-4 w-4 rounded-full" />
-                  <span>{item}</span>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-framer-ink-muted">
+                {btnLabel}
+              </p>
+              <Button type="button" size="lg" disabled className="w-full sm:w-auto opacity-50">
+                <Sparkles size={16} />
+                {btnLabel}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-5 opacity-50 pointer-events-none">
+            <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-framer-ink">Print ou imagem</h2>
+                  <p className="mt-1 text-xs text-framer-ink-muted">Use quando o pedido vier em imagem.</p>
                 </div>
-              ))}
+                <ImageIcon size={18} className="text-primary" />
+              </div>
+              <div
+                className="rounded-[18px] border border-dashed p-4 text-center border-framer-hairline bg-framer-surface-1/60"
+              >
+                {imagePreview ? (
+                  <div className="space-y-3">
+                    <img src={imagePreview} alt="Preview do pedido" className="mx-auto max-h-44 rounded-xl border border-framer-hairline" />
+                  </div>
+                ) : (
+                  <div className="w-full space-y-3 rounded-[16px] py-6 text-framer-ink-muted">
+                    <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Upload size={20} />
+                    </span>
+                    <span className="block text-sm font-medium">Arraste um print aqui</span>
+                    <span className="block text-xs">ou clique para selecionar PNG, JPG ou WEBP</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm">
+              <div className="mb-4 flex items-center gap-2">
+                <Clock size={16} className="text-primary" />
+                <h2 className="text-sm font-semibold text-framer-ink">Prazo e regras</h2>
+              </div>
+              <label className="text-xs font-medium text-framer-ink-muted">Prazo personalizado</label>
+              <div className="mt-2 h-10 rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink-muted">
+                {prazo || 'Padrão'}
+              </div>
+              <p className="mt-2 text-xs text-framer-ink-muted">Opcional. Substitui o prazo padrão no orçamento gerado.</p>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted">
+                <Settings size={14} /> Regras de extração
+              </div>
             </div>
           </div>
         </div>
