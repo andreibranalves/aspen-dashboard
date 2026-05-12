@@ -24,7 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 // ── Constants ──
 const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' };
-const DEFAULT_QTY = 100;
+const DEFAULT_QTY = 30;
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(String(value).replace(',', '.'));

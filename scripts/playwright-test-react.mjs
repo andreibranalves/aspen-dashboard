@@ -202,12 +202,16 @@ async function testAutoPage(page) {
   await page.evaluate(() => { location.hash = '#/auto'; });
   await page.waitForTimeout(800);
 
-  // Phase indicator
-  const phaseLabels = await page.locator('text=1. Entrada').count();
-  check('Phase indicator \"1. Entrada\" visível', phaseLabels > 0);
+  // Phase indicator — check by counting the step circles (1..4)
+  const phaseSteps = await page.locator('.rounded-full.bg-current\\/10, [class*=\"rounded-full\"][class*=\"bg-current\"]').count();
+  check('Phase indicator com 4 etapas', phaseSteps >= 4);
 
-  const phaseSteps = await page.locator('text=5. Concluído').count();
-  check('Phase indicator \"5. Concluído\" visível', phaseSteps > 0);
+  // Verify each phase label text is present
+  const hasEntrada = (await page.locator('text=Entrada').count()) > 0;
+  check('Phase label \"Entrada\" visível', hasEntrada);
+
+  const hasConcluido = (await page.locator('text=Concluído').count()) > 0;
+  check('Phase label \"Concluído\" visível', hasConcluido);
 
   // Textarea
   const textarea = await page.locator('textarea').count();

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, Copy, AlertTriangle } from 'lucide-react';
-import { apiPost } from '@/lib/api.js';
+import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, Copy, AlertTriangle, Loader2, Search } from 'lucide-react';
+import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 
 // ── Phase constants ──
-const PHASES = ['input', 'extracting', 'review', 'creating', 'complete'];
-const PHASE_LABELS = ['1. Entrada', '2. Extração', '3. Revisão', '4. Criação', '5. Concluído'];
+const PHASES = ['input', 'extracting', 'review', 'creating'];
+const PHASE_LABELS = ['1. Entrada', '2. Extração', '3. Revisão', '4. Concluído'];
 
 // ── WhatsApp default template ──
 const WA_DEFAULT = 'Olá, (nome)! Segue seu orçamento (numero_pedido). Qualquer dúvida estamos à disposição. — (empresa)';
@@ -158,6 +158,50 @@ export default function AutoQuotePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [waSendStatus, setWaSendStatus] = useState({});
 
+  // ── Product search (for review phase SKU autocomplete) ──
+  const [productSearch, setProductSearch] = useState({});     // { [draftIdx]: { term, results, loading, open } }
+  const productTimer = useRef(null);
+
+  const searchProducts = useCallback(async (draftIdx, term) => {
+    if (!term || term.length < 2) {
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: false } }));
+      return;
+    }
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term, loading: true, open: true } }));
+    try {
+      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: res.data || [], loading: false, open: true } }));
+    } catch {
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: true } }));
+    }
+  }, []);
+
+  const onProductSearchChange = useCallback((draftIdx, val) => {
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term: val, open: true } }));
+    clearTimeout(productTimer.current);
+    productTimer.current = setTimeout(() => searchProducts(draftIdx, val), 300);
+  }, [searchProducts]);
+
+  const selectProduct = useCallback(async (draftIdx, itemIdx, product) => {
+    updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
+    updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { term: product.sku, results: [], loading: false, open: false } }));
+    // Trigger pricing
+    const draft = drafts.find(d => d.index === draftIdx);
+    if (draft) {
+      const priced = await fetchPricing([draft], draft.edited.urgente);
+      setDrafts(prev => {
+        const next = [...prev];
+        next[draftIdx] = priced[0];
+        return next;
+      });
+    }
+  }, [drafts, fetchPricing, updateDraftItem]);
+
+  const closeProductSearch = useCallback((draftIdx) => {
+    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], open: false } }));
+  }, []);
+
   const imageInputRef = useRef(null);
   const dropZoneRef = useRef(null);
 
@@ -267,7 +311,7 @@ export default function AutoQuotePage() {
   const addDraftItem = useCallback((draftIdx) => {
     setDrafts(prev => {
       const next = [...prev];
-      const items = [...next[draftIdx].edited.items, { item_code: '', qty: 30, rate: null }];
+      const items = [...next[draftIdx].edited.items, { item_code: '', qty: 30, rate: null, _rateManual: true }];
       next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
       return next;
     });
@@ -491,7 +535,7 @@ export default function AutoQuotePage() {
       const dr = drafts.find(dd => dd.index === d.index);
       return dr?.result?.success;
     });
-    setPhase(allDone ? 'complete' : 'creating');
+    // Stay at 'creating' — results are shown inline; no separate "complete" step
     setSubmitting(false);
     setBtnLabel('Gerar Orçamento');
   }, [text, imageData, prazo, rules, drafts, fetchPricing]);
@@ -504,7 +548,7 @@ export default function AutoQuotePage() {
 
       {/* Phase indicator */}
       <div className="rounded-[20px] border border-framer-hairline bg-card p-3 shadow-sm">
-        <div className="grid gap-2 md:grid-cols-5">
+        <div className="grid gap-2 md:grid-cols-4">
           {PHASE_LABELS.map((label, i) => {
             const cleanLabel = label.replace(/^\d+\.\s*/, '');
             return (
@@ -960,49 +1004,82 @@ export default function AutoQuotePage() {
                                   }}
                                   className="border-t border-framer-hairline transition-colors hover:bg-primary/5"
                                 >
-                                  <td className="p-2 text-center text-muted-foreground">
-                                    <GripVertical size={14} className={cn(!isApproved && 'cursor-grab')} />
-                                  </td>
-                                  <td className="p-2">
-                                    <Input
-                                      className="h-9 font-mono text-xs"
-                                      value={item.item_code}
-                                      onChange={e => updateDraftItem(i, ii, 'item_code', e.target.value)}
-                                      onBlur={async () => {
-                                        if (!items[ii]._rateManual) {
-                                          const priced = await fetchPricing([drafts.find(d => d.index === i) || drafts[i]], drafts[i].edited.urgente);
-                                          setDrafts(prev => {
-                                            const next = [...prev];
-                                            next[i] = priced[0];
-                                            return next;
+                              <td className="p-2 text-center text-muted-foreground">
+                                <GripVertical size={14} className={cn(!isApproved && 'cursor-grab')} />
+                              </td>
+                              <td className="p-2 relative">
+                                <div className="relative">
+                                  <Input
+                                    className="h-9 font-mono text-xs pr-8"
+                                    value={item.item_code}
+                                    onChange={e => {
+                                      updateDraftItem(i, ii, 'item_code', e.target.value);
+                                      onProductSearchChange(i, e.target.value);
+                                    }}
+                                    onBlur={() => {
+                                      setTimeout(() => closeProductSearch(i), 200);
+                                      if (!items[ii]._rateManual) {
+                                        const draft = drafts.find(d => d.index === i) || drafts[i];
+                                        if (draft) {
+                                          fetchPricing([draft], draft.edited.urgente).then(priced => {
+                                            setDrafts(prev => { const next = [...prev]; next[i] = priced[0]; return next; });
                                           });
                                         }
-                                      }}
-                                      placeholder="SKU"
-                                      disabled={isApproved}
-                                    />
-                                    {item.item_name && <p className="mt-1 text-xs text-framer-ink-muted">{item.item_name}</p>}
-                                  </td>
-                                  <td className="p-2">
-                                    <Input
-                                      type="number"
-                                      min="1"
-                                      className="ml-auto h-9 w-20 text-right text-xs"
-                                      value={item.qty || ''}
-                                      onChange={e => { const v = Number(e.target.value); if (!isNaN(v)) updateDraftItem(i, ii, 'qty', v); }}
-                                      onBlur={async () => {
-                                        if (!items[ii]._rateManual) {
-                                          const priced = await fetchPricing([drafts.find(d => d.index === i) || drafts[i]], drafts[i].edited.urgente);
-                                          setDrafts(prev => {
-                                            const next = [...prev];
-                                            next[i] = priced[0];
-                                            return next;
-                                          });
-                                        }
-                                      }}
-                                      disabled={isApproved}
-                                    />
-                                  </td>
+                                      }
+                                    }}
+                                    onFocus={() => {
+                                      if (item.item_code) onProductSearchChange(i, item.item_code);
+                                    }}
+                                    placeholder="SKU"
+                                    disabled={isApproved}
+                                  />
+                                  {productSearch[i]?.loading && (
+                                    <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
+                                  )}
+                                </div>
+                                {productSearch[i]?.open && productSearch[i]?.results?.length > 0 && (
+                                  <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                                    {productSearch[i].results.map(p => (
+                                      <button
+                                        key={p.sku}
+                                        type="button"
+                                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between gap-2"
+                                        onMouseDown={e => {
+                                          e.preventDefault();
+                                          selectProduct(i, ii, p);
+                                        }}
+                                      >
+                                        <div className="min-w-0">
+                                          <span className="font-mono text-framer-accent-blue">{p.sku}</span>
+                                          <span className="text-framer-ink-muted ml-2">{p.nome}</span>
+                                        </div>
+                                        {p.categoria && <span className="text-[10px] text-muted-foreground shrink-0">{p.categoria}</span>}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                                {item.item_name && <p className="mt-1 text-xs text-framer-ink-muted">{item.item_name}</p>}
+                              </td>
+                              <td className="p-2">
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  className="ml-auto h-9 w-20 text-right text-xs"
+                                  value={item.qty || ''}
+                                  onChange={e => { const v = Number(e.target.value); if (!isNaN(v)) updateDraftItem(i, ii, 'qty', v); }}
+                                  onBlur={async () => {
+                                    if (!items[ii]._rateManual) {
+                                      const priced = await fetchPricing([drafts.find(d => d.index === i) || drafts[i]], drafts[i].edited.urgente);
+                                      setDrafts(prev => {
+                                        const next = [...prev];
+                                        next[i] = priced[0];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  disabled={isApproved}
+                                />
+                              </td>
                                   <td className="p-2">
                                     <Input
                                       type="number"
@@ -1088,15 +1165,15 @@ export default function AutoQuotePage() {
         </div>
       )}
 
-      {/* Creating / Complete phase */}
-      {(phase === 'creating' || phase === 'complete') && drafts.filter(d => d.status === 'done' || d.status === 'error').length > 0 && (
+      {/* Creating phase — show results as they complete */}
+      {phase === 'creating' && drafts.filter(d => d.status === 'done' || d.status === 'error').length > 0 && (
         <div className="space-y-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold tracking-tight text-framer-ink">Central de envio</h2>
               <p className="text-sm text-framer-ink-muted">Orçamentos criados no ERP, prontos para abrir ou enviar ao cliente.</p>
             </div>
-            {phase === 'complete' && <span className="rounded-full bg-framer-success/10 px-3 py-1 text-xs font-medium text-framer-success">Concluído</span>}
+            <span className="rounded-full bg-framer-success/10 px-3 py-1 text-xs font-medium text-framer-success">Concluído</span>
           </div>
 
           {drafts.filter(d => d.status === 'done' || d.status === 'error').map(draft => {

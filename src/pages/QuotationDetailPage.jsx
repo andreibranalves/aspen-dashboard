@@ -77,12 +77,13 @@ export default function QuotationDetailPage({ id, navigate }) {
   const lookupPrice = useCallback(async (idx, sku, qty) => {
     if (!sku || !qty) return;
     try {
-      const result = await apiPost('/pricing-lookup', { sku, qty: Number(qty) });
-      if (result?.rate !== undefined && result?.rate !== null) {
+      const result = await apiPost('/pricing-lookup', { items: [{ item_code: sku, qty: Number(qty) }] });
+      const priced = result?.items?.[0];
+      if (priced?.rate !== undefined && priced?.rate !== null) {
         setEditedItems(prev => {
           const next = [...prev];
           if (!next[idx]._rateManual) {
-            next[idx] = { ...next[idx], rate: result.rate, item_name: result.item_name || next[idx].item_name };
+            next[idx] = { ...next[idx], rate: priced.rate, item_name: priced.item_name || next[idx].item_name };
           }
           return next;
         });
@@ -98,8 +99,8 @@ export default function QuotationDetailPage({ id, navigate }) {
     setSaving(true);
     setSaveStatus('Salvando…');
     try {
-      const payload = { id, items: editedItems };
-      await apiPut('/quotations', payload);
+      const payload = { items: editedItems };
+      await apiPut(`/quotations?id=${encodeURIComponent(id)}`, payload);
       setSaveStatus('Salvo!');
       setTimeout(() => setSaveStatus(''), 2000);
       // Reload
