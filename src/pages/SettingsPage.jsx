@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Check } from 'lucide-react';
 import PageHeader from '@/components/PageHeader.jsx';
+import { Button } from '@/components/ui/button.jsx';
 
 const WA_DEFAULT = 'Olá, (nome)! Segue seu orçamento (numero_pedido). Qualquer dúvida estamos à disposição. — (empresa)';
 const WA_SEQUENCE_DEFAULT = {
@@ -119,12 +120,12 @@ export default function SettingsPage() {
           aria-label="Regras de extração"
         />
         <div className="flex gap-2">
-          <button onClick={handleSaveRules} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
+          <Button onClick={handleSaveRules} variant="default" size="sm">
             Salvar Regras
-          </button>
-          <button onClick={handleResetRules} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">
+          </Button>
+          <Button onClick={handleResetRules} variant="outline" size="sm">
             Restaurar Padrão
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -149,12 +150,12 @@ export default function SettingsPage() {
           aria-label="Template WhatsApp"
         />
         <div className="flex gap-2">
-          <button onClick={handleSaveWa} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
+          <Button onClick={handleSaveWa} variant="default" size="sm">
             Salvar Template
-          </button>
-          <button onClick={handleResetWa} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">
+          </Button>
+          <Button onClick={handleResetWa} variant="outline" size="sm">
             Restaurar Padrão
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -246,18 +247,18 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex gap-2">
-          <button onClick={handleSaveWaSequence} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90">
+          <Button onClick={handleSaveWaSequence} variant="default" size="sm">
             Salvar Sequência
-          </button>
-          <button onClick={handleResetWaSequence} className="px-4 py-2 border rounded-md text-sm hover:bg-muted">
+          </Button>
+          <Button onClick={handleResetWaSequence} variant="outline" size="sm">
             Restaurar Padrão
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Saved toast */}
       {saved && (
-        <div className="fixed bottom-6 right-6 bg-framer-success text-white px-4 py-2 rounded-lg text-sm shadow-lg animate-in">
+        <div className="fixed bottom-6 right-6 bg-framer-success text-white px-4 py-2 rounded-full text-sm shadow-lg animate-in">
           <Check size={20} className="text-white inline mr-1" />Salvo com sucesso!
         </div>
       )}
