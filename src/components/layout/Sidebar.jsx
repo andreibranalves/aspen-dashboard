@@ -28,7 +28,7 @@ const NAV_ITEMS = [
  * surface-1 background, hairline borders, ink text,
  * surface-2 hover, hairline active indicator.
  */
-export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate }) {
+export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate, darkMode }) {
   return (
     <>
       {/* Overlay mobile */}
@@ -49,9 +49,13 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate 
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-4 border-b border-framer-hairline shrink-0">
           {!collapsed && (
-            <span className="font-semibold text-[15px] whitespace-nowrap tracking-[-0.8px]">
-              Aspen Orçamento
-            </span>
+            <div className="flex items-center gap-2.5 whitespace-nowrap">
+              <img
+                src={darkMode ? '/logo_branca.svg' : '/logo_marinho.svg'}
+                alt="Aspen Estamparia"
+                className="h-6 w-auto"
+              />
+            </div>
           )}
           <button
             onClick={onToggle}

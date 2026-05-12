@@ -36,6 +36,7 @@ export default function Layout({ route, onNavigate, children }) {
         onToggle={toggleSidebar}
         currentRoute={route}
         onNavigate={onNavigate}
+        darkMode={darkMode}
       />
 
       {/* Main content area */}
