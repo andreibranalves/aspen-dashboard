@@ -47,13 +47,13 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate,
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-4 border-b border-framer-hairline shrink-0">
+        <div className="flex items-center justify-between px-4 border-b border-framer-hairline shrink-0" style={{ height: '4rem' }}>
           {!collapsed && (
             <div className="flex items-center gap-2.5 whitespace-nowrap">
               <img
                 src={darkMode ? '/logo_branca.svg' : '/logo_marinho.svg'}
                 alt="Aspen Estamparia"
-                className="h-6 w-auto"
+                style={{ height: '2rem', width: 'auto' }}
               />
             </div>
           )}
