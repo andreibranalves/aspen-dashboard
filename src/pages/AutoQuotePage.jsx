@@ -819,11 +819,11 @@ export default function AutoQuotePage() {
         </div>
       )}
 
-      {/* Extracting — inline inside same card layout */}
+      {/* Extracting — centered single container */}
       {phase === 'extracting' && !error && (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
-          <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm md:p-6">
-            <div className="min-h-[320px] flex flex-col items-center justify-center text-center">
+        <div className="flex justify-center">
+          <div className="w-full max-w-2xl rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm md:p-8">
+            <div className="min-h-[280px] flex flex-col items-center justify-center text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5">
                 <Sparkles size={24} />
               </div>
@@ -842,50 +842,6 @@ export default function AutoQuotePage() {
               <p className="mt-6 text-xs text-framer-ink-muted">
                 {btnLabel}
               </p>
-            </div>
-          </div>
-
-          <div className="space-y-5 opacity-50 pointer-events-none">
-            <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-framer-ink">Print ou imagem</h2>
-                  <p className="mt-1 text-xs text-framer-ink-muted">Use quando o pedido vier em imagem.</p>
-                </div>
-                <ImageIcon size={18} className="text-primary" />
-              </div>
-              <div
-                className="rounded-[18px] border border-dashed p-4 text-center border-framer-hairline bg-framer-surface-1/60"
-              >
-                {imagePreview ? (
-                  <div className="space-y-3">
-                    <img src={imagePreview} alt="Preview do pedido" className="mx-auto max-h-44 rounded-xl border border-framer-hairline" />
-                  </div>
-                ) : (
-                  <div className="w-full space-y-3 rounded-[16px] py-6 text-framer-ink-muted">
-                    <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Upload size={20} />
-                    </span>
-                    <span className="block text-sm font-medium">Arraste um print aqui</span>
-                    <span className="block text-xs">ou clique para selecionar PNG, JPG ou WEBP</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm">
-              <div className="mb-4 flex items-center gap-2">
-                <Clock size={16} className="text-primary" />
-                <h2 className="text-sm font-semibold text-framer-ink">Prazo e regras</h2>
-              </div>
-              <label className="text-xs font-medium text-framer-ink-muted">Prazo personalizado</label>
-              <div className="mt-2 h-10 rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink-muted">
-                {prazo || 'Padrão'}
-              </div>
-              <p className="mt-2 text-xs text-framer-ink-muted">Opcional. Substitui o prazo padrão no orçamento gerado.</p>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted">
-                <Settings size={14} /> Regras de extração
-              </div>
             </div>
           </div>
         </div>
@@ -1231,7 +1187,6 @@ export default function AutoQuotePage() {
               <h2 className="text-xl font-semibold tracking-tight text-framer-ink">Central de envio</h2>
               <p className="text-sm text-framer-ink-muted">Orçamentos criados no ERP, prontos para abrir ou enviar ao cliente.</p>
             </div>
-            <span className="rounded-full bg-framer-success/10 px-3 py-1 text-xs font-medium text-framer-success">Concluído</span>
           </div>
 
           {drafts.filter(d => d.status === 'done' || d.status === 'error').map(draft => {
