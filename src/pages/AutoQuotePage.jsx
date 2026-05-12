@@ -476,8 +476,7 @@ export default function AutoQuotePage() {
 
     if (approvedDrafts.length === 0) {
       alert('Nenhum rascunho aprovado para criar. Refaça a extração ou edite os rascunhos.');
-      setSubmitting(false);
-      setBtnLabel('Gerar Orçamento');
+      handleReset();
       return;
     }
 
