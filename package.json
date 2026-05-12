@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "server": "node server.mjs",
     "test": "node test_local.mjs",
-    "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs"
+    "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs",
+    "test:whatsapp-flows": "node scripts/test-whatsapp-flows.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
