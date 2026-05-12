@@ -823,20 +823,7 @@ export default function AutoQuotePage() {
       {phase === 'extracting' && !error && (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
           <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm md:p-6">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <label className="text-base font-semibold text-framer-ink">Pedido do cliente</label>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-framer-ink-muted">
-                  Cole a conversa do WhatsApp, email ou briefing. Você ainda vai revisar tudo antes de criar.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Texto</span>
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Print</span>
-                <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">SKUs</span>
-              </div>
-            </div>
-            <div className="min-h-[300px] flex flex-col items-center justify-center rounded-[18px] border border-framer-hairline bg-framer-surface-1 px-4 py-12 text-center">
+            <div className="min-h-[320px] flex flex-col items-center justify-center text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5">
                 <Sparkles size={24} />
               </div>
@@ -852,15 +839,9 @@ export default function AutoQuotePage() {
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-framer-ink-muted">
+              <p className="mt-6 text-xs text-framer-ink-muted">
                 {btnLabel}
               </p>
-              <Button type="button" size="lg" disabled className="w-full sm:w-auto opacity-50">
-                <Sparkles size={16} />
-                {btnLabel}
-              </Button>
             </div>
           </div>
 
@@ -1344,7 +1325,7 @@ export default function AutoQuotePage() {
                           </Button>
                         </a>
                         <a href={`https://aspenestamparia.l.frappe.cloud/desk/quotation/${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
-                          <Button variant="ghost" size="lg" className="w-full">
+                          <Button variant="outline" size="lg" className="w-full">
                             <ExternalLink size={16} /> Ver no Frappe
                           </Button>
                         </a>
