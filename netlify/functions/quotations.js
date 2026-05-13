@@ -5,7 +5,7 @@
 //
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
-import { erpGetList, erpGetDoc, erpPut, erpDelete, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpGetDoc, erpPut, erpDelete, erpCallMethod, createHttpError } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -403,6 +403,22 @@ export async function handler(event) {
   try {
     // DELETE: Remove quotation — DELETE /api/quotations?id=ORC-20261143
     if (event.httpMethod === 'DELETE' && query.id) {
+      // If submitted (docstatus=1), cancel first — ERPNext doesn't allow direct deletion
+      const quotation = await erpGetDoc('Quotation', query.id);
+      if (quotation && quotation.docstatus === 1) {
+        try {
+          await erpCallMethod('frappe.client.cancel', {
+            doctype: 'Quotation',
+            name: query.id,
+          });
+        } catch (cancelErr) {
+          throw createHttpError(
+            400,
+            'Não foi possível cancelar o orçamento antes de excluir. Verifique se há documentos vinculados.',
+            `[quotations] cancel ${query.id} failed: ${cancelErr?.logMessage || cancelErr?.message || cancelErr}`
+          );
+        }
+      }
       await erpDelete('Quotation', query.id);
       return {
         statusCode: 200,
