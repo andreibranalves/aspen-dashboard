@@ -1182,7 +1182,7 @@ export default function AutoQuotePage() {
                             </Button>
                             {waStatus?.message && (
                               <p className={cn(
-                                'text-xs leading-5',
+                                'text-xs leading-5 text-center',
                                 waStatus.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
                               )}>
                                 {waStatus.message}

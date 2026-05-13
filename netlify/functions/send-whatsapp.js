@@ -1,7 +1,7 @@
 // POST /api/send-whatsapp — sends quotation messages via Evolution API.
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
-import { erpGetList, erpGetDoc, erpPut, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpGetDoc, erpPut, createHttpError, ERPNEXT_BASE, ERPNEXT_TOKEN } from './lib/erpnext.js';
 
 const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -368,6 +368,32 @@ async function sendText(number, text) {
 }
 
 async function sendMedia(number, step) {
+  // Resolve media URL — if it's an ERPNext URL requiring auth, download and convert to base64
+  let media = step.media;
+  if (media && ERPNEXT_TOKEN && ERPNEXT_BASE && media.startsWith(ERPNEXT_BASE)) {
+    try {
+      const pdfRes = await fetch(media, {
+        headers: { 'Authorization': `token ${ERPNEXT_TOKEN}` },
+      });
+      if (!pdfRes.ok) {
+        throw createHttpError(
+          502,
+          'Não foi possível baixar o PDF do orçamento.',
+          `[send-whatsapp] ERPNext PDF fetch failed: ${pdfRes.status} for ${media}`
+        );
+      }
+      const buffer = Buffer.from(await pdfRes.arrayBuffer());
+      media = buffer.toString('base64');
+    } catch (err) {
+      if (err?.statusCode) throw err;
+      throw createHttpError(
+        502,
+        'Falha ao processar o PDF para envio.',
+        `[send-whatsapp] PDF download error: ${err.message}`
+      );
+    }
+  }
+
   return evolutionPost(
     `/message/sendMedia/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
     {
@@ -375,7 +401,7 @@ async function sendMedia(number, step) {
       mediatype: step.type === 'document' ? 'document' : 'image',
       mimetype: step.mimetype,
       caption: step.caption || '',
-      media: step.media,
+      media,
       fileName: step.fileName,
     }
   );
