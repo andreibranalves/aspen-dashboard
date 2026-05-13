@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, Trash2, Copy, ChevronUp, ChevronDown, Check,
+  Plus, Trash2, Copy, ChevronUp, ChevronDown,
   Image, FileText, MessageSquare, Camera,
 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -21,7 +21,6 @@ import {
 const STEP_TYPE_LABELS = {
   [STEP_TYPES.TEXT]: 'Texto',
   [STEP_TYPES.IMAGE]: 'Imagem por URL',
-  [STEP_TYPES.DOCUMENT]: 'PDF do orçamento',
   [STEP_TYPES.PRODUCT_IMAGES]: 'Fotos por categoria',
 };
 
@@ -35,14 +34,12 @@ const STEP_TYPE_ICONS = {
 const STEP_TYPE_OPTIONS = [
   { value: STEP_TYPES.TEXT, label: 'Texto' },
   { value: STEP_TYPES.IMAGE, label: 'Imagem por URL' },
-  { value: STEP_TYPES.DOCUMENT, label: 'PDF do orçamento' },
   { value: STEP_TYPES.PRODUCT_IMAGES, label: 'Fotos por categoria' },
 ];
 
 const STEP_TYPE_DESCRIPTIONS = {
   [STEP_TYPES.TEXT]: 'Envia uma mensagem de texto normal no WhatsApp.',
   [STEP_TYPES.IMAGE]: 'Envia uma imagem a partir de uma URL pública.',
-  [STEP_TYPES.DOCUMENT]: 'Envia o PDF do orçamento gerado.',
   [STEP_TYPES.PRODUCT_IMAGES]: 'Envia as fotos de referência conforme a categoria dos produtos no orçamento.',
 };
 
@@ -66,23 +63,33 @@ function getTimeBasedGreeting() {
 
 export default function SettingsPage() {
   const [flows, setFlows] = useState([]);
+  const [savedFlows, setSavedFlows] = useState([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
   const [expandedFlow, setExpandedFlow] = useState(null);
   const [brokenImages, setBrokenImages] = useState({});
 
+  const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
+
   useEffect(() => {
     const loaded = loadWhatsappFlows();
     setFlows(loaded);
+    setSavedFlows(loaded);
     const sfId = getSelectedFlowId(loaded);
     setSelectedFlowId(sfId);
   }, []);
 
-  // Persist flows to localStorage whenever they change (pure side effect)
-  useEffect(() => {
-    if (flows.length > 0) {
-      saveWhatsappFlows(flows);
-    }
+  const handleSaveFlows = useCallback(() => {
+    if (!window.confirm('Salvar alterações nos fluxos de WhatsApp neste navegador?')) return;
+    saveWhatsappFlows(flows);
+    setSavedFlows(structuredClone(flows));
   }, [flows]);
+
+  const handleDiscardChanges = useCallback(() => {
+    if (!window.confirm('Descartar alterações não salvas?')) return;
+    setFlows(structuredClone(savedFlows));
+    const nextId = savedFlows.some(f => f.id === selectedFlowId) ? selectedFlowId : getSelectedFlowId(savedFlows);
+    setSelectedFlowId(nextId);
+  }, [savedFlows, selectedFlowId]);
 
   const updateFlows = useCallback((updater) => {
     setFlows((prev) => {
@@ -307,13 +314,19 @@ export default function SettingsPage() {
       case STEP_TYPES.DOCUMENT:
         return (
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-sm font-medium text-framer-ink">
-              <FileText size={16} />
-              PDF do orçamento
+            <div className="flex items-center gap-2 text-sm text-framer-ink">
+              <MessageSquare size={16} className="text-framer-ink-muted" />
+              <span>Envia link do orçamento (documento convertido)</span>
             </div>
             {step.caption && (
-              <p className="text-sm leading-relaxed">
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">
                 {renderFlowTemplate(step.caption, PREVIEW_CONTEXT)}
+                {step.caption.includes('(link_orcamento)') ? '' : '\n(link_orcamento)'}
+              </p>
+            )}
+            {!step.caption && (
+              <p className="text-sm leading-relaxed whitespace-pre-wrap text-framer-ink-muted">
+                Segue o orçamento (numero_pedido):{'\n'}(link_orcamento)
               </p>
             )}
           </div>
@@ -743,25 +756,10 @@ export default function SettingsPage() {
 
                             {step.type === STEP_TYPES.DOCUMENT && (
                               <div className="space-y-3">
-                                <div className="flex items-center gap-2 rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink-muted">
-                                  <FileText size={16} />
-                                  <span>Fonte: PDF do orçamento</span>
+                                <div className="flex items-center gap-2 rounded-[10px] border border-framer-warning/30 bg-framer-warning/5 px-3 py-2 text-sm text-framer-ink-muted">
+                                  <FileText size={16} className="text-framer-warning" />
+                                  <span>Etapa antiga de PDF: será enviada como link do orçamento. Recomendado trocar para Texto.</span>
                                 </div>
-                                <label className="space-y-1">
-                                  <span className="text-xs font-medium text-framer-ink-muted">
-                                    Legenda (opcional)
-                                  </span>
-                                  <textarea
-                                    className="w-full min-h-[60px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm resize-y text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                                    value={step.caption || ''}
-                                    onChange={(e) =>
-                                      updateStep(step.id, {
-                                        caption: e.target.value,
-                                      })
-                                    }
-                                    placeholder="Legenda do PDF..."
-                                  />
-                                </label>
                               </div>
                             )}
 
@@ -846,10 +844,26 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Autosave indicator */}
-                <div className="flex items-center gap-2 text-xs text-framer-ink-muted">
-                  <Check size={14} className="text-framer-success" />
-                  Salvo automaticamente neste navegador.
+                {/* Save indicator */}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-framer-hairline">
+                  <p className="text-xs text-framer-ink-muted">
+                    {isDirty ? 'Alterações não salvas.' : 'Tudo salvo neste navegador.'}
+                  </p>
+                  <div className="flex gap-2">
+                    {isDirty && (
+                      <Button variant="ghost" size="sm" onClick={handleDiscardChanges}>
+                        Descartar alterações
+                      </Button>
+                    )}
+                    <Button 
+                      variant="default" 
+                      size="sm" 
+                      onClick={handleSaveFlows} 
+                      disabled={!isDirty}
+                    >
+                      Salvar alterações
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : (

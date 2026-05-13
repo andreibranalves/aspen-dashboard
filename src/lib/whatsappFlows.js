@@ -54,8 +54,7 @@ export const DEFAULT_WA_FLOWS = [
     max_images_per_category: 0,
     default: false,
     steps: [
-      { id: 'step-short-message', type: 'text', template: 'Segue o orçamento solicitado, (primeiro_nome).' },
-      { id: 'step-pdf', type: 'document', source: 'quotation_pdf', caption: 'Orçamento (numero_pedido)' },
+      { id: 'step-quotation-link', type: 'text', template: 'Segue o orçamento solicitado, (primeiro_nome):\n(link_orcamento)' },
     ],
     sample_images_text: '',
   },
@@ -251,7 +250,24 @@ export function getFlowSummary(flow) {
  * - Converts delay seconds to milliseconds.
  */
 export function flowToSequencePayload(flow) {
-  const cleanedSteps = (flow.steps || []).filter((step) => {
+  // Convert legacy document steps with source 'quotation_pdf' into text steps
+  // so they send a link instead of a PDF file.
+  const convertedSteps = (flow.steps || []).map((step) => {
+    if (step.type === 'document' && step.source === 'quotation_pdf') {
+      let template = step.caption || '';
+      if (template.trim().length > 0) {
+        if (!template.includes('(link_orcamento)')) {
+          template += '\n(link_orcamento)';
+        }
+      } else {
+        template = 'Segue o orçamento (numero_pedido):\n(link_orcamento)';
+      }
+      return { ...step, type: 'text', template, source: '', caption: '' };
+    }
+    return step;
+  });
+
+  const cleanedSteps = convertedSteps.filter((step) => {
     if (step.type === 'text') {
       return step.template && step.template.trim().length > 0;
     }

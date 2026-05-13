@@ -132,17 +132,10 @@ assert.equal(bodyB.dry_run, true);
 assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
 assert.equal(bodyB.number, '5521999999999');
 
-// 1 text step + 1 internal PDF generation step (not download_pdf)
-assert.equal(bodyB.steps.length, 2);
-assert.deepEqual(bodyB.steps.map(s => s.type), ['text', 'document']);
-// Document step uses internal Chrome PDF generation, NOT ERPNext download_pdf
-assert.equal(bodyB.steps[1].source, 'quotation_pdf');
-assert.equal(bodyB.steps[1]._generatePdf, true);
-assert.equal(bodyB.steps[1].quotationId, 'ORC-20261289');
-assert.match(bodyB.steps[1].fileName, /ORC-20261289/);
-// Must NOT contain download_pdf anywhere
-const stepB1Str = JSON.stringify(bodyB.steps[1]);
-assert.ok(!stepB1Str.includes('download_pdf') && !stepB1Str.includes('frappe.utils.print_format'), 'document step must NOT use ERPNext download_pdf');
+// 1 text step (document converted to text/link)
+assert.equal(bodyB.steps.length, 1);
+assert.deepEqual(bodyB.steps.map(s => s.type), ['text']);
+// No document step since PDF is now sent as link
 assert.equal(bodyB.delay_min_ms, 1000);
 assert.equal(bodyB.delay_max_ms, 2000);
 

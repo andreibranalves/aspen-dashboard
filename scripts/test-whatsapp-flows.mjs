@@ -92,14 +92,13 @@ test('flowToSequencePayload on already-talking returns correct delay_ms', () => 
   assert.equal(payload.delay_max_ms, 2000);
 });
 
-test('flowToSequencePayload on already-talking returns one text step and one document step with source quotation_pdf', () => {
+test('flowToSequencePayload on already-talking returns one text step and no document steps (PDF converted to link)', () => {
   const flow = DEFAULT_WA_FLOWS[1];
   const payload = flowToSequencePayload(flow);
   const textSteps = payload.steps.filter(s => s.type === 'text');
   const docSteps = payload.steps.filter(s => s.type === 'document');
   assert.equal(textSteps.length, 1);
-  assert.equal(docSteps.length, 1);
-  assert.equal(docSteps[0].source, 'quotation_pdf');
+  assert.equal(docSteps.length, 0);
 });
 
 test('flowToSequencePayload removes empty text/image/document steps', () => {
@@ -155,11 +154,11 @@ test('getFlowSummary for email-first-contact returns correct Portuguese summary'
   assert.match(summary, /fotos/i);
 });
 
-test('getFlowSummary for already-talking returns correct Portuguese summary', () => {
+test('getFlowSummary for already-talking returns correct Portuguese summary (1 mensagem, no PDF)', () => {
   const summary = getFlowSummary(DEFAULT_WA_FLOWS[1]);
-  // 1 text step + 1 document step = "1 mensagem + PDF"
-  assert.match(summary, /mensagem/i);
-  assert.match(summary, /PDF/i);
+  // 1 text step = "1 mensagem"
+  assert.match(summary, /1 mensagem/i);
+  assert.ok(!summary.includes('PDF'), 'already-talking should not mention PDF anymore');
 });
 
 test('getFlowSummary handles custom step combinations', () => {
