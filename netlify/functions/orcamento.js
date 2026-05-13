@@ -254,7 +254,21 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
       ? 'http'
       : (event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
 
-    const shortUrl = `${protocol}://${host}/api/view?q=${encodeURIComponent(quotationId)}`;
+    const fullUrl = `${protocol}://${host}/api/view?q=${encodeURIComponent(quotationId)}`;
+
+    // ── URL shortening via TinyURL (free, no API key) ──
+    let shortUrl = fullUrl;
+    try {
+      const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(fullUrl)}`);
+      if (tinyRes.ok) {
+        const tiny = (await tinyRes.text()).trim();
+        if (tiny.startsWith('https://') && tiny.length < fullUrl.length) {
+          shortUrl = tiny;
+        }
+      }
+    } catch {
+      // Keep full URL as fallback — non-fatal
+    }
 
     return {
       statusCode: 200,
