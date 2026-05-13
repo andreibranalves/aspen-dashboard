@@ -246,7 +246,12 @@ export async function handler(event) {
         throw createHttpError(500, 'Erro ao recuperar pedido de venda salvo.');
       }
     } else if (normalisedMapped?.doctype === 'Sales Order' && normalisedMapped?.items) {
-      // In-memory doc: create via POST
+      // In-memory doc: create via POST — ensure delivery_date is set
+      if (!normalisedMapped.delivery_date) {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        normalisedMapped.delivery_date = d.toISOString().slice(0, 10);
+      }
       salesOrder = await erpPost('Sales Order', normalisedMapped);
     } else {
       throw createHttpError(

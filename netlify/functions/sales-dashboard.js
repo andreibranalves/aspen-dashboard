@@ -132,11 +132,17 @@ async function fetchSalesOrders(start, end) {
  */
 async function fetchSalesOrderItems(orderNames) {
   if (!orderNames || orderNames.length === 0) return [];
-  return erpGetList('Sales Order Item', {
-    fields: ITEM_FIELDS,
-    filters: [['parent', 'in', orderNames]],
-    limit: 10000,
-  });
+  try {
+    return await erpGetList('Sales Order Item', {
+      fields: ITEM_FIELDS,
+      filters: [['parent', 'in', orderNames]],
+      limit: 10000,
+    });
+  } catch {
+    // Permission error on Sales Order Item — return empty, top products will be unavailable
+    console.warn('[sales-dashboard] Cannot access Sales Order Item — top products and conversion rate will be unavailable.');
+    return [];
+  }
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────
@@ -290,15 +296,20 @@ async function fetchStaleQuotations() {
 
   // Batch-check which quotations have linked Sales Orders
   const quotationNames = quotations.map(q => q.name);
-  const linkedSos = await erpGetList('Sales Order Item', {
-    fields: ['prevdoc_docname'],
-    filters: [['prevdoc_docname', 'in', quotationNames]],
-    limit: 10000,
-  });
-
-  const linkedQuotations = new Set(
-    linkedSos.map(i => i.prevdoc_docname).filter(Boolean),
-  );
+  let linkedQuotations = new Set();
+  try {
+    const linkedSos = await erpGetList('Sales Order Item', {
+      fields: ['prevdoc_docname'],
+      filters: [['prevdoc_docname', 'in', quotationNames]],
+      limit: 10000,
+    });
+    linkedQuotations = new Set(
+      linkedSos.map(i => i.prevdoc_docname).filter(Boolean),
+    );
+  } catch {
+    // Permission error on Sales Order Item — treat all as stale (no linked SO detected)
+    console.warn('[sales-dashboard] Cannot access Sales Order Item for stale quotation check.');
+  }
 
   // Filter stale (no linked SO), map to response shape, sort by age desc, limit 20
   const now = Date.now();
