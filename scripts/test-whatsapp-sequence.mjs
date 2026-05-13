@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/whatsappFlows.js';
 
 process.env.EVOLUTION_BASE_URL = 'https://evolution.example.test';
 process.env.EVOLUTION_API_KEY = 'test-key';
@@ -18,13 +19,19 @@ globalThis.fetch = async (url, options = {}) => {
 
 const { handler } = await import('../netlify/functions/send-whatsapp.js?test=' + Date.now());
 
-const payload = {
+const basePayload = {
   dry_run: true,
   telefone: '(21) 99999-9999',
   nome: 'Labo Buriti',
   quotation_id: 'ORC-20261289',
   link_orcamento: 'https://aspen-orcamento.netlify.app/api/view?q=ORC-20261289',
   items: [{ sku: 'CNG-SAL-70', qty: 50 }, { sku: 'CNG-SAL-100', qty: 50 }],
+};
+
+// ── Existing test (hardcoded payload) ──────────────────────────────────────
+
+const payload = {
+  ...basePayload,
   whatsapp_sequence: {
     delay_min_ms: 10,
     delay_max_ms: 20,
@@ -67,3 +74,69 @@ assert.equal(body.delay_min_ms, 10);
 assert.equal(body.delay_max_ms, 20);
 
 console.log('whatsapp sequence dry-run ok');
+
+// ── Test A: First-contact flow (DEFAULT_WA_FLOWS[0]) dry-run ───────────────
+
+calls.length = 0;
+
+const firstContactPayload = {
+  ...basePayload,
+  whatsapp_sequence: flowToSequencePayload(DEFAULT_WA_FLOWS[0]),
+};
+
+const resA = await handler({
+  httpMethod: 'POST',
+  headers: { host: 'aspen-orcamento.netlify.app', 'x-forwarded-proto': 'https' },
+  body: JSON.stringify(firstContactPayload),
+  queryStringParameters: {},
+});
+
+assert.equal(resA.statusCode, 200);
+const bodyA = JSON.parse(resA.body);
+assert.equal(bodyA.success, true);
+assert.equal(bodyA.dry_run, true);
+assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
+assert.equal(bodyA.number, '5521999999999');
+
+// 4 text steps (product_images expands to nothing since sample_images_text is empty)
+assert.equal(bodyA.steps.length, 4);
+assert.ok(bodyA.steps.every(s => s.type === 'text'), 'fluxo email-first-contact deve gerar apenas steps de texto');
+assert.match(bodyA.steps[1].text, /Juliana/);
+assert.match(bodyA.steps[1].text, /canga/i);
+assert.equal(bodyA.delay_min_ms, 5000);
+assert.equal(bodyA.delay_max_ms, 8000);
+
+console.log('whatsapp first-contact flow dry-run ok');
+
+// ── Test B: Already-talking flow (DEFAULT_WA_FLOWS[1]) dry-run ────────────
+
+calls.length = 0;
+
+const alreadyTalkingPayload = {
+  ...basePayload,
+  whatsapp_sequence: flowToSequencePayload(DEFAULT_WA_FLOWS[1]),
+  pdf_url: 'https://example.test/orcamento.pdf',
+};
+
+const resB = await handler({
+  httpMethod: 'POST',
+  headers: { host: 'aspen-orcamento.netlify.app', 'x-forwarded-proto': 'https' },
+  body: JSON.stringify(alreadyTalkingPayload),
+  queryStringParameters: {},
+});
+
+assert.equal(resB.statusCode, 200);
+const bodyB = JSON.parse(resB.body);
+assert.equal(bodyB.success, true);
+assert.equal(bodyB.dry_run, true);
+assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
+assert.equal(bodyB.number, '5521999999999');
+
+// 1 text step + 1 document step
+assert.equal(bodyB.steps.length, 2);
+assert.deepEqual(bodyB.steps.map(s => s.type), ['text', 'document']);
+assert.equal(bodyB.steps[1].media, 'https://example.test/orcamento.pdf');
+assert.equal(bodyB.delay_min_ms, 1000);
+assert.equal(bodyB.delay_max_ms, 2000);
+
+console.log('whatsapp already-talking flow dry-run ok');

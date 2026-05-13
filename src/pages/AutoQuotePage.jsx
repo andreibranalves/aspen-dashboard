@@ -1,7 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, Search, RotateCcw } from 'lucide-react';
+import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import {
+  loadWhatsappFlows,
+  getSelectedFlowId,
+  saveSelectedFlowId,
+  flowToSequencePayload,
+  getFlowSummary,
+} from '@/lib/whatsappFlows.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
@@ -11,106 +18,14 @@ import Skeleton from '@/components/Skeleton.jsx';
 const PHASES = ['input', 'extracting', 'review', 'creating'];
 const PHASE_LABELS = ['1. Entrada', '2. Extração', '3. Revisão', '4. Concluído'];
 
-// ── WhatsApp default template ──
-const WA_DEFAULT = 'Olá, (nome)! Segue seu orçamento (numero_pedido). Qualquer dúvida estamos à disposição. — (empresa)';
-const WA_SEQUENCE_DEFAULT = {
-  enabled: true,
-  vendor_name: 'Juliana',
-  delay_min_seconds: 5,
-  delay_max_seconds: 8,
-  max_images_per_category: 2,
-  greeting_template: 'Olá, (primeiro_nome), tudo bem?',
-  context_template: 'Meu nome é (vendedora), da (empresa). Estou entrando em contato sobre o seu orçamento de (produto_resumo) personalizado(a).',
-  quotation_template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)',
-  samples_intro_template: 'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.',
-  sample_images_text: '',
-};
-
 // ── LocalStorage ──
 const LS_RULES = 'aspen_rules';
-const LS_WA = 'aspen_wa_template';
-const LS_WA_SEQUENCE = 'aspen_wa_sequence_config';
 
 function loadRules() {
   try { return localStorage.getItem(LS_RULES) || ''; } catch { return ''; }
 }
 function saveRules(val) {
   try { localStorage.setItem(LS_RULES, val); } catch {}
-}
-function loadWaTemplate() {
-  try { return localStorage.getItem(LS_WA) || WA_DEFAULT; } catch { return WA_DEFAULT; }
-}
-function saveWaTemplate(val) {
-  try { localStorage.setItem(LS_WA, val); } catch {}
-}
-function loadWaSequenceConfig() {
-  try {
-    const raw = localStorage.getItem(LS_WA_SEQUENCE);
-    return raw ? { ...WA_SEQUENCE_DEFAULT, ...JSON.parse(raw) } : WA_SEQUENCE_DEFAULT;
-  } catch {
-    return WA_SEQUENCE_DEFAULT;
-  }
-}
-function saveWaSequenceConfig(val) {
-  try { localStorage.setItem(LS_WA_SEQUENCE, JSON.stringify({ ...WA_SEQUENCE_DEFAULT, ...val })); } catch {}
-}
-function parseSampleImages(text = '') {
-  const map = {};
-  String(text || '').split('\n').forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return;
-    const separatorIndex = trimmed.includes('=') ? trimmed.indexOf('=') : trimmed.indexOf(':');
-    if (separatorIndex <= 0) return;
-    const category = trimmed.slice(0, separatorIndex).trim();
-    const urlsRaw = trimmed.slice(separatorIndex + 1).trim();
-    if (!category || !urlsRaw) return;
-    const urls = urlsRaw.split(',').map(url => url.trim()).filter(Boolean);
-    if (urls.length) map[category] = urls;
-  });
-  return map;
-}
-function buildWaSequencePayload(config = WA_SEQUENCE_DEFAULT) {
-  const sampleImages = parseSampleImages(config.sample_images_text);
-  const hasSampleImages = Object.keys(sampleImages).length > 0;
-  return {
-    vendor_name: config.vendor_name || 'Juliana',
-    delay_min_ms: Math.max(0, Math.round((Number(config.delay_min_seconds) || 0) * 1000)),
-    delay_max_ms: Math.max(0, Math.round((Number(config.delay_max_seconds) || 0) * 1000)),
-    max_images_per_category: Math.max(0, Math.round(Number(config.max_images_per_category) || 0)),
-    sample_images: sampleImages,
-    steps: [
-      { type: 'text', template: config.greeting_template },
-      { type: 'text', template: config.context_template },
-      { type: 'text', template: config.quotation_template },
-      hasSampleImages ? { type: 'text', template: config.samples_intro_template } : null,
-      hasSampleImages ? { type: 'product_images' } : null,
-    ].filter(step => step && (step.type === 'product_images' || String(step.template || '').trim())),
-  };
-}
-
-// ── WA template renderer ──
-function renderWaTemplate(template, nome, numeroPedido, linkOrcamento = '') {
-  if (!template) return '';
-  const h = new Date().getHours();
-  const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
-  const primeiroNome = (nome || '').split(' ')[0];
-  return template
-    .replace(/\(Saudacao\)/g, saudacao)
-    .replace(/\(nome\)/g, nome || '')
-    .replace(/\(primeiro_nome\)/g, primeiroNome)
-    .replace(/\(numero_pedido\)/g, numeroPedido || '')
-    .replace(/\(empresa\)/g, 'Aspen Estamparia')
-    .replace(/\(link_orcamento\)/g, linkOrcamento || '');
-}
-
-function buildWaLink(telefone, nome, quotationId, linkOrcamento = '') {
-  if (!telefone) return null;
-  const digits = telefone.replace(/\D/g, '').replace(/^55(\d{10,11})$/, '$1');
-  if (digits.length < 10) return null;
-  const waNumber = '55' + digits;
-  const template = loadWaTemplate();
-  const text = renderWaTemplate(template, nome, quotationId, linkOrcamento);
-  return 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent(text);
 }
 
 // ── Card status helpers ──
@@ -144,8 +59,9 @@ export default function AutoQuotePage() {
   const [submitting, setSubmitting] = useState(false);
   const [btnLabel, setBtnLabel] = useState('Gerar Orçamento');
   const [error, setError] = useState(null);
-  const [waTemplate, setWaTemplate] = useState(loadWaTemplate);
-  const [waSequence, setWaSequence] = useState(loadWaSequenceConfig);
+  const [whatsappFlows, setWhatsappFlows] = useState(() => loadWhatsappFlows());
+  const [selectedWhatsappFlowId, setSelectedWhatsappFlowId] = useState(() => getSelectedFlowId(loadWhatsappFlows()));
+  const selectedWhatsappFlow = whatsappFlows.find(f => f.id === selectedWhatsappFlowId) || whatsappFlows[0];
   const [rules, setRulesState] = useState(loadRules);
   const [showSettings, setShowSettings] = useState(false);
   const [waSendStatus, setWaSendStatus] = useState({});
@@ -190,6 +106,21 @@ export default function AutoQuotePage() {
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
   }, [handleImageFile]);
+
+  // ── Refresh WhatsApp flows on focus/storage ──
+  useEffect(() => {
+    const refreshFlows = () => {
+      const loaded = loadWhatsappFlows();
+      setWhatsappFlows(loaded);
+      setSelectedWhatsappFlowId(prev => loaded.some(flow => flow.id === prev) ? prev : getSelectedFlowId(loaded));
+    };
+    window.addEventListener('focus', refreshFlows);
+    window.addEventListener('storage', refreshFlows);
+    return () => {
+      window.removeEventListener('focus', refreshFlows);
+      window.removeEventListener('storage', refreshFlows);
+    };
+  }, []);
 
   // ── Drag handlers ──
   const handleDragOver = useCallback((e) => {
@@ -352,27 +283,18 @@ export default function AutoQuotePage() {
   }, []);
 
   // ── WhatsApp API send ──
-  const updateWaSequence = useCallback((patch) => {
-    setWaSequence(prev => {
-      const next = { ...prev, ...patch };
-      saveWaSequenceConfig(next);
-      return next;
-    });
-  }, []);
-
   const handleSendWhatsApp = useCallback(async (draft, resultData) => {
     if (!resultData?.quotation_id) return;
     const key = resultData.quotation_id;
     const linkOrcamento = resultData.short_url || `${window.location.origin}/api/view?q=${encodeURIComponent(resultData.quotation_id)}`;
     setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sending', message: 'Enviando sequência…' } }));
     try {
-      const sequencePayload = waSequence.enabled ? buildWaSequencePayload(waSequence) : null;
+      const sequencePayload = selectedWhatsappFlow ? flowToSequencePayload(selectedWhatsappFlow) : null;
       const response = await apiPost('/send-whatsapp', {
         quotation_id: resultData.quotation_id,
         deal_id: resultData.deal_id,
         nome: resultData.cliente || draft.edited.nome,
         telefone: draft.edited.telefone,
-        template: waTemplate,
         link_orcamento: linkOrcamento,
         pdf_url: resultData.pdf_url,
         items: resultData.items || draft.edited.items,
@@ -386,7 +308,7 @@ export default function AutoQuotePage() {
         [key]: { state: 'error', message: err.message || 'Falha ao enviar WhatsApp.' },
       }));
     }
-  }, [waTemplate, waSequence]);
+  }, [selectedWhatsappFlow]);
 
   // ── Form submit ──
   const handleSubmit = useCallback(async (e) => {
@@ -523,10 +445,6 @@ export default function AutoQuotePage() {
 
     try { localStorage.removeItem('aspen_drafts'); } catch {}
 
-    const allDone = approvedDrafts.every(d => {
-      const dr = drafts.find(dd => dd.index === d.index);
-      return dr?.result?.success;
-    });
     // Stay at 'creating' — results are shown inline; no separate "complete" step
     setSubmitting(false);
     setBtnLabel('Gerar Orçamento');
@@ -710,7 +628,7 @@ export default function AutoQuotePage() {
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
               <h3 className="text-base font-semibold text-framer-ink">Regras operacionais</h3>
-              <p className="mt-1 text-sm text-framer-ink-muted">Ajustes finos enviados para a IA e modelo de mensagem do WhatsApp.</p>
+              <p className="mt-1 text-sm text-framer-ink-muted">Ajustes finos enviados para a IA na extração dos pedidos.</p>
             </div>
             <Button type="button" variant="ghost" size="sm" onClick={() => setShowSettings(false)}>
               <X size={14} /> Fechar
@@ -737,83 +655,15 @@ export default function AutoQuotePage() {
               </button>
             </div>
             <div>
-              <label className="text-sm font-medium">Template WhatsApp</label>
+              <label className="text-sm font-medium">WhatsApp</label>
               <p className="mb-2 mt-1 text-xs text-muted-foreground">
-                Variáveis: (nome), (primeiro_nome), (numero_pedido), (empresa), (Saudacao), (link_orcamento)
+                Os fluxos de WhatsApp agora são configurados na página de{' '}
+                <a href="#settings" className="font-medium text-primary hover:underline">
+                  Configurações
+                </a>
+                .
               </p>
-              <textarea
-                className="min-h-[140px] w-full resize-y rounded-[16px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                value={waTemplate}
-                onChange={e => { setWaTemplate(e.target.value); saveWaTemplate(e.target.value); }}
-              />
-              <button
-                type="button"
-                className="mt-2 text-xs font-medium text-primary hover:underline"
-                onClick={() => { setWaTemplate(WA_DEFAULT); saveWaTemplate(WA_DEFAULT); }}
-              >
-                Restaurar padrão
-              </button>
             </div>
-          </div>
-          <div className="mt-6 rounded-[20px] border border-framer-hairline bg-framer-surface-1/40 p-4">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h4 className="text-sm font-semibold text-framer-ink">Sequência de WhatsApp</h4>
-                <p className="mt-1 text-xs text-framer-ink-muted">Envia mensagens separadas com intervalo e fotos por produto. Variáveis extras: (vendedora), (produto_resumo).</p>
-              </div>
-              <label className="inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium">
-                <input
-                  type="checkbox"
-                  checked={waSequence.enabled}
-                  onChange={e => updateWaSequence({ enabled: e.target.checked })}
-                />
-                Usar sequência
-              </label>
-            </div>
-            <div className="grid gap-4 lg:grid-cols-4">
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-framer-ink-muted">Vendedora</span>
-                <Input value={waSequence.vendor_name} onChange={e => updateWaSequence({ vendor_name: e.target.value })} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-framer-ink-muted">Intervalo mín. (s)</span>
-                <Input type="number" min="0" value={waSequence.delay_min_seconds} onChange={e => updateWaSequence({ delay_min_seconds: e.target.value })} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-framer-ink-muted">Intervalo máx. (s)</span>
-                <Input type="number" min="0" value={waSequence.delay_max_seconds} onChange={e => updateWaSequence({ delay_max_seconds: e.target.value })} />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-framer-ink-muted">Fotos/categoria</span>
-                <Input type="number" min="0" max="6" value={waSequence.max_images_per_category} onChange={e => updateWaSequence({ max_images_per_category: e.target.value })} />
-              </label>
-            </div>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {[
-                ['greeting_template', 'Mensagem 1 — saudação'],
-                ['context_template', 'Mensagem 2 — contexto'],
-                ['quotation_template', 'Mensagem 3 — orçamento/link'],
-                ['samples_intro_template', 'Mensagem 4 — introdução das fotos'],
-              ].map(([key, label]) => (
-                <label key={key} className="space-y-1">
-                  <span className="text-xs font-medium text-framer-ink-muted">{label}</span>
-                  <textarea
-                    className="min-h-[74px] w-full resize-y rounded-[16px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                    value={waSequence[key] || ''}
-                    onChange={e => updateWaSequence({ [key]: e.target.value })}
-                  />
-                </label>
-              ))}
-            </div>
-            <label className="mt-4 block space-y-1">
-              <span className="text-xs font-medium text-framer-ink-muted">Fotos por categoria</span>
-              <textarea
-                className="min-h-[92px] w-full resize-y rounded-[16px] border border-framer-hairline bg-card px-3 py-2 font-mono text-xs text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                value={waSequence.sample_images_text || ''}
-                onChange={e => updateWaSequence({ sample_images_text: e.target.value })}
-                placeholder={'canga: https://site/canga-01.jpg, https://site/canga-02.jpg\nlenço: https://site/lenco-01.jpg'}
-              />
-            </label>
           </div>
         </div>
       )}
@@ -1236,7 +1086,6 @@ export default function AutoQuotePage() {
             const data = draft.result?.data;
             const total = calculateResultTotal(data?.items || []);
             const linkOrcamento = data?.short_url || (data?.quotation_id ? `${window.location.origin}/api/view?q=${encodeURIComponent(data.quotation_id)}` : '');
-            const waLink = data ? buildWaLink(draft.edited.telefone, data.cliente, data.quotation_id, linkOrcamento) : null;
             const waStatus = data?.quotation_id ? waSendStatus[data.quotation_id] : null;
             return (
               <div key={draft.index} className={cn(
@@ -1298,23 +1147,53 @@ export default function AutoQuotePage() {
                     <aside className="border-t border-framer-hairline bg-framer-surface-1/50 p-5 lg:border-l lg:border-t-0">
                       <p className="text-xs font-medium text-framer-ink-muted">Total</p>
                       <p className="mt-1 text-3xl font-semibold tracking-tight text-framer-ink">{formatBRL(total)}</p>
-                      <div className="mt-5 space-y-2">
-                        <Button
-                          type="button"
-                          size="lg"
-                          className="w-full"
-                          disabled={waStatus?.state === 'sending'}
-                          onClick={() => handleSendWhatsApp(draft, data)}
+                      <div className="space-y-1 mb-3 mt-4">
+                        <label className="text-xs font-medium text-framer-ink-muted">Fluxo de WhatsApp</label>
+                        <select
+                          className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
+                          value={selectedWhatsappFlowId}
+                          onChange={e => {
+                            setSelectedWhatsappFlowId(e.target.value);
+                            saveSelectedFlowId(e.target.value);
+                          }}
                         >
-                          <Phone size={16} />
-                          {waStatus?.state === 'sent' ? 'Enviado pelo WhatsApp' : waStatus?.state === 'sending' ? 'Enviando…' : 'Enviar via WhatsApp'}
-                        </Button>
-                        {waStatus?.message && (
-                          <p className={cn(
-                            'text-xs leading-5',
-                            waStatus.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
-                          )}>
-                            {waStatus.message}
+                          {whatsappFlows.map(flow => (
+                            <option key={flow.id} value={flow.id}>{flow.name}</option>
+                          ))}
+                        </select>
+                        {selectedWhatsappFlow && (
+                          <span className="block text-xs leading-5 text-framer-ink-muted">
+                            {getFlowSummary(selectedWhatsappFlow)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {selectedWhatsappFlow && flowToSequencePayload(selectedWhatsappFlow).steps.length > 0 ? (
+                          <>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="w-full"
+                              disabled={waStatus?.state === 'sending'}
+                              onClick={() => handleSendWhatsApp(draft, data)}
+                            >
+                              <Phone size={16} />
+                              {waStatus?.state === 'sent' ? 'Enviado pelo WhatsApp' : waStatus?.state === 'sending' ? 'Enviando…' : 'Enviar via WhatsApp'}
+                            </Button>
+                            {waStatus?.message && (
+                              <p className={cn(
+                                'text-xs leading-5',
+                                waStatus.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
+                              )}>
+                                {waStatus.message}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                            {!selectedWhatsappFlow
+                              ? 'Nenhum fluxo de WhatsApp selecionado. Configure um fluxo em Configurações.'
+                              : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Configurações.'}
                           </p>
                         )}
                         <a href={`/api/view?q=${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
