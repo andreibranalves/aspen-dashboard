@@ -2,6 +2,7 @@
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
 import { erpGetList, erpGetDoc, erpPut, createHttpError, ERPNEXT_BASE, ERPNEXT_TOKEN } from './lib/erpnext.js';
+import { generateQuotationPdf } from './lib/quotation-pdf.js';
 
 const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -198,11 +199,22 @@ function buildSequenceSteps({ payload, sequence, context, baseUrl }) {
     }
 
     if (type === 'document') {
-      // When source is quotation_pdf, use ERPNext's actual PDF download endpoint (binary), not printview (HTML)
-      const pdfDownloadUrl = rawStep.source === 'quotation_pdf' && context.quotationId
-        ? `${ERPNEXT_BASE}/api/method/frappe.utils.print_format.download_pdf?doctype=Quotation&name=${encodeURIComponent(context.quotationId)}&format=Aspen%201.0&no_letterhead=0`
-        : '';
-      const media = absoluteUrl(rawStep.media || rawStep.url || pdfDownloadUrl || context.pdfUrl, baseUrl);
+      // For quotation_pdf, mark as internal — PDF will be generated via Chrome headless
+      // at send time (sendMedia). No external URL; store quotationId for the generator.
+      if (rawStep.source === 'quotation_pdf' && context.quotationId) {
+        planned.push({
+          type: 'document',
+          source: 'quotation_pdf',
+          _generatePdf: true,
+          quotationId: context.quotationId,
+          mimetype: rawStep.mimetype || 'application/pdf',
+          fileName: rawStep.fileName || `${context.quotationId} - ${context.nome || 'cliente'}.pdf`,
+           caption: rawStep.caption ? renderTemplate(rawStep.caption, context) : '',
+        });
+         continue;
+      }
+
+      const media = absoluteUrl(rawStep.media || rawStep.url || context.pdfUrl, baseUrl);
       if (!media) continue;
       planned.push({
         type: 'document',
@@ -372,7 +384,38 @@ async function sendText(number, text) {
 }
 
 async function sendMedia(number, step) {
-  // Resolve media URL — if it's an ERPNext URL requiring auth, download and convert to base64
+  // ── Quotation PDF via Chrome headless ──
+  if (step._generatePdf && step.quotationId) {
+    try {
+      const { buffer } = await generateQuotationPdf(step.quotationId);
+      const media = buffer.toString('base64');
+      return evolutionPost(
+        `/message/sendMedia/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
+        {
+          number,
+          mediatype: 'document',
+          mimetype: step.mimetype || 'application/pdf',
+          caption: step.caption || '',
+          media,
+          fileName: step.fileName,
+        }
+      );
+    } catch (err) {
+      if (err?.statusCode) throw err;
+      // If Chrome not available (NO_BROWSER), fall back to sending the quotation link as text
+      if (err?.code === 'NO_BROWSER') {
+        console.warn('[send-whatsapp] Chrome/Edge não disponível para gerar PDF. Enviando link do orçamento como alternativa.');
+        return sendText(number, `Segue o link do orçamento:\nhttps://aspen-orcamento.netlify.app/api/view?q=${encodeURIComponent(step.quotationId)}`);
+      }
+      throw createHttpError(
+        502,
+        'Não foi possível gerar o PDF do orçamento.',
+        `[send-whatsapp] PDF generation failed: ${err.message}`
+      );
+    }
+  }
+
+  // ── External media URL ──
   let media = step.media;
   if (media && ERPNEXT_TOKEN && ERPNEXT_BASE && media.startsWith(ERPNEXT_BASE)) {
     try {
