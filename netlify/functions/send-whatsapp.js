@@ -198,7 +198,11 @@ function buildSequenceSteps({ payload, sequence, context, baseUrl }) {
     }
 
     if (type === 'document') {
-      const media = absoluteUrl(rawStep.media || rawStep.url || (rawStep.source === 'quotation_pdf' ? context.pdfUrl : ''), baseUrl);
+      // When source is quotation_pdf, use ERPNext's actual PDF download endpoint (binary), not printview (HTML)
+      const pdfDownloadUrl = rawStep.source === 'quotation_pdf' && context.quotationId
+        ? `${ERPNEXT_BASE}/api/method/frappe.utils.print_format.download_pdf?doctype=Quotation&name=${encodeURIComponent(context.quotationId)}&format=Aspen%201.0&no_letterhead=0`
+        : '';
+      const media = absoluteUrl(rawStep.media || rawStep.url || pdfDownloadUrl || context.pdfUrl, baseUrl);
       if (!media) continue;
       planned.push({
         type: 'document',

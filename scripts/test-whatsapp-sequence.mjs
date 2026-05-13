@@ -132,10 +132,11 @@ assert.equal(bodyB.dry_run, true);
 assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
 assert.equal(bodyB.number, '5521999999999');
 
-// 1 text step + 1 document step
+// 1 text step + 1 document step with ERPNext PDF download endpoint (not the provided pdf_url)
 assert.equal(bodyB.steps.length, 2);
 assert.deepEqual(bodyB.steps.map(s => s.type), ['text', 'document']);
-assert.equal(bodyB.steps[1].media, 'https://example.test/orcamento.pdf');
+assert.match(bodyB.steps[1].media, /\/api\/method\/frappe\.utils\.print_format\.download_pdf/);
+assert.match(bodyB.steps[1].media, /ORC-20261289/);
 assert.equal(bodyB.delay_min_ms, 1000);
 assert.equal(bodyB.delay_max_ms, 2000);
 
