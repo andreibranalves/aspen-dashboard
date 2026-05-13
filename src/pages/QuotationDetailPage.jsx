@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -28,6 +28,8 @@ export default function QuotationDetailPage({ id, navigate }) {
   const [editedItems, setEditedItems] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [converting, setConverting] = useState(false);
+  const [convertStatus, setConvertStatus] = useState('');
 
   // ── Load ──
   const loadDetail = useCallback(async () => {
@@ -128,6 +130,23 @@ export default function QuotationDetailPage({ id, navigate }) {
     }
   }, [id, navigate]);
 
+  // ── Create Sales Order ──
+  const handleCreateSalesOrder = useCallback(async () => {
+    if (!window.confirm(`Gerar e confirmar pedido de venda para o orçamento ${id}?`)) return;
+    setConverting(true);
+    setConvertStatus('Gerando pedido de venda…');
+    try {
+      const result = await apiPost('/sales-order-from-quotation', { quotation_id: id });
+      setConvertStatus(result.already_exists ? 'Pedido já existia.' : 'Pedido de venda criado e confirmado.');
+      await loadDetail(); // refresh to show linked SO
+      if (result.sales_order_id) navigate(`/sales-orders/${result.sales_order_id}`);
+    } catch (err) {
+      setConvertStatus(err.message || 'Erro ao gerar pedido de venda.');
+    } finally {
+      setConverting(false);
+    }
+  }, [id, loadDetail, navigate]);
+
   // ── Drag-and-drop reorder ──
   const handleDragStart = useCallback((e, idx) => {
     e.dataTransfer.setData('text/plain', String(idx));
@@ -194,6 +213,36 @@ export default function QuotationDetailPage({ id, navigate }) {
               status={data.status}
               label={STATUS_LABELS[data.status] || data.status}
             />
+          </div>
+          <div className="flex items-center gap-3">
+            {data.sales_order_id ? (
+              <>
+                <span className="text-xs text-muted-foreground">Pedido criado: SAL-ORD-{data.sales_order_id}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(`/sales-orders/${data.sales_order_id}`)}
+                >
+                  Abrir Pedido
+                </Button>
+              </>
+            ) : mode === 'view' ? (
+              <>
+                <Button
+                  onClick={handleCreateSalesOrder}
+                  disabled={converting}
+                  size="sm"
+                >
+                  <ShoppingCart size={14} />
+                  {converting ? 'Gerando pedido de venda…' : 'Gerar Pedido de Venda'}
+                </Button>
+                {convertStatus && (
+                  <span className={`text-xs ${convertStatus.startsWith('Erro') ? 'text-red-400' : 'text-muted-foreground'}`}>
+                    {convertStatus}
+                  </span>
+                )}
+              </>
+            ) : null}
           </div>
         </div>
 

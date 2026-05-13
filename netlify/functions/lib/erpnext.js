@@ -169,3 +169,24 @@ export async function erpDelete(doctype, name) {
 }
 
 export { createHttpError, ERPNEXT_BASE, ERPNEXT_TOKEN };
+
+// ── Frappe Method calls (whitelisted RPC) ──────────────────────────────────
+
+/**
+ * Call a whitelisted Frappe/ERPNext method via /api/method/<path>.
+ * Used for server-side document operations: submit, make_sales_order, etc.
+ *
+ * @param {string} methodPath - e.g. 'frappe.client.submit' or 'erpnext.selling.doctype.quotation.quotation.make_sales_order'
+ * @param {object} [payload={}] - JSON body (args for the method)
+ * @returns {Promise<*>} Usually returns message.data or message
+ */
+export async function erpCallMethod(methodPath, payload = {}) {
+  const url = `${ERPNEXT_BASE}/api/method/${encodeURIComponent(methodPath)}`;
+  const body = await erpRequest(url, {
+    method: 'POST',
+    headers: buildHeaders(),
+    body: JSON.stringify(payload),
+  });
+  // Frappe wraps method responses in { message: ... }
+  return body.message ?? body.data ?? body;
+}

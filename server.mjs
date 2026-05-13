@@ -45,6 +45,9 @@ const { handler: productDetailHandler } = await import('./netlify/functions/prod
 const { handler: productPricingHandler } = await import('./netlify/functions/product-pricing.js');
 const { handler: productPricingUpdateHandler } = await import('./netlify/functions/product-pricing-update.js');
 const { handler: sendWhatsappHandler } = await import('./netlify/functions/send-whatsapp.js');
+const { handler: salesOrderFromQuotationHandler } = await import('./netlify/functions/sales-order-from-quotation.js');
+const { handler: salesOrdersHandler } = await import('./netlify/functions/sales-orders.js');
+const { handler: salesDashboardHandler } = await import('./netlify/functions/sales-dashboard.js');
 
 async function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -294,6 +297,44 @@ const server = http.createServer(async (req, res) => {
       const event = netlifyEvent(req, body);
       event.queryStringParameters = { ...event.queryStringParameters, sku };
       const result = await productPricingUpdateHandler(event);
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/sales-order-from-quotation' || pathname === '/.netlify/functions/sales-order-from-quotation') {
+    const body = await readBody(req);
+    try {
+      const result = await salesOrderFromQuotationHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/sales-orders' || pathname === '/.netlify/functions/sales-orders') {
+    const body = req.method === 'GET' ? null : await readBody(req);
+    try {
+      const result = await salesOrdersHandler(netlifyEvent(req, body));
+      res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
+      res.end(result.body);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/sales-dashboard' || pathname === '/.netlify/functions/sales-dashboard') {
+    try {
+      const result = await salesDashboardHandler(netlifyEvent(req, null));
       res.writeHead(result.statusCode, { 'Content-Type': 'application/json' });
       res.end(result.body);
     } catch (e) {

@@ -252,6 +252,25 @@ async function handleDetail(quotationId) {
     uom: item.uom || item.stock_uom || '',
   }));
 
+  // Check for linked Sales Order via Sales Order Item.prevdoc_docname
+  let sales_order_id = null;
+  try {
+    const soItems = await erpGetList('Sales Order Item', {
+      filters: [['prevdoc_docname', '=', quotationId]],
+      fields: ['parent'],
+      limit: 5,
+    });
+    if (soItems.length > 0) {
+      // Load the first parent Sales Order to check it's not cancelled
+      const so = await erpGetDoc('Sales Order', soItems[0].parent);
+      if (so && so.docstatus !== 2) {
+        sales_order_id = so.name;
+      }
+    }
+  } catch (err) {
+    console.warn('[quotations] SO link lookup failed:', err?.logMessage || err?.message || err);
+  }
+
   return {
     id: quotation.name,
     data: quotation.transaction_date || '',
@@ -263,6 +282,7 @@ async function handleDetail(quotationId) {
     docstatus: quotation.docstatus ?? 0,
     validade: quotation.valid_till || '',
     items,
+    sales_order_id,
   };
 }
 

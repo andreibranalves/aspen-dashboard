@@ -1,4 +1,6 @@
 import {
+  BarChart3,
+  ShoppingCart,
   FileText,
   Sparkles,
   Truck,
@@ -12,13 +14,15 @@ import {
 import { cn } from '@/lib/utils.js';
 
 const NAV_ITEMS = [
-  { hash: '/auto',       label: 'Auto',        icon: Sparkles },
-  { hash: '/quotations', label: 'Orçamentos', icon: FileText },
-  { hash: '/freight',    label: 'Frete',       icon: Truck },
-  { hash: '/crm',        label: 'CRM',         icon: Columns3 },
-  { hash: '/products',   label: 'Produtos',    icon: Package },
-  { hash: '/leads',      label: 'Leads',       icon: Users },
-  { hash: '/settings',   label: 'Config',      icon: Settings },
+  { hash: '/dashboard',    label: 'Dashboard',    icon: BarChart3 },
+  { hash: '/auto',         label: 'Auto',         icon: Sparkles },
+  { hash: '/quotations',   label: 'Orçamentos',   icon: FileText },
+  { hash: '/sales-orders', label: 'Pedidos',      icon: ShoppingCart },
+  { hash: '/freight',      label: 'Frete',        icon: Truck },
+  { hash: '/crm',          label: 'CRM',          icon: Columns3 },
+  { hash: '/products',     label: 'Produtos',     icon: Package },
+  { hash: '/leads',        label: 'Leads',        icon: Users },
+  { hash: '/settings',     label: 'Config',       icon: Settings },
 ];
 
 /**
