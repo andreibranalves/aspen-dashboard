@@ -32,8 +32,8 @@ function saveRules(val) {
 function CardIcon({ status }) {
   switch (status) {
     case 'draft':    return <Pencil size={16} />;
-    case 'approved': return <Check size={18} className="text-framer-success" />;
-    case 'done':     return <Check size={18} className="text-framer-success font-bold" />;
+    case 'approved': return <Check size={18} className="text-primary" />;
+    case 'done':     return <Check size={18} className="text-primary font-bold" />;
     case 'error':    return <X size={18} className="text-red-400 font-bold" />;
     case 'processing':
     default:         return <Skeleton className="h-4 w-4 rounded-full" />;
@@ -482,7 +482,7 @@ export default function AutoQuotePage() {
                 key={i}
                 className={cn(
                   'flex items-center gap-2 rounded-2xl px-3 py-2 text-xs font-medium transition-colors',
-                  i < phaseIndex && 'bg-framer-success/10 text-framer-success',
+                  i < phaseIndex && 'bg-primary/10 text-primary',
                   i === phaseIndex && 'bg-primary text-primary-foreground shadow-sm',
                   i > phaseIndex && 'bg-framer-surface-1 text-framer-ink-muted',
                   phase === 'extracting' && error && i === phaseIndex && 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300',
@@ -765,21 +765,21 @@ export default function AutoQuotePage() {
                 key={i}
                 className={cn(
                   'overflow-hidden rounded-[24px] border border-framer-hairline bg-card shadow-sm transition-all',
-                  isApproved && 'border-framer-success/40 bg-framer-success/5',
+                  isApproved && 'border-primary/40 bg-primary/5',
                 )}
               >
                 <div className="flex flex-col gap-4 border-b border-framer-hairline bg-framer-surface-1/50 p-5 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex items-start gap-3">
                     <span className={cn(
                       'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
-                      isApproved ? 'bg-framer-success/10 text-framer-success' : 'bg-primary/10 text-primary',
+                      isApproved ? 'bg-primary/10 text-primary' : 'bg-primary/10 text-primary',
                     )}>
                       <CardIcon status={isApproved ? 'approved' : 'draft'} />
                     </span>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-framer-ink-muted">Pedido {displayIdx + 1} de {drafts.filter(d => !d.discarded).length}</span>
-                        {isApproved && <span className="rounded-full bg-framer-success/10 px-2 py-0.5 text-xs font-medium text-framer-success">Aprovado</span>}
+                        {isApproved && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Aprovado</span>}
                         {draft.edited.urgente && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">Urgente</span>}
                       </div>
                       <Input
@@ -1090,18 +1090,18 @@ export default function AutoQuotePage() {
             return (
               <div key={draft.index} className={cn(
                 'overflow-hidden rounded-[24px] border border-framer-hairline bg-card shadow-sm',
-                draft.status === 'done' && 'border-framer-success/30',
+                draft.status === 'done' && 'border-primary/30',
                 draft.status === 'error' && 'border-red-300',
               )}>
                 {draft.status === 'done' && data && (
                   <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
                     <div className="space-y-5 p-5">
                       <div className="flex items-start gap-3">
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-framer-success/10 text-framer-success">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                           <Check size={20} />
                         </span>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-framer-success">Orçamento criado</p>
+                          <p className="text-sm font-medium text-primary">Orçamento criado</p>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-framer-ink">{data.quotation_id}</h3>
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-framer-ink-muted">
                             <span>{capitalize(data.cliente || draft.edited.nome)}</span>
