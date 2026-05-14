@@ -196,7 +196,11 @@ export async function handler(event) {
     const savedItems = savedQuotation?.items || items;
 
     // 6. CRM Deal update/create
-    const nextStep = savedItems.map(i => `${i.qty}x ${i.item_code}`).join(', ');
+    const rawNextStep = savedItems.map(i => `${i.qty}x ${i.item_code}`).join(', ');
+    const MAX_NEXT_STEP = 140;
+    const nextStep = rawNextStep.length > MAX_NEXT_STEP
+      ? rawNextStep.substring(0, MAX_NEXT_STEP - 3) + '...'
+      : rawNextStep;
     if (dealId) {
       const upd = {
         status: 'Orcamento Enviado',
