@@ -1,4 +1,5 @@
 import { renderQuotationHtml } from './lib/quotation-html.js';
+import { normalizePrintFormat } from './lib/print-format.js';
 
 export async function handler(event) {
   const quotationId = event.queryStringParameters?.q;
@@ -7,7 +8,8 @@ export async function handler(event) {
   }
 
   try {
-    const { html } = await renderQuotationHtml(quotationId);
+    const printFormat = normalizePrintFormat(event.queryStringParameters?.format);
+    const { html } = await renderQuotationHtml(quotationId, { printFormat });
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'text/html; charset=utf-8' },

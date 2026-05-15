@@ -240,6 +240,12 @@ endmacro %}
     text-align: center !important;
   }
 
+  .products-table thead th.price-band {
+    width: 92px;
+    text-align: center !important;
+    white-space: nowrap;
+  }
+
   .products-table tbody tr {
     border-bottom: 1px solid var(--line);
   }
@@ -286,6 +292,28 @@ endmacro %}
 
   td.center {
     text-align: center;
+  }
+
+  td.price-band {
+    text-align: center;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .matrix-price {
+    font-weight: 600;
+    color: var(--navy);
+  }
+
+  .matrix-unit {
+    margin-top: 2px;
+    font-size: 10px;
+    line-height: 1.2;
+    color: var(--muted);
+  }
+
+  .matrix-empty {
+    color: var(--line);
   }
 
   td.price,
@@ -506,30 +534,90 @@ endmacro %}
 
   <!-- ══ PÁGINA 1: TABELA DE PRODUTOS ══ -->
   <div class="page-content">
+    {%- set price_brackets = [30, 100, 300, 500, 1000] -%}
+    {%- set matrix = namespace(groups={}, visible_brackets=[]) -%}
+    {%- for item in doc.items -%}
+    {%- set item_qty = item.qty | int -%}
+    {%- if item_qty >= 1000 -%}
+    {%- set item_bracket = 1000 -%}
+    {%- elif item_qty >= 500 -%}
+    {%- set item_bracket = 500 -%}
+    {%- elif item_qty >= 300 -%}
+    {%- set item_bracket = 300 -%}
+    {%- elif item_qty >= 100 -%}
+    {%- set item_bracket = 100 -%}
+    {%- else -%}
+    {%- set item_bracket = 30 -%}
+    {%- endif -%}
+    {%- if item_bracket not in matrix.visible_brackets -%}
+    {%- set matrix.visible_brackets = matrix.visible_brackets + [item_bracket] -%}
+    {%- endif -%}
+    {%- set product_key = (item.item_code or item.item_name or item.idx) ~ "|" ~ (item.description or "") -%}
+    {%- if product_key not in matrix.groups -%}
+    {%- set product_row = {
+      "item_code": item.item_code,
+      "item_name": item.item_name,
+      "description": item.description,
+      "prices": {}
+    } -%}
+    {%- set _ = matrix.groups.update({product_key: product_row}) -%}
+    {%- endif -%}
+    {%- set product_row = matrix.groups[product_key] -%}
+    {%- if item_bracket not in product_row.prices -%}
+    {%- set _ = product_row.prices.update({item_bracket: {
+      "rate": item.rate
+    }}) -%}
+    {%- endif -%}
+    {%- set quoted_price = product_row.prices[item_bracket] -%}
+    {%- set _ = quoted_price.update({"rate": item.rate}) -%}
+    {%- endfor -%}
+
     <div class="table-wrap">
       <table class="products-table">
         <thead>
           <tr>
             <th style="width:30px;text-align:center;">SL.</th>
             <th style="padding-left:16px;">Produto</th>
-            <th class="center" style="width:90px;padding-right:30px;">Preço</th>
-            <th class="center" style="width:80px;">Qtd</th>
-            <th class="right" style="width:100px;">Subtotal</th>
+            {% for bracket in price_brackets %}
+            {% if bracket in matrix.visible_brackets %}
+            {% if bracket == 30 %}
+            <th class="price-band">30 - 99</th>
+            {% elif bracket == 100 %}
+            <th class="price-band">100 - 299</th>
+            {% elif bracket == 300 %}
+            <th class="price-band">300 - 499</th>
+            {% elif bracket == 500 %}
+            <th class="price-band">500 - 999</th>
+            {% else %}
+            <th class="price-band">1000+</th>
+            {% endif %}
+            {% endif %}
+            {% endfor %}
           </tr>
         </thead>
         <tbody>
-          {% for item in doc.items %}
+          {% for product_key, row in matrix.groups.items() %}
           <tr>
-            <td class="sl">{{ item.idx }}.</td>
+            <td class="sl">{{ loop.index }}.</td>
             <td class="product">
-              <div class="product-name">{{ item.item_name }}</div>
-              {% if item.description and item.description != item.item_name %}
-              <div class="product-desc">{{ item.description }}</div>
+              <div class="product-name">{{ row.item_name }}</div>
+              {% if row.description and row.description != row.item_name %}
+              <div class="product-desc">{{ row.description }}</div>
               {% endif %}
             </td>
-            <td class="center price" style="padding-right:30px">{{ brl(item.rate) }}</td>
-            <td class="center qty">{{ item.qty | int }}</td>
-            <td class="right subtotal">{{ brl(item.amount) }}</td>
+            {% for bracket in price_brackets %}
+            {% if bracket in matrix.visible_brackets %}
+            {% set quoted_price = row.prices.get(bracket) %}
+            <td class="price-band">
+              {% if quoted_price %}
+              <div class="matrix-price">{{ brl(quoted_price.rate) }}</div>
+              <div class="matrix-unit">/un.</div>
+              {% else %}
+              <span class="matrix-empty">-</span>
+              {% endif %}
+            </td>
+            {% endif %}
+            {% endfor %}
           </tr>
           {% endfor %}
         </tbody>

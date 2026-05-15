@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { StatusBadge } from '@/components/ui/badge.jsx';
@@ -192,6 +193,9 @@ export default function QuotationDetailPage({ id, navigate }) {
   }
 
   if (!data) return null;
+
+  const quotationViewUrl = buildQuotationViewUrl(data.id);
+  const fullQuotationViewUrl = new URL(quotationViewUrl, window.location.origin).toString();
 
   return (
     <div className="space-y-4">
@@ -399,7 +403,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 <Pencil size={14} /> Editar
               </Button>
               <a
-                href={`/api/view?q=${encodeURIComponent(data.id)}`}
+                href={quotationViewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -408,7 +412,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 </Button>
               </a>
               <a
-                href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (data.cliente || '') + '! Segue orçamento ' + data.id + ':\n' + window.location.origin + '/api/view?q=' + encodeURIComponent(data.id))}`}
+                href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (data.cliente || '') + '! Segue orçamento ' + data.id + ':\n' + fullQuotationViewUrl)}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >

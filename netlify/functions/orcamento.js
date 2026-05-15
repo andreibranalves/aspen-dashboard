@@ -2,6 +2,7 @@ const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 import { createHttpError, erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
+import { DEFAULT_PRINT_FORMAT } from './lib/print-format.js';
 
 const ERPNEXT_HEADERS = {
   'Authorization': `token ${ERPNEXT_TOKEN}`,
@@ -14,6 +15,11 @@ import { getBracket, getRate, getUrgentRate } from './pricing.js';
 
 async function localGetRate(itemCode, qty) {
   return getRate(itemCode, qty, ERPNEXT_BASE, ERPNEXT_TOKEN);
+}
+
+function buildViewUrl(baseUrl, quotationId) {
+  const params = new URLSearchParams({ q: quotationId });
+  return `${baseUrl}/api/view?${params.toString()}`;
 }
 
 // ── Name helpers ─────────────────────────────────────────────────────────────
@@ -232,7 +238,7 @@ export async function handler(event) {
       dealId = d.name;
     }
 
-    const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=Aspen%201.0&no_letterhead=0`;
+    const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(DEFAULT_PRINT_FORMAT)}&no_letterhead=0`;
 
     let printHtml = null;
     try {
@@ -258,7 +264,8 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
       ? 'http'
       : (event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
 
-    const fullUrl = `${protocol}://${host}/api/view?q=${encodeURIComponent(quotationId)}`;
+    const baseUrl = `${protocol}://${host}`;
+    const fullUrl = buildViewUrl(baseUrl, quotationId);
 
     // ── URL shortening via TinyURL (free, no API key) ──
     let shortUrl = fullUrl;
@@ -288,6 +295,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
         items: savedItems.map(i => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
         pdf_url: pdfUrl,
         print_html: printHtml,
+        view_url: fullUrl,
         short_url: shortUrl,
       }),
     };

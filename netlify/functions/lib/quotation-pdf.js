@@ -63,6 +63,7 @@ export async function generateQuotationPdf(quotationId, opts = {}) {
   const { html, customerName } = await renderQuotationHtml(quotationId, {
     includePrintButton: false,
     forPdf: true,
+    printFormat: opts.printFormat,
   });
 
   // Create temp directory for HTML + PDF output

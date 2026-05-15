@@ -17,6 +17,12 @@ import {
   STEP_TYPES,
   DEFAULT_WA_FLOWS,
 } from '@/lib/whatsappFlows.js';
+import {
+  PRINT_FORMAT_OPTIONS,
+  getPrintFormatLabel,
+  loadActivePrintFormat,
+  saveActivePrintFormat,
+} from '@/lib/printFormats.js';
 
 const STEP_TYPE_LABELS = {
   [STEP_TYPES.TEXT]: 'Texto',
@@ -67,6 +73,7 @@ export default function SettingsPage() {
   const [selectedFlowId, setSelectedFlowId] = useState('');
   const [expandedFlow, setExpandedFlow] = useState(null);
   const [brokenImages, setBrokenImages] = useState({});
+  const [activePrintFormat, setActivePrintFormat] = useState(loadActivePrintFormat);
 
   const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
 
@@ -99,6 +106,10 @@ export default function SettingsPage() {
   }, []);
 
   const selectedFlow = flows.find((f) => f.id === selectedFlowId) || null;
+
+  const handlePrintFormatChange = useCallback((value) => {
+    setActivePrintFormat(saveActivePrintFormat(value));
+  }, []);
 
   const updateSelectedFlow = useCallback(
     (patch) => {
@@ -349,6 +360,56 @@ export default function SettingsPage() {
         title="Configurações"
         description="Estas configurações ficam salvas neste navegador."
       />
+
+      {/* Section: Modelo de visualização */}
+      <div className="rounded-lg border border-framer-hairline bg-card p-5 shadow-sm">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-framer-ink">
+            Modelo ativo do orçamento
+          </h2>
+          <p className="mt-1 text-sm text-framer-ink-muted">
+            Define como os orçamentos serão visualizados neste navegador. O orçamento salvo no ERPNext não muda.
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {PRINT_FORMAT_OPTIONS.map(option => {
+            const selected = option.value === activePrintFormat;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handlePrintFormatChange(option.value)}
+                className={`rounded-[16px] border p-4 text-left transition-all ${
+                  selected
+                    ? 'border-framer-accent-blue bg-framer-accent-blue/5 shadow-sm'
+                    : 'border-framer-hairline bg-framer-surface-1/40 hover:border-framer-accent-blue/40'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-framer-ink">
+                      {option.label}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-framer-ink-muted">
+                      {option.description}
+                    </p>
+                  </div>
+                  {selected && (
+                    <span className="rounded-full bg-framer-accent-blue/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-framer-accent-blue">
+                      Ativo
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="mt-3 text-xs text-framer-ink-muted">
+          Modelo atual: {getPrintFormatLabel(activePrintFormat)}.
+        </p>
+      </div>
 
       {/* Section: Fluxos de WhatsApp */}
       <div>

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import {
   loadWhatsappFlows,
   getSelectedFlowId,
@@ -286,7 +287,7 @@ export default function AutoQuotePage() {
   const handleSendWhatsApp = useCallback(async (draft, resultData) => {
     if (!resultData?.quotation_id) return;
     const key = resultData.quotation_id;
-    const linkOrcamento = resultData.short_url || `${window.location.origin}/api/view?q=${encodeURIComponent(resultData.quotation_id)}`;
+    const linkOrcamento = new URL(buildQuotationViewUrl(resultData.quotation_id), window.location.origin).toString();
     setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sending', message: 'Enviando sequência…' } }));
     try {
       const sequencePayload = selectedWhatsappFlow ? flowToSequencePayload(selectedWhatsappFlow) : null;
@@ -1085,7 +1086,7 @@ export default function AutoQuotePage() {
           {drafts.filter(d => d.status === 'done' || d.status === 'error').map(draft => {
             const data = draft.result?.data;
             const total = calculateResultTotal(data?.items || []);
-            const linkOrcamento = data?.short_url || (data?.quotation_id ? `${window.location.origin}/api/view?q=${encodeURIComponent(data.quotation_id)}` : '');
+            const relativeViewUrl = data?.quotation_id ? buildQuotationViewUrl(data.quotation_id) : '';
             const waStatus = data?.quotation_id ? waSendStatus[data.quotation_id] : null;
             return (
               <div key={draft.index} className={cn(
@@ -1196,7 +1197,7 @@ export default function AutoQuotePage() {
                               : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Configurações.'}
                           </p>
                         )}
-                        <a href={`/api/view?q=${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
+                        <a href={relativeViewUrl || '#'} target="_blank" rel="noopener noreferrer" className="block">
                           <Button variant="outline" size="lg" className="w-full">
                             <FileText size={16} /> Abrir orçamento
                           </Button>

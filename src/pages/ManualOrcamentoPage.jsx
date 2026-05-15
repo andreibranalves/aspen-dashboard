@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
@@ -307,11 +308,12 @@ export default function ManualOrcamentoPage() {
   }, [getClientInfo, items, urgente, prazo, observacoes]);
 
   // ── WhatsApp link builder ──
-  const buildWaLink = useCallback((telefone, nome, quotationId) => {
+  const buildWaLink = useCallback((telefone, nome, quotationId, quotationLink) => {
     if (!telefone) return null;
     const digits = telefone.replace(/\D/g, '').replace(/^55(\d{10,11})$/, '$1');
     if (digits.length < 10) return null;
-    const text = `Olá, ${nome}! Segue seu orçamento ${quotationId}. Qualquer dúvida estamos à disposição. Aspen Estamparia`;
+    const linkLine = quotationLink ? `\n${quotationLink}` : '';
+    const text = `Olá, ${nome}! Segue seu orçamento ${quotationId}.${linkLine}\nQualquer dúvida estamos à disposição. Aspen Estamparia`;
     return `https://wa.me/55${digits}?text=${encodeURIComponent(text)}`;
   }, []);
 
@@ -353,9 +355,9 @@ export default function ManualOrcamentoPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {result.pdf_url && (
+            {result.quotation_id && (
               <a
-                href={result.pdf_url}
+                href={buildQuotationViewUrl(result.quotation_id)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
@@ -363,19 +365,10 @@ export default function ManualOrcamentoPage() {
                 <ExternalLink size={14} /> Visualizar PDF
               </a>
             )}
-            {result.short_url && (
-              <a
-                href={result.short_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
-              >
-                <ExternalLink size={14} /> Link do orçamento
-              </a>
-            )}
             {(() => {
               const info = getClientInfo();
-              const waLink = buildWaLink(info.telefone, result.cliente, result.quotation_id);
+              const quotationLink = result.quotation_id ? new URL(buildQuotationViewUrl(result.quotation_id), window.location.origin).toString() : '';
+              const waLink = buildWaLink(info.telefone, result.cliente, result.quotation_id, quotationLink);
               return waLink ? (
                 <a
                   href={waLink}

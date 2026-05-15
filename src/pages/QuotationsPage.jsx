@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Plus, Sparkles, Phone, Pencil, FileText, Trash2, AlertTriangle, Clipboard, PlusCircle } from 'lucide-react';
 import { apiGet, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { StatusBadge } from '@/components/ui/badge.jsx';
@@ -189,21 +190,25 @@ export default function QuotationsPage({ navigate }) {
     );
   };
 
-  const actionButtons = (row) => (
-    <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
-      <ActionBtn icon={Phone} label={`Enviar WhatsApp para ${row.cliente || row.id}`}
-        href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id)}`}
-        colorClass="hover:bg-green-500/10 hover:text-green-600" />
-      <ActionBtn icon={Pencil} label={`Editar orçamento ${row.id}`}
-        onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)} />
-      <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`}
-        href={`/api/view?q=${encodeURIComponent(row.id)}`}
-        colorClass="hover:bg-red-500/10 hover:text-red-600" />
-      <ActionBtn icon={Trash2} label={`Excluir orçamento ${row.id}`}
-        onClick={() => handleDelete(row.id)}
-        colorClass="hover:bg-red-500/10 hover:text-red-600" />
-    </div>
-  );
+  const actionButtons = (row) => {
+    const viewUrl = buildQuotationViewUrl(row.id);
+    const fullViewUrl = new URL(viewUrl, window.location.origin).toString();
+    return (
+      <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
+        <ActionBtn icon={Phone} label={`Enviar WhatsApp para ${row.cliente || row.id}`}
+          href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id + ':\n' + fullViewUrl)}`}
+          colorClass="hover:bg-green-500/10 hover:text-green-600" />
+        <ActionBtn icon={Pencil} label={`Editar orçamento ${row.id}`}
+          onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)} />
+        <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`}
+          href={viewUrl}
+          colorClass="hover:bg-red-500/10 hover:text-red-600" />
+        <ActionBtn icon={Trash2} label={`Excluir orçamento ${row.id}`}
+          onClick={() => handleDelete(row.id)}
+          colorClass="hover:bg-red-500/10 hover:text-red-600" />
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4 pb-28">
@@ -395,10 +400,10 @@ export default function QuotationsPage({ navigate }) {
                 <span className="font-mono font-semibold">{formatBRL(row.valor)}</span>
                 <div className="flex items-center gap-0.5">
                   <ActionBtn icon={Phone} label={`WhatsApp ${row.id}`}
-                    href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id)}`}
+                    href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id + ':\n' + new URL(buildQuotationViewUrl(row.id), window.location.origin).toString())}`}
                     colorClass="hover:bg-green-500/10 hover:text-green-600" />
                   <ActionBtn icon={FileText} label={`PDF ${row.id}`}
-                    href={`/api/view?q=${encodeURIComponent(row.id)}`}
+                    href={buildQuotationViewUrl(row.id)}
                     colorClass="hover:bg-red-500/10 hover:text-red-600" />
                 </div>
               </div>

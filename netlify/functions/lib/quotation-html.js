@@ -4,6 +4,8 @@
 
 const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 
+import { normalizePrintFormat } from './print-format.js';
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -43,8 +45,9 @@ async function resolveLeadName(partyName) {
  */
 export async function renderQuotationHtml(quotationId, opts = {}) {
   const { includePrintButton = true, forPdf = false } = opts;
+  const printFormat = normalizePrintFormat(opts.printFormat);
   const token = process.env.ERPNEXT_TOKEN;
-  const url = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=Aspen%201.0&no_letterhead=0`;
+  const url = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
   let html;
   let customerName = '';
