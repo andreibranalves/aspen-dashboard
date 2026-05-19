@@ -1,12 +1,12 @@
 // playwright-test-react.mjs
 // Test suite completo para o React frontend (feat/react-frontend)
-// Roda contra http://localhost:8888 (server.mjs servindo o build React)
+// Roda contra Vercel Dev em http://localhost:3000
 //
 // Uso: node playwright-test-react.mjs
 
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:8888';
+const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const PASS = [];
 const FAIL = [];
 let total = 0;

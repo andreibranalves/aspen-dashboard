@@ -17,14 +17,14 @@ globalThis.fetch = async (url, options = {}) => {
   };
 };
 
-const { handler } = await import('../netlify/functions/send-whatsapp.js?test=' + Date.now());
+const { handler } = await import('../api/_functions/send-whatsapp.js?test=' + Date.now());
 
 const basePayload = {
   dry_run: true,
   telefone: '(21) 99999-9999',
   nome: 'Labo Buriti',
   quotation_id: 'ORC-20261289',
-  link_orcamento: 'https://aspen-orcamento.netlify.app/api/view?q=ORC-20261289',
+  link_orcamento: 'https://project-xr5jg.vercel.app/api/view?q=ORC-20261289',
   items: [{ sku: 'CNG-SAL-70', qty: 50 }, { sku: 'CNG-SAL-100', qty: 50 }],
 };
 
@@ -39,8 +39,8 @@ const payload = {
     max_images_per_category: 2,
     sample_images: {
       canga: [
-        'https://aspen-orcamento.netlify.app/whatsapp-samples/canga-01.jpg',
-        'https://aspen-orcamento.netlify.app/whatsapp-samples/canga-02.jpg',
+        'https://project-xr5jg.vercel.app/whatsapp-samples/canga-01.jpg',
+        'https://project-xr5jg.vercel.app/whatsapp-samples/canga-02.jpg',
       ],
     },
     steps: [
@@ -54,7 +54,7 @@ const payload = {
 
 const res = await handler({
   httpMethod: 'POST',
-  headers: { host: 'aspen-orcamento.netlify.app', 'x-forwarded-proto': 'https' },
+  headers: { host: 'project-xr5jg.vercel.app', 'x-forwarded-proto': 'https' },
   body: JSON.stringify(payload),
   queryStringParameters: {},
 });
@@ -69,7 +69,7 @@ assert.equal(body.steps.length, 5);
 assert.deepEqual(body.steps.map(step => step.type), ['text', 'text', 'text', 'image', 'image']);
 assert.match(body.steps[1].text, /Juliana/);
 assert.match(body.steps[1].text, /canga/i);
-assert.equal(body.steps[3].media, 'https://aspen-orcamento.netlify.app/whatsapp-samples/canga-01.jpg');
+assert.equal(body.steps[3].media, 'https://project-xr5jg.vercel.app/whatsapp-samples/canga-01.jpg');
 assert.equal(body.delay_min_ms, 10);
 assert.equal(body.delay_max_ms, 20);
 
@@ -86,7 +86,7 @@ const firstContactPayload = {
 
 const resA = await handler({
   httpMethod: 'POST',
-  headers: { host: 'aspen-orcamento.netlify.app', 'x-forwarded-proto': 'https' },
+  headers: { host: 'project-xr5jg.vercel.app', 'x-forwarded-proto': 'https' },
   body: JSON.stringify(firstContactPayload),
   queryStringParameters: {},
 });
@@ -120,7 +120,7 @@ const alreadyTalkingPayload = {
 
 const resB = await handler({
   httpMethod: 'POST',
-  headers: { host: 'aspen-orcamento.netlify.app', 'x-forwarded-proto': 'https' },
+  headers: { host: 'project-xr5jg.vercel.app', 'x-forwarded-proto': 'https' },
   body: JSON.stringify(alreadyTalkingPayload),
   queryStringParameters: {},
 });

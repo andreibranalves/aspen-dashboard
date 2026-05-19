@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:vercel": "vercel dev",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "node server.mjs",
+    "server": "vercel dev",
     "test": "node test_local.mjs",
     "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs",
     "test:whatsapp-flows": "node scripts/test-whatsapp-flows.mjs"
@@ -29,6 +30,7 @@
     "playwright": "^1.59.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "yarn": "^1.22.22"
   }
 }

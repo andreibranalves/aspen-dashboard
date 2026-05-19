@@ -12,11 +12,11 @@ Instructions for code agents working in the Orcamento App subproject. This appli
 ## Dev Server
 
 ```bash
-netlify dev
+vercel dev
 ```
-Runs at `http://localhost:8888`. Functions are served at `/.netlify/functions/*` and proxied via `/api/*` (defined in `netlify.toml`).
+Runs Vercel Dev locally. The app and API routes are served from the Vercel project configuration in `vercel.json`; API endpoints are exposed at `/api/*`.
 
-Alternative: `node server.mjs` — standalone Node HTTP server on port 8888 that imports function handlers directly. Useful when Netlify CLI is unavailable.
+Alternative npm command: `npm run dev:vercel`. Frontend-only command: `npm run dev`.
 
 ## Testing
 
@@ -30,23 +30,24 @@ Runs both functions end-to-end against real ERPNext. Edit the `text` array at th
 
 | Variable | Where set | Purpose |
 |---|---|---|
-| `ERPNEXT_TOKEN` | `.env` (local) + Netlify dashboard (prod) | ERPNext API auth |
-| `OPENROUTER_API_KEY` | `.env` (local) + Netlify dashboard (prod) | OpenRouter API auth |
-| `OPENROUTER_MODEL` | `.env` (local) + Netlify dashboard (prod) | Optional model override for extraction |
-| `APP_PASSWORD` | Netlify project settings | UI access password |
-| `SMTP_PASSWORD` | `.env` (local) + Netlify dashboard (prod) | Hostinger SMTP — `orcamento@aspenestamparia.com` |
+| `ERPNEXT_TOKEN` | `.env` (local) + Vercel project env (prod) | ERPNext API auth |
+| `OPENROUTER_API_KEY` | `.env` (local) + Vercel project env (prod) | OpenRouter API auth |
+| `OPENROUTER_MODEL` | `.env` (local) + Vercel project env (prod) | Optional model override for extraction |
+| `APP_PASSWORD` | Vercel project env | UI access password |
+| `SMTP_PASSWORD` | `.env` (local) + Vercel project env (prod) | Hostinger SMTP — `orcamento@aspenestamparia.com` |
 
 ## Architecture
 
-Single-page app (`public/index.html`) + five Netlify Functions:
+Single-page app (`src` built by Vite into `public`) + Vercel API entrypoint:
 
 | Function | Route | Purpose |
 |----------|-------|---------|
-| `extract.js` | `POST /api/extract` | Sends text/image to OpenRouter; returns structured orders |
-| `orcamento.js` | `POST /api/orcamento` | Creates ERPNext Quotation + CRM Deal |
-| `edit-draft.js` | `POST /api/edit-draft` | Natural-language editing of draft quotations via OpenRouter |
-| `view.js` | `GET /api/view?q={id}` | Renders quotation HTML for browser/print preview |
-| `pricing.js` | _(shared lib)_ | Pricing bracket/rate logic; imported by `orcamento.js` — no handler export |
+| `api/[...path].js` | `/api/*` | Vercel catch-all API route that dispatches to internal handlers |
+| `api/_functions/extract.js` | `POST /api/extract` | Sends text/image to OpenRouter; returns structured orders |
+| `api/_functions/orcamento.js` | `POST /api/orcamento` | Creates ERPNext Quotation + CRM Deal |
+| `api/_functions/edit-draft.js` | `POST /api/edit-draft` | Natural-language editing of draft quotations via OpenRouter |
+| `api/_functions/view.js` | `GET /api/view?q={id}` | Renders quotation HTML for browser/print preview |
+| `api/_functions/pricing.js` | _(shared lib)_ | Pricing bracket/rate logic; imported by `orcamento.js` — no handler export |
 | `send-email.js` | _(MISSING)_ | ⚠️ Source file deleted — only `:Zone.Identifier` artifact remains. Function is not deployed. |
 
 ### Two-phase pipeline
@@ -108,9 +109,9 @@ Format: `ORC-YYYY####` (e.g. `ORC-20261143`). Configured in ERPNext at `/app/nam
 ### Module System
 - **ESM everywhere** (`package.json` has `"type": "module"`)
 - Local imports use explicit `.js` extension: `import { getRate } from './pricing.js'`
-- `server.mjs` and `test_local.mjs` use `.mjs` extension for standalone scripts; function files use `.js`
+- `test_local.mjs` uses `.mjs` extension for standalone scripts; function files use `.js`
 
-### Handler Skeleton (all Netlify functions)
+### Handler Skeleton (internal API functions)
 ```js
 export async function handler(event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
@@ -138,7 +139,6 @@ Exception: `view.js` is a GET handler — skips method guard, returns `text/html
 ### Logging
 - `console.error('[functionName]', msg)` — tagged format (extract.js, edit-draft.js)
 - `console.warn(...)` for non-fatal issues
-- `server.mjs`: ISO timestamp + method + path for request logging
 
 ### Naming
 | Scope | Convention | Examples |
@@ -159,7 +159,7 @@ Exception: `view.js` is a GET handler — skips method guard, returns `text/html
 
 - **Do not use ERPNext `download_pdf` API** for final PDFs — `wkhtmltopdf` renders differently. Use Chrome/Edge headless with `--headless=new`.
 - **Do not use legacy `--headless` mode** — always `--headless=new`.
-- **Do not deploy after every small change** — validate with `netlify dev` first.
+- **Do not deploy after every small change** — validate with `vercel dev` first.
 - **Do not use `require()`** — ESM only.
 - **Do not skip `.js` extension** on local imports — ESM requires it.
 - **Do not suppress errors silently** — always log + return structured error response.
@@ -172,7 +172,7 @@ Exception: `view.js` is a GET handler — skips method guard, returns `text/html
 ## Deploy
 
 ```bash
-netlify deploy --prod
+vercel deploy --prod
 ```
 
-Validate locally with `netlify dev` before deploying. Do not deploy after every small change.
+Validate locally with `vercel dev` before deploying. Do not deploy after every small change.

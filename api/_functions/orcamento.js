@@ -258,7 +258,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
       console.error('Printview fetch failed:', htmlErr.message);
     }
 
-    const host = event.headers?.host || 'aspen-orcamento.netlify.app';
+    const host = event.headers?.host || 'project-xr5jg.vercel.app';
     const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
     const protocol = isLocalHost
       ? 'http'

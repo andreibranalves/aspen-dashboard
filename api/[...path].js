@@ -1,23 +1,23 @@
-import { wrapNetlifyHandler } from './_lib/netlify-adapter.js';
+import { wrapFunctionHandler } from './_lib/function-adapter.js';
 
-import { handler as crmDeals } from '../netlify/functions/crm-deals.js';
-import { handler as crmUpdateDeal } from '../netlify/functions/crm-update-deal.js';
-import { handler as editDraft } from '../netlify/functions/edit-draft.js';
-import { handler as extract } from '../netlify/functions/extract.js';
-import { handler as freight } from '../netlify/functions/freight.js';
-import { handler as leadsClients } from '../netlify/functions/leads-clients.js';
-import { handler as orcamento } from '../netlify/functions/orcamento.js';
-import { handler as pricingLookup } from '../netlify/functions/pricing-lookup.js';
-import { handler as productDetail } from '../netlify/functions/product-detail.js';
-import { handler as productPricingUpdate } from '../netlify/functions/product-pricing-update.js';
-import { handler as productPricing } from '../netlify/functions/product-pricing.js';
-import { handler as products } from '../netlify/functions/products.js';
-import { handler as quotations } from '../netlify/functions/quotations.js';
-import { handler as salesDashboard } from '../netlify/functions/sales-dashboard.js';
-import { handler as salesOrderFromQuotation } from '../netlify/functions/sales-order-from-quotation.js';
-import { handler as salesOrders } from '../netlify/functions/sales-orders.js';
-import { handler as sendWhatsapp } from '../netlify/functions/send-whatsapp.js';
-import { handler as view } from '../netlify/functions/view.js';
+import { handler as crmDeals } from './_functions/crm-deals.js';
+import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
+import { handler as editDraft } from './_functions/edit-draft.js';
+import { handler as extract } from './_functions/extract.js';
+import { handler as freight } from './_functions/freight.js';
+import { handler as leadsClients } from './_functions/leads-clients.js';
+import { handler as orcamento } from './_functions/orcamento.js';
+import { handler as pricingLookup } from './_functions/pricing-lookup.js';
+import { handler as productDetail } from './_functions/product-detail.js';
+import { handler as productPricingUpdate } from './_functions/product-pricing-update.js';
+import { handler as productPricing } from './_functions/product-pricing.js';
+import { handler as products } from './_functions/products.js';
+import { handler as quotations } from './_functions/quotations.js';
+import { handler as salesDashboard } from './_functions/sales-dashboard.js';
+import { handler as salesOrderFromQuotation } from './_functions/sales-order-from-quotation.js';
+import { handler as salesOrders } from './_functions/sales-orders.js';
+import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
+import { handler as view } from './_functions/view.js';
 
 const ROUTES = {
   'crm-deals': crmDeals,
@@ -57,5 +57,5 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Endpoint não encontrado.' });
   }
 
-  return wrapNetlifyHandler(routeHandler)(req, res);
+  return wrapFunctionHandler(routeHandler)(req, res);
 }

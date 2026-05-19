@@ -1,12 +1,12 @@
 // test-manual-orcamento.mjs
 // Teste E2E para a página de Orçamento Manual (#/manual)
-// Roda contra http://localhost:8888 (server.mjs servindo o build React)
+// Roda contra Vercel Dev em http://localhost:3000
 //
 // Uso: node scripts/test-manual-orcamento.mjs
 
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:8888';
+const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const PASS = [];
 const FAIL = [];
 let total = 0;

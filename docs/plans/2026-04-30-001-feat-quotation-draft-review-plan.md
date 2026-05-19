@@ -68,11 +68,11 @@ The current pipeline moves too quickly from extracted orders to ERPNext quotatio
 - `public/index.html` lines 960–1036 — form submit handler; the insertion point for the review stage is between card rendering (line 1007) and the creation loop (line 1014). The `orders` array is local to the submit handler closure.
 - `public/index.html` lines 682–690 — localStorage settings pattern (`aspen_rules`, `aspen_wa_template`) that can be reused for draft snapshot persistence.
 - `public/index.html` lines 860–880 (`createCard`), 891–945 (`setCardDone`), 947–958 (`setCardError`) — existing card lifecycle that the draft review stage can extend with an intermediate `setCardDraft` state.
-- `netlify/functions/orcamento.js` lines 134–142 (`getRate`) — pricing resolution currently only callable during creation; must be extracted to a shared module.
-- `netlify/functions/orcamento.js` line 136 — `if (!item.rate)` guard that already skips pricing when a rate is pre-set, enabling draft pricing overrides.
-- `netlify/functions/extract.js` — existing natural-language to structured orders pipeline; reusable as the prompt-interpretation endpoint.
-- `fast-json-patch` — zero-dependency RFC 6902 library chosen for patch validation and apply on a Netlify Functions cold-start profile.
-- `server.mjs` — local dev server; must proxy the prompt endpoint for local testing.
+- `api/_functions/orcamento.js` lines 134–142 (`getRate`) — pricing resolution currently only callable during creation; must be extracted to a shared module.
+- `api/_functions/orcamento.js` line 136 — `if (!item.rate)` guard that already skips pricing when a rate is pre-set, enabling draft pricing overrides.
+- `api/_functions/extract.js` — existing natural-language to structured orders pipeline; reusable as the prompt-interpretation endpoint.
+- `fast-json-patch` — zero-dependency RFC 6902 library chosen for patch validation and apply on a Vercel API functions cold-start profile.
+- `api/[...path].js` — local dev server; must proxy the prompt endpoint for local testing.
 
 ### Institutional Learnings
 
@@ -127,21 +127,21 @@ The current pipeline moves too quickly from extracted orders to ERPNext quotatio
 **Dependencies:** None
 
 **Files:**
-- Create: `netlify/functions/pricing.js` — exports `getRate(itemCode, qty, urgente)`
-- Modify: `netlify/functions/orcamento.js` — import `getRate` from `./pricing.js`, remove inline function
+- Create: `api/_functions/pricing.js` — exports `getRate(itemCode, qty, urgente)`
+- Modify: `api/_functions/orcamento.js` — import `getRate` from `./pricing.js`, remove inline function
 - Modify: `public/index.html` — import or inline the pricing logic for client-side rate display (via a script include or data attribute pre-load)
 - Test: `test_local.mjs` — verify pricing module returns expected rates for known SKUs
 
 **Approach:**
 - Extract the tiered lookup (`Pricing Rule` title = `{SKU}-{bracket}` → `{SKU}` → `Item Price` fallback) from `orcamento.js` into a standalone function.
-- Export as ES module so both the Netlify Function (Node.js ESM) and the frontend (via a pre-baked JSON pricing cache served at page load) can resolve rates.
+- Export as ES module so both the Vercel API function (Node.js ESM) and the frontend (via a pre-baked JSON pricing cache served at page load) can resolve rates.
 - The existing guard `if (!item.rate)` in `orcamento.js` is preserved — draft-approved rates pass through unchanged.
 
 **Execution note:** Implement the shared module test-first against known ERPNext catalog data.
 
 **Patterns to follow:**
-- `netlify/functions/orcamento.js` lines 49–84 (current `getRate` implementation)
-- `netlify/functions/orcamento.js` line 136 (existing `if (!item.rate)` guard)
+- `api/_functions/orcamento.js` lines 49–84 (current `getRate` implementation)
+- `api/_functions/orcamento.js` line 136 (existing `if (!item.rate)` guard)
 
 **Test scenarios:**
 - Happy path: `getRate('LNC-SED-70', 100)` returns the tiered rule rate for the 100 bracket.
@@ -222,7 +222,7 @@ The current pipeline moves too quickly from extracted orders to ERPNext quotatio
 **Dependencies:** U2
 
 **Files:**
-- Create: `netlify/functions/edit-draft.js` — or modify `extract.js` to accept a draft context parameter and a prompt instruction
+- Create: `api/_functions/edit-draft.js` — or modify `extract.js` to accept a draft context parameter and a prompt instruction
 - Modify: `public/index.html` — add prompt input, "Propor mudanças" button, and diff preview overlay per draft card
 
 **Approach:**
@@ -235,7 +235,7 @@ The current pipeline moves too quickly from extracted orders to ERPNext quotatio
 **Execution note:** Start with a minimal prompt endpoint that returns full proposed drafts; add JSON Patch-based diffing in a follow-up refinement if the full-regeneration approach works reliably enough for v1.
 
 **Patterns to follow:**
-- `netlify/functions/extract.js` — `extractWithOpenRouter()` function for AI call pattern
+- `api/_functions/extract.js` — `extractWithOpenRouter()` function for AI call pattern
 - `public/index.html` — `setCardProcessing()` / `setCardDone()` for showing processing and result states
 
 **Test scenarios:**
@@ -386,7 +386,7 @@ The current pipeline moves too quickly from extracted orders to ERPNext quotatio
 ## Documentation / Operational Notes
 
 - Update `AGENTS.md` Architecture section to reflect the three-phase pipeline (extract → review → create).
-- The pricing module (`netlify/functions/pricing.js`) becomes a dependency for `orcamento.js` — document the import path in relevant function headers.
+- The pricing module (`api/_functions/pricing.js`) becomes a dependency for `orcamento.js` — document the import path in relevant function headers.
 
 ---
 
@@ -394,6 +394,6 @@ The current pipeline moves too quickly from extracted orders to ERPNext quotatio
 
 - **Origin document:** [docs/brainstorms/2026-04-30-quotation-draft-review-requirements.md](docs/brainstorms/2026-04-30-quotation-draft-review-requirements.md)
 - **Ideation document:** [docs/ideation/2026-04-30-quotation-review-editing-ideation.md](docs/ideation/2026-04-30-quotation-review-editing-ideation.md)
-- Related code: `public/index.html` (form submit handler), `netlify/functions/orcamento.js` (pricing + creation), `netlify/functions/extract.js` (extraction endpoint)
+- Related code: `public/index.html` (form submit handler), `api/_functions/orcamento.js` (pricing + creation), `api/_functions/extract.js` (extraction endpoint)
 - Related work: `.sisyphus/notepads/task-1/learnings.md`, `.sisyphus/plans/fix-erpnext-quotation-customer-name-print.md`
 - External docs: `fast-json-patch` (npm), JSON Whisperer (EMNLP 2025)

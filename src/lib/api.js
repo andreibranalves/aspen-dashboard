@@ -1,5 +1,5 @@
 /**
- * API wrapper para chamadas ao backend Netlify Functions.
+ * API wrapper para chamadas ao backend Vercel.
  */
 
 const BASE = '/api';

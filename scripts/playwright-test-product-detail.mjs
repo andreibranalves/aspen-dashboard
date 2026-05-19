@@ -1,7 +1,7 @@
 // E2E test: Product detail page — list → detail → edit pricing → save/cancel
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:8888';
+const BASE = 'http://localhost:3000';
 
 async function main() {
   const browser = await chromium.launch({ headless: true });

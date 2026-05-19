@@ -6,7 +6,7 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
 try {
-  await page.goto('http://localhost:8888', { waitUntil: 'networkidle' });
+  await page.goto('http://localhost:3000', { waitUntil: 'networkidle' });
   await page.evaluate(() => { location.hash = '#/freight'; });
   await page.waitForTimeout(1000);
 

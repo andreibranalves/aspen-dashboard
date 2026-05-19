@@ -73,7 +73,7 @@ function toPositiveInt(value, fallback, min, max) {
 }
 
 function publicBaseUrl(event) {
-  const host = event.headers?.host || 'aspen-orcamento.netlify.app';
+  const host = event.headers?.host || 'project-xr5jg.vercel.app';
   const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
   const protocol = isLocalHost
     ? 'http'

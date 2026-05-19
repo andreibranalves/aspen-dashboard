@@ -14,8 +14,8 @@ Expand the Products page so users can click a product row, see full details, vie
 
 | Method | Route | Function file | Purpose |
 |--------|-------|---------------|---------|
-| `GET` | `/api/products/:sku` | `netlify/functions/product-detail.js` | Full product info + all 5 bracket prices |
-| `PUT` | `/api/products/:sku/pricing` | `netlify/functions/product-pricing-update.js` | Update rate for one or more bracket(s) |
+| `GET` | `/api/products/:sku` | `api/_functions/product-detail.js` | Full product info + all 5 bracket prices |
+| `PUT` | `/api/products/:sku/pricing` | `api/_functions/product-pricing-update.js` | Update rate for one or more bracket(s) |
 
 ### New frontend route
 
@@ -142,7 +142,7 @@ Sub-components (inline, no separate files unless complexity warrants):
 - Add route: `#/products/:sku` → `<ProductDetailPage />`
 - `useHashRoute` already supports parameter extraction (pattern used by `#/quotations/:id`)
 
-### New: `netlify/functions/product-detail.js`
+### New: `api/_functions/product-detail.js`
 
 GET handler:
 1. Extract SKU from path
@@ -150,7 +150,7 @@ GET handler:
 3. Parallel: fetch 5 Pricing Rules by title
 4. Return unified JSON
 
-### New: `netlify/functions/product-pricing-update.js`
+### New: `api/_functions/product-pricing-update.js`
 
 PUT handler:
 1. Extract SKU from path
@@ -159,7 +159,7 @@ PUT handler:
    - Update or create
 3. Return per-bracket results
 
-### Modified: `server.mjs`
+### Modified: `api/[...path].js`
 
 - Add import for `productDetailHandler` and `productPricingUpdateHandler`
 - Add route blocks for `GET /api/products/:sku` and `PUT /api/products/:sku/pricing`
@@ -180,7 +180,7 @@ PUT handler:
 ## Implementation order
 
 1. Backend: `product-detail.js` + `product-pricing-update.js`
-2. Backend: register routes in `server.mjs`
+2. Backend: register routes in `api/[...path].js`
 3. Frontend: `ProductDetailPage.jsx` component
 4. Frontend: wire route in `App.jsx`
 5. Frontend: add row click in `ProductsPage.jsx`

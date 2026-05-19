@@ -1,10 +1,10 @@
 // test-product-detail.mjs
 // Playwright E2E para ProductDetailPage + pricing table + edit mode
-// Roda contra http://localhost:8888
+// Roda contra Vercel Dev em http://localhost:3000
 
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:8888';
+const BASE = 'http://localhost:3000';
 const PASS = [];
 const FAIL = [];
 let total = 0;

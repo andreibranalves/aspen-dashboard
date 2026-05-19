@@ -22,7 +22,7 @@ function setHeaders(res, headers = {}) {
   }
 }
 
-export function toNetlifyEvent(req) {
+export function toFunctionEvent(req) {
   return {
     httpMethod: req.method,
     headers: req.headers || {},
@@ -31,15 +31,15 @@ export function toNetlifyEvent(req) {
   };
 }
 
-export function sendNetlifyResult(res, result) {
+export function sendFunctionResult(res, result) {
   const statusCode = result?.statusCode || 200;
   setHeaders(res, result?.headers);
   res.status(statusCode).send(result?.body ?? '');
 }
 
-export function wrapNetlifyHandler(netlifyHandler) {
+export function wrapFunctionHandler(functionHandler) {
   return async function vercelHandler(req, res) {
-    const result = await netlifyHandler(toNetlifyEvent(req));
-    sendNetlifyResult(res, result);
+    const result = await functionHandler(toFunctionEvent(req));
+    sendFunctionResult(res, result);
   };
 }

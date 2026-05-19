@@ -17,9 +17,9 @@ const ERPNEXT_HEADERS = {
   'Content-Type': 'application/json',
 };
 
-const { handler: extractHandler } = await import('./netlify/functions/extract.js');
-const { handler: orcamentoHandler } = await import('./netlify/functions/orcamento.js');
-const { handler: pricingLookupHandler } = await import('./netlify/functions/pricing-lookup.js');
+const { handler: extractHandler } = await import('./api/_functions/extract.js');
+const { handler: orcamentoHandler } = await import('./api/_functions/orcamento.js');
+const { handler: pricingLookupHandler } = await import('./api/_functions/pricing-lookup.js');
 
 let failures = 0;
 
@@ -54,7 +54,7 @@ async function lookupPricing(items, urgent = false) {
 
 // Fetch printview through the view.js handler (/api/view)
 async function fetchPrintviewViaViewHandler(quotationId) {
-  const { handler: viewHandler } = await import('./netlify/functions/view.js');
+  const { handler: viewHandler } = await import('./api/_functions/view.js');
   const res = await viewHandler({ queryStringParameters: { q: quotationId } });
   if (res.statusCode !== 200) { console.error(`  view handler returned ${res.statusCode}`); return null; }
   return res.body;
