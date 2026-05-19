@@ -603,9 +603,41 @@ export default function AutoQuotePage() {
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
                 className="mt-4 inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted transition-colors hover:border-primary/30 hover:text-primary"
+                aria-expanded={showSettings}
+                aria-controls="auto-extraction-rules"
               >
                 <Settings size={14} /> Regras de extração
               </button>
+              {showSettings && (
+                <div id="auto-extraction-rules" className="mt-4 rounded-[16px] border border-framer-hairline bg-framer-surface-1 p-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div>
+                      <label htmlFor="auto-extraction-rules-textarea" className="text-xs font-semibold text-framer-ink">
+                        Regras atuais
+                      </label>
+                      <p className="mt-1 text-xs text-framer-ink-muted">
+                        Instruções adicionais enviadas para a IA, uma por linha.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-medium text-primary hover:underline"
+                      onClick={() => { setRulesState(''); saveRules(''); }}
+                    >
+                      Restaurar padrão
+                    </button>
+                  </div>
+                  <textarea
+                    id="auto-extraction-rules-textarea"
+                    className="min-h-[150px] w-full resize-y rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                    value={rules}
+                    onChange={e => { setRulesState(e.target.value); saveRules(e.target.value); }}
+                    placeholder="Ex: Sempre incluir SKU-XYZ para pedidos acima de 100 unidades."
+                    disabled={submitting}
+                  />
+                  <p className="mt-2 text-xs text-framer-ink-muted">Salvo automaticamente neste navegador.</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -621,52 +653,6 @@ export default function AutoQuotePage() {
             </div>
           )}
         </form>
-      )}
-
-      {/* Settings panel */}
-      {showSettings && (
-        <div className="rounded-[24px] border border-framer-hairline bg-card p-5 shadow-sm md:p-6">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold text-framer-ink">Regras operacionais</h3>
-              <p className="mt-1 text-sm text-framer-ink-muted">Ajustes finos enviados para a IA na extração dos pedidos.</p>
-            </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setShowSettings(false)}>
-              <X size={14} /> Fechar
-            </Button>
-          </div>
-          <div className="grid gap-5 lg:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium">Regras de extração</label>
-              <p className="mb-2 mt-1 text-xs text-muted-foreground">
-                Instruções adicionais enviadas ao modelo na extração, uma por linha.
-              </p>
-              <textarea
-                className="min-h-[140px] w-full resize-y rounded-[16px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                value={rules}
-                onChange={e => { setRulesState(e.target.value); saveRules(e.target.value); }}
-                placeholder="Ex: Sempre incluir SKU-XYZ para pedidos acima de 100 unidades."
-              />
-              <button
-                type="button"
-                className="mt-2 text-xs font-medium text-primary hover:underline"
-                onClick={() => { setRulesState(''); saveRules(''); }}
-              >
-                Restaurar padrão
-              </button>
-            </div>
-            <div>
-              <label className="text-sm font-medium">WhatsApp</label>
-              <p className="mb-2 mt-1 text-xs text-muted-foreground">
-                Os fluxos de WhatsApp agora são configurados na página de{' '}
-                <a href="#settings" className="font-medium text-primary hover:underline">
-                  Configurações
-                </a>
-                .
-              </p>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Extracting — inline inside same card layout */}
