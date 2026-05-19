@@ -43,7 +43,10 @@ const ROUTES = {
 function getRouteName(req) {
   const path = req.query?.path;
   if (Array.isArray(path)) return path[0];
-  return path;
+  if (path) return path;
+
+  const url = new URL(req.url || '/', 'https://aspen-orcamento.local');
+  return url.pathname.replace(/^\/api\/?/, '').split('/')[0];
 }
 
 export default async function handler(req, res) {
