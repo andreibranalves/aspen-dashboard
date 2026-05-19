@@ -90,7 +90,7 @@ export async function handler(event) {
       }
     }
 
-    items = items.map(({ manual_rate, ...item }) => item);
+    items = items.map(({ manual_rate, ...item }) => ({ ...item, _rateManual: true }));
 
     let entityId;
     let entityType = 'Customer';
@@ -191,7 +191,7 @@ export async function handler(event) {
       items,
       remarks: remarksParts.join(' | '),
     };
-    if (hasAnyManualRate || urgente) quotePayload.ignore_pricing_rule = 1;
+    quotePayload.ignore_pricing_rule = 1;
     if (prazo) quotePayload.custom_prazo_producao = prazo;
     if (email) quotePayload.contact_email = email;
     if (telefone) quotePayload.contact_mobile = telefone;
