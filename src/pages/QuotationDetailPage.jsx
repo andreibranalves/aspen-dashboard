@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
+import { cn } from '@/lib/utils.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -21,6 +22,10 @@ const STATUS_LABELS = {
   Cancelled: 'Cancelado',
 };
 
+function makeItemKey() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function QuotationDetailPage({ id, navigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +37,14 @@ export default function QuotationDetailPage({ id, navigate }) {
   const [converting, setConverting] = useState(false);
   const [convertStatus, setConvertStatus] = useState('');
 
+  // ── Product autocomplete ──
+  const [productSearchTerms, setProductSearchTerms] = useState({}); // { _key: searchText }
+  const [productResults, setProductResults] = useState({});          // { _key: [...] }
+  const [productSearching, setProductSearching] = useState({});      // { _key: bool }
+  const [activeDropdown, setActiveDropdown] = useState(null);        // _key or null
+  const productTimer = useRef(null);
+  const pricingTimers = useRef({});  // { _key: timeoutId }
+
   // ── Load ──
   const loadDetail = useCallback(async () => {
     if (!id) return;
@@ -41,7 +54,7 @@ export default function QuotationDetailPage({ id, navigate }) {
       const result = await apiGet(`/quotations?id=${encodeURIComponent(id)}`);
       if (!result || !result.id) throw new Error('Orçamento não encontrado.');
       setData(result);
-      setEditedItems((result.items || []).map(item => ({ ...item })));
+      setEditedItems((result.items || []).map(item => ({ ...item, _key: makeItemKey() })));
       setMode('view');
     } catch (err) {
       console.error('[detail]', err);
@@ -57,52 +70,99 @@ export default function QuotationDetailPage({ id, navigate }) {
   const items = mode === 'edit' ? editedItems : (data?.items || []);
   const total = items.reduce((s, item) => s + (item.qty || 0) * (item.rate || 0), 0);
 
-  // ── Edit mode helpers ──
-  const updateItem = useCallback((idx, field, value) => {
-    setEditedItems(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      if (field === 'rate') next[idx]._rateManual = true;
-      if (field === 'item_code') delete next[idx]._rateManual;
-      return next;
-    });
+  // ── Edit mode helpers (key-based) ──
+  const updateItem = useCallback((_key, field, value) => {
+    setEditedItems(prev => prev.map(item =>
+      item._key === _key ? { ...item, [field]: value, ...(field === 'rate' ? { _rateManual: true } : {}), ...(field === 'item_code' ? { _rateManual: undefined } : {}) } : item
+    ));
   }, []);
 
-  const removeItem = useCallback((idx) => {
-    setEditedItems(prev => prev.filter((_, i) => i !== idx));
-  }, []);
+  const removeItemByKey = useCallback((_key) => {
+    setEditedItems(prev => prev.filter(item => item._key !== _key));
+    // Clean up product search state for removed item
+    setProductSearchTerms(prev => { const n = { ...prev }; delete n[_key]; return n; });
+    setProductResults(prev => { const n = { ...prev }; delete n[_key]; return n; });
+    setProductSearching(prev => { const n = { ...prev }; delete n[_key]; return n; });
+    if (activeDropdown === _key) setActiveDropdown(null);
+    delete pricingTimers.current[_key];
+  }, [activeDropdown]);
 
   const addItem = useCallback(() => {
-    setEditedItems(prev => [...prev, { item_code: '', item_name: '', qty: 1, rate: 0, uom: 'und' }]);
+    const _key = makeItemKey();
+    setEditedItems(prev => [...prev, { _key, item_code: '', item_name: '', qty: 1, rate: 0, uom: 'und' }]);
+    setProductSearchTerms(prev => ({ ...prev, [_key]: '' }));
   }, []);
 
-  // ── Auto-pricing lookup ──
-  const lookupPrice = useCallback(async (idx, sku, qty) => {
+  // ── Product search (debounced, ref-based) ──
+  const searchProducts = useCallback(async (_key, term) => {
+    if (!term || term.length < 2) {
+      setProductResults(prev => ({ ...prev, [_key]: [] }));
+      return;
+    }
+    setProductSearching(prev => ({ ...prev, [_key]: true }));
+    try {
+      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
+      setProductResults(prev => ({ ...prev, [_key]: res.data || [] }));
+    } catch {
+      setProductResults(prev => ({ ...prev, [_key]: [] }));
+    } finally {
+      setProductSearching(prev => ({ ...prev, [_key]: false }));
+    }
+  }, []);
+
+  const onSkuChange = useCallback((_key, value) => {
+    setProductSearchTerms(prev => ({ ...prev, [_key]: value }));
+    updateItem(_key, 'item_code', value);
+    clearTimeout(productTimer.current);
+    productTimer.current = setTimeout(() => searchProducts(_key, value), 300);
+  }, [updateItem, searchProducts]);
+
+  // ── Auto-pricing lookup (ref-based debounce, key-based) ──
+  const lookupPrice = useCallback(async (_key, sku, qty) => {
     if (!sku || !qty) return;
     try {
       const result = await apiPost('/pricing-lookup', { items: [{ item_code: sku, qty: Number(qty) }] });
       const priced = result?.items?.[0];
       if (priced?.rate !== undefined && priced?.rate !== null) {
-        setEditedItems(prev => {
-          const next = [...prev];
-          if (!next[idx]._rateManual) {
-            next[idx] = { ...next[idx], rate: priced.rate, item_name: priced.item_name || next[idx].item_name };
-          }
-          return next;
-        });
+        setEditedItems(prev => prev.map(item => {
+          if (item._key !== _key || item._rateManual) return item;
+          return { ...item, rate: priced.rate, item_name: priced.item_name || item.item_name };
+        }));
       }
     } catch (err) {
-      // Silent — pricing lookup is best-effort
       console.warn('[detail] pricing lookup failed:', err.message);
     }
   }, []);
+
+  const schedulePricingLookup = useCallback((_key, sku, qty) => {
+    clearTimeout(pricingTimers.current[_key]);
+    pricingTimers.current[_key] = setTimeout(() => lookupPrice(_key, sku, qty), 400);
+  }, [lookupPrice]);
+
+  const selectProduct = useCallback((_key, product) => {
+    if (!product?.sku) return;
+    updateItem(_key, 'item_code', product.sku);
+    updateItem(_key, 'item_name', product.nome || product.item_name || '');
+    setProductSearchTerms(prev => ({ ...prev, [_key]: product.sku }));
+    setProductResults(prev => ({ ...prev, [_key]: [] }));
+    setActiveDropdown(null);
+    // Auto-price after selecting
+    setEditedItems(prev => {
+      const item = prev.find(it => it._key === _key);
+      if (!item) return prev;
+      const qty = item.qty || 1;
+      schedulePricingLookup(_key, product.sku, qty);
+      return prev;
+    });
+  }, [updateItem, schedulePricingLookup]);
 
   // ── Save ──
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaveStatus('Salvando…');
     try {
-      const payload = { items: editedItems };
+      // Strip _key before sending to API
+      const payload = { items: editedItems.map(({ _key, ...item }) => item) };
       await apiPut(`/quotations?id=${encodeURIComponent(id)}`, payload);
       setSaveStatus('Salvo!');
       setTimeout(() => setSaveStatus(''), 2000);
@@ -116,7 +176,13 @@ export default function QuotationDetailPage({ id, navigate }) {
   }, [id, editedItems, loadDetail]);
 
   const handleCancel = useCallback(() => {
-    setEditedItems((data?.items || []).map(item => ({ ...item })));
+    setEditedItems((data?.items || []).map(item => ({ ...item, _key: makeItemKey() })));
+    // Reset autocomplete state
+    setProductSearchTerms({});
+    setProductResults({});
+    setProductSearching({});
+    setActiveDropdown(null);
+    pricingTimers.current = {};
     setMode('view');
   }, [data]);
 
@@ -149,8 +215,8 @@ export default function QuotationDetailPage({ id, navigate }) {
   }, [id, loadDetail, navigate]);
 
   // ── Drag-and-drop reorder ──
-  const handleDragStart = useCallback((e, idx) => {
-    e.dataTransfer.setData('text/plain', String(idx));
+  const handleDragStart = useCallback((e, _key) => {
+    e.dataTransfer.setData('text/plain', _key);
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
@@ -159,11 +225,14 @@ export default function QuotationDetailPage({ id, navigate }) {
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleDrop = useCallback((e, targetIdx) => {
+  const handleDrop = useCallback((e, targetKey) => {
     e.preventDefault();
-    const sourceIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    if (sourceIdx === targetIdx) return;
+    const sourceKey = e.dataTransfer.getData('text/plain');
+    if (sourceKey === targetKey) return;
     setEditedItems(prev => {
+      const sourceIdx = prev.findIndex(it => it._key === sourceKey);
+      const targetIdx = prev.findIndex(it => it._key === targetKey);
+      if (sourceIdx === -1 || targetIdx === -1) return prev;
       const next = [...prev];
       const [moved] = next.splice(sourceIdx, 1);
       next.splice(targetIdx, 0, moved);
@@ -283,37 +352,58 @@ export default function QuotationDetailPage({ id, navigate }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item, idx) => {
+              {items.map((item) => {
                 const amount = (item.qty || 0) * (item.rate || 0);
+                const key = item._key;
 
                 if (mode === 'edit') {
+                  const searchTerm = productSearchTerms[key] || '';
+                  const results = productResults[key] || [];
+                  const searching = productSearching[key] || false;
+                  const showDropdown = activeDropdown === key && results.length > 0;
+
                   return (
                     <TableRow
-                      key={idx}
+                      key={key}
                       draggable
-                      onDragStart={e => handleDragStart(e, idx)}
+                      onDragStart={e => handleDragStart(e, key)}
                       onDragOver={handleDragOver}
-                      onDrop={e => handleDrop(e, idx)}
+                      onDrop={e => handleDrop(e, key)}
                     >
                       {/* Drag handle */}
                       <TableCell className="cursor-grab text-muted-foreground p-2">
                         <GripVertical size={14} />
                       </TableCell>
-                      {/* SKU */}
-                      <TableCell>
+                      {/* SKU with autocomplete */}
+                      <TableCell className="relative">
                         <Input
                           className="h-8 text-sm font-mono"
-                          placeholder="SKU"
-                          value={item.item_code || ''}
-                          onChange={e => {
-                            updateItem(idx, 'item_code', e.target.value);
-                            // Auto-pricing on SKU change
-                            clearTimeout(e.target._timer);
-                            e.target._timer = setTimeout(() => {
-                              lookupPrice(idx, e.target.value, editedItems[idx]?.qty);
-                            }, 400);
-                          }}
+                          placeholder="Buscar SKU ou nome…"
+                          value={searchTerm}
+                          onFocus={() => setActiveDropdown(key)}
+                          onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                          onChange={e => onSkuChange(key, e.target.value)}
                         />
+                        {searching && (
+                          <div className="absolute right-2 top-2">
+                            <Loader2 size={12} className="animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                        {showDropdown && (
+                          <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                            {results.map((p) => (
+                              <button
+                                key={p.sku || p.item_code}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
+                                onMouseDown={e => { e.preventDefault(); selectProduct(key, p); }}
+                              >
+                                <span className="font-mono text-xs text-muted-foreground">{p.sku || p.item_code}</span>
+                                <span className="truncate">{p.nome || p.item_name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </TableCell>
                       {/* Name */}
                       <TableCell>
@@ -321,7 +411,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           className="h-8 text-sm"
                           placeholder="Nome do produto"
                           value={item.item_name || ''}
-                          onChange={e => updateItem(idx, 'item_name', e.target.value)}
+                          onChange={e => updateItem(key, 'item_name', e.target.value)}
                         />
                       </TableCell>
                       {/* Qty */}
@@ -334,11 +424,8 @@ export default function QuotationDetailPage({ id, navigate }) {
                           onChange={e => {
                             const val = Number(e.target.value);
                             if (!isNaN(val)) {
-                              updateItem(idx, 'qty', val);
-                              clearTimeout(e.target._timer);
-                              e.target._timer = setTimeout(() => {
-                                lookupPrice(idx, editedItems[idx]?.item_code, val);
-                              }, 400);
+                              updateItem(key, 'qty', val);
+                              schedulePricingLookup(key, item.item_code, val);
                             }
                           }}
                         />
@@ -353,7 +440,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           value={item.rate || ''}
                           onChange={e => {
                             const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) updateItem(idx, 'rate', val);
+                            if (!isNaN(val)) updateItem(key, 'rate', val);
                           }}
                         />
                       </TableCell>
@@ -364,7 +451,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                       {/* Remove */}
                       <TableCell className="p-2">
                         <button
-                          onClick={() => removeItem(idx)}
+                          onClick={() => removeItemByKey(key)}
                           className="text-muted-foreground hover:text-red-600 transition-colors"
                           title="Remover"
                         >
@@ -377,7 +464,7 @@ export default function QuotationDetailPage({ id, navigate }) {
 
                 // View mode
                 return (
-                  <TableRow key={idx}>
+                  <TableRow key={key}>
                     <TableCell className="font-mono text-sm">{item.item_code}</TableCell>
                     <TableCell>{item.item_name || item.item_code}</TableCell>
                     <TableCell className="text-right">{item.qty}</TableCell>
