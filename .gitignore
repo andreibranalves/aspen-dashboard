@@ -21,6 +21,9 @@ Thumbs.db
 # Playwright
 .playwright-cli/
 .sisyphus/
+playwright-report/
+test-results/
+.playwright/
 
 # Misc
 *.log

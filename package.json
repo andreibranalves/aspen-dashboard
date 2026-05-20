@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "server": "vercel dev",
     "test": "node test_local.mjs",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:report": "npx playwright show-report",
     "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs",
     "test:whatsapp-flows": "node scripts/test-whatsapp-flows.mjs"
   },
@@ -23,6 +26,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
