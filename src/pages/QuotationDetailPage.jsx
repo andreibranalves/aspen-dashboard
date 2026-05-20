@@ -379,7 +379,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                         <Input
                           className="h-8 text-sm font-mono"
                           placeholder="Buscar SKU ou nome…"
-                          value={searchTerm}
+                          value={searchTerm || item.item_code || ''}
                           onFocus={() => setActiveDropdown(key)}
                           onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
                           onChange={e => onSkuChange(key, e.target.value)}
@@ -390,7 +390,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           </div>
                         )}
                         {showDropdown && (
-                          <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                          <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                             {results.map((p) => (
                               <button
                                 key={p.sku || p.item_code}
