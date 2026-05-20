@@ -1,1 +1,0 @@
-{"scenario":"nonexistent-sku","url":"POST /api/pricing-lookup","payload":{"items":[{"item_code":"FAKE-SKU-99999","qty":100}]},"response":{"success":true,"items":[{"item_code":"FAKE-SKU-99999","qty":100,"rate":0}]},"result":"PASS"}

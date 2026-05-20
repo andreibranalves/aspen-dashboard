@@ -1,1 +1,0 @@
-{"scenario":"urgent-rate","url":"POST /api/pricing-lookup","payload":{"items":[{"item_code":"LNC-SED-70","qty":100}],"urgent":true},"response":{"success":true,"items":[{"item_code":"LNC-SED-70","qty":100,"rate":35.82}]},"result":"PASS","verification":"35.82 = Math.round(27.55 * 1.30 * 100) / 100"}

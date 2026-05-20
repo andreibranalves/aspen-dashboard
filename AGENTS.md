@@ -42,13 +42,27 @@ Single-page app (`src` built by Vite into `public`) + Vercel API entrypoint:
 
 | Function | Route | Purpose |
 |----------|-------|---------|
-| `api/[...path].js` | `/api/*` | Vercel catch-all API route that dispatches to internal handlers |
-| `api/_functions/extract.js` | `POST /api/extract` | Sends text/image to OpenRouter; returns structured orders |
-| `api/_functions/orcamento.js` | `POST /api/orcamento` | Creates ERPNext Quotation + CRM Deal |
+| `api/[...path].js` | `/api/*` | Vercel catch-all API route — dispatches to internal handlers |
+| `api/_functions/extract.js` | `POST /api/extract` | AI extraction: text/image → structured orders via OpenRouter |
+| `api/_functions/orcamento.js` | `POST /api/orcamento` | Creates ERPNext Quotation + CRM Deal (two-phase pipeline) |
 | `api/_functions/edit-draft.js` | `POST /api/edit-draft` | Natural-language editing of draft quotations via OpenRouter |
 | `api/_functions/view.js` | `GET /api/view?q={id}` | Renders quotation HTML for browser/print preview |
-| `api/_functions/pricing.js` | _(shared lib)_ | Pricing bracket/rate logic; imported by `orcamento.js` — no handler export |
-| `send-email.js` | _(MISSING)_ | ⚠️ Source file deleted — only `:Zone.Identifier` artifact remains. Function is not deployed. |
+| `api/_functions/pricing.js` | _(shared lib)_ | Pricing bracket/rate logic — imported by `orcamento.js`, no handler export |
+| `api/_functions/freight.js` | `POST /api/freight` | Freight calculation lookup |
+| `api/_functions/send-whatsapp.js` | `POST /api/send-whatsapp` | Sends WhatsApp message via Evolution API |
+| `api/_functions/leads-clients.js` | `POST /api/leads-clients` | Lead/client management |
+| `api/_functions/crm-deals.js` | `POST /api/crm-deals` | CRM deal operations |
+| `api/_functions/crm-update-deal.js` | `POST /api/crm-update-deal` | Update CRM deal fields |
+| `api/_functions/products.js` | `POST /api/products` | Product listing/search |
+| `api/_functions/product-detail.js` | `POST /api/product-detail` | Single product detail |
+| `api/_functions/product-pricing.js` | `POST /api/product-pricing` | Product pricing data |
+| `api/_functions/product-pricing-update.js` | `POST /api/product-pricing-update` | Update product pricing |
+| `api/_functions/pricing-lookup.js` | `POST /api/pricing-lookup` | Direct pricing lookup |
+| `api/_functions/quotations.js` | `POST /api/quotations` | Quotation listing/search |
+| `api/_functions/sales-orders.js` | `POST /api/sales-orders` | Sales order operations |
+| `api/_functions/sales-order-from-quotation.js` | `POST /api/sales-order-from-quotation` | Create Sales Order from Quotation |
+| `api/_functions/sales-dashboard.js` | `POST /api/sales-dashboard` | Sales dashboard data |
+| `api/_lib/function-adapter.js` | _(adapter)_ | Wraps handlers for Vercel req/res compatibility |
 
 ### Two-phase pipeline
 
