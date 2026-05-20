@@ -690,7 +690,7 @@ export default function LeadsPage() {
               </span>
               {editMode ? (
                 <div className="mt-1 space-y-2 text-sm">
-                  {/* Linha 1: CEP (30%) + Município (60%) + UF (10%) */}
+                  {/* Linha 1: CEP (30%) + Município (50%) + UF (20%) */}
                   <div className="flex gap-2">
                     <div className="relative" style={{ width: '30%' }}>
                       <Input
@@ -718,7 +718,7 @@ export default function LeadsPage() {
                         <Search size={14} />
                       </button>
                     </div>
-                    <div style={{ width: '60%' }}>
+                    <div style={{ width: '50%' }}>
                       <Input
                         value={editFields.endereco?.municipio || ''}
                         onChange={e => setEditFields(prev => ({
@@ -729,7 +729,7 @@ export default function LeadsPage() {
                         placeholder="Município"
                       />
                     </div>
-                    <div style={{ width: '10%' }}>
+                    <div style={{ width: '20%' }}>
                       <select
                         value={editFields.endereco?.uf || ''}
                         onChange={e => setEditFields(prev => ({
@@ -746,9 +746,9 @@ export default function LeadsPage() {
                     </div>
                   </div>
 
-                  {/* Linha 2: Endereço (50%) + Bairro (50%) */}
+                  {/* Linha 2: Endereço (70%) + Número (30%) */}
                   <div className="flex gap-2">
-                    <div style={{ width: '50%' }}>
+                    <div style={{ width: '70%' }}>
                       <Input
                         value={editFields.endereco?.endereco || ''}
                         onChange={e => setEditFields(prev => ({
@@ -759,6 +759,21 @@ export default function LeadsPage() {
                         placeholder="Endereço"
                       />
                     </div>
+                    <div style={{ width: '30%' }}>
+                      <Input
+                        value={editFields.endereco?.numero || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, numero: e.target.value },
+                        }))}
+                        className="h-8 text-xs"
+                        placeholder="Número"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Linha 3: Bairro (50%) + Complemento (50%) */}
+                  <div className="flex gap-2">
                     <div style={{ width: '50%' }}>
                       <Input
                         value={editFields.endereco?.bairro || ''}
@@ -768,21 +783,6 @@ export default function LeadsPage() {
                         }))}
                         className="h-8 text-xs"
                         placeholder="Bairro"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Linha 3: Número (50%) + Complemento (50%) */}
-                  <div className="flex gap-2">
-                    <div style={{ width: '50%' }}>
-                      <Input
-                        value={editFields.endereco?.numero || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, numero: e.target.value },
-                        }))}
-                        className="h-8 text-xs"
-                        placeholder="Número"
                       />
                     </div>
                     <div style={{ width: '50%' }}>
