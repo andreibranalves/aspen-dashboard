@@ -11,12 +11,9 @@ import { createHttpError, erpGetList } from './erpnext.js';
 
 /** Canonical source list — must match frontend LEAD_SOURCES */
 export const LEAD_SOURCES = [
-  'Brindice',
   'Google Ads',
-  'Indicação',
-  'Cliente antigo / recorrente',
-  'Orgânico / Site',
-  'Outro',
+  'Bríndice',
+  'Cliente recorrente',
 ];
 
 /**

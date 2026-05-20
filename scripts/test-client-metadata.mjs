@@ -102,36 +102,24 @@ test('CNPJ da Aspen Estamparia é válido', () => {
 
 console.log('\nOrigem:');
 
-test('LEAD_SOURCES tem 6 opções', () => {
-  equal(LEAD_SOURCES.length, 6);
+test('LEAD_SOURCES tem 3 opções', () => {
+  equal(LEAD_SOURCES.length, 3);
 });
 
 test('DEFAULT_LEAD_SOURCE é string vazia', () => {
   equal(DEFAULT_LEAD_SOURCE, '');
 });
 
-test('isValidLeadSource: Brindice é válido', () => {
-  ok(isValidLeadSource('Brindice'));
-});
-
 test('isValidLeadSource: Google Ads é válido', () => {
   ok(isValidLeadSource('Google Ads'));
 });
 
-test('isValidLeadSource: Indicação é válido', () => {
-  ok(isValidLeadSource('Indicação'));
+test('isValidLeadSource: Bríndice é válido', () => {
+  ok(isValidLeadSource('Bríndice'));
 });
 
-test('isValidLeadSource: Cliente antigo / recorrente é válido', () => {
-  ok(isValidLeadSource('Cliente antigo / recorrente'));
-});
-
-test('isValidLeadSource: Orgânico / Site é válido', () => {
-  ok(isValidLeadSource('Orgânico / Site'));
-});
-
-test('isValidLeadSource: Outro é válido', () => {
-  ok(isValidLeadSource('Outro'));
+test('isValidLeadSource: Cliente recorrente é válido', () => {
+  ok(isValidLeadSource('Cliente recorrente'));
 });
 
 test('isValidLeadSource: string vazia é inválida', () => {
@@ -143,8 +131,9 @@ test('isValidLeadSource: origem desconhecida é inválida', () => {
 });
 
 test('getLeadSourceLabel retorna label correto', () => {
-  equal(getLeadSourceLabel('Brindice'), 'Brindice');
   equal(getLeadSourceLabel('Google Ads'), 'Google Ads');
+  equal(getLeadSourceLabel('Bríndice'), 'Bríndice');
+  equal(getLeadSourceLabel('Cliente recorrente'), 'Cliente recorrente');
 });
 
 test('getLeadSourceLabel para valor desconhecido retorna o próprio valor', () => {
