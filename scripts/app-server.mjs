@@ -19,6 +19,7 @@ if (!process.env.ERPNEXT_TOKEN) {
 import { handler as clientDetail } from '../api/_functions/client-detail.js';
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
+import { handler as duplicateQuotation } from '../api/_functions/duplicate-quotation.js';
 import { handler as extract } from '../api/_functions/extract.js';
 import { handler as freight } from '../api/_functions/freight.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
@@ -37,7 +38,8 @@ import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
   'client-detail': clientDetail,
-  'crm-deals': crmDeals, 'crm-update-deal': crmUpdateDeal, extract, freight,
+  'crm-deals': crmDeals, 'crm-update-deal': crmUpdateDeal,
+  'duplicate-quotation': duplicateQuotation, extract, freight,
   'leads-clients': leadsClients, orcamento, 'pricing-lookup': pricingLookup,
   'product-detail': productDetail, 'product-pricing-update': productPricingUpdate,
   'product-pricing': productPricing, products, quotations,
@@ -142,5 +144,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`App server on http://0.0.0.0:${PORT}`);
-  console.log(`Frontend: public/  |  API: 18 handlers`);
+  console.log(`Frontend: public/  |  API: 19 handlers`);
 });

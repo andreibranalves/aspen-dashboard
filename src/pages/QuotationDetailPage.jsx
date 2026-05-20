@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2 } from 'lucide-react';
+import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
@@ -213,6 +213,24 @@ export default function QuotationDetailPage({ id, navigate }) {
       setConverting(false);
     }
   }, [id, loadDetail, navigate]);
+
+  // ── Duplicate ──
+  const [duplicating, setDuplicating] = useState(false);
+
+  const handleDuplicate = useCallback(async () => {
+    if (!confirm(`Duplicar o orçamento ${id}? Será criada uma cópia com nova numeração.`)) return;
+    setDuplicating(true);
+    try {
+      const result = await apiPost('/duplicate-quotation', { quotation_id: id });
+      if (result.success && result.new_id) {
+        navigate(`/quotations/${result.new_id}`);
+      }
+    } catch (err) {
+      alert('Erro ao duplicar: ' + (err.message || 'Tente novamente.'));
+    } finally {
+      setDuplicating(false);
+    }
+  }, [id, navigate]);
 
   // ── Drag-and-drop reorder ──
   const handleDragStart = useCallback((e, _key) => {
@@ -490,6 +508,9 @@ export default function QuotationDetailPage({ id, navigate }) {
             <>
               <Button onClick={() => setMode('edit')} variant="outline" size="sm">
                 <Pencil size={14} /> Editar
+              </Button>
+              <Button onClick={handleDuplicate} variant="outline" size="sm" disabled={duplicating}>
+                <Copy size={14} /> {duplicating ? 'Duplicando…' : 'Duplicar'}
               </Button>
               <a
                 href={quotationViewUrl}

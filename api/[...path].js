@@ -2,6 +2,7 @@ import { wrapFunctionHandler } from './_lib/function-adapter.js';
 
 import { handler as crmDeals } from './_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
+import { handler as duplicateQuotation } from './_functions/duplicate-quotation.js';
 import { handler as editDraft } from './_functions/edit-draft.js';
 import { handler as extract } from './_functions/extract.js';
 import { handler as freight } from './_functions/freight.js';
@@ -24,6 +25,7 @@ const ROUTES = {
   'client-detail': clientDetail,
   'crm-deals': crmDeals,
   'crm-update-deal': crmUpdateDeal,
+  'duplicate-quotation': duplicateQuotation,
   'edit-draft': editDraft,
   extract,
   freight,
