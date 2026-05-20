@@ -546,7 +546,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 <X size={14} /> Cancelar
               </Button>
               <Button onClick={addItem} variant="outline" size="sm">
-                <Plus size={14} /> + Item
+                <Plus size={14} /> Item
               </Button>
               {saveStatus && (
                 <span className={`text-xs ${saveStatus.startsWith('Erro') ? 'text-red-400' : 'text-muted-foreground'}`}>
