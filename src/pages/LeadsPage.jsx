@@ -746,9 +746,9 @@ export default function LeadsPage() {
                     </div>
                   </div>
 
-                  {/* Linha 2: Endereço (70%) + Número (30%) */}
+                  {/* Linha 2: Endereço (80%) + Número (20%) */}
                   <div className="flex gap-2">
-                    <div style={{ width: '70%' }}>
+                    <div style={{ width: '80%' }}>
                       <Input
                         value={editFields.endereco?.endereco || ''}
                         onChange={e => setEditFields(prev => ({
@@ -759,7 +759,7 @@ export default function LeadsPage() {
                         placeholder="Endereço"
                       />
                     </div>
-                    <div style={{ width: '30%' }}>
+                    <div style={{ width: '20%' }}>
                       <Input
                         value={editFields.endereco?.numero || ''}
                         onChange={e => setEditFields(prev => ({
