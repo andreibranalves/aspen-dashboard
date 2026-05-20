@@ -10,8 +10,9 @@ const ALLOWED_DOCTYPES = ['Lead', 'Customer'];
  * Qualquer campo fora desta lista é rejeitado com 400.
  */
 const EDITABLE_FIELDS = {
-  Lead: ['lead_name', 'email_id', 'mobile_no', 'utm_source'],
+  Lead: ['first_name', 'last_name', 'email_id', 'mobile_no', 'utm_source', 'company_name'],
   Customer: ['customer_name'],
+  // lead_name é computado no ERPNext (derivado de first_name + last_name), não editável diretamente
   // tax_id e endereço tratados separadamente com regras de segurança
 };
 
@@ -70,7 +71,11 @@ function computeQualityFlags(doc, doctype, address) {
 async function handleGet(doctype, name) {
   // 1. Fetch documento principal
   const fields = doctype === 'Lead'
-    ? ['name', 'lead_name', 'first_name', 'email_id', 'mobile_no', 'phone', 'utm_source', 'source', 'creation', 'modified', 'notes']
+    ? [
+        'name', 'lead_name', 'first_name', 'email_id', 'mobile_no', 'phone',
+        'company_name', 'utm_source', 'source', 'creation', 'modified', 'notes',
+        'custom_person_type', 'custom_tax_id', 'custom_contribuinte', 'custom_inscricao_estadual',
+      ]
     : ['name', 'customer_name', 'tax_id', 'customer_type', 'creation', 'modified', 'notes'];
 
   const doc = await erpGetDoc(doctype, name, { fields });
@@ -79,27 +84,35 @@ async function handleGet(doctype, name) {
   const email = doctype === 'Lead' ? (doc.email_id || null) : null;
   const telefone = doc.mobile_no || doc.phone || null;
   const origem = doctype === 'Lead' ? (doc.utm_source || doc.source || null) : null;
-  const taxId = normalizeCnpj(doc.tax_id) || null;
-  // person_type: Customer usa customer_type (Company→pj, Individual→pf), Lead sem padrão
+  const taxId = normalizeCnpj(doctype === 'Lead' ? doc.custom_tax_id : doc.tax_id) || null;
+  // person_type: Lead usa Custom Field; Customer usa customer_type (Company→pj, Individual→pf)
   const personType = doctype === 'Customer'
     ? (doc.customer_type === 'Company' ? 'pj' : doc.customer_type === 'Individual' ? 'pf' : null)
-    : null;
+    : (doc.custom_person_type === 'pf' || doc.custom_person_type === 'pj' ? doc.custom_person_type : null);
   const nome = doctype === 'Lead' ? doc.lead_name : doc.customer_name;
 
-  // Parse notes JSON para campos extras (empresa, contribuinte, inscricao_estadual)
+  // Parse de metadados extras somente quando o campo notes é texto JSON.
+  // Em Lead do Frappe CRM, notes é uma child table (array); gravar string nele gera 500 no ERPNext.
   let notesData = {};
-  try { if (doc.notes) notesData = JSON.parse(doc.notes); } catch { /* não é JSON */ }
-  const empresa = notesData.empresa || null;
-  const contribuinte = notesData.contribuinte || '0';
-  const inscricaoEstadual = notesData.inscricao_estadual || null;
+  if (typeof doc.notes === 'string' && doc.notes.trim()) {
+    try {
+      const parsed = JSON.parse(doc.notes);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) notesData = parsed;
+    } catch { /* notes não contém JSON estruturado */ }
+  }
+  const empresa = doctype === 'Lead' ? (doc.company_name || notesData.empresa || null) : (notesData.empresa || null);
+  const contribuinte = doctype === 'Lead' ? (doc.custom_contribuinte || notesData.contribuinte || '0') : (notesData.contribuinte || '0');
+  const inscricaoEstadual = doctype === 'Lead'
+    ? (doc.custom_inscricao_estadual || notesData.inscricao_estadual || null)
+    : (notesData.inscricao_estadual || null);
 
-  // 2. Buscar Address vinculado
+  // 2. Buscar Address vinculado (filtra por address_title,
+  //    já que link_doctype/link_name são campos da child table não pesquisáveis via getList)
   let address = null;
   try {
     const addrs = await erpGetList('Address', {
-      filters: [['link_doctype', '=', doctype], ['link_name', '=', name]],
+      filters: [['address_title', '=', name]],
       fields: ['name', 'address_line1', 'address_line2', 'city', 'state', 'pincode', 'email_id', 'phone'],
-      order_by: 'creation desc',
       limit: 1,
     });
     if (addrs.length > 0) {
@@ -183,11 +196,30 @@ async function handlePut(doctype, name, rawBody) {
   const updates = {};
   const allowed = EDITABLE_FIELDS[doctype] || [];
 
+  // Mapeia nomes amigáveis do frontend para campos do ERPNext
+  // Lead: lead_name é computado (first_name + last_name) — mapeamos nome → first_name
+  const FRONTEND_MAP = {
+    nome: doctype === 'Lead' ? 'first_name' : 'customer_name',
+    email: 'email_id',
+    telefone: 'mobile_no',
+    ...(doctype === 'Lead' ? { empresa: 'company_name' } : {}),
+  };
+  // Aplica mapeamento ao payload original
+  for (const [frontendKey, erpField] of Object.entries(FRONTEND_MAP)) {
+    if (payload[frontendKey] !== undefined && payload[erpField] === undefined) {
+      payload[erpField] = payload[frontendKey];
+    }
+  }
+
   // 4.1 Campos básicos da allowlist
   for (const field of allowed) {
     if (payload[field] !== undefined) {
-      const val = String(payload[field]).trim();
-      updates[field] = val || null;
+      if (payload[field] == null) {
+        updates[field] = null;
+      } else {
+        const val = String(payload[field]).trim();
+        updates[field] = val || null;
+      }
     }
   }
 
@@ -202,15 +234,24 @@ async function handlePut(doctype, name, rawBody) {
       if (payload.person_type === 'pj' && rawTaxId.length !== 14) {
         throw createHttpError(400, 'CNPJ deve ter 14 dígitos.');
       }
-      // Não sobrescrever divergente
-      const current = await erpGetDoc(doctype, name, { fields: ['tax_id'] });
-      const existingTaxId = normalizeCnpj(current?.tax_id || '');
-      if (existingTaxId && rawTaxId && existingTaxId !== rawTaxId) {
-        throw createHttpError(409, 'CPF/CNPJ diverge do cadastro atual. Edite diretamente no ERPNext.');
+      if (doctype === 'Lead') {
+        // Lead não tem tax_id nativo; persistimos em Custom Fields próprios do app Aspen.
+        updates.custom_person_type = payload.person_type;
+        updates.custom_tax_id = rawTaxId || null;
+      } else {
+        // Customer usa campos nativos e mantém a regra de não sobrescrever documento fiscal divergente.
+        const current = await erpGetDoc(doctype, name, { fields: ['tax_id'] });
+        const existingTaxId = normalizeCnpj(current?.tax_id || '');
+        if (existingTaxId && rawTaxId && existingTaxId !== rawTaxId) {
+          throw createHttpError(409, 'CPF/CNPJ diverge do cadastro atual. Edite diretamente no ERPNext.');
+        }
+        if (!existingTaxId) {
+          updates.tax_id = rawTaxId;
+        }
       }
-      if (!existingTaxId) {
-        updates.tax_id = rawTaxId;
-      }
+    } else if (doctype === 'Lead') {
+      updates.custom_person_type = payload.person_type;
+      updates.custom_tax_id = null;
     }
     // Customer: atualizar customer_type baseado no person_type
     if (doctype === 'Customer') {
@@ -248,8 +289,9 @@ async function handlePut(doctype, name, rawBody) {
     if (complemento) line2Parts.push(complemento);
     const addressLine2 = line2Parts.filter(Boolean).join(' - ') || null;
 
-    // Só cria/atualiza se tiver pelo menos endereço ou município
-    if (endereco || city) {
+    // Só cria/atualiza se tiver pelo menos endereço e município
+    // (ERPNext exige address_line1 e city para criar um Address)
+    if (endereco && city) {
       const addressPayload = {
         address_title: name,
         address_type: 'Billing',
@@ -262,36 +304,76 @@ async function handlePut(doctype, name, rawBody) {
       if (state) addressPayload.state = state;
       if (pincode) addressPayload.pincode = pincode;
 
-      // Verifica se já existe Address vinculado
-      const existingAddrs = await erpGetList('Address', {
-        filters: [['link_doctype', '=', doctype], ['link_name', '=', name]],
-        fields: ['name'],
-        limit: 1,
-      });
+      // Verifica se já existe Address vinculado (filtra por address_title,
+      // já que link_doctype/link_name são campos da child table não pesquisáveis via getList)
+      let existingAddrName = null;
+      try {
+        const addrs = await erpGetList('Address', {
+          filters: [['address_title', '=', name]],
+          fields: ['name'],
+          limit: 1,
+        });
+        if (addrs.length > 0) existingAddrName = addrs[0].name;
+      } catch {
+        // Se falhar a busca, assume que não existe e cria novo
+      }
 
-      if (existingAddrs.length > 0) {
-        await erpPut('Address', existingAddrs[0].name, addressPayload);
+      if (existingAddrName) {
+        await erpPut('Address', existingAddrName, addressPayload);
       } else {
         await erpPost('Address', addressPayload);
       }
     }
   }
 
-  // 4.5 Campos extras no notes (empresa, contribuinte, inscricao_estadual)
+  // 4.5 Campos extras fiscais/comerciais
   const hasNotesFields = payload.empresa !== undefined || payload.contribuinte !== undefined || payload.inscricao_estadual !== undefined;
-  if (hasNotesFields) {
-    // Lê notes atual para merge
+  if (hasNotesFields && doctype === 'Lead') {
+    // Lead: persistência escalável em campos estruturados.
+    // Empresa usa campo nativo `company_name`; demais campos usam Custom Fields Aspen.
+    if (payload.empresa !== undefined && payload.company_name === undefined) {
+      updates.company_name = payload.empresa == null ? null : (String(payload.empresa).trim() || null);
+    }
+    if (payload.contribuinte !== undefined) {
+      const contribuinte = String(payload.contribuinte || '0').trim() || '0';
+      if (!['0', '1', '2', '9'].includes(contribuinte)) {
+        throw createHttpError(400, 'Contribuinte deve ser 0, 1, 2 ou 9.');
+      }
+      updates.custom_contribuinte = contribuinte;
+    }
+    if (payload.inscricao_estadual !== undefined) {
+      updates.custom_inscricao_estadual = payload.inscricao_estadual == null
+        ? null
+        : (String(payload.inscricao_estadual).trim() || null);
+    }
+  } else if (hasNotesFields) {
+    // Alguns doctypes expõem `notes` como child table (array) ou nem expõem o campo.
+    // Só gravamos JSON quando `notes` já é um campo textual; caso contrário, ignoramos
+    // esses metadados extras para não quebrar salvamentos básicos (nome/endereço).
     let currentNotes = {};
+    let canPersistNotesJson = false;
     try {
       const current = await erpGetDoc(doctype, name, { fields: ['notes'] });
-      if (current?.notes) currentNotes = JSON.parse(current.notes);
-    } catch { /* mantém vazio */ }
+      if (typeof current?.notes === 'string') {
+        canPersistNotesJson = true;
+        if (current.notes.trim()) {
+          const parsed = JSON.parse(current.notes);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            currentNotes = parsed;
+          }
+        }
+      }
+    } catch {
+      canPersistNotesJson = false;
+    }
 
-    if (payload.empresa !== undefined) currentNotes.empresa = payload.empresa || null;
-    if (payload.contribuinte !== undefined) currentNotes.contribuinte = payload.contribuinte || '0';
-    if (payload.inscricao_estadual !== undefined) currentNotes.inscricao_estadual = payload.inscricao_estadual || null;
+    if (canPersistNotesJson) {
+      if (payload.empresa !== undefined) currentNotes.empresa = payload.empresa || null;
+      if (payload.contribuinte !== undefined) currentNotes.contribuinte = payload.contribuinte || '0';
+      if (payload.inscricao_estadual !== undefined) currentNotes.inscricao_estadual = payload.inscricao_estadual || null;
 
-    updates.notes = JSON.stringify(currentNotes);
+      updates.notes = JSON.stringify(currentNotes);
+    }
   }
 
   const hasAddress = payload.endereco && typeof payload.endereco === 'object';
