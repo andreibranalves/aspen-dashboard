@@ -33,9 +33,9 @@ async function lookupCep(cep, setEditFields) {
         ...prev.endereco,
         endereco: data.logradouro || prev.endereco?.endereco || '',
         bairro: data.bairro || prev.endereco?.bairro || '',
-        complemento: data.complemento || prev.endereco?.complemento || '',
         municipio: data.localidade || prev.endereco?.municipio || '',
         uf: data.uf || prev.endereco?.uf || '',
+        // complemento NÃO é preenchido automaticamente — ViaCEP retorna dados pouco úteis ("até 183/184")
       },
     }));
   } catch { /* silencioso */ }
