@@ -5,6 +5,7 @@ import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
 import { handler as editDraft } from './_functions/edit-draft.js';
 import { handler as extract } from './_functions/extract.js';
 import { handler as freight } from './_functions/freight.js';
+import { handler as clientDetail } from './_functions/client-detail.js';
 import { handler as leadsClients } from './_functions/leads-clients.js';
 import { handler as orcamento } from './_functions/orcamento.js';
 import { handler as pricingLookup } from './_functions/pricing-lookup.js';
@@ -20,6 +21,7 @@ import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
 import { handler as view } from './_functions/view.js';
 
 const ROUTES = {
+  'client-detail': clientDetail,
   'crm-deals': crmDeals,
   'crm-update-deal': crmUpdateDeal,
   'edit-draft': editDraft,
