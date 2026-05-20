@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Phone, Mail, AlertTriangle, Users } from 'lucide-react';
-import { apiGet } from '@/lib/api.js';
-import { fmtPhone } from '@/lib/formatters.js';
+import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X } from 'lucide-react';
+import { apiGet, apiPut } from '@/lib/api.js';
+import { fmtPhone, capitalize } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -9,6 +9,10 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
+import { DetailDrawer } from '@/components/DetailDrawer.jsx';
+import { QualityBadges } from '@/components/QualityBadges.jsx';
+import { ContextActions } from '@/components/ContextActions.jsx';
+import { buildQuotationErpUrl, buildCrmDealErpUrl, buildLeadErpUrl, buildCustomerErpUrl } from '@/lib/erpLinks.js';
 
 const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
@@ -25,6 +29,16 @@ export default function LeadsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const searchTimer = useRef(null);
+
+  // ── Drawer state ──
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null); // { doctype, name, tipo }
+  const [clientDetail, setClientDetail] = useState(null);
+  const [clientLoading, setClientLoading] = useState(false);
+  const [clientError, setClientError] = useState(null);
+  const [clientSaving, setClientSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editFields, setEditFields] = useState({});
 
   const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
     setLoading(true);
@@ -80,6 +94,155 @@ export default function LeadsPage() {
     for (let i = start; i <= end; i++) nums.push(i);
     return nums;
   };
+
+  // ── Drawer handlers ──
+
+  const openDrawer = useCallback(async (row) => {
+    const doctype = row.tipo === 'lead' ? 'Lead' : 'Customer';
+    setSelectedClient({ doctype, name: row.id, tipo: row.tipo });
+    setClientDetail(null);
+    setClientError(null);
+    setClientLoading(true);
+    setEditMode(false);
+    setEditFields({});
+    setDrawerOpen(true);
+
+    try {
+      const detail = await apiGet(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(row.id)}`);
+      setClientDetail(detail);
+    } catch (err) {
+      setClientError(err.message || 'Erro ao carregar detalhes.');
+    } finally {
+      setClientLoading(false);
+    }
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    setSelectedClient(null);
+    setClientDetail(null);
+    setClientError(null);
+    setEditMode(false);
+  }, []);
+
+  const startEdit = useCallback(() => {
+    if (!clientDetail) return;
+    setEditFields({
+      nome: clientDetail.display_name || '',
+      email: clientDetail.email || '',
+      telefone: clientDetail.telefone || '',
+      origem: clientDetail.origem || '',
+      cnpj: clientDetail.cnpj || '',
+    });
+    setEditMode(true);
+  }, [clientDetail]);
+
+  const cancelEdit = useCallback(() => {
+    setEditMode(false);
+    setEditFields({});
+  }, []);
+
+  const saveEdit = useCallback(async () => {
+    if (!selectedClient || !clientDetail) return;
+    setClientSaving(true);
+    setClientError(null);
+    try {
+      const payload = {
+        nome: editFields.nome?.trim() || null,
+        email: editFields.email?.trim() || null,
+        telefone: editFields.telefone?.trim() || null,
+      };
+      // Origem apenas para Lead
+      if (selectedClient.doctype === 'Lead') {
+        payload.origem = editFields.origem?.trim() || null;
+      }
+      // CNPJ apenas para Customer
+      if (selectedClient.doctype === 'Customer') {
+        payload.cnpj = editFields.cnpj?.trim() || null;
+      }
+
+      const updated = await apiPut(
+        `/client-detail?doctype=${encodeURIComponent(selectedClient.doctype)}&name=${encodeURIComponent(selectedClient.name)}`,
+        payload,
+      );
+      setClientDetail(updated);
+      setEditMode(false);
+      setEditFields({});
+
+      // Atualiza a linha na lista local
+      if (updated.display_name) {
+        setData(prev => prev.map(row =>
+          row.id === selectedClient.name ? { ...row, nome: updated.display_name, email: updated.email, telefone: updated.telefone } : row,
+        ));
+      }
+    } catch (err) {
+      setClientError(err.message || 'Erro ao salvar.');
+    } finally {
+      setClientSaving(false);
+    }
+  }, [selectedClient, clientDetail, editFields]);
+
+  // ── Build context actions ──
+
+  const buildContextActions = useCallback(() => {
+    if (!clientDetail) return [];
+    const actions = [];
+
+    if (clientDetail.telefone) {
+      actions.push({
+        label: 'WhatsApp',
+        icon: Phone,
+        href: `https://wa.me/${clientDetail.telefone.replace(/\D/g, '')}`,
+        title: 'Abrir WhatsApp',
+      });
+    }
+
+    if (clientDetail.email) {
+      actions.push({
+        label: 'Email',
+        icon: Mail,
+        href: `mailto:${clientDetail.email}`,
+        title: 'Enviar email',
+      });
+    }
+
+    if (clientDetail.latest_quotation) {
+      actions.push({
+        label: 'Orçamento recente',
+        icon: null,
+        href: buildQuotationErpUrl(null, clientDetail.latest_quotation.name),
+        title: `Abrir ${clientDetail.latest_quotation.name}`,
+      });
+    }
+
+    if (clientDetail.deal) {
+      actions.push({
+        label: 'Deal vinculado',
+        icon: null,
+        href: buildCrmDealErpUrl(null, clientDetail.deal.name),
+        title: `Abrir ${clientDetail.deal.name}`,
+      });
+    }
+
+    return actions;
+  }, [clientDetail]);
+
+  // ── Build quality badges ──
+
+  const buildQualityBadges = useCallback(() => {
+    if (!clientDetail?.quality_flags) return [];
+
+    const labelMap = {
+      sem_telefone: { label: 'Sem telefone', type: 'warning' },
+      sem_email: { label: 'Sem email', type: 'warning' },
+      sem_origem: { label: 'Sem origem', type: 'danger' },
+      sem_cnpj: { label: 'Sem CNPJ', type: 'info' },
+    };
+
+    return clientDetail.quality_flags.map(flag => labelMap[flag] || { label: flag, type: 'warning' });
+  }, [clientDetail]);
+
+  // ── Components ──
 
   const TipoBadge = ({ tipo: t }) => (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
@@ -174,7 +337,11 @@ export default function LeadsPage() {
             </TableHeader>
             <TableBody>
               {data.map(row => (
-                <TableRow key={row.id || row.email}>
+                <TableRow
+                  key={row.id || row.email}
+                  className="cursor-pointer hover:bg-framer-surface-2/50 transition-colors"
+                  onClick={() => openDrawer(row)}
+                >
                   <TableCell className="font-medium">{row.nome || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{row.email || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{fmtPhone(row.telefone)}</TableCell>
@@ -215,7 +382,11 @@ export default function LeadsPage() {
       {!loading && !error && data.length > 0 && (
         <div className="md:hidden space-y-3">
           {data.map(row => (
-            <div key={row.id || row.email} className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-2">
+            <div
+              key={row.id || row.email}
+              className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-2 cursor-pointer hover:bg-framer-surface-2/50 transition-colors"
+              onClick={() => openDrawer(row)}
+            >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{row.nome || '—'}</span>
                 <TipoBadge tipo={row.tipo} />
@@ -224,7 +395,7 @@ export default function LeadsPage() {
                 {row.email && <div className="flex items-center gap-1"><Mail size={12} /> {row.email}</div>}
                 {row.telefone && <div className="flex items-center gap-1"><Phone size={12} /> {fmtPhone(row.telefone)}</div>}
               </div>
-              <div className="flex items-center gap-1 pt-1">
+              <div className="flex items-center gap-1 pt-1" onClick={e => e.stopPropagation()}>
                 {row.telefone && (
                   <a
                     href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
@@ -271,6 +442,220 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
+
+      {/* ── Detail Drawer ── */}
+      <DetailDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        title={clientDetail?.display_name || 'Carregando…'}
+        description={
+          selectedClient
+            ? `${selectedClient.doctype} · ${selectedClient.name}`
+            : undefined
+        }
+        actions={
+          clientDetail && (
+            <div className="space-y-3">
+              {/* Quality badges */}
+              <QualityBadges badges={buildQualityBadges()} />
+
+              {/* Context actions */}
+              <ContextActions actions={buildContextActions()} />
+
+              {/* Edit / Save buttons */}
+              <div className="flex items-center gap-2 pt-1">
+                {!editMode ? (
+                  <Button variant="outline" size="sm" onClick={startEdit} disabled={clientLoading || clientSaving}>
+                    <Pencil className="size-3.5" />
+                    Editar
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="default" size="sm" onClick={saveEdit} disabled={clientSaving}>
+                      <Check className="size-3.5" />
+                      {clientSaving ? 'Salvando…' : 'Salvar'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={cancelEdit} disabled={clientSaving}>
+                      <X className="size-3.5" />
+                      Cancelar
+                    </Button>
+                  </>
+                )}
+                {/* Abrir no ERPNext */}
+                {clientDetail.erp_url && (
+                  <a
+                    href={clientDetail.erp_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-framer-surface-2 text-framer-ink hover:bg-framer-accent-blue hover:text-white active:scale-[0.97] transition-all duration-200 no-underline"
+                  >
+                    Abrir no ERPNext
+                  </a>
+                )}
+              </div>
+            </div>
+          )
+        }
+      >
+        {clientLoading && (
+          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+            Carregando detalhes…
+          </div>
+        )}
+
+        {clientError && !clientLoading && (
+          <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
+            <AlertTriangle size={24} className="text-red-400" />
+            <p className="text-sm">{clientError}</p>
+            <Button variant="outline" size="sm" onClick={() => selectedClient && openDrawer({ id: selectedClient.name, tipo: selectedClient.tipo })}>
+              Tentar novamente
+            </Button>
+          </div>
+        )}
+
+        {clientDetail && !clientLoading && (
+          <div className="space-y-4">
+            {/* Fields */}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-framer-ink-muted text-xs">Email</span>
+                {editMode ? (
+                  <Input
+                    value={editFields.email}
+                    onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
+                    className="mt-1 h-8 text-xs"
+                    placeholder="email@exemplo.com"
+                  />
+                ) : (
+                  <p className="mt-0.5 font-medium">{clientDetail.email || '—'}</p>
+                )}
+              </div>
+              <div>
+                <span className="text-framer-ink-muted text-xs">Telefone</span>
+                {editMode ? (
+                  <Input
+                    value={editFields.telefone}
+                    onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
+                    className="mt-1 h-8 text-xs"
+                    placeholder="(99) 99999-9999"
+                  />
+                ) : (
+                  <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
+                )}
+              </div>
+              {selectedClient?.doctype === 'Lead' && (
+                <div>
+                  <span className="text-framer-ink-muted text-xs">Origem</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.origem}
+                      onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="Google Ads, Bríndice..."
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
+                  )}
+                </div>
+              )}
+              {selectedClient?.doctype === 'Customer' && (
+                <div>
+                  <span className="text-framer-ink-muted text-xs">CNPJ</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.cnpj}
+                      onChange={e => setEditFields(prev => ({ ...prev, cnpj: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="00.000.000/0000-00"
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">{clientDetail.cnpj || '—'}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Nome (sempre editável) */}
+            <div className="text-sm">
+              <span className="text-framer-ink-muted text-xs">Nome</span>
+              {editMode ? (
+                <Input
+                  value={editFields.nome}
+                  onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
+                  className="mt-1 h-8 text-xs"
+                  placeholder="Nome do cliente"
+                />
+              ) : null}
+            </div>
+
+            {/* Orçamento recente */}
+            {clientDetail.latest_quotation && (
+              <div className="border-t border-framer-hairline pt-3">
+                <span className="text-framer-ink-muted text-xs">Último orçamento</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <a
+                    href={buildQuotationErpUrl(null, clientDetail.latest_quotation.name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-framer-accent-blue hover:underline"
+                  >
+                    {clientDetail.latest_quotation.name}
+                  </a>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium
+                    ${clientDetail.latest_quotation.status === 'Open' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-surface-2 text-framer-ink-muted'}
+                  `}>
+                    {clientDetail.latest_quotation.status}
+                  </span>
+                </div>
+                {clientDetail.latest_quotation.grand_total != null && (
+                  <p className="text-xs text-framer-ink-muted mt-0.5">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(clientDetail.latest_quotation.grand_total)}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Deal vinculado */}
+            {clientDetail.deal && (
+              <div className="border-t border-framer-hairline pt-3">
+                <span className="text-framer-ink-muted text-xs">Deal CRM</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <a
+                    href={buildCrmDealErpUrl(null, clientDetail.deal.name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-framer-accent-blue hover:underline"
+                  >
+                    {clientDetail.deal.name}
+                  </a>
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-framer-surface-2 text-framer-ink-muted">
+                    {clientDetail.deal.status}
+                  </span>
+                </div>
+                {clientDetail.deal.next_step && (
+                  <p className="text-xs text-framer-ink-muted mt-0.5">{clientDetail.deal.next_step}</p>
+                )}
+              </div>
+            )}
+
+            {/* Endereço */}
+            {clientDetail.address?.summary && (
+              <div className="border-t border-framer-hairline pt-3">
+                <span className="text-framer-ink-muted text-xs">
+                  Endereço {clientDetail.address.complete ? '' : '(incompleto)'}
+                </span>
+                <p className="mt-0.5 text-sm">{clientDetail.address.summary}</p>
+              </div>
+            )}
+
+            {/* Datas */}
+            <div className="border-t border-framer-hairline pt-3 text-xs text-framer-ink-muted space-y-0.5">
+              <p>Criado: {clientDetail.creation ? new Date(clientDetail.creation).toLocaleString('pt-BR') : '—'}</p>
+              <p>Modificado: {clientDetail.modified ? new Date(clientDetail.modified).toLocaleString('pt-BR') : '—'}</p>
+            </div>
+          </div>
+        )}
+      </DetailDrawer>
     </div>
   );
 }
