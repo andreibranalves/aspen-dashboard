@@ -670,9 +670,9 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                {/* L2: E-mail (43%) + Telefone (40%) + Origem (20%) */}
+                {/* L2: E-mail (50%) + Telefone (25%) + Origem (25%) */}
                 <div className="flex gap-2">
-                  <div style={{ width: '43%' }}>
+                  <div style={{ width: '50%' }}>
                     <span className="text-framer-ink-muted text-[10px]">E-mail</span>
                     {editMode ? (
                       <Input
@@ -685,7 +685,7 @@ export default function LeadsPage() {
                       <p className="mt-0.5 font-medium truncate">{clientDetail.email || '—'}</p>
                     )}
                   </div>
-                  <div style={{ width: '40%' }}>
+                  <div style={{ width: '25%' }}>
                     <span className="text-framer-ink-muted text-[10px]">Telefone</span>
                     {editMode ? (
                       <Input
@@ -698,7 +698,7 @@ export default function LeadsPage() {
                       <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
                     )}
                   </div>
-                  <div style={{ width: '20%' }}>
+                  <div style={{ width: '25%' }}>
                     <span className="text-framer-ink-muted text-[10px]">Origem</span>
                     {editMode ? (
                       <select
@@ -814,7 +814,7 @@ export default function LeadsPage() {
             {/* ── Endereço ── */}
             <div>
               <h3 className="text-xs font-semibold text-framer-ink-muted uppercase tracking-wider mb-2">
-                Endereço {clientDetail.address?.complete ? '' : '(incompleto)'}
+                Endereço
               </h3>
               {editMode ? (
                 <div className="space-y-2 text-sm">
