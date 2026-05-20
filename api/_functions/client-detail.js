@@ -24,19 +24,30 @@ function buildErpUrl(doctype, name) {
 
 function buildSummaryAddress(addr) {
   if (!addr) return null;
-  const parts = [
-    addr.address_line1,
-    addr.address_line2,
-  ].filter(Boolean);
+  // Parse address_line1: "Rua X, 123" → endereco="Rua X", numero="123"
+  const line1 = addr.address_line1 || '';
+  const lastComma = line1.lastIndexOf(',');
+  const endereco = lastComma > 0 ? line1.substring(0, lastComma).trim() : line1.trim();
+  const numero = lastComma > 0 ? line1.substring(lastComma + 1).trim() : null;
+
+  // Parse address_line2: "Centro - Sala 2" → bairro="Centro", complemento="Sala 2"
+  const line2 = addr.address_line2 || '';
+  const dash = line2.indexOf(' - ');
+  const bairro = dash > 0 ? line2.substring(0, dash).trim() : (line2.trim() || null);
+  const complemento = dash > 0 ? line2.substring(dash + 3).trim() : null;
+
+  const parts = [line1, line2].filter(Boolean);
   if (addr.city) parts.push(addr.city + (addr.state ? `/${addr.state}` : ''));
   const summary = parts.join(', ');
+
   return {
     summary: summary || null,
     complete: !!addr.address_line1 && !!addr.city,
-    // Campos individuais mapeados do ERPNext
-    logradouro: addr.address_line1 || null,
-    complemento: addr.address_line2 || null,
-    cidade: addr.city || null,
+    endereco: endereco || null,
+    numero: numero || null,
+    bairro: bairro || null,
+    complemento: complemento || null,
+    municipio: addr.city || null,
     uf: addr.state || null,
     cep: addr.pincode || null,
   };
@@ -194,14 +205,26 @@ async function handlePut(doctype, name, rawBody) {
   // 4.4 Endereço: criar ou atualizar Address vinculado
   if (payload.endereco && typeof payload.endereco === 'object') {
     const addr = payload.endereco;
-    const addressLine1 = [addr.logradouro].filter(Boolean).join(', ') || null;
-    const addressLine2 = addr.complemento?.trim() || null;
-    const city = addr.cidade?.trim() || null;
+    const endereco = addr.endereco?.trim() || '';
+    const numero = addr.numero?.trim() || '';
+    const bairro = addr.bairro?.trim() || '';
+    const complemento = addr.complemento?.trim() || '';
+    const city = addr.municipio?.trim() || addr.cidade?.trim() || null;
     const state = addr.uf?.trim()?.toUpperCase() || null;
     const pincode = addr.cep?.replace(/\D/g, '')?.slice(0, 8) || null;
 
-    // Só cria/atualiza se tiver pelo menos logradouro ou cidade
-    if (addressLine1 || city) {
+    // Compõe address_line1: "Endereço, Número"
+    const line1Parts = [endereco];
+    if (numero) line1Parts.push(numero);
+    const addressLine1 = line1Parts.filter(Boolean).join(', ') || null;
+
+    // Compõe address_line2: "Bairro - Complemento"
+    const line2Parts = [bairro];
+    if (complemento) line2Parts.push(complemento);
+    const addressLine2 = line2Parts.filter(Boolean).join(' - ') || null;
+
+    // Só cria/atualiza se tiver pelo menos endereço ou município
+    if (endereco || city) {
       const addressPayload = {
         address_title: name,
         address_type: 'Billing',

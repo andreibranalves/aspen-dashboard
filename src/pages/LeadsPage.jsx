@@ -18,6 +18,29 @@ const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
 const PAGE_SIZES = [10, 25, 50];
 
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
+async function lookupCep(cep, setEditFields) {
+  const digits = cep.replace(/\D/g, '');
+  if (digits.length !== 8) return;
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+    const data = await res.json();
+    if (data.erro) return;
+    setEditFields(prev => ({
+      ...prev,
+      endereco: {
+        ...prev.endereco,
+        endereco: data.logradouro || prev.endereco?.endereco || '',
+        bairro: data.bairro || prev.endereco?.bairro || '',
+        complemento: data.complemento || prev.endereco?.complemento || '',
+        municipio: data.localidade || prev.endereco?.municipio || '',
+        uf: data.uf || prev.endereco?.uf || '',
+      },
+    }));
+  } catch { /* silencioso */ }
+}
+
 export default function LeadsPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -134,9 +157,11 @@ export default function LeadsPage() {
       origem: clientDetail.origem || '',
       cnpj: clientDetail.cnpj || '',
       endereco: {
-        logradouro: clientDetail.address?.logradouro || '',
+        endereco: clientDetail.address?.endereco || '',
+        numero: clientDetail.address?.numero || '',
+        bairro: clientDetail.address?.bairro || '',
         complemento: clientDetail.address?.complemento || '',
-        cidade: clientDetail.address?.cidade || '',
+        municipio: clientDetail.address?.municipio || '',
         uf: clientDetail.address?.uf || '',
         cep: clientDetail.address?.cep || '',
       },
@@ -170,9 +195,11 @@ export default function LeadsPage() {
       // Endereço (sempre envia se tiver campos preenchidos)
       if (editFields.endereco) {
         payload.endereco = {
-          logradouro: editFields.endereco.logradouro?.trim() || '',
+          endereco: editFields.endereco.endereco?.trim() || '',
+          numero: editFields.endereco.numero?.trim() || '',
+          bairro: editFields.endereco.bairro?.trim() || '',
           complemento: editFields.endereco.complemento?.trim() || '',
-          cidade: editFields.endereco.cidade?.trim() || '',
+          municipio: editFields.endereco.municipio?.trim() || '',
           uf: editFields.endereco.uf?.trim() || '',
           cep: editFields.endereco.cep?.trim() || '',
         };
@@ -662,94 +689,145 @@ export default function LeadsPage() {
                 Endereço {clientDetail.address?.complete ? '' : '(incompleto)'}
               </span>
               {editMode ? (
-                <div className="mt-1 grid grid-cols-2 gap-2 text-sm">
-                  <div className="col-span-2">
-                    <Input
-                      value={editFields.endereco?.logradouro || ''}
-                      onChange={e => setEditFields(prev => ({
-                        ...prev,
-                        endereco: { ...prev.endereco, logradouro: e.target.value },
-                      }))}
-                      className="h-8 text-xs"
-                      placeholder="Logradouro (ERPNext: address_line1)"
-                    />
+                <div className="mt-1 space-y-2 text-sm">
+                  {/* Linha 1: CEP (30%) + Município (60%) + UF (10%) */}
+                  <div className="flex gap-2">
+                    <div className="relative" style={{ width: '30%' }}>
+                      <Input
+                        value={editFields.endereco?.cep || ''}
+                        onChange={e => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                          setEditFields(prev => ({
+                            ...prev,
+                            endereco: { ...prev.endereco, cep: val },
+                          }));
+                          if (val.length === 8) lookupCep(val, setEditFields);
+                        }}
+                        className="h-8 text-xs pr-8"
+                        placeholder="CEP"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cep = editFields.endereco?.cep || '';
+                          if (cep.replace(/\D/g, '').length === 8) lookupCep(cep, setEditFields);
+                        }}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full text-framer-ink-muted hover:text-framer-accent-blue hover:bg-framer-surface-2 transition-colors"
+                        title="Buscar CEP"
+                      >
+                        <Search size={14} />
+                      </button>
+                    </div>
+                    <div style={{ width: '60%' }}>
+                      <Input
+                        value={editFields.endereco?.municipio || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, municipio: e.target.value },
+                        }))}
+                        className="h-8 text-xs"
+                        placeholder="Município"
+                      />
+                    </div>
+                    <div style={{ width: '10%' }}>
+                      <select
+                        value={editFields.endereco?.uf || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, uf: e.target.value },
+                        }))}
+                        className="h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                      >
+                        <option value="">UF</option>
+                        {UFS.map(uf => (
+                          <option key={uf} value={uf}>{uf}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <Input
-                      value={editFields.endereco?.complemento || ''}
-                      onChange={e => setEditFields(prev => ({
-                        ...prev,
-                        endereco: { ...prev.endereco, complemento: e.target.value },
-                      }))}
-                      className="h-8 text-xs"
-                      placeholder="Complemento (ERPNext: address_line2)"
-                    />
+
+                  {/* Linha 2: Endereço (50%) + Bairro (50%) */}
+                  <div className="flex gap-2">
+                    <div style={{ width: '50%' }}>
+                      <Input
+                        value={editFields.endereco?.endereco || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, endereco: e.target.value },
+                        }))}
+                        className="h-8 text-xs"
+                        placeholder="Endereço"
+                      />
+                    </div>
+                    <div style={{ width: '50%' }}>
+                      <Input
+                        value={editFields.endereco?.bairro || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, bairro: e.target.value },
+                        }))}
+                        className="h-8 text-xs"
+                        placeholder="Bairro"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Input
-                      value={editFields.endereco?.cidade || ''}
-                      onChange={e => setEditFields(prev => ({
-                        ...prev,
-                        endereco: { ...prev.endereco, cidade: e.target.value },
-                      }))}
-                      className="h-8 text-xs"
-                      placeholder="Cidade (ERPNext: city)"
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      value={editFields.endereco?.uf || ''}
-                      onChange={e => setEditFields(prev => ({
-                        ...prev,
-                        endereco: { ...prev.endereco, uf: e.target.value.toUpperCase() },
-                      }))}
-                      className="h-8 text-xs"
-                      placeholder="UF (ERPNext: state)"
-                      maxLength={2}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      value={editFields.endereco?.cep || ''}
-                      onChange={e => setEditFields(prev => ({
-                        ...prev,
-                        endereco: { ...prev.endereco, cep: e.target.value },
-                      }))}
-                      className="h-8 text-xs"
-                      placeholder="CEP (ERPNext: pincode)"
-                    />
+
+                  {/* Linha 3: Número (50%) + Complemento (50%) */}
+                  <div className="flex gap-2">
+                    <div style={{ width: '50%' }}>
+                      <Input
+                        value={editFields.endereco?.numero || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, numero: e.target.value },
+                        }))}
+                        className="h-8 text-xs"
+                        placeholder="Número"
+                      />
+                    </div>
+                    <div style={{ width: '50%' }}>
+                      <Input
+                        value={editFields.endereco?.complemento || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, complemento: e.target.value },
+                        }))}
+                        className="h-8 text-xs"
+                        placeholder="Complemento"
+                      />
+                    </div>
                   </div>
                 </div>
               ) : clientDetail.address ? (
                 <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  {clientDetail.address.logradouro && (
-                    <div className="col-span-2">
-                      <span className="text-framer-ink-muted text-[10px]">Logradouro</span>
-                      <p className="font-medium">{clientDetail.address.logradouro}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.complemento && (
-                    <div className="col-span-2">
-                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
-                      <p className="font-medium">{clientDetail.address.complemento}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.cidade && (
-                    <div>
-                      <span className="text-framer-ink-muted text-[10px]">Cidade</span>
-                      <p className="font-medium">{clientDetail.address.cidade}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.uf && (
-                    <div>
-                      <span className="text-framer-ink-muted text-[10px]">UF</span>
-                      <p className="font-medium">{clientDetail.address.uf}</p>
-                    </div>
-                  )}
                   {clientDetail.address.cep && (
                     <div>
                       <span className="text-framer-ink-muted text-[10px]">CEP</span>
-                      <p className="font-medium">{clientDetail.address.cep}</p>
+                      <p className="font-medium">{clientDetail.address.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.municipio && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Município</span>
+                      <p className="font-medium">{clientDetail.address.municipio}{clientDetail.address.uf ? `/${clientDetail.address.uf}` : ''}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.endereco && (
+                    <div className="col-span-2">
+                      <span className="text-framer-ink-muted text-[10px]">Endereço</span>
+                      <p className="font-medium">{clientDetail.address.endereco}{clientDetail.address.numero ? `, ${clientDetail.address.numero}` : ''}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.bairro && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Bairro</span>
+                      <p className="font-medium">{clientDetail.address.bairro}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.complemento && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
+                      <p className="font-medium">{clientDetail.address.complemento}</p>
                     </div>
                   )}
                 </div>
