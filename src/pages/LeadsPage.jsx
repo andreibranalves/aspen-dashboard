@@ -74,6 +74,17 @@ function formatTaxId(value, personType) {
   return value;
 }
 
+// ── Email/Phone validators ──
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function isValidPhone(value) {
+  const d = String(value || '').replace(/\D/g, '');
+  return d.length >= 10 && d.length <= 11;
+}
+
 async function lookupCep(cep, setEditFields) {
   const digits = cep.replace(/\D/g, '');
   if (digits.length !== 8) return;
@@ -625,172 +636,339 @@ export default function LeadsPage() {
 
         {clientDetail && !clientLoading && (
           <div className="space-y-4">
-            {/* Fields */}
-            <div className="space-y-3 text-sm">
-              {/* Linha 1: Nome (33%) + E-mail (33%) + Telefone (33%) */}
-              <div className="flex gap-2">
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Nome</span>
-                  {editMode ? (
-                    <Input
-                      value={editFields.nome}
-                      onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="Nome do cliente"
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium truncate">{clientDetail.display_name || '—'}</p>
-                  )}
+            {/* ── Dados Gerais ── */}
+            <div>
+              <h3 className="text-xs font-semibold text-framer-ink-muted uppercase tracking-wider mb-2">Dados gerais</h3>
+              <div className="space-y-2 text-sm">
+                {/* L1: Nome (50%) + Empresa (50%) */}
+                <div className="flex gap-2">
+                  <div style={{ width: '50%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Nome</span>
+                    {editMode ? (
+                      <Input
+                        value={editFields.nome}
+                        onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Nome do cliente"
+                      />
+                    ) : (
+                      <p className="mt-0.5 font-medium truncate">{clientDetail.display_name || '—'}</p>
+                    )}
+                  </div>
+                  <div style={{ width: '50%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Empresa</span>
+                    {editMode ? (
+                      <Input
+                        value={editFields.empresa || ''}
+                        onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Nome da empresa"
+                      />
+                    ) : (
+                      <p className="mt-0.5 font-medium truncate">{clientDetail.empresa || '—'}</p>
+                    )}
+                  </div>
                 </div>
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">E-mail</span>
-                  {editMode ? (
-                    <Input
-                      value={editFields.email}
-                      onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="email@exemplo.com"
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium truncate">{clientDetail.email || '—'}</p>
-                  )}
-                </div>
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Telefone</span>
-                  {editMode ? (
-                    <Input
-                      value={editFields.telefone}
-                      onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="(99) 99999-9999"
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
-                  )}
-                </div>
-              </div>
 
-              {/* Linha 2: Tipo de Pessoa (33%) + CNPJ/CPF (33%) + Contribuinte (33%) */}
-              <div className="flex gap-2">
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Tipo de Pessoa</span>
-                  {editMode ? (
-                    <select
-                      value={editFields.personType || ''}
-                      onChange={e => setEditFields(prev => ({
-                        ...prev,
-                        personType: e.target.value,
-                        taxId: '',
-                      }))}
-                      className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                    >
-                      <option value="">Selecione</option>
-                      <option value="pf">Pessoa Física</option>
-                      <option value="pj">Pessoa Jurídica</option>
-                    </select>
-                  ) : (
-                    <p className="mt-0.5 font-medium">
-                      {clientDetail.person_type === 'pf' ? 'Pessoa Física' : clientDetail.person_type === 'pj' ? 'Pessoa Jurídica' : '—'}
-                    </p>
-                  )}
+                {/* L2: E-mail (43%) + Telefone (40%) + Origem (20%) */}
+                <div className="flex gap-2">
+                  <div style={{ width: '43%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">E-mail</span>
+                    {editMode ? (
+                      <Input
+                        value={editFields.email}
+                        onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
+                        className={`mt-0.5 h-8 text-xs ${editFields.email && !isValidEmail(editFields.email) ? 'border-red-400' : ''}`}
+                        placeholder="email@exemplo.com"
+                      />
+                    ) : (
+                      <p className="mt-0.5 font-medium truncate">{clientDetail.email || '—'}</p>
+                    )}
+                  </div>
+                  <div style={{ width: '40%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Telefone</span>
+                    {editMode ? (
+                      <Input
+                        value={editFields.telefone}
+                        onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
+                        className={`mt-0.5 h-8 text-xs ${editFields.telefone && !isValidPhone(editFields.telefone) ? 'border-red-400' : ''}`}
+                        placeholder="(99) 99999-9999"
+                      />
+                    ) : (
+                      <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
+                    )}
+                  </div>
+                  <div style={{ width: '20%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Origem</span>
+                    {editMode ? (
+                      <select
+                        value={editFields.origem || ''}
+                        onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
+                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                      >
+                        <option value="">Selecione</option>
+                        {LEAD_SOURCES.map(src => (
+                          <option key={src} value={src}>{src}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
+                    )}
+                  </div>
                 </div>
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">
-                    {editFields.personType === 'pf' ? 'CPF' : editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}
-                  </span>
-                  {editMode ? (
-                    <Input
-                      value={formatTaxId(editFields.taxId || '', editFields.personType)}
-                      onChange={e => {
-                        const raw = e.target.value.replace(/\D/g, '');
-                        const maxLen = editFields.personType === 'pf' ? 11 : editFields.personType === 'pj' ? 14 : 14;
-                        setEditFields(prev => ({ ...prev, taxId: raw.slice(0, maxLen) }));
-                      }}
-                      className={`mt-1 h-8 text-xs ${editFields.taxId && editFields.personType && (
-                        (editFields.personType === 'pf' && editFields.taxId.length === 11 && !isValidCpf(editFields.taxId)) ||
-                        (editFields.personType === 'pj' && editFields.taxId.length === 14 && !isValidCnpj(editFields.taxId))
-                      ) ? 'border-red-400' : ''}`}
-                      placeholder={editFields.personType === 'pf' ? '000.000.000-00' : editFields.personType === 'pj' ? '00.000.000/0000-00' : 'Selecione o tipo'}
-                      disabled={!editFields.personType}
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium">
-                      {(() => {
-                        const tid = clientDetail.tax_id;
-                        if (!tid) return '—';
-                        if (tid.length === 11) return formatCpf(tid);
-                        if (tid.length === 14) return formatCnpj(tid);
-                        return tid;
-                      })()}
-                    </p>
-                  )}
-                </div>
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Contribuinte</span>
-                  {editMode ? (
-                    <select
-                      value={editFields.contribuinte || '0'}
-                      onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
-                      className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                    >
-                      {CONTRIBUINTE_OPTS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="mt-0.5 font-medium text-xs">
-                      {CONTRIBUINTE_OPTS.find(o => o.value === clientDetail.contribuinte)?.label || '—'}
-                    </p>
-                  )}
-                </div>
-              </div>
 
-              {/* Linha 3: Empresa (33%) + Inscrição Estadual (33%) + Origem (33%) */}
-              <div className="flex gap-2">
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Empresa</span>
-                  {editMode ? (
-                    <Input
-                      value={editFields.empresa || ''}
-                      onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="Nome da empresa"
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium truncate">{clientDetail.empresa || '—'}</p>
-                  )}
+                {/* L3: Tipo de Pessoa (33%) + CNPJ/CPF (33%) + Contribuinte (33%) */}
+                <div className="flex gap-2">
+                  <div style={{ width: '33%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Tipo de Pessoa</span>
+                    {editMode ? (
+                      <select
+                        value={editFields.personType || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          personType: e.target.value,
+                          taxId: '',
+                        }))}
+                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                      >
+                        <option value="">Selecione</option>
+                        <option value="pf">Pessoa Física</option>
+                        <option value="pj">Pessoa Jurídica</option>
+                      </select>
+                    ) : (
+                      <p className="mt-0.5 font-medium">
+                        {clientDetail.person_type === 'pf' ? 'Pessoa Física' : clientDetail.person_type === 'pj' ? 'Pessoa Jurídica' : '—'}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ width: '33%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">
+                      {editFields.personType === 'pf' ? 'CPF' : editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}
+                    </span>
+                    {editMode ? (
+                      <Input
+                        value={formatTaxId(editFields.taxId || '', editFields.personType)}
+                        onChange={e => {
+                          const raw = e.target.value.replace(/\D/g, '');
+                          const maxLen = editFields.personType === 'pf' ? 11 : editFields.personType === 'pj' ? 14 : 14;
+                          setEditFields(prev => ({ ...prev, taxId: raw.slice(0, maxLen) }));
+                        }}
+                        className={`mt-0.5 h-8 text-xs ${editFields.taxId && editFields.personType && (
+                          (editFields.personType === 'pf' && editFields.taxId.length === 11 && !isValidCpf(editFields.taxId)) ||
+                          (editFields.personType === 'pj' && editFields.taxId.length === 14 && !isValidCnpj(editFields.taxId))
+                        ) ? 'border-red-400' : ''}`}
+                        placeholder={editFields.personType === 'pf' ? '000.000.000-00' : editFields.personType === 'pj' ? '00.000.000/0000-00' : 'Selecione o tipo'}
+                        disabled={!editFields.personType}
+                      />
+                    ) : (
+                      <p className="mt-0.5 font-medium">
+                        {(() => {
+                          const tid = clientDetail.tax_id;
+                          if (!tid) return '—';
+                          if (tid.length === 11) return formatCpf(tid);
+                          if (tid.length === 14) return formatCnpj(tid);
+                          return tid;
+                        })()}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ width: '33%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Contribuinte</span>
+                    {editMode ? (
+                      <select
+                        value={editFields.contribuinte || '0'}
+                        onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
+                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                      >
+                        {CONTRIBUINTE_OPTS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="mt-0.5 font-medium text-xs">
+                        {CONTRIBUINTE_OPTS.find(o => o.value === clientDetail.contribuinte)?.label || '—'}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Inscrição Estadual</span>
-                  {editMode ? (
-                    <Input
-                      value={editFields.inscricaoEstadual || ''}
-                      onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="IE"
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium">{clientDetail.inscricao_estadual || '—'}</p>
-                  )}
-                </div>
-                <div style={{ width: '33%' }}>
-                  <span className="text-framer-ink-muted text-xs">Origem</span>
-                  {editMode ? (
-                    <select
-                      value={editFields.origem || ''}
-                      onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
-                      className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                    >
-                      <option value="">Selecione</option>
-                      {LEAD_SOURCES.map(src => (
-                        <option key={src} value={src}>{src}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
-                  )}
+
+                {/* L4: Inscrição Estadual (33%) */}
+                <div className="flex gap-2">
+                  <div style={{ width: '33%' }}>
+                    <span className="text-framer-ink-muted text-[10px]">Inscrição Estadual</span>
+                    {editMode ? (
+                      <Input
+                        value={editFields.inscricaoEstadual || ''}
+                        onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="IE"
+                      />
+                    ) : (
+                      <p className="mt-0.5 font-medium">{clientDetail.inscricao_estadual || '—'}</p>
+                    )}
+                  </div>
                 </div>
               </div>
+            </div>
+
+            {/* ── Endereço ── */}
+            <div>
+              <h3 className="text-xs font-semibold text-framer-ink-muted uppercase tracking-wider mb-2">
+                Endereço {clientDetail.address?.complete ? '' : '(incompleto)'}
+              </h3>
+              {editMode ? (
+                <div className="space-y-2 text-sm">
+                  {/* Linha 1: CEP (30%) + Município (50%) + UF (20%) */}
+                  <div className="flex gap-2">
+                    <div className="relative" style={{ width: '30%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">CEP</span>
+                      <Input
+                        value={editFields.endereco?.cep || ''}
+                        onChange={e => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                          setEditFields(prev => ({
+                            ...prev,
+                            endereco: { ...prev.endereco, cep: val },
+                          }));
+                          if (val.length === 8) lookupCep(val, setEditFields);
+                        }}
+                        className="mt-0.5 h-8 text-xs pr-8"
+                        placeholder="00000-000"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cep = editFields.endereco?.cep || '';
+                          if (cep.replace(/\D/g, '').length === 8) lookupCep(cep, setEditFields);
+                        }}
+                        className="absolute right-1 top-5 p-1 rounded-full text-framer-ink-muted hover:text-framer-accent-blue hover:bg-framer-surface-2 transition-colors"
+                        title="Buscar CEP"
+                      >
+                        <Search size={14} />
+                      </button>
+                    </div>
+                    <div style={{ width: '50%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">Município</span>
+                      <Input
+                        value={editFields.endereco?.municipio || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, municipio: e.target.value },
+                        }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Município"
+                      />
+                    </div>
+                    <div style={{ width: '20%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">UF</span>
+                      <select
+                        value={editFields.endereco?.uf || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, uf: e.target.value },
+                        }))}
+                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                      >
+                        <option value="">UF</option>
+                        {UFS.map(uf => (
+                          <option key={uf} value={uf}>{uf}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Linha 2: Endereço (80%) + Número (20%) */}
+                  <div className="flex gap-2">
+                    <div style={{ width: '80%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">Endereço</span>
+                      <Input
+                        value={editFields.endereco?.endereco || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, endereco: e.target.value },
+                        }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Endereço"
+                      />
+                    </div>
+                    <div style={{ width: '20%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">Número</span>
+                      <Input
+                        value={editFields.endereco?.numero || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, numero: e.target.value },
+                        }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Nº"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Linha 3: Bairro (50%) + Complemento (50%) */}
+                  <div className="flex gap-2">
+                    <div style={{ width: '50%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">Bairro</span>
+                      <Input
+                        value={editFields.endereco?.bairro || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, bairro: e.target.value },
+                        }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Bairro"
+                      />
+                    </div>
+                    <div style={{ width: '50%' }}>
+                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
+                      <Input
+                        value={editFields.endereco?.complemento || ''}
+                        onChange={e => setEditFields(prev => ({
+                          ...prev,
+                          endereco: { ...prev.endereco, complemento: e.target.value },
+                        }))}
+                        className="mt-0.5 h-8 text-xs"
+                        placeholder="Complemento"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : clientDetail.address ? (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  {clientDetail.address.cep && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">CEP</span>
+                      <p className="font-medium">{clientDetail.address.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.municipio && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Município</span>
+                      <p className="font-medium">{clientDetail.address.municipio}{clientDetail.address.uf ? `/${clientDetail.address.uf}` : ''}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.endereco && (
+                    <div className="col-span-2">
+                      <span className="text-framer-ink-muted text-[10px]">Endereço</span>
+                      <p className="font-medium">{clientDetail.address.endereco}{clientDetail.address.numero ? `, ${clientDetail.address.numero}` : ''}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.bairro && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Bairro</span>
+                      <p className="font-medium">{clientDetail.address.bairro}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.complemento && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
+                      <p className="font-medium">{clientDetail.address.complemento}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-framer-ink-muted">Clique em Editar para cadastrar</p>
+              )}
             </div>
 
             {/* Orçamento recente */}
@@ -842,159 +1020,6 @@ export default function LeadsPage() {
                 )}
               </div>
             )}
-
-            {/* Endereço */}
-            <div className="border-t border-framer-hairline pt-3">
-              <span className="text-framer-ink-muted text-xs">
-                Endereço {clientDetail.address?.complete ? '' : '(incompleto)'}
-              </span>
-              {editMode ? (
-                <div className="mt-1 space-y-2 text-sm">
-                  {/* Linha 1: CEP (30%) + Município (50%) + UF (20%) */}
-                  <div className="flex gap-2">
-                    <div className="relative" style={{ width: '30%' }}>
-                      <Input
-                        value={editFields.endereco?.cep || ''}
-                        onChange={e => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 8);
-                          setEditFields(prev => ({
-                            ...prev,
-                            endereco: { ...prev.endereco, cep: val },
-                          }));
-                          if (val.length === 8) lookupCep(val, setEditFields);
-                        }}
-                        className="h-8 text-xs pr-8"
-                        placeholder="CEP"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cep = editFields.endereco?.cep || '';
-                          if (cep.replace(/\D/g, '').length === 8) lookupCep(cep, setEditFields);
-                        }}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full text-framer-ink-muted hover:text-framer-accent-blue hover:bg-framer-surface-2 transition-colors"
-                        title="Buscar CEP"
-                      >
-                        <Search size={14} />
-                      </button>
-                    </div>
-                    <div style={{ width: '50%' }}>
-                      <Input
-                        value={editFields.endereco?.municipio || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, municipio: e.target.value },
-                        }))}
-                        className="h-8 text-xs"
-                        placeholder="Município"
-                      />
-                    </div>
-                    <div style={{ width: '20%' }}>
-                      <select
-                        value={editFields.endereco?.uf || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, uf: e.target.value },
-                        }))}
-                        className="h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                      >
-                        <option value="">UF</option>
-                        {UFS.map(uf => (
-                          <option key={uf} value={uf}>{uf}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Linha 2: Endereço (80%) + Número (20%) */}
-                  <div className="flex gap-2">
-                    <div style={{ width: '80%' }}>
-                      <Input
-                        value={editFields.endereco?.endereco || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, endereco: e.target.value },
-                        }))}
-                        className="h-8 text-xs"
-                        placeholder="Endereço"
-                      />
-                    </div>
-                    <div style={{ width: '20%' }}>
-                      <Input
-                        value={editFields.endereco?.numero || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, numero: e.target.value },
-                        }))}
-                        className="h-8 text-xs"
-                        placeholder="Número"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Linha 3: Bairro (50%) + Complemento (50%) */}
-                  <div className="flex gap-2">
-                    <div style={{ width: '50%' }}>
-                      <Input
-                        value={editFields.endereco?.bairro || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, bairro: e.target.value },
-                        }))}
-                        className="h-8 text-xs"
-                        placeholder="Bairro"
-                      />
-                    </div>
-                    <div style={{ width: '50%' }}>
-                      <Input
-                        value={editFields.endereco?.complemento || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, complemento: e.target.value },
-                        }))}
-                        className="h-8 text-xs"
-                        placeholder="Complemento"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : clientDetail.address ? (
-                <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  {clientDetail.address.cep && (
-                    <div>
-                      <span className="text-framer-ink-muted text-[10px]">CEP</span>
-                      <p className="font-medium">{clientDetail.address.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.municipio && (
-                    <div>
-                      <span className="text-framer-ink-muted text-[10px]">Município</span>
-                      <p className="font-medium">{clientDetail.address.municipio}{clientDetail.address.uf ? `/${clientDetail.address.uf}` : ''}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.endereco && (
-                    <div className="col-span-2">
-                      <span className="text-framer-ink-muted text-[10px]">Endereço</span>
-                      <p className="font-medium">{clientDetail.address.endereco}{clientDetail.address.numero ? `, ${clientDetail.address.numero}` : ''}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.bairro && (
-                    <div>
-                      <span className="text-framer-ink-muted text-[10px]">Bairro</span>
-                      <p className="font-medium">{clientDetail.address.bairro}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.complemento && (
-                    <div>
-                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
-                      <p className="font-medium">{clientDetail.address.complemento}</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="mt-0.5 text-sm text-framer-ink-muted">Clique em Editar para cadastrar</p>
-              )}
-            </div>
 
             {/* Datas */}
             <div className="border-t border-framer-hairline pt-3 text-xs text-framer-ink-muted space-y-0.5">
