@@ -1,9 +1,12 @@
 // ── Origem / Lead Source ─────────────────────────────────────────────────────
 
 export const LEAD_SOURCES = [
+  { value: 'Brindice', label: 'Brindice' },
   { value: 'Google Ads', label: 'Google Ads' },
-  { value: 'Bríndice', label: 'Bríndice' },
-  { value: 'Cliente recorrente', label: 'Cliente recorrente' },
+  { value: 'Indicação', label: 'Indicação' },
+  { value: 'Cliente antigo / recorrente', label: 'Cliente antigo / recorrente' },
+  { value: 'Orgânico / Site', label: 'Orgânico / Site' },
+  { value: 'Outro', label: 'Outro' },
 ];
 
 export const DEFAULT_LEAD_SOURCE = '';

@@ -17,7 +17,7 @@ Rule 3 — Regras por Produto:
 
 Rule 4 — Múltiplas Quantidades: Se o cliente pedir o mesmo produto em quantidades diferentes (ex: "80 e 100 lenços"), inclua TODAS as combinações como linhas separadas no MESMO objeto de pedido. Ex: LNC-SED-70 qty:80, LNC-CSD-70 qty:80, LNC-SED-70 qty:100, LNC-CSD-70 qty:100 — tudo num único objeto do array.
 
-Formato Bríndice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
+Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
 
 Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
@@ -52,9 +52,11 @@ RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 ]
 
 Regras para origem (campo "origem"):
-- Se o texto tiver formato de tabela Bríndice (colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL), usar "Bríndice".
+- Se o texto tiver formato de tabela Brindice (colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL), usar "Brindice".
 - Se o texto mencionar Google Ads, campanha ou anúncio do Google, usar "Google Ads".
-- Se o cliente mencionar que já comprou antes ou é cliente recorrente, usar "Cliente recorrente".
+- Se o texto mencionar que foi indicação de alguém, usar "Indicação".
+- Se o cliente mencionar que já comprou antes, usar "Cliente antigo / recorrente".
+- Se o texto mencionar que encontrou pelo site ou busca orgânica, usar "Orgânico / Site".
 - Se não houver evidência clara, deixar origem como string vazia ("").
 
 Regras para CNPJ (campo "cnpj"):
