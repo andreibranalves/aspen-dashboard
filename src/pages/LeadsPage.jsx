@@ -133,6 +133,13 @@ export default function LeadsPage() {
       telefone: clientDetail.telefone || '',
       origem: clientDetail.origem || '',
       cnpj: clientDetail.cnpj || '',
+      endereco: {
+        logradouro: clientDetail.address?.logradouro || '',
+        complemento: clientDetail.address?.complemento || '',
+        cidade: clientDetail.address?.cidade || '',
+        uf: clientDetail.address?.uf || '',
+        cep: clientDetail.address?.cep || '',
+      },
     });
     setEditMode(true);
   }, [clientDetail]);
@@ -159,6 +166,16 @@ export default function LeadsPage() {
       // CNPJ apenas para Customer
       if (selectedClient.doctype === 'Customer') {
         payload.cnpj = editFields.cnpj?.trim() || null;
+      }
+      // Endereço (sempre envia se tiver campos preenchidos)
+      if (editFields.endereco) {
+        payload.endereco = {
+          logradouro: editFields.endereco.logradouro?.trim() || '',
+          complemento: editFields.endereco.complemento?.trim() || '',
+          cidade: editFields.endereco.cidade?.trim() || '',
+          uf: editFields.endereco.uf?.trim() || '',
+          cep: editFields.endereco.cep?.trim() || '',
+        };
       }
 
       const updated = await apiPut(
@@ -644,7 +661,66 @@ export default function LeadsPage() {
               <span className="text-framer-ink-muted text-xs">
                 Endereço {clientDetail.address?.complete ? '' : '(incompleto)'}
               </span>
-              {clientDetail.address ? (
+              {editMode ? (
+                <div className="mt-1 grid grid-cols-2 gap-2 text-sm">
+                  <div className="col-span-2">
+                    <Input
+                      value={editFields.endereco?.logradouro || ''}
+                      onChange={e => setEditFields(prev => ({
+                        ...prev,
+                        endereco: { ...prev.endereco, logradouro: e.target.value },
+                      }))}
+                      className="h-8 text-xs"
+                      placeholder="Logradouro (ERPNext: address_line1)"
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      value={editFields.endereco?.complemento || ''}
+                      onChange={e => setEditFields(prev => ({
+                        ...prev,
+                        endereco: { ...prev.endereco, complemento: e.target.value },
+                      }))}
+                      className="h-8 text-xs"
+                      placeholder="Complemento (ERPNext: address_line2)"
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      value={editFields.endereco?.cidade || ''}
+                      onChange={e => setEditFields(prev => ({
+                        ...prev,
+                        endereco: { ...prev.endereco, cidade: e.target.value },
+                      }))}
+                      className="h-8 text-xs"
+                      placeholder="Cidade (ERPNext: city)"
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      value={editFields.endereco?.uf || ''}
+                      onChange={e => setEditFields(prev => ({
+                        ...prev,
+                        endereco: { ...prev.endereco, uf: e.target.value.toUpperCase() },
+                      }))}
+                      className="h-8 text-xs"
+                      placeholder="UF (ERPNext: state)"
+                      maxLength={2}
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      value={editFields.endereco?.cep || ''}
+                      onChange={e => setEditFields(prev => ({
+                        ...prev,
+                        endereco: { ...prev.endereco, cep: e.target.value },
+                      }))}
+                      className="h-8 text-xs"
+                      placeholder="CEP (ERPNext: pincode)"
+                    />
+                  </div>
+                </div>
+              ) : clientDetail.address ? (
                 <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                   {clientDetail.address.logradouro && (
                     <div className="col-span-2">
@@ -678,7 +754,7 @@ export default function LeadsPage() {
                   )}
                 </div>
               ) : (
-                <p className="mt-0.5 text-sm text-framer-ink-muted">Sem endereço cadastrado</p>
+                <p className="mt-0.5 text-sm text-framer-ink-muted">Clique em Editar para cadastrar</p>
               )}
             </div>
 

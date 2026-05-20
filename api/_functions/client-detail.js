@@ -1,4 +1,4 @@
-import { erpGetDoc, erpGetList, erpPut, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
+import { erpGetDoc, erpGetList, erpPut, erpPost, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
 import { LEAD_SOURCES, normalizeLeadSource, normalizeCnpj, isValidCnpj } from './lib/client-metadata.js';
 
 // ── Constants ──
@@ -191,7 +191,47 @@ async function handlePut(doctype, name, rawBody) {
     updates.utm_source = origemVal || null;
   }
 
-  if (Object.keys(updates).length === 0) {
+  // 4.4 Endereço: criar ou atualizar Address vinculado
+  if (payload.endereco && typeof payload.endereco === 'object') {
+    const addr = payload.endereco;
+    const addressLine1 = [addr.logradouro].filter(Boolean).join(', ') || null;
+    const addressLine2 = addr.complemento?.trim() || null;
+    const city = addr.cidade?.trim() || null;
+    const state = addr.uf?.trim()?.toUpperCase() || null;
+    const pincode = addr.cep?.replace(/\D/g, '')?.slice(0, 8) || null;
+
+    // Só cria/atualiza se tiver pelo menos logradouro ou cidade
+    if (addressLine1 || city) {
+      const addressPayload = {
+        address_title: name,
+        address_type: 'Billing',
+        address_line1: addressLine1,
+        city: city || '',
+        country: 'Brazil',
+        links: [{ link_doctype: doctype, link_name: name }],
+      };
+      if (addressLine2) addressPayload.address_line2 = addressLine2;
+      if (state) addressPayload.state = state;
+      if (pincode) addressPayload.pincode = pincode;
+
+      // Verifica se já existe Address vinculado
+      const existingAddrs = await erpGetList('Address', {
+        filters: [['link_doctype', '=', doctype], ['link_name', '=', name]],
+        fields: ['name'],
+        limit: 1,
+      });
+
+      if (existingAddrs.length > 0) {
+        await erpPut('Address', existingAddrs[0].name, addressPayload);
+      } else {
+        await erpPost('Address', addressPayload);
+      }
+    }
+  }
+
+  const hasAddress = payload.endereco && typeof payload.endereco === 'object';
+
+  if (Object.keys(updates).length === 0 && !hasAddress) {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -199,8 +239,10 @@ async function handlePut(doctype, name, rawBody) {
     };
   }
 
-  // Executar update
-  await erpPut(doctype, name, updates);
+  // Executar update do documento principal (se houver campos)
+  if (Object.keys(updates).length > 0) {
+    await erpPut(doctype, name, updates);
+  }
 
   // Retornar detalhe atualizado
   const result = await handleGet(doctype, name);
