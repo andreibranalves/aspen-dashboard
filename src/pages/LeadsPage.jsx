@@ -237,6 +237,7 @@ export default function LeadsPage() {
       sem_email: { label: 'Sem email', type: 'warning' },
       sem_origem: { label: 'Sem origem', type: 'danger' },
       sem_cnpj: { label: 'Sem CNPJ', type: 'info' },
+      endereco_incompleto: { label: 'Sem endereço', type: 'warning' },
     };
 
     return clientDetail.quality_flags.map(flag => labelMap[flag] || { label: flag, type: 'warning' });
@@ -639,14 +640,47 @@ export default function LeadsPage() {
             )}
 
             {/* Endereço */}
-            {clientDetail.address?.summary && (
-              <div className="border-t border-framer-hairline pt-3">
-                <span className="text-framer-ink-muted text-xs">
-                  Endereço {clientDetail.address.complete ? '' : '(incompleto)'}
-                </span>
-                <p className="mt-0.5 text-sm">{clientDetail.address.summary}</p>
-              </div>
-            )}
+            <div className="border-t border-framer-hairline pt-3">
+              <span className="text-framer-ink-muted text-xs">
+                Endereço {clientDetail.address?.complete ? '' : '(incompleto)'}
+              </span>
+              {clientDetail.address ? (
+                <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  {clientDetail.address.logradouro && (
+                    <div className="col-span-2">
+                      <span className="text-framer-ink-muted text-[10px]">Logradouro</span>
+                      <p className="font-medium">{clientDetail.address.logradouro}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.complemento && (
+                    <div className="col-span-2">
+                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
+                      <p className="font-medium">{clientDetail.address.complemento}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.cidade && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">Cidade</span>
+                      <p className="font-medium">{clientDetail.address.cidade}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.uf && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">UF</span>
+                      <p className="font-medium">{clientDetail.address.uf}</p>
+                    </div>
+                  )}
+                  {clientDetail.address.cep && (
+                    <div>
+                      <span className="text-framer-ink-muted text-[10px]">CEP</span>
+                      <p className="font-medium">{clientDetail.address.cep}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-0.5 text-sm text-framer-ink-muted">Sem endereço cadastrado</p>
+              )}
+            </div>
 
             {/* Datas */}
             <div className="border-t border-framer-hairline pt-3 text-xs text-framer-ink-muted space-y-0.5">

@@ -33,11 +33,16 @@ function buildSummaryAddress(addr) {
   return {
     summary: summary || null,
     complete: !!addr.address_line1 && !!addr.city,
-    raw: addr,
+    // Campos individuais mapeados do ERPNext
+    logradouro: addr.address_line1 || null,
+    complemento: addr.address_line2 || null,
+    cidade: addr.city || null,
+    uf: addr.state || null,
+    cep: addr.pincode || null,
   };
 }
 
-function computeQualityFlags(doc, doctype) {
+function computeQualityFlags(doc, doctype, address) {
   const flags = [];
   const phone = doc.mobile_no || doc.phone;
   const email = doc.email_id || doc.email;
@@ -45,6 +50,7 @@ function computeQualityFlags(doc, doctype) {
   if (!email) flags.push('sem_email');
   if (doctype === 'Lead' && !doc.utm_source && !doc.source) flags.push('sem_origem');
   if (doctype === 'Customer' && !doc.tax_id) flags.push('sem_cnpj');
+  if (!address || !address.complete) flags.push('endereco_incompleto');
   return flags;
 }
 
@@ -133,7 +139,7 @@ async function handleGet(doctype, name) {
     address,
     latest_quotation: latestQuotation,
     deal,
-    quality_flags: computeQualityFlags({ ...doc, email, mobile_no: telefone }, doctype),
+    quality_flags: computeQualityFlags({ ...doc, email, mobile_no: telefone }, doctype, address),
   };
 }
 
