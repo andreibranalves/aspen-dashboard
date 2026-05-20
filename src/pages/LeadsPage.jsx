@@ -18,6 +18,15 @@ const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
 const PAGE_SIZES = [10, 25, 50];
 
+const CONTRIBUINTE_OPTS = [
+  { value: '0', label: '0 - Não informado' },
+  { value: '1', label: '1 - Contribuinte ICMS' },
+  { value: '2', label: '2 - Contribuinte isento' },
+  { value: '9', label: '9 - Não Contribuinte' },
+];
+
+const LEAD_SOURCES = ['Google Ads', 'Bríndice', 'Cliente recorrente'];
+
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 // ── CPF/CNPJ helpers ──
@@ -202,6 +211,9 @@ export default function LeadsPage() {
       origem: clientDetail.origem || '',
       personType: clientDetail.person_type || '',
       taxId: clientDetail.tax_id || '',
+      empresa: clientDetail.empresa || '',
+      contribuinte: clientDetail.contribuinte || '0',
+      inscricaoEstadual: clientDetail.inscricao_estadual || '',
       endereco: {
         endereco: clientDetail.address?.endereco || '',
         numero: clientDetail.address?.numero || '',
@@ -239,6 +251,12 @@ export default function LeadsPage() {
         payload.person_type = editFields.personType;
         payload.tax_id = editFields.taxId?.replace(/\D/g, '') || null;
       }
+      // Campos adicionais
+      payload.empresa = editFields.empresa?.trim() || null;
+      payload.contribuinte = editFields.contribuinte || '0';
+      payload.inscricao_estadual = editFields.inscricaoEstadual?.trim() || null;
+      // Origem (sempre envia, Lead ou Customer)
+      payload.origem = editFields.origem?.trim() || null;
       // Endereço (sempre envia se tiver campos preenchidos)
       if (editFields.endereco) {
         payload.endereco = {
@@ -609,9 +627,9 @@ export default function LeadsPage() {
           <div className="space-y-4">
             {/* Fields */}
             <div className="space-y-3 text-sm">
-              {/* Linha 1: Nome (40%) + Tipo de Pessoa (30%) + CNPJ/CPF (30%) */}
+              {/* Linha 1: Nome (33%) + E-mail (33%) + Telefone (33%) */}
               <div className="flex gap-2">
-                <div style={{ width: '40%' }}>
+                <div style={{ width: '33%' }}>
                   <span className="text-framer-ink-muted text-xs">Nome</span>
                   {editMode ? (
                     <Input
@@ -621,10 +639,40 @@ export default function LeadsPage() {
                       placeholder="Nome do cliente"
                     />
                   ) : (
-                    <p className="mt-0.5 font-medium">{clientDetail.display_name || '—'}</p>
+                    <p className="mt-0.5 font-medium truncate">{clientDetail.display_name || '—'}</p>
                   )}
                 </div>
-                <div style={{ width: '30%' }}>
+                <div style={{ width: '33%' }}>
+                  <span className="text-framer-ink-muted text-xs">E-mail</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.email}
+                      onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="email@exemplo.com"
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium truncate">{clientDetail.email || '—'}</p>
+                  )}
+                </div>
+                <div style={{ width: '33%' }}>
+                  <span className="text-framer-ink-muted text-xs">Telefone</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.telefone}
+                      onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="(99) 99999-9999"
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Linha 2: Tipo de Pessoa (33%) + CNPJ/CPF (33%) + Contribuinte (33%) */}
+              <div className="flex gap-2">
+                <div style={{ width: '33%' }}>
                   <span className="text-framer-ink-muted text-xs">Tipo de Pessoa</span>
                   {editMode ? (
                     <select
@@ -632,7 +680,7 @@ export default function LeadsPage() {
                       onChange={e => setEditFields(prev => ({
                         ...prev,
                         personType: e.target.value,
-                        taxId: '', // limpa ao trocar tipo
+                        taxId: '',
                       }))}
                       className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
                     >
@@ -646,7 +694,7 @@ export default function LeadsPage() {
                     </p>
                   )}
                 </div>
-                <div style={{ width: '30%' }}>
+                <div style={{ width: '33%' }}>
                   <span className="text-framer-ink-muted text-xs">
                     {editFields.personType === 'pf' ? 'CPF' : editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}
                   </span>
@@ -677,54 +725,72 @@ export default function LeadsPage() {
                     </p>
                   )}
                 </div>
+                <div style={{ width: '33%' }}>
+                  <span className="text-framer-ink-muted text-xs">Contribuinte</span>
+                  {editMode ? (
+                    <select
+                      value={editFields.contribuinte || '0'}
+                      onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
+                      className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                    >
+                      {CONTRIBUINTE_OPTS.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="mt-0.5 font-medium text-xs">
+                      {CONTRIBUINTE_OPTS.find(o => o.value === clientDetail.contribuinte)?.label || '—'}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              {/* Linha 2: Email + Telefone */}
+              {/* Linha 3: Empresa (33%) + Inscrição Estadual (33%) + Origem (33%) */}
               <div className="flex gap-2">
-                <div style={{ width: '50%' }}>
-                  <span className="text-framer-ink-muted text-xs">Email</span>
+                <div style={{ width: '33%' }}>
+                  <span className="text-framer-ink-muted text-xs">Empresa</span>
                   {editMode ? (
                     <Input
-                      value={editFields.email}
-                      onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
+                      value={editFields.empresa || ''}
+                      onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))}
                       className="mt-1 h-8 text-xs"
-                      placeholder="email@exemplo.com"
+                      placeholder="Nome da empresa"
                     />
                   ) : (
-                    <p className="mt-0.5 font-medium">{clientDetail.email || '—'}</p>
+                    <p className="mt-0.5 font-medium truncate">{clientDetail.empresa || '—'}</p>
                   )}
                 </div>
-                <div style={{ width: '50%' }}>
-                  <span className="text-framer-ink-muted text-xs">Telefone</span>
+                <div style={{ width: '33%' }}>
+                  <span className="text-framer-ink-muted text-xs">Inscrição Estadual</span>
                   {editMode ? (
                     <Input
-                      value={editFields.telefone}
-                      onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
+                      value={editFields.inscricaoEstadual || ''}
+                      onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))}
                       className="mt-1 h-8 text-xs"
-                      placeholder="(99) 99999-9999"
+                      placeholder="IE"
                     />
                   ) : (
-                    <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
+                    <p className="mt-0.5 font-medium">{clientDetail.inscricao_estadual || '—'}</p>
                   )}
                 </div>
-              </div>
-
-              {/* Origem (apenas Lead) */}
-              {selectedClient?.doctype === 'Lead' && (
-                <div>
+                <div style={{ width: '33%' }}>
                   <span className="text-framer-ink-muted text-xs">Origem</span>
                   {editMode ? (
-                    <Input
-                      value={editFields.origem}
+                    <select
+                      value={editFields.origem || ''}
                       onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="Google Ads, Bríndice..."
-                    />
+                      className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                    >
+                      <option value="">Selecione</option>
+                      {LEAD_SOURCES.map(src => (
+                        <option key={src} value={src}>{src}</option>
+                      ))}
+                    </select>
                   ) : (
                     <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Orçamento recente */}

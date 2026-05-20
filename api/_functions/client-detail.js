@@ -70,8 +70,8 @@ function computeQualityFlags(doc, doctype, address) {
 async function handleGet(doctype, name) {
   // 1. Fetch documento principal
   const fields = doctype === 'Lead'
-    ? ['name', 'lead_name', 'first_name', 'email_id', 'mobile_no', 'phone', 'utm_source', 'source', 'creation', 'modified']
-    : ['name', 'customer_name', 'tax_id', 'customer_type', 'creation', 'modified'];
+    ? ['name', 'lead_name', 'first_name', 'email_id', 'mobile_no', 'phone', 'utm_source', 'source', 'creation', 'modified', 'notes']
+    : ['name', 'customer_name', 'tax_id', 'customer_type', 'creation', 'modified', 'notes'];
 
   const doc = await erpGetDoc(doctype, name, { fields });
   if (!doc) throw createHttpError(404, `${doctype} "${name}" não encontrado.`);
@@ -85,6 +85,13 @@ async function handleGet(doctype, name) {
     ? (doc.customer_type === 'Company' ? 'pj' : doc.customer_type === 'Individual' ? 'pf' : null)
     : null;
   const nome = doctype === 'Lead' ? doc.lead_name : doc.customer_name;
+
+  // Parse notes JSON para campos extras (empresa, contribuinte, inscricao_estadual)
+  let notesData = {};
+  try { if (doc.notes) notesData = JSON.parse(doc.notes); } catch { /* não é JSON */ }
+  const empresa = notesData.empresa || null;
+  const contribuinte = notesData.contribuinte || '0';
+  const inscricaoEstadual = notesData.inscricao_estadual || null;
 
   // 2. Buscar Address vinculado
   let address = null;
@@ -149,6 +156,9 @@ async function handleGet(doctype, name) {
     origem,
     person_type: personType,
     tax_id: taxId,
+    empresa,
+    contribuinte,
+    inscricao_estadual: inscricaoEstadual,
     creation: doc.creation,
     modified: doc.modified,
     erp_url: buildErpUrl(doctype, name),
@@ -265,6 +275,23 @@ async function handlePut(doctype, name, rawBody) {
         await erpPost('Address', addressPayload);
       }
     }
+  }
+
+  // 4.5 Campos extras no notes (empresa, contribuinte, inscricao_estadual)
+  const hasNotesFields = payload.empresa !== undefined || payload.contribuinte !== undefined || payload.inscricao_estadual !== undefined;
+  if (hasNotesFields) {
+    // Lê notes atual para merge
+    let currentNotes = {};
+    try {
+      const current = await erpGetDoc(doctype, name, { fields: ['notes'] });
+      if (current?.notes) currentNotes = JSON.parse(current.notes);
+    } catch { /* mantém vazio */ }
+
+    if (payload.empresa !== undefined) currentNotes.empresa = payload.empresa || null;
+    if (payload.contribuinte !== undefined) currentNotes.contribuinte = payload.contribuinte || '0';
+    if (payload.inscricao_estadual !== undefined) currentNotes.inscricao_estadual = payload.inscricao_estadual || null;
+
+    updates.notes = JSON.stringify(currentNotes);
   }
 
   const hasAddress = payload.endereco && typeof payload.endereco === 'object';
