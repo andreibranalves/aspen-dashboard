@@ -71,7 +71,7 @@ async function handleGet(doctype, name) {
   // 1. Fetch documento principal
   const fields = doctype === 'Lead'
     ? ['name', 'lead_name', 'first_name', 'email_id', 'mobile_no', 'phone', 'utm_source', 'source', 'creation', 'modified']
-    : ['name', 'customer_name', 'tax_id', 'creation', 'modified'];
+    : ['name', 'customer_name', 'tax_id', 'customer_type', 'creation', 'modified'];
 
   const doc = await erpGetDoc(doctype, name, { fields });
   if (!doc) throw createHttpError(404, `${doctype} "${name}" não encontrado.`);
@@ -79,7 +79,11 @@ async function handleGet(doctype, name) {
   const email = doctype === 'Lead' ? (doc.email_id || null) : null;
   const telefone = doc.mobile_no || doc.phone || null;
   const origem = doctype === 'Lead' ? (doc.utm_source || doc.source || null) : null;
-  const cnpj = doctype === 'Customer' ? normalizeCnpj(doc.tax_id) : null;
+  const taxId = normalizeCnpj(doc.tax_id) || null;
+  // person_type: Customer usa customer_type (Company→pj, Individual→pf), Lead sem padrão
+  const personType = doctype === 'Customer'
+    ? (doc.customer_type === 'Company' ? 'pj' : doc.customer_type === 'Individual' ? 'pf' : null)
+    : null;
   const nome = doctype === 'Lead' ? doc.lead_name : doc.customer_name;
 
   // 2. Buscar Address vinculado
@@ -143,7 +147,8 @@ async function handleGet(doctype, name) {
     email,
     telefone,
     origem,
-    cnpj: cnpj || null,
+    person_type: personType,
+    tax_id: taxId,
     creation: doc.creation,
     modified: doc.modified,
     erp_url: buildErpUrl(doctype, name),
@@ -176,20 +181,30 @@ async function handlePut(doctype, name, rawBody) {
     }
   }
 
-  // 4.2 CNPJ (apenas Customer)
-  if (doctype === 'Customer' && payload.cnpj !== undefined) {
-    const rawCnpj = normalizeCnpj(payload.cnpj);
-    if (rawCnpj && !isValidCnpj(rawCnpj)) {
-      throw createHttpError(400, 'CNPJ inválido.');
+  // 4.2 Tipo de pessoa + tax_id (CPF/CNPJ)
+  if (payload.person_type === 'pf' || payload.person_type === 'pj') {
+    const rawTaxId = (payload.tax_id || '').replace(/\D/g, '');
+    // Validar CPF/CNPJ
+    if (rawTaxId) {
+      if (payload.person_type === 'pf' && rawTaxId.length !== 11) {
+        throw createHttpError(400, 'CPF deve ter 11 dígitos.');
+      }
+      if (payload.person_type === 'pj' && rawTaxId.length !== 14) {
+        throw createHttpError(400, 'CNPJ deve ter 14 dígitos.');
+      }
+      // Não sobrescrever divergente
+      const current = await erpGetDoc(doctype, name, { fields: ['tax_id'] });
+      const existingTaxId = normalizeCnpj(current?.tax_id || '');
+      if (existingTaxId && rawTaxId && existingTaxId !== rawTaxId) {
+        throw createHttpError(409, 'CPF/CNPJ diverge do cadastro atual. Edite diretamente no ERPNext.');
+      }
+      if (!existingTaxId) {
+        updates.tax_id = rawTaxId;
+      }
     }
-    // Buscar valor atual para não sobrescrever divergente
-    const current = await erpGetDoc('Customer', name, { fields: ['tax_id'] });
-    const existingCnpj = normalizeCnpj(current?.tax_id || '');
-    if (existingCnpj && rawCnpj && existingCnpj !== rawCnpj) {
-      throw createHttpError(409, 'CNPJ diverge do cadastro atual. Edite diretamente no ERPNext.');
-    }
-    if (rawCnpj && !existingCnpj) {
-      updates.tax_id = rawCnpj;
+    // Customer: atualizar customer_type baseado no person_type
+    if (doctype === 'Customer') {
+      updates.customer_type = payload.person_type === 'pj' ? 'Company' : 'Individual';
     }
   }
 

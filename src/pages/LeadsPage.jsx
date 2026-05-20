@@ -20,6 +20,51 @@ const PAGE_SIZES = [10, 25, 50];
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// ── CPF/CNPJ helpers ──
+
+function formatCpf(value) {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+}
+
+function formatCnpj(value) {
+  const d = value.replace(/\D/g, '').slice(0, 14);
+  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+}
+
+function isValidCpf(value) {
+  const d = value.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const calc = (slice, factor) => {
+    let sum = 0;
+    for (let i = 0; i < slice.length; i++) sum += Number(slice[i]) * (factor - i);
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return calc(d.slice(0, 9), 10) === Number(d[9]) && calc(d.slice(0, 10), 11) === Number(d[10]);
+}
+
+function isValidCnpj(value) {
+  const d = value.replace(/\D/g, '');
+  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+  const calc = (slice, weights) => {
+    let sum = 0;
+    for (let i = 0; i < slice.length; i++) sum += Number(slice[i]) * weights[i];
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  const w1 = [5,4,3,2,9,8,7,6,5,4,3,2];
+  const w2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
+  return calc(d.slice(0, 12), w1) === Number(d[12]) && calc(d.slice(0, 13), w2) === Number(d[13]);
+}
+
+function formatTaxId(value, personType) {
+  const d = value.replace(/\D/g, '');
+  if (personType === 'pf') return formatCpf(d);
+  if (personType === 'pj') return formatCnpj(d);
+  return value;
+}
+
 async function lookupCep(cep, setEditFields) {
   const digits = cep.replace(/\D/g, '');
   if (digits.length !== 8) return;
@@ -155,7 +200,8 @@ export default function LeadsPage() {
       email: clientDetail.email || '',
       telefone: clientDetail.telefone || '',
       origem: clientDetail.origem || '',
-      cnpj: clientDetail.cnpj || '',
+      personType: clientDetail.person_type || '',
+      taxId: clientDetail.tax_id || '',
       endereco: {
         endereco: clientDetail.address?.endereco || '',
         numero: clientDetail.address?.numero || '',
@@ -188,9 +234,10 @@ export default function LeadsPage() {
       if (selectedClient.doctype === 'Lead') {
         payload.origem = editFields.origem?.trim() || null;
       }
-      // CNPJ apenas para Customer
-      if (selectedClient.doctype === 'Customer') {
-        payload.cnpj = editFields.cnpj?.trim() || null;
+      // Tipo de pessoa + CPF/CNPJ
+      if (editFields.personType) {
+        payload.person_type = editFields.personType;
+        payload.tax_id = editFields.taxId?.replace(/\D/g, '') || null;
       }
       // Endereço (sempre envia se tiver campos preenchidos)
       if (editFields.endereco) {
@@ -561,33 +608,108 @@ export default function LeadsPage() {
         {clientDetail && !clientLoading && (
           <div className="space-y-4">
             {/* Fields */}
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="text-framer-ink-muted text-xs">Email</span>
-                {editMode ? (
-                  <Input
-                    value={editFields.email}
-                    onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
-                    className="mt-1 h-8 text-xs"
-                    placeholder="email@exemplo.com"
-                  />
-                ) : (
-                  <p className="mt-0.5 font-medium">{clientDetail.email || '—'}</p>
-                )}
+            <div className="space-y-3 text-sm">
+              {/* Linha 1: Nome (40%) + Tipo de Pessoa (30%) + CNPJ/CPF (30%) */}
+              <div className="flex gap-2">
+                <div style={{ width: '40%' }}>
+                  <span className="text-framer-ink-muted text-xs">Nome</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.nome}
+                      onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="Nome do cliente"
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">{clientDetail.display_name || '—'}</p>
+                  )}
+                </div>
+                <div style={{ width: '30%' }}>
+                  <span className="text-framer-ink-muted text-xs">Tipo de Pessoa</span>
+                  {editMode ? (
+                    <select
+                      value={editFields.personType || ''}
+                      onChange={e => setEditFields(prev => ({
+                        ...prev,
+                        personType: e.target.value,
+                        taxId: '', // limpa ao trocar tipo
+                      }))}
+                      className="mt-1 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                    >
+                      <option value="">Selecione</option>
+                      <option value="pf">Pessoa Física</option>
+                      <option value="pj">Pessoa Jurídica</option>
+                    </select>
+                  ) : (
+                    <p className="mt-0.5 font-medium">
+                      {clientDetail.person_type === 'pf' ? 'Pessoa Física' : clientDetail.person_type === 'pj' ? 'Pessoa Jurídica' : '—'}
+                    </p>
+                  )}
+                </div>
+                <div style={{ width: '30%' }}>
+                  <span className="text-framer-ink-muted text-xs">
+                    {editFields.personType === 'pf' ? 'CPF' : editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}
+                  </span>
+                  {editMode ? (
+                    <Input
+                      value={formatTaxId(editFields.taxId || '', editFields.personType)}
+                      onChange={e => {
+                        const raw = e.target.value.replace(/\D/g, '');
+                        const maxLen = editFields.personType === 'pf' ? 11 : editFields.personType === 'pj' ? 14 : 14;
+                        setEditFields(prev => ({ ...prev, taxId: raw.slice(0, maxLen) }));
+                      }}
+                      className={`mt-1 h-8 text-xs ${editFields.taxId && editFields.personType && (
+                        (editFields.personType === 'pf' && editFields.taxId.length === 11 && !isValidCpf(editFields.taxId)) ||
+                        (editFields.personType === 'pj' && editFields.taxId.length === 14 && !isValidCnpj(editFields.taxId))
+                      ) ? 'border-red-400' : ''}`}
+                      placeholder={editFields.personType === 'pf' ? '000.000.000-00' : editFields.personType === 'pj' ? '00.000.000/0000-00' : 'Selecione o tipo'}
+                      disabled={!editFields.personType}
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">
+                      {(() => {
+                        const tid = clientDetail.tax_id;
+                        if (!tid) return '—';
+                        if (tid.length === 11) return formatCpf(tid);
+                        if (tid.length === 14) return formatCnpj(tid);
+                        return tid;
+                      })()}
+                    </p>
+                  )}
+                </div>
               </div>
-              <div>
-                <span className="text-framer-ink-muted text-xs">Telefone</span>
-                {editMode ? (
-                  <Input
-                    value={editFields.telefone}
-                    onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
-                    className="mt-1 h-8 text-xs"
-                    placeholder="(99) 99999-9999"
-                  />
-                ) : (
-                  <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
-                )}
+
+              {/* Linha 2: Email + Telefone */}
+              <div className="flex gap-2">
+                <div style={{ width: '50%' }}>
+                  <span className="text-framer-ink-muted text-xs">Email</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.email}
+                      onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="email@exemplo.com"
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">{clientDetail.email || '—'}</p>
+                  )}
+                </div>
+                <div style={{ width: '50%' }}>
+                  <span className="text-framer-ink-muted text-xs">Telefone</span>
+                  {editMode ? (
+                    <Input
+                      value={editFields.telefone}
+                      onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
+                      className="mt-1 h-8 text-xs"
+                      placeholder="(99) 99999-9999"
+                    />
+                  ) : (
+                    <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
+                  )}
+                </div>
               </div>
+
+              {/* Origem (apenas Lead) */}
               {selectedClient?.doctype === 'Lead' && (
                 <div>
                   <span className="text-framer-ink-muted text-xs">Origem</span>
@@ -603,34 +725,6 @@ export default function LeadsPage() {
                   )}
                 </div>
               )}
-              {selectedClient?.doctype === 'Customer' && (
-                <div>
-                  <span className="text-framer-ink-muted text-xs">CNPJ</span>
-                  {editMode ? (
-                    <Input
-                      value={editFields.cnpj}
-                      onChange={e => setEditFields(prev => ({ ...prev, cnpj: e.target.value }))}
-                      className="mt-1 h-8 text-xs"
-                      placeholder="00.000.000/0000-00"
-                    />
-                  ) : (
-                    <p className="mt-0.5 font-medium">{clientDetail.cnpj || '—'}</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Nome (sempre editável) */}
-            <div className="text-sm">
-              <span className="text-framer-ink-muted text-xs">Nome</span>
-              {editMode ? (
-                <Input
-                  value={editFields.nome}
-                  onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
-                  className="mt-1 h-8 text-xs"
-                  placeholder="Nome do cliente"
-                />
-              ) : null}
             </div>
 
             {/* Orçamento recente */}
