@@ -1,9 +1,5 @@
-// Removido da raiz para avaliar após o boot.
-const SYSTEM_PROMPT = `Você é um assistente de cotação da Aspen Estamparia. Extraia os dados do pedido e aplique as regras de negócio.
-
-REGRAS DE NEGÓCIO:
-
-Rule 0 — SKU Explícito tem Precedência: Se o usuário informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
+// ── Regras de extração padrão (editáveis via UI) ──
+const DEFAULT_RULES = `Rule 0 — SKU Explícito tem Precedência: Se o usuário informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
 
 Rule 1 — Quantidade Mínima: Se a quantidade solicitada for < 30, use 30 (mínimo para produção).
 
@@ -23,7 +19,15 @@ Rule 4 — Múltiplas Quantidades: Se o cliente pedir o mesmo produto em quantid
 
 Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
 
-Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).
+Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
+
+function buildSystemPrompt(customRules) {
+  const rules = customRules?.trim() || DEFAULT_RULES;
+  return `Você é um assistente de cotação da Aspen Estamparia. Extraia os dados do pedido e aplique as regras de negócio.
+
+REGRAS DE NEGÓCIO:
+
+${rules}
 
 RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 [
@@ -37,10 +41,6 @@ RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 ]
 
 Se houver apenas um pedido, retorne igualmente um array com um único elemento.`;
-
-function buildSystemPrompt(customRules) {
-  if (!customRules?.trim()) return SYSTEM_PROMPT;
-  return SYSTEM_PROMPT + `\n\nREGRAS ADICIONAIS (têm precedência sobre as anteriores):\n\n${customRules.trim()}`;
 }
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
