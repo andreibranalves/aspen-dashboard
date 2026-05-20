@@ -36,9 +36,37 @@ RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
     "email": "string ou null",
     "telefone": "string ou null",
     "urgente": false,
+    "origem": "string ou null",
+    "cnpj": "string ou null",
+    "endereco": {
+      "cep": "string ou null",
+      "logradouro": "string ou null",
+      "numero": "string ou null",
+      "complemento": "string ou null",
+      "bairro": "string ou null",
+      "cidade": "string ou null",
+      "uf": "string ou null"
+    },
     "items": [{"item_code": "SKU", "qty": N}]
   }
 ]
+
+Regras para origem (campo "origem"):
+- Se o texto tiver formato de tabela Brindice (colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL), usar "Brindice".
+- Se o texto mencionar Google Ads, campanha ou anúncio do Google, usar "Google Ads".
+- Se o texto mencionar que foi indicação de alguém, usar "Indicação".
+- Se o cliente mencionar que já comprou antes, usar "Cliente antigo / recorrente".
+- Se o texto mencionar que encontrou pelo site ou busca orgânica, usar "Orgânico / Site".
+- Se não houver evidência clara, deixar origem como string vazia ("").
+
+Regras para CNPJ (campo "cnpj"):
+- Extraia APENAS se um CNPJ completo (14 dígitos, com ou sem pontuação) estiver presente no texto.
+- NUNCA invente CNPJ.
+
+Regras para endereço (campo "endereco"):
+- Extraia APENAS se houver dados de endereço no texto (CEP, rua, número, bairro, cidade, UF).
+- Preencha apenas os campos encontrados; deixe os demais como string vazia.
+- NUNCA invente endereço.
 
 Se houver apenas um pedido, retorne igualmente um array com um único elemento.`;
 }

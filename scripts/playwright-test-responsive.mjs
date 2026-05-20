@@ -1,7 +1,7 @@
 // playwright-test-responsive.mjs — v2 (expectativas corrigidas)
 import { chromium } from 'playwright';
 
-const BASE = 'http://localhost:3000';
+const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const PASS = []; const FAIL = []; let total = 0;
 function check(desc, ok, detail = '') {
   total++;

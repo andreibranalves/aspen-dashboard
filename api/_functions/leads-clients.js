@@ -21,6 +21,7 @@ function mapCustomer(c) {
     nome: c.customer_name,
     email: null,
     telefone: null,
+    cnpj: c.tax_id || null,
     tipo: 'cliente',
     data_criacao: c.creation,
   };
@@ -32,6 +33,7 @@ function mapLead(l) {
     nome: l.lead_name,
     email: l.email_id || null,
     telefone: l.mobile_no || null,
+    cnpj: null,
     tipo: 'lead',
     data_criacao: l.creation,
   };
@@ -61,7 +63,7 @@ export async function handler(event) {
 
     if (tipo === 'cliente' || tipo === 'todos') {
       customers = await erpGetList('Customer', {
-        fields: ['name', 'customer_name', 'creation'],
+        fields: ['name', 'customer_name', 'tax_id', 'creation'],
         filters: searchCustomers,
         order_by: 'creation desc',
         limit: ALL_LIMIT,

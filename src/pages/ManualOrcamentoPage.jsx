@@ -1,11 +1,15 @@
 import { useState, useCallback, useRef } from 'react';
 import {
   AlertTriangle,
+  Building2,
   Calculator,
   Check,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   FileText,
   Loader2,
+  MapPin,
   MessageCircle,
   PackagePlus,
   Plus,
@@ -22,6 +26,18 @@ import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.jsx';
+import {
+  LEAD_SOURCES,
+  EMPTY_ADDRESS,
+  isValidLeadSource,
+  normalizeCnpj,
+  isValidCnpj,
+  formatCnpj,
+  normalizeAddress,
+  hasAnyAddressField,
+  hasMinimumAddressForErp,
+  formatAddressSummary,
+} from '@/lib/clientMetadata.js';
 
 // ── Constants ──
 const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' };
@@ -45,6 +61,12 @@ export default function ManualOrcamentoPage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [newClient, setNewClient] = useState({ nome: '', email: '', telefone: '' });
   const clientTimer = useRef(null);
+
+  // ── Client metadata ──
+  const [leadSource, setLeadSource] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [address, setAddress] = useState({ ...EMPTY_ADDRESS });
+  const [showAddress, setShowAddress] = useState(false);
 
   // ── Product state ──
   const [productSearch, setProductSearch] = useState('');
@@ -125,7 +147,11 @@ export default function ManualOrcamentoPage() {
     setClientSearch(`${c.nome} (${c.email || c.telefone || c.id})`);
     setClientResults([]);
     setClientType(CLIENT_TYPE.EXISTING);
-  }, []);
+    // Preencher CNPJ se o cliente tiver e o campo estiver vazio
+    if (c.cnpj && !cnpj) {
+      setCnpj(normalizeCnpj(c.cnpj));
+    }
+  }, [cnpj]);
 
   // ── Product search ──
   const searchProducts = useCallback(async (term) => {
@@ -268,12 +294,15 @@ export default function ManualOrcamentoPage() {
     };
   }, [clientType, selectedClient, newClient]);
 
-  const canSubmit = Boolean(getClientInfo().nome) && items.length > 0 && !submitting;
+  const canSubmit = Boolean(getClientInfo().nome) && Boolean(leadSource) && isValidLeadSource(leadSource) && items.length > 0 && !submitting;
 
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
     const { nome, email, telefone } = getClientInfo();
     if (!nome) { alert('Informe o nome do cliente.'); return; }
+    if (!leadSource) { alert('Selecione a origem do lead antes de criar o orçamento.'); return; }
+    if (!isValidLeadSource(leadSource)) { alert('Origem selecionada não é válida.'); return; }
+    if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido. Corrija ou deixe em branco.'); return; }
     if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
 
     setSubmitting(true);
@@ -287,6 +316,9 @@ export default function ManualOrcamentoPage() {
           email: email || undefined,
           telefone: telefone || undefined,
           urgente,
+          origem: leadSource || undefined,
+          cnpj: cnpj || undefined,
+          endereco: hasAnyAddressField(address) ? address : undefined,
           items: items.map(item => ({
             item_code: item.sku,
             qty: item.qty,
@@ -330,6 +362,10 @@ export default function ManualOrcamentoPage() {
     setClientResults([]);
     setNewClient({ nome: '', email: '', telefone: '' });
     setClientType(CLIENT_TYPE.NEW);
+    setLeadSource('');
+    setCnpj('');
+    setAddress({ ...EMPTY_ADDRESS });
+    setShowAddress(false);
     setProductSearch('');
     setProductResults([]);
     setAddingSku(null);
@@ -526,8 +562,133 @@ export default function ManualOrcamentoPage() {
                     <span className="font-medium">{selectedClient.nome}</span>
                     {selectedClient.email && <span className="text-framer-ink-muted">· {selectedClient.email}</span>}
                     {selectedClient.telefone && <span className="text-framer-ink-muted">· {fmtPhone(selectedClient.telefone)}</span>}
+                    {selectedClient.cnpj && (
+                      <span className="text-framer-ink-muted text-xs font-mono">· CNPJ {formatCnpj(selectedClient.cnpj)}</span>
+                    )}
                   </div>
                 )}
+                {selectedClient?.cnpj && cnpj && normalizeCnpj(selectedClient.cnpj) !== cnpj && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300 flex items-start gap-2">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                    CNPJ informado ({formatCnpj(cnpj)}) difere do CNPJ cadastrado ({formatCnpj(selectedClient.cnpj)}). O CNPJ do cadastro será mantido.
+                  </div>
+                )}
+
+                {/* ── Origem (obrigatória, sempre visível) ── */}
+                <div className="space-y-1 pt-3 border-t border-border">
+                  <label className="text-xs font-medium text-framer-ink-muted">Origem do lead *</label>
+                  <select
+                    className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
+                    value={leadSource}
+                    onChange={e => setLeadSource(e.target.value)}
+                  >
+                    <option value="">Selecione a origem…</option>
+                    {LEAD_SOURCES.map(s => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* ── CNPJ (opcional) ── */}
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-framer-ink-muted">CNPJ (opcional)</label>
+                  <div className="relative">
+                    <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
+                    <Input
+                      className="h-10 pl-9 text-sm font-mono"
+                      value={cnpj ? formatCnpj(cnpj) : ''}
+                      onChange={e => setCnpj(normalizeCnpj(e.target.value))}
+                      placeholder="00.000.000/0000-00"
+                    />
+                  </div>
+                  {cnpj && !isValidCnpj(cnpj) && (
+                    <p className="text-xs text-red-500">CNPJ inválido. Corrija ou deixe em branco.</p>
+                  )}
+                </div>
+
+                {/* ── Endereço colapsável ── */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddress(!showAddress)}
+                    className="flex items-center gap-2 text-xs font-medium text-framer-ink-muted hover:text-framer-ink transition-colors"
+                  >
+                    <MapPin size={14} />
+                    Endereço opcional
+                    {showAddress ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  {showAddress && (
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">CEP</span>
+                        <Input
+                          className="h-9 text-sm font-mono"
+                          value={address.cep}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, cep: e.target.value }))}
+                          placeholder="00000-000"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">Logradouro</span>
+                        <Input
+                          className="h-9 text-sm"
+                          value={address.logradouro}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, logradouro: e.target.value }))}
+                          placeholder="Rua, Avenida"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">Número</span>
+                        <Input
+                          className="h-9 text-sm"
+                          value={address.numero}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, numero: e.target.value }))}
+                          placeholder="123"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">Complemento</span>
+                        <Input
+                          className="h-9 text-sm"
+                          value={address.complemento}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, complemento: e.target.value }))}
+                          placeholder="Apto, Sala"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">Bairro</span>
+                        <Input
+                          className="h-9 text-sm"
+                          value={address.bairro}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, bairro: e.target.value }))}
+                          placeholder="Bairro"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">Cidade</span>
+                        <Input
+                          className="h-9 text-sm"
+                          value={address.cidade}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, cidade: e.target.value }))}
+                          placeholder="Cidade"
+                        />
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[10px] text-framer-ink-muted">UF</span>
+                        <Input
+                          className="h-9 text-sm w-20"
+                          value={address.uf}
+                          onChange={e => setAddress(prev => normalizeAddress({ ...prev, uf: e.target.value.toUpperCase().slice(0, 2) }))}
+                          placeholder="SP"
+                          maxLength={2}
+                        />
+                      </label>
+                    </div>
+                  )}
+                  {!showAddress && hasAnyAddressField(address) && (
+                    <p className="mt-1 text-xs text-framer-ink-muted">{formatAddressSummary(address)}</p>
+                  )}
+                </div>
               </section>
 
               {/* ══ 2. Itens ══ */}

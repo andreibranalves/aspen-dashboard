@@ -3,6 +3,16 @@ const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 import { createHttpError, erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
 import { DEFAULT_PRINT_FORMAT } from './lib/print-format.js';
+import {
+  normalizeLeadSource,
+  isValidLeadSource,
+  validateLeadSourceInErp,
+  normalizeCnpj,
+  isValidCnpj,
+  normalizeAddressPayload,
+  hasMinimumAddressForErp,
+  buildAddressPayload,
+} from './lib/client-metadata.js';
 
 const ERPNEXT_HEADERS = {
   'Authorization': `token ${ERPNEXT_TOKEN}`,
@@ -63,6 +73,35 @@ export async function handler(event) {
   }
 
   try {
+    const warnings = [];
+
+    // ── 0. Validação de metadados do cliente ──
+    const origem = normalizeLeadSource(extracted.origem || '');
+    if (!origem) {
+      throw createHttpError(400, 'Origem do lead é obrigatória. Selecione uma origem antes de criar o orçamento.');
+    }
+    if (!isValidLeadSource(origem)) {
+      throw createHttpError(400, `Origem "${extracted.origem}" não é reconhecida. Use uma das origens disponíveis.`);
+    }
+
+    // Valida se origem existe nos registros do ERPNext
+    const { crm: crmSourceExists, utm: utmSourceExists } = await validateLeadSourceInErp(origem);
+    if (!utmSourceExists) {
+      warnings.push({
+        code: 'utm_source_missing',
+        message: `Origem "${origem}" salva no CRM, mas UTM Source não estava disponível no ERPNext.`,
+      });
+    }
+
+    // CNPJ
+    const cnpj = normalizeCnpj(extracted.cnpj || '');
+    if (cnpj && !isValidCnpj(cnpj)) {
+      throw createHttpError(400, 'CNPJ informado é inválido. Verifique os dígitos ou deixe em branco.');
+    }
+
+    // Endereço
+    const endereco = normalizeAddressPayload(extracted.endereco);
+
     const nomeCliente = sanitizeName(extracted.nome);
     const email = extracted.email?.trim().toLowerCase() || '';
     const telefone = formatPhone(extracted.telefone || '');
@@ -118,6 +157,24 @@ export async function handler(event) {
       }
     }
 
+    // ── CNPJ: validar contra Customer existente ──
+    if (cnpj && entityType === 'Customer') {
+      const custData = await erpGetList('Customer', {
+        filters: [['name', '=', entityId]],
+        fields: ['name', 'tax_id'],
+        limit: 1,
+      });
+      if (custData.length > 0) {
+        const existingTaxId = normalizeCnpj(custData[0].tax_id || '');
+        if (existingTaxId && existingTaxId !== cnpj) {
+          throw createHttpError(
+            409,
+            `CNPJ informado (${cnpj}) difere do CNPJ já cadastrado para este cliente. Verifique os dados ou entre em contato com o suporte.`
+          );
+        }
+      }
+    }
+
     if (!entityId) {
       customerIsNew = true;
       entityType = 'Lead';
@@ -127,6 +184,7 @@ export async function handler(event) {
         mobile_no: telefone,
         status: 'Lead',
         type: 'Client',
+        ...(utmSourceExists ? { utm_source: origem } : {}),
       });
       entityId = l.name;
     } else if (entityType === 'Customer') {
@@ -134,10 +192,21 @@ export async function handler(event) {
       if (custData.length > 0 && custData[0].customer_name !== nomeCliente) {
         await erpPut('Customer', entityId, { customer_name: nomeCliente });
       }
+      // Preencher tax_id se vazio e CNPJ informado
+      if (cnpj) {
+        const existingTaxId = normalizeCnpj(custData[0]?.tax_id || '');
+        if (!existingTaxId) {
+          await erpPut('Customer', entityId, { tax_id: cnpj });
+        }
+      }
     } else if (entityType === 'Lead') {
       const leadData = await erpGetList('Lead', { filters: [['name', '=', entityId]] });
       if (leadData.length > 0 && leadData[0].first_name !== nomeCliente) {
         await erpPut('Lead', entityId, { first_name: nomeCliente });
+      }
+      // Preencher utm_source no Lead se vazio
+      if (utmSourceExists && !leadData[0]?.utm_source) {
+        await erpPut('Lead', entityId, { utm_source: origem });
       }
     }
 
@@ -155,6 +224,34 @@ export async function handler(event) {
       if (telefone) cp.phone_nos = [{ phone: telefone, is_primary_mobile_no: 1 }];
       const con = await erpPost('Contact', cp);
       contactId = con.name || null;
+    }
+
+    // ── Address ──
+    let addressId = null;
+    if (hasMinimumAddressForErp(endereco)) {
+      try {
+        const addrPayload = buildAddressPayload({
+          address: endereco,
+          nomeCliente,
+          email,
+          telefone,
+          entityType,
+          entityId,
+        });
+        const addr = await erpPost('Address', addrPayload);
+        addressId = addr.name || null;
+      } catch (addrErr) {
+        console.error('[orcamento] Address creation failed:', addrErr?.message || addrErr);
+        warnings.push({
+          code: 'address_create_failed',
+          message: 'Não foi possível criar o endereço no ERPNext. O orçamento foi criado sem endereço vinculado.',
+        });
+      }
+    } else if (Object.values(endereco).some(v => v.length > 0)) {
+      warnings.push({
+        code: 'address_incomplete',
+        message: 'Endereço incompleto; orçamento criado sem Address no ERPNext.',
+      });
     }
 
     // 4. CRM Deal
@@ -179,6 +276,7 @@ export async function handler(event) {
     const remarksParts = [`Contato: ${nomeCliente} | ${email} | ${telefone}`];
     if (urgente) remarksParts.push('URGENTE');
     if (observacoes) remarksParts.push(`Obs: ${observacoes}`);
+    if (origem) remarksParts.push(`Origem: ${origem}`);
     const quotePayload = {
       quotation_to: entityType,
       party_name: entityId,
@@ -195,6 +293,13 @@ export async function handler(event) {
     if (prazo) quotePayload.custom_prazo_producao = prazo;
     if (email) quotePayload.contact_email = email;
     if (telefone) quotePayload.contact_mobile = telefone;
+    if (addressId) {
+      quotePayload.customer_address = addressId;
+      quotePayload.shipping_address_name = addressId;
+    }
+    if (utmSourceExists) {
+      quotePayload.utm_source = origem;
+    }
 
     const q = await erpPost('Quotation', quotePayload);
     const quotationId = q.name;
@@ -210,6 +315,7 @@ export async function handler(event) {
     if (dealId) {
       const upd = {
         status: 'Orcamento Enviado',
+        source: origem,
         custom_quotation: quotationId,
         custom_quotation_sent_date: hoje,
         custom_follow_up_stage: 0,
@@ -222,7 +328,7 @@ export async function handler(event) {
     } else {
       const dp = {
         lead_name: nomeCliente,
-        source: 'Brindice',
+        source: origem,
         status: 'Orcamento Enviado',
         currency: 'BRL',
         exchange_rate: 1,
@@ -281,23 +387,30 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
       // Keep full URL as fallback — non-fatal
     }
 
+    const result = {
+      success: true,
+      quotation_id: quotationId,
+      deal_id: dealId,
+      customer_id: entityId,
+      customer_new: customerIsNew,
+      cliente: nomeCliente,
+      urgente,
+      items: savedItems.map(i => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
+      pdf_url: pdfUrl,
+      print_html: printHtml,
+      view_url: fullUrl,
+      short_url: shortUrl,
+      origem,
+    };
+
+    if (warnings.length > 0) {
+      result.warnings = warnings;
+    }
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        quotation_id: quotationId,
-        deal_id: dealId,
-        customer_id: entityId,
-        customer_new: customerIsNew,
-        cliente: nomeCliente,
-        urgente,
-        items: savedItems.map(i => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
-        pdf_url: pdfUrl,
-        print_html: printHtml,
-        view_url: fullUrl,
-        short_url: shortUrl,
-      }),
+      body: JSON.stringify(result),
     };
   } catch (err) {
     const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
