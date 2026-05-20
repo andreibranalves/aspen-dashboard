@@ -362,9 +362,9 @@ export default function QuotationDetailPage({ id, navigate }) {
                 {mode === 'edit' && <TableHead className="w-8"></TableHead>}
                 <TableHead>SKU</TableHead>
                 <TableHead>Produto</TableHead>
-                <TableHead className="text-right">Qtd</TableHead>
-                <TableHead className="text-right">
-                  {mode === 'edit' ? 'Preço Unit. (R$)' : 'Preço Unit.'}
+                <TableHead className="text-center w-20">Qtd</TableHead>
+                <TableHead className="text-center">
+                  {mode === 'edit' ? 'Preço Unit.' : 'Preço Unit.'}
                 </TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 {mode === 'edit' && <TableHead className="w-8"></TableHead>}
@@ -434,11 +434,11 @@ export default function QuotationDetailPage({ id, navigate }) {
                         />
                       </TableCell>
                       {/* Qty */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-center">
                         <Input
                           type="number"
                           min="1"
-                          className="h-8 w-20 text-sm ml-auto"
+                          className="h-8 w-20 text-sm mx-auto"
                           value={item.qty || ''}
                           onChange={e => {
                             const val = Number(e.target.value);
@@ -450,12 +450,12 @@ export default function QuotationDetailPage({ id, navigate }) {
                         />
                       </TableCell>
                       {/* Rate */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-center">
                         <Input
                           type="number"
                           min="0"
                           step="0.01"
-                          className="h-8 w-28 text-sm ml-auto"
+                          className="h-8 w-28 text-sm mx-auto"
                           value={item.rate || ''}
                           onChange={e => {
                             const val = parseFloat(e.target.value);
