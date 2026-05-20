@@ -31,6 +31,69 @@ const MOCK_ORCAMENTO = {
   print_url: '/api/view?q=ORC-20260001',
 };
 
+const MOCK_LEADS_LIST = {
+  success: true,
+  data: [
+    {
+      id: 'LEAD-001',
+      nome: 'João Silva',
+      email: 'joao@teste.com',
+      telefone: '(11) 99999-0001',
+      tipo: 'lead',
+    },
+    {
+      id: 'CUST-001',
+      nome: 'Aspen Cliente Antigo',
+      email: 'cliente@teste.com',
+      telefone: '(21) 98888-0002',
+      tipo: 'cliente',
+    },
+  ],
+  pagination: { page: 1, limit: 50, total: 2, total_pages: 1 },
+};
+
+const MOCK_LEAD_DETAIL = {
+  success: true,
+  doctype: 'Lead',
+  name: 'LEAD-001',
+  display_name: 'João Silva',
+  email: 'joao@teste.com',
+  telefone: '(11) 99999-0001',
+  origem: 'Google Ads',
+  person_type: 'pj',
+  tax_id: '12345678000199',
+  empresa: 'Silva Eventos',
+  contribuinte: '9',
+  inscricao_estadual: 'ISENTO',
+  creation: '2026-05-20T10:00:00.000Z',
+  modified: '2026-05-20T11:00:00.000Z',
+  erp_url: 'https://aspenestamparia.l.frappe.cloud/app/lead/LEAD-001',
+  address: {
+    complete: true,
+    endereco: 'Rua das Flores',
+    numero: '123',
+    bairro: 'Centro',
+    complemento: 'Sala 4',
+    municipio: 'São Paulo',
+    uf: 'SP',
+    cep: '01001000',
+  },
+  latest_quotation: {
+    name: 'ORC-20260001',
+    status: 'Open',
+    grand_total: 3500,
+    date: '2026-05-20',
+  },
+  deal: {
+    name: 'CRM-DEAL-001',
+    status: 'Orcamento Enviado',
+    follow_up_stage: 0,
+    next_step: 'Enviar follow-up amanhã',
+    quotation: 'ORC-20260001',
+  },
+  quality_flags: [],
+};
+
 // ── Helpers ──
 
 async function setupApiMocks(page) {
@@ -53,6 +116,46 @@ async function setupApiMocks(page) {
   // Mock other API calls the page might make on load (quotations list, etc.)
   await page.route('**/api/quotations', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) });
+  });
+}
+
+async function setupLeadsMocks(page) {
+  let currentDetail = { ...MOCK_LEAD_DETAIL };
+
+  await page.route('**/api/leads-clients**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(MOCK_LEADS_LIST),
+    });
+  });
+
+  await page.route('**/api/client-detail**', async (route) => {
+    if (route.request().method() === 'PUT') {
+      const body = route.request().postDataJSON();
+      currentDetail = {
+        ...currentDetail,
+        display_name: body.nome || currentDetail.display_name,
+        email: body.email || currentDetail.email,
+        telefone: body.telefone || currentDetail.telefone,
+        origem: body.origem || currentDetail.origem,
+        empresa: body.empresa || currentDetail.empresa,
+        person_type: body.person_type || currentDetail.person_type,
+        tax_id: body.tax_id || currentDetail.tax_id,
+        contribuinte: body.contribuinte || currentDetail.contribuinte,
+        inscricao_estadual: body.inscricao_estadual || currentDetail.inscricao_estadual,
+        address: body.endereco ? { ...currentDetail.address, ...body.endereco } : currentDetail.address,
+        modified: '2026-05-20T12:00:00.000Z',
+      };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(currentDetail) });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(currentDetail),
+    });
   });
 }
 
@@ -119,4 +222,45 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect(submitBtn).toBeEnabled();
   });
 
+});
+
+test.describe('Leads — Página single e visualização rápida', () => {
+  test('clique na linha abre a página própria do lead', async ({ page }) => {
+    await setupLeadsMocks(page);
+    await page.goto('/#/leads');
+
+    await expect(page.getByRole('main').getByRole('heading', { name: /Leads \/ Clientes/i })).toBeVisible({ timeout: 10000 });
+    await page.getByText('João Silva').first().click();
+
+    await expect(page).toHaveURL(/#\/leads\/lead\/LEAD-001/);
+    await expect(page.locator('main h1').filter({ hasText: 'João Silva' }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Silva Eventos/i).first()).toBeVisible();
+    await expect(page.getByText(/Atividade recente/i)).toBeVisible();
+    await expect(page.getByText(/ORC-20260001/i).first()).toBeVisible();
+  });
+
+  test('botão de visualização rápida mantém o drawer na lista', async ({ page }) => {
+    await setupLeadsMocks(page);
+    await page.goto('/#/leads');
+
+    await page.getByRole('button', { name: /Visualização rápida João Silva/i }).click();
+
+    await expect(page).toHaveURL(/#\/leads$/);
+    await expect(page.getByText(/Dados gerais/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Editar/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Página completa/i })).toBeVisible();
+  });
+
+  test('página própria permite editar e salvar o cadastro', async ({ page }) => {
+    await setupLeadsMocks(page);
+    await page.goto('/#/leads/lead/LEAD-001');
+
+    await expect(page.locator('main h1').filter({ hasText: 'João Silva' }).first()).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: /Editar cadastro/i }).click();
+    await page.locator('input[placeholder="Nome do lead"]').fill('João Silva Atualizado');
+    await page.getByRole('button', { name: /^Salvar$/i }).click();
+
+    await expect(page.getByText(/Cadastro atualizado com sucesso/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('main h1').filter({ hasText: 'João Silva Atualizado' }).first()).toBeVisible();
+  });
 });

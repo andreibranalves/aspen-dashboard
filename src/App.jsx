@@ -11,6 +11,7 @@ import CrmKanbanPage from '@/pages/CrmKanbanPage.jsx';
 import ProductsPage from '@/pages/ProductsPage.jsx';
 import ProductDetailPage from '@/pages/ProductDetailPage.jsx';
 import LeadsPage from '@/pages/LeadsPage.jsx';
+import LeadDetailPage from '@/pages/LeadDetailPage.jsx';
 import SettingsPage from '@/pages/SettingsPage.jsx';
 import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage.jsx';
 
@@ -33,6 +34,14 @@ function renderPage(route, navigate) {
     return <ProductDetailPage sku={sku} navigate={navigate} />;
   }
 
+  // Lead/Customer detail page: #/leads/lead/CRM-LEAD-... or #/leads/cliente/CUST-...
+  if (route.startsWith('/leads/')) {
+    const parts = route.split('/');
+    const tipo = parts[2];
+    const id = parts.slice(3).join('/');
+    if (tipo && id) return <LeadDetailPage tipo={tipo} id={id} navigate={navigate} />;
+  }
+
   switch (route) {
     case '/dashboard':   return <DashboardPage navigate={navigate} />;
     case '/quotations':  return <QuotationsPage navigate={navigate} />;
@@ -41,7 +50,7 @@ function renderPage(route, navigate) {
     case '/freight':     return <FreightPage />;
     case '/crm':         return <CrmKanbanPage />;
     case '/products':    return <ProductsPage />;
-    case '/leads':       return <LeadsPage />;
+    case '/leads':       return <LeadsPage navigate={navigate} />;
     case '/settings':    return <SettingsPage />;
     case '/manual':      return <ManualOrcamentoPage />;
     default:             return <QuotationsPage navigate={navigate} />;

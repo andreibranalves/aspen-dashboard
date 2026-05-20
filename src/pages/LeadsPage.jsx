@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X } from 'lucide-react';
+import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api.js';
 import { fmtPhone, capitalize } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -106,7 +106,7 @@ async function lookupCep(cep, setEditFields) {
   } catch { /* silencioso */ }
 }
 
-export default function LeadsPage() {
+export default function LeadsPage({ navigate }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -173,6 +173,13 @@ export default function LeadsPage() {
     setPage(1);
     fetchData(search, tipo, 1, newLimit);
   }, [search, tipo, fetchData]);
+
+  const navigateToDetail = useCallback((row) => {
+    if (!row?.id) return;
+    const tipoRoute = row.tipo === 'cliente' ? 'cliente' : 'lead';
+    if (navigate) navigate(`/leads/${tipoRoute}/${encodeURIComponent(row.id)}`);
+    else window.location.hash = `#/leads/${tipoRoute}/${encodeURIComponent(row.id)}`;
+  }, [navigate]);
 
   const getPageNumbers = () => {
     if (totalPages <= 1) return [];
@@ -308,6 +315,18 @@ export default function LeadsPage() {
     if (!clientDetail) return [];
     const actions = [];
 
+    if (selectedClient) {
+      actions.push({
+        label: 'Página completa',
+        icon: ChevronRight,
+        onClick: () => {
+          setDrawerOpen(false);
+          navigateToDetail({ id: selectedClient.name, tipo: selectedClient.tipo });
+        },
+        title: 'Abrir página completa do cadastro',
+      });
+    }
+
     if (clientDetail.telefone) {
       actions.push({
         label: 'WhatsApp',
@@ -345,7 +364,7 @@ export default function LeadsPage() {
     }
 
     return actions;
-  }, [clientDetail]);
+  }, [clientDetail, navigateToDetail, selectedClient]);
 
   // ── Build quality badges ──
 
@@ -461,7 +480,7 @@ export default function LeadsPage() {
                 <TableRow
                   key={row.id || row.email}
                   className="cursor-pointer hover:bg-framer-surface-2/50 transition-colors"
-                  onClick={() => openDrawer(row)}
+                  onClick={() => navigateToDetail(row)}
                 >
                   <TableCell className="font-medium">{row.nome || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{row.email || '—'}</TableCell>
@@ -469,6 +488,15 @@ export default function LeadsPage() {
                   <TableCell><TipoBadge tipo={row.tipo} /></TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => openDrawer(row)}
+                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-framer-accent-blue/10 hover:text-framer-accent-blue transition-colors"
+                        aria-label={`Visualização rápida ${row.nome || row.email}`}
+                        title={`Visualização rápida ${row.nome || row.email}`}
+                      >
+                        <Eye size={18} />
+                      </button>
                       {row.telefone && (
                         <a
                           href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
@@ -506,7 +534,7 @@ export default function LeadsPage() {
             <div
               key={row.id || row.email}
               className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-2 cursor-pointer hover:bg-framer-surface-2/50 transition-colors"
-              onClick={() => openDrawer(row)}
+              onClick={() => navigateToDetail(row)}
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{row.nome || '—'}</span>
@@ -517,6 +545,14 @@ export default function LeadsPage() {
                 {row.telefone && <div className="flex items-center gap-1"><Phone size={12} /> {fmtPhone(row.telefone)}</div>}
               </div>
               <div className="flex items-center gap-1 pt-1" onClick={e => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => openDrawer(row)}
+                  className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-framer-accent-blue/10 hover:text-framer-accent-blue transition-colors"
+                  aria-label={`Visualização rápida ${row.nome || row.email}`}
+                >
+                  <Eye size={18} />
+                </button>
                 {row.telefone && (
                   <a
                     href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
