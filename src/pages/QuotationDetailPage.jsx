@@ -337,7 +337,8 @@ export default function QuotationDetailPage({ id, navigate }) {
 
         {/* Items table */}
         <div className="px-6 py-4">
-          <Table>
+          <div className="w-full overflow-visible">
+            <table className="w-full caption-bottom text-sm">
             <TableHeader>
               <TableRow>
                 {mode === 'edit' && <TableHead className="w-8"></TableHead>}
@@ -474,7 +475,8 @@ export default function QuotationDetailPage({ id, navigate }) {
                 );
               })}
             </TableBody>
-          </Table>
+            </table>
+          </div>
         </div>
 
         {/* Totals */}
