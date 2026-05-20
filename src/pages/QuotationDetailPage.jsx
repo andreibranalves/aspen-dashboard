@@ -486,8 +486,8 @@ export default function QuotationDetailPage({ id, navigate }) {
                   <TableRow key={key}>
                     <TableCell className="font-mono text-sm">{item.item_code}</TableCell>
                     <TableCell>{item.item_name || item.item_code}</TableCell>
-                    <TableCell className="text-right">{item.qty}</TableCell>
-                    <TableCell className="text-right">{formatBRL(item.rate)}</TableCell>
+                    <TableCell className="text-center">{item.qty}</TableCell>
+                    <TableCell className="text-center">{formatBRL(item.rate)}</TableCell>
                     <TableCell className="text-right font-mono">{formatBRL(amount)}</TableCell>
                   </TableRow>
                 );
