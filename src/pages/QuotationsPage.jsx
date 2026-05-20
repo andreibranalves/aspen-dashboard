@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Plus, Sparkles, Phone, Pencil, FileText, Trash2, AlertTriangle, Clipboard, PlusCircle } from 'lucide-react';
-import { apiGet, apiDelete } from '@/lib/api.js';
+import { Search, Plus, Sparkles, Pencil, FileText, Trash2, AlertTriangle, Clipboard, PlusCircle, Copy } from 'lucide-react';
+import { apiGet, apiPost, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -111,6 +111,18 @@ export default function QuotationsPage({ navigate }) {
     }
   }, []);
 
+  const handleDuplicate = useCallback(async (id) => {
+    if (!confirm(`Duplicar o orçamento ${id}? Será criada uma cópia com nova numeração.`)) return;
+    try {
+      const result = await apiPost('/duplicate-quotation', { quotation_id: id });
+      if (result.success) {
+        navigate(`/quotations/${encodeURIComponent(result.new_id)}`);
+      }
+    } catch (err) {
+      alert('Erro ao duplicar: ' + (err.message || 'Tente novamente.'));
+    }
+  }, [navigate]);
+
   const toggleSelected = useCallback((id) => {
     setSelectedIds(prev => (
       prev.includes(id)
@@ -192,17 +204,14 @@ export default function QuotationsPage({ navigate }) {
 
   const actionButtons = (row) => {
     const viewUrl = buildQuotationViewUrl(row.id);
-    const fullViewUrl = new URL(viewUrl, window.location.origin).toString();
     return (
       <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
-        <ActionBtn icon={Phone} label={`Enviar WhatsApp para ${row.cliente || row.id}`}
-          href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id + ':\n' + fullViewUrl)}`}
-          colorClass="hover:bg-green-500/10 hover:text-green-600" />
         <ActionBtn icon={Pencil} label={`Editar orçamento ${row.id}`}
           onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)} />
         <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`}
-          href={viewUrl}
-          colorClass="hover:bg-red-500/10 hover:text-red-600" />
+          href={viewUrl} />
+        <ActionBtn icon={Copy} label={`Duplicar orçamento ${row.id}`}
+          onClick={() => handleDuplicate(row.id)} />
         <ActionBtn icon={Trash2} label={`Excluir orçamento ${row.id}`}
           onClick={() => handleDelete(row.id)}
           colorClass="hover:bg-red-500/10 hover:text-red-600" />
@@ -399,12 +408,12 @@ export default function QuotationsPage({ navigate }) {
               <div className="flex items-center justify-between">
                 <span className="font-mono font-semibold">{formatBRL(row.valor)}</span>
                 <div className="flex items-center gap-0.5">
-                  <ActionBtn icon={Phone} label={`WhatsApp ${row.id}`}
-                    href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (row.cliente || '') + '! Segue orçamento ' + row.id + ':\n' + new URL(buildQuotationViewUrl(row.id), window.location.origin).toString())}`}
-                    colorClass="hover:bg-green-500/10 hover:text-green-600" />
+                  <ActionBtn icon={Pencil} label={`Editar ${row.id}`}
+                    onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)} />
                   <ActionBtn icon={FileText} label={`PDF ${row.id}`}
-                    href={buildQuotationViewUrl(row.id)}
-                    colorClass="hover:bg-red-500/10 hover:text-red-600" />
+                    href={buildQuotationViewUrl(row.id)} />
+                  <ActionBtn icon={Copy} label={`Duplicar ${row.id}`}
+                    onClick={() => handleDuplicate(row.id)} />
                 </div>
               </div>
             </div>
