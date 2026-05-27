@@ -52,11 +52,9 @@ RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 ]
 
 Regras para origem (campo "origem"):
-- Se o texto tiver formato de tabela Brindice (colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL), usar "Brindice".
+- Se o texto tiver formato de tabela Brindice (colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL), usar "Bríndice".
 - Se o texto mencionar Google Ads, campanha ou anúncio do Google, usar "Google Ads".
-- Se o texto mencionar que foi indicação de alguém, usar "Indicação".
-- Se o cliente mencionar que já comprou antes, usar "Cliente antigo / recorrente".
-- Se o texto mencionar que encontrou pelo site ou busca orgânica, usar "Orgânico / Site".
+- Se o cliente mencionar que já comprou antes, usar "Cliente recorrente".
 - Se não houver evidência clara, deixar origem como string vazia ("").
 
 Regras para CNPJ (campo "cnpj"):

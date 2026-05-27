@@ -405,7 +405,7 @@ export default function AutoQuotePage() {
         email: order.email || '',
         telefone: order.telefone || '',
         urgente: order.urgente || false,
-        origem: order.origem || '',
+        origem: order.origem || 'Google Ads',
         cnpj: normalizeCnpj(order.cnpj || ''),
         endereco: normalizeAddress(order.endereco),
         items: (order.items || []).map(it => ({
