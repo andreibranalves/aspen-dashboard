@@ -63,7 +63,11 @@ export async function getRate(itemCode, qty, _erpnextBase, _token) {
     fields: ['price_list_rate'],
     limit: 1,
   });
-  return prices[0]?.price_list_rate || 0;
+  if (prices[0]?.price_list_rate != null) return prices[0].price_list_rate;
+
+  const err = new Error(`Preço não encontrado para "${itemCode}" (qtd: ${qty}).`);
+  err.statusCode = 400;
+  throw err;
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
