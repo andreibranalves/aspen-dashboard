@@ -49,7 +49,13 @@ export async function handler(event) {
       currency: src.currency || 'BRL',
       selling_price_list: src.selling_price_list || 'Standard Selling',
       transaction_date: new Date().toISOString().split('T')[0],
+      remarks: src.remarks || '',
+      ...(src.utm_source ? { utm_source: src.utm_source } : {}),
+      ...(src.contact_email ? { contact_email: src.contact_email } : {}),
+      ...(src.contact_mobile ? { contact_mobile: src.contact_mobile } : {}),
+      ...(src.customer_address ? { customer_address: src.customer_address } : {}),
       items,
+      ignore_pricing_rule: 1,
     });
 
     return {
