@@ -1,26 +1,25 @@
-// ── Regras de extração padrão (editáveis via UI) ──
-const DEFAULT_RULES = `Rule 0 — SKU Explícito tem Precedência: Se o usuário informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
+// ── Regras de extração padrão ──
+const DEFAULT_RULES = `Rule 0 — SKU Explícito: Se o cliente informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
 
-Rule 1 — Quantidade Mínima: Se a quantidade solicitada for < 30, use 30 (mínimo para produção).
+Rule 1 — Quantidade mínima: Se qtd < 30, usar 30.
 
-Rule 2 — Quantidade no campo qty: Use a quantidade EXATA solicitada pelo cliente. NÃO mapeie a quantidade para faixas — o sistema já aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente para calcular o preço unitário. Ex: se o cliente pedir 50, use qty:50.
+Rule 2 — Quantidade exata: Usar a qtd EXATA do cliente. O sistema aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente.
 
 Rule 3 — Regras por Produto:
-- Lenços: Se o cliente mencionar "laser", usar LNC-SED-LAS-70 (ou o tamanho correspondente). Caso contrário, cotar DUAS opções: LNC-SED-70 (Sedinha 70x70 - econômico) e LNC-CSD-70 (Cetim de Seda 70x70 - premium). Se 55x55cm pedido, cotar 50x50cm.
-- Echarpes: Sempre duas opções: ECH-SED (Sedinha 135x35cm - econômico) e ECH-CSD (Cetim de Seda 135x35cm - premium).
-- Chapéus: Sempre cotar TRÊS opções: CHP-PAN, CHP-PNR, CHP-BAM (exceto se SKU especificado).
-- Cangas: Se mencionar "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100. Caso contrário (se < 100 unidades): Cotar CNG-SAL-70 e CNG-SAL-100. Cangas >= 100: Cotar CNG-SAL-70, CNG-SAL-100, CNG-VIS-70, CNG-VIS-100.
-- Toalhas (Praia): Sempre duas opções: TWL-210 e TWL-280.
-- Toalhas de Banho: Sempre três opções: TBH-LEM (Leme 375g/m² - econômico), TBH-URC (Urca 405g/m² - intermediário), TBH-IPA (Ipanema 450g/m² - premium).
-- Bonés < 100: Cotar apenas BNE-TAC-VNL. Bonés >= 100: Cotar BNE-TAC-SUB, BNE-BRI, BNE-PRE.
-- Cachecóis: Sempre quatro opções: CHC-SOF-140 (Soft 140x20cm - econômico), CHC-SOF-180 (Soft 180x20cm - intermediário), CHC-LAA-COU (Lã com etiqueta de couro) e CHC-LAA-BOR (Lã com bordado - premium).
-- Ecobags: Sempre três opções: ECO-30, ECO-35, ECO-50.
+- Lenços: Sempre LNC-SED-70 + LNC-CSD-70. Se mencionar "laser", usar LNC-SED-LAS-70. Se pedido 55×55cm, cotar 50×50cm.
+- Echarpes: Sempre ECH-SED + ECH-CSD.
+- Chapéus: Sempre CHP-PAN + CHP-PNR + CHP-BAM.
+- Cangas: < 100 un → CNG-SAL-70 + CNG-SAL-100. ≥ 100 un → CNG-SAL-70 + CNG-SAL-100 + CNG-VIS-70 + CNG-VIS-100. Se "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100.
+- Toalhas de Praia: Sempre TWL-210 + TWL-280.
+- Toalhas de Banho: Sempre TBH-LEM + TBH-URC + TBH-IPA.
+- Bonés: < 100 un → BNE-TAC-VNL. ≥ 100 un → BNE-TAC-SUB + BNE-BRI + BNE-PRE.
+- Cachecóis: Sempre CHC-SOF-140 + CHC-SOF-180 + CHC-LAA-COU + CHC-LAA-BOR.
+- Ecobags: Sempre ECO-30 + ECO-35 + ECO-50.
 - Bolsas: Sempre BLS-CAP-POL.
-- Bandanas: Sempre BND-CRP-50 e BND-CRP-65.
+- Bandanas: Sempre BND-CRP-50 + BND-CRP-65.
 - Gravatas: Sempre GVT-POD.
-- Echarpes: Sempre ECH-SED e ECH-CSD.
 
-Rule 4 — Múltiplas Quantidades: Se o cliente pedir o mesmo produto em quantidades diferentes (ex: "80 e 100 lenços"), inclua TODAS as combinações como linhas separadas no MESMO objeto de pedido. Ex: LNC-SED-70 qty:80, LNC-CSD-70 qty:80, LNC-SED-70 qty:100, LNC-CSD-70 qty:100 — tudo num único objeto do array.
+Rule 4 — Múltiplas quantidades: Se o mesmo produto aparecer em qtds diferentes, incluir TODAS as combinações como linhas separadas no MESMO objeto. Ex: LNC-SED-70 qty:80 + LNC-CSD-70 qty:80 + LNC-SED-70 qty:100 + LNC-CSD-70 qty:100.
 
 Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
 
