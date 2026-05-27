@@ -16,9 +16,10 @@ import { Input } from '@/components/ui/input.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 import {
   LEAD_SOURCES,
-  EMPTY_ADDRESS,
+  DEFAULT_LEAD_SOURCE,
   isValidLeadSource,
   getLeadSourceLabel,
+  normalizeLeadSource,
   normalizeCnpj,
   isValidCnpj,
   formatCnpj,
@@ -405,7 +406,7 @@ export default function AutoQuotePage() {
         email: order.email || '',
         telefone: order.telefone || '',
         urgente: order.urgente || false,
-        origem: order.origem || 'Google Ads',
+        origem: normalizeLeadSource(order.origem) || 'Google Ads',
         cnpj: normalizeCnpj(order.cnpj || ''),
         endereco: normalizeAddress(order.endereco),
         items: (order.items || []).map(it => ({

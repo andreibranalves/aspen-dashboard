@@ -6,15 +6,28 @@ export const LEAD_SOURCES = [
   { value: 'Cliente recorrente', label: 'Cliente recorrente' },
 ];
 
+const accInsensitive = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+export function normalizeLeadSource(value) {
+  const v = String(value || '').trim();
+  if (!v) return '';
+  const key = accInsensitive(v);
+  const found = LEAD_SOURCES.find(s => accInsensitive(s.value) === key);
+  return found ? found.value : v;
+}
+
 export const DEFAULT_LEAD_SOURCE = 'Google Ads';
 
 export function isValidLeadSource(value) {
   if (!value) return false;
-  return LEAD_SOURCES.some(s => s.value === value);
+  const key = accInsensitive(value);
+  return LEAD_SOURCES.some(s => accInsensitive(s.value) === key);
 }
 
 export function getLeadSourceLabel(value) {
-  const src = LEAD_SOURCES.find(s => s.value === value);
+  if (!value) return '';
+  const key = accInsensitive(value);
+  const src = LEAD_SOURCES.find(s => accInsensitive(s.value) === key);
   return src ? src.label : value || '';
 }
 

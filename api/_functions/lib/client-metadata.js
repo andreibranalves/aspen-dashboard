@@ -23,8 +23,10 @@ export const LEAD_SOURCES = [
 export function normalizeLeadSource(value) {
   const v = String(value || '').trim();
   if (!v) return '';
-  // Busca case-insensitive na lista canônica
-  const found = LEAD_SOURCES.find(s => s.toLowerCase() === v.toLowerCase());
+  // Busca accent + case-insensitive na lista canônica
+  const normalize = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const vKey = normalize(v);
+  const found = LEAD_SOURCES.find(s => normalize(s) === vKey);
   return found || v;
 }
 
