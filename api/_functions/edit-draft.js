@@ -45,6 +45,41 @@ function extractAssistantText(data) {
   return '';
 }
 
+function validateDraft(draft) {
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Draft não é um objeto');
+  }
+  if (draft.nome !== undefined && typeof draft.nome !== 'string') {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "nome" deve ser string');
+  }
+  if (draft.email !== undefined && draft.email !== null && typeof draft.email !== 'string') {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "email" deve ser string ou null');
+  }
+  if (draft.telefone !== undefined && draft.telefone !== null && typeof draft.telefone !== 'string') {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "telefone" deve ser string ou null');
+  }
+  if (draft.urgente !== undefined && typeof draft.urgente !== 'boolean') {
+    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "urgente" deve ser boolean');
+  }
+  if (draft.items !== undefined) {
+    if (!Array.isArray(draft.items)) {
+      throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Campo "items" deve ser array');
+    }
+    for (let i = 0; i < draft.items.length; i++) {
+      const item = draft.items[i];
+      if (!item || typeof item !== 'object') {
+        throw createHttpError(502, 'Resposta inválida do provedor de IA.', `items[${i}] deve ser objeto`);
+      }
+      if (typeof item.item_code !== 'string' || !item.item_code) {
+        throw createHttpError(502, 'Resposta inválida do provedor de IA.', `items[${i}].item_code inválido`);
+      }
+      if (typeof item.qty !== 'number' || item.qty <= 0) {
+        throw createHttpError(502, 'Resposta inválida do provedor de IA.', `items[${i}].qty inválido`);
+      }
+    }
+  }
+}
+
 async function editDraftWithOpenRouter(prompt, currentDraft) {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
   const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
@@ -103,6 +138,7 @@ async function editDraftWithOpenRouter(prompt, currentDraft) {
     throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'JSON inválido retornado pela IA');
   }
 
+  validateDraft(parsed);
   return parsed;
 }
 
