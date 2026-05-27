@@ -224,9 +224,7 @@ export async function handler(event) {
     const braspressPromise = fetchBraspressRates(originCep, destinationCep, totalWeight, totalVolumes, cubagemArray, insuranceValue || 100);
     // ── fim Braspress ──
 
-    const rates = [];
-    let filteredCount = 0;
-    for (const carrier of carriers) {
+    async function fetchCarrierRate(carrier, origin, destination, envPackages, additionalServices, insuranceRequested) {
       try {
         const requestBody = {
           origin,
@@ -240,46 +238,67 @@ export async function handler(event) {
           headers: { 'Authorization': `Bearer ${ENVIA_TOKEN}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         });
-        if (!res.ok) { console.warn(`[freight] ${carrier}: ${res.status}`); continue; }
+        if (!res.ok) {
+          console.warn(`[freight] ${carrier}: ${res.status}`);
+          return [];
+        }
         const data = await res.json();
         if (data.meta === 'error') {
           console.warn(`[freight] ${carrier}: ${data.error?.message || data.error || 'sem serviço disponível'}`);
-          continue;
+          return [];
         }
-        if (data.data && Array.isArray(data.data)) {
-          console.info('[freight] carrier_result', { carrier, rates: data.data.length });
-          for (const r of data.data) {
-            const insuranceCharge = normalizePrice(r.insurance);
+        if (!data.data || !Array.isArray(data.data)) return [];
 
-            // Filtra tarifas sem seguro quando seguro foi solicitado
-            if (insuranceRequested && insuranceCharge <= 0) {
-              console.info('[freight] filtered_no_insurance', {
-                carrier: r.carrier || carrier,
-                service: r.service || '',
-                totalPrice: normalizePrice(r.totalPrice),
-              });
-              filteredCount++;
-              continue;
-            }
-
-            rates.push({
+        console.info('[freight] carrier_result', { carrier, rates: data.data.length });
+        const results = [];
+        for (const r of data.data) {
+          const insuranceCharge = normalizePrice(r.insurance);
+          if (insuranceRequested && insuranceCharge <= 0) {
+            console.info('[freight] filtered_no_insurance', {
               carrier: r.carrier || carrier,
               service: r.service || '',
-              serviceDescription: r.serviceDescription || r.service || carrier,
-              deliveryEstimate: r.deliveryEstimate || '',
-              deliveryDays: r.deliveryDate?.dateDifference ?? null,
-              basePrice: normalizePrice(r.basePrice),
-              insurance: insuranceCharge,
-              additionalServices: r.additionalServices || [],
-              additionalCharges: normalizePrice(r.additionalCharges),
-              taxes: normalizePrice(r.taxes),
               totalPrice: normalizePrice(r.totalPrice),
-              currency: r.currency || 'BRL',
-              insuranceApplied: insuranceRequested && insuranceCharge > 0,
             });
+            continue;
           }
+          results.push({
+            carrier: r.carrier || carrier,
+            service: r.service || '',
+            serviceDescription: r.serviceDescription || r.service || carrier,
+            deliveryEstimate: r.deliveryEstimate || '',
+            deliveryDays: r.deliveryDate?.dateDifference ?? null,
+            basePrice: normalizePrice(r.basePrice),
+            insurance: insuranceCharge,
+            additionalServices: r.additionalServices || [],
+            additionalCharges: normalizePrice(r.additionalCharges),
+            taxes: normalizePrice(r.taxes),
+            totalPrice: normalizePrice(r.totalPrice),
+            currency: r.currency || 'BRL',
+            insuranceApplied: insuranceRequested && insuranceCharge > 0,
+          });
         }
-      } catch (err) { console.error(`[freight] ${carrier} error:`, err.message); }
+        return results;
+      } catch (err) {
+        console.error(`[freight] ${carrier} error:`, err.message);
+        return [];
+      }
+    }
+
+    const carrierResults = await Promise.allSettled(
+      carriers.map(carrier =>
+        fetchCarrierRate(carrier, origin, destination, envPackages, additionalServices, insuranceRequested)
+      )
+    );
+
+    const rates = [];
+    let filteredCount = 0;
+    for (const result of carrierResults) {
+      if (result.status === 'fulfilled') {
+        for (const r of result.value) {
+          if (r.insuranceApplied === false && insuranceRequested) filteredCount++;
+          rates.push(r);
+        }
+      }
     }
 
     // ── Merge Braspress ──
