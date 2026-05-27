@@ -91,6 +91,7 @@ Quantity brackets: 30, 100, 300, 500, 1000. Urgent orders: +30% on all rates.
 
 ### Extract rules (extract.js system prompt)
 - Lenços → always quote LNC-SED-70 + LNC-CSD-70
+- Echarpes → always quote ECH-SED + ECH-CSD
 - Chapéus → always quote CHP-PAN + CHP-PNR + CHP-BAM
 - Cangas < 100 → CNG-SAL-70 + CNG-SAL-100; ≥ 100 → adds CNG-VIS-70 + CNG-VIS-100
 - Toalhas → TWL-210 + TWL-280

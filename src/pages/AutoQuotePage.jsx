@@ -44,6 +44,7 @@ Rule 2 — Quantidade no campo qty: Use a quantidade EXATA solicitada pelo clien
 
 Rule 3 — Regras por Produto:
 - Lenços: Se o cliente mencionar "laser", usar LNC-SED-LAS-70 (ou o tamanho correspondente). Caso contrário, cotar DUAS opções: LNC-SED-70 (Sedinha 70x70 - econômico) e LNC-CSD-70 (Cetim de Seda 70x70 - premium). Se 55x55cm pedido, cotar 50x50cm.
+- Echarpes: Sempre duas opções: ECH-SED (Sedinha 135x35cm - econômico) e ECH-CSD (Cetim de Seda 135x35cm - premium).
 - Chapéus: Sempre cotar TRÊS opções: CHP-PAN, CHP-PNR, CHP-BAM (exceto se SKU especificado).
 - Cangas: Se mencionar "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100. Caso contrário (se < 100 unidades): Cotar CNG-SAL-70 e CNG-SAL-100. Cangas >= 100: Cotar CNG-SAL-70, CNG-SAL-100, CNG-VIS-70, CNG-VIS-100.
 - Toalhas (Praia): Sempre duas opções: TWL-210 e TWL-280.
