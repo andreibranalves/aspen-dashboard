@@ -12,9 +12,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  publicDir: 'static', // assets estáticos separados do output de build
   build: {
     outDir: 'public',
-    emptyOutDir: false, // não apaga arquivos existentes (dashboard-old.html etc)
+    emptyOutDir: false, // preserva arquivos não-gerados (dashboard-old.html etc)
   },
   server: {
     port: 5173,

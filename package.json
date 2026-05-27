@@ -13,10 +13,12 @@
     "format": "prettier --write \"**/*.{js,jsx,json,css,md}\"",
     "format:check": "prettier --check \"**/*.{js,jsx,json,css,md}\"",
     "check": "npm run lint && npm run build",
-    "test": "node test_local.mjs",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "echo '⚠️  unit tests pendentes — ver Fase 3' && exit 0",
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report",
+    "test:erp": "node test_local.mjs",
     "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs",
     "test:whatsapp-flows": "node scripts/test-whatsapp-flows.mjs"
   },
