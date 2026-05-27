@@ -1,5 +1,6 @@
 import { wrapFunctionHandler } from './_lib/function-adapter.js';
 import { isAuthenticated, getRouteName } from './_lib/auth.js';
+import { checkRateLimit } from './_lib/rate-limit.js';
 
 import { handler as crmDeals } from './_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
@@ -55,6 +56,11 @@ export default async function handler(req, res) {
   // ── Auth guard ──
   if (!isAuthenticated(req)) {
     return res.status(401).json({ error: 'Não autorizado. Faça login em /api/login.' });
+  }
+
+  // ── Rate limit ──
+  if (!checkRateLimit(req)) {
+    return res.status(429).json({ error: 'Muitas requisições. Aguarde um minuto.' });
   }
 
   const routeName = getRouteName(req);
