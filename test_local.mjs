@@ -37,9 +37,11 @@ async function pipeline(orderText) {
   const extBody = JSON.parse(extRes.body);
   if (extBody.error) return { error: `extract: ${extBody.error}` };
   if (!extBody.orders || extBody.orders.length === 0) return { error: 'No orders extracted' };
+  // Injeta origem fake para testes — orcamento.js exige origem de lead
+  const order = { ...extBody.orders[0], origem: 'Bríndice' };
   const orcRes = await orcamentoHandler({
     httpMethod: 'POST',
-    body: JSON.stringify({ extracted: extBody.orders[0] }),
+    body: JSON.stringify({ extracted: order }),
   });
   return JSON.parse(orcRes.body);
 }
@@ -188,7 +190,7 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
   const extBody = JSON.parse(extRes.body);
 
   // Simulate draft edit: pre-set a rate on the first item
-  const editedOrder = { ...extBody.orders[0] };
+  const editedOrder = { ...extBody.orders[0], origem: 'Bríndice' };
   editedOrder.items[0].rate = 12.50;
   editedOrder.items[0].manual_rate = true;
 
@@ -218,10 +220,10 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
   const extBody = JSON.parse(extRes.body);
 
   if (extBody.error || !extBody.orders?.[0]) {
-    console.error(`  \u2717 extract: ${extBody.error || 'No order extracted'}`);
+    console.error(`  \\u2717 extract: ${extBody.error || 'No order extracted'}`);
     failures++;
   } else {
-    const extracted = extBody.orders[0];
+    const extracted = { ...extBody.orders[0], origem: 'Bríndice' };
     const preview = await lookupPricing(extracted.items, extracted.urgente || false);
     const orcBody = JSON.parse((await orcamentoHandler({
       httpMethod: 'POST',
@@ -254,7 +256,7 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
     console.error(`  \u2717 extract: ${extBody.error || 'No order extracted'}`);
     failures++;
   } else {
-    const extracted = extBody.orders[0];
+    const extracted = { ...extBody.orders[0], origem: 'Bríndice' };
     const itemCode = extracted.items[0].item_code;
     extracted.items[0].rate = 12.50;
     extracted.items[0].manual_rate = false;
@@ -289,6 +291,7 @@ console.log('\n=== Scenario 2: Customer quotation (existing email → existing C
         email: null,
         telefone: null,
         urgente: false,
+        origem: 'Bríndice',
         items: [],
       },
     }),
