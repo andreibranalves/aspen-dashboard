@@ -14,8 +14,11 @@ import LeadsPage from '@/pages/LeadsPage.jsx';
 import LeadDetailPage from '@/pages/LeadDetailPage.jsx';
 import SettingsPage from '@/pages/SettingsPage.jsx';
 import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage.jsx';
+import LoginPage from '@/pages/LoginPage.jsx';
 
 function renderPage(route, navigate) {
+  // Login page — full screen, no layout
+  if (route === '/login') return <LoginPage navigate={navigate} />;
   // Detail page: #/quotations/ORC-20261143
   if (route.startsWith('/quotations/')) {
     const id = route.split('/quotations/')[1];
@@ -59,6 +62,11 @@ function renderPage(route, navigate) {
 
 export default function App() {
   const [route, navigate] = useHashRoute();
+
+  // Login page — full screen, no sidebar
+  if (route === '/login') {
+    return <LoginPage navigate={navigate} />;
+  }
 
   return (
     <Layout route={route} onNavigate={navigate}>

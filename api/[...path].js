@@ -1,4 +1,5 @@
 import { wrapFunctionHandler } from './_lib/function-adapter.js';
+import { isAuthenticated, getRouteName } from './_lib/auth.js';
 
 import { handler as crmDeals } from './_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
@@ -8,6 +9,8 @@ import { handler as extract } from './_functions/extract.js';
 import { handler as freight } from './_functions/freight.js';
 import { handler as clientDetail } from './_functions/client-detail.js';
 import { handler as leadsClients } from './_functions/leads-clients.js';
+import { handler as login } from './_functions/login.js';
+import { handler as logout } from './_functions/logout.js';
 import { handler as orcamento } from './_functions/orcamento.js';
 import { handler as pricingLookup } from './_functions/pricing-lookup.js';
 import { handler as productDetail } from './_functions/product-detail.js';
@@ -44,18 +47,16 @@ const ROUTES = {
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   view,
+  login,
+  logout,
 };
 
-function getRouteName(req) {
-  const path = req.query?.path;
-  if (Array.isArray(path)) return path[0];
-  if (path) return path;
-
-  const url = new URL(req.url || '/', 'https://aspen-orcamento.local');
-  return url.pathname.replace(/^\/api\/?/, '').split('/')[0];
-}
-
 export default async function handler(req, res) {
+  // ── Auth guard ──
+  if (!isAuthenticated(req)) {
+    return res.status(401).json({ error: 'Não autorizado. Faça login em /api/login.' });
+  }
+
   const routeName = getRouteName(req);
   const routeHandler = ROUTES[routeName];
 

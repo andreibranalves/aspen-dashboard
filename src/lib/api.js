@@ -15,6 +15,15 @@ async function request(method, path, body) {
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => null);
 
+  // 401 → sessão expirada, redirecionar para login
+  // Exceto para o próprio endpoint de login (401 é resposta esperada)
+  if (res.status === 401 && path !== '/login') {
+    window.location.hash = '#/login';
+    const err = new Error('Sessão expirada.');
+    err.status = 401;
+    throw err;
+  }
+
   if (!res.ok) {
     const err = new Error(data?.error || `Erro ${res.status}`);
     err.status = res.status;
