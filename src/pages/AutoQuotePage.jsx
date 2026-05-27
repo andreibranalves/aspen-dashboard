@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Settings, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, RotateCcw, ChevronDown, ChevronUp, Building2, MapPin } from 'lucide-react';
+import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, RotateCcw, ChevronDown, ChevronUp, Building2, MapPin } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -33,38 +33,6 @@ import {
 const PHASES = ['input', 'extracting', 'review', 'creating'];
 const PHASE_LABELS = ['1. Entrada', '2. Extração', '3. Revisão', '4. Concluído'];
 
-// ── LocalStorage ──
-const LS_RULES = 'aspen_rules';
-
-const DEFAULT_RULES = `Rule 0 — SKU Explícito tem Precedência: Se o usuário informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
-
-Rule 1 — Quantidade Mínima: Se a quantidade solicitada for < 30, use 30 (mínimo para produção).
-
-Rule 2 — Quantidade no campo qty: Use a quantidade EXATA solicitada pelo cliente. NÃO mapeie a quantidade para faixas — o sistema já aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente para calcular o preço unitário. Ex: se o cliente pedir 50, use qty:50.
-
-Rule 3 — Regras por Produto:
-- Lenços: Se o cliente mencionar "laser", usar LNC-SED-LAS-70 (ou o tamanho correspondente). Caso contrário, cotar DUAS opções: LNC-SED-70 (Sedinha 70x70 - econômico) e LNC-CSD-70 (Cetim de Seda 70x70 - premium). Se 55x55cm pedido, cotar 50x50cm.
-- Echarpes: Sempre duas opções: ECH-SED (Sedinha 135x35cm - econômico) e ECH-CSD (Cetim de Seda 135x35cm - premium).
-- Chapéus: Sempre cotar TRÊS opções: CHP-PAN, CHP-PNR, CHP-BAM (exceto se SKU especificado).
-- Cangas: Se mencionar "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100. Caso contrário (se < 100 unidades): Cotar CNG-SAL-70 e CNG-SAL-100. Cangas >= 100: Cotar CNG-SAL-70, CNG-SAL-100, CNG-VIS-70, CNG-VIS-100.
-- Toalhas (Praia): Sempre duas opções: TWL-210 e TWL-280.
-- Toalhas de Banho: Sempre três opções: TBH-LEM (Leme 375g/m² - econômico), TBH-URC (Urca 405g/m² - intermediário), TBH-IPA (Ipanema 450g/m² - premium).
-- Bonés < 100: Cotar apenas BNE-TAC-VNL. Bonés >= 100: Cotar BNE-TAC-SUB, BNE-BRI, BNE-PRE.
-- Cachecóis: Sempre quatro opções: CHC-SOF-140 (Soft 140x20cm - econômico), CHC-SOF-180 (Soft 180x20cm - intermediário), CHC-LAA-COU (Lã com etiqueta de couro) e CHC-LAA-BOR (Lã com bordado - premium).
-- Ecobags: Sempre três opções: ECO-30, ECO-35, ECO-50.
-
-Rule 4 — Múltiplas Quantidades: Se o cliente pedir o mesmo produto em quantidades diferentes (ex: "80 e 100 lenços"), inclua TODAS as combinações como linhas separadas no MESMO objeto de pedido. Ex: LNC-SED-70 qty:80, LNC-CSD-70 qty:80, LNC-SED-70 qty:100, LNC-CSD-70 qty:100 — tudo num único objeto do array.
-
-Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAIL, ignore a coluna CÓD. Use NOME como nome do cliente.
-
-Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
-
-function loadRules() {
-  try { return localStorage.getItem(LS_RULES) || DEFAULT_RULES; } catch { return DEFAULT_RULES; }
-}
-function saveRules(val) {
-  try { localStorage.setItem(LS_RULES, val); } catch {}
-}
 
 // ── Card status helpers ──
 function CardIcon({ status }) {
@@ -100,8 +68,6 @@ export default function AutoQuotePage() {
   const [whatsappFlows, setWhatsappFlows] = useState(() => loadWhatsappFlows());
   const [selectedWhatsappFlowId, setSelectedWhatsappFlowId] = useState(() => getSelectedFlowId(loadWhatsappFlows()));
   const selectedWhatsappFlow = whatsappFlows.find(f => f.id === selectedWhatsappFlowId) || whatsappFlows[0];
-  const [rules, setRulesState] = useState(loadRules);
-  const [showSettings, setShowSettings] = useState(false);
   const [waSendStatus, setWaSendStatus] = useState({});
 
   // ── Product search state (callbacks defined after pricing/mutation helpers) ──
@@ -386,7 +352,6 @@ export default function AutoQuotePage() {
         text: text || null,
         imageBase64: imageData?.base64 || null,
         imageMimeType: imageData?.mime || null,
-        rules: rules || undefined,
       });
       orders = res.orders;
     } catch (err) {
@@ -513,7 +478,7 @@ export default function AutoQuotePage() {
     // Stay at 'creating' — results are shown inline; no separate "complete" step
     setSubmitting(false);
     setBtnLabel('Gerar Orçamento');
-  }, [text, imageData, prazo, rules, drafts, fetchPricing]);
+  }, [text, imageData, prazo, drafts, fetchPricing]);
 
   // ── Reset ──
   const handleReset = useCallback(() => {
@@ -663,45 +628,6 @@ export default function AutoQuotePage() {
                 className="mt-2"
               />
               <p className="mt-2 text-xs text-framer-ink-muted">Opcional. Substitui o prazo padrão no orçamento gerado.</p>
-              <button
-                type="button"
-                onClick={() => setShowSettings(!showSettings)}
-                className="mt-4 inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted transition-colors hover:border-primary/30 hover:text-primary"
-                aria-expanded={showSettings}
-                aria-controls="auto-extraction-rules"
-              >
-                <Settings size={14} /> Regras de extração
-              </button>
-              {showSettings && (
-                <div id="auto-extraction-rules" className="mt-4 rounded-[16px] border border-framer-hairline bg-framer-surface-1 p-3">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div>
-                      <label htmlFor="auto-extraction-rules-textarea" className="text-xs font-semibold text-framer-ink">
-                        Regras atuais
-                      </label>
-                      <p className="mt-1 text-xs text-framer-ink-muted">
-                        Instruções adicionais enviadas para a IA, uma por linha.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="shrink-0 text-xs font-medium text-primary hover:underline"
-                      onClick={() => { setRulesState(DEFAULT_RULES); saveRules(DEFAULT_RULES); }}
-                    >
-                      Restaurar padrão
-                    </button>
-                  </div>
-                  <textarea
-                    id="auto-extraction-rules-textarea"
-                    className="min-h-[150px] w-full resize-y rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
-                    value={rules}
-                    onChange={e => { setRulesState(e.target.value); saveRules(e.target.value); }}
-                    placeholder="Ex: Sempre incluir SKU-XYZ para pedidos acima de 100 unidades."
-                    disabled={submitting}
-                  />
-                  <p className="mt-2 text-xs text-framer-ink-muted">Salvo automaticamente neste navegador.</p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -783,9 +709,6 @@ export default function AutoQuotePage() {
                 {prazo || 'Padrão'}
               </div>
               <p className="mt-2 text-xs text-framer-ink-muted">Opcional. Substitui o prazo padrão no orçamento gerado.</p>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted">
-                <Settings size={14} /> Regras de extração
-              </div>
             </div>
           </div>
         </div>
