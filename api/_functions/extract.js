@@ -15,6 +15,10 @@ Rule 3 — Regras por Produto:
 - Bonés < 100: Cotar apenas BNE-TAC-VNL. Bonés >= 100: Cotar BNE-TAC-SUB, BNE-BRI, BNE-PRE.
 - Cachecóis: Sempre quatro opções: CHC-SOF-140 (Soft 140x20cm - econômico), CHC-SOF-180 (Soft 180x20cm - intermediário), CHC-LAA-COU (Lã com etiqueta de couro) e CHC-LAA-BOR (Lã com bordado - premium).
 - Ecobags: Sempre três opções: ECO-30, ECO-35, ECO-50.
+- Bolsas: Sempre BLS-CAP-POL.
+- Bandanas: Sempre BND-CRP-50 e BND-CRP-65.
+- Gravatas: Sempre GVT-POD.
+- Echarpes: Sempre ECH-SED e ECH-CSD.
 
 Rule 4 — Múltiplas Quantidades: Se o cliente pedir o mesmo produto em quantidades diferentes (ex: "80 e 100 lenços"), inclua TODAS as combinações como linhas separadas no MESMO objeto de pedido. Ex: LNC-SED-70 qty:80, LNC-CSD-70 qty:80, LNC-SED-70 qty:100, LNC-CSD-70 qty:100 — tudo num único objeto do array.
 
