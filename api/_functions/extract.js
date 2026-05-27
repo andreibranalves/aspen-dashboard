@@ -13,7 +13,7 @@ Rule 3 — Regras por Produto:
 - Toalhas de Praia: Sempre TWL-210 + TWL-280.
 - Toalhas de Banho: Sempre TBH-LEM + TBH-URC + TBH-IPA.
 - Bonés: < 100 un → BNE-TAC-VNL. ≥ 100 un → BNE-TAC-SUB + BNE-BRI + BNE-PRE.
-- Cachecóis: Sempre CHC-SOF-140 + CHC-SOF-180 + CHC-LAA-COU + CHC-LAA-BOR.
+- Cachecóis: Sempre CHC-SOF-140 + CHC-LAA-COU.
 - Ecobags: Sempre ECO-30 + ECO-35 + ECO-50.
 - Bolsas: Sempre BLS-CAP-POL.
 - Bandanas: Sempre BND-CRP-50 + BND-CRP-65.
