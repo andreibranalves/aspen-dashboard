@@ -15,14 +15,18 @@ export default function LoginPage({ navigate }) {
 
   // Se já tem cookie válido, redireciona
   useEffect(() => {
-    fetch('/api/quotations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-      .then(res => {
+    fetch('/api/quotations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+      .then((res) => {
         if (res.status === 200 || res.status === 404) {
           navigate('/quotations');
         }
       })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -61,17 +65,13 @@ export default function LoginPage({ navigate }) {
             className={cn(
               'inline-flex items-center justify-center w-14 h-14 rounded-2xl',
               'bg-gradient-to-br from-framer-accent-blue to-blue-700',
-              'mb-4 shadow-lg shadow-framer-accent-blue/20',
+              'mb-4 shadow-lg shadow-framer-accent-blue/20'
             )}
           >
             <ShieldAlert className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-xl font-semibold text-framer-ink">
-            Aspen Orçamento
-          </h1>
-          <p className="text-sm text-framer-ink-muted mt-1">
-            Entre com a senha para continuar
-          </p>
+          <h1 className="text-xl font-semibold text-framer-ink">Aspen Orçamento</h1>
+          <p className="text-sm text-framer-ink-muted mt-1">Entre com a senha para continuar</p>
         </div>
 
         {/* Form */}
@@ -81,7 +81,7 @@ export default function LoginPage({ navigate }) {
               type="password"
               placeholder="Senha de acesso"
               value={password}
-              onChange={e => {
+              onChange={(e) => {
                 setPassword(e.target.value);
                 setError('');
               }}
@@ -91,18 +91,9 @@ export default function LoginPage({ navigate }) {
             />
           </div>
 
-          {error && (
-            <p className="text-center text-sm text-red-400 animate-in fade-in">
-              {error}
-            </p>
-          )}
+          {error && <p className="text-center text-sm text-red-400 animate-in fade-in">{error}</p>}
 
-          <Button
-            type="submit"
-            disabled={loading || !password.trim()}
-            className="w-full"
-            size="lg"
-          >
+          <Button type="submit" disabled={loading || !password.trim()} className="w-full" size="lg">
             {loading ? (
               <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
