@@ -129,7 +129,7 @@ export async function handler(event) {
       }
     }
 
-    items = items.map(({ manual_rate, ...item }) => ({ ...item, _rateManual: true }));
+    items = items.map(({ manual_rate, ...item }) => ({ ...item, _rateManual: manual_rate }));
 
     let entityId;
     let entityType = 'Customer';
