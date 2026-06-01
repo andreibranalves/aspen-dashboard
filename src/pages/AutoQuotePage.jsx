@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Phone, FileText, ExternalLink, Check, Pencil, ArrowRight, Mail, User, Image as ImageIcon, Clock, AlertTriangle, RotateCcw, ChevronDown, ChevronUp, Building2, MapPin } from 'lucide-react';
+import { Sparkles, Upload, X, FileText, ExternalLink, Check, Pencil, ArrowRight, Image as ImageIcon, Clock, AlertTriangle, RotateCcw } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
-import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import { capitalize, fmtPhone, formatBRL } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import {
   loadWhatsappFlows,
@@ -15,19 +15,13 @@ import { Input } from '@/components/ui/input.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 import DraftItemTable from '@/components/DraftItemTable.jsx';
+import CustomerMetadataForm from '@/components/CustomerMetadataForm.jsx';
 import {
-  LEAD_SOURCES,
-  DEFAULT_LEAD_SOURCE,
   isValidLeadSource,
-  getLeadSourceLabel,
   normalizeLeadSource,
   normalizeCnpj,
   isValidCnpj,
-  formatCnpj,
   normalizeAddress,
-  hasAnyAddressField,
-  hasMinimumAddressForErp,
-  formatAddressSummary,
 } from '@/lib/clientMetadata.js';
 import { useImageInput } from '@/hooks/useImageInput.js';
 
@@ -180,6 +174,27 @@ export default function AutoQuotePage() {
       return next;
     });
   }, []);
+
+  // ── Urgente toggle (updates flag then re-prices) ──
+  const handleUrgenteToggle = useCallback(async (draftIdx, checked) => {
+    // Optimistically update the urgente flag
+    setDrafts(prev => {
+      const next = [...prev];
+      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, urgente: checked } };
+      return next;
+    });
+    // Re-price with the new flag
+    const current = drafts.find(d => d.index === draftIdx);
+    if (current) {
+      const updated = { ...current, edited: { ...current.edited, urgente: checked } };
+      const priced = await fetchPricing([updated], checked);
+      setDrafts(prev => {
+        const next = [...prev];
+        next[draftIdx] = priced[0];
+        return next;
+      });
+    }
+  }, [drafts, fetchPricing]);
 
   const approveDraft = useCallback((draftIdx) => {
     setDrafts(prev => {
@@ -705,19 +720,6 @@ export default function AutoQuotePage() {
                         {isApproved && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Aprovado</span>}
                         {draft.edited.urgente && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">Urgente</span>}
                       </div>
-                      <Input
-                        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-framer-ink shadow-none focus-visible:ring-0"
-                        value={draft.edited.nome}
-                        onChange={e => {
-                          setDrafts(prev => {
-                            const next = [...prev];
-                            next[i] = { ...next[i], edited: { ...next[i].edited, nome: e.target.value } };
-                            return next;
-                          });
-                        }}
-                        placeholder="Nome do cliente"
-                        disabled={isApproved}
-                      />
                     </div>
                   </div>
                   <div className="rounded-[20px] border border-framer-hairline bg-card px-5 py-4 text-left lg:min-w-[220px] lg:text-right">
@@ -728,206 +730,14 @@ export default function AutoQuotePage() {
 
                 <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="space-y-5">
-                    <div className="rounded-[20px] border border-framer-hairline bg-framer-surface-1/40 p-4">
-                      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-framer-ink">
-                        <User size={16} className="text-primary" /> Cliente
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <label className="space-y-1">
-                          <span className="text-xs font-medium text-framer-ink-muted">Email</span>
-                          <div className="relative">
-                            <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
-                            <Input
-                              className="h-10 pl-9 text-sm"
-                              value={draft.edited.email}
-                              onChange={e => {
-                                setDrafts(prev => {
-                                  const next = [...prev];
-                                  next[i] = { ...next[i], edited: { ...next[i].edited, email: e.target.value } };
-                                  return next;
-                                });
-                              }}
-                              placeholder="email@exemplo.com"
-                              disabled={isApproved}
-                            />
-                          </div>
-                        </label>
-                        <label className="space-y-1">
-                          <span className="text-xs font-medium text-framer-ink-muted">Telefone</span>
-                          <div className="relative">
-                            <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
-                            <Input
-                              className="h-10 pl-9 text-sm"
-                              value={formatPhoneInput(draft.edited.telefone)}
-                              onChange={e => {
-                                setDrafts(prev => {
-                                  const next = [...prev];
-                                  next[i] = { ...next[i], edited: { ...next[i].edited, telefone: normalizePhoneDigits(e.target.value) } };
-                                  return next;
-                                });
-                              }}
-                              placeholder="(99) 99999-9999"
-                              disabled={isApproved}
-                            />
-                          </div>
-                        </label>
-                      </div>
-                      <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted">
-                        <input
-                          type="checkbox"
-                          checked={draft.edited.urgente}
-                          onChange={async e => {
-                            setDrafts(prev => {
-                              const next = [...prev];
-                              next[i] = { ...next[i], edited: { ...next[i].edited, urgente: e.target.checked } };
-                              return next;
-                            });
-                            const updated = drafts.map(d => d.index === i ? { ...d, edited: { ...d.edited, urgente: e.target.checked } } : d);
-                            const priced = await fetchPricing([updated[i]], e.target.checked);
-                            setDrafts(prev => {
-                              const next = [...prev];
-                              next[i] = priced[0];
-                              return next;
-                            });
-                          }}
-                          disabled={isApproved}
-                        />
-                        Pedido urgente
-                      </label>
-
-                      {/* ── Origem ── */}
-                      <div className="mt-4 space-y-1">
-                        <label className="text-xs font-medium text-framer-ink-muted">Origem do lead *</label>
-                        <select
-                          className={cn(
-                            'w-full rounded-[12px] border px-3 py-2 text-sm',
-                            isApproved ? 'border-framer-hairline bg-framer-surface-1 text-framer-ink' : 'border-framer-hairline bg-card text-framer-ink',
-                          )}
-                          value={draft.edited.origem || ''}
-                          onChange={e => updateDraftField(i, 'origem', e.target.value)}
-                          disabled={isApproved}
-                        >
-                          <option value="">Selecione a origem…</option>
-                          {LEAD_SOURCES.map(s => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
-                        {draft.original?.origem && draft.edited.origem === draft.original.origem && (
-                          <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                            Sugerido pela IA
-                          </span>
-                        )}
-                      </div>
-
-                      {/* ── CNPJ ── */}
-                      <div className="mt-3 space-y-1">
-                        <label className="text-xs font-medium text-framer-ink-muted">CNPJ (opcional)</label>
-                        <div className="relative">
-                          <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
-                          <Input
-                            className="h-10 pl-9 text-sm font-mono"
-                            value={draft.edited.cnpj ? formatCnpj(draft.edited.cnpj) : ''}
-                            onChange={e => updateDraftField(i, 'cnpj', normalizeCnpj(e.target.value))}
-                            placeholder="00.000.000/0000-00"
-                            disabled={isApproved}
-                          />
-                        </div>
-                        {draft.edited.cnpj && !isValidCnpj(draft.edited.cnpj) && (
-                          <p className="text-xs text-red-500">CNPJ inválido. Corrija ou deixe em branco.</p>
-                        )}
-                      </div>
-
-                      {/* ── Endereço colapsável ── */}
-                      <div className="mt-3">
-                        <button
-                          type="button"
-                          onClick={() => updateDraftField(i, '_showAddr', !draft.edited._showAddr)}
-                          className="flex items-center gap-2 text-xs font-medium text-framer-ink-muted hover:text-framer-ink transition-colors"
-                        >
-                          <MapPin size={14} />
-                          Endereço opcional
-                          {draft.edited._showAddr ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                        {draft.edited._showAddr && (
-                          <div className="mt-2 grid gap-3 md:grid-cols-2">
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">CEP</span>
-                              <Input
-                                className="h-9 text-sm font-mono"
-                                value={draft.edited.endereco?.cep || ''}
-                                onChange={e => updateDraftAddressField(i, 'cep', e.target.value)}
-                                placeholder="00000-000"
-                                disabled={isApproved}
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">Logradouro</span>
-                              <Input
-                                className="h-9 text-sm"
-                                value={draft.edited.endereco?.logradouro || ''}
-                                onChange={e => updateDraftAddressField(i, 'logradouro', e.target.value)}
-                                placeholder="Rua, Avenida"
-                                disabled={isApproved}
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">Número</span>
-                              <Input
-                                className="h-9 text-sm"
-                                value={draft.edited.endereco?.numero || ''}
-                                onChange={e => updateDraftAddressField(i, 'numero', e.target.value)}
-                                placeholder="123"
-                                disabled={isApproved}
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">Complemento</span>
-                              <Input
-                                className="h-9 text-sm"
-                                value={draft.edited.endereco?.complemento || ''}
-                                onChange={e => updateDraftAddressField(i, 'complemento', e.target.value)}
-                                placeholder="Apto, Sala"
-                                disabled={isApproved}
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">Bairro</span>
-                              <Input
-                                className="h-9 text-sm"
-                                value={draft.edited.endereco?.bairro || ''}
-                                onChange={e => updateDraftAddressField(i, 'bairro', e.target.value)}
-                                placeholder="Bairro"
-                                disabled={isApproved}
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">Cidade</span>
-                              <Input
-                                className="h-9 text-sm"
-                                value={draft.edited.endereco?.cidade || ''}
-                                onChange={e => updateDraftAddressField(i, 'cidade', e.target.value)}
-                                placeholder="Cidade"
-                                disabled={isApproved}
-                              />
-                            </label>
-                            <label className="space-y-1">
-                              <span className="text-[10px] text-framer-ink-muted">UF</span>
-                              <Input
-                                className="h-9 text-sm w-20"
-                                value={draft.edited.endereco?.uf || ''}
-                                onChange={e => updateDraftAddressField(i, 'uf', e.target.value.toUpperCase().slice(0, 2))}
-                                placeholder="SP"
-                                maxLength={2}
-                                disabled={isApproved}
-                              />
-                            </label>
-                          </div>
-                        )}
-                        {!draft.edited._showAddr && hasAnyAddressField(draft.edited.endereco) && (
-                          <p className="mt-1 text-xs text-framer-ink-muted">{formatAddressSummary(draft.edited.endereco)}</p>
-                        )}
-                      </div>
-                    </div>
+                    <CustomerMetadataForm
+                      draft={draft}
+                      draftIdx={i}
+                      isApproved={isApproved}
+                      updateDraftField={updateDraftField}
+                      updateDraftAddressField={updateDraftAddressField}
+                      onUrgenteToggle={handleUrgenteToggle}
+                    />
 
                     <DraftItemTable
                       items={items}
