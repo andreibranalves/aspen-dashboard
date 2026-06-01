@@ -10,6 +10,8 @@ import {
   Settings,
   Menu,
   X,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
@@ -30,7 +32,7 @@ const NAV_ITEMS = [
  * surface-1 background, hairline borders, ink text,
  * surface-2 hover, hairline active indicator.
  */
-export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate, darkMode }) {
+export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate, darkMode, toggleDarkMode }) {
   return (
     <>
       {/* Overlay mobile */}
@@ -89,12 +91,24 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate,
           ))}
         </nav>
 
-        {/* Footer */}
-        {!collapsed && (
-          <div className="px-4 py-3 border-t border-framer-hairline text-xs text-framer-ink-muted shrink-0">
-            v3.0 · Framer
-          </div>
-        )}
+        {/* Footer — Dark/Light toggle */}
+        <div className="px-4 py-3 border-t border-framer-hairline shrink-0 space-y-3">
+          {/* Theme toggle */}
+          <button
+            type="button"
+            onClick={toggleDarkMode}
+            className={cn(
+              'w-full flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition-colors',
+              'hover:bg-framer-surface-2',
+              collapsed && 'justify-center px-0',
+            )}
+            aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            title={darkMode ? 'Modo claro' : 'Modo escuro'}
+          >
+            {darkMode ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
+            {!collapsed && <span>{darkMode ? 'Modo claro' : 'Modo escuro'}</span>}
+          </button>
+        </div>
       </aside>
     </>
   );
