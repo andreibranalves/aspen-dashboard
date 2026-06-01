@@ -1,5 +1,5 @@
 // ── Regras de extração padrão ──
-const DEFAULT_RULES = `Rule 0 — SKU Explícito: Se o cliente informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
+export const DEFAULT_RULES = `Rule 0 — SKU Explícito: Se o cliente informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
 
 Rule 1 — Quantidade mínima: Se qtd < 30, usar 30.
 
@@ -25,7 +25,7 @@ Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAI
 
 Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
-function buildSystemPrompt(customRules) {
+export function buildSystemPrompt(customRules) {
   const rules = customRules?.trim() || DEFAULT_RULES;
   return `Você é um assistente de cotação da Aspen Estamparia. Extraia os dados do pedido e aplique as regras de negócio.
 
