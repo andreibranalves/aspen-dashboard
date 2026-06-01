@@ -46,7 +46,7 @@ export default function ProductDetailPage({ sku, navigate }) {
     try {
       const result = await apiGet(`/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=10`);
       setAtividades(result.atividades || []);
-    } catch { /* silencioso — atividade é secundário */ }
+    } catch { /* silencioso */ }
   }, [decodedSku]);
 
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
@@ -77,7 +77,6 @@ export default function ProductDetailPage({ sku, navigate }) {
     setEdited({});
   };
 
-  // ── Save ──
   const saveProduct = async () => {
     setSaving(true);
     setToast(null);
@@ -85,14 +84,12 @@ export default function ProductDetailPage({ sku, navigate }) {
       const { produto } = product || {};
       const { nome, descricao, categoria, unidade, marca, ativo, rates } = edited;
 
-      // Build pricing array
       const precos = BRACKETS.map(faixa => {
         const raw = rates[faixa];
         const rate = raw === '' || raw === null || raw === undefined ? null : Number(raw);
         return { faixa, rate };
       }).filter(p => p.rate != null && !Number.isNaN(p.rate));
 
-      // Build metadata payload — only send changed fields
       const metadata = {};
       if (nome !== produto.nome) metadata.nome = nome;
       if (descricao !== (produto.descricao || '')) metadata.descricao = descricao;
@@ -133,6 +130,15 @@ export default function ProductDetailPage({ sku, navigate }) {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  // ── KPI helpers ──
+  const precosArr = product?.precos || [];
+  const precosValidos = precosArr.filter(p => p.rate != null).sort((a, b) => a.rate - b.rate);
+  const menorPreco = precosValidos[0];
+  const maiorPreco = precosValidos[precosValidos.length - 1];
+  const economiaPct = maiorPreco?.rate && menorPreco?.rate
+    ? Math.round((1 - menorPreco.rate / maiorPreco.rate) * 100)
+    : 0;
+
   // ── Loading / Error states ──
   if (loading) return <SkeletonDetail title="Carregando produto…" />;
 
@@ -163,7 +169,7 @@ export default function ProductDetailPage({ sku, navigate }) {
     );
   }
 
-  const { produto, precos = [] } = product || {};
+  const { produto } = product || {};
   if (!produto) return null;
   const hasImage = produto.imagem && typeof produto.imagem === 'string' && produto.imagem.length > 0;
 
@@ -183,10 +189,7 @@ export default function ProductDetailPage({ sku, navigate }) {
       {/* ── Page Header ── */}
       <PageHeader
         title={editing ? <span className="italic text-muted-foreground">Editando…</span> : (produto.nome || decodedSku)}
-        description={editing
-          ? 'Altere os campos abaixo e salve.'
-          : `SKU: ${produto.sku} · ${produto.categoria || 'Sem grupo'} · ${produto.ativo ? 'Ativo' : 'Inativo'}`
-        }
+        description={editing ? 'Altere os campos abaixo e salve.' : `SKU: ${produto.sku} · ${produto.categoria || 'Sem grupo'} · ${produto.ativo ? 'Ativo' : 'Inativo'}`}
         action={(
           <div className="flex gap-2 flex-wrap">
             {editing ? (
@@ -213,7 +216,7 @@ export default function ProductDetailPage({ sku, navigate }) {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* ── Sidebar: Image ── */}
+        {/* ── LEFT: Image only ── */}
         <div className="lg:col-span-4">
           <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
             {hasImage ? (
@@ -227,18 +230,64 @@ export default function ProductDetailPage({ sku, navigate }) {
           </div>
         </div>
 
-        {/* ── Main content ── */}
+        {/* ── RIGHT: All content ── */}
         <div className="lg:col-span-8 space-y-5">
 
-          {/* ── Info Card ── */}
-          <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
-            {editing ? (
-              /* ── Edit: Info Fields ── */
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* View: Tags + Title + SKU + Short desc */}
+          {!editing && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{produto.categoria || 'Sem grupo'}</span>
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.unidade || 'und'}</span>
+                {produto.marca && <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.marca}</span>}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold inline">{produto.nome || decodedSku}</h2>
+                <span className="inline-flex items-center gap-2 text-xs ml-3 align-middle">
+                  <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-muted-foreground">{produto.sku}</span>
+                  <span className={`rounded-md px-2 py-0.5 font-medium ${produto.ativo ? 'bg-framer-success/10 text-framer-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
+                    {produto.ativo ? 'Ativo' : 'Inativo'}
+                  </span>
+                </span>
+                {produto.descricao && (
+                  <p className="text-sm text-muted-foreground mt-1.5">{produto.descricao}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Edit: Produto card (sketch-b layout) */}
+          {editing && (
+            <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-4 relative">
+              {/* Toggle Ativo */}
+              <label className="absolute top-3 right-3 inline-flex items-center gap-2 cursor-pointer">
+                <span className="text-xs text-muted-foreground">Ativo</span>
+                <input type="checkbox" checked={edited.ativo} onChange={(e) => setEdited(prev => ({ ...prev, ativo: e.target.checked }))}
+                  className="sr-only peer" />
+                <div className="w-9 h-5 rounded-full bg-muted peer-checked:bg-framer-success transition-colors"></div>
+                <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-white shadow peer-checked:-translate-x-4 transition-transform"></div>
+              </label>
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Produto</h3>
+
+              {/* Row 1: Nome 100% */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Nome</label>
+                <Input value={edited.nome} onChange={(e) => setEdited(prev => ({ ...prev, nome: e.target.value }))}
+                  className="min-h-10" placeholder="Nome do produto" />
+              </div>
+
+              {/* Row 2: Descrição 100% */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Descrição</label>
+                <Input value={edited.descricao} onChange={(e) => setEdited(prev => ({ ...prev, descricao: e.target.value }))}
+                  className="min-h-10" placeholder="Descrição do produto…" />
+              </div>
+
+              {/* Row 3: SKU | Categoria | Unidade */}
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Nome</label>
-                  <Input value={edited.nome} onChange={(e) => setEdited(prev => ({ ...prev, nome: e.target.value }))}
-                    className="min-h-10" placeholder="Nome do produto" />
+                  <label className="text-xs font-medium text-muted-foreground">SKU</label>
+                  <Input value={produto.sku} disabled className="min-h-10 opacity-60 font-mono" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Categoria</label>
@@ -250,39 +299,29 @@ export default function ProductDetailPage({ sku, navigate }) {
                   <Input value={edited.unidade} onChange={(e) => setEdited(prev => ({ ...prev, unidade: e.target.value }))}
                     className="min-h-10" placeholder="und" />
                 </div>
+              </div>
+
+              {/* Row 4: Prazo de produção | Marca */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Prazo de produção (dias)</label>
+                  <Input type="number" value={edited.prazo || ''} onChange={(e) => setEdited(prev => ({ ...prev, prazo: e.target.value }))}
+                    className="min-h-10" placeholder="dias" min="1" />
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Marca</label>
                   <Input value={edited.marca} onChange={(e) => setEdited(prev => ({ ...prev, marca: e.target.value }))}
                     className="min-h-10" placeholder="Marca" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Status</label>
-                  <select value={edited.ativo ? '1' : '0'}
-                    onChange={(e) => setEdited(prev => ({ ...prev, ativo: e.target.value === '1' }))}
-                    className="w-full min-h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm">
-                    <option value="1">Ativo</option>
-                    <option value="0">Inativo</option>
-                  </select>
-                </div>
               </div>
-            ) : (
-              /* ── View: Info Badges ── */
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{produto.categoria || 'Sem grupo'}</span>
-                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.unidade || 'und'}</span>
-                {produto.marca && <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.marca}</span>}
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${produto.ativo ? 'bg-framer-success/10 text-framer-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
-                  {produto.ativo ? 'Ativo' : 'Inativo'}
-                </span>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* ── Pricing Card ── */}
           <div className="bg-card rounded-lg border border-border shadow-sm p-4 md:p-5 space-y-4">
             <div>
-              <h2 className="text-lg font-semibold">Tabela de preços por quantidade</h2>
-              <p className="text-xs text-muted-foreground">Base ERPNext: Pricing Rule por faixa → Pricing Rule do SKU → Item Price Standard Selling. Urgente aplica +30%.</p>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Preços por quantidade</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Base ERPNext: Pricing Rule por faixa. Urgente aplica +30%.</p>
             </div>
 
             <div className="overflow-x-auto">
@@ -290,14 +329,14 @@ export default function ProductDetailPage({ sku, navigate }) {
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     {BRACKETS.map((faixa) => (
-                      <th key={faixa} className="pb-2 pr-1 font-medium text-center">{faixa}</th>
+                      <th key={faixa} className="pb-2 pr-1 font-medium text-center text-xs uppercase tracking-wide">{faixa}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     {BRACKETS.map((faixa) => {
-                      const row = precos.find(p => Number(p.faixa) === faixa) || { faixa, status: 'missing' };
+                      const row = product.precos?.find(p => Number(p.faixa) === faixa) || { faixa, status: 'missing' };
                       return (
                         <td key={faixa} className="py-3 pr-1 text-center">
                           {editing ? (
@@ -309,7 +348,7 @@ export default function ProductDetailPage({ sku, navigate }) {
                               className="w-28 text-center inline-block min-h-10" placeholder="0,00"
                             />
                           ) : (
-                            <span className={`inline-flex items-center rounded-md border px-2 py-1 font-mono ${priceTone(row)}`}>
+                            <span className={`inline-flex items-center rounded-md border px-2.5 py-1 font-mono text-sm font-medium ${priceTone(row)}`}>
                               {row.rate != null ? formatBRL(row.rate) : '—'}
                             </span>
                           )}
@@ -322,34 +361,51 @@ export default function ProductDetailPage({ sku, navigate }) {
             </div>
           </div>
 
-          {/* ── Description Card ── */}
-          {(editing || produto.descricao) && (
+          {/* ── View: Description Card ── */}
+          {!editing && produto.descricao && (
             <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
-              <h2 className="text-lg font-semibold">Descrição</h2>
-              {editing ? (
-                <textarea
-                  value={edited.descricao}
-                  onChange={(e) => setEdited(prev => ({ ...prev, descricao: e.target.value }))}
-                  className="w-full min-h-[120px] rounded-md border border-input bg-transparent px-3 py-2 text-sm resize-y"
-                  placeholder="Descrição do produto…"
-                />
-              ) : (
-                <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: produto.descricao }} />
-              )}
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Descrição</h2>
+              <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: produto.descricao }} />
+            </div>
+          )}
+
+          {/* ── KPI Row ── */}
+          {!editing && precosValidos.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
+                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Menor preço</p>
+                <p className="text-2xl font-bold text-framer-success">{menorPreco ? formatBRL(menorPreco.rate) : '—'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{menorPreco ? `em ${menorPreco.faixa} un.` : '—'}</p>
+              </div>
+              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
+                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Maior preço</p>
+                <p className="text-2xl font-bold">{maiorPreco ? formatBRL(maiorPreco.rate) : '—'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{maiorPreco ? `em ${maiorPreco.faixa} un.` : '—'}</p>
+              </div>
+              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
+                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Economia max</p>
+                <p className="text-2xl font-bold text-framer-accent-blue">{economiaPct}%</p>
+                <p className="text-xs text-muted-foreground mt-0.5">1.000 vs 30 un.</p>
+              </div>
+              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
+                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Urgente (+30%)</p>
+                <p className="text-2xl font-bold text-framer-warning">{menorPreco ? formatBRL(menorPreco.rate * 1.3) : '—'}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">menor preço urgente</p>
+              </div>
             </div>
           )}
 
           {/* ── Atividade recente ── */}
-          {atividades.length > 0 && (
+          {!editing && atividades.length > 0 && (
             <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
-              <h2 className="text-lg font-semibold">Atividade recente</h2>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Atividade recente</h2>
               <div className="space-y-2 text-sm">
                 {atividades.map((a, i) => (
                   <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                      a.tipo === 'orcamento' ? 'bg-accent/10 text-accent' :
-                      a.tipo === 'preco' ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400' :
-                      'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+                      a.tipo === 'orcamento' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' :
+                      a.tipo === 'preco' ? 'bg-framer-success/10 text-framer-success' :
+                      'bg-yellow-50 text-yellow-600 dark:bg-yellow-500/10 dark:text-yellow-400'
                     }`}>
                       {a.tipo === 'orcamento' ? 'O' : a.tipo === 'preco' ? '$' : 'E'}
                     </span>
@@ -362,8 +418,8 @@ export default function ProductDetailPage({ sku, navigate }) {
           )}
 
           {/* ── Footer ── */}
-          {produto.modificado_em && (
-            <p className="text-xs text-muted-foreground">Última modificação: {formatDate(produto.modificado_em)}</p>
+          {produto.modificado_em && !editing && (
+            <p className="text-xs text-muted-foreground text-center">Última modificação: {formatDate(produto.modificado_em)}</p>
           )}
         </div>
       </div>
