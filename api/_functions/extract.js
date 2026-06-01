@@ -15,9 +15,10 @@ Rule 3 — Regras por Produto:
 - Bonés: < 100 un → BNE-TAC-VNL. ≥ 100 un → BNE-TAC-SUB + BNE-BRI + BNE-PRE.
 - Cachecóis: Sempre CHC-SOF-140 + CHC-LAA-COU.
 - Ecobags: Sempre ECO-30 + ECO-35 + ECO-50.
-- Bolsas: Sempre BLS-CAP-POL.
+- Bolsas: Sempre BLS-CAP-POL + BLS-CAP-COR.
 - Bandanas: Sempre BND-CRP-50 + BND-CRP-65.
 - Gravatas: Sempre GVT-POD.
+- Viseiras: < 100 un → BNE-VIS-PLM. ≥ 100 un → BNE-VIS-TAC.
 
 Rule 4 — Múltiplas quantidades: Se o mesmo produto aparecer em qtds diferentes, incluir TODAS as combinações como linhas separadas no MESMO objeto. Ex: LNC-SED-70 qty:80 + LNC-CSD-70 qty:80 + LNC-SED-70 qty:100 + LNC-CSD-70 qty:100.
 
