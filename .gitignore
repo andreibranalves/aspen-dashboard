@@ -18,6 +18,9 @@ Thumbs.db
 .continue/
 .impeccable-live.json
 
+# Worktrees
+.worktrees/
+
 # Playwright
 .playwright-cli/
 .sisyphus/
