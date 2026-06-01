@@ -89,7 +89,7 @@ export default function QuotationDetailPage({ id, navigate }) {
 
   const addItem = useCallback(() => {
     const _key = makeItemKey();
-    setEditedItems(prev => [...prev, { _key, item_code: '', item_name: '', qty: 1, rate: 0, uom: 'und' }]);
+    setEditedItems(prev => [...prev, { _key, item_code: '', item_name: '', qty: 1, rate: 0 }]);
     setProductSearchTerms(prev => ({ ...prev, [_key]: '' }));
   }, []);
 

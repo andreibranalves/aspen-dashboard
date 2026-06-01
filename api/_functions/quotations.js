@@ -319,7 +319,7 @@ async function handleUpdate(quotationId, payload) {
       item_name: item.item_name || '',  // ERPNext requires item_name on child table rows
       qty: item.qty,
       rate: item.rate,
-      uom: item.uom || 'und',
+      ...(item.uom ? { uom: item.uom } : {}),  // Only include uom if explicitly set; else ERPNext auto-derives from item stock_uom
     })),
     ignore_pricing_rule: 1,
   };
