@@ -17,31 +17,6 @@ function priceTone(row) {
   return 'bg-framer-success/10 text-framer-success border-framer-success/30';
 }
 
-function urgentTone(row) {
-  if (row?.status === 'missing' || row?.urgent_rate == null) {
-    return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40';
-  }
-  return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-800/30';
-}
-
-function sourceBadgeClass(origem) {
-  if (origem === 'pricing_rule_bracket') return 'bg-framer-success/10 text-framer-success border-framer-success/30';
-  if (origem === 'pricing_rule_sku') return 'bg-framer-accent-blue/10 text-framer-accent-blue border-framer-accent-blue/30';
-  if (origem === 'item_price') return 'bg-framer-surface-2 text-framer-ink-muted border-framer-hairline';
-  return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40';
-}
-
-function SourceBadge({ row }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${sourceBadgeClass(row?.origem)}`}
-      title={row?.rule_title || row?.rule_name || row?.item_price_name || row?.price_list || row?.origem_label}
-    >
-      {row?.origem_label || 'Não encontrado'}
-    </span>
-  );
-}
-
 export default function ProductDetailPage({ sku, navigate }) {
   const decodedSku = decodeURIComponent(sku || '');
   const [product, setProduct] = useState(null);
@@ -232,66 +207,74 @@ export default function ProductDetailPage({ sku, navigate }) {
               )}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Faixa</th>
-                    <th className="pb-2 pr-4 font-medium text-right">Preço base</th>
-                    <th className="pb-2 pr-4 font-medium text-right">Urgente (+30%)</th>
-                    <th className="pb-2 font-medium">Origem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {BRACKETS.map((faixa) => {
-                    const row = precos.find(p => Number(p.faixa) === faixa) || { faixa, status: 'missing', origem_label: 'Não encontrado' };
-                    const rate = editing ? editedRates[faixa] : row.rate;
-                    return (
-                      <tr key={faixa} className="border-b last:border-0">
-                        <td className="py-3 pr-4 font-medium">{faixa} un.</td>
-                        <td className="py-3 pr-4 text-right">
-                          {editing ? (
+            {editing ? (
+              /* ── Modo Edição (horizontal) ── */
+              <div className="space-y-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-muted-foreground">
+                        {BRACKETS.map((faixa) => (
+                          <th key={faixa} className="pb-2 pr-1 font-medium text-center">{faixa}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {BRACKETS.map((faixa) => (
+                          <td key={faixa} className="py-3 pr-1 text-center">
                             <Input
                               type="number"
                               step="0.01"
                               min="0"
                               aria-label={`Preço da faixa ${faixa} unidades`}
-                              value={rate ?? ''}
+                              value={editedRates[faixa] ?? ''}
                               onChange={(e) => setEditedRates(prev => ({ ...prev, [faixa]: e.target.value }))}
-                              className="w-32 text-right inline-block min-h-10"
+                              className="w-28 text-center inline-block min-h-10"
                               placeholder="0,00"
                             />
-                          ) : (
-                            <span className={`inline-flex items-center rounded-md border px-2 py-1 font-mono ${priceTone(row)}`}>
-                              {row.rate != null ? formatBRL(row.rate) : 'sem preço'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 pr-4 text-right">
-                          <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 font-mono ${urgentTone(row)}`}>
-                            {row.urgent_rate != null ? formatBRL(row.urgent_rate) : 'sem preço'}
-                            {row.urgent_rate != null ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">urgente</span> : <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-sans font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-300">sem preço</span>}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <SourceBadge row={row} />
-                        </td>
+                          </td>
+                        ))}
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {editing && (
-              <div className="flex gap-2 pt-2 flex-wrap">
-                <Button onClick={saveRates} disabled={saving} size="sm" className="min-h-10" aria-label="Salvar preços">
-                  {saving ? <><Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
-                </Button>
-                <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} className="min-h-10" aria-label="Cancelar edição de preços">
-                  <X size={14} className="mr-1.5" />
-                  Cancelar
-                </Button>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex gap-2 pt-2 flex-wrap">
+                  <Button onClick={saveRates} disabled={saving} size="sm" className="min-h-10" aria-label="Salvar preços">
+                    {saving ? <><Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} className="min-h-10" aria-label="Cancelar edição de preços">
+                    <X size={14} className="mr-1.5" />
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* ── Modo Visualização (horizontal) ── */
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      {BRACKETS.map((faixa) => (
+                        <th key={faixa} className="pb-2 pr-1 font-medium text-center">{faixa}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      {BRACKETS.map((faixa) => {
+                        const row = precos.find(p => Number(p.faixa) === faixa) || { faixa, status: 'missing' };
+                        return (
+                          <td key={faixa} className="py-3 pr-1 text-center">
+                            <span className={`inline-flex items-center rounded-md border px-2 py-1 font-mono ${priceTone(row)}`}>
+                              {row.rate != null ? formatBRL(row.rate) : '—'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
