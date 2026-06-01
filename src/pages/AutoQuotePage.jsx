@@ -8,12 +8,12 @@ import {
   getSelectedFlowId,
   saveSelectedFlowId,
   flowToSequencePayload,
-  getFlowSummary,
 } from '@/lib/whatsappFlows.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
+import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 import {
   LEAD_SOURCES,
   DEFAULT_LEAD_SOURCE,
@@ -28,6 +28,7 @@ import {
   hasMinimumAddressForErp,
   formatAddressSummary,
 } from '@/lib/clientMetadata.js';
+import { useImageInput } from '@/hooks/useImageInput.js';
 
 // ── Phase constants ──
 const PHASES = ['input', 'extracting', 'review', 'creating'];
@@ -59,8 +60,6 @@ export default function AutoQuotePage() {
   const [phase, setPhase] = useState('input');
   const [text, setText] = useState('');
   const [prazo, setPrazo] = useState('');
-  const [imageData, setImageData] = useState(null);  // { base64, mime }
-  const [imagePreview, setImagePreview] = useState(null); // data URL for <img>
   const [drafts, setDrafts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [btnLabel, setBtnLabel] = useState('Gerar Orçamento');
@@ -74,42 +73,8 @@ export default function AutoQuotePage() {
   const [productSearch, setProductSearch] = useState({});     // { [draftIdx]: { term, results, loading, open } }
   const productTimer = useRef(null);
 
-  const imageInputRef = useRef(null);
   const dropZoneRef = useRef(null);
-
-  // ── Image handlers ──
-  const handleImageFile = useCallback((file) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setImageData({ base64: e.target.result.split(',')[1], mime: file.type });
-      setImagePreview(e.target.result);
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
-  const clearImage = useCallback(() => {
-    setImageData(null);
-    setImagePreview(null);
-    if (imageInputRef.current) imageInputRef.current.value = '';
-  }, []);
-
-  // ── Paste handler ──
-  useEffect(() => {
-    const onPaste = (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          e.preventDefault();
-          handleImageFile(item.getAsFile());
-          return;
-        }
-      }
-    };
-    document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
-  }, [handleImageFile]);
+  const { imageData, imagePreview, imageInputRef, clearImage, handleImageFile, handleDragOver, handleDragLeave, handleDrop } = useImageInput();
 
   // ── Refresh WhatsApp flows on focus/storage ──
   useEffect(() => {
@@ -125,22 +90,6 @@ export default function AutoQuotePage() {
       window.removeEventListener('storage', refreshFlows);
     };
   }, []);
-
-  // ── Drag handlers ──
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    e.currentTarget.classList.add('ring-2', 'ring-primary');
-  }, []);
-
-  const handleDragLeave = useCallback((e) => {
-    e.currentTarget.classList.remove('ring-2', 'ring-primary');
-  }, []);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    e.currentTarget.classList.remove('ring-2', 'ring-primary');
-    if (e.dataTransfer.files[0]) handleImageFile(e.dataTransfer.files[0]);
-  }, [handleImageFile]);
 
   // ── Pricing lookup ──
   const fetchPricing = useCallback(async (draftsList, urgent) => {
@@ -485,8 +434,7 @@ export default function AutoQuotePage() {
     setPhase('input');
     setText('');
     setPrazo('');
-    setImageData(null);
-    setImagePreview(null);
+    clearImage();
     setDrafts([]);
     setError(null);
     setSubmitting(false);
@@ -1254,55 +1202,17 @@ export default function AutoQuotePage() {
                     <aside className="border-t border-framer-hairline bg-framer-surface-1/50 p-5 lg:border-l lg:border-t-0">
                       <p className="text-xs font-medium text-framer-ink-muted">Total</p>
                       <p className="mt-1 text-3xl font-semibold tracking-tight text-framer-ink">{formatBRL(total)}</p>
-                      <div className="space-y-1 mb-3 mt-4">
-                        <label className="text-xs font-medium text-framer-ink-muted">Fluxo de WhatsApp</label>
-                        <select
-                          className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
-                          value={selectedWhatsappFlowId}
-                          onChange={e => {
-                            setSelectedWhatsappFlowId(e.target.value);
-                            saveSelectedFlowId(e.target.value);
-                          }}
-                        >
-                          {whatsappFlows.map(flow => (
-                            <option key={flow.id} value={flow.id}>{flow.name}</option>
-                          ))}
-                        </select>
-                        {selectedWhatsappFlow && (
-                          <span className="block text-xs leading-5 text-framer-ink-muted">
-                            {getFlowSummary(selectedWhatsappFlow)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        {selectedWhatsappFlow && flowToSequencePayload(selectedWhatsappFlow).steps.length > 0 ? (
-                          <>
-                            <Button
-                              type="button"
-                              size="lg"
-                              className="w-full"
-                              disabled={waStatus?.state === 'sending'}
-                              onClick={() => handleSendWhatsApp(draft, data)}
-                            >
-                              <Phone size={16} />
-                              {waStatus?.state === 'sent' ? 'Enviado pelo WhatsApp' : waStatus?.state === 'sending' ? 'Enviando…' : 'Enviar via WhatsApp'}
-                            </Button>
-                            {waStatus?.message && (
-                              <p className={cn(
-                                'text-xs leading-5 text-center',
-                                waStatus.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
-                              )}>
-                                {waStatus.message}
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
-                            {!selectedWhatsappFlow
-                              ? 'Nenhum fluxo de WhatsApp selecionado. Configure um fluxo em Configurações.'
-                              : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Configurações.'}
-                          </p>
-                        )}
+                      <WhatsAppSendPanel
+                        selectedFlowId={selectedWhatsappFlowId}
+                        flows={whatsappFlows}
+                        status={waStatus}
+                        onSelectFlow={(id) => {
+                          setSelectedWhatsappFlowId(id);
+                          saveSelectedFlowId(id);
+                        }}
+                        onSend={() => handleSendWhatsApp(draft, data)}
+                      />
+                      <div className="space-y-2">
                         <a href={relativeViewUrl || '#'} target="_blank" rel="noopener noreferrer" className="block">
                           <Button variant="outline" size="lg" className="w-full">
                             <FileText size={16} /> Abrir orçamento
