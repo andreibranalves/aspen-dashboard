@@ -6,7 +6,7 @@ Rule 1 — Quantidade mínima: Se qtd < 30, usar 30.
 Rule 2 — Quantidade exata: Usar a qtd EXATA do cliente. O sistema aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente.
 
 Rule 3 — Regras por Produto:
-- Lenços: Sempre LNC-SED-70 + LNC-CSD-70. Se mencionar "laser", usar LNC-SED-LAS-70. Se pedido 55×55cm, cotar 50×50cm.
+- Lenços: Sempre LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70. Se mencionar "laser", usar LNC-SED-LAS-70. Se pedido 55×55cm, cotar 50×50cm.
 - Echarpes: Sempre ECH-SED + ECH-CSD.
 - Chapéus: Sempre CHP-PAN + CHP-PNR + CHP-BAM.
 - Cangas: < 100 un → CNG-SAL-70 + CNG-SAL-100. ≥ 100 un → CNG-SAL-70 + CNG-SAL-100 + CNG-VIS-70 + CNG-VIS-100. Se "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100.
@@ -15,9 +15,10 @@ Rule 3 — Regras por Produto:
 - Bonés: < 100 un → BNE-TAC-VNL. ≥ 100 un → BNE-TAC-SUB + BNE-BRI + BNE-PRE.
 - Cachecóis: Sempre CHC-SOF-140 + CHC-LAA-COU.
 - Ecobags: Sempre ECO-30 + ECO-35 + ECO-50.
-- Bolsas: Sempre BLS-CAP-POL.
+- Bolsas: Sempre BLS-CAP-POL + BLS-CAP-COR.
 - Bandanas: Sempre BND-CRP-50 + BND-CRP-65.
 - Gravatas: Sempre GVT-POD.
+- Viseiras: < 100 un → BNE-VIS-PLM. ≥ 100 un → BNE-VIS-TAC.
 
 Rule 4 — Múltiplas quantidades: Se o mesmo produto aparecer em qtds diferentes, incluir TODAS as combinações como linhas separadas no MESMO objeto. Ex: LNC-SED-70 qty:80 + LNC-CSD-70 qty:80 + LNC-SED-70 qty:100 + LNC-CSD-70 qty:100.
 
