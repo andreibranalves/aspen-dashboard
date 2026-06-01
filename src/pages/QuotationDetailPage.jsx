@@ -384,13 +384,15 @@ export default function QuotationDetailPage({ id, navigate }) {
                   return (
                     <TableRow
                       key={key}
-                      draggable
-                      onDragStart={e => handleDragStart(e, key)}
                       onDragOver={handleDragOver}
                       onDrop={e => handleDrop(e, key)}
                     >
-                      {/* Drag handle */}
-                      <TableCell className="cursor-grab text-muted-foreground p-2">
+                      {/* Drag handle — only the grip icon is draggable, not the whole row */}
+                      <TableCell
+                        className="cursor-grab text-muted-foreground p-2"
+                        draggable
+                        onDragStart={e => handleDragStart(e, key)}
+                      >
                         <GripVertical size={14} />
                       </TableCell>
                       {/* SKU with autocomplete */}
