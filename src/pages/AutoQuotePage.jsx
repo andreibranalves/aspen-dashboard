@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Sparkles, Upload, X, FileText, ExternalLink, Check, ArrowRight, Image as ImageIcon, Clock, AlertTriangle, RotateCcw } from 'lucide-react';
-import { apiPost, apiGet } from '@/lib/api.js';
+import { apiPost } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import {
@@ -15,14 +15,8 @@ import { Input } from '@/components/ui/input.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 import DraftReviewCard from '@/components/DraftReviewCard.jsx';
-import {
-  isValidLeadSource,
-  normalizeLeadSource,
-  normalizeCnpj,
-  isValidCnpj,
-  normalizeAddress,
-} from '@/lib/clientMetadata.js';
 import { useImageInput } from '@/hooks/useImageInput.js';
+import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
 
 // ── Phase constants ──
 const PHASES = ['input', 'extracting', 'review', 'creating'];
@@ -39,7 +33,6 @@ export default function AutoQuotePage() {
   const [phase, setPhase] = useState('input');
   const [text, setText] = useState('');
   const [prazo, setPrazo] = useState('');
-  const [drafts, setDrafts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [btnLabel, setBtnLabel] = useState('Gerar Orçamento');
   const [error, setError] = useState(null);
@@ -48,9 +41,19 @@ export default function AutoQuotePage() {
   const selectedWhatsappFlow = whatsappFlows.find(f => f.id === selectedWhatsappFlowId) || whatsappFlows[0];
   const [waSendStatus, setWaSendStatus] = useState({});
 
-  // ── Product search state (callbacks defined after pricing/mutation helpers) ──
-  const [productSearch, setProductSearch] = useState({});     // { [draftIdx]: { term, results, loading, open } }
-  const productTimer = useRef(null);
+  // ── Extracted hooks (drafts, pricing, product search, mutations) ──
+  const {
+    drafts, setDrafts,
+    productSearch, setProductSearch,
+    productTimer,
+    fetchPricing,
+    updateDraftItem, addDraftItem, removeDraftItem, reorderItems,
+    updateDraftField, updateDraftAddressField,
+    handleUrgenteToggle,
+    approveDraft, discardDraft,
+    onProductSearchChange, closeProductSearch, selectProduct,
+    buildDraftsFromOrders,
+  } = useExtractionDrafts();
 
   const dropZoneRef = useRef(null);
   const { imageData, imagePreview, imageInputRef, clearImage, handleImageFile, handleDragOver, handleDragLeave, handleDrop } = useImageInput();
@@ -68,192 +71,6 @@ export default function AutoQuotePage() {
       window.removeEventListener('focus', refreshFlows);
       window.removeEventListener('storage', refreshFlows);
     };
-  }, []);
-
-  // ── Pricing lookup ──
-  const fetchPricing = useCallback(async (draftsList, urgent) => {
-    const allItems = [];
-    const refs = [];
-    for (let di = 0; di < draftsList.length; di++) {
-      const items = draftsList[di].edited.items;
-      for (let ii = 0; ii < items.length; ii++) {
-        const it = items[ii];
-        if (it.item_code && it.qty > 0) {
-          allItems.push({ item_code: it.item_code, qty: it.qty });
-          refs.push({ di, ii });
-        }
-      }
-    }
-    if (allItems.length === 0) return draftsList;
-
-    try {
-      const res = await apiPost('/pricing-lookup', { items: allItems, urgent });
-      if (!res.success || !Array.isArray(res.items)) return draftsList;
-
-      const next = draftsList.map(d => ({
-        ...d,
-        edited: { ...d.edited, items: d.edited.items.map(it => ({ ...it })) },
-      }));
-
-      for (let i = 0; i < res.items.length && i < refs.length; i++) {
-        const { di, ii } = refs[i];
-        if (!next[di].edited.items[ii]._rateManual) {
-          next[di].edited.items[ii].rate = res.items[i].rate;
-          next[di].edited.items[ii].item_name = res.items[i].item_name || next[di].edited.items[ii].item_name;
-        }
-      }
-      return next;
-    } catch (err) {
-      console.warn('[pricing]', err.message);
-      return draftsList;
-    }
-  }, []);
-
-  // ── Draft item mutations ──
-  const updateDraftItem = useCallback((draftIdx, itemIdx, field, value) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      const items = [...next[draftIdx].edited.items];
-      items[itemIdx] = { ...items[itemIdx], [field]: value };
-      if (field === 'rate') items[itemIdx]._rateManual = true;
-      if (field === 'item_code') delete items[itemIdx]._rateManual;
-      if (field === 'qty') delete items[itemIdx]._rateManual;
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
-      return next;
-    });
-  }, []);
-
-  const addDraftItem = useCallback((draftIdx) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      const items = [...next[draftIdx].edited.items, { item_code: '', qty: 30, rate: null, _rateManual: true }];
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
-      return next;
-    });
-  }, []);
-
-  const removeDraftItem = useCallback((draftIdx, itemIdx) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      const items = next[draftIdx].edited.items.filter((_, i) => i !== itemIdx);
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
-      return next;
-    });
-  }, []);
-
-  // ── Draft field helper (for generic client fields) ──
-  const updateDraftField = useCallback((draftIdx, field, value) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, [field]: value } };
-      return next;
-    });
-  }, []);
-
-  const updateDraftAddressField = useCallback((draftIdx, field, value) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      const addr = normalizeAddress({ ...next[draftIdx].edited.endereco, [field]: value });
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, endereco: addr } };
-      return next;
-    });
-  }, []);
-
-  // ── Urgente toggle (updates flag then re-prices) ──
-  const handleUrgenteToggle = useCallback(async (draftIdx, checked) => {
-    // Optimistically update the urgente flag
-    setDrafts(prev => {
-      const next = [...prev];
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, urgente: checked } };
-      return next;
-    });
-    // Re-price with the new flag
-    const current = drafts.find(d => d.index === draftIdx);
-    if (current) {
-      const updated = { ...current, edited: { ...current.edited, urgente: checked } };
-      const priced = await fetchPricing([updated], checked);
-      setDrafts(prev => {
-        const next = [...prev];
-        next[draftIdx] = priced[0];
-        return next;
-      });
-    }
-  }, [drafts, fetchPricing]);
-
-  const approveDraft = useCallback((draftIdx) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      const d = next[draftIdx];
-      const items = d.edited.items.filter(it => it.item_code && it.qty > 0);
-      if (items.length === 0) { alert('Adicione ao menos um item com SKU e quantidade > 0.'); return prev; }
-      if (!d.edited.nome?.trim()) { alert('Informe o nome do cliente antes de aprovar.'); return prev; }
-      if (!d.edited.origem) { alert('Selecione a origem do lead antes de aprovar.'); return prev; }
-      if (!isValidLeadSource(d.edited.origem)) { alert('Origem selecionada não é válida.'); return prev; }
-      if (d.edited.cnpj && !isValidCnpj(d.edited.cnpj)) { alert('CNPJ informado é inválido. Corrija ou deixe em branco.'); return prev; }
-      next[draftIdx] = { ...d, approved: true };
-      return next;
-    });
-  }, []);
-
-  const discardDraft = useCallback((draftIdx) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      next[draftIdx] = { ...next[draftIdx], discarded: true };
-      return next;
-    });
-  }, []);
-
-  // ── Reorder items via drag ──
-  const reorderItems = useCallback((draftIdx, fromIdx, toIdx) => {
-    setDrafts(prev => {
-      const next = [...prev];
-      const items = [...next[draftIdx].edited.items];
-      const [moved] = items.splice(fromIdx, 1);
-      items.splice(toIdx, 0, moved);
-      next[draftIdx] = { ...next[draftIdx], edited: { ...next[draftIdx].edited, items } };
-      return next;
-    });
-  }, []);
-
-  // ── Product search (review phase SKU autocomplete — after all deps) ──
-  const searchProducts = useCallback(async (draftIdx, term) => {
-    if (!term || term.length < 2) {
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: false } }));
-      return;
-    }
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term, loading: true, open: true } }));
-    try {
-      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: res.data || [], loading: false, open: true } }));
-    } catch {
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: true } }));
-    }
-  }, []);
-
-  const onProductSearchChange = useCallback((draftIdx, val) => {
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term: val, open: true } }));
-    clearTimeout(productTimer.current);
-    productTimer.current = setTimeout(() => searchProducts(draftIdx, val), 300);
-  }, [searchProducts]);
-
-  const selectProduct = useCallback(async (draftIdx, itemIdx, product) => {
-    updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
-    updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { term: product.sku, results: [], loading: false, open: false } }));
-    // Trigger pricing
-    const draft = drafts.find(d => d.index === draftIdx);
-    if (draft) {
-      const priced = await fetchPricing([draft], draft.edited.urgente);
-      setDrafts(prev => {
-        const next = [...prev];
-        next[draftIdx] = priced[0];
-        return next;
-      });
-    }
-  }, [drafts, fetchPricing, updateDraftItem]);
-
-  const closeProductSearch = useCallback((draftIdx) => {
-    setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], open: false } }));
   }, []);
 
   // ── WhatsApp API send ──
@@ -313,27 +130,7 @@ export default function AutoQuotePage() {
 
     // 2. Build drafts
     const prazoVal = prazo.trim();
-    let newDrafts = orders.map((order, i) => ({
-      index: i,
-      original: { ...order },
-      edited: {
-        nome: order.nome || '',
-        email: order.email || '',
-        telefone: order.telefone || '',
-        urgente: order.urgente || false,
-        origem: normalizeLeadSource(order.origem) || 'Google Ads',
-        cnpj: normalizeCnpj(order.cnpj || ''),
-        endereco: normalizeAddress(order.endereco),
-        items: (order.items || []).map(it => ({
-          item_code: it.item_code || '',
-          qty: it.qty || 0,
-          rate: it.rate || null,
-        })),
-        prazo_producao: prazoVal || '',
-      },
-      approved: false,
-      discarded: false,
-    }));
+    let newDrafts = buildDraftsFromOrders(orders, prazoVal);
 
     // Fetch pricing
     const nonUrgent = newDrafts.filter(d => !d.edited.urgente);
