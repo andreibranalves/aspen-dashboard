@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Upload, X, Plus, GripVertical, Phone, FileText, ExternalLink, Check, Pencil, ArrowRight, Mail, User, Package, Image as ImageIcon, Clock, AlertTriangle, Loader2, RotateCcw, ChevronDown, ChevronUp, Building2, MapPin } from 'lucide-react';
+import { Sparkles, Upload, X, Phone, FileText, ExternalLink, Check, Pencil, ArrowRight, Mail, User, Image as ImageIcon, Clock, AlertTriangle, RotateCcw, ChevronDown, ChevronUp, Building2, MapPin } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, fmtPhone, formatBRL, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
+import DraftItemTable from '@/components/DraftItemTable.jsx';
 import {
   LEAD_SOURCES,
   DEFAULT_LEAD_SOURCE,
@@ -928,161 +929,23 @@ export default function AutoQuotePage() {
                       </div>
                     </div>
 
-                    <div className="overflow-hidden rounded-[20px] border border-framer-hairline">
-                      <div className="flex items-center justify-between gap-3 border-b border-framer-hairline bg-framer-surface-1/50 px-4 py-3">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-framer-ink">
-                          <Package size={16} className="text-primary" /> Itens sugeridos
-                        </div>
-                        <span className="text-xs text-framer-ink-muted">{validItems} item(s) válidos</span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full min-w-[680px] text-sm">
-                          <thead className="bg-framer-surface-1/70 text-xs text-framer-ink-muted">
-                            <tr>
-                              <th className="w-10 p-3"></th>
-                              <th className="p-3 text-left">Produto</th>
-                              <th className="w-24 p-3 text-right">Qtd</th>
-                              <th className="w-28 p-3 text-right">R$/un</th>
-                              <th className="w-28 p-3 text-right">Total</th>
-                              <th className="w-10 p-3"></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {items.map((item, ii) => {
-                              const amount = (item.qty || 0) * (item.rate || 0);
-                              return (
-                                <tr
-                                  key={ii}
-                                  draggable={!isApproved}
-                                  onDragStart={e => {
-                                    e.dataTransfer.setData('text/plain', String(ii));
-                                    e.dataTransfer.effectAllowed = 'move';
-                                  }}
-                                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-                                  onDrop={e => {
-                                    e.preventDefault();
-                                    const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
-                                    if (from !== ii) reorderItems(i, from, ii);
-                                  }}
-                                  className="border-t border-framer-hairline transition-colors hover:bg-primary/5"
-                                >
-                              <td className="p-2 text-center text-muted-foreground">
-                                <GripVertical size={14} className={cn(!isApproved && 'cursor-grab')} />
-                              </td>
-                              <td className="p-2 relative">
-                                <div className="relative">
-                                  <Input
-                                    className="h-9 font-mono text-xs pr-8"
-                                    value={item.item_code}
-                                    onChange={e => {
-                                      updateDraftItem(i, ii, 'item_code', e.target.value);
-                                      onProductSearchChange(i, e.target.value);
-                                    }}
-                                    onBlur={() => {
-                                      setTimeout(() => closeProductSearch(i), 200);
-                                      if (!items[ii]._rateManual) {
-                                        const draft = drafts.find(d => d.index === i) || drafts[i];
-                                        if (draft) {
-                                          fetchPricing([draft], draft.edited.urgente).then(priced => {
-                                            setDrafts(prev => { const next = [...prev]; next[i] = priced[0]; return next; });
-                                          });
-                                        }
-                                      }
-                                    }}
-                                    onFocus={() => {
-                                      if (item.item_code) onProductSearchChange(i, item.item_code);
-                                    }}
-                                    placeholder="SKU"
-                                    disabled={isApproved}
-                                  />
-                                  {productSearch[i]?.loading && (
-                                    <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
-                                  )}
-                                </div>
-                                {productSearch[i]?.open && productSearch[i]?.results?.length > 0 && (
-                                  <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                                    {productSearch[i].results.map(p => (
-                                      <button
-                                        key={p.sku}
-                                        type="button"
-                                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between gap-2"
-                                        onMouseDown={e => {
-                                          e.preventDefault();
-                                          selectProduct(i, ii, p);
-                                        }}
-                                      >
-                                        <div className="min-w-0">
-                                          <span className="font-mono text-framer-accent-blue">{p.sku}</span>
-                                          <span className="text-framer-ink-muted ml-2">{p.nome}</span>
-                                        </div>
-                                        {p.categoria && <span className="text-[10px] text-muted-foreground shrink-0">{p.categoria}</span>}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                                {item.item_name && <p className="mt-1 text-xs text-framer-ink-muted">{item.item_name}</p>}
-                              </td>
-                              <td className="p-2">
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  className="ml-auto h-9 w-20 text-right text-xs"
-                                  value={item.qty || ''}
-                                  onChange={e => { const v = Number(e.target.value); if (!isNaN(v)) updateDraftItem(i, ii, 'qty', v); }}
-                                  onBlur={async () => {
-                                    if (!items[ii]._rateManual) {
-                                      const priced = await fetchPricing([drafts.find(d => d.index === i) || drafts[i]], drafts[i].edited.urgente);
-                                      setDrafts(prev => {
-                                        const next = [...prev];
-                                        next[i] = priced[0];
-                                        return next;
-                                      });
-                                    }
-                                  }}
-                                  disabled={isApproved}
-                                />
-                              </td>
-                                  <td className="p-2">
-                                    <Input
-                                      type="number"
-                                      min="0"
-                                      step="0.01"
-                                      className="ml-auto h-9 w-24 text-right text-xs"
-                                      value={item.rate || ''}
-                                      onChange={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateDraftItem(i, ii, 'rate', v); }}
-                                      placeholder="0,00"
-                                      disabled={isApproved}
-                                    />
-                                  </td>
-                                  <td className="p-2 text-right text-sm font-medium text-framer-ink">{formatBRL(amount)}</td>
-                                  <td className="p-2 text-center">
-                                    {!isApproved && (
-                                      <button
-                                        type="button"
-                                        onClick={() => removeDraftItem(i, ii)}
-                                        className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-600"
-                                        aria-label="Remover item"
-                                      >
-                                        <X size={14} />
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                      {!isApproved && (
-                        <button
-                          type="button"
-                          onClick={() => addDraftItem(i)}
-                          className="flex w-full items-center justify-center gap-2 border-t border-framer-hairline p-3 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
-                        >
-                          <Plus size={14} /> Adicionar produto
-                        </button>
-                      )}
-                    </div>
+                    <DraftItemTable
+                      items={items}
+                      validItems={validItems}
+                      isApproved={isApproved}
+                      draftIdx={i}
+                      updateDraftItem={updateDraftItem}
+                      onProductSearchChange={onProductSearchChange}
+                      productSearch={productSearch}
+                      closeProductSearch={closeProductSearch}
+                      selectProduct={selectProduct}
+                      drafts={drafts}
+                      fetchPricing={fetchPricing}
+                      setDrafts={setDrafts}
+                      reorderItems={reorderItems}
+                      removeDraftItem={removeDraftItem}
+                      addDraftItem={addDraftItem}
+                    />
                   </div>
 
                   <aside className="space-y-4">
