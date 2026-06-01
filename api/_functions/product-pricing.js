@@ -134,10 +134,11 @@ async function upsertBracketPricingRule(sku, faixa, rate) {
   const created = await erpPost('Pricing Rule', {
     title,
     apply_on: 'Item Code',
-    item_code: sku,
     rate,
     selling: 1,
     price_or_product_discount: 'Price',
+    rate_or_discount: 'Rate',
+    items: [{ item_code: sku }],
   });
 
   return { faixa, rate, status: 'criado', origem: 'pricing_rule_bracket', rule_name: created?.name || title, rule_title: title };

@@ -33,10 +33,11 @@ async function upsertBracket(sku, faixa, rate) {
     const created = await erpPost('Pricing Rule', {
       title,
       apply_on: 'Item Code',
-      item_code: sku,
       rate,
       selling: 1,
       price_or_product_discount: 'Price',
+      rate_or_discount: 'Rate',
+      items: [{ item_code: sku }],
     });
     return { faixa, rate, status: 'criado', rule_name: created?.name || title };
   } catch (err) {
