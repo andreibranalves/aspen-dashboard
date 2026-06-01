@@ -26,6 +26,7 @@ import { handler as leadsClients } from '../api/_functions/leads-clients.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
 import { handler as productDetail } from '../api/_functions/product-detail.js';
+import { handler as productUpdate } from '../api/_functions/product-update.js';
 import { handler as productPricingUpdate } from '../api/_functions/product-pricing-update.js';
 import { handler as productPricing } from '../api/_functions/product-pricing.js';
 import { handler as products } from '../api/_functions/products.js';
@@ -45,6 +46,7 @@ const ROUTES = {
   orcamento,
   'pricing-lookup': pricingLookup,
   'product-detail': productDetail,
+  'product-update': productUpdate,
   'product-pricing-update': productPricingUpdate,
   'product-pricing': productPricing,
   products,

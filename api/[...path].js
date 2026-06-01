@@ -15,6 +15,7 @@ import { handler as logout } from './_functions/logout.js';
 import { handler as orcamento } from './_functions/orcamento.js';
 import { handler as pricingLookup } from './_functions/pricing-lookup.js';
 import { handler as productDetail } from './_functions/product-detail.js';
+import { handler as productUpdate } from './_functions/product-update.js';
 import { handler as productPricingUpdate } from './_functions/product-pricing-update.js';
 import { handler as productPricing } from './_functions/product-pricing.js';
 import { handler as products } from './_functions/products.js';
@@ -39,6 +40,7 @@ const ROUTES = {
   pdf,
   'pricing-lookup': pricingLookup,
   'product-detail': productDetail,
+  'product-update': productUpdate,
   'product-pricing-update': productPricingUpdate,
   'product-pricing': productPricing,
   products,

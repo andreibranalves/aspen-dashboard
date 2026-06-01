@@ -144,7 +144,7 @@ async function upsertBracketPricingRule(sku, faixa, rate) {
   return { faixa, rate, status: 'criado', origem: 'pricing_rule_bracket', rule_name: created?.name || title, rule_title: title };
 }
 
-async function saveProductPricing(sku, precos) {
+export async function saveProductPricing(sku, precos) {
   let item;
   try {
     item = await erpGetDoc('Item', sku);

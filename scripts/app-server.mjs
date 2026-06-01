@@ -26,6 +26,7 @@ import { handler as leadsClients } from '../api/_functions/leads-clients.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
 import { handler as productDetail } from '../api/_functions/product-detail.js';
+import { handler as productUpdate } from '../api/_functions/product-update.js';
 import { handler as productPricingUpdate } from '../api/_functions/product-pricing-update.js';
 import { handler as productPricing } from '../api/_functions/product-pricing.js';
 import { handler as products } from '../api/_functions/products.js';
@@ -41,7 +42,7 @@ const ROUTES = {
   'crm-deals': crmDeals, 'crm-update-deal': crmUpdateDeal,
   'duplicate-quotation': duplicateQuotation, extract, freight,
   'leads-clients': leadsClients, orcamento, 'pricing-lookup': pricingLookup,
-  'product-detail': productDetail, 'product-pricing-update': productPricingUpdate,
+  'product-detail': productDetail, 'product-update': productUpdate, 'product-pricing-update': productPricingUpdate,
   'product-pricing': productPricing, products, quotations,
   'sales-dashboard': salesDashboard, 'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders, 'send-whatsapp': sendWhatsapp, view,
@@ -144,5 +145,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`App server on http://0.0.0.0:${PORT}`);
-  console.log(`Frontend: public/  |  API: 19 handlers`);
+  console.log(`Frontend: public/  |  API: 20 handlers`);
 });
