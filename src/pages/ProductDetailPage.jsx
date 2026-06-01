@@ -26,6 +26,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   const [edited, setEdited] = useState({});
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [atividades, setAtividades] = useState([]);
 
   const fetchProduct = useCallback(async () => {
     setLoading(true);
@@ -41,7 +42,15 @@ export default function ProductDetailPage({ sku, navigate }) {
     }
   }, [decodedSku]);
 
+  const fetchAtividades = useCallback(async () => {
+    try {
+      const result = await apiGet(`/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=10`);
+      setAtividades(result.atividades || []);
+    } catch { /* silencioso — atividade é secundário */ }
+  }, [decodedSku]);
+
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
+  useEffect(() => { fetchAtividades(); }, [fetchAtividades]);
 
   // ── Start / Cancel editing ──
   const startEditing = () => {
@@ -327,6 +336,28 @@ export default function ProductDetailPage({ sku, navigate }) {
               ) : (
                 <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: produto.descricao }} />
               )}
+            </div>
+          )}
+
+          {/* ── Atividade recente ── */}
+          {atividades.length > 0 && (
+            <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
+              <h2 className="text-lg font-semibold">Atividade recente</h2>
+              <div className="space-y-2 text-sm">
+                {atividades.map((a, i) => (
+                  <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                      a.tipo === 'orcamento' ? 'bg-accent/10 text-accent' :
+                      a.tipo === 'preco' ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400' :
+                      'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+                    }`}>
+                      {a.tipo === 'orcamento' ? 'O' : a.tipo === 'preco' ? '$' : 'E'}
+                    </span>
+                    <span className="flex-1 text-muted-foreground">{a.texto}</span>
+                    <span className="text-xs text-muted-foreground">{a.data}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

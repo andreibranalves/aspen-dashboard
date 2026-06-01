@@ -17,6 +17,7 @@ import { handler as pricingLookup } from './_functions/pricing-lookup.js';
 import { handler as productDetail } from './_functions/product-detail.js';
 import { handler as productUpdate } from './_functions/product-update.js';
 import { handler as productPricingUpdate } from './_functions/product-pricing-update.js';
+import { handler as productActivity } from './_functions/product-activity.js';
 import { handler as productPricing } from './_functions/product-pricing.js';
 import { handler as products } from './_functions/products.js';
 import { handler as quotations } from './_functions/quotations.js';
@@ -42,6 +43,7 @@ const ROUTES = {
   'product-detail': productDetail,
   'product-update': productUpdate,
   'product-pricing-update': productPricingUpdate,
+  'product-activity': productActivity,
   'product-pricing': productPricing,
   products,
   quotations,

@@ -28,6 +28,7 @@ import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
 import { handler as productDetail } from '../api/_functions/product-detail.js';
 import { handler as productUpdate } from '../api/_functions/product-update.js';
 import { handler as productPricingUpdate } from '../api/_functions/product-pricing-update.js';
+import { handler as productActivity } from '../api/_functions/product-activity.js';
 import { handler as productPricing } from '../api/_functions/product-pricing.js';
 import { handler as products } from '../api/_functions/products.js';
 import { handler as quotations } from '../api/_functions/quotations.js';
@@ -48,6 +49,7 @@ const ROUTES = {
   'product-detail': productDetail,
   'product-update': productUpdate,
   'product-pricing-update': productPricingUpdate,
+  'product-activity': productActivity,
   'product-pricing': productPricing,
   products,
   quotations,
