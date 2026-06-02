@@ -211,16 +211,18 @@ export default function AutoQuotePage() {
   const activeDrafts = drafts.filter(d => !d.discarded);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden -m-4 md:-m-6">
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex flex-col w-full lg:w-1/2 min-w-0 border-r border-framer-hairline bg-card overflow-hidden">
-          <div className="p-4 md:p-5 space-y-4">
+          <div className="px-4 md:px-6 py-4 md:py-5 space-y-4">
+
+            {/* Page title */}
+            <h1 className="text-lg font-semibold text-framer-ink">Pedido do cliente</h1>
 
             {/* Text input */}
             <div>
-              <label className="text-sm font-semibold text-framer-ink">Pedido do cliente</label>
               <textarea
                 className="mt-2 w-full min-h-[130px] resize-none rounded-xl border border-framer-hairline bg-framer-surface-1 px-4 py-3 text-sm leading-6 text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/30"
                 placeholder={'Ex: João pediu 200 lenços de seda 70cm. Email joao@email.com, telefone (11) 99999-9999.\n\nTambém pode colar conversas longas ou vários pedidos de uma vez.'}
@@ -283,7 +285,7 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Recent History ── */}
-          <div className="border-t border-framer-hairline p-4 md:p-5">
+          <div className="border-t border-framer-hairline px-4 md:px-6 py-4 mt-auto">
             <div className="flex items-center gap-2 mb-3">
               <History size={14} className="text-framer-ink-muted" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-framer-ink-muted">Recentes</h3>
@@ -325,7 +327,7 @@ export default function AutoQuotePage() {
         </div>
 
         {/* ── RIGHT PANEL (50%) ── */}
-        <div className="w-full lg:w-1/2 min-w-0 overflow-y-auto bg-framer-canvas p-4 md:p-6">
+        <div className="w-full lg:w-1/2 min-w-0 overflow-y-auto bg-framer-canvas px-4 md:px-6 py-4 md:py-5">
           {activeDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-framer-surface-2 mb-4">
