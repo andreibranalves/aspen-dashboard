@@ -27,6 +27,7 @@ import {
 const STEP_TYPE_LABELS = {
   [STEP_TYPES.TEXT]: 'Texto',
   [STEP_TYPES.IMAGE]: 'Imagem por URL',
+  [STEP_TYPES.DOCUMENT]: 'PDF do orçamento',
   [STEP_TYPES.PRODUCT_IMAGES]: 'Fotos por categoria',
 };
 
@@ -40,12 +41,14 @@ const STEP_TYPE_ICONS = {
 const STEP_TYPE_OPTIONS = [
   { value: STEP_TYPES.TEXT, label: 'Texto' },
   { value: STEP_TYPES.IMAGE, label: 'Imagem por URL' },
+  { value: STEP_TYPES.DOCUMENT, label: 'PDF do orçamento' },
   { value: STEP_TYPES.PRODUCT_IMAGES, label: 'Fotos por categoria' },
 ];
 
 const STEP_TYPE_DESCRIPTIONS = {
   [STEP_TYPES.TEXT]: 'Envia uma mensagem de texto normal no WhatsApp.',
   [STEP_TYPES.IMAGE]: 'Envia uma imagem a partir de uma URL pública.',
+  [STEP_TYPES.DOCUMENT]: 'Gera e envia o PDF do orçamento como anexo no WhatsApp.',
   [STEP_TYPES.PRODUCT_IMAGES]: 'Envia as fotos de referência conforme a categoria dos produtos no orçamento.',
 };
 
@@ -326,18 +329,12 @@ export default function SettingsPage() {
         return (
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm text-framer-ink">
-              <MessageSquare size={16} className="text-framer-ink-muted" />
-              <span>Envia link do orçamento (documento convertido)</span>
+              <FileText size={16} className="text-framer-ink-muted" />
+              <span>Envia PDF do orçamento como anexo</span>
             </div>
             {step.caption && (
               <p className="text-sm leading-relaxed whitespace-pre-wrap">
                 {renderFlowTemplate(step.caption, PREVIEW_CONTEXT)}
-                {step.caption.includes('(link_orcamento)') ? '' : '\n(link_orcamento)'}
-              </p>
-            )}
-            {!step.caption && (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap text-framer-ink-muted">
-                Segue o orçamento (numero_pedido):{'\n'}(link_orcamento)
               </p>
             )}
           </div>
@@ -816,10 +813,25 @@ export default function SettingsPage() {
 
                             {step.type === STEP_TYPES.DOCUMENT && (
                               <div className="space-y-3">
-                                <div className="flex items-center gap-2 rounded-[10px] border border-framer-warning/30 bg-framer-warning/5 px-3 py-2 text-sm text-framer-ink-muted">
-                                  <FileText size={16} className="text-framer-warning" />
-                                  <span>Etapa antiga de PDF: será enviada como link do orçamento. Recomendado trocar para Texto.</span>
+                                <div className="flex items-center gap-2 rounded-[10px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                  <FileText size={16} className="text-emerald-600" />
+                                  <span>Gera e envia o PDF do orçamento como anexo no WhatsApp.</span>
                                 </div>
+                                <label className="space-y-1">
+                                  <span className="text-xs font-medium text-framer-ink-muted">
+                                    Legenda do PDF (opcional)
+                                  </span>
+                                  <textarea
+                                    className="w-full min-h-[60px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm resize-y text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                                    value={step.caption || ''}
+                                    onChange={(e) =>
+                                      updateStep(step.id, {
+                                        caption: e.target.value,
+                                      })
+                                    }
+                                    placeholder="Ex: Orçamento (numero_pedido)"
+                                  />
+                                </label>
                               </div>
                             )}
 

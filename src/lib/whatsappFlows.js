@@ -11,6 +11,8 @@
 // ---------------------------------------------------------------------------
 export const LS_WA_FLOWS = 'aspen_wa_flows';
 export const LS_WA_SELECTED_FLOW = 'aspen_wa_selected_flow';
+const LS_WA_FLOWS_VERSION = 'aspen_wa_flows_v';
+const CURRENT_FLOWS_VERSION = 2;  // bump on breaking changes to force re-init
 
 // ---------------------------------------------------------------------------
 // Step type constants
@@ -27,6 +29,21 @@ export const STEP_TYPES = {
 // ---------------------------------------------------------------------------
 export const DEFAULT_WA_FLOWS = [
   {
+    id: 'already-talking',
+    name: 'Já estou falando com o cliente',
+    description: 'Mensagem curta + PDF para conversas já iniciadas no WhatsApp.',
+    vendor_name: 'Juliana',
+    delay_min_seconds: 1,
+    delay_max_seconds: 2,
+    max_images_per_category: 0,
+    default: true,
+    steps: [
+      { id: 'step-greeting', type: 'text', template: 'Segue o orçamento solicitado, (primeiro_nome)!' },
+      { id: 'step-pdf', type: 'document', source: 'quotation_pdf', caption: 'Orçamento (numero_pedido)' },
+    ],
+    sample_images_text: '',
+  },
+  {
     id: 'email-first-contact',
     name: 'Primeiro contato — pedido veio por e-mail',
     description: 'Apresentação, contexto comercial e envio do orçamento.',
@@ -34,27 +51,13 @@ export const DEFAULT_WA_FLOWS = [
     delay_min_seconds: 5,
     delay_max_seconds: 8,
     max_images_per_category: 2,
-    default: true,
+    default: false,
     steps: [
       { id: 'step-greeting', type: 'text', template: 'Boa tarde, (primeiro_nome)! Tudo bem?' },
       { id: 'step-context', type: 'text', template: 'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) personalizado(a).' },
       { id: 'step-quotation', type: 'text', template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)' },
       { id: 'step-samples-intro', type: 'text', template: 'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.' },
       { id: 'step-product-images', type: 'product_images' },
-    ],
-    sample_images_text: '',
-  },
-  {
-    id: 'already-talking',
-    name: 'Já estou falando com o cliente',
-    description: 'Mensagem curta para conversas já iniciadas no WhatsApp.',
-    vendor_name: 'Juliana',
-    delay_min_seconds: 1,
-    delay_max_seconds: 2,
-    max_images_per_category: 0,
-    default: false,
-    steps: [
-      { id: 'step-quotation-link', type: 'text', template: 'Segue o orçamento solicitado, (primeiro_nome):\n(link_orcamento)' },
     ],
     sample_images_text: '',
   },
@@ -137,23 +140,37 @@ function getLocalStorage() {
 /**
  * Load flows from localStorage, falling back to DEFAULT_WA_FLOWS.
  * Returns a deep clone to avoid mutation of defaults.
+ * Migrates old versions automatically.
  */
 export function loadWhatsappFlows() {
   const ls = getLocalStorage();
   if (ls) {
     try {
+      const storedVersion = Number(ls.getItem(LS_WA_FLOWS_VERSION) || 0);
       const stored = ls.getItem(LS_WA_FLOWS);
-      if (stored) {
+      if (stored && storedVersion >= CURRENT_FLOWS_VERSION) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((f, i) => normalizeFlow(f, i));
         }
       }
+      // Version mismatch or corrupted data — reset to defaults
+      ls.removeItem(LS_WA_FLOWS);
+      ls.removeItem(LS_WA_SELECTED_FLOW);
     } catch {
       // corrupted data, fall through
     }
   }
-  return DEFAULT_WA_FLOWS.map((f, i) => normalizeFlow(f, i));
+  // Store fresh defaults
+  const defaults = DEFAULT_WA_FLOWS.map((f, i) => normalizeFlow(f, i));
+  if (ls) {
+    try {
+      ls.setItem(LS_WA_FLOWS, JSON.stringify(defaults));
+      ls.setItem(LS_WA_FLOWS_VERSION, String(CURRENT_FLOWS_VERSION));
+      ls.setItem(LS_WA_SELECTED_FLOW, defaults[0].id);
+    } catch { /* quota exceeded */ }
+  }
+  return defaults;
 }
 
 /**
@@ -164,6 +181,7 @@ export function saveWhatsappFlows(flows) {
   if (ls) {
     try {
       ls.setItem(LS_WA_FLOWS, JSON.stringify(flows));
+      ls.setItem(LS_WA_FLOWS_VERSION, String(CURRENT_FLOWS_VERSION));
     } catch {
       // quota exceeded or unavailable
     }

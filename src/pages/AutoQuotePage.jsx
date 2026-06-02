@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
-import { loadWhatsappFlows, getSelectedFlowId, saveSelectedFlowId, flowToSequencePayload } from '@/lib/whatsappFlows.js';
+import { loadWhatsappFlows, getSelectedFlowId, flowToSequencePayload } from '@/lib/whatsappFlows.js';
 
 export default function AutoQuotePage() {
   // ── Helpers ──
@@ -31,8 +31,6 @@ export default function AutoQuotePage() {
   const [whatsappError, setWhatsappError] = useState(null);
 
   // ── WhatsApp send state ──
-  const [waFlows] = useState(() => loadWhatsappFlows());
-  const [waSelectedFlowId, setWaSelectedFlowId] = useState(() => getSelectedFlowId(loadWhatsappFlows()));
   const [waStatusByDraft, setWaStatusByDraft] = useState({});
 
   // ── Extracted hooks ──
@@ -237,11 +235,6 @@ export default function AutoQuotePage() {
   }, [setDrafts, setProductSearch]);
 
   // ── WhatsApp handlers ──
-  const handleSelectWaFlow = useCallback((flowId) => {
-    setWaSelectedFlowId(flowId);
-    saveSelectedFlowId(flowId);
-  }, []);
-
   const handleSendWhatsApp = useCallback(async (draftIndex) => {
     const draft = drafts.find(d => d.index === draftIndex);
     if (!draft || !draft.result?.data?.quotation_id) return;
@@ -250,7 +243,9 @@ export default function AutoQuotePage() {
     const quotationId = resultData.quotation_id;
     const telefone = draft.edited.telefone || resultData.telefone || '';
     const nome = resultData.cliente || draft.edited.nome || '';
-    const flow = waFlows.find(f => f.id === waSelectedFlowId) || waFlows[0];
+    const flows = loadWhatsappFlows();
+    const selectedFlowId = getSelectedFlowId(flows);
+    const flow = flows.find(f => f.id === selectedFlowId) || flows[0];
 
     setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'sending' } }));
 
@@ -282,7 +277,7 @@ export default function AutoQuotePage() {
         },
       }));
     }
-  }, [drafts, waFlows, waSelectedFlowId]);
+  }, [drafts]);
 
   const activeDrafts = drafts.filter(d => !d.discarded);
   const visibleDrafts = [...activeDrafts].reverse();
@@ -563,10 +558,7 @@ export default function AutoQuotePage() {
                     onCreateQuote={createSingleQuote}
                     onDelete={discardDraft}
                     viewUrl={relativeViewUrl}
-                    waFlows={waFlows}
-                    waSelectedFlowId={waSelectedFlowId}
                     waStatus={waStatusByDraft[draft.index]}
-                    onSelectWaFlow={handleSelectWaFlow}
                     onSendWhatsApp={handleSendWhatsApp}
                   />
                 );

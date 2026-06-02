@@ -26,12 +26,12 @@ describe('DEFAULT_WA_FLOWS', () => {
     assert.equal(DEFAULT_WA_FLOWS.length, 2);
   });
 
-  it('fluxo principal tem passos com templates', () => {
+  it('fluxo padrão "Já estou falando" tem texto + PDF', () => {
     const main = DEFAULT_WA_FLOWS[0];
-    assert.equal(main.id, 'email-first-contact');
-    assert.ok(main.steps.length >= 4);
-    assert.ok(main.steps.some(s => s.template.includes('(primeiro_nome)')));
-    assert.ok(main.steps.some(s => s.template.includes('(link_orcamento)')));
+    assert.equal(main.id, 'already-talking');
+    assert.ok(main.steps.length >= 2);
+    assert.ok(main.steps.some(s => s.type === 'text' && s.template.includes('(primeiro_nome)')));
+    assert.ok(main.steps.some(s => s.type === 'document' && s.source === 'quotation_pdf'));
   });
 });
 
@@ -152,10 +152,10 @@ describe('parseSampleImages()', () => {
 // ── flowToSequencePayload ────────────────────────────────────────────────────
 
 describe('flowToSequencePayload()', () => {
-  it('converte delay de segundos para milissegundos', () => {
+  it('already-talking tem delays baixos', () => {
     const payload = flowToSequencePayload(DEFAULT_WA_FLOWS[0]);
-    assert.equal(payload.delay_min_ms, 5000);
-    assert.equal(payload.delay_max_ms, 8000);
+    assert.equal(payload.delay_min_ms, 1000);
+    assert.equal(payload.delay_max_ms, 2000);
   });
 
   it('extrai vendor_name', () => {
@@ -163,8 +163,8 @@ describe('flowToSequencePayload()', () => {
     assert.equal(payload.vendor_name, 'Juliana');
   });
 
-  it('extrai max_images_per_category', () => {
-    const payload = flowToSequencePayload(DEFAULT_WA_FLOWS[0]);
+  it('email-first-contact tem max_images_per_category', () => {
+    const payload = flowToSequencePayload(DEFAULT_WA_FLOWS[1]);
     assert.equal(payload.max_images_per_category, 2);
   });
 
