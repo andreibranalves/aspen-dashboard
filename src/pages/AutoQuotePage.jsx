@@ -201,11 +201,27 @@ export default function AutoQuotePage() {
     }
   }, [loadHistory]);
 
-  // ── Load history item into text input ──
-  const loadHistoryItem = useCallback((item) => {
-    setText(`${item.id} — ${item.cliente || 'Cliente'}`);
+  // ── Load history item: fetch detail and format as text ──
+  const loadHistoryItem = useCallback(async (item) => {
     setError(null);
-    document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+      const res = await apiGet(`/quotations?id=${encodeURIComponent(item.id)}`);
+      if (!res) return;
+      const nome = res.cliente || item.cliente || 'Cliente';
+      const email = res.email || '';
+      const telefone = res.telefone || '';
+      const itemsText = (res.items || []).map(it => `${it.item_code} ${it.qty} un`).join(', ');
+      const formatted = [
+        `Nome: ${nome}`,
+        email ? `E-mail: ${email}` : 'E-mail:',
+        telefone ? `Telefone: ${telefone}` : 'Telefone:',
+        itemsText ? `Pedido: ${itemsText}` : 'Pedido:',
+      ].join('\n');
+      setText(formatted);
+      document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      setText(`${item.id} — ${item.cliente || 'Cliente'}`);
+    }
   }, []);
 
   // ── Reset ──
