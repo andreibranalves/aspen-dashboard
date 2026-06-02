@@ -121,7 +121,7 @@ export default function SplitResultCard({
 
   return (
     <div className={cn(
-      'rounded-xl border border-framer-hairline bg-card overflow-hidden',
+      'rounded-xl border border-framer-hairline bg-card',
       isProcessing && 'opacity-60 pointer-events-none',
     )}>
       {/* ── Header ── */}
