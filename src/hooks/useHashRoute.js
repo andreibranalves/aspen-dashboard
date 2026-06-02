@@ -4,13 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
  * Hook simples de roteamento por hash.
  * Uso: const [route] = useHashRoute();
  *
- * Navegação: window.location.hash = '#/quotations'
+ * Navegação: window.location.hash = '#/auto'
  */
 export function useHashRoute() {
-  const [route, setRoute] = useState(() => window.location.hash.slice(1) || '/quotations');
+  const [route, setRoute] = useState(() => window.location.hash.slice(1) || '/auto');
 
   useEffect(() => {
-    const onHashChange = () => setRoute(window.location.hash.slice(1) || '/quotations');
+    const onHashChange = () => setRoute(window.location.hash.slice(1) || '/auto');
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);

@@ -56,7 +56,7 @@ function renderPage(route, navigate) {
     case '/leads':       return <LeadsPage navigate={navigate} />;
     case '/settings':    return <SettingsPage />;
     case '/manual':      return <ManualOrcamentoPage />;
-    default:             return <QuotationsPage navigate={navigate} />;
+    default:             return <AutoQuotePage />;
   }
 }
 

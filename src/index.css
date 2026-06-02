@@ -28,7 +28,7 @@
 @layer base {
   :root {
     /* ── Light Framer surface tokens ── */
-    --background: 0 0% 97.6%;           /* canvas     #f9f9f9 */
+    --background: 0 0% 100%;            /* canvas     #ffffff (matches surface-1/sidebar) */
     --foreground: 0 0% 7%;              /* ink        #121212 */
     --card: 0 0% 100%;                  /* surface-1  #ffffff */
     --card-foreground: 0 0% 7%;
@@ -50,7 +50,7 @@
     --radius: 0.625rem;
 
     /* ── Framer-specific extras consumed by tailwind.config.js ── */
-    --canvas: 0 0% 97.6%;               /* #f9f9f9 */
+    --canvas: 0 0% 100%;                /* #ffffff (matches surface-1/sidebar) */
     --surface-1: 0 0% 100%;             /* #ffffff */
     --surface-2: 0 0% 94.5%;            /* #f1f1f1 */
     --hairline: 0 0% 86%;               /* #dbdbdb */
