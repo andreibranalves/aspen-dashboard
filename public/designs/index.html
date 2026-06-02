@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Designs — Página de Produto | Aspen</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{font-family:system-ui,-apple-system,sans-serif}</style>
+</head>
+<body class="bg-zinc-950 min-h-screen text-zinc-200">
+<div class="max-w-5xl mx-auto px-4 py-12 sm:py-20">
+  <div class="text-center mb-12">
+    <h1 class="text-3xl sm:text-4xl font-bold mb-3">🎨 Sketches — Página de Produto</h1>
+    <p class="text-zinc-400 text-lg">3 arquiteturas diferentes para a página de detalhe do produto</p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+    <!-- Sketch A -->
+    <a href="/designs/sketch-a-split-canvas.html" target="_blank" class="group rounded-2xl border border-zinc-800 bg-zinc-900 p-5 hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/5 transition-all">
+      <div class="w-full aspect-[4/3] rounded-xl bg-zinc-800 mb-4 flex border border-zinc-700">
+        <div class="w-[40%] border-r border-zinc-700 flex items-center justify-center"><span class="text-2xl opacity-30">🖼️</span></div>
+        <div class="flex-1 p-2 space-y-1.5">
+          <div class="h-2 bg-zinc-700 rounded w-2/3"></div>
+          <div class="h-1.5 bg-zinc-700 rounded w-1/2"></div>
+          <div class="flex gap-1 mt-2"><div class="h-8 flex-1 bg-zinc-700 rounded"></div><div class="h-8 flex-1 bg-zinc-700 rounded"></div></div>
+          <div class="h-6 bg-zinc-700 rounded w-full mt-2"></div>
+        </div>
+      </div>
+      <h3 class="font-bold text-lg group-hover:text-violet-400 transition-colors">A — Split Canvas</h3>
+      <p class="text-sm text-zinc-500 mt-1.5">Imagem fixa à esquerda (40%), detalhes scroll à direita. Preços como gráfico de barras visuais. Seções expansíveis. Histórico de pedidos.</p>
+      <div class="flex flex-wrap gap-1.5 mt-3">
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Split layout</span>
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Visual pricing</span>
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Histórico</span>
+      </div>
+    </a>
+
+    <!-- Sketch B -->
+    <a href="/designs/sketch-b-dashboard.html" target="_blank" class="group rounded-2xl border border-zinc-800 bg-zinc-900 p-5 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/5 transition-all">
+      <div class="w-full aspect-[4/3] rounded-xl bg-zinc-800 mb-4 flex flex-col gap-1 p-2 border border-zinc-700">
+        <div class="flex gap-1"><div class="h-10 flex-1 bg-zinc-700 rounded"></div><div class="h-10 flex-1 bg-zinc-700 rounded"></div><div class="h-10 flex-1 bg-zinc-700 rounded"></div><div class="h-10 flex-1 bg-zinc-700 rounded"></div></div>
+        <div class="flex gap-1 flex-1"><div class="w-[35%] bg-zinc-700 rounded"></div><div class="flex-1 space-y-1"><div class="h-6 bg-zinc-700 rounded w-full"></div><div class="flex gap-1"><div class="h-16 flex-1 bg-zinc-700 rounded"></div><div class="h-16 flex-1 bg-zinc-700 rounded"></div></div></div></div>
+      </div>
+      <h3 class="font-bold text-lg group-hover:text-indigo-400 transition-colors">B — Dashboard</h3>
+      <p class="text-sm text-zinc-500 mt-1.5">KPI cards no topo (menor preço, economia, margem). Preços com barras de comparação. Especificações e descrição lado a lado. Atividade recente. <strong class="text-indigo-400">✨ JS: edição inline interativa.</strong></p>
+      <div class="flex flex-wrap gap-1.5 mt-3">
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">KPIs</span>
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Métricas</span>
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Atividade</span>
+      </div>
+    </a>
+
+    <!-- Sketch C -->
+    <a href="/designs/sketch-c-progressive.html" target="_blank" class="group rounded-2xl border border-zinc-800 bg-zinc-900 p-5 hover:border-amber-500/50 hover:shadow-lg hover:shadow-amber-500/5 transition-all">
+      <div class="w-full aspect-[4/3] rounded-xl bg-zinc-800 mb-4 flex flex-col border border-zinc-700">
+        <div class="h-16 bg-zinc-700 m-2 rounded"></div>
+        <div class="flex-1 m-2 space-y-1">
+          <div class="h-8 bg-zinc-700 rounded flex items-center px-2"><span class="text-xs opacity-50">▼</span></div>
+          <div class="h-16 bg-zinc-700 rounded"></div>
+          <div class="h-8 bg-zinc-700 rounded flex items-center px-2"><span class="text-xs opacity-50">▶</span></div>
+        </div>
+      </div>
+      <h3 class="font-bold text-lg group-hover:text-amber-400 transition-colors">C — Progressive Story</h3>
+      <p class="text-sm text-zinc-500 mt-1.5">Hero com imagem full-width + overlay. Seções em accordion (preços, specs, descrição, histórico). Preços como círculos percentuais. Scroll narrativo.</p>
+      <div class="flex flex-wrap gap-1.5 mt-3">
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Accordion</span>
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Hero image</span>
+        <span class="text-[10px] bg-zinc-800 text-zinc-400 rounded-full px-2 py-0.5 font-medium">Narrativo</span>
+      </div>
+    </a>
+
+  </div>
+
+  <div class="mt-12 text-center space-y-3">
+    <p class="text-sm text-zinc-500">
+      Cada sketch reorganiza a <strong>arquitetura da informação</strong> de forma diferente — não é só troca de CSS.
+    </p>
+    <p class="text-xs text-zinc-600">
+      <code class="bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono">public/designs/</code>
+      · <code class="bg-zinc-800 px-1.5 py-0.5 rounded text-xs font-mono">localhost:8888</code>
+    </p>
+  </div>
+</div>
+</body>
+</html>

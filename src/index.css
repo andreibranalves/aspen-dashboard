@@ -69,7 +69,7 @@
 
   .dark {
     /* ── Framer dark surface tokens ── */
-    --background: 0 0% 3.5%;            /* canvas     #090909 */
+    --background: 0 0% 7.8%;            /* canvas     #141414 (matches surface-1) */
     --foreground: 0 0% 100%;            /* ink        #ffffff */
     --card: 0 0% 7.8%;                  /* surface-1  #141414 */
     --card-foreground: 0 0% 100%;
@@ -89,7 +89,7 @@
     --input: 0 0% 14.9%;
     --ring: 212.8 100% 18.6%;
 
-    --canvas: 0 0% 3.5%;                /* #090909 */
+    --canvas: 0 0% 7.8%;                /* #141414 (matches surface-1) */
     --surface-1: 0 0% 7.8%;             /* #141414 */
     --surface-2: 0 0% 11%;              /* #1c1c1c */
     --hairline: 0 0% 14.9%;             /* #262626 */
