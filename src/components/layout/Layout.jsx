@@ -103,9 +103,7 @@ export default function Layout({ route, onNavigate, children }) {
   }, [route]);
 
   // Clear actions on route change — pages re-set them in their own useEffect
-  useEffect(() => {
-    setTopBarActions(null);
-  }, [route]);
+  // (Moved to each page's cleanup instead, to avoid race with page effects)
 
   const breadcrumbItems = getBreadcrumb(route);
 
