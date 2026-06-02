@@ -1,7 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { formatLeadText, normalizeWhatsappPhone } from '../../api/_functions/whatsapp-leads.js';
+import {
+  findConvertedQuotation,
+  formatLeadText,
+  getWhatsappLeadQuality,
+  normalizeLeadEmail,
+  normalizeWhatsappPhone,
+  prioritizeWhatsappLeads,
+  resolveWhatsappDisplayName,
+  shouldIncludeWhatsappLead,
+} from '../../api/_functions/whatsapp-leads.js';
 
 describe('whatsapp-leads helpers', () => {
   it('normaliza telefone vindo de remoteJid', () => {
@@ -35,5 +44,78 @@ describe('whatsapp-leads helpers', () => {
       'Telefone: 5511988887777',
       'Pedido:',
     ].join('\n'));
+  });
+
+  it('retorna as 5 conversas mais recentes, sem priorizar por orçamento', () => {
+    const leads = [
+      { id: 'orcado-antigo', timestamp: 100, hasQuotation: true },
+      { id: 'sem-email-novo', timestamp: 900, hasQuotation: false },
+      { id: 'orcado-novo', timestamp: 800, hasQuotation: true },
+      { id: 'pronto-meio', timestamp: 700, hasQuotation: false },
+      { id: 'sem-nome', timestamp: 600, hasQuotation: false },
+      { id: 'sem-telefone', timestamp: 500, hasQuotation: false },
+      { id: 'antigo', timestamp: 400, hasQuotation: false },
+    ];
+
+    assert.deepEqual(prioritizeWhatsappLeads(leads).map(lead => lead.id), [
+      'sem-email-novo',
+      'orcado-novo',
+      'pronto-meio',
+      'sem-nome',
+      'sem-telefone',
+    ]);
+  });
+
+  it('usa o primeiro e-mail quando a conversa contém mais de um', () => {
+    assert.equal(
+      normalizeLeadEmail('financeiro@difratellirv.com.br e katia.souza@difratellirv.com.br'),
+      'financeiro@difratellirv.com.br'
+    );
+  });
+
+  it('marca qualidade do lead com pronto, orçamento ou campos faltantes', () => {
+    assert.deepEqual(
+      getWhatsappLeadQuality({ nome: 'Difratelli Rio Verde Go', email: 'financeiro@difratellirv.com.br', telefone: '556499735283' }),
+      { isReady: true, missingFields: [], statusLabel: 'Pronto para gerar' }
+    );
+    assert.deepEqual(
+      getWhatsappLeadQuality({ nome: 'Karine', email: '', telefone: '554288025687' }),
+      { isReady: false, missingFields: ['email'], statusLabel: 'Sem e-mail' }
+    );
+    assert.deepEqual(
+      getWhatsappLeadQuality({ nome: '', email: '', telefone: '' }),
+      { isReady: false, missingFields: ['nome', 'email', 'telefone'], statusLabel: 'Sem nome, e-mail e telefone' }
+    );
+  });
+
+  it('usa o nome do WhatsApp antes do nome inferido pela IA', () => {
+    assert.equal(
+      resolveWhatsappDisplayName(
+        { nome: 'dramahiara' },
+        { pushName: 'Dra Mahiara Liell' },
+        '554799632052'
+      ),
+      'Dra Mahiara Liell'
+    );
+  });
+
+  it('encontra o orçamento convertido por telefone, e-mail ou nome', () => {
+    const converted = {
+      phones: new Map([['4799632052', 'ORC-20261234']]),
+      emails: new Map([['dra@example.com', 'ORC-20261235']]),
+      names: new Map([['dra mahiara liell', 'ORC-20261236']]),
+    };
+
+    assert.equal(findConvertedQuotation({ telefone: '554799632052' }, converted), 'ORC-20261234');
+    assert.equal(findConvertedQuotation({ email: 'DRA@example.com' }, converted), 'ORC-20261235');
+    assert.equal(findConvertedQuotation({ nome: 'Dra Mahiara Liell' }, converted), 'ORC-20261236');
+    assert.equal(findConvertedQuotation({ telefone: '5511999999999' }, converted), '');
+  });
+
+  it('inclui apenas leads com nome, e-mail e telefone real', () => {
+    assert.equal(shouldIncludeWhatsappLead({ nome: 'Dra Mahiara Liell', email: 'dramahiara@gmail.com', telefone: '554799632052' }), true);
+    assert.equal(shouldIncludeWhatsappLead({ nome: 'Dra Mahiara Liell', email: '', telefone: '554799632052' }), false);
+    assert.equal(shouldIncludeWhatsappLead({ nome: '', email: 'dramahiara@gmail.com', telefone: '554799632052' }), false);
+    assert.equal(shouldIncludeWhatsappLead({ nome: 'Kátia', email: 'katia@example.com', telefone: '254881025777751' }), false);
   });
 });

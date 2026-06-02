@@ -1,4 +1,4 @@
-// GET /api/whatsapp-leads — recent WhatsApp conversations that have not become quotations.
+// GET /api/whatsapp-leads — five most recent WhatsApp conversations with contact readiness status.
 
 import { erpGetList, createHttpError } from './lib/erpnext.js';
 
@@ -8,8 +8,8 @@ const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
-const MAX_CHATS_TO_SCAN = 15;
-const MAX_MESSAGES_PER_CHAT = 12;
+const MAX_CHATS_TO_SCAN = 5;
+const MAX_MESSAGES_PER_CHAT = 50;
 const MAX_LEADS = 5;
 
 // ── Basic helpers ───────────────────────────────────────────────────────────
@@ -41,8 +41,17 @@ function normalizeComparablePhone(value) {
   return digits.replace(/^0+/, '');
 }
 
+function isValidBrazilWhatsappPhone(value) {
+  const comparable = normalizeComparablePhone(value);
+  return comparable.length === 10 || comparable.length === 11;
+}
+
 function cleanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+export function normalizeLeadEmail(value) {
+  return String(value || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.trim().toLowerCase() || '';
 }
 
 function getChatRemoteJid(chat) {
@@ -78,11 +87,33 @@ function unwrapData(payload) {
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.chats)) return payload.chats;
   if (Array.isArray(payload?.messages)) return payload.messages;
+  if (Array.isArray(payload?.messages?.records)) return payload.messages.records;
   if (Array.isArray(payload?.result)) return payload.result;
   if (Array.isArray(payload?.response)) return payload.response;
   if (Array.isArray(payload?.data?.messages)) return payload.data.messages;
+  if (Array.isArray(payload?.data?.messages?.records)) return payload.data.messages.records;
   if (Array.isArray(payload?.data?.chats)) return payload.data.chats;
+  if (Array.isArray(payload?.data?.chats?.records)) return payload.data.chats.records;
   return [];
+}
+
+function getMessageRemoteJidAlt(message) {
+  return firstNonEmpty(
+    message?.key?.remoteJidAlt,
+    message?.remoteJidAlt,
+    message?.message?.key?.remoteJidAlt,
+    message?.lastMessage?.key?.remoteJidAlt,
+    message?.lastMessage?.remoteJidAlt,
+    message?.lastMessage?.message?.key?.remoteJidAlt
+  );
+}
+
+function getInboundPushName(messages) {
+  return (messages || [])
+    .slice()
+    .reverse()
+    .map(message => cleanText(message?.pushName))
+    .find(name => name && name !== 'Você' && !/^\d+$/.test(name)) || '';
 }
 
 function getMessageText(message) {
@@ -127,15 +158,11 @@ function composeConversationText(messages) {
 }
 
 function extractFallback(conversationText) {
-  const email = conversationText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || '';
-  const qtyMatch = conversationText.match(/(?:qtd|quantidade|pedido|quero|preciso)?\D*(\d{2,5})\s*(?:un|unid|unidades|peças|pecas|pçs|pcs)?/i);
-  const productMatch = conversationText.match(/\b(canga|cangas|lenço|lenco|lenços|lencos|echarpe|echarpes|boné|bone|bonés|bones|chapéu|chapeu|toalha|toalhas|ecobag|ecobags|cachecol|bandana|gravata|viseira|bolsa|bolsas)\b/i);
+  const email = normalizeLeadEmail(conversationText);
   const nameMatch = conversationText.match(/(?:meu nome é|me chamo|sou a?|cliente:)\s*([^\n,.]+)/i);
   return {
     nome: cleanText(nameMatch?.[1] || ''),
     email,
-    produto: cleanText(productMatch?.[1] || ''),
-    quantidade: qtyMatch ? Number(qtyMatch[1]) : null,
   };
 }
 
@@ -206,7 +233,7 @@ async function extractLeadWithOpenRouter(conversationText) {
   const fallback = extractFallback(conversationText);
   if (!OPENROUTER_API_KEY || !conversationText.trim()) return fallback;
 
-  const prompt = `Extraia dados comerciais da conversa de WhatsApp da Aspen Estamparia.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":"","produto":"","quantidade":null}\n\nRegras:\n- Nunca invente dados ausentes.\n- produto deve ser o produto citado pelo cliente, sem SKU se o cliente não informou SKU.\n- quantidade deve ser número inteiro quando houver quantidade clara.\n- Se não houver um campo, use string vazia ou null para quantidade.\n\nConversa:\n${conversationText.slice(-6000)}`;
+  const prompt = `Extraia apenas os dados de contato da pessoa nesta conversa de WhatsApp da Aspen Estamparia.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":""}\n\nRegras:\n- Nunca invente dados ausentes.\n- O objetivo é só identificar nome e e-mail. Não extraia pedido, produto ou quantidade.\n- Se a conversa tiver mais de um e-mail, retorne apenas o primeiro e-mail citado.\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
 
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -227,9 +254,7 @@ async function extractLeadWithOpenRouter(conversationText) {
     const parsed = JSON.parse(String(raw).replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
     return {
       nome: cleanText(parsed.nome || fallback.nome),
-      email: cleanText(parsed.email || fallback.email),
-      produto: cleanText(parsed.produto || fallback.produto),
-      quantidade: Number.isFinite(Number(parsed.quantidade)) ? Number(parsed.quantidade) : fallback.quantidade,
+      email: normalizeLeadEmail(parsed.email || fallback.email),
     };
   } catch (err) {
     console.warn('[whatsapp-leads] OpenRouter extraction fallback:', err?.message || err);
@@ -244,27 +269,60 @@ async function getConvertedContactKeys() {
     order_by: 'creation desc',
     limit_page_length: 200,
   });
-  const phones = new Set();
-  const emails = new Set();
-  const names = new Set();
+  const phones = new Map();
+  const emails = new Map();
+  const names = new Map();
   for (const row of rows || []) {
+    const quotationId = String(row.name || '').trim();
     const phone = normalizeComparablePhone(row.contact_mobile);
-    if (phone) phones.add(phone);
+    if (phone && quotationId && !phones.has(phone)) phones.set(phone, quotationId);
     const email = String(row.contact_email || '').trim().toLowerCase();
-    if (email) emails.add(email);
+    if (email && quotationId && !emails.has(email)) emails.set(email, quotationId);
     const name = String(row.customer_name || '').trim().toLowerCase();
-    if (name) names.add(name);
+    if (name && quotationId && !names.has(name)) names.set(name, quotationId);
   }
   return { phones, emails, names };
 }
 
-function hasConvertedQuotation(lead, converted) {
+export function findConvertedQuotation(lead, converted) {
   const phone = normalizeComparablePhone(lead.telefone);
-  if (phone && converted.phones.has(phone)) return true;
+  if (phone && converted.phones.has(phone)) return converted.phones.get(phone);
   const email = String(lead.email || '').trim().toLowerCase();
-  if (email && converted.emails.has(email)) return true;
+  if (email && converted.emails.has(email)) return converted.emails.get(email);
   const name = String(lead.nome || '').trim().toLowerCase();
-  return Boolean(name && converted.names.has(name));
+  if (name && converted.names.has(name)) return converted.names.get(name);
+  return '';
+}
+
+export function resolveWhatsappDisplayName(extracted, chat, fallbackPhone) {
+  return firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, extracted?.nome, fallbackPhone);
+}
+
+export function prioritizeWhatsappLeads(leads, limit = MAX_LEADS) {
+  const byNewest = (a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0);
+  return [...leads].sort(byNewest).slice(0, limit);
+}
+
+export function getWhatsappLeadQuality(lead) {
+  const missingFields = [];
+  if (!cleanText(lead?.nome)) missingFields.push('nome');
+  if (!normalizeLeadEmail(lead?.email)) missingFields.push('email');
+  if (!isValidBrazilWhatsappPhone(lead?.telefone)) missingFields.push('telefone');
+
+  if (!missingFields.length) {
+    return { isReady: true, missingFields, statusLabel: 'Pronto para gerar' };
+  }
+
+  const readable = missingFields.map(field => field === 'email' ? 'e-mail' : field);
+  const joined = readable.length === 1
+    ? readable[0]
+    : `${readable.slice(0, -1).join(', ')} e ${readable.at(-1)}`;
+
+  return { isReady: false, missingFields, statusLabel: `Sem ${joined}` };
+}
+
+export function shouldIncludeWhatsappLead(lead) {
+  return getWhatsappLeadQuality(lead).isReady;
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
@@ -276,37 +334,43 @@ export async function handler(event) {
 
   try {
     const [chats, converted] = await Promise.all([findChats(), getConvertedContactKeys()]);
-    const leads = [];
+    const candidates = [];
 
     for (const chat of chats) {
-      if (leads.length >= MAX_LEADS) break;
       const remoteJid = getChatRemoteJid(chat);
-      const telefone = normalizeWhatsappPhone(remoteJid);
-      if (!telefone) continue;
+      if (!remoteJid) continue;
 
       const messages = await findMessages(remoteJid);
       const conversationText = composeConversationText(messages);
-      if (!conversationText) continue;
+
+      const displayJid = firstNonEmpty(
+        getMessageRemoteJidAlt(chat),
+        messages.map(getMessageRemoteJidAlt).find(Boolean),
+        remoteJid
+      );
+      const telefone = normalizeWhatsappPhone(displayJid);
+      if (!telefone) continue;
 
       const extracted = await extractLeadWithOpenRouter(conversationText);
-      const nome = firstNonEmpty(extracted.nome, chat?.pushName, chat?.name, chat?.notify, telefone);
+      const nome = firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, getInboundPushName(messages), extracted?.nome, telefone);
+      const timestamp = getChatTimestamp(chat) || Math.max(...normalizeMessages(messages).map(m => m.timestamp), 0);
       const lead = {
         id: remoteJid,
         remoteJid,
         nome,
         telefone,
-        email: extracted.email || '',
-        produto: extracted.produto || '',
-        quantidade: extracted.quantidade || null,
+        email: normalizeLeadEmail(extracted.email),
         resumo: conversationText.split('\n').slice(-2).join(' · '),
-        texto: formatLeadText({ ...extracted, nome, telefone }),
-        timestamp: getChatTimestamp(chat) || Math.max(...normalizeMessages(messages).map(m => m.timestamp), 0),
+        timestamp,
       };
-
-      if (!hasConvertedQuotation(lead, converted)) leads.push(lead);
+      lead.quotationId = findConvertedQuotation(lead, converted);
+      lead.hasQuotation = Boolean(lead.quotationId);
+      Object.assign(lead, getWhatsappLeadQuality(lead));
+      lead.texto = formatLeadText(lead);
+      candidates.push(lead);
     }
 
-    return jsonResponse(200, { success: true, data: leads });
+    return jsonResponse(200, { success: true, data: prioritizeWhatsappLeads(candidates) });
   } catch (err) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[whatsapp-leads]', err?.logMessage || err?.message || err);
