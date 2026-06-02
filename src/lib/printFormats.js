@@ -41,10 +41,10 @@ export function getPrintFormatLabel(value) {
   return PRINT_FORMAT_OPTIONS.find(option => option.value === normalizePrintFormat(value))?.label || PRINT_FORMAT_OPTIONS[0].label;
 }
 
-export function buildQuotationViewUrl(quotationId, printFormat = loadActivePrintFormat()) {
+export function buildQuotationViewUrl(quotationId, printFormat = null) {
   const params = new URLSearchParams({ q: quotationId });
   const normalized = normalizePrintFormat(printFormat);
-  if (normalized !== DEFAULT_PRINT_FORMAT) {
+  if (normalized && normalized !== DEFAULT_PRINT_FORMAT) {
     params.set('format', normalized);
   }
   return `/api/view?${params.toString()}`;
