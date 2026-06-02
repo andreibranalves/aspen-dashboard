@@ -13,7 +13,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api.js';
+import { apiGet, apiPut, apiPost } from '@/lib/api.js';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks.js';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -120,6 +120,27 @@ function buildEditFields(detail) {
   };
 }
 
+function buildEmptyLeadDetail(doctype = 'Lead') {
+  return {
+    doctype,
+    name: '',
+    display_name: '',
+    empresa: '',
+    email: '',
+    telefone: '',
+    origem: '',
+    person_type: '',
+    tax_id: '',
+    contribuinte: '0',
+    inscricao_estadual: '',
+    address: {},
+    quality_flags: [],
+    latest_quotation: null,
+    deal: null,
+    erp_url: null,
+  };
+}
+
 async function lookupCep(cep, setEditFields) {
   const digits = String(cep || '').replace(/\D/g, '');
   if (digits.length !== 8) return;
@@ -209,6 +230,7 @@ function addressLine(address) {
 export default function LeadDetailPage({ tipo, id, navigate }) {
   const decodedId = decodeURIComponent(id || '');
   const doctype = getDoctype(tipo);
+  const isNewLead = decodedId === 'new';
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -218,22 +240,20 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
   const [toast, setToast] = useState(null);
   const setTopBarActions = useSetTopBarActions();
 
-  // TopBar actions — back button
-  useEffect(() => {
-    setTopBarActions(
-      <Button variant="outline" className="min-h-10" aria-label="Voltar para leads" onClick={() => navigate('/leads')}>
-        <ArrowLeft size={16} className="mr-2" />
-        Voltar
-      </Button>
-    );
-    return () => setTopBarActions(null);
-  }, [navigate, setTopBarActions]);
-
   const loadDetail = useCallback(async () => {
     if (!decodedId) return;
     setLoading(true);
     setError(null);
     try {
+      if (isNewLead) {
+        const empty = buildEmptyLeadDetail(doctype);
+        setDetail(empty);
+        setEditFields(buildEditFields(empty));
+        setEditMode(true);
+        setLoading(false);
+        return;
+      }
+
       const result = await apiGet(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(decodedId)}`);
       setDetail(result);
       setEditMode(false);
@@ -244,7 +264,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
     } finally {
       setLoading(false);
     }
-  }, [decodedId, doctype]);
+  }, [decodedId, doctype, isNewLead]);
 
   useEffect(() => { loadDetail(); }, [loadDetail]);
 
@@ -261,9 +281,13 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
   }, [detail]);
 
   const cancelEdit = useCallback(() => {
+    if (isNewLead) {
+      navigate('/leads');
+      return;
+    }
     setEditMode(false);
     setEditFields({});
-  }, []);
+  }, [isNewLead, navigate]);
 
   const saveEdit = useCallback(async () => {
     if (!detail) return;
@@ -298,6 +322,53 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         };
       }
 
+      if (!payload.nome) {
+        setToast({ type: 'error', message: 'Nome é obrigatório.' });
+        return;
+      }
+      if (payload.email && !isValidEmail(payload.email)) {
+        setToast({ type: 'error', message: 'E-mail inválido.' });
+        return;
+      }
+      if (payload.telefone && !isValidPhone(payload.telefone)) {
+        setToast({ type: 'error', message: 'Telefone inválido.' });
+        return;
+      }
+
+      if (isNewLead) {
+        const created = await apiPost('/leads-clients', {
+          tipo: getTipoFromDoctype(doctype),
+          nome: payload.nome,
+          email: payload.email || undefined,
+          telefone: payload.telefone || undefined,
+          origem: payload.origem || undefined,
+        });
+        const createdId = created.created || created.name || created.id;
+        if (!createdId) {
+          setToast({ type: 'error', message: 'Lead criado, mas não foi possível abrir o cadastro.' });
+          navigate('/leads');
+          return;
+        }
+
+        const extraPayload = { ...payload };
+        delete extraPayload.nome;
+        delete extraPayload.email;
+        delete extraPayload.telefone;
+        delete extraPayload.origem;
+        const hasEndereco = Object.values(extraPayload.endereco || {}).some(value => String(value || '').trim());
+        if (!hasEndereco) delete extraPayload.endereco;
+        if (Object.keys(extraPayload).length > 0) {
+          await apiPut(
+            `/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(createdId)}`,
+            extraPayload,
+          );
+        }
+
+        setToast({ type: 'success', message: 'Lead criado com sucesso.' });
+        navigate(`/leads/${getTipoFromDoctype(doctype)}/${encodeURIComponent(createdId)}`);
+        return;
+      }
+
       const updated = await apiPut(
         `/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(decodedId)}`,
         payload,
@@ -311,7 +382,50 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
     } finally {
       setSaving(false);
     }
-  }, [decodedId, detail, doctype, editFields]);
+  }, [decodedId, detail, doctype, editFields, isNewLead, navigate]);
+
+  useEffect(() => {
+    if (!setTopBarActions) return undefined;
+
+    const backButton = (
+      <Button variant="outline" size="sm" aria-label="Voltar para leads" onClick={() => navigate('/leads')}>
+        <ArrowLeft size={16} />
+        Voltar
+      </Button>
+    );
+
+    if (loading || error || !detail) {
+      setTopBarActions(backButton);
+      return () => setTopBarActions(null);
+    }
+
+    setTopBarActions(
+      <div className="flex items-center gap-2">
+        {editMode ? (
+          <>
+            <Button variant="default" size="sm" onClick={saveEdit} disabled={saving}>
+              <Save size={16} />
+              {saving ? (isNewLead ? 'Criando…' : 'Salvando…') : (isNewLead ? 'Criar Lead' : 'Salvar')}
+            </Button>
+            <Button variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
+              <X size={16} />
+              Cancelar
+            </Button>
+          </>
+        ) : (
+          <>
+            {backButton}
+            <Button variant="default" size="sm" onClick={startEdit} disabled={saving}>
+              <Edit3 size={16} />
+              Editar cadastro
+            </Button>
+          </>
+        )}
+      </div>
+    );
+
+    return () => setTopBarActions(null);
+  }, [cancelEdit, detail, editMode, error, isNewLead, loading, navigate, saveEdit, saving, setTopBarActions, startEdit]);
 
   if (loading) return <SkeletonDetail title="Carregando lead…" />;
 
@@ -395,8 +509,8 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
       )}
 
       <PageHeader
-        title={detail.display_name || decodedId}
-        description={`${tipoLabel(detail.doctype || doctype)} · ${detail.name || decodedId}`}
+        title={isNewLead ? 'Novo Lead' : (detail.display_name || decodedId)}
+        description={isNewLead ? 'Preencha os dados para criar um novo lead.' : `${tipoLabel(detail.doctype || doctype)} · ${detail.name || decodedId}`}
       />
 
       <section className="bg-card rounded-xl border border-border shadow-sm p-5">
@@ -413,30 +527,11 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                 </div>
                 <p className="text-sm text-muted-foreground">{detail.empresa || 'Empresa não informada'}</p>
               </div>
-              <QualityBadges badges={qualityBadges(detail)} />
-              <ContextActions actions={actions} />
+              <QualityBadges badges={isNewLead ? [] : qualityBadges(detail)} />
+              {!isNewLead && <ContextActions actions={actions} />}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            {!editMode ? (
-              <Button variant="default" onClick={startEdit} disabled={saving}>
-                <Edit3 size={16} />
-                Editar cadastro
-              </Button>
-            ) : (
-              <>
-                <Button variant="default" onClick={saveEdit} disabled={saving}>
-                  <Save size={16} />
-                  {saving ? 'Salvando…' : 'Salvar'}
-                </Button>
-                <Button variant="outline" onClick={cancelEdit} disabled={saving}>
-                  <X size={16} />
-                  Cancelar
-                </Button>
-              </>
-            )}
-          </div>
         </div>
       </section>
 
@@ -472,14 +567,16 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                   </SelectBox>
                 ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.origem || '—'}</p>}
               </InfoField>
-              <InfoField label="Criado / modificado">
-                <p className="mt-1 text-sm font-medium text-framer-ink">
-                  {detail.creation ? new Date(detail.creation).toLocaleString('pt-BR') : '—'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Modificado: {detail.modified ? new Date(detail.modified).toLocaleString('pt-BR') : '—'}
-                </p>
-              </InfoField>
+              {!isNewLead && (
+                <InfoField label="Criado / modificado">
+                  <p className="mt-1 text-sm font-medium text-framer-ink">
+                    {detail.creation ? new Date(detail.creation).toLocaleString('pt-BR') : '—'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Modificado: {detail.modified ? new Date(detail.modified).toLocaleString('pt-BR') : '—'}
+                  </p>
+                </InfoField>
+              )}
             </div>
           </SectionCard>
 
@@ -573,7 +670,8 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
           </SectionCard>
         </div>
 
-        <aside className="xl:col-span-4 space-y-5">
+        {!isNewLead && (
+          <aside className="xl:col-span-4 space-y-5">
           <SectionCard title="Atividade recente" description="Atalhos para o contexto comercial." icon={FileText}>
             <div className="space-y-4">
               {detail.latest_quotation ? (
@@ -627,7 +725,8 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
               )}
             </div>
           </SectionCard>
-        </aside>
+          </aside>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus } from 'lucide-react';
-import { apiGet, apiPut, apiDelete, apiPost } from '@/lib/api.js';
-import { fmtPhone, capitalize } from '@/lib/formatters.js';
+import { apiGet, apiPut, apiDelete } from '@/lib/api.js';
+import { fmtPhone } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -13,7 +13,7 @@ import SkeletonTable from '@/components/SkeletonTable.jsx';
 import { DetailDrawer } from '@/components/DetailDrawer.jsx';
 import { QualityBadges } from '@/components/QualityBadges.jsx';
 import { ContextActions } from '@/components/ContextActions.jsx';
-import { buildQuotationErpUrl, buildCrmDealErpUrl, buildLeadErpUrl, buildCustomerErpUrl } from '@/lib/erpLinks.js';
+import { buildQuotationErpUrl, buildCrmDealErpUrl } from '@/lib/erpLinks.js';
 
 const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
@@ -122,12 +122,6 @@ export default function LeadsPage({ navigate }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const setTopBarActions = useSetTopBarActions();
 
-  // ── Criar Lead modal ──
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newLead, setNewLead] = useState({ nome: '', email: '', telefone: '', origem: '' });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState(null);
-
   const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
@@ -150,50 +144,16 @@ export default function LeadsPage({ navigate }) {
     }
   }, []);
 
-  const openCreateModal = useCallback(() => {
-    setNewLead({ nome: '', email: '', telefone: '', origem: '' });
-    setCreateError(null);
-    setShowCreateModal(true);
-  }, []);
-
-  const closeCreateModal = useCallback(() => {
-    setShowCreateModal(false);
-    setCreateError(null);
-  }, []);
-
-  const handleCreateLead = useCallback(async (e) => {
-    e.preventDefault();
-    const nome = newLead.nome.trim();
-    if (!nome) { setCreateError('Nome é obrigatório.'); return; }
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await apiPost('/leads-clients', {
-        nome,
-        email: newLead.email.trim() || undefined,
-        telefone: newLead.telefone.trim() || undefined,
-        origem: newLead.origem.trim() || undefined,
-        tipo: 'lead',
-      });
-      setShowCreateModal(false);
-      fetchData(search, tipo, page, limit);
-    } catch (err) {
-      setCreateError(err.message || 'Erro ao criar lead.');
-    } finally {
-      setCreating(false);
-    }
-  }, [newLead, search, tipo, page, limit, fetchData]);
-
   // TopBar actions — Criar Lead button
   useEffect(() => {
     setTopBarActions(
-      <Button size="sm" className="min-h-10" onClick={openCreateModal}>
-        <UserPlus size={16} className="mr-2" />
+      <Button size="sm" onClick={() => navigate('/leads/lead/new')}>
+        <UserPlus size={16} />
         Criar Lead
       </Button>
     );
     return () => setTopBarActions(null);
-  }, [setTopBarActions, openCreateModal]);
+  }, [setTopBarActions, navigate]);
 
   // ── Selection ──
   const toggleSelected = useCallback((id) => {
@@ -1199,71 +1159,6 @@ export default function LeadsPage({ navigate }) {
           </div>
         )}
       </DetailDrawer>
-
-      {/* ── Criar Lead Modal ── */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={closeCreateModal} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md p-6 space-y-4 z-10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Criar Lead</h2>
-              <button onClick={closeCreateModal} className="p-1 rounded hover:bg-muted transition-colors" aria-label="Fechar">
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateLead} className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Nome *</label>
-                <Input
-                  value={newLead.nome}
-                  onChange={e => setNewLead(prev => ({ ...prev, nome: e.target.value }))}
-                  placeholder="Nome do lead"
-                  className="mt-1"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Email</label>
-                <Input
-                  value={newLead.email}
-                  onChange={e => setNewLead(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="email@exemplo.com"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Telefone</label>
-                <Input
-                  value={newLead.telefone}
-                  onChange={e => setNewLead(prev => ({ ...prev, telefone: e.target.value }))}
-                  placeholder="(21) 99999-9999"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Origem</label>
-                <Input
-                  value={newLead.origem}
-                  onChange={e => setNewLead(prev => ({ ...prev, origem: e.target.value }))}
-                  placeholder="Google Ads, Bríndice..."
-                  className="mt-1"
-                />
-              </div>
-              {createError && (
-                <p className="text-sm text-red-500">{createError}</p>
-              )}
-              <div className="flex items-center gap-2 pt-2">
-                <Button type="submit" disabled={creating} className="flex-1">
-                  {creating ? 'Criando…' : 'Criar Lead'}
-                </Button>
-                <Button type="button" variant="outline" onClick={closeCreateModal} disabled={creating}>
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Bulk delete toolbar */}
       <div

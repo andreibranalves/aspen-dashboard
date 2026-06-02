@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle, Search, Check } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api.js';
+import { apiGet, apiPut, apiPost } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 
@@ -13,8 +14,29 @@ function formatPct(v) {
   return Math.round(v) + '%';
 }
 
+function buildEmptyProduct() {
+  return {
+    produto: {
+      sku: '',
+      nome: '',
+      descricao: '',
+      categoria: '',
+      unidade: 'Und',
+      ativo: true,
+      imagem: null,
+      modificado_em: null,
+    },
+    precos: [],
+  };
+}
+
+function buildEmptyRates() {
+  return Object.fromEntries(BRACKETS.map(faixa => [faixa, '']));
+}
+
 export default function ProductDetailPage({ sku, navigate }) {
   const decodedSku = decodeURIComponent(sku || '');
+  const isNewProduct = decodedSku === 'new';
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -23,11 +45,31 @@ export default function ProductDetailPage({ sku, navigate }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [atividades, setAtividades] = useState([]);
+  const setTopBarActions = useSetTopBarActions();
 
   const fetchProduct = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      if (isNewProduct) {
+        setProduct(buildEmptyProduct());
+        setAtividades([]);
+        setEdited({
+          sku: '',
+          nome: '',
+          descricao: '',
+          categoria: '',
+          unidade: 'Und',
+          custo: '',
+          ativo: true,
+          prazo: '',
+          rates: buildEmptyRates(),
+        });
+        setEditing(true);
+        setLoading(false);
+        return;
+      }
+
       const result = await apiGet(`/product-detail?sku=${encodeURIComponent(decodedSku)}`);
       setProduct(result);
     } catch (err) {
@@ -36,14 +78,15 @@ export default function ProductDetailPage({ sku, navigate }) {
     } finally {
       setLoading(false);
     }
-  }, [decodedSku]);
+  }, [decodedSku, isNewProduct]);
 
   const fetchAtividades = useCallback(async () => {
+    if (isNewProduct) return;
     try {
       const result = await apiGet(`/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=10`);
       setAtividades(result.atividades || []);
     } catch { /* silencioso */ }
-  }, [decodedSku]);
+  }, [decodedSku, isNewProduct]);
 
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
   useEffect(() => { fetchAtividades(); }, [fetchAtividades]);
@@ -91,6 +134,7 @@ export default function ProductDetailPage({ sku, navigate }) {
       rates[faixa] = row?.rate != null ? row.rate : '';
     }
     setEdited({
+      sku: produto?.sku || '',
       nome: produto?.nome || '',
       descricao: produto?.descricao || '',
       categoria: produto?.categoria || '',
@@ -104,6 +148,11 @@ export default function ProductDetailPage({ sku, navigate }) {
   };
 
   const cancelEditing = () => {
+    if (isNewProduct) {
+      navigate('/products');
+      return;
+    }
+
     setEditing(false);
     // Keep custo/prazo across cancel so KPIs don't disappear
     setEdited(prev => ({ custo: prev.custo, prazo: prev.prazo, rates: {} }));
@@ -114,13 +163,45 @@ export default function ProductDetailPage({ sku, navigate }) {
     setToast(null);
     try {
       const { produto } = product || {};
-      const { nome, descricao, categoria, unidade, ativo, rates } = edited;
+      const { sku: editedSku, nome, descricao, categoria, unidade, ativo, rates = {} } = edited;
+      const normalizedSku = (editedSku || '').trim();
+      const normalizedNome = (nome || '').trim();
+
+      if (isNewProduct && !normalizedSku) {
+        setToast({ type: 'error', message: 'SKU é obrigatório.' });
+        return;
+      }
+      if (!normalizedNome) {
+        setToast({ type: 'error', message: 'Nome do produto é obrigatório.' });
+        return;
+      }
 
       const precos = BRACKETS.map(faixa => {
         const raw = rates[faixa];
         const rate = raw === '' || raw === null || raw === undefined ? null : Number(raw);
         return { faixa, rate };
       }).filter(p => p.rate != null && !Number.isNaN(p.rate));
+
+      if (isNewProduct) {
+        await apiPost('/products', {
+          sku: normalizedSku,
+          nome: normalizedNome,
+          categoria: categoria?.trim() || undefined,
+          unidade: unidade?.trim() || 'Und',
+        });
+
+        const extraBody = {};
+        if ((descricao || '').trim()) extraBody.descricao = descricao;
+        if (ativo !== true) extraBody.ativo = ativo;
+        if (precos.length > 0) extraBody.precos = precos;
+        if (Object.keys(extraBody).length > 0) {
+          await apiPut(`/product-update?sku=${encodeURIComponent(normalizedSku)}`, extraBody);
+        }
+
+        setToast({ type: 'success', message: 'Produto criado com sucesso!' });
+        navigate(`/products/${encodeURIComponent(normalizedSku)}`);
+        return;
+      }
 
       const metadata = {};
       if (nome !== produto.nome) metadata.nome = nome;
@@ -161,6 +242,64 @@ export default function ProductDetailPage({ sku, navigate }) {
     const timer = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!setTopBarActions) return undefined;
+
+    if (loading) {
+      setTopBarActions(null);
+      return () => setTopBarActions(null);
+    }
+
+    if (error || !product?.produto) {
+      setTopBarActions(
+        <Button variant="outline" size="sm" onClick={() => navigate('/products')}>
+          <ArrowLeft size={16} />
+          Voltar
+        </Button>
+      );
+      return () => setTopBarActions(null);
+    }
+
+    setTopBarActions(
+      <div className="flex items-center gap-2">
+        {editing ? (
+          <>
+            <Button onClick={saveProduct} disabled={saving} size="sm" aria-label={isNewProduct ? 'Criar produto' : 'Salvar produto'}>
+              {saving ? (
+                <>
+                  <Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background" />
+                  {isNewProduct ? 'Criando…' : 'Salvando…'}
+                </>
+              ) : (
+                <>
+                  <Save size={14} />
+                  {isNewProduct ? 'Criar Produto' : 'Salvar'}
+                </>
+              )}
+            </Button>
+            <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} aria-label="Cancelar edição">
+              <X size={14} />
+              Cancelar
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="outline" size="sm" onClick={() => navigate('/products')}>
+              <ArrowLeft size={16} />
+              Voltar
+            </Button>
+            <Button size="sm" aria-label="Editar produto" onClick={startEditing}>
+              <Edit3 size={14} />
+              Editar produto
+            </Button>
+          </>
+        )}
+      </div>
+    );
+
+    return () => setTopBarActions(null);
+  }, [decodedSku, edited, error, isNewProduct, loading, navigate, product, saving, setTopBarActions, editing]);
 
   // ── Loading / Error states ──
   if (loading) return <SkeletonDetail title="Carregando produto…" />;
@@ -211,31 +350,6 @@ export default function ProductDetailPage({ sku, navigate }) {
           {toast.type === 'success' ? <Check size={16} className="inline" /> : <X size={16} className="inline" />} {toast.message}
         </div>
       )}
-
-      {/* ── Actions ── */}
-      <div className="flex items-center justify-end flex-wrap gap-3">
-        <div className="flex gap-2">
-          {editing ? (
-            <>
-              <Button onClick={saveProduct} disabled={saving} size="sm" className="min-h-10" aria-label="Salvar produto">
-                {saving ? <><Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
-              </Button>
-              <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} className="min-h-10" aria-label="Cancelar edição">
-                <X size={14} className="mr-1.5" />Cancelar
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" size="sm" className="min-h-10" onClick={() => navigate('/products')}>
-                <ArrowLeft size={16} className="mr-2" />Voltar
-              </Button>
-              <Button size="sm" className="min-h-10" aria-label="Editar produto" onClick={startEditing}>
-                <Edit3 size={14} className="mr-1.5" />Editar produto
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
 
       {/* ── Main grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -294,7 +408,7 @@ export default function ProductDetailPage({ sku, navigate }) {
                   <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow peer-checked:translate-x-4 transition-transform"></div>
                 </div>
               </label>
-              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Produto</h3>
+              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">{isNewProduct ? 'Novo Produto' : 'Produto'}</h3>
 
               {/* Row 1: Nome 100% */}
               <div>
@@ -314,7 +428,13 @@ export default function ProductDetailPage({ sku, navigate }) {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">SKU</label>
-                  <Input value={produto.sku} disabled className="min-h-10 opacity-60 font-mono" />
+                  <Input
+                    value={isNewProduct ? edited.sku : produto.sku}
+                    disabled={!isNewProduct}
+                    onChange={(e) => setEdited(prev => ({ ...prev, sku: e.target.value }))}
+                    className={`min-h-10 font-mono ${isNewProduct ? '' : 'opacity-60'}`}
+                    placeholder="LNC-SED-70"
+                  />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Categoria</label>

@@ -4,13 +4,11 @@ import {
   AlertTriangle,
   Tag,
   Package,
-  ChevronRight,
   Trash2,
   PlusCircle,
-  X,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute.js';
-import { apiGet, apiDelete, apiPost } from '@/lib/api.js';
+import { apiGet, apiDelete } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
@@ -36,12 +34,6 @@ export default function ProductsPage() {
   const [, navigate] = useHashRoute();
   const setTopBarActions = useSetTopBarActions();
 
-  // ── Criar Produto modal ──
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProduct, setNewProduct] = useState({ sku: '', nome: '', categoria: '', unidade: 'Und' });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState(null);
-
   const fetchData = useCallback(async (searchVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
@@ -63,46 +55,16 @@ export default function ProductsPage() {
     }
   }, []);
 
-  const openCreateModal = useCallback(() => {
-    setNewProduct({ sku: '', nome: '', categoria: '', unidade: 'Und' });
-    setCreateError(null);
-    setShowCreateModal(true);
-  }, []);
-
-  const closeCreateModal = useCallback(() => {
-    setShowCreateModal(false);
-    setCreateError(null);
-  }, []);
-
-  const handleCreateProduct = useCallback(async (e) => {
-    e.preventDefault();
-    const sku = newProduct.sku.trim();
-    const nome = newProduct.nome.trim();
-    if (!sku) { setCreateError('SKU é obrigatório.'); return; }
-    if (!nome) { setCreateError('Nome do produto é obrigatório.'); return; }
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await apiPost('/products', { sku, nome, categoria: newProduct.categoria.trim() || undefined, unidade: newProduct.unidade.trim() || 'Und' });
-      setShowCreateModal(false);
-      fetchData(search, page, limit);
-    } catch (err) {
-      setCreateError(err.message || 'Erro ao criar produto.');
-    } finally {
-      setCreating(false);
-    }
-  }, [newProduct, search, page, limit, fetchData]);
-
   // TopBar actions — Criar Produto
   useEffect(() => {
     setTopBarActions(
-      <Button size="sm" className="min-h-10" onClick={openCreateModal}>
-        <PlusCircle size={16} className="mr-2" />
+      <Button size="sm" onClick={() => navigate('/products/new')}>
+        <PlusCircle size={16} />
         Criar Produto
       </Button>
     );
     return () => setTopBarActions(null);
-  }, [setTopBarActions, openCreateModal]);
+  }, [setTopBarActions, navigate]);
 
   useEffect(() => { fetchData(search, page, limit); }, [fetchData, search, page, limit]);
 
@@ -400,70 +362,6 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* ── Criar Produto Modal ── */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={closeCreateModal} />
-          <div className="relative bg-card rounded-2xl border border-border shadow-xl w-full max-w-md p-6 space-y-4 z-10">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Criar Produto</h2>
-              <button onClick={closeCreateModal} className="p-1 rounded hover:bg-muted transition-colors" aria-label="Fechar">
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateProduct} className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">SKU *</label>
-                <Input
-                  value={newProduct.sku}
-                  onChange={e => setNewProduct(prev => ({ ...prev, sku: e.target.value }))}
-                  placeholder="LNC-SED-70"
-                  className="mt-1"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Nome *</label>
-                <Input
-                  value={newProduct.nome}
-                  onChange={e => setNewProduct(prev => ({ ...prev, nome: e.target.value }))}
-                  placeholder="Nome do produto"
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Categoria</label>
-                <Input
-                  value={newProduct.categoria}
-                  onChange={e => setNewProduct(prev => ({ ...prev, categoria: e.target.value }))}
-                  placeholder="Lenços, Bonés..."
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground">Unidade</label>
-                <Input
-                  value={newProduct.unidade}
-                  onChange={e => setNewProduct(prev => ({ ...prev, unidade: e.target.value }))}
-                  placeholder="Und"
-                  className="mt-1"
-                />
-              </div>
-              {createError && (
-                <p className="text-sm text-red-500">{createError}</p>
-              )}
-              <div className="flex items-center gap-2 pt-2">
-                <Button type="submit" disabled={creating} className="flex-1">
-                  {creating ? 'Criando…' : 'Criar Produto'}
-                </Button>
-                <Button type="button" variant="outline" onClick={closeCreateModal} disabled={creating}>
-                  Cancelar
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
