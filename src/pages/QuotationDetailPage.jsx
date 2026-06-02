@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
+import { searchProducts } from '@/lib/productCache.js';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -101,8 +102,8 @@ export default function QuotationDetailPage({ id, navigate }) {
     }
     setProductSearching(prev => ({ ...prev, [_key]: true }));
     try {
-      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
-      setProductResults(prev => ({ ...prev, [_key]: res.data || [] }));
+      const data = await searchProducts(term, 6);
+      setProductResults(prev => ({ ...prev, [_key]: data }));
     } catch {
       setProductResults(prev => ({ ...prev, [_key]: [] }));
     } finally {

@@ -7,7 +7,7 @@ import { Pencil, Trash2, X, Plus, Loader2, AlertTriangle, Send, FileText, Check 
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
-import { apiGet } from '@/lib/api.js';
+import { searchProducts } from '@/lib/productCache.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 
@@ -21,6 +21,7 @@ export default function SplitResultCard({
   onRemoveItem,
   onAddItem,
   selectProduct,
+  onRefetchPricing,
   onCreateQuote,
   onDelete,
   viewUrl,
@@ -33,6 +34,7 @@ export default function SplitResultCard({
   const [itemSearching, setItemSearching] = useState({});        // { ii: bool }
   const [activeSearchIdx, setActiveSearchIdx] = useState(null);  // ii or null
   const searchTimers = useRef({});  // { ii: timeoutId }
+  const qtyPricingTimer = useRef(null);  // debounced pricing refetch
 
   // Click outside closes the active dropdown
   useEffect(() => {
@@ -55,8 +57,8 @@ export default function SplitResultCard({
       setItemSearching(prev => ({ ...prev, [ii]: true }));
       searchTimers.current[ii] = setTimeout(async () => {
         try {
-          const res = await apiGet(`/products?search=${encodeURIComponent(value)}&limit=6`);
-          setItemResults(prev => ({ ...prev, [ii]: res.data || [] }));
+          const data = await searchProducts(value, 6);
+          setItemResults(prev => ({ ...prev, [ii]: data }));
         } catch {
           setItemResults(prev => ({ ...prev, [ii]: [] }));
         } finally {
@@ -285,7 +287,12 @@ export default function SplitResultCard({
                     <Input
                       type="number"
                       value={item.qty}
-                      onChange={e => onUpdateItem(draft.index, ii, 'qty', Math.max(1, Number(e.target.value)))}
+                      onChange={e => {
+                        const val = Math.max(1, Number(e.target.value));
+                        onUpdateItem(draft.index, ii, 'qty', val);
+                        clearTimeout(qtyPricingTimer.current);
+                        qtyPricingTimer.current = setTimeout(() => onRefetchPricing(draft.index), 600);
+                      }}
                       className="mx-auto h-7 w-16 text-center text-xs"
                     />
                   ) : (

@@ -4,6 +4,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiPost, apiGet } from '@/lib/api.js';
+import { searchProducts as cachedSearchProducts } from '@/lib/productCache.js';
 import {
   isValidLeadSource,
   normalizeCnpj,
@@ -180,8 +181,8 @@ export function useExtractionDrafts() {
     }
     setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], term, loading: true, open: true } }));
     try {
-      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=6`);
-      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: res.data || [], loading: false, open: true } }));
+      const data = await cachedSearchProducts(term, 6);
+      setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: data, loading: false, open: true } }));
     } catch {
       setProductSearch(prev => ({ ...prev, [draftIdx]: { term, results: [], loading: false, open: true } }));
     }
@@ -220,6 +221,22 @@ export function useExtractionDrafts() {
     setProductSearch(prev => ({ ...prev, [draftIdx]: { ...prev[draftIdx], open: false } }));
   }, []);
 
+  // ── Refetch pricing for a single draft (e.g. after qty change) ──
+  const refetchDraftPricing = useCallback(async (draftIdx) => {
+    const current = await new Promise(resolve => {
+      setDrafts(prev => { resolve(prev.find(d => d.index === draftIdx)); return prev; });
+    });
+    if (!current) return;
+    const priced = await fetchPricing([{ ...current }], current.edited.urgente);
+    setDrafts(prev => {
+      const idx = prev.findIndex(d => d.index === draftIdx);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = priced[0];
+      return next;
+    });
+  }, [fetchPricing]);
+
   // ── Helper: build draft objects from extracted orders ──
   const buildDraftsFromOrders = useCallback((orders, prazoVal) => {
     return orders.map((order, i) => ({
@@ -254,6 +271,7 @@ export function useExtractionDrafts() {
     productTimer,
     // Pricing
     fetchPricing,
+    refetchDraftPricing,
     // Item mutations
     updateDraftItem,
     addDraftItem,

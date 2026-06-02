@@ -20,6 +20,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
+import { searchProducts as cachedSearchProducts } from '@/lib/productCache.js';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { cn } from '@/lib/utils.js';
@@ -154,12 +155,12 @@ export default function ManualOrcamentoPage() {
   }, [cnpj]);
 
   // ── Product search ──
-  const searchProducts = useCallback(async (term) => {
+  const searchProductsLocal = useCallback(async (term) => {
     if (!term || term.length < 2) { setProductResults([]); return; }
     setProductSearching(true);
     try {
-      const res = await apiGet(`/products?search=${encodeURIComponent(term)}&limit=8`);
-      setProductResults(res.data || []);
+      const data = await cachedSearchProducts(term, 8);
+      setProductResults(data);
     } catch {
       setProductResults([]);
     } finally {
@@ -171,8 +172,8 @@ export default function ManualOrcamentoPage() {
     const val = e.target.value;
     setProductSearch(val);
     clearTimeout(productTimer.current);
-    productTimer.current = setTimeout(() => searchProducts(val), 300);
-  }, [searchProducts]);
+    productTimer.current = setTimeout(() => searchProductsLocal(val), 300);
+  }, [searchProductsLocal]);
 
   // ── Item operations ──
   const addProduct = useCallback(async (product) => {

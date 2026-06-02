@@ -33,7 +33,7 @@ export default function AutoQuotePage() {
   const {
     drafts, setDrafts,
     productSearch, setProductSearch,
-    fetchPricing,
+    fetchPricing, refetchDraftPricing,
     updateDraftItem, addDraftItem, removeDraftItem, reorderItems,
     updateDraftField, updateDraftAddressField,
     handleUrgenteToggle,
@@ -505,6 +505,7 @@ export default function AutoQuotePage() {
                     onRemoveItem={removeDraftItem}
                     onAddItem={addDraftItem}
                     selectProduct={selectProduct}
+                    onRefetchPricing={refetchDraftPricing}
                     onCreateQuote={createSingleQuote}
                     onDelete={discardDraft}
                     viewUrl={relativeViewUrl}
