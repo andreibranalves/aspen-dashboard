@@ -457,7 +457,7 @@ export default function LeadsPage({ navigate }) {
   );
 
   return (
-    <div className="space-y-4 pb-28">
+    <div className="space-y-4 pb-28 animate-fade-in">
       <PageHeader
         title="Leads"
       />

@@ -167,7 +167,7 @@ export default function SalesOrdersPage({ navigate }) {
   const summaryData = summary?.summary;
 
   return (
-    <div className="space-y-4 pb-28">
+    <div className="space-y-4 pb-28 animate-fade-in">
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"

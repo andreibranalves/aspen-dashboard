@@ -239,7 +239,7 @@ export default function AutoQuotePage() {
   const activeDrafts = drafts.filter(d => !d.discarded);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden animate-fade-in">
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL (50%) ── */}

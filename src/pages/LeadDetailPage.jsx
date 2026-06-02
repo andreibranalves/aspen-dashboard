@@ -496,7 +496,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
   ].filter(Boolean);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 animate-fade-in">
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
           toast.type === 'success'

@@ -117,7 +117,7 @@ export default function CrmKanbanPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       {/* Search */}
       <div className="relative max-w-md">
         <Search

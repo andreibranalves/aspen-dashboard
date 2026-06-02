@@ -157,7 +157,7 @@ export default function ProductsPage() {
   const selectedCount = selectedIds.length;
 
   return (
-    <div className="space-y-4 pb-28">
+    <div className="space-y-4 pb-28 animate-fade-in">
       {/* Page title */}
       <h1 className="text-2xl font-semibold text-framer-ink">Produtos</h1>
 

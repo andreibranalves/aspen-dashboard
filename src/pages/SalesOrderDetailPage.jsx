@@ -85,7 +85,7 @@ export default function SalesOrderDetailPage({ id, navigate }) {
   const perBilled = data.per_billed ?? 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       {/* Back */}
       <button
         onClick={() => navigate('/sales-orders')}

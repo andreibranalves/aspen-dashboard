@@ -265,7 +265,7 @@ export default function QuotationDetailPage({ id, navigate }) {
 
   if (error) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 animate-fade-in">
         <button onClick={() => navigate('/quotations')} className="text-sm text-primary hover:underline">
           ← Voltar para Orçamentos
         </button>

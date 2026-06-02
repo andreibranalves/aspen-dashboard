@@ -374,7 +374,7 @@ export default function ManualOrcamentoPage() {
 
   // ── Render ──
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {/* ══ Success Result ══ */}
       {result && (
         <div className="bg-framer-success/10 border border-framer-success/30 rounded-xl p-5 space-y-4">

@@ -308,7 +308,7 @@ export default function QuotationsPage({ navigate }) {
   };
 
   return (
-    <div className="space-y-4 pb-28">
+    <div className="space-y-4 pb-28 animate-fade-in">
       {/* PageHeader + primary action */}
       <PageHeader
         title="Orçamentos"

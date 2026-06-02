@@ -509,7 +509,7 @@ export default function FreightPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       <form onSubmit={handleSubmit} className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
         <div className="space-y-5">
           <section className="space-y-3">

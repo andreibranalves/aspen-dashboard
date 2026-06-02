@@ -339,7 +339,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   const baseRate = precosRates.find(p => p.faixa === 30)?.rate || null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 animate-fade-in">
       {/* ── Toast ── */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
