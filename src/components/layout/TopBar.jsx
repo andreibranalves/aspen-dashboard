@@ -1,47 +1,45 @@
-const PAGE_TITLES = {
-  '/quotations': 'Orçamentos',
-  '/auto':       'Auto — Extração',
-  '/manual':     'Novo Orçamento',
-  '/freight':    'Cotação de Frete',
-  '/crm':        'CRM — Kanban',
-  '/products':   'Catálogo de Produtos',
-  '/leads':      'Leads / Clientes',
-  '/settings':   'Configurações',
-};
-
-import { Menu, Moon, Sun } from 'lucide-react';
+import { Fragment } from 'react';
+import { Menu, ChevronRight } from 'lucide-react';
 
 /**
- * TopBar — Framer-inspired top navigation bar with light/dark toggle.
+ * TopBar — breadcrumb (left) + page-specific actions (right).
+ * "Aspen Estamparia" and dark mode toggle removed — toggle lives in Sidebar.
  */
-export default function TopBar({ route, onMenuClick, darkMode, toggleDarkMode }) {
-  const title = PAGE_TITLES[route] || 'Aspen Orçamento';
-
+export default function TopBar({ route, onMenuClick, breadcrumbItems, onNavigate, actions }) {
   return (
     <header className="flex items-center justify-between px-4 md:px-6 shrink-0 border-b border-framer-hairline bg-framer-canvas" style={{ height: '4rem' }}>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuClick}
-          className="p-1.5 rounded-md hover:bg-framer-surface-2 transition-colors lg:hidden"
+          className="p-1.5 rounded-md hover:bg-framer-surface-2 transition-colors lg:hidden shrink-0"
           aria-label="Abrir menu"
         >
           <Menu size={20} className="text-framer-ink" />
         </button>
-        <h1 className="text-lg font-semibold text-framer-ink tracking-[-0.8px]">{title}</h1>
+        <nav className="flex items-center gap-1.5 text-sm overflow-hidden">
+          {breadcrumbItems.map((item, i) => (
+            <Fragment key={`${item.label}-${i}`}>
+              {i > 0 && <ChevronRight size={14} className="text-framer-ink-muted shrink-0" />}
+              {item.hash ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate(item.hash)}
+                  className="text-framer-ink-muted hover:text-framer-ink transition-colors truncate"
+                >
+                  {item.label}
+                </button>
+              ) : (
+                <span className="text-framer-ink font-medium truncate">{item.label}</span>
+              )}
+            </Fragment>
+          ))}
+        </nav>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-framer-ink-muted hidden sm:inline">Aspen Estamparia</span>
-        <button
-          type="button"
-          onClick={toggleDarkMode}
-          className="inline-flex h-9 items-center gap-2 rounded-full border border-framer-hairline bg-framer-surface-1 px-3 text-xs font-medium text-framer-ink transition-colors hover:bg-framer-surface-2 focus-visible:ring-2 focus-visible:ring-framer-accent-blue/40"
-          aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
-          title={darkMode ? 'Modo claro' : 'Modo escuro'}
-        >
-          {darkMode ? <Sun size={15} /> : <Moon size={15} />}
-          <span className="hidden sm:inline">{darkMode ? 'Claro' : 'Escuro'}</span>
-        </button>
-      </div>
+      {actions && (
+        <div className="flex items-center gap-2 shrink-0">
+          {actions}
+        </div>
+      )}
     </header>
   );
 }

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { StatusBadge } from '@/components/ui/badge.jsx';
 import PageHeader from '@/components/PageHeader.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table,
   TableHeader,
@@ -65,6 +66,24 @@ export default function QuotationsPage({ navigate }) {
   const [selectedIds, setSelectedIds] = useState([]);
   const searchTimer = useRef(null);
   const selectAllRef = useRef(null);
+  const setTopBarActions = useSetTopBarActions();
+
+  // TopBar actions
+  useEffect(() => {
+    setTopBarActions(
+      <div className="flex items-center gap-2">
+        <Button onClick={() => navigate('/auto')} variant="default" size="sm">
+          <Sparkles size={16} />
+          Auto
+        </Button>
+        <Button onClick={() => navigate('/manual')} variant="outline" size="sm">
+          <PlusCircle size={16} />
+          Novo Orçamento
+        </Button>
+      </div>
+    );
+    return () => setTopBarActions(null);
+  }, [navigate, setTopBarActions]);
 
   const fetchData = useCallback(async (searchVal, statusVal, pageNum, limitVal) => {
     setLoading(true);
@@ -294,18 +313,6 @@ export default function QuotationsPage({ navigate }) {
       <PageHeader
         title="Orçamentos"
         description={`${totalRecords} orçamento${totalRecords !== 1 ? 's' : ''} — ${status ? STATUS_LABELS[status] || status : 'todos os status'}`}
-        action={
-          <div className="flex items-center gap-2">
-            <Button onClick={() => navigate('/auto')} variant="default" size="sm">
-              <Sparkles size={16} />
-              Auto
-            </Button>
-            <Button onClick={() => navigate('/manual')} variant="outline" size="sm">
-              <PlusCircle size={16} />
-              Novo Orçamento
-            </Button>
-          </div>
-        }
       />
 
       {/* Status chips */}

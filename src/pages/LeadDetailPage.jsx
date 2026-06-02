@@ -18,6 +18,7 @@ import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks.js';
 import PageHeader from '@/components/PageHeader.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { QualityBadges } from '@/components/QualityBadges.jsx';
@@ -215,6 +216,18 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
   const [editFields, setEditFields] = useState({});
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const setTopBarActions = useSetTopBarActions();
+
+  // TopBar actions — back button
+  useEffect(() => {
+    setTopBarActions(
+      <Button variant="outline" className="min-h-10" aria-label="Voltar para leads" onClick={() => navigate('/leads')}>
+        <ArrowLeft size={16} className="mr-2" />
+        Voltar
+      </Button>
+    );
+    return () => setTopBarActions(null);
+  }, [navigate, setTopBarActions]);
 
   const loadDetail = useCallback(async () => {
     if (!decodedId) return;
@@ -384,12 +397,6 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
       <PageHeader
         title={detail.display_name || decodedId}
         description={`${tipoLabel(detail.doctype || doctype)} · ${detail.name || decodedId}`}
-        action={(
-          <Button variant="outline" className="min-h-10" aria-label="Voltar para leads" onClick={() => navigate('/leads')}>
-            <ArrowLeft size={16} className="mr-2" />
-            Voltar
-          </Button>
-        )}
       />
 
       <section className="bg-card rounded-xl border border-border shadow-sm p-5">
