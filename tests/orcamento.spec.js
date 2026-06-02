@@ -173,8 +173,8 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect(textarea).toBeVisible();
     await expect(textarea).toBeEnabled();
 
-    // Botão "Analisar pedido"
-    await expect(page.getByRole('button', { name: /Analisar pedido/i })).toBeVisible();
+    // Botão "Extrair"
+    await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
   });
 
   test('submissão de texto exibe rascunhos para revisão', async ({ page }) => {
@@ -187,23 +187,23 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await textarea.fill(TEST_INPUT);
     await expect(textarea).toHaveValue(TEST_INPUT);
 
-    // Clica "Analisar pedido"
-    const submitBtn = page.getByRole('button', { name: /Analisar pedido/i });
+    // Clica "Extrair"
+    const submitBtn = page.getByRole('button', { name: /Extrair/i });
     await submitBtn.click();
 
-    // Aguarda a fase de "extraindo" passar e os rascunhos aparecerem
-    // O texto "em revisão" aparece quando os drafts estão prontos
-    await expect(page.getByText(/em revisão/i)).toBeVisible({ timeout: 30000 });
+    // Aguarda a extração terminar e os rascunhos aparecerem
+    // O texto "Resultados (1)" aparece quando os drafts estão prontos
+    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
   });
 
-  test('botão Analisar pedido desabilitado sem texto', async ({ page }) => {
+  test('botão Extrair desabilitado sem texto', async ({ page }) => {
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
-    const submitBtn = page.getByRole('button', { name: /Analisar pedido/i });
+    const submitBtn = page.getByRole('button', { name: /Extrair/i });
     await expect(submitBtn).toBeDisabled();
   });
 
@@ -212,7 +212,7 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await page.waitForSelector('textarea', { timeout: 10000 });
 
     const textarea = page.locator('textarea').first();
-    const submitBtn = page.getByRole('button', { name: /Analisar pedido/i });
+    const submitBtn = page.getByRole('button', { name: /Extrair/i });
 
     // Começa desabilitado
     await expect(submitBtn).toBeDisabled();
