@@ -232,7 +232,7 @@ export default function SplitResultCard({
 
         {isDone ? (
           <a href={viewUrl || '#'} target="_blank" rel="noopener noreferrer" className={!viewUrl ? 'pointer-events-none' : undefined}>
-            <Button size="sm" disabled={!viewUrl} className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-white/90">
+            <Button size="sm" disabled={!viewUrl} className="bg-framer-accent-blue text-white hover:bg-framer-accent-blue/90">
               <FileText size={13} />
               Abrir orçamento
             </Button>
