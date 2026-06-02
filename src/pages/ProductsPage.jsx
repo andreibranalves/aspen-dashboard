@@ -42,6 +42,27 @@ export default function ProductsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
 
+  const fetchData = useCallback(async (searchVal, pageNum, limitVal) => {
+    setLoading(true);
+    setError(null);
+    setSelectedIds([]);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(pageNum));
+      params.set('limit', String(limitVal));
+      if (searchVal) params.set('search', searchVal);
+
+      const result = await apiGet(`/products?${params.toString()}`);
+      setData(result.data || []);
+      setTotalPages(result.pagination?.total_pages || 0);
+      setTotalRecords(result.pagination?.total || 0);
+    } catch (err) {
+      setError(err.message || 'Erro ao carregar produtos.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const openCreateModal = useCallback(() => {
     setNewProduct({ sku: '', nome: '', categoria: '', unidade: 'Und' });
     setCreateError(null);
@@ -82,27 +103,6 @@ export default function ProductsPage() {
     );
     return () => setTopBarActions(null);
   }, [setTopBarActions, openCreateModal]);
-
-  const fetchData = useCallback(async (searchVal, pageNum, limitVal) => {
-    setLoading(true);
-    setError(null);
-    setSelectedIds([]);
-    try {
-      const params = new URLSearchParams();
-      params.set('page', String(pageNum));
-      params.set('limit', String(limitVal));
-      if (searchVal) params.set('search', searchVal);
-
-      const result = await apiGet(`/products?${params.toString()}`);
-      setData(result.data || []);
-      setTotalPages(result.pagination?.total_pages || 0);
-      setTotalRecords(result.pagination?.total || 0);
-    } catch (err) {
-      setError(err.message || 'Erro ao carregar produtos.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => { fetchData(search, page, limit); }, [fetchData, search, page, limit]);
 

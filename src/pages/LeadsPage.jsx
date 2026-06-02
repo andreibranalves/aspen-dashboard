@@ -128,6 +128,28 @@ export default function LeadsPage({ navigate }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
 
+  const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
+    setLoading(true);
+    setError(null);
+    setSelectedIds([]);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(pageNum));
+      params.set('limit', String(limitVal));
+      if (searchVal) params.set('search', searchVal);
+      if (tipoVal) params.set('tipo', tipoVal);
+
+      const result = await apiGet(`/leads-clients?${params.toString()}`);
+      setData(result.data || []);
+      setTotalPages(result.pagination?.total_pages || 0);
+      setTotalRecords(result.pagination?.total || 0);
+    } catch (err) {
+      setError(err.message || 'Erro ao carregar leads e clientes.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const openCreateModal = useCallback(() => {
     setNewLead({ nome: '', email: '', telefone: '', origem: '' });
     setCreateError(null);
@@ -230,28 +252,6 @@ export default function LeadsPage({ navigate }) {
   const [clientSaving, setClientSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editFields, setEditFields] = useState({});
-
-  const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
-    setLoading(true);
-    setError(null);
-    setSelectedIds([]);
-    try {
-      const params = new URLSearchParams();
-      params.set('page', String(pageNum));
-      params.set('limit', String(limitVal));
-      if (searchVal) params.set('search', searchVal);
-      if (tipoVal) params.set('tipo', tipoVal);
-
-      const result = await apiGet(`/leads-clients?${params.toString()}`);
-      setData(result.data || []);
-      setTotalPages(result.pagination?.total_pages || 0);
-      setTotalRecords(result.pagination?.total || 0);
-    } catch (err) {
-      setError(err.message || 'Erro ao carregar leads e clientes.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => { fetchData(search, tipo, page, limit); }, [fetchData, search, tipo, page, limit]);
 
