@@ -3,12 +3,12 @@ import {
   Search,
   AlertTriangle,
   Tag,
-  Package,
   Trash2,
   PlusCircle,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet, apiDelete } from '@/lib/api.js';
+import { formatBRL } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
@@ -18,6 +18,13 @@ import {
 } from '@/components/ui/table.jsx';
 
 const PAGE_SIZES = [10, 25, 50];
+
+const SORT_OPTIONS = [
+  { value: 'item_name asc', label: 'nome' },
+  { value: 'modified desc', label: 'mais recentes' },
+  { value: 'modified asc', label: 'data de atualização' },
+  { value: 'item_code asc', label: 'código (sku)' },
+];
 
 export default function ProductsPage() {
   const [data, setData] = useState([]);
@@ -29,12 +36,13 @@ export default function ProductsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [sort, setSort] = useState('modified desc');
   const searchTimer = useRef(null);
   const selectAllRef = useRef(null);
   const [, navigate] = useHashRoute();
   const setTopBarActions = useSetTopBarActions();
 
-  const fetchData = useCallback(async (searchVal, pageNum, limitVal) => {
+  const fetchData = useCallback(async (searchVal, pageNum, limitVal, sortVal) => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
@@ -43,6 +51,7 @@ export default function ProductsPage() {
       params.set('page', String(pageNum));
       params.set('limit', String(limitVal));
       if (searchVal) params.set('search', searchVal);
+      if (sortVal) params.set('order_by', sortVal);
 
       const result = await apiGet(`/products?${params.toString()}`);
       setData(result.data || []);
@@ -66,7 +75,7 @@ export default function ProductsPage() {
     return () => setTopBarActions(null);
   }, [setTopBarActions, navigate]);
 
-  useEffect(() => { fetchData(search, page, limit); }, [fetchData, search, page, limit]);
+  useEffect(() => { fetchData(search, page, limit, sort); }, [fetchData, search, page, limit, sort]);
 
   const onSearchChange = useCallback((e) => {
     const val = e.target.value;
@@ -74,16 +83,16 @@ export default function ProductsPage() {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
-      fetchData(val, 1, limit);
+      fetchData(val, 1, limit, sort);
     }, 350);
-  }, [limit, fetchData]);
+  }, [limit, sort, fetchData]);
 
   const onLimitChange = useCallback((e) => {
     const newLimit = parseInt(e.target.value, 10);
     setLimit(newLimit);
     setPage(1);
-    fetchData(search, 1, newLimit);
-  }, [search, fetchData]);
+    fetchData(search, 1, newLimit, sort);
+  }, [search, sort, fetchData]);
 
   const getPageNumbers = () => {
     if (totalPages <= 1) return [];
@@ -139,16 +148,19 @@ export default function ProductsPage() {
       await Promise.all(selected.map((row) => apiDelete(`/products?id=${encodeURIComponent(row.sku)}`)));
       const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
-      await fetchData(search, nextPage, limit);
+      await fetchData(search, nextPage, limit, sort);
     } catch (err) {
       alert('Erro ao excluir produtos selecionados: ' + (err.message || 'Tente novamente.'));
     }
-  }, [data, selectedIds, page, search, limit, fetchData]);
+  }, [data, selectedIds, page, search, limit, sort, fetchData]);
 
   const selectedCount = selectedIds.length;
 
   return (
     <div className="space-y-4 pb-28">
+      {/* Page title */}
+      <h1 className="text-2xl font-semibold text-framer-ink">Produtos</h1>
+
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1">
@@ -174,6 +186,25 @@ export default function ProductsPage() {
         </div>
       </div>
 
+      {/* Sorting */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground mr-1">Ordenar por</span>
+        {SORT_OPTIONS.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => { setSort(opt.value); setPage(1); }}
+            className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              sort === opt.value
+                ? 'bg-framer-accent-blue text-white'
+                : 'bg-framer-surface-2 text-framer-ink-muted hover:bg-framer-surface-3 hover:text-framer-ink'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Loading */}
       {loading && <SkeletonTable cols={5} rows={6} title="Carregando produtos…" />}
 
@@ -183,7 +214,7 @@ export default function ProductsPage() {
           <AlertTriangle size={32} className="text-red-400" />
           <p>Erro ao carregar produtos</p>
           <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => fetchData(search, page, limit)}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => fetchData(search, page, limit, sort)}>Tentar novamente</Button>
         </div>
       )}
 
@@ -213,10 +244,11 @@ export default function ProductsPage() {
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     />
                   </TableHead>
-                  <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Unidade</TableHead>
+                  <TableHead className="pl-0">Descrição</TableHead>
+                  <TableHead className="pl-6">SKU</TableHead>
+                  <TableHead className="text-center pr-4">Unidade</TableHead>
+                  <TableHead className="text-center pl-4">Preço</TableHead>
                   <TableHead className="text-center w-[60px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -239,10 +271,13 @@ export default function ProductsPage() {
                           className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                         />
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{sku}</TableCell>
                       <TableCell>{p.nome || p.item_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{p.categoria || p.item_group || '—'}</TableCell>
-                      <TableCell className="text-muted-foreground">{p.unidade || p.stock_uom || 'und'}</TableCell>
+                      <TableCell className="text-muted-foreground max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
+                      <TableCell className="font-mono text-sm pl-6">{sku}</TableCell>
+                      <TableCell className="text-muted-foreground text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
+                      <TableCell className="text-center font-medium pl-4">
+                        {p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
+                      </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => handleDelete(sku)}
@@ -285,16 +320,21 @@ export default function ProductsPage() {
                       className="flex-1 text-left min-w-0 space-y-2"
                       aria-label={`Abrir produto ${sku}`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-framer-accent-blue/10 text-framer-accent-blue">
-                          <Package size={16} />
-                        </span>
-                        <span className="font-mono text-xs font-medium text-framer-accent-blue">{sku}</span>
-                      </div>
                       <div>
                         <p className="text-sm font-semibold text-card-foreground line-clamp-2">{p.nome || p.item_name}</p>
+                        {p.descricao && (
+                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{p.descricao}</p>
+                        )}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {[p.categoria || p.item_group || 'Sem categoria', p.unidade || p.stock_uom || 'und'].filter(Boolean).join(' · ')}
+                          <span className="font-mono text-framer-accent-blue">{sku}</span>
+                          {' · '}
+                          {p.unidade || p.stock_uom || 'und'}
+                          {p.preco_minimo != null && (
+                            <>
+                              {' · '}
+                              <span className="font-medium text-framer-ink">{formatBRL(p.preco_minimo)}</span>
+                            </>
+                          )}
                         </p>
                       </div>
                     </button>

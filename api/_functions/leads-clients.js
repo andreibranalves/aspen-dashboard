@@ -1,4 +1,4 @@
-import { erpGetList, erpDelete, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpDelete, erpPost, createHttpError } from './lib/erpnext.js';
 
 // ── Helpers ──
 

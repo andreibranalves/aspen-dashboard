@@ -26,13 +26,20 @@ function buildOrFilters(params) {
   ];
 }
 
-function mapItem(item) {
+function stripHtml(html) {
+  if (!html) return '';
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim();
+}
+
+function mapItem(item, pricesMap) {
+  const sku = item.item_code;
   return {
-    sku: item.item_code,
+    sku,
     nome: item.item_name,
-    categoria: item.item_group,
+    descricao: stripHtml(item.description || ''),
     unidade: item.stock_uom,
     ativo: item.disabled === 0,
+    preco_minimo: pricesMap[sku] ?? null,
   };
 }
 
@@ -51,7 +58,7 @@ export async function handler(event) {
 
       const [items, countItems] = await Promise.all([
         erpGetList('Item', {
-          fields: ['item_code', 'item_name', 'item_group', 'stock_uom', 'disabled'],
+          fields: ['item_code', 'item_name', 'description', 'item_group', 'stock_uom', 'disabled'],
           filters,
           or_filters,
           order_by,
@@ -66,7 +73,36 @@ export async function handler(event) {
         }),
       ]);
 
-      const data = items.map(mapItem);
+      // ── Batch-fetch lowest prices ──
+      const skus = items.map(i => i.item_code).filter(Boolean);
+      let pricesMap = {};
+      if (skus.length > 0) {
+        try {
+          const itemPrices = await erpGetList('Item Price', {
+            fields: ['item_code', 'price_list_rate'],
+            filters: [
+              ['item_code', 'in', skus],
+              ['price_list', '=', 'Standard Selling'],
+            ],
+            order_by: 'price_list_rate asc',
+            limit: 10000,
+          });
+          for (const p of itemPrices) {
+            const code = p.item_code;
+            const rate = p.price_list_rate != null ? Number(p.price_list_rate) : null;
+            if (rate != null && !Number.isNaN(rate)) {
+              // Keep the lowest rate (since we sorted asc)
+              if (!pricesMap[code] || rate < pricesMap[code]) {
+                pricesMap[code] = rate;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[products] Failed to fetch item prices:', e.message);
+        }
+      }
+
+      const data = items.map(item => mapItem(item, pricesMap));
       const total = countItems.length;
 
       return {
