@@ -78,6 +78,18 @@ export default function AutoQuotePage() {
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
+  // ── Remove main padding so panels fill viewport edge-to-edge ──
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (!main) return;
+    const orig = main.className;
+    main.className = orig
+      .replace(/\bp-4\b/g, '')
+      .replace(/\bmd:p-6\b/g, '')
+      .replace(/\s+/g, ' ').trim();
+    return () => { main.className = orig; };
+  }, []);
+
   // ── WhatsApp send ──
   const handleSendWhatsApp = useCallback(async (draft, resultData) => {
     if (!resultData?.quotation_id) return;
@@ -211,12 +223,12 @@ export default function AutoQuotePage() {
   const activeDrafts = drafts.filter(d => !d.discarded);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden -m-4 md:-m-6">
+    <div className="flex flex-col h-full overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex flex-col w-full lg:w-1/2 min-w-0 border-r border-framer-hairline bg-card overflow-hidden">
-          <div className="px-4 md:px-6 py-4 md:py-5 space-y-4">
+          <div className="px-4 md:px-6 pt-4 md:pt-5 space-y-4">
 
             {/* Page title */}
             <h1 className="text-lg font-semibold text-framer-ink">Pedido do cliente</h1>
@@ -285,8 +297,8 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Recent History ── */}
-          <div className="border-t border-framer-hairline px-4 md:px-6 py-4 mt-auto">
-            <div className="flex items-center gap-2 mb-3">
+          <div className="border-t border-framer-hairline px-4 md:px-6 pt-5 pb-3 mt-auto">
+            <div className="flex items-center gap-2 mb-2">
               <History size={14} className="text-framer-ink-muted" />
               <h3 className="text-xs font-semibold uppercase tracking-wider text-framer-ink-muted">Recentes</h3>
             </div>
@@ -300,12 +312,15 @@ export default function AutoQuotePage() {
               <p className="text-xs text-framer-ink-muted">Nenhum orçamento recente.</p>
             ) : (
               <div className="space-y-1">
-                {history.map((item) => (
+                {history.map((item, idx) => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => loadHistoryItem(item)}
-                    className="w-full flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-framer-surface-2 transition-colors"
+                    className={cn(
+                      'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors',
+                      idx === history.length - 1 && 'pb-1'
+                    )}
                   >
                     <div className="min-w-0">
                       <p className="font-medium text-framer-ink truncate">{item.cliente || 'Cliente'}</p>
@@ -327,7 +342,7 @@ export default function AutoQuotePage() {
         </div>
 
         {/* ── RIGHT PANEL (50%) ── */}
-        <div className="w-full lg:w-1/2 min-w-0 overflow-y-auto bg-framer-canvas px-4 md:px-6 py-4 md:py-5">
+        <div className="w-full lg:w-1/2 min-w-0 overflow-y-auto bg-framer-canvas px-4 md:px-6 pt-4 md:pt-5 pb-0">
           {activeDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-framer-surface-2 mb-4">
