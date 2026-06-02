@@ -504,9 +504,6 @@ export default function AutoQuotePage() {
                     onUpdateItem={updateDraftItem}
                     onRemoveItem={removeDraftItem}
                     onAddItem={addDraftItem}
-                    productSearch={productSearch}
-                    onProductSearchChange={onProductSearchChange}
-                    closeProductSearch={closeProductSearch}
                     selectProduct={selectProduct}
                     onCreateQuote={createSingleQuote}
                     onDelete={discardDraft}

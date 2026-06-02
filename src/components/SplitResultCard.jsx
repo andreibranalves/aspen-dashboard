@@ -2,11 +2,12 @@
 // Compact result card for the split-panel auto page.
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Pencil, Trash2, X, Plus, Loader2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
+import { apiGet } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 
@@ -19,15 +20,73 @@ export default function SplitResultCard({
   onUpdateItem,
   onRemoveItem,
   onAddItem,
-  productSearch,
-  onProductSearchChange,
-  closeProductSearch,
   selectProduct,
   onCreateQuote,
   onDelete,
   viewUrl,
 }) {
   const [editing, setEditing] = useState(false);
+
+  // ── Per-item product search (local state, like QuotationDetailPage) ──
+  const [itemSearchTerms, setItemSearchTerms] = useState({});   // { ii: term }
+  const [itemResults, setItemResults] = useState({});            // { ii: [...] }
+  const [itemSearching, setItemSearching] = useState({});        // { ii: bool }
+  const [activeSearchIdx, setActiveSearchIdx] = useState(null);  // ii or null
+  const searchTimers = useRef({});  // { ii: timeoutId }
+
+  // Click outside closes the active dropdown
+  useEffect(() => {
+    if (activeSearchIdx === null) return;
+    const handler = (e) => {
+      if (!e.target.closest('.item-search-cell')) {
+        setActiveSearchIdx(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [activeSearchIdx]);
+
+  // Debounced product search per item index
+  const onItemSkuChange = useCallback((ii, value) => {
+    setItemSearchTerms(prev => ({ ...prev, [ii]: value }));
+    onUpdateItem(draft.index, ii, 'item_code', value);
+    clearTimeout(searchTimers.current[ii]);
+    if (value && value.length >= 2) {
+      setItemSearching(prev => ({ ...prev, [ii]: true }));
+      searchTimers.current[ii] = setTimeout(async () => {
+        try {
+          const res = await apiGet(`/products?search=${encodeURIComponent(value)}&limit=6`);
+          setItemResults(prev => ({ ...prev, [ii]: res.data || [] }));
+        } catch {
+          setItemResults(prev => ({ ...prev, [ii]: [] }));
+        } finally {
+          setItemSearching(prev => ({ ...prev, [ii]: false }));
+        }
+      }, 300);
+    } else {
+      setItemResults(prev => ({ ...prev, [ii]: [] }));
+      setItemSearching(prev => ({ ...prev, [ii]: false }));
+    }
+  }, [draft.index, onUpdateItem]);
+
+  // Select product from dropdown
+  const handleSelectProduct = useCallback((ii, product) => {
+    if (!product?.sku) return;
+    selectProduct(draft.index, ii, product);
+    setItemSearchTerms(prev => ({ ...prev, [ii]: product.sku }));
+    setItemResults(prev => ({ ...prev, [ii]: [] }));
+    setActiveSearchIdx(null);
+  }, [draft.index, selectProduct]);
+
+  // Remove item with local state cleanup
+  const handleRemoveItem = useCallback((ii) => {
+    onRemoveItem(draft.index, ii);
+    setItemSearchTerms(prev => { const n = { ...prev }; delete n[ii]; return n; });
+    setItemResults(prev => { const n = { ...prev }; delete n[ii]; return n; });
+    setItemSearching(prev => { const n = { ...prev }; delete n[ii]; return n; });
+    if (activeSearchIdx === ii) setActiveSearchIdx(null);
+  }, [draft.index, onRemoveItem, activeSearchIdx]);
+
   const isDone = draft.status === 'done' && draft.result?.success;
   const resultData = draft.result?.data;
   const items = isDone ? (resultData?.items || draft.edited.items || []) : (draft.edited.items || []);
@@ -38,8 +97,22 @@ export default function SplitResultCard({
   const displayName = resultData?.cliente || draft.edited.nome;
 
   function toggleEditing() {
-    if (!editing && !draft.edited.origem) {
-      onUpdateField(draft.index, 'origem', DEFAULT_LEAD_SOURCE);
+    if (!editing) {
+      // Pre-fill search terms with existing item codes
+      const terms = {};
+      items.forEach((item, ii) => {
+        if (item.item_code) terms[ii] = item.item_code;
+      });
+      setItemSearchTerms(terms);
+      if (!draft.edited.origem) {
+        onUpdateField(draft.index, 'origem', DEFAULT_LEAD_SOURCE);
+      }
+    } else {
+      // Clear local search state on exit
+      setItemSearchTerms({});
+      setItemResults({});
+      setItemSearching({});
+      setActiveSearchIdx(null);
     }
     setEditing(prev => !prev);
   }
@@ -144,7 +217,7 @@ export default function SplitResultCard({
 
       {/* ── Items table ── */}
       {!isDone && (
-        <div className="overflow-x-auto">
+        <div className="overflow-visible">
         <table className="w-full table-fixed text-xs">
           <colgroup>
             <col />
@@ -165,35 +238,34 @@ export default function SplitResultCard({
           <tbody>
             {displayItems.map((item, ii) => {
               const hasCode = !!item.item_code;
-              const searchState = productSearch?.[draft.index] || {};
-              const showDropdown = hasCode ? false : searchState.open && searchState.results?.length > 0;
+              const results = itemResults[ii] || [];
+              const searching = itemSearching[ii] || false;
+              const showDropdown = activeSearchIdx === ii && results.length > 0;
+              const searchValue = itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : (item.item_code || '');
 
               return (
               <tr key={ii} className="border-b border-framer-hairline last:border-b-0 hover:bg-framer-surface-1/30">
                 <td className="py-2 pl-4 pr-3">
-                  {editing && !hasCode ? (
-                    <div className="relative">
+                  {editing ? (
+                    <div className="relative item-search-cell">
                       <Input
                         className="h-7 text-xs pr-6"
                         placeholder="Buscar SKU ou nome…"
-                        value={searchState.term || ''}
-                        onChange={e => onProductSearchChange(draft.index, e.target.value)}
-                        onFocus={() => {
-                          if (searchState.term?.length >= 2) onProductSearchChange(draft.index, searchState.term);
-                        }}
-                        onBlur={() => setTimeout(() => closeProductSearch(draft.index), 200)}
+                        value={searchValue}
+                        onChange={e => onItemSkuChange(ii, e.target.value)}
+                        onFocus={() => setActiveSearchIdx(ii)}
                       />
-                      {searchState.loading && (
+                      {searching && (
                         <Loader2 size={12} className="animate-spin absolute right-2 top-1.5 text-framer-ink-muted" />
                       )}
                       {showDropdown && (
                         <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-framer-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {searchState.results.map((p) => (
+                          {results.map((p) => (
                             <button
                               key={p.sku || p.item_code}
                               type="button"
                               className="w-full text-left px-3 py-2 text-xs hover:bg-framer-surface-2 transition-colors flex items-center gap-2"
-                              onMouseDown={e => { e.preventDefault(); selectProduct(draft.index, ii, p); }}
+                              onMouseDown={e => { e.preventDefault(); handleSelectProduct(ii, p); }}
                             >
                               <span className="font-mono text-[10px] text-framer-ink-muted shrink-0">{p.sku || p.item_code}</span>
                               <span className="truncate">{p.nome || p.item_name}</span>
@@ -204,7 +276,7 @@ export default function SplitResultCard({
                     </div>
                   ) : (
                     <span className="block truncate font-medium text-framer-ink">
-                      {item.item_name || item.item_code || (editing ? 'Novo item…' : '—')}
+                      {item.item_name || item.item_code || '—'}
                     </span>
                   )}
                 </td>
@@ -239,7 +311,7 @@ export default function SplitResultCard({
                 <td className="py-2 pr-4">
                   <button
                     type="button"
-                    onClick={() => onRemoveItem(draft.index, ii)}
+                    onClick={() => handleRemoveItem(ii)}
                     className="p-0.5 rounded text-framer-ink-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
                     title="Remover produto"
                   >
