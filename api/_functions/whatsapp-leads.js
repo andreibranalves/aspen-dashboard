@@ -240,10 +240,14 @@ function extractFallback(conversationText) {
 }
 
 export function formatLeadText(lead) {
+  // Strip 55 prefix for display (Brazilian formatting applies DDD separately)
+  const displayPhone = String(lead.telefone || '').startsWith('55')
+    ? String(lead.telefone).slice(2)
+    : String(lead.telefone || '');
   const lines = [
     lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
     lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
-    lead.telefone ? `Telefone: ${lead.telefone}` : 'Telefone:',
+    displayPhone ? `Telefone: ${displayPhone}` : 'Telefone:',
   ];
   const pedidoParts = [];
   if (lead.produto) pedidoParts.push(lead.produto);
