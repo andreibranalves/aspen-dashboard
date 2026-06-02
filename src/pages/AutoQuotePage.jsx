@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, FileText, ExternalLink, Check, AlertTriangle, RotateCcw, History, Send } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Sparkles, FileText, ExternalLink, Check, AlertTriangle, RotateCcw, History } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
-import DraftReviewCard from '@/components/DraftReviewCard.jsx';
+import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
 
@@ -447,57 +447,20 @@ export default function AutoQuotePage() {
                   );
                 }
 
-                // Draft card (review mode)
-                const items = draft.edited.items;
-                const total = calculateResultTotal(items);
-                const validItems = items.filter(item => item.item_code && item.qty > 0).length;
-                const pendingDrafts = activeDrafts.filter(d => d.status !== 'done' && d.status !== 'error').length;
-
+                // Draft card (review mode) — compact split-panel card
                 return (
-                  <div key={draft.index} className="space-y-3">
-                    <DraftReviewCard
-                      draft={draft}
-                      displayIdx={displayIdx}
-                      totalDrafts={pendingDrafts}
-                      isApproved={draft.approved}
-                      items={items}
-                      total={total}
-                      validItems={validItems}
-                      onApprove={approveDraft}
-                      onDiscard={discardDraft}
-                      updateDraftField={updateDraftField}
-                      updateDraftAddressField={updateDraftAddressField}
-                      onUrgenteToggle={handleUrgenteToggle}
-                      updateDraftItem={updateDraftItem}
-                      onProductSearchChange={onProductSearchChange}
-                      productSearch={productSearch}
-                      closeProductSearch={closeProductSearch}
-                      selectProduct={selectProduct}
-                      drafts={drafts}
-                      fetchPricing={fetchPricing}
-                      setDrafts={setDrafts}
-                      reorderItems={reorderItems}
-                      removeDraftItem={removeDraftItem}
-                      addDraftItem={addDraftItem}
-                    />
-                    <div className="flex items-center justify-end gap-2">
-                      {isProcessing ? (
-                        <div className="flex items-center gap-2 text-sm text-framer-ink-muted">
-                          <span className="spinner" />
-                          Criando orçamento…
-                        </div>
-                      ) : (
-                        <Button
-                          onClick={() => createSingleQuote(draft.index)}
-                          disabled={isProcessing || validItems === 0 || !draft.edited.nome?.trim()}
-                          size="sm"
-                        >
-                          <Send size={14} />
-                          Criar orçamento
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                  <SplitResultCard
+                    key={draft.index}
+                    draft={draft}
+                    displayIdx={displayIdx}
+                    totalDrafts={activeDrafts.filter(d => d.status !== 'done' && d.status !== 'error').length}
+                    isProcessing={isProcessing}
+                    onUpdateField={updateDraftField}
+                    onUpdateItem={updateDraftItem}
+                    onRemoveItem={removeDraftItem}
+                    onCreateQuote={createSingleQuote}
+                    onDelete={discardDraft}
+                  />
                 );
               })}
             </div>
