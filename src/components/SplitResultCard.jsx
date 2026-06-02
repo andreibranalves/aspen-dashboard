@@ -3,7 +3,7 @@
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Pencil, Trash2, X, Plus, Loader2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
+import { Pencil, X, Plus, Loader2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
@@ -376,17 +376,6 @@ export default function SplitResultCard({
         )}
 
         <div className="flex-1" />
-
-        {!isDone && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(draft.index)}
-            className="text-framer-ink-muted hover:text-red-600"
-          >
-            <Trash2 size={13} />
-          </Button>
-        )}
 
         {isDone ? (
           <>
