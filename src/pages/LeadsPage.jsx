@@ -469,7 +469,7 @@ export default function LeadsPage({ navigate }) {
             key={t}
             onClick={() => onTipoClick(t)}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${tipo === t ? 'bg-framer-surface-2 text-framer-ink' : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'}
+              ${tipo === t ? 'bg-primary text-primary-foreground' : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'}
             `}
           >
             {TIPO_DISPLAY[i]}

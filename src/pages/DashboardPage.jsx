@@ -146,7 +146,7 @@ export default function DashboardPage({ navigate }) {
             key={p.key}
             onClick={() => setPeriod(p.key)}
             className={cn(
-              'px-3 py-1.5 text-sm rounded-pill border transition-colors',
+              'px-3 py-1 text-xs rounded-full border transition-colors',
               period === p.key
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-transparent text-framer-ink border-framer-hairline hover:bg-primary/5'
@@ -165,7 +165,7 @@ export default function DashboardPage({ navigate }) {
             className="bg-card rounded-lg border border-border shadow-sm p-5 flex flex-col gap-2"
           >
             <div className="flex items-center gap-2 text-muted-foreground">
-              <card.icon className="h-4 w-4 shrink-0" />
+              <card.icon className="h-4 w-4 shrink-0 text-primary" />
               <span className="text-xs font-medium uppercase tracking-wider">
                 {card.label}
               </span>
@@ -189,7 +189,7 @@ export default function DashboardPage({ navigate }) {
         {/* ── "O que vendeu" — Top Products ──────────────────────── */}
         <div className="bg-card rounded-lg border border-border shadow-sm p-5">
           <h2 className="text-sm font-semibold text-framer-ink mb-3 flex items-center gap-2">
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <Package className="h-4 w-4 text-primary" />
             O que vendeu
           </h2>
           {data?.top_products?.length > 0 ? (
@@ -229,7 +229,7 @@ export default function DashboardPage({ navigate }) {
         {/* ── "Top clientes" — Top Customers ─────────────────────── */}
         <div className="bg-card rounded-lg border border-border shadow-sm p-5">
           <h2 className="text-sm font-semibold text-framer-ink mb-3 flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-4 w-4 text-primary" />
             Top clientes
           </h2>
           {data?.top_customers?.length > 0 ? (
@@ -266,7 +266,7 @@ export default function DashboardPage({ navigate }) {
       {/* ── "Vendas por dia" — Sales by Day ──────────────────────── */}
       <div className="bg-card rounded-lg border border-border shadow-sm p-5">
         <h2 className="text-sm font-semibold text-framer-ink mb-3 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <TrendingUp className="h-4 w-4 text-primary" />
           Vendas por dia
         </h2>
         {data?.sales_by_day?.length > 0 ? (
@@ -298,7 +298,7 @@ export default function DashboardPage({ navigate }) {
       {/* ── "Orçamentos para follow-up" — Stale Quotations ───────── */}
       <div className="bg-card rounded-lg border border-border shadow-sm p-5">
         <h2 className="text-sm font-semibold text-framer-ink mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-muted-foreground" />
+          <FileText className="h-4 w-4 text-primary" />
           Orçamentos para follow-up
         </h2>
         {data?.stale_quotations?.length > 0 ? (

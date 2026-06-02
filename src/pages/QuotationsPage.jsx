@@ -323,7 +323,7 @@ export default function QuotationsPage({ navigate }) {
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors
               ${
                 status === s
-                  ? 'bg-framer-surface-2 text-framer-ink'
+                  ? 'bg-primary text-primary-foreground'
                   : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'
               }`}
           >

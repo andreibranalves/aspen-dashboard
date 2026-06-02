@@ -194,7 +194,7 @@ export default function ProductsPage() {
             key={opt.value}
             type="button"
             onClick={() => { setSort(opt.value); setPage(1); }}
-            className={`inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               sort === opt.value
                 ? 'bg-framer-accent-blue text-white'
                 : 'bg-framer-surface-2 text-framer-ink-muted hover:bg-framer-surface-3 hover:text-framer-ink'
