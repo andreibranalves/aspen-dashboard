@@ -73,7 +73,7 @@ export default function SplitResultCard({
   const handleSelectProduct = useCallback((ii, product) => {
     if (!product?.sku) return;
     selectProduct(draft.index, ii, product);
-    setItemSearchTerms(prev => ({ ...prev, [ii]: product.sku }));
+    setItemSearchTerms(prev => ({ ...prev, [ii]: product.nome || product.item_name || product.sku }));
     setItemResults(prev => ({ ...prev, [ii]: [] }));
     setActiveSearchIdx(null);
   }, [draft.index, selectProduct]);
@@ -98,10 +98,10 @@ export default function SplitResultCard({
 
   function toggleEditing() {
     if (!editing) {
-      // Pre-fill search terms with existing item codes
+      // Pre-fill search terms with existing item names
       const terms = {};
       items.forEach((item, ii) => {
-        if (item.item_code) terms[ii] = item.item_code;
+        if (item.item_code) terms[ii] = item.item_name || item.item_code;
       });
       setItemSearchTerms(terms);
       if (!draft.edited.origem) {
@@ -228,7 +228,7 @@ export default function SplitResultCard({
           </colgroup>
           <thead>
             <tr className="border-b border-framer-hairline text-framer-ink-muted">
-              <th className="py-2 pl-4 pr-3 text-left font-medium">Nome</th>
+              <th className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
               <th className="px-3 py-2 text-center font-medium">Qtd</th>
               <th className="px-3 py-2 text-center font-medium">Preço</th>
               <th className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
@@ -241,7 +241,7 @@ export default function SplitResultCard({
               const results = itemResults[ii] || [];
               const searching = itemSearching[ii] || false;
               const showDropdown = activeSearchIdx === ii && results.length > 0;
-              const searchValue = itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : (item.item_code || '');
+              const searchValue = itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : (item.item_name || item.item_code || '');
 
               return (
               <tr key={ii} className="border-b border-framer-hairline last:border-b-0 hover:bg-framer-surface-1/30">
