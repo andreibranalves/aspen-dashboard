@@ -3,7 +3,7 @@
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
 import { useState } from 'react';
-import { Pencil, Trash2, X, AlertTriangle, Send, FileText, Check } from 'lucide-react';
+import { Pencil, Trash2, X, Plus, Loader2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
@@ -18,6 +18,11 @@ export default function SplitResultCard({
   onUpdateField,
   onUpdateItem,
   onRemoveItem,
+  onAddItem,
+  productSearch,
+  onProductSearchChange,
+  closeProductSearch,
+  selectProduct,
   onCreateQuote,
   onDelete,
   viewUrl,
@@ -29,6 +34,7 @@ export default function SplitResultCard({
   const total = items.reduce((sum, it) => sum + ((Number(it.qty) || 0) * (Number(it.rate) || 0)), 0);
   const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
   const validItems = items.filter(it => it.item_code && it.qty > 0).length;
+  const displayItems = editing ? items : items.filter(it => it.item_code);
   const displayName = resultData?.cliente || draft.edited.nome;
 
   function toggleEditing() {
@@ -157,12 +163,50 @@ export default function SplitResultCard({
             </tr>
           </thead>
           <tbody>
-            {items.filter(it => it.item_code).map((item, ii) => (
+            {displayItems.map((item, ii) => {
+              const hasCode = !!item.item_code;
+              const searchState = productSearch?.[draft.index] || {};
+              const showDropdown = hasCode ? false : searchState.open && searchState.results?.length > 0;
+
+              return (
               <tr key={ii} className="border-b border-framer-hairline last:border-b-0 hover:bg-framer-surface-1/30">
                 <td className="py-2 pl-4 pr-3">
-                  <span className="block truncate font-medium text-framer-ink">
-                    {item.item_name || item.item_code}
-                  </span>
+                  {editing && !hasCode ? (
+                    <div className="relative">
+                      <Input
+                        className="h-7 text-xs pr-6"
+                        placeholder="Buscar SKU ou nome…"
+                        value={searchState.term || ''}
+                        onChange={e => onProductSearchChange(draft.index, e.target.value)}
+                        onFocus={() => {
+                          if (searchState.term?.length >= 2) onProductSearchChange(draft.index, searchState.term);
+                        }}
+                        onBlur={() => setTimeout(() => closeProductSearch(draft.index), 200)}
+                      />
+                      {searchState.loading && (
+                        <Loader2 size={12} className="animate-spin absolute right-2 top-1.5 text-framer-ink-muted" />
+                      )}
+                      {showDropdown && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-framer-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          {searchState.results.map((p) => (
+                            <button
+                              key={p.sku || p.item_code}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-xs hover:bg-framer-surface-2 transition-colors flex items-center gap-2"
+                              onMouseDown={e => { e.preventDefault(); selectProduct(draft.index, ii, p); }}
+                            >
+                              <span className="font-mono text-[10px] text-framer-ink-muted shrink-0">{p.sku || p.item_code}</span>
+                              <span className="truncate">{p.nome || p.item_name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="block truncate font-medium text-framer-ink">
+                      {item.item_name || item.item_code || (editing ? 'Novo item…' : '—')}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-center">
                   {editing ? (
@@ -173,7 +217,7 @@ export default function SplitResultCard({
                       className="mx-auto h-7 w-16 text-center text-xs"
                     />
                   ) : (
-                    item.qty
+                    hasCode ? item.qty : '—'
                   )}
                 </td>
                 <td className="px-3 py-2 text-center">
@@ -203,8 +247,9 @@ export default function SplitResultCard({
                   </button>
                 </td>
               </tr>
-            ))}
-            {items.filter(it => it.item_code).length === 0 && (
+              );
+            })}
+            {displayItems.length === 0 && (
               <tr>
                 <td colSpan={5} className="py-4 text-center text-xs text-framer-ink-muted">
                   Nenhum item adicionado
@@ -219,6 +264,7 @@ export default function SplitResultCard({
       {/* ── Actions ── */}
       <div className="flex items-center gap-2 p-3 border-t border-framer-hairline bg-framer-surface-1/30">
         {!isDone && (
+          <>
           <Button
             variant="ghost"
             size="sm"
@@ -227,6 +273,18 @@ export default function SplitResultCard({
             <Pencil size={13} />
             {editing ? 'Concluir' : 'Editar'}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onAddItem(draft.index);
+              if (!editing) toggleEditing();
+            }}
+          >
+            <Plus size={13} />
+            Item
+          </Button>
+          </>
         )}
 
         <div className="flex-1" />
