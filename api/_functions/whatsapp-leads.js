@@ -28,9 +28,13 @@ function firstNonEmpty(...values) {
 
 export function normalizeWhatsappPhone(value) {
   const raw = String(value || '');
-  const beforeAt = raw.split('@')[0];
+  const parts = raw.split('@');
+  const beforeAt = parts[0];
+  const suffix = parts[1] || '';
   let digits = beforeAt.replace(/\D/g, '');
   if (!digits) return '';
+  // @lid / @g.us / @newsletter JIDs are NOT phone numbers — only accept if already starts with 55
+  if (suffix && suffix !== 's.whatsapp.net' && !digits.startsWith('55')) return '';
   if (!digits.startsWith('55') && digits.length >= 10 && digits.length <= 11) digits = `55${digits}`;
   return digits;
 }
@@ -127,7 +131,13 @@ function getSenderPhone(messages) {
 
 // Build a map of pushName → phone digits from saved WhatsApp contacts
 // Also returns a fuzzy-match function for partial name matching
+let _contactMapCache = { data: null, ts: 0 };
+const CONTACT_MAP_TTL = 10 * 60 * 1000; // 10 min
+
 async function getContactPhoneMap() {
+  if (_contactMapCache.data && (Date.now() - _contactMapCache.ts) < CONTACT_MAP_TTL) {
+    return _contactMapCache.data;
+  }
   try {
     assertEvolutionConfig();
     const payload = await evolutionFetch(`/chat/findContacts/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {});
@@ -145,7 +155,9 @@ async function getContactPhoneMap() {
         }
       }
     }
-    return { exact, fuzzy };
+    const result = { exact, fuzzy };
+    _contactMapCache = { data: result, ts: Date.now() };
+    return result;
   } catch (err) {
     console.warn('[whatsapp-leads] contact map fallback:', err?.message || err);
     return { exact: new Map(), fuzzy: [] };
@@ -205,8 +217,9 @@ function normalizeMessages(messages) {
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-function composeConversationText(messages) {
-  return normalizeMessages(messages)
+function composeConversationText(messages, preNormalized) {
+  const normalized = preNormalized || normalizeMessages(messages);
+  return normalized
     .slice(-MAX_MESSAGES_PER_CHAT)
     .map(message => `${message.fromMe ? 'Aspen' : 'Cliente'}: ${message.text}`)
     .join('\n');
@@ -241,6 +254,12 @@ export function formatLeadText(lead) {
 
 // ── External APIs ────────────────────────────────────────────────────────────
 
+function fetchWithTimeout(url, options, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 function assertEvolutionConfig() {
   const missing = [];
   if (!EVOLUTION_BASE_URL) missing.push('EVOLUTION_BASE_URL');
@@ -251,16 +270,16 @@ function assertEvolutionConfig() {
   }
 }
 
-async function evolutionFetch(path, body = {}) {
+async function evolutionFetch(path, body = {}, timeoutMs = 10000) {
   assertEvolutionConfig();
-  const res = await fetch(`${EVOLUTION_BASE_URL}${path}`, {
+  const res = await fetchWithTimeout(`${EVOLUTION_BASE_URL}${path}`, {
     method: 'POST',
     headers: {
       apikey: EVOLUTION_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
-  });
+  }, timeoutMs);
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
@@ -296,7 +315,7 @@ async function extractLeadWithOpenRouter(conversationText) {
   const prompt = `Extraia apenas os dados de contato da pessoa nesta conversa de WhatsApp da Aspen Estamparia.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":"","telefone":""}\n\nRegras:\n- Nunca invente dados ausentes.\n- O objetivo é só identificar nome, e-mail e telefone. Não extraia pedido, produto ou quantidade.\n- Se a conversa tiver mais de um e-mail ou telefone, retorne apenas o primeiro citado.\n- Telefone deve ser apenas dígitos com DDD (ex: 11987654321).\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
 
   try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${OPENROUTER_API_KEY}`,
@@ -308,7 +327,7 @@ async function extractLeadWithOpenRouter(conversationText) {
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
       }),
-    });
+    }, 15000);
     const data = await res.json();
     const raw = data?.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(String(raw).replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
@@ -323,7 +342,13 @@ async function extractLeadWithOpenRouter(conversationText) {
   }
 }
 
+let _convertedKeysCache = { data: null, ts: 0 };
+const CONVERTED_KEYS_TTL = 60 * 1000; // 60s
+
 async function getConvertedContactKeys() {
+  if (_convertedKeysCache.data && (Date.now() - _convertedKeysCache.ts) < CONVERTED_KEYS_TTL) {
+    return _convertedKeysCache.data;
+  }
   const rows = await erpGetList('Quotation', {
     fields: ['name', 'customer_name', 'contact_email', 'contact_mobile'],
     filters: [['docstatus', '!=', 2]],
@@ -347,7 +372,9 @@ async function getConvertedContactKeys() {
       emailPhones.set(email, fullPhone);
     }
   }
-  return { phones, emails, names, emailPhones };
+  const result = { phones, emails, names, emailPhones };
+  _convertedKeysCache = { data: result, ts: Date.now() };
+  return result;
 }
 
 export function findConvertedQuotation(lead, converted) {
@@ -404,14 +431,15 @@ export async function handler(event) {
       getConvertedContactKeys(),
       getContactPhoneMap(),
     ]);
-    const candidates = [];
 
-    for (const chat of chats) {
+    // Process each chat independently and in parallel
+    const candidatePromises = chats.map(async (chat) => {
       const remoteJid = getChatRemoteJid(chat);
-      if (!remoteJid) continue;
+      if (!remoteJid) return null;
 
       const messages = await findMessages(remoteJid);
-      const conversationText = composeConversationText(messages);
+      const normalized = normalizeMessages(messages);
+      const conversationText = composeConversationText(null, normalized);
 
       const displayJid = firstNonEmpty(
         getMessageRemoteJidAlt(chat),
@@ -440,7 +468,14 @@ export async function handler(event) {
           telefone = fallbackPhone;
         }
       }
-      if (!telefone) continue;
+      if (!telefone) {
+        console.warn('[whatsapp-leads] no valid phone for chat, skipping', {
+          remoteJid,
+          displayPhone: normalizeWhatsappPhone(displayJid),
+          extractedPhone: extracted.telefone,
+        });
+        return null;
+      }
 
       const nome = firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, getInboundPushName(messages), extracted?.nome, telefone);
 
@@ -458,7 +493,18 @@ export async function handler(event) {
         const contactPhone = lookupContactPhone(contactMap, leadName);
         if (contactPhone) telefone = contactPhone;
       }
-      const timestamp = getChatTimestamp(chat) || Math.max(...normalizeMessages(messages).map(m => m.timestamp), 0);
+
+      // Log silent failure when all 4 fallbacks couldn't resolve the phone
+      if (!isValidBrazilWhatsappPhone(telefone)) {
+        console.warn('[whatsapp-leads] all fallbacks failed to resolve @lid phone', {
+          remoteJid,
+          nome,
+          email: extracted.email,
+          jidPhone: normalizeWhatsappPhone(displayJid),
+        });
+      }
+
+      const timestamp = getChatTimestamp(chat) || Math.max(...normalized.map(m => m.timestamp), 0);
       const lead = {
         id: remoteJid,
         remoteJid,
@@ -472,8 +518,10 @@ export async function handler(event) {
       lead.hasQuotation = Boolean(lead.quotationId);
       Object.assign(lead, getWhatsappLeadQuality(lead));
       lead.texto = formatLeadText(lead);
-      candidates.push(lead);
-    }
+      return lead;
+    });
+
+    const candidates = (await Promise.all(candidatePromises)).filter(Boolean);
 
     return jsonResponse(200, { success: true, data: prioritizeWhatsappLeads(candidates) });
   } catch (err) {
