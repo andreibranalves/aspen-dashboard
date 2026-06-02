@@ -396,3 +396,69 @@ export function parseSampleImages(text) {
 
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// API-based flow persistence (server-side, replaces localStorage for global state)
+// ---------------------------------------------------------------------------
+
+/** Cache of flows fetched from API. Null if not yet fetched. */
+let _apiFlowsCache = null;
+let _apiSelectedFlowIdCache = null;
+
+/**
+ * Fetch flows from the server API.
+ * Returns { flows, selectedFlowId, source }.
+ * Falls back to localStorage if API is unreachable.
+ */
+export async function fetchFlowsFromApi() {
+  try {
+    const res = await fetch('/api/whatsapp-flows');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.flows)) {
+      const flows = data.flows.map((f, i) => normalizeFlow(f, i));
+      const selectedFlowId = data.selectedFlowId || flows[0]?.id || null;
+      _apiFlowsCache = flows;
+      _apiSelectedFlowIdCache = selectedFlowId;
+      return { flows, selectedFlowId, source: data.source || 'api' };
+    }
+    throw new Error('Invalid API response');
+  } catch (err) {
+    console.warn('[whatsappFlows] API fetch failed, falling back to localStorage:', err.message);
+    const flows = loadWhatsappFlows();
+    const selectedFlowId = getSelectedFlowId(flows);
+    return { flows, selectedFlowId, source: 'localStorage' };
+  }
+}
+
+/**
+ * Save flows to the server API.
+ * Returns true on success, false on failure.
+ * Also updates localStorage as a fallback mirror.
+ */
+export async function saveFlowsToApi(flows, selectedFlowId) {
+  try {
+    const res = await fetch('/api/whatsapp-flows', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flows, selectedFlowId }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.success) {
+      _apiFlowsCache = flows;
+      _apiSelectedFlowIdCache = selectedFlowId;
+      // Mirror to localStorage as fallback
+      saveWhatsappFlows(flows);
+      saveSelectedFlowId(selectedFlowId);
+      return true;
+    }
+    throw new Error(data.error || 'Unknown error');
+  } catch (err) {
+    console.error('[whatsappFlows] API save failed:', err.message);
+    // Still save to localStorage so the current user doesn't lose changes
+    saveWhatsappFlows(flows);
+    saveSelectedFlowId(selectedFlowId);
+    return false;
+  }
+}

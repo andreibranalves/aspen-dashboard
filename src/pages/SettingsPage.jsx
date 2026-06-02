@@ -6,8 +6,8 @@ import {
 import PageHeader from '@/components/PageHeader.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import {
-  loadWhatsappFlows,
-  saveWhatsappFlows,
+  fetchFlowsFromApi,
+  saveFlowsToApi,
   getSelectedFlowId,
   saveSelectedFlowId,
   getFlowSummary,
@@ -74,18 +74,23 @@ export default function SettingsPage() {
   const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
 
   useEffect(() => {
-    const loaded = loadWhatsappFlows();
-    setFlows(loaded);
-    setSavedFlows(loaded);
-    const sfId = getSelectedFlowId(loaded);
-    setSelectedFlowId(sfId);
+    (async () => {
+      const loaded = await fetchFlowsFromApi();
+      setFlows(loaded.flows);
+      setSavedFlows(loaded.flows);
+      setSelectedFlowId(loaded.selectedFlowId || '');
+    })();
   }, []);
 
-  const handleSaveFlows = useCallback(() => {
-    if (!window.confirm('Salvar alterações nos fluxos de WhatsApp neste navegador?')) return;
-    saveWhatsappFlows(flows);
-    setSavedFlows(structuredClone(flows));
-  }, [flows]);
+  const handleSaveFlows = useCallback(async () => {
+    if (!window.confirm('Salvar alterações nos fluxos de WhatsApp? As mudanças serão aplicadas para todos os usuários.')) return;
+    const success = await saveFlowsToApi(flows, selectedFlowId);
+    if (success) {
+      setSavedFlows(structuredClone(flows));
+    } else {
+      window.alert('Erro ao salvar fluxos no servidor. As alterações foram salvas apenas neste navegador.');
+    }
+  }, [flows, selectedFlowId]);
 
   const handleDiscardChanges = useCallback(() => {
     if (!window.confirm('Descartar alterações não salvas?')) return;

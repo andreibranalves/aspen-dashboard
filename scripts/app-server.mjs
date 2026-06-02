@@ -36,6 +36,7 @@ import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js'
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
+import { handler as whatsappFlows } from '../api/_functions/whatsapp-flows.js';
 import { handler as whatsappLeads } from '../api/_functions/whatsapp-leads.js';
 import { handler as view } from '../api/_functions/view.js';
 
@@ -47,7 +48,7 @@ const ROUTES = {
   'product-detail': productDetail, 'product-update': productUpdate, 'product-pricing-update': productPricingUpdate,
   'product-activity': productActivity, 'product-pricing': productPricing, products, quotations,
   'sales-dashboard': salesDashboard, 'sales-order-from-quotation': salesOrderFromQuotation,
-  'sales-orders': salesOrders, 'send-whatsapp': sendWhatsapp, 'whatsapp-leads': whatsappLeads, view,
+  'sales-orders': salesOrders, 'send-whatsapp': sendWhatsapp, 'whatsapp-flows': whatsappFlows, 'whatsapp-leads': whatsappLeads, view,
 };
 
 const PORT = Number(process.env.PORT || 8888);

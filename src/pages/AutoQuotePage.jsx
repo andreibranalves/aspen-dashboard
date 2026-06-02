@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
-import { loadWhatsappFlows, getSelectedFlowId, flowToSequencePayload } from '@/lib/whatsappFlows.js';
+import { fetchFlowsFromApi, flowToSequencePayload } from '@/lib/whatsappFlows.js';
 
 export default function AutoQuotePage() {
   // ── Helpers ──
@@ -243,8 +243,7 @@ export default function AutoQuotePage() {
     const quotationId = resultData.quotation_id;
     const telefone = draft.edited.telefone || resultData.telefone || '';
     const nome = resultData.cliente || draft.edited.nome || '';
-    const flows = loadWhatsappFlows();
-    const selectedFlowId = getSelectedFlowId(flows);
+    const { flows, selectedFlowId } = await fetchFlowsFromApi();
     const flow = flows.find(f => f.id === selectedFlowId) || flows[0];
 
     setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'sending' } }));
