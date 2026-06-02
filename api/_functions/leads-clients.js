@@ -113,6 +113,52 @@ export async function handler(event) {
     }
   }
 
+  // POST — create a lead or customer
+  if (event.httpMethod === 'POST') {
+    try {
+      let payload;
+      try { payload = JSON.parse(event.body); }
+      catch { throw createHttpError(400, 'JSON inválido.'); }
+
+      const tipo = (payload.tipo || 'lead').toLowerCase();
+      if (!['lead', 'cliente'].includes(tipo)) {
+        throw createHttpError(400, 'Tipo inválido. Use "lead" ou "cliente".');
+      }
+
+      const nome = (payload.nome || '').trim();
+      if (!nome) throw createHttpError(400, 'Nome é obrigatório.');
+
+      const doctype = tipo === 'lead' ? 'Lead' : 'Customer';
+      const docPayload = {};
+
+      if (tipo === 'lead') {
+        docPayload.lead_name = nome;
+        if (payload.email) docPayload.email_id = payload.email.trim();
+        if (payload.telefone) docPayload.mobile_no = payload.telefone.trim();
+        if (payload.origem) docPayload.source = payload.origem.trim();
+      } else {
+        docPayload.customer_name = nome;
+        docPayload.customer_type = 'Individual';
+      }
+
+      const created = await erpPost(doctype, docPayload);
+
+      return {
+        statusCode: 201,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, created: created.name || created, tipo }),
+      };
+    } catch (err) {
+      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+      console.error('[leads-clients] POST', err?.logMessage || err?.message || err);
+      return {
+        statusCode: code,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err?.message || 'Erro ao criar.' }),
+      };
+    }
+  }
+
   // DELETE — delete a lead or customer
   if (event.httpMethod === 'DELETE') {
     try {

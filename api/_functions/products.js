@@ -1,4 +1,4 @@
-import { erpGetList, erpDelete, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpPost, erpDelete, createHttpError } from './lib/erpnext.js';
 
 // ── Helpers ──
 
@@ -93,6 +93,45 @@ export async function handler(event) {
     }
   }
 
+  // POST — create a new product
+  if (event.httpMethod === 'POST') {
+    try {
+      let payload;
+      try { payload = JSON.parse(event.body); }
+      catch { throw createHttpError(400, 'JSON inválido.'); }
+
+      const sku = (payload.sku || '').trim();
+      const nome = (payload.nome || '').trim();
+
+      if (!sku) throw createHttpError(400, 'SKU é obrigatório.');
+      if (!nome) throw createHttpError(400, 'Nome do produto é obrigatório.');
+
+      const itemPayload = {
+        item_code: sku,
+        item_name: nome,
+        is_stock_item: 0,
+        stock_uom: (payload.unidade || 'Und').trim(),
+      };
+      if (payload.categoria) itemPayload.item_group = payload.categoria.trim();
+
+      const created = await erpPost('Item', itemPayload);
+
+      return {
+        statusCode: 201,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, created: created.name || created }),
+      };
+    } catch (err) {
+      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+      console.error('[products] POST', err?.logMessage || err?.message || err);
+      return {
+        statusCode: code,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err?.message || 'Erro ao criar produto.' }),
+      };
+    }
+  }
+
   // DELETE — delete a single product
   if (event.httpMethod === 'DELETE') {
     try {
@@ -119,7 +158,6 @@ export async function handler(event) {
     }
   }
 
-  // Other methods
   return {
     statusCode: 405,
     headers: { 'Content-Type': 'application/json' },
