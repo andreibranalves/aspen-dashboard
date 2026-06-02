@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Sparkles, FileText, AlertTriangle, RotateCcw, History } from 'lucide-react';
+import { Sparkles, FileText, AlertTriangle, RotateCcw, History, MessageCircle, RefreshCw } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -16,6 +16,10 @@ export default function AutoQuotePage() {
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [bottomTab, setBottomTab] = useState('recentes');
+  const [whatsappLeads, setWhatsappLeads] = useState([]);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappError, setWhatsappError] = useState(null);
 
   // ── Extracted hooks ──
   const {
@@ -38,13 +42,28 @@ export default function AutoQuotePage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await apiGet('/quotations?limit=3&order_by=creation+desc');
-      if (res.data) setHistory(res.data.slice(0, 3));
+      const res = await apiGet('/quotations?limit=5&order_by=creation+desc');
+      if (res.data) setHistory(res.data.slice(0, 5));
     } catch { /* non-critical */ }
     finally { setHistoryLoading(false); }
   }, []);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const loadWhatsappLeads = useCallback(async () => {
+    setWhatsappLoading(true);
+    setWhatsappError(null);
+    try {
+      const res = await apiGet('/whatsapp-leads');
+      setWhatsappLeads(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      setWhatsappError(err.message || 'Erro ao buscar conversas do WhatsApp.');
+    } finally {
+      setWhatsappLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadWhatsappLeads(); }, [loadWhatsappLeads]);
 
   // ── Remove main padding so panels fill viewport edge-to-edge ──
   useEffect(() => {
@@ -176,6 +195,16 @@ export default function AutoQuotePage() {
     }
   }, []);
 
+  const useWhatsappLead = useCallback((lead) => {
+    setText(lead.texto || [
+      lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
+      lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
+      lead.telefone ? `Telefone: ${lead.telefone}` : 'Telefone:',
+      lead.produto || lead.quantidade ? `Pedido: ${[lead.produto, lead.quantidade ? `${lead.quantidade} un` : ''].filter(Boolean).join(' — ')}` : 'Pedido:',
+    ].join('\n'));
+    document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   // ── Reset ──
   const handleReset = useCallback(() => {
     setText('');
@@ -270,44 +299,123 @@ export default function AutoQuotePage() {
             )}
           </div>
 
-          {/* ── Recent History ── */}
-          <div className="border-t border-framer-hairline px-4 md:px-6 pt-5 pb-3 mt-auto">
-            <div className="flex items-center gap-2 mb-2">
-              <History size={14} className="text-framer-ink-muted" />
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-framer-ink-muted">Recentes</h3>
+          {/* ── Bottom tabs: recent quotations + WhatsApp leads ── */}
+          <div className="border-t border-framer-hairline px-4 md:px-6 pt-4 pb-3 mt-auto">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="inline-flex rounded-lg bg-framer-surface-2 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setBottomTab('recentes')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                    bottomTab === 'recentes'
+                      ? 'bg-card text-framer-ink shadow-sm'
+                      : 'text-framer-ink-muted hover:text-framer-ink'
+                  )}
+                >
+                  <History size={13} />
+                  Recentes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBottomTab('whatsapp')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                    bottomTab === 'whatsapp'
+                      ? 'bg-card text-framer-ink shadow-sm'
+                      : 'text-framer-ink-muted hover:text-framer-ink'
+                  )}
+                >
+                  <MessageCircle size={13} />
+                  WhatsApp
+                </button>
+              </div>
+
+              {bottomTab === 'whatsapp' && (
+                <button
+                  type="button"
+                  onClick={loadWhatsappLeads}
+                  disabled={whatsappLoading}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-framer-ink-muted hover:bg-framer-surface-2 hover:text-framer-ink disabled:opacity-60"
+                >
+                  <RefreshCw size={12} className={whatsappLoading ? 'animate-spin' : ''} />
+                  Atualizar
+                </button>
+              )}
             </div>
-            {historyLoading ? (
+
+            {bottomTab === 'recentes' ? (
+              historyLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-10 rounded-lg bg-framer-surface-2 animate-pulse" />
+                  ))}
+                </div>
+              ) : history.length === 0 ? (
+                <p className="text-xs text-framer-ink-muted">Nenhum orçamento recente.</p>
+              ) : (
+                <div className="space-y-1">
+                  {history.map((item, idx) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => loadHistoryItem(item)}
+                      className={cn(
+                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors',
+                        idx === history.length - 1 && 'pb-1'
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-framer-ink truncate">{item.cliente || 'Cliente'}</p>
+                        <p className="text-xs text-framer-ink-muted truncate">{item.id}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-[11px] text-framer-ink-muted whitespace-nowrap">
+                          {formatDate(item.data)}
+                        </span>
+                        <span className="text-xs font-medium text-framer-ink whitespace-nowrap">
+                          {formatBRL(item.valor)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : whatsappLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => (
-                  <div key={i} className="h-10 rounded-lg bg-framer-surface-2 animate-pulse" />
+                  <div key={i} className="h-14 rounded-lg bg-framer-surface-2 animate-pulse" />
                 ))}
               </div>
-            ) : history.length === 0 ? (
-              <p className="text-xs text-framer-ink-muted">Nenhum orçamento recente.</p>
+            ) : whatsappError ? (
+              <p className="text-xs text-red-500">{whatsappError}</p>
+            ) : whatsappLeads.length === 0 ? (
+              <p className="text-xs text-framer-ink-muted">Nenhuma conversa pendente de orçamento.</p>
             ) : (
-              <div className="space-y-1">
-                {history.map((item, idx) => (
+              <div className="space-y-1.5">
+                {whatsappLeads.map((lead) => (
                   <button
-                    key={item.id}
+                    key={lead.id || lead.remoteJid || lead.telefone}
                     type="button"
-                    onClick={() => loadHistoryItem(item)}
-                    className={cn(
-                      'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors',
-                      idx === history.length - 1 && 'pb-1'
-                    )}
+                    onClick={() => useWhatsappLead(lead)}
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-framer-surface-2 transition-colors"
                   >
-                    <div className="min-w-0">
-                      <p className="font-medium text-framer-ink truncate">{item.cliente || 'Cliente'}</p>
-                      <p className="text-xs text-framer-ink-muted truncate">{item.id}</p>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-framer-ink truncate">{lead.nome || lead.telefone || 'Contato WhatsApp'}</p>
+                        <p className="text-xs text-framer-ink-muted truncate">{lead.telefone}</p>
+                      </div>
+                      {(lead.produto || lead.quantidade) && (
+                        <span className="shrink-0 rounded-full bg-framer-accent-blue/10 px-2 py-0.5 text-[11px] font-medium text-framer-accent-blue">
+                          {[lead.produto, lead.quantidade ? `${lead.quantidade} un` : ''].filter(Boolean).join(' · ')}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                      <span className="text-[11px] text-framer-ink-muted whitespace-nowrap">
-                        {formatDate(item.data)}
-                      </span>
-                      <span className="text-xs font-medium text-framer-ink whitespace-nowrap">
-                        {formatBRL(item.valor)}
-                      </span>
-                    </div>
+                    {(lead.email || lead.resumo) && (
+                      <p className="mt-1 truncate text-xs text-framer-ink-muted">
+                        {lead.email || lead.resumo}
+                      </p>
+                    )}
                   </button>
                 ))}
               </div>

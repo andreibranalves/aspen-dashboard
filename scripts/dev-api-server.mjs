@@ -36,6 +36,7 @@ import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js'
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
+import { handler as whatsappLeads } from '../api/_functions/whatsapp-leads.js';
 import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
@@ -57,6 +58,7 @@ const ROUTES = {
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
+  'whatsapp-leads': whatsappLeads,
   view,
 };
 

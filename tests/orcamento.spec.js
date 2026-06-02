@@ -94,6 +94,23 @@ const MOCK_LEAD_DETAIL = {
   quality_flags: [],
 };
 
+const MOCK_WHATSAPP_LEADS = {
+  success: true,
+  data: [
+    {
+      id: '5511999991234@s.whatsapp.net',
+      remoteJid: '5511999991234@s.whatsapp.net',
+      nome: 'Maria WhatsApp',
+      telefone: '5511999991234',
+      email: 'maria@teste.com',
+      produto: 'canga',
+      quantidade: 100,
+      resumo: 'Cliente: preciso de 100 cangas',
+      texto: 'Nome: Maria WhatsApp\nE-mail: maria@teste.com\nTelefone: 5511999991234\nPedido: canga — 100 un',
+    },
+  ],
+};
+
 // ── Helpers ──
 
 async function setupApiMocks(page) {
@@ -116,6 +133,10 @@ async function setupApiMocks(page) {
   // Mock other API calls the page might make on load (quotations list, etc.)
   await page.route('**/api/quotations', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) });
+  });
+
+  await page.route('**/api/whatsapp-leads', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_WHATSAPP_LEADS) });
   });
 }
 
@@ -164,6 +185,7 @@ async function setupLeadsMocks(page) {
 test.describe('Auto Quote — Fluxo Principal', () => {
 
   test('página /auto carrega com formulário visível', async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/#/auto');
     // Aguarda React montar
     await page.waitForSelector('textarea', { timeout: 10000 });
@@ -200,6 +222,7 @@ test.describe('Auto Quote — Fluxo Principal', () => {
   });
 
   test('botão Extrair desabilitado sem texto', async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
@@ -208,6 +231,7 @@ test.describe('Auto Quote — Fluxo Principal', () => {
   });
 
   test('botão habilita quando texto é inserido', async ({ page }) => {
+    await setupApiMocks(page);
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
@@ -222,6 +246,19 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect(submitBtn).toBeEnabled();
   });
 
+  test('card do WhatsApp preenche a textarea sem extrair automaticamente', async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/#/auto');
+    await page.waitForSelector('textarea', { timeout: 10000 });
+
+    await page.getByRole('button', { name: /WhatsApp/i }).click();
+    await page.getByText('Maria WhatsApp').click();
+
+    const textarea = page.locator('textarea').first();
+    await expect(textarea).toHaveValue(MOCK_WHATSAPP_LEADS.data[0].texto);
+    await expect(page.getByText(/Resultados \(/i)).toHaveCount(0);
+  });
+
 });
 
 test.describe('Leads — Página single e visualização rápida', () => {
@@ -229,8 +266,8 @@ test.describe('Leads — Página single e visualização rápida', () => {
     await setupLeadsMocks(page);
     await page.goto('/#/leads');
 
-    await expect(page.getByRole('main').getByRole('heading', { name: /Leads \/ Clientes/i })).toBeVisible({ timeout: 10000 });
-    await page.getByText('João Silva').first().click();
+    await expect(page.getByRole('main').getByRole('heading', { name: /^Leads$/i })).toBeVisible({ timeout: 10000 });
+    await page.locator('tbody tr').filter({ hasText: 'João Silva' }).first().click();
 
     await expect(page).toHaveURL(/#\/leads\/lead\/LEAD-001/);
     await expect(page.locator('main h1').filter({ hasText: 'João Silva' }).first()).toBeVisible({ timeout: 10000 });
