@@ -3,7 +3,7 @@
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
 import { useState } from 'react';
-import { Pencil, Trash2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
+import { Pencil, Trash2, X, AlertTriangle, Send, FileText, Check } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
@@ -145,6 +145,7 @@ export default function SplitResultCard({
             <col className="w-24" />
             <col className="w-28" />
             <col className="w-28" />
+            <col className="w-8" />
           </colgroup>
           <thead>
             <tr className="border-b border-framer-hairline text-framer-ink-muted">
@@ -152,6 +153,7 @@ export default function SplitResultCard({
               <th className="px-3 py-2 text-center font-medium">Qtd</th>
               <th className="px-3 py-2 text-center font-medium">Preço</th>
               <th className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
+              <th className="py-2 pr-4" />
             </tr>
           </thead>
           <tbody>
@@ -190,11 +192,21 @@ export default function SplitResultCard({
                 <td className="py-2 pl-3 pr-4 text-right font-medium">
                   {formatBRL((item.qty || 0) * (item.rate || 0))}
                 </td>
+                <td className="py-2 pr-4">
+                  <button
+                    type="button"
+                    onClick={() => onRemoveItem(draft.index, ii)}
+                    className="p-0.5 rounded text-framer-ink-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                    title="Remover produto"
+                  >
+                    <X size={13} />
+                  </button>
+                </td>
               </tr>
             ))}
             {items.filter(it => it.item_code).length === 0 && (
               <tr>
-                <td colSpan={4} className="py-4 text-center text-xs text-framer-ink-muted">
+                <td colSpan={5} className="py-4 text-center text-xs text-framer-ink-muted">
                   Nenhum item adicionado
                 </td>
               </tr>
