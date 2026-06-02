@@ -459,8 +459,7 @@ export default function LeadsPage({ navigate }) {
   return (
     <div className="space-y-4 pb-28">
       <PageHeader
-        title="Leads / Clientes"
-        description={`${totalRecords} registro${totalRecords !== 1 ? 's' : ''}`}
+        title="Leads"
       />
 
       {/* Tipo chips */}

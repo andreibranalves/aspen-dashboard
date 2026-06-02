@@ -3,7 +3,6 @@ import {
   ShoppingCart,
   FileText,
   Sparkles,
-  Truck,
   Columns3,
   Package,
   Users,
@@ -15,16 +14,30 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
-const NAV_ITEMS = [
-  { hash: '/dashboard',    label: 'Dashboard',    icon: BarChart3 },
-  { hash: '/auto',         label: 'Auto',         icon: Sparkles },
-  { hash: '/quotations',   label: 'Orçamentos',   icon: FileText },
-  { hash: '/sales-orders', label: 'Pedidos',      icon: ShoppingCart },
-  { hash: '/freight',      label: 'Frete',        icon: Truck },
-  { hash: '/crm',          label: 'CRM',          icon: Columns3 },
-  { hash: '/products',     label: 'Produtos',     icon: Package },
-  { hash: '/leads',        label: 'Leads',        icon: Users },
-  { hash: '/settings',     label: 'Config',       icon: Settings },
+const NAV_SECTIONS = [
+  {
+    title: 'Operacional',
+    items: [
+      { hash: '/auto',         label: 'Auto',         icon: Sparkles },
+      { hash: '/dashboard',    label: 'Dashboard',    icon: BarChart3 },
+      { hash: '/sales-orders', label: 'Pedidos',      icon: ShoppingCart },
+      { hash: '/crm',          label: 'CRM',          icon: Columns3 },
+    ],
+  },
+  {
+    title: 'Cadastros',
+    items: [
+      { hash: '/quotations',   label: 'Orçamentos',   icon: FileText },
+      { hash: '/products',     label: 'Produtos',     icon: Package },
+      { hash: '/leads',        label: 'Leads',        icon: Users },
+    ],
+  },
+  {
+    title: 'Outros',
+    items: [
+      { hash: '/settings',     label: 'Configurações', icon: Settings },
+    ],
+  },
 ];
 
 /**
@@ -72,22 +85,34 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate,
 
         {/* Navigation */}
         <nav className="flex-1 py-2 overflow-y-auto">
-          {NAV_ITEMS.map(({ hash, label, icon: Icon }) => (
-            <button
-              key={hash}
-              onClick={() => onNavigate(hash)}
-              className={cn(
-                'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
-                'hover:bg-primary/5',
-                currentRoute === hash
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-framer-ink-muted',
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.title} className="mb-2">
+              {/* Section header — hidden when collapsed */}
+              {!collapsed && (
+                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-framer-ink-muted/50">
+                  {section.title}
+                </div>
               )}
-              title={collapsed ? label : undefined}
-            >
-              <Icon size={20} className="shrink-0" />
-              {!collapsed && <span className="truncate">{label}</span>}
-            </button>
+              {/* Section divider when collapsed */}
+              {collapsed && <div className="mx-3 my-2 border-t border-framer-hairline" />}
+              {section.items.map(({ hash, label, icon: Icon }) => (
+                <button
+                  key={hash}
+                  onClick={() => onNavigate(hash)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                    'hover:bg-primary/5',
+                    currentRoute === hash
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-framer-ink-muted',
+                  )}
+                  title={collapsed ? label : undefined}
+                >
+                  <Icon size={20} className="shrink-0" />
+                  {!collapsed && <span className="truncate">{label}</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 

@@ -510,7 +510,6 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
 
       <PageHeader
         title={isNewLead ? 'Novo Lead' : (detail.display_name || decodedId)}
-        description={isNewLead ? 'Preencha os dados para criar um novo lead.' : `${tipoLabel(detail.doctype || doctype)} · ${detail.name || decodedId}`}
       />
 
       <section className="bg-card rounded-xl border border-border shadow-sm p-5">

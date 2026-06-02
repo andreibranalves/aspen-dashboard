@@ -358,7 +358,6 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Configurações"
-        description="Estas configurações ficam salvas neste navegador."
       />
 
       {/* Section: Modelo de visualização */}

@@ -170,8 +170,7 @@ export default function SalesOrdersPage({ navigate }) {
     <div className="space-y-4 pb-28">
       {/* PageHeader */}
       <PageHeader
-        title="Pedidos de Venda"
-        description="Vendas confirmadas no ERPNext"
+        title="Pedidos"
       />
 
       {/* Summary cards */}

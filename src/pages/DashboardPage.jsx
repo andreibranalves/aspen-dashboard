@@ -61,8 +61,7 @@ export default function DashboardPage({ navigate }) {
     return (
       <div className="space-y-6 animate-fade-in">
         <PageHeader
-          title="Dashboard de Vendas"
-          description="Resumo comercial baseado em pedidos confirmados e orçamentos abertos"
+          title="Dashboard"
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -86,8 +85,7 @@ export default function DashboardPage({ navigate }) {
     return (
       <div className="space-y-6 animate-fade-in">
         <PageHeader
-          title="Dashboard de Vendas"
-          description="Resumo comercial baseado em pedidos confirmados e orçamentos abertos"
+          title="Dashboard"
         />
         <div className="bg-card rounded-lg border border-border shadow-sm p-5">
           <div className="flex items-center gap-3 text-destructive">
@@ -138,8 +136,7 @@ export default function DashboardPage({ navigate }) {
     <div className="space-y-6 animate-fade-in">
       {/* ── Header ─────────────────────────────────────────────── */}
       <PageHeader
-        title="Dashboard de Vendas"
-        description="Resumo comercial baseado em pedidos confirmados e orçamentos abertos"
+        title="Dashboard"
       />
 
       {/* ── Period filter chips ─────────────────────────────────── */}

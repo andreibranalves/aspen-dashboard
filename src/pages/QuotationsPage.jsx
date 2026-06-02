@@ -312,7 +312,6 @@ export default function QuotationsPage({ navigate }) {
       {/* PageHeader + primary action */}
       <PageHeader
         title="Orçamentos"
-        description={`${totalRecords} orçamento${totalRecords !== 1 ? 's' : ''} — ${status ? STATUS_LABELS[status] || status : 'todos os status'}`}
       />
 
       {/* Status chips */}
