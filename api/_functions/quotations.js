@@ -281,6 +281,8 @@ async function handleDetail(quotationId) {
     status: quotation.status || '',
     docstatus: quotation.docstatus ?? 0,
     validade: quotation.valid_till || '',
+    email: quotation.contact_email || '',
+    telefone: quotation.contact_mobile || '',
     items,
     sales_order_id,
   };
