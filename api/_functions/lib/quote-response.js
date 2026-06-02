@@ -5,7 +5,7 @@
 const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
-import { DEFAULT_PRINT_FORMAT } from './print-format.js';
+import { resolvePrintFormat } from './print-format.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,8 @@ function buildBaseUrl(event) {
  * @returns {Promise<string|null>} HTML string or null
  */
 async function fetchPrintHtml(quotationId, entityType, entityId, nomeCliente) {
-  const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(DEFAULT_PRINT_FORMAT)}&no_letterhead=0`;
+  const printFormat = await resolvePrintFormat(quotationId);
+  const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
   try {
     const htmlRes = await fetch(pdfUrl, {
@@ -124,7 +125,8 @@ export async function buildQuoteResponse({
   const shortUrl = await shortenUrl(fullUrl);
   const printHtml = await fetchPrintHtml(quotationId, entityType, entityId, nomeCliente);
 
-  const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(DEFAULT_PRINT_FORMAT)}&no_letterhead=0`;
+  const printFormat = await resolvePrintFormat(quotationId);
+  const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
   const result = {
     success: true,

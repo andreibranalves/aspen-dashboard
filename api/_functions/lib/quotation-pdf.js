@@ -9,6 +9,7 @@ import { mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync, existsSyn
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { renderQuotationHtml } from './quotation-html.js';
+import { resolvePrintFormat } from './print-format.js';
 
 // Browser paths to try, in order of preference.
 const BROWSER_CANDIDATES = [
@@ -59,11 +60,14 @@ export async function generateQuotationPdf(quotationId, opts = {}) {
     );
   }
 
+  // Determine the best print format for this quotation
+  const printFormat = await resolvePrintFormat(quotationId, opts.printFormat);
+
   // Render the HTML using the shared helper
   const { html, customerName } = await renderQuotationHtml(quotationId, {
     includePrintButton: false,
     forPdf: true,
-    printFormat: opts.printFormat,
+    printFormat,
   });
 
   // Create temp directory for HTML + PDF output
