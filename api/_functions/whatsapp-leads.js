@@ -108,6 +108,61 @@ function getMessageRemoteJidAlt(message) {
   );
 }
 
+// senderPn is the real phone number available even for @lid JIDs (WhatsApp workaround)
+function getSenderPhone(messages) {
+  for (const msg of messages || []) {
+    const senderPn = firstNonEmpty(
+      msg?.key?.senderPn,
+      msg?.senderPn,
+      msg?.message?.key?.senderPn,
+      msg?.lastMessage?.key?.senderPn,
+    );
+    if (senderPn) {
+      const digits = String(senderPn).replace(/\D/g, '');
+      if (digits.length >= 10) return digits;
+    }
+  }
+  return '';
+}
+
+// Build a map of pushName → phone digits from saved WhatsApp contacts
+// Also returns a fuzzy-match function for partial name matching
+async function getContactPhoneMap() {
+  try {
+    assertEvolutionConfig();
+    const payload = await evolutionFetch(`/chat/findContacts/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {});
+    const contacts = unwrapData(payload);
+    const exact = new Map();
+    const fuzzy = []; // { name, phone } for partial matching
+    for (const c of contacts || []) {
+      const name = cleanText(c?.pushName || c?.name || '').toLowerCase();
+      const jid = String(c?.remoteJid || '');
+      if (name && jid.endsWith('@s.whatsapp.net')) {
+        const phone = normalizeWhatsappPhone(jid);
+        if (isValidBrazilWhatsappPhone(phone)) {
+          exact.set(name, phone);
+          fuzzy.push({ name, phone });
+        }
+      }
+    }
+    return { exact, fuzzy };
+  } catch (err) {
+    console.warn('[whatsapp-leads] contact map fallback:', err?.message || err);
+    return { exact: new Map(), fuzzy: [] };
+  }
+}
+
+function lookupContactPhone(contactMap, leadName) {
+  if (!leadName || !contactMap) return '';
+  // Exact match
+  if (contactMap.exact.has(leadName)) return contactMap.exact.get(leadName);
+  // Fuzzy: contact name contains lead name, or vice versa
+  for (const { name, phone } of contactMap.fuzzy) {
+    if (name.includes(leadName) || leadName.includes(name)) return phone;
+  }
+  return '';
+}
+
 function getInboundPushName(messages) {
   return (messages || [])
     .slice()
@@ -278,16 +333,21 @@ async function getConvertedContactKeys() {
   const phones = new Map();
   const emails = new Map();
   const names = new Map();
+  const emailPhones = new Map(); // email → phone (for @lid fallback)
   for (const row of rows || []) {
     const quotationId = String(row.name || '').trim();
     const phone = normalizeComparablePhone(row.contact_mobile);
-    if (phone && quotationId && !phones.has(phone)) phones.set(phone, quotationId);
     const email = String(row.contact_email || '').trim().toLowerCase();
+    if (phone && quotationId && !phones.has(phone)) phones.set(phone, quotationId);
     if (email && quotationId && !emails.has(email)) emails.set(email, quotationId);
     const name = String(row.customer_name || '').trim().toLowerCase();
     if (name && quotationId && !names.has(name)) names.set(name, quotationId);
+    const fullPhone = normalizeWhatsappPhone(row.contact_mobile);
+    if (email && fullPhone && isValidBrazilWhatsappPhone(fullPhone) && !emailPhones.has(email)) {
+      emailPhones.set(email, fullPhone);
+    }
   }
-  return { phones, emails, names };
+  return { phones, emails, names, emailPhones };
 }
 
 export function findConvertedQuotation(lead, converted) {
@@ -339,7 +399,11 @@ export async function handler(event) {
   }
 
   try {
-    const [chats, converted] = await Promise.all([findChats(), getConvertedContactKeys()]);
+    const [chats, converted, contactMap] = await Promise.all([
+      findChats(),
+      getConvertedContactKeys(),
+      getContactPhoneMap(),
+    ]);
     const candidates = [];
 
     for (const chat of chats) {
@@ -356,9 +420,20 @@ export async function handler(event) {
       );
       let telefone = normalizeWhatsappPhone(displayJid);
 
+      // Fallback 1: senderPn in messages (WhatsApp workaround for @lid JIDs)
+      if (!isValidBrazilWhatsappPhone(telefone)) {
+        const senderPhone = getSenderPhone(messages);
+        if (senderPhone) {
+          const senderPhoneFormatted = normalizeWhatsappPhone(senderPhone);
+          if (isValidBrazilWhatsappPhone(senderPhoneFormatted)) {
+            telefone = senderPhoneFormatted;
+          }
+        }
+      }
+
       const extracted = await extractLeadWithOpenRouter(conversationText);
 
-      // Fallback: if JID-based phone is not a valid BR number, try extracted phone from conversation
+      // Fallback 2: try extracted phone from conversation text (regex + OpenRouter)
       if (!isValidBrazilWhatsappPhone(telefone) && extracted.telefone) {
         const fallbackPhone = normalizeWhatsappPhone(extracted.telefone);
         if (isValidBrazilWhatsappPhone(fallbackPhone)) {
@@ -366,7 +441,23 @@ export async function handler(event) {
         }
       }
       if (!telefone) continue;
+
       const nome = firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, getInboundPushName(messages), extracted?.nome, telefone);
+
+      // Fallback 3: match email against ERPNext (most reliable for @lid resolution)
+      if (!isValidBrazilWhatsappPhone(telefone)) {
+        const leadEmail = normalizeLeadEmail(extracted.email);
+        if (leadEmail && converted.emailPhones?.has(leadEmail)) {
+          telefone = converted.emailPhones.get(leadEmail);
+        }
+      }
+
+      // Fallback 4: match resolved name against saved contacts (fuzzy match for @lid)
+      if (!isValidBrazilWhatsappPhone(telefone)) {
+        const leadName = cleanText(nome).toLowerCase();
+        const contactPhone = lookupContactPhone(contactMap, leadName);
+        if (contactPhone) telefone = contactPhone;
+      }
       const timestamp = getChatTimestamp(chat) || Math.max(...normalizeMessages(messages).map(m => m.timestamp), 0);
       const lead = {
         id: remoteJid,
