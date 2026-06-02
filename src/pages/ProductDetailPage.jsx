@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle, Search, Check } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
-import PageHeader from '@/components/PageHeader.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
@@ -10,11 +9,8 @@ import Skeleton from '@/components/Skeleton.jsx';
 
 const BRACKETS = [30, 100, 300, 500, 1000];
 
-function priceTone(row) {
-  if (row?.status === 'missing' || row?.rate == null) {
-    return 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40';
-  }
-  return 'bg-framer-success/10 text-framer-success border-framer-success/30';
+function formatPct(v) {
+  return Math.round(v) + '%';
 }
 
 export default function ProductDetailPage({ sku, navigate }) {
@@ -52,6 +48,40 @@ export default function ProductDetailPage({ sku, navigate }) {
   useEffect(() => { fetchProduct(); }, [fetchProduct]);
   useEffect(() => { fetchAtividades(); }, [fetchAtividades]);
 
+  // ── KPI memoized values ──
+  const custo = useMemo(() => {
+    const val = parseFloat(edited.custo);
+    return !isNaN(val) && val > 0 ? val : 0;
+  }, [edited.custo]);
+
+  const precosRates = useMemo(() => {
+    if (!product?.precos) return [];
+    return BRACKETS.map(faixa => {
+      const row = product.precos.find(p => Number(p.faixa) === faixa);
+      const rate = editing
+        ? (() => { const r = parseFloat(edited.rates?.[faixa]); return !isNaN(r) && r > 0 ? r : null; })()
+        : (row?.rate != null ? row.rate : null);
+      return { faixa, rate };
+    });
+  }, [product, edited.rates, editing]);
+
+  const kpis = useMemo(() => {
+    const valid = precosRates.filter(p => p.rate != null);
+    if (valid.length === 0 || custo <= 0) return null;
+
+    const withMargin = valid.map(p => {
+      const margin = ((p.rate - custo) / p.rate) * 100;
+      const totalProfit = (p.rate - custo) * p.faixa;
+      return { ...p, margin, totalProfit };
+    });
+
+    const avgMargin = withMargin.reduce((s, p) => s + p.margin, 0) / withMargin.length;
+    const avgMarginReais = withMargin.reduce((s, p) => s + (p.rate - custo), 0) / withMargin.length;
+    const bestProfit = withMargin.reduce((a, b) => a.totalProfit > b.totalProfit ? a : b);
+
+    return { avgMargin, avgMarginReais, bestProfit, withMargin };
+  }, [precosRates, custo]);
+
   // ── Start / Cancel editing ──
   const startEditing = () => {
     const { produto, precos = [] } = product || {};
@@ -65,8 +95,9 @@ export default function ProductDetailPage({ sku, navigate }) {
       descricao: produto?.descricao || '',
       categoria: produto?.categoria || '',
       unidade: produto?.unidade || '',
-      marca: produto?.marca || '',
+      custo: edited.custo || '',
       ativo: produto?.ativo ?? true,
+      prazo: edited.prazo || '',
       rates,
     });
     setEditing(true);
@@ -74,7 +105,8 @@ export default function ProductDetailPage({ sku, navigate }) {
 
   const cancelEditing = () => {
     setEditing(false);
-    setEdited({});
+    // Keep custo/prazo across cancel so KPIs don't disappear
+    setEdited(prev => ({ custo: prev.custo, prazo: prev.prazo, rates: {} }));
   };
 
   const saveProduct = async () => {
@@ -82,7 +114,7 @@ export default function ProductDetailPage({ sku, navigate }) {
     setToast(null);
     try {
       const { produto } = product || {};
-      const { nome, descricao, categoria, unidade, marca, ativo, rates } = edited;
+      const { nome, descricao, categoria, unidade, ativo, rates } = edited;
 
       const precos = BRACKETS.map(faixa => {
         const raw = rates[faixa];
@@ -95,7 +127,6 @@ export default function ProductDetailPage({ sku, navigate }) {
       if (descricao !== (produto.descricao || '')) metadata.descricao = descricao;
       if (categoria !== (produto.categoria || '')) metadata.categoria = categoria;
       if (unidade !== (produto.unidade || '')) metadata.unidade = unidade;
-      if (marca !== (produto.marca || '')) metadata.marca = marca;
       if (ativo !== produto.ativo) metadata.ativo = ativo;
 
       const body = {};
@@ -115,8 +146,9 @@ export default function ProductDetailPage({ sku, navigate }) {
 
       setToast({ type: 'success', message: 'Produto atualizado com sucesso!' });
       setEditing(false);
-      setEdited({});
       await fetchProduct();
+      // Preserve custo after save
+      setEdited(prev => ({ custo: prev.custo, prazo: prev.prazo, rates: {} }));
     } catch (err) {
       setToast({ type: 'error', message: err.message || 'Erro ao salvar produto.' });
     } finally {
@@ -129,15 +161,6 @@ export default function ProductDetailPage({ sku, navigate }) {
     const timer = setTimeout(() => setToast(null), 5000);
     return () => clearTimeout(timer);
   }, [toast]);
-
-  // ── KPI helpers ──
-  const precosArr = product?.precos || [];
-  const precosValidos = precosArr.filter(p => p.rate != null).sort((a, b) => a.rate - b.rate);
-  const menorPreco = precosValidos[0];
-  const maiorPreco = precosValidos[precosValidos.length - 1];
-  const economiaPct = maiorPreco?.rate && menorPreco?.rate
-    ? Math.round((1 - menorPreco.rate / maiorPreco.rate) * 100)
-    : 0;
 
   // ── Loading / Error states ──
   if (loading) return <SkeletonDetail title="Carregando produto…" />;
@@ -173,6 +196,9 @@ export default function ProductDetailPage({ sku, navigate }) {
   if (!produto) return null;
   const hasImage = produto.imagem && typeof produto.imagem === 'string' && produto.imagem.length > 0;
 
+  // ── Bar width helper: reduction % relative to 30 un. ──
+  const baseRate = precosRates.find(p => p.faixa === 30)?.rate || null;
+
   return (
     <div className="space-y-5">
       {/* ── Toast ── */}
@@ -186,69 +212,68 @@ export default function ProductDetailPage({ sku, navigate }) {
         </div>
       )}
 
-      {/* ── Page Header ── */}
-      <PageHeader
-        title={editing ? <span className="italic text-muted-foreground">Editando…</span> : (produto.nome || decodedSku)}
-        description={editing ? 'Altere os campos abaixo e salve.' : `SKU: ${produto.sku} · ${produto.categoria || 'Sem grupo'} · ${produto.ativo ? 'Ativo' : 'Inativo'}`}
-        action={(
-          <div className="flex gap-2 flex-wrap">
-            {editing ? (
-              <>
-                <Button onClick={saveProduct} disabled={saving} size="sm" className="min-h-10" aria-label="Salvar produto">
-                  {saving ? <><Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
-                </Button>
-                <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} className="min-h-10" aria-label="Cancelar edição">
-                  <X size={14} className="mr-1.5" />Cancelar
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="outline" size="sm" className="min-h-10" aria-label="Editar produto" onClick={startEditing}>
-                  <Edit3 size={14} className="mr-1.5" />Editar produto
-                </Button>
-                <Button variant="outline" className="min-h-10" aria-label="Voltar para produtos" onClick={() => navigate('/products')}>
-                  <ArrowLeft size={16} className="mr-2" />Voltar
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      />
+      {/* ── Actions ── */}
+      <div className="flex items-center justify-end flex-wrap gap-3">
+        <div className="flex gap-2">
+          {editing ? (
+            <>
+              <Button onClick={saveProduct} disabled={saving} size="sm" className="min-h-10" aria-label="Salvar produto">
+                {saving ? <><Skeleton className="h-3.5 w-3.5 rounded-full border-2 border-background mr-1.5" />Salvando…</> : <><Save size={14} className="mr-1.5" />Salvar</>}
+              </Button>
+              <Button variant="outline" size="sm" onClick={cancelEditing} disabled={saving} className="min-h-10" aria-label="Cancelar edição">
+                <X size={14} className="mr-1.5" />Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" className="min-h-10" onClick={() => navigate('/products')}>
+                <ArrowLeft size={16} className="mr-2" />Voltar
+              </Button>
+              <Button size="sm" className="min-h-10" aria-label="Editar produto" onClick={startEditing}>
+                <Edit3 size={14} className="mr-1.5" />Editar produto
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* ── Main grid ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* ── LEFT: Image only ── */}
         <div className="lg:col-span-4">
-          <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
+          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
             {hasImage ? (
-              <img src={produto.imagem} alt={produto.nome} className="w-full h-64 lg:h-80 object-cover"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <div className="aspect-square">
+                <img src={produto.imagem} alt={produto.nome} className="w-full h-full object-cover"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              </div>
             ) : (
-              <div className="w-full h-64 lg:h-80 flex flex-col items-center justify-center bg-framer-surface-1/40 text-framer-ink-muted gap-2">
-                <Package size={48} /><span className="text-sm">Sem imagem</span>
+              <div className="aspect-square bg-gradient-to-br from-framer-surface-1 to-framer-surface-2 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <Package size={48} className="text-muted-foreground/30" />
+                <span className="text-xs text-muted-foreground">Imagem</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── RIGHT: All content ── */}
+        {/* ── RIGHT: All content + edit fields ── */}
         <div className="lg:col-span-8 space-y-5">
 
-          {/* View: Tags + Title + SKU + Short desc */}
+          {/* View: Tags + Title + SKU + Badge + Short desc */}
           {!editing && (
             <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{produto.categoria || 'Sem grupo'}</span>
-                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.unidade || 'und'}</span>
-                {produto.marca && <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{produto.marca}</span>}
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">{produto.categoria || 'Sem grupo'}</span>
+                <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">{produto.unidade || 'und'}</span>
               </div>
               <div>
                 <h2 className="text-2xl font-bold inline">{produto.nome || decodedSku}</h2>
-                <span className="inline-flex items-center gap-2 text-xs ml-3 align-middle">
+                <div className="inline-flex items-center gap-2 text-xs ml-3 align-middle">
                   <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-muted-foreground">{produto.sku}</span>
                   <span className={`rounded-md px-2 py-0.5 font-medium ${produto.ativo ? 'bg-framer-success/10 text-framer-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
                     {produto.ativo ? 'Ativo' : 'Inativo'}
                   </span>
-                </span>
+                </div>
                 {produto.descricao && (
                   <p className="text-sm text-muted-foreground mt-1.5">{produto.descricao}</p>
                 )}
@@ -256,28 +281,30 @@ export default function ProductDetailPage({ sku, navigate }) {
             </div>
           )}
 
-          {/* Edit: Produto card (sketch-b layout) */}
+          {/* Edit: Produto card */}
           {editing && (
-            <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-4 relative">
+            <div className="bg-card rounded-2xl border border-border shadow-sm p-5 space-y-4 relative">
               {/* Toggle Ativo */}
               <label className="absolute top-3 right-3 inline-flex items-center gap-2 cursor-pointer">
                 <span className="text-xs text-muted-foreground">Ativo</span>
-                <input type="checkbox" checked={edited.ativo} onChange={(e) => setEdited(prev => ({ ...prev, ativo: e.target.checked }))}
-                  className="sr-only peer" />
-                <div className="w-9 h-5 rounded-full bg-muted peer-checked:bg-framer-success transition-colors"></div>
-                <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-white shadow peer-checked:-translate-x-4 transition-transform"></div>
+                <div className="relative">
+                  <input type="checkbox" checked={edited.ativo} onChange={(e) => setEdited(prev => ({ ...prev, ativo: e.target.checked }))}
+                    className="sr-only peer" />
+                  <div className="w-9 h-5 rounded-full bg-muted peer-checked:bg-framer-success transition-colors"></div>
+                  <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow peer-checked:translate-x-4 transition-transform"></div>
+                </div>
               </label>
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Produto</h3>
+              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Produto</h3>
 
               {/* Row 1: Nome 100% */}
-              <div className="space-y-1.5">
+              <div>
                 <label className="text-xs font-medium text-muted-foreground">Nome</label>
                 <Input value={edited.nome} onChange={(e) => setEdited(prev => ({ ...prev, nome: e.target.value }))}
                   className="min-h-10" placeholder="Nome do produto" />
               </div>
 
               {/* Row 2: Descrição 100% */}
-              <div className="space-y-1.5">
+              <div>
                 <label className="text-xs font-medium text-muted-foreground">Descrição</label>
                 <Input value={edited.descricao} onChange={(e) => setEdited(prev => ({ ...prev, descricao: e.target.value }))}
                   className="min-h-10" placeholder="Descrição do produto…" />
@@ -285,120 +312,133 @@ export default function ProductDetailPage({ sku, navigate }) {
 
               {/* Row 3: SKU | Categoria | Unidade */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1.5">
+                <div>
                   <label className="text-xs font-medium text-muted-foreground">SKU</label>
                   <Input value={produto.sku} disabled className="min-h-10 opacity-60 font-mono" />
                 </div>
-                <div className="space-y-1.5">
+                <div>
                   <label className="text-xs font-medium text-muted-foreground">Categoria</label>
                   <Input value={edited.categoria} onChange={(e) => setEdited(prev => ({ ...prev, categoria: e.target.value }))}
                     className="min-h-10" placeholder="Grupo" />
                 </div>
-                <div className="space-y-1.5">
+                <div>
                   <label className="text-xs font-medium text-muted-foreground">Unidade</label>
                   <Input value={edited.unidade} onChange={(e) => setEdited(prev => ({ ...prev, unidade: e.target.value }))}
                     className="min-h-10" placeholder="und" />
                 </div>
               </div>
 
-              {/* Row 4: Prazo de produção | Marca */}
+              {/* Row 4: Prazo de produção | Custo unitário */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+                <div>
                   <label className="text-xs font-medium text-muted-foreground">Prazo de produção (dias)</label>
                   <Input type="number" value={edited.prazo || ''} onChange={(e) => setEdited(prev => ({ ...prev, prazo: e.target.value }))}
                     className="min-h-10" placeholder="dias" min="1" />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Marca</label>
-                  <Input value={edited.marca} onChange={(e) => setEdited(prev => ({ ...prev, marca: e.target.value }))}
-                    className="min-h-10" placeholder="Marca" />
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground">Custo unitário (R$)</label>
+                  <Input type="number" step="0.01" min="0" value={edited.custo || ''}
+                    onChange={(e) => setEdited(prev => ({ ...prev, custo: e.target.value }))}
+                    className="min-h-10" placeholder="0,00" />
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── Pricing Card ── */}
-          <div className="bg-card rounded-lg border border-border shadow-sm p-4 md:p-5 space-y-4">
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Preços por quantidade</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Base ERPNext: Pricing Rule por faixa. Urgente aplica +30%.</p>
-            </div>
+          {/* ── PRICING ── */}
+          <div className="bg-card rounded-2xl border border-border shadow-sm p-5 space-y-4">
+            <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Preços por quantidade</h3>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    {BRACKETS.map((faixa) => (
-                      <th key={faixa} className="pb-2 pr-1 font-medium text-center text-xs uppercase tracking-wide">{faixa}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    {BRACKETS.map((faixa) => {
-                      const row = product.precos?.find(p => Number(p.faixa) === faixa) || { faixa, status: 'missing' };
-                      return (
-                        <td key={faixa} className="py-3 pr-1 text-center">
-                          {editing ? (
-                            <Input
-                              type="number" step="0.01" min="0"
-                              aria-label={`Preço da faixa ${faixa} unidades`}
-                              value={edited.rates?.[faixa] ?? ''}
-                              onChange={(e) => setEdited(prev => ({ ...prev, rates: { ...prev.rates, [faixa]: e.target.value } }))}
-                              className="w-28 text-center inline-block min-h-10" placeholder="0,00"
-                            />
-                          ) : (
-                            <span className={`inline-flex items-center rounded-md border px-2.5 py-1 font-mono text-sm font-medium ${priceTone(row)}`}>
-                              {row.rate != null ? formatBRL(row.rate) : '—'}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tbody>
-              </table>
+            {/* View: horizontal cards */}
+            {!editing && (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+                {BRACKETS.map((faixa) => {
+                  const row = precosRates.find(p => p.faixa === faixa);
+                  const rate = row?.rate;
+                  const barWidth = rate && baseRate ? (rate / baseRate) * 100 : 100;
+                  const isStar = faixa === 1000;
+                  const marginData = kpis?.withMargin?.find(m => m.faixa === faixa);
+
+                  return (
+                    <div key={faixa} className="text-center">
+                      <div className={`rounded-xl p-3 border ${isStar ? 'bg-framer-accent-blue/5 border-framer-accent-blue/20 ring-1 ring-framer-accent-blue/10' : 'bg-framer-surface-1 border-framer-surface-2'}`}>
+                        <p className={`text-[10px] font-semibold mb-1 ${isStar ? 'text-framer-accent-blue font-bold' : 'text-muted-foreground'}`}>
+                          {faixa.toLocaleString('pt-BR')} un.
+                        </p>
+                        <div className={`w-full h-2 rounded-full mb-2 ${isStar ? 'bg-framer-accent-blue/10' : 'bg-muted'}`}>
+                          <div className={`h-full rounded-full ${isStar ? 'bg-framer-accent-blue' : 'bg-framer-ink-muted/30'}`} style={{ width: `${barWidth}%` }}></div>
+                        </div>
+                        <p className={`font-mono text-sm font-bold ${isStar ? 'text-framer-ink font-extrabold' : 'text-framer-ink'}`}>
+                          {rate != null ? formatBRL(rate) : '—'}
+                        </p>
+                        {custo > 0 && marginData && marginData.margin > 0 && (
+                          <p className={`text-[10px] font-medium mt-0.5 ${
+                            marginData.margin > 50 ? 'text-framer-success' : marginData.margin > 30 ? 'text-framer-warning' : 'text-destructive'
+                          }`}>
+                            margem {formatPct(marginData.margin)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Edit: price inputs */}
+            {editing && (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+                {BRACKETS.map((faixa) => {
+                  const isStar = faixa === 1000;
+                  return (
+                    <div key={faixa} className="text-center">
+                      <p className={`text-[10px] font-semibold mb-1.5 ${isStar ? 'text-framer-accent-blue font-bold' : 'text-muted-foreground'}`}>
+                        {faixa.toLocaleString('pt-BR')} un.
+                      </p>
+                      <Input
+                        type="number" step="0.01" min="0"
+                        aria-label={`Preço da faixa ${faixa} unidades`}
+                        value={edited.rates?.[faixa] ?? ''}
+                        onChange={(e) => setEdited(prev => ({ ...prev, rates: { ...prev.rates, [faixa]: e.target.value } }))}
+                        className={`w-full text-center min-h-10 font-mono font-semibold ${isStar ? 'border-framer-accent-blue/20 bg-framer-accent-blue/5 font-bold' : ''}`}
+                        placeholder="0,00"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground text-center">Barras = redução % em relação a 30 un. Urgente: +30%.</p>
+          </div>
+
+          {/* ── KPI Summary Row ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Custo Unitário</p>
+              <p className="text-2xl font-bold text-framer-ink">{custo > 0 ? formatBRL(custo) : '—'}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">base para cálculos</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Margem Média (%)</p>
+              <p className="text-2xl font-bold text-framer-success">{kpis ? formatPct(kpis.avgMargin) : '—'}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">média entre faixas</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Margem Média (R$)</p>
+              <p className="text-2xl font-bold text-framer-accent-blue">{kpis ? formatBRL(kpis.avgMarginReais) : '—'}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{kpis ? 'média entre faixas' : custo > 0 ? 'adicione preços' : 'defina o custo'}</p>
+            </div>
+            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Lucro Total Máximo</p>
+              <p className="text-2xl font-bold text-framer-success">{kpis ? formatBRL(kpis.bestProfit.totalProfit) : '—'}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{kpis ? `${kpis.bestProfit.faixa.toLocaleString('pt-BR')} un.` : custo > 0 ? 'adicione preços' : 'defina o custo'}</p>
             </div>
           </div>
 
-          {/* ── View: Description Card ── */}
-          {!editing && produto.descricao && (
-            <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Descrição</h2>
-              <div className="prose prose-sm max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: produto.descricao }} />
-            </div>
-          )}
-
-          {/* ── KPI Row ── */}
-          {!editing && precosValidos.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
-                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Menor preço</p>
-                <p className="text-2xl font-bold text-framer-success">{menorPreco ? formatBRL(menorPreco.rate) : '—'}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{menorPreco ? `em ${menorPreco.faixa} un.` : '—'}</p>
-              </div>
-              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
-                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Maior preço</p>
-                <p className="text-2xl font-bold">{maiorPreco ? formatBRL(maiorPreco.rate) : '—'}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{maiorPreco ? `em ${maiorPreco.faixa} un.` : '—'}</p>
-              </div>
-              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
-                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Economia max</p>
-                <p className="text-2xl font-bold text-framer-accent-blue">{economiaPct}%</p>
-                <p className="text-xs text-muted-foreground mt-0.5">1.000 vs 30 un.</p>
-              </div>
-              <div className="bg-card rounded-lg border border-border shadow-sm p-4">
-                <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Urgente (+30%)</p>
-                <p className="text-2xl font-bold text-framer-warning">{menorPreco ? formatBRL(menorPreco.rate * 1.3) : '—'}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">menor preço urgente</p>
-              </div>
-            </div>
-          )}
-
           {/* ── Atividade recente ── */}
           {!editing && atividades.length > 0 && (
-            <div className="bg-card rounded-lg border border-border shadow-sm p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">Atividade recente</h2>
+            <div className="bg-card rounded-2xl border border-border shadow-sm p-5 space-y-3">
+              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Atividade recente</h3>
               <div className="space-y-2 text-sm">
                 {atividades.map((a, i) => (
                   <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
@@ -418,8 +458,10 @@ export default function ProductDetailPage({ sku, navigate }) {
           )}
 
           {/* ── Footer ── */}
-          {produto.modificado_em && !editing && (
-            <p className="text-xs text-muted-foreground text-center">Última modificação: {formatDate(produto.modificado_em)}</p>
+          {!editing && (
+            <p className="text-xs text-muted-foreground text-center">
+              {produto.modificado_em ? `Atualizado em ${formatDate(produto.modificado_em)}` : ''}
+            </p>
           )}
         </div>
       </div>
