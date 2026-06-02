@@ -160,9 +160,14 @@ function composeConversationText(messages) {
 function extractFallback(conversationText) {
   const email = normalizeLeadEmail(conversationText);
   const nameMatch = conversationText.match(/(?:meu nome é|me chamo|sou a?|cliente:)\s*([^\n,.]+)/i);
+  // Try to find a Brazilian phone number pattern in the text: (XX) XXXXX-XXXX or XX XXXXX-XXXX etc
+  const phoneMatch = conversationText.match(/(?:telefone|whatsapp|celular|contato|tel)[^\d]*(\d[\d\s().-]{8,})/i)
+    || conversationText.match(/\(?(\d{2})\)?\s*\d[\d\s.-]{7,}/);
+  const telefone = cleanText(phoneMatch?.[1] || '').replace(/\D/g, '');
   return {
     nome: cleanText(nameMatch?.[1] || ''),
     email,
+    telefone,
   };
 }
 
@@ -233,7 +238,7 @@ async function extractLeadWithOpenRouter(conversationText) {
   const fallback = extractFallback(conversationText);
   if (!OPENROUTER_API_KEY || !conversationText.trim()) return fallback;
 
-  const prompt = `Extraia apenas os dados de contato da pessoa nesta conversa de WhatsApp da Aspen Estamparia.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":""}\n\nRegras:\n- Nunca invente dados ausentes.\n- O objetivo é só identificar nome e e-mail. Não extraia pedido, produto ou quantidade.\n- Se a conversa tiver mais de um e-mail, retorne apenas o primeiro e-mail citado.\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
+  const prompt = `Extraia apenas os dados de contato da pessoa nesta conversa de WhatsApp da Aspen Estamparia.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":"","telefone":""}\n\nRegras:\n- Nunca invente dados ausentes.\n- O objetivo é só identificar nome, e-mail e telefone. Não extraia pedido, produto ou quantidade.\n- Se a conversa tiver mais de um e-mail ou telefone, retorne apenas o primeiro citado.\n- Telefone deve ser apenas dígitos com DDD (ex: 11987654321).\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
 
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -255,6 +260,7 @@ async function extractLeadWithOpenRouter(conversationText) {
     return {
       nome: cleanText(parsed.nome || fallback.nome),
       email: normalizeLeadEmail(parsed.email || fallback.email),
+      telefone: cleanText(parsed.telefone || fallback.telefone || '').replace(/\D/g, ''),
     };
   } catch (err) {
     console.warn('[whatsapp-leads] OpenRouter extraction fallback:', err?.message || err);
@@ -348,10 +354,18 @@ export async function handler(event) {
         messages.map(getMessageRemoteJidAlt).find(Boolean),
         remoteJid
       );
-      const telefone = normalizeWhatsappPhone(displayJid);
-      if (!telefone) continue;
+      let telefone = normalizeWhatsappPhone(displayJid);
 
       const extracted = await extractLeadWithOpenRouter(conversationText);
+
+      // Fallback: if JID-based phone is not a valid BR number, try extracted phone from conversation
+      if (!isValidBrazilWhatsappPhone(telefone) && extracted.telefone) {
+        const fallbackPhone = normalizeWhatsappPhone(extracted.telefone);
+        if (isValidBrazilWhatsappPhone(fallbackPhone)) {
+          telefone = fallbackPhone;
+        }
+      }
+      if (!telefone) continue;
       const nome = firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, getInboundPushName(messages), extracted?.nome, telefone);
       const timestamp = getChatTimestamp(chat) || Math.max(...normalizeMessages(messages).map(m => m.timestamp), 0);
       const lead = {

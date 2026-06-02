@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Sparkles, FileText, AlertTriangle, RotateCcw, History, MessageCircle, RefreshCw } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
-import { capitalize, formatBRL, formatDate } from '@/lib/formatters.js';
+import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -10,13 +10,21 @@ import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
 
 export default function AutoQuotePage() {
+  // ── Helpers ──
+  const fmtWhatsappPhone = (phone) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    // Strip 55 country code prefix
+    const local = digits.startsWith('55') ? digits.slice(2) : digits;
+    return fmtPhone(local) || phone;
+  };
+
   // ── Input state ──
   const [text, setText] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [bottomTab, setBottomTab] = useState('recentes');
+  const [bottomTab, setBottomTab] = useState('whatsapp');
   const [whatsappLeads, setWhatsappLeads] = useState([]);
   const [whatsappLoading, setWhatsappLoading] = useState(false);
   const [whatsappError, setWhatsappError] = useState(null);
@@ -305,19 +313,6 @@ export default function AutoQuotePage() {
               <div className="inline-flex rounded-lg bg-framer-surface-2 p-0.5">
                 <button
                   type="button"
-                  onClick={() => setBottomTab('recentes')}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                    bottomTab === 'recentes'
-                      ? 'bg-card text-framer-ink shadow-sm'
-                      : 'text-framer-ink-muted hover:text-framer-ink'
-                  )}
-                >
-                  <History size={13} />
-                  Recentes
-                </button>
-                <button
-                  type="button"
                   onClick={() => setBottomTab('whatsapp')}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
@@ -328,6 +323,19 @@ export default function AutoQuotePage() {
                 >
                   <MessageCircle size={13} />
                   WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBottomTab('recentes')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                    bottomTab === 'recentes'
+                      ? 'bg-card text-framer-ink shadow-sm'
+                      : 'text-framer-ink-muted hover:text-framer-ink'
+                  )}
+                >
+                  <History size={13} />
+                  Recentes
                 </button>
               </div>
 
@@ -382,9 +390,15 @@ export default function AutoQuotePage() {
                 </div>
               )
             ) : whatsappLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-14 rounded-lg bg-framer-surface-2 animate-pulse" />
+              <div className="space-y-1">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse">
+                    <div className="space-y-1">
+                      <div className="h-4 w-28 rounded bg-framer-surface-2" />
+                      <div className="h-3 w-44 rounded bg-framer-surface-2" />
+                    </div>
+                    <div className="h-5 w-20 rounded-full bg-framer-surface-2" />
+                  </div>
                 ))}
               </div>
             ) : whatsappError ? (
@@ -392,7 +406,7 @@ export default function AutoQuotePage() {
             ) : whatsappLeads.length === 0 ? (
               <p className="text-xs text-framer-ink-muted">Nenhuma conversa recente encontrada.</p>
             ) : (
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {whatsappLeads.map((lead) => {
                   const tagLabel = lead.quotationId || lead.statusLabel || (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
                   const tagClass = lead.quotationId
@@ -401,24 +415,24 @@ export default function AutoQuotePage() {
                       ? 'bg-emerald-500/10 text-emerald-600'
                       : 'bg-amber-500/10 text-amber-600';
 
+                  const line2Parts = [lead.nome, lead.email].filter(Boolean);
+                  const line2 = line2Parts.length ? line2Parts.join(' — ') : 'Nome não identificado';
+
                   return (
                     <button
                       key={lead.id || lead.remoteJid || lead.telefone}
                       type="button"
                       onClick={() => useWhatsappLead(lead)}
-                      className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-framer-surface-2 transition-colors"
+                      className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 space-y-0.5">
-                          <p className="font-medium text-framer-ink truncate">{lead.telefone || 'Telefone não identificado'}</p>
-                          <p className="text-xs text-framer-ink-muted truncate">{lead.nome || 'Nome não identificado'}</p>
-                          <p className="text-xs text-framer-ink-muted truncate">{lead.email || 'E-mail não identificado'}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tagClass}`}>
-                            {tagLabel}
-                          </span>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-framer-ink truncate">{fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}</p>
+                        <p className="text-xs text-framer-ink-muted truncate">{line2}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5 ml-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}>
+                          {tagLabel}
+                        </span>
                       </div>
                     </button>
                   );
