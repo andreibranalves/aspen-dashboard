@@ -1,25 +1,13 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Sparkles, FileText, ExternalLink, Check, AlertTriangle, RotateCcw, History } from 'lucide-react';
+import { Sparkles, FileText, AlertTriangle, RotateCcw, History } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
-import {
-  loadWhatsappFlows,
-  getSelectedFlowId,
-  saveSelectedFlowId,
-  flowToSequencePayload,
-} from '@/lib/whatsappFlows.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
-import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
-
-// ── Result total helper ──
-function calculateResultTotal(items = []) {
-  return items.reduce((sum, item) => sum + ((Number(item.qty) || 0) * (Number(item.rate) || 0)), 0);
-}
 
 export default function AutoQuotePage() {
   // ── Input state ──
@@ -28,12 +16,6 @@ export default function AutoQuotePage() {
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-
-  // ── WhatsApp flows ──
-  const [whatsappFlows, setWhatsappFlows] = useState(() => loadWhatsappFlows());
-  const [selectedWhatsappFlowId, setSelectedWhatsappFlowId] = useState(() => getSelectedFlowId(loadWhatsappFlows()));
-  const selectedWhatsappFlow = whatsappFlows.find(f => f.id === selectedWhatsappFlowId) || whatsappFlows[0];
-  const [waSendStatus, setWaSendStatus] = useState({});
 
   // ── Extracted hooks ──
   const {
@@ -51,20 +33,6 @@ export default function AutoQuotePage() {
   // ── Image input ──
   const { imageData, clearImage, handleImageFile } = useImageInput();
 
-  // ── Refresh WhatsApp flows ──
-  useEffect(() => {
-    const refreshFlows = () => {
-      const loaded = loadWhatsappFlows();
-      setWhatsappFlows(loaded);
-      setSelectedWhatsappFlowId(prev => loaded.some(flow => flow.id === prev) ? prev : getSelectedFlowId(loaded));
-    };
-    window.addEventListener('focus', refreshFlows);
-    window.addEventListener('storage', refreshFlows);
-    return () => {
-      window.removeEventListener('focus', refreshFlows);
-      window.removeEventListener('storage', refreshFlows);
-    };
-  }, []);
 
   // ── Load recent quotations ──
   const loadHistory = useCallback(async () => {
@@ -90,30 +58,6 @@ export default function AutoQuotePage() {
     return () => { main.className = orig; };
   }, []);
 
-  // ── WhatsApp send ──
-  const handleSendWhatsApp = useCallback(async (draft, resultData) => {
-    if (!resultData?.quotation_id) return;
-    const key = resultData.quotation_id;
-    const linkOrcamento = new URL(buildQuotationViewUrl(resultData.quotation_id), window.location.origin).toString();
-    setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sending', message: 'Enviando sequência…' } }));
-    try {
-      const sequencePayload = selectedWhatsappFlow ? flowToSequencePayload(selectedWhatsappFlow) : null;
-      const response = await apiPost('/send-whatsapp', {
-        quotation_id: resultData.quotation_id,
-        deal_id: resultData.deal_id,
-        nome: resultData.cliente || draft.edited.nome,
-        telefone: draft.edited.telefone,
-        link_orcamento: linkOrcamento,
-        pdf_url: resultData.pdf_url,
-        items: resultData.items || draft.edited.items,
-        whatsapp_sequence: sequencePayload,
-      });
-      const count = response.steps?.length || 1;
-      setWaSendStatus(prev => ({ ...prev, [key]: { state: 'sent', message: `${count} envio(s) realizados pelo WhatsApp.` } }));
-    } catch (err) {
-      setWaSendStatus(prev => ({ ...prev, [key]: { state: 'error', message: err.message || 'Falha ao enviar WhatsApp.' } }));
-    }
-  }, [selectedWhatsappFlow]);
 
   // ── Extract text → build drafts ──
   const handleExtract = useCallback(async () => {
@@ -137,8 +81,16 @@ export default function AutoQuotePage() {
       if (nonUrgent.length > 0) newDrafts = await fetchPricing(nonUrgent, false);
       const urgent = newDrafts.filter(d => d.edited.urgente);
       if (urgent.length > 0) await fetchPricing(urgent, true);
-      setDrafts(newDrafts);
-      try { localStorage.setItem('aspen_drafts', JSON.stringify(newDrafts)); } catch {}
+      setDrafts(prev => {
+        const startIndex = prev.length;
+        const appendedDrafts = newDrafts.map((draft, offset) => ({
+          ...draft,
+          index: startIndex + offset,
+        }));
+        const next = [...prev, ...appendedDrafts];
+        try { localStorage.setItem('aspen_drafts', JSON.stringify(next)); } catch {}
+        return next;
+      });
       loadHistory();
     } catch (err) {
       setError(err.message || 'Erro na extração.');
@@ -231,12 +183,18 @@ export default function AutoQuotePage() {
     setDrafts([]);
     setError(null);
     setExtracting(false);
-    setWaSendStatus({});
     setProductSearch({});
     try { localStorage.removeItem('aspen_drafts'); } catch {}
   }, []);
 
+  const clearResults = useCallback(() => {
+    setDrafts([]);
+    setProductSearch({});
+    try { localStorage.removeItem('aspen_drafts'); } catch {}
+  }, [setDrafts, setProductSearch]);
+
   const activeDrafts = drafts.filter(d => !d.discarded);
+  const visibleDrafts = [...activeDrafts].reverse();
 
   return (
     <div className="flex flex-col h-full overflow-hidden animate-fade-in">
@@ -375,124 +333,52 @@ export default function AutoQuotePage() {
                 <h2 className="text-lg font-semibold text-framer-ink">
                   Resultados ({activeDrafts.length})
                 </h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearResults}
+                  disabled={activeDrafts.length === 0}
+                  className="text-framer-ink-muted"
+                >
+                  <RotateCcw size={14} />
+                  Limpar lista
+                </Button>
               </div>
 
-              {activeDrafts.map((draft, displayIdx) => {
-                const isDone = draft.status === 'done';
+              {visibleDrafts.map((draft, displayIdx) => {
                 const isError = draft.status === 'error';
                 const isProcessing = draft.status === 'processing';
+                const relativeViewUrl = draft.result?.data?.quotation_id
+                  ? buildQuotationViewUrl(draft.result.data.quotation_id)
+                  : '';
 
-                if (isDone || isError) {
-                  const data = draft.result?.data;
-                  const total = calculateResultTotal(data?.items || []);
-                  const relativeViewUrl = data?.quotation_id ? buildQuotationViewUrl(data.quotation_id) : '';
-                  const waStatus = data?.quotation_id ? waSendStatus[data.quotation_id] : null;
-
+                if (isError) {
                   return (
-                    <div key={draft.index} className={cn(
-                      'overflow-hidden rounded-[20px] border shadow-sm',
-                      isDone ? 'border-framer-accent-blue/30 bg-card' : 'border-red-300 bg-card',
-                    )}>
-                      {isDone && data && (
-                        <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-                          <div className="space-y-4 p-5">
-                            <div className="flex items-start gap-3">
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                                <Check size={18} />
-                              </span>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-primary">Orçamento criado</p>
-                                <h3 className="mt-1 text-lg font-semibold tracking-tight text-framer-ink">{data.quotation_id}</h3>
-                                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-framer-ink-muted">
-                                  <span>{capitalize(data.cliente || draft.edited.nome)}</span>
-                                  <span className="rounded-full bg-framer-surface-1 px-2 py-0.5 text-xs">
-                                    {data.customer_new ? 'Cliente novo' : 'Cliente antigo'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            {data.items && (
-                              <details className="group rounded-xl border border-framer-hairline bg-framer-surface-1/40">
-                                <summary className="flex cursor-pointer items-center justify-between px-4 py-2.5 text-sm font-medium text-framer-ink">
-                                  Ver itens do orçamento
-                                  <span className="text-xs text-framer-ink-muted">{data.items.length} item(s)</span>
-                                </summary>
-                                <div className="overflow-x-auto border-t border-framer-hairline">
-                                  <table className="w-full min-w-[400px] text-xs">
-                                    <thead className="text-framer-ink-muted">
-                                      <tr>
-                                        <th className="p-3 text-left">SKU</th>
-                                        <th className="p-3 text-right">Qtd</th>
-                                        <th className="p-3 text-right">R$/un</th>
-                                        <th className="p-3 text-right">Total</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {data.items.map((item, idx) => (
-                                        <tr key={idx} className="border-t border-framer-hairline">
-                                          <td className="p-3 font-mono">{item.sku}</td>
-                                          <td className="p-3 text-right">{item.qty}</td>
-                                          <td className="p-3 text-right">{formatBRL(item.rate)}</td>
-                                          <td className="p-3 text-right font-medium text-framer-ink">{formatBRL(item.qty * item.rate)}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </details>
-                            )}
-                          </div>
-                          <aside className="border-t border-framer-hairline bg-framer-surface-1/50 p-5 lg:border-l lg:border-t-0">
-                            <p className="text-xs font-medium text-framer-ink-muted">Total</p>
-                            <p className="mt-1 text-3xl font-semibold tracking-tight text-framer-ink">{formatBRL(total)}</p>
-                            <WhatsAppSendPanel
-                              selectedFlowId={selectedWhatsappFlowId}
-                              flows={whatsappFlows}
-                              status={waStatus}
-                              onSelectFlow={(id) => { setSelectedWhatsappFlowId(id); saveSelectedFlowId(id); }}
-                              onSend={() => handleSendWhatsApp(draft, data)}
-                            />
-                            <div className="space-y-2">
-                              <a href={relativeViewUrl || '#'} target="_blank" rel="noopener noreferrer" className="block">
-                                <Button variant="outline" size="lg" className="w-full">
-                                  <FileText size={16} /> Abrir orçamento
-                                </Button>
-                              </a>
-                              <a href={`https://aspenestamparia.l.frappe.cloud/desk/quotation/${encodeURIComponent(data.quotation_id)}`} target="_blank" rel="noopener noreferrer" className="block">
-                                <Button variant="outline" size="lg" className="w-full">
-                                  <ExternalLink size={16} /> Ver no Frappe
-                                </Button>
-                              </a>
-                            </div>
-                          </aside>
+                    <div key={draft.index} className="overflow-hidden rounded-[20px] border border-red-300 bg-card shadow-sm">
+                      <div className="flex items-start gap-3 p-5 text-sm text-red-700 dark:text-red-300">
+                        <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-medium">Falha ao criar orçamento para {capitalize(draft.edited.nome)}</p>
+                          <p>{draft.result?.error || 'Falha desconhecida'}</p>
                         </div>
-                      )}
-                      {isError && (
-                        <div className="flex items-start gap-3 p-5 text-sm text-red-700 dark:text-red-300">
-                          <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-                          <div>
-                            <p className="font-medium">Falha ao criar orçamento para {capitalize(draft.edited.nome)}</p>
-                            <p>{draft.result?.error || 'Falha desconhecida'}</p>
-                          </div>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   );
                 }
 
-                // Draft card (review mode) — compact split-panel card
                 return (
                   <SplitResultCard
                     key={draft.index}
                     draft={draft}
                     displayIdx={displayIdx}
-                    totalDrafts={activeDrafts.filter(d => d.status !== 'done' && d.status !== 'error').length}
+                    totalDrafts={activeDrafts.length}
                     isProcessing={isProcessing}
                     onUpdateField={updateDraftField}
                     onUpdateItem={updateDraftItem}
                     onRemoveItem={removeDraftItem}
                     onCreateQuote={createSingleQuote}
                     onDelete={discardDraft}
+                    viewUrl={relativeViewUrl}
                   />
                 );
               })}

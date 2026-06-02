@@ -1,9 +1,29 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
 import { getBracket, getRate, getUrgentRate } from './pricing.js';
+import { erpGetList } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+async function fetchItemNames(itemCodes) {
+  const uniqueCodes = [...new Set(itemCodes.filter(Boolean))];
+  if (uniqueCodes.length === 0) return new Map();
+
+  try {
+    const items = await erpGetList('Item', {
+      filters: [['name', 'in', uniqueCodes]],
+      fields: ['name', 'item_name'],
+      limit: uniqueCodes.length,
+      order_by: 'name asc',
+    });
+    return new Map(items.map(item => [item.name, item.item_name || item.name]));
+  } catch (err) {
+    console.warn('[pricing-lookup] Falha ao buscar nomes dos itens:', err?.logMessage || err?.message || err);
+    return new Map();
+  }
+}
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 export async function handler(event) {
@@ -53,12 +73,14 @@ export async function handler(event) {
 
     // ── Parallel resolution ──────────────────────────────────────────────
     const uniqueKeys = [...dedupMap.keys()];
-    const settled = await Promise.allSettled(
-      uniqueKeys.map((key) => {
+    const uniqueItemCodes = [...new Set([...dedupMap.values()].map(entry => entry.item_code))];
+    const [settled, itemNames] = await Promise.all([
+      Promise.allSettled(uniqueKeys.map((key) => {
         const { item_code, qty } = dedupMap.get(key);
         return getRate(item_code, qty, ERPNEXT_BASE, ERPNEXT_TOKEN);
-      })
-    );
+      })),
+      fetchItemNames(uniqueItemCodes),
+    ]);
 
     // Map resolved rates back to each dedup entry
     for (let k = 0; k < uniqueKeys.length; k++) {
@@ -80,7 +102,12 @@ export async function handler(event) {
 
       // Write to all output indices sharing this dedup key
       for (const idx of entry.indices) {
-        results[idx] = { item_code: entry.item_code, qty: entry.qty, rate };
+        results[idx] = {
+          item_code: entry.item_code,
+          item_name: itemNames.get(entry.item_code) || entry.item_code,
+          qty: entry.qty,
+          rate,
+        };
       }
     }
 
