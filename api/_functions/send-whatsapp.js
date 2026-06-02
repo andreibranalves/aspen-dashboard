@@ -2,6 +2,7 @@
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
 import { erpGetList, erpGetDoc, erpPut, createHttpError, ERPNEXT_BASE, ERPNEXT_TOKEN } from './lib/erpnext.js';
+import { generateQuotationPdf } from './lib/quotation-pdf.js';
 
 const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -198,13 +199,17 @@ function buildSequenceSteps({ payload, sequence, context, baseUrl }) {
     }
 
     if (type === 'document') {
-      // For quotation_pdf: convert to text link — NEVER generate/attach PDF via WhatsApp
+      // quotation_pdf: send the actual PDF as a WhatsApp document attachment
       if (rawStep.source === 'quotation_pdf' && context.quotationId) {
         const caption = rawStep.caption ? renderTemplate(rawStep.caption, context).trim() : '';
-        const text = caption
-          ? (caption.includes(context.link) ? caption : `${caption}\n${context.link}`)
-          : `Segue o link do orçamento:\n${context.link}`;
-        if (text) planned.push({ type: 'text', text });
+        const fileName = `${context.quotationId}.pdf`;
+        planned.push({
+          type: 'document',
+          media: `__pdf__:${context.quotationId}`,
+          mimetype: rawStep.mimetype || 'application/pdf',
+          fileName,
+          caption,
+        });
         continue;
       }
 
@@ -374,29 +379,57 @@ async function sendText(number, text) {
   );
 }
 
+async function fetchQuotationPdfBuffer(quotationId) {
+  try {
+    const { buffer } = await generateQuotationPdf(quotationId, { timeout: 30000 });
+    if (!buffer || buffer.length === 0) {
+      throw createHttpError(
+        502,
+        'PDF do orçamento veio vazio.',
+        `[send-whatsapp] empty PDF buffer for ${quotationId}`
+      );
+    }
+    return buffer;
+  } catch (err) {
+    if (err?.statusCode) throw err;
+    throw createHttpError(
+      502,
+      'Falha ao gerar o PDF do orçamento.',
+      `[send-whatsapp] generateQuotationPdf error for ${quotationId}: ${err.message}`
+    );
+  }
+}
+
 async function sendMedia(number, step) {
-  // ── External media URL ──
+  // ── Quotation PDF marker ──
   let media = step.media;
-  if (media && ERPNEXT_TOKEN && ERPNEXT_BASE && media.startsWith(ERPNEXT_BASE)) {
+  if (media && typeof media === 'string' && media.startsWith('__pdf__:')) {
+    const quotationId = media.slice('__pdf__:'.length);
+    const buffer = await fetchQuotationPdfBuffer(quotationId);
+    media = buffer.toString('base64');
+  }
+
+  // ── External media URL ──
+  if (media && ERPNEXT_TOKEN && ERPNEXT_BASE && typeof media === 'string' && media.startsWith(ERPNEXT_BASE)) {
     try {
-      const pdfRes = await fetch(media, {
+      const res = await fetch(media, {
         headers: { 'Authorization': `token ${ERPNEXT_TOKEN}` },
       });
-      if (!pdfRes.ok) {
+      if (!res.ok) {
         throw createHttpError(
           502,
-          'Não foi possível baixar o PDF do orçamento.',
-          `[send-whatsapp] ERPNext PDF fetch failed: ${pdfRes.status} for ${media}`
+          'Não foi possível baixar a mídia.',
+          `[send-whatsapp] ERPNext media fetch failed: ${res.status} for ${media}`
         );
       }
-      const buffer = Buffer.from(await pdfRes.arrayBuffer());
+      const buffer = Buffer.from(await res.arrayBuffer());
       media = buffer.toString('base64');
     } catch (err) {
       if (err?.statusCode) throw err;
       throw createHttpError(
         502,
-        'Falha ao processar o PDF para envio.',
-        `[send-whatsapp] PDF download error: ${err.message}`
+        'Falha ao processar a mídia para envio.',
+        `[send-whatsapp] media download error: ${err.message}`
       );
     }
   }

@@ -10,6 +10,7 @@ import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
 import { searchProducts } from '@/lib/productCache.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
+import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 
 export default function SplitResultCard({
   draft,
@@ -25,6 +26,11 @@ export default function SplitResultCard({
   onCreateQuote,
   onDelete,
   viewUrl,
+  waFlows,
+  waSelectedFlowId,
+  waStatus,
+  onSelectWaFlow,
+  onSendWhatsApp,
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -397,6 +403,19 @@ export default function SplitResultCard({
           </Button>
         )}
       </div>
+
+      {/* ── WhatsApp Send (done cards only) ── */}
+      {isDone && waFlows && waFlows.length > 0 && (
+        <div className="px-4 pb-4">
+          <WhatsAppSendPanel
+            selectedFlowId={waSelectedFlowId}
+            flows={waFlows}
+            status={waStatus}
+            onSelectFlow={onSelectWaFlow}
+            onSend={() => onSendWhatsApp?.(draft.index)}
+          />
+        </div>
+      )}
     </div>
   );
 }

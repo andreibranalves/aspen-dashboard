@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
+import { loadWhatsappFlows, getSelectedFlowId, saveSelectedFlowId, flowToSequencePayload } from '@/lib/whatsappFlows.js';
 
 export default function AutoQuotePage() {
   // ── Helpers ──
@@ -28,6 +29,11 @@ export default function AutoQuotePage() {
   const [whatsappLeads, setWhatsappLeads] = useState([]);
   const [whatsappLoading, setWhatsappLoading] = useState(false);
   const [whatsappError, setWhatsappError] = useState(null);
+
+  // ── WhatsApp send state ──
+  const [waFlows] = useState(() => loadWhatsappFlows());
+  const [waSelectedFlowId, setWaSelectedFlowId] = useState(() => getSelectedFlowId(loadWhatsappFlows()));
+  const [waStatusByDraft, setWaStatusByDraft] = useState({});
 
   // ── Extracted hooks ──
   const {
@@ -229,6 +235,54 @@ export default function AutoQuotePage() {
     setProductSearch({});
     try { localStorage.removeItem('aspen_drafts'); } catch {}
   }, [setDrafts, setProductSearch]);
+
+  // ── WhatsApp handlers ──
+  const handleSelectWaFlow = useCallback((flowId) => {
+    setWaSelectedFlowId(flowId);
+    saveSelectedFlowId(flowId);
+  }, []);
+
+  const handleSendWhatsApp = useCallback(async (draftIndex) => {
+    const draft = drafts.find(d => d.index === draftIndex);
+    if (!draft || !draft.result?.data?.quotation_id) return;
+
+    const resultData = draft.result.data;
+    const quotationId = resultData.quotation_id;
+    const telefone = draft.edited.telefone || resultData.telefone || '';
+    const nome = resultData.cliente || draft.edited.nome || '';
+    const flow = waFlows.find(f => f.id === waSelectedFlowId) || waFlows[0];
+
+    setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'sending' } }));
+
+    try {
+      const sequence = flow ? flowToSequencePayload(flow) : null;
+      const res = await apiPost('/send-whatsapp', {
+        quotation_id: quotationId,
+        telefone,
+        nome,
+        ...(sequence ? { sequence } : {}),
+        deal_id: resultData.deal_id || null,
+        items: resultData.items || draft.edited.items || [],
+      });
+
+      const error = res.error ? String(res.error) : '';
+      setWaStatusByDraft(prev => ({
+        ...prev,
+        [draftIndex]: {
+          state: error ? 'error' : 'sent',
+          message: error || 'Orçamento enviado com sucesso!',
+        },
+      }));
+    } catch (err) {
+      setWaStatusByDraft(prev => ({
+        ...prev,
+        [draftIndex]: {
+          state: 'error',
+          message: err.message || 'Erro ao enviar WhatsApp.',
+        },
+      }));
+    }
+  }, [drafts, waFlows, waSelectedFlowId]);
 
   const activeDrafts = drafts.filter(d => !d.discarded);
   const visibleDrafts = [...activeDrafts].reverse();
@@ -509,6 +563,11 @@ export default function AutoQuotePage() {
                     onCreateQuote={createSingleQuote}
                     onDelete={discardDraft}
                     viewUrl={relativeViewUrl}
+                    waFlows={waFlows}
+                    waSelectedFlowId={waSelectedFlowId}
+                    waStatus={waStatusByDraft[draft.index]}
+                    onSelectWaFlow={handleSelectWaFlow}
+                    onSendWhatsApp={handleSendWhatsApp}
                   />
                 );
               })}

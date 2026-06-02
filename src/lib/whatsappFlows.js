@@ -250,24 +250,7 @@ export function getFlowSummary(flow) {
  * - Converts delay seconds to milliseconds.
  */
 export function flowToSequencePayload(flow) {
-  // Convert legacy document steps with source 'quotation_pdf' into text steps
-  // so they send a link instead of a PDF file.
-  const convertedSteps = (flow.steps || []).map((step) => {
-    if (step.type === 'document' && step.source === 'quotation_pdf') {
-      let template = step.caption || '';
-      if (template.trim().length > 0) {
-        if (!template.includes('(link_orcamento)')) {
-          template += '\n(link_orcamento)';
-        }
-      } else {
-        template = 'Segue o orçamento (numero_pedido):\n(link_orcamento)';
-      }
-      return { ...step, type: 'text', template, source: '', caption: '' };
-    }
-    return step;
-  });
-
-  const cleanedSteps = convertedSteps.filter((step) => {
+  const cleanedSteps = (flow.steps || []).filter((step) => {
     if (step.type === 'text') {
       return step.template && step.template.trim().length > 0;
     }

@@ -203,7 +203,7 @@ describe('flowToSequencePayload()', () => {
     assert.deepEqual(payload.sample_images, { canga: ['https://img1.jpg'] });
   });
 
-  it('converte document source=quotation_pdf em text step com link', () => {
+  it('mantém document source=quotation_pdf como document step (PDF real)', () => {
     const flow = {
       ...DEFAULT_WA_FLOWS[0],
       steps: [
@@ -212,8 +212,8 @@ describe('flowToSequencePayload()', () => {
     };
     const payload = flowToSequencePayload(flow);
     assert.equal(payload.steps.length, 1);
-    assert.equal(payload.steps[0].type, 'text');
-    assert.ok(payload.steps[0].template.includes('(link_orcamento)'));
+    assert.equal(payload.steps[0].type, 'document');
+    assert.equal(payload.steps[0].source, 'quotation_pdf');
   });
 });
 
