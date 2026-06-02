@@ -1,4 +1,4 @@
-import { erpGetList, createHttpError } from './lib/erpnext.js';
+import { erpGetList, erpDelete, createHttpError } from './lib/erpnext.js';
 
 // ── Helpers ──
 
@@ -42,73 +42,112 @@ function mapLead(l) {
 // ── Handler ──
 
 export async function handler(event) {
-  if (event.httpMethod !== 'GET') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+  const params = event.queryStringParameters || {};
+
+  // GET — list leads + customers
+  if (event.httpMethod === 'GET') {
+    try {
+      const { page, limit } = parsePageLimit(params);
+      const tipo = (params.tipo || 'todos').toLowerCase();
+
+      if (!['cliente', 'lead', 'todos'].includes(tipo)) {
+        throw createHttpError(400, 'Tipo inválido. Valores aceitos: cliente, lead, todos');
+      }
+
+      const ALL_LIMIT = 10000;
+      const searchCustomers = buildSearchFilter(params, 'customer_name');
+      const searchLeads = buildSearchFilter(params, 'lead_name');
+
+      let customers = [];
+      let leads = [];
+
+      if (tipo === 'cliente' || tipo === 'todos') {
+        customers = await erpGetList('Customer', {
+          fields: ['name', 'customer_name', 'tax_id', 'creation'],
+          filters: searchCustomers,
+          order_by: 'creation desc',
+          limit: ALL_LIMIT,
+        });
+      }
+
+      if (tipo === 'lead' || tipo === 'todos') {
+        leads = await erpGetList('Lead', {
+          fields: ['name', 'lead_name', 'email_id', 'mobile_no', 'creation'],
+          filters: searchLeads,
+          order_by: 'creation desc',
+          limit: ALL_LIMIT,
+        });
+      }
+
+      const merged = [
+        ...customers.map(mapCustomer),
+        ...leads.map(mapLead),
+      ];
+      merged.sort((a, b) => new Date(b.data_criacao) - new Date(a.data_criacao));
+
+      const total = merged.length;
+      const start = (page - 1) * limit;
+      const data = merged.slice(start, start + limit);
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data,
+          pagination: {
+            page,
+            limit,
+            total,
+            total_pages: Math.ceil(total / limit) || 0,
+          },
+        }),
+      };
+    } catch (err) {
+      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+      console.error('[leads-clients] GET', err?.logMessage || err?.message || err);
+      return {
+        statusCode: code,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err?.message || 'Erro interno.' }),
+      };
+    }
   }
-  try {
-    const params = event.queryStringParameters || {};
-    const { page, limit } = parsePageLimit(params);
-    const tipo = (params.tipo || 'todos').toLowerCase();
 
-    if (!['cliente', 'lead', 'todos'].includes(tipo)) {
-      throw createHttpError(400, 'Tipo inválido. Valores aceitos: cliente, lead, todos');
+  // DELETE — delete a lead or customer
+  if (event.httpMethod === 'DELETE') {
+    try {
+      const id = params.id;
+      const tipo = (params.tipo || 'lead').toLowerCase();
+
+      if (!id) {
+        throw createHttpError(400, 'ID não informado.');
+      }
+      if (!['lead', 'cliente'].includes(tipo)) {
+        throw createHttpError(400, 'Tipo inválido. Use "lead" ou "cliente".');
+      }
+
+      const doctype = tipo === 'lead' ? 'Lead' : 'Customer';
+      await erpDelete(doctype, id);
+
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, deleted: id, tipo }),
+      };
+    } catch (err) {
+      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
+      console.error('[leads-clients] DELETE', err?.logMessage || err?.message || err);
+      return {
+        statusCode: code,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: err?.message || 'Erro ao excluir.' }),
+      };
     }
-
-    const ALL_LIMIT = 10000;
-    const searchCustomers = buildSearchFilter(params, 'customer_name');
-    const searchLeads = buildSearchFilter(params, 'lead_name');
-
-    let customers = [];
-    let leads = [];
-
-    if (tipo === 'cliente' || tipo === 'todos') {
-      customers = await erpGetList('Customer', {
-        fields: ['name', 'customer_name', 'tax_id', 'creation'],
-        filters: searchCustomers,
-        order_by: 'creation desc',
-        limit: ALL_LIMIT,
-      });
-    }
-
-    if (tipo === 'lead' || tipo === 'todos') {
-      leads = await erpGetList('Lead', {
-        fields: ['name', 'lead_name', 'email_id', 'mobile_no', 'creation'],
-        filters: searchLeads,
-        order_by: 'creation desc',
-        limit: ALL_LIMIT,
-      });
-    }
-
-    const merged = [
-      ...customers.map(mapCustomer),
-      ...leads.map(mapLead),
-    ];
-    merged.sort((a, b) => new Date(b.data_criacao) - new Date(a.data_criacao));
-
-    const total = merged.length;
-    const start = (page - 1) * limit;
-    const data = merged.slice(start, start + limit);
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data,
-        pagination: {
-          page,
-          limit,
-          total,
-          total_pages: Math.ceil(total / limit) || 0,
-        },
-      }),
-    };
-  } catch (err) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[leads-clients]', err?.logMessage || err?.message || err);
-    return {
-      statusCode: code,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.message || 'Erro interno.' }),
-    };
   }
+
+  return {
+    statusCode: 405,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ error: 'Method Not Allowed' }),
+  };
 }

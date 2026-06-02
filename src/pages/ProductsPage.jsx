@@ -6,12 +6,14 @@ import {
   Package,
   ChevronRight,
   Trash2,
+  PlusCircle,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet, apiDelete } from '@/lib/api.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
@@ -31,6 +33,24 @@ export default function ProductsPage() {
   const searchTimer = useRef(null);
   const selectAllRef = useRef(null);
   const [, navigate] = useHashRoute();
+  const setTopBarActions = useSetTopBarActions();
+
+  // TopBar actions — Criar Produto
+  useEffect(() => {
+    setTopBarActions(
+      <a
+        href="https://aspenestamparia.l.frappe.cloud/app/item/new"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <Button size="sm" className="min-h-10">
+          <PlusCircle size={16} className="mr-2" />
+          Criar Produto
+        </Button>
+      </a>
+    );
+    return () => setTopBarActions(null);
+  }, [setTopBarActions]);
 
   const fetchData = useCallback(async (searchVal, pageNum, limitVal) => {
     setLoading(true);

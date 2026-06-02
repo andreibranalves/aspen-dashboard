@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api.js';
+import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus } from 'lucide-react';
+import { apiGet, apiPut, apiDelete } from '@/lib/api.js';
 import { fmtPhone, capitalize } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import PageHeader from '@/components/PageHeader.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
@@ -117,6 +118,74 @@ export default function LeadsPage({ navigate }) {
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const searchTimer = useRef(null);
+  const selectAllRef = useRef(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const setTopBarActions = useSetTopBarActions();
+
+  // TopBar actions — Criar Lead button
+  useEffect(() => {
+    setTopBarActions(
+      <a
+        href="https://aspenestamparia.l.frappe.cloud/app/lead/new"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <Button size="sm" className="min-h-10">
+          <UserPlus size={16} className="mr-2" />
+          Criar Lead
+        </Button>
+      </a>
+    );
+    return () => setTopBarActions(null);
+  }, [setTopBarActions]);
+
+  // ── Selection ──
+  const toggleSelected = useCallback((id) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  }, []);
+
+  const toggleSelectAll = useCallback((checked) => {
+    setSelectedIds(checked ? data.map(row => row.id) : []);
+  }, [data]);
+
+  const allSelected = data.length > 0 && selectedIds.length === data.length;
+  const someSelected = selectedIds.length > 0 && !allSelected;
+  const selectedCount = selectedIds.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  // ── Delete ──
+  const handleDelete = useCallback(async (id, tipoRow) => {
+    if (!confirm(`Tem certeza que deseja excluir ${tipoRow === 'lead' ? 'o lead' : 'o cliente'} ${id}?\n\nEsta ação não pode ser desfeita.`)) return;
+    try {
+      await apiDelete(`/leads-clients?id=${encodeURIComponent(id)}&tipo=${tipoRow}`);
+      setData(prev => prev.filter(r => r.id !== id));
+      setTotalRecords(prev => prev - 1);
+      setSelectedIds(prev => prev.filter(i => i !== id));
+    } catch (err) {
+      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
+    }
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    const selected = data.filter(row => selectedIds.includes(row.id));
+    if (selected.length === 0) return;
+
+    if (!confirm(`Tem certeza que deseja excluir ${selected.length} registro${selected.length !== 1 ? 's' : ''}?\n\nEssa ação não pode ser desfeita.`)) return;
+
+    try {
+      await Promise.all(selected.map(row =>
+        apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}&tipo=${row.tipo}`)
+      ));
+      const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
+      setPage(nextPage);
+      await fetchData(search, tipo, nextPage, limit);
+    } catch (err) {
+      alert('Erro ao excluir registros selecionados: ' + (err.message || 'Tente novamente.'));
+    }
+  }, [data, selectedIds, page, search, tipo, limit, fetchData]);
 
   // ── Drawer state ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -131,6 +200,7 @@ export default function LeadsPage({ navigate }) {
   const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
     setLoading(true);
     setError(null);
+    setSelectedIds([]);
     try {
       const params = new URLSearchParams();
       params.set('page', String(pageNum));
@@ -393,7 +463,7 @@ export default function LeadsPage({ navigate }) {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-28">
       <PageHeader
         title="Leads / Clientes"
         description={`${totalRecords} registro${totalRecords !== 1 ? 's' : ''}`}
@@ -468,20 +538,41 @@ export default function LeadsPage({ navigate }) {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12 px-3">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={(e) => toggleSelectAll(e.target.checked)}
+                    aria-label="Selecionar todos os registros desta página"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                  />
+                </TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Tipo</TableHead>
-                <TableHead className="w-[120px] text-center">Ações</TableHead>
+                <TableHead className="w-[160px] text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.map(row => (
+              {data.map(row => {
+                const isSelected = selectedIds.includes(row.id);
+                return (
                 <TableRow
                   key={row.id || row.email}
-                  className="cursor-pointer hover:bg-framer-surface-2/50 transition-colors"
+                  className={`cursor-pointer hover:bg-framer-surface-2/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
                   onClick={() => navigateToDetail(row)}
                 >
+                  <TableCell className="w-12 px-3" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelected(row.id)}
+                      aria-label={`Selecionar ${row.nome || row.email}`}
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{row.nome || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{row.email || '—'}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{fmtPhone(row.telefone)}</TableCell>
@@ -518,10 +609,19 @@ export default function LeadsPage({ navigate }) {
                           <Mail size={18} />
                         </a>
                       )}
+                      <button
+                        onClick={() => handleDelete(row.id, row.tipo)}
+                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                        aria-label={`Excluir ${row.nome || row.email}`}
+                        title={`Excluir ${row.nome || row.email}`}
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -1065,6 +1165,32 @@ export default function LeadsPage({ navigate }) {
           </div>
         )}
       </DetailDrawer>
+
+      {/* Bulk delete toolbar */}
+      <div
+        className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
+      >
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-framer-hairline bg-framer-surface-1/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
+            <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <span>
+                  {selectedCount} registro{selectedCount !== 1 ? 's' : ''} selecionado{selectedCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setSelectedIds([])} disabled={selectedCount === 0}>
+                  Limpar seleção
+                </Button>
+                <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
+                  <Trash2 size={16} className="mr-2" />
+                  Excluir registros
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
