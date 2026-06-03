@@ -380,7 +380,7 @@ export default function SplitResultCard({
         {isDone ? (
           <>
             <a href={viewUrl || '#'} target="_blank" rel="noopener noreferrer" className={!viewUrl ? 'pointer-events-none' : undefined}>
-              <Button size="sm" variant="outline" disabled={!viewUrl}>
+              <Button size="sm" variant="secondary" disabled={!viewUrl}>
                 <FileText size={13} />
                 Abrir orçamento
               </Button>
