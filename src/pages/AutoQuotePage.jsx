@@ -237,7 +237,21 @@ export default function AutoQuotePage() {
   // ── WhatsApp handlers ──
   const handleSendWhatsApp = useCallback(async (draftIndex) => {
     const draft = drafts.find(d => d.index === draftIndex);
-    if (!draft || !draft.result?.data?.quotation_id) return;
+    if (!draft) {
+      console.warn('[sendWhatsApp] draft not found for index:', draftIndex);
+      setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'error', message: 'Pedido não encontrado.' } }));
+      return;
+    }
+    if (!draft.result?.data?.quotation_id) {
+      console.warn('[sendWhatsApp] missing quotation_id — draft not processed yet:', {
+        draftIndex,
+        hasResult: !!draft.result,
+        hasData: !!draft.result?.data,
+        status: draft.status,
+      });
+      setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'error', message: 'Crie o orçamento antes de enviar WhatsApp.' } }));
+      return;
+    }
 
     const resultData = draft.result.data;
     const quotationId = resultData.quotation_id;
@@ -260,6 +274,7 @@ export default function AutoQuotePage() {
       });
 
       const error = res.error ? String(res.error) : '';
+      console.log('[sendWhatsApp] response:', { state: error ? 'error' : 'sent', quotationId, error: error || null });
       setWaStatusByDraft(prev => ({
         ...prev,
         [draftIndex]: {
@@ -268,6 +283,7 @@ export default function AutoQuotePage() {
         },
       }));
     } catch (err) {
+      console.error('[sendWhatsApp] failed:', err.message);
       setWaStatusByDraft(prev => ({
         ...prev,
         [draftIndex]: {
