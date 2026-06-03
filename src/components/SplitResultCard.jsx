@@ -380,7 +380,7 @@ export default function SplitResultCard({
         {isDone ? (
           <>
             <a href={viewUrl || '#'} target="_blank" rel="noopener noreferrer" className={!viewUrl ? 'pointer-events-none' : undefined}>
-              <Button size="sm" disabled={!viewUrl} className="bg-framer-accent-blue text-white hover:bg-framer-accent-blue/90">
+              <Button size="sm" variant="outline" disabled={!viewUrl}>
                 <FileText size={13} />
                 Abrir orçamento
               </Button>
@@ -389,10 +389,10 @@ export default function SplitResultCard({
               size="sm"
               onClick={() => onSendWhatsApp?.(draft.index)}
               disabled={waStatus?.state === 'sending'}
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              className="bg-framer-accent-blue text-white hover:bg-framer-accent-blue/90"
             >
               <WhatsappIcon size={14} />
-              {waStatus?.state === 'sending' ? 'Enviando…' : waStatus?.state === 'sent' ? 'Enviado ✓' : 'Enviar WhatsApp'}
+              {waStatus?.state === 'sending' ? 'Enviando…' : waStatus?.state === 'sent' ? 'Enviado' : 'Enviar WhatsApp'}
             </Button>
           </>
         ) : (
