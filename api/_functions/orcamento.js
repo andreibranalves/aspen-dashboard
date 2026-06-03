@@ -27,6 +27,28 @@ export async function handler(event) {
   try {
     const result = await runQuotePipeline(event, extracted);
 
+    // ── Fire-and-forget webhook to n8n automation engine ──
+    const n8nUrl = process.env.N8N_WEBHOOK_URL;
+    if (n8nUrl) {
+      const webhookPayload = {
+        event: 'quotation_created',
+        quotation_id: result.quotation_id,
+        deal_id: result.deal_id,
+        nome: result.cliente,
+        email: (extracted.email || '').trim(),
+        telefone: (extracted.telefone || '').trim(),
+        pdf_url: result.pdf_url,
+      };
+      fetch(n8nUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload),
+        signal: AbortSignal.timeout(5000),
+      }).catch((err) =>
+        console.error('[orcamento] n8n webhook failed:', err.message),
+      );
+    }
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },

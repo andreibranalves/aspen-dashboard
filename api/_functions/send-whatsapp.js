@@ -468,6 +468,27 @@ async function markDealAsSent(dealId, quotationId) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
+async function dispatchN8n(payload, email) {
+  const n8nUrl = process.env.N8N_WEBHOOK_URL;
+  if (!n8nUrl) return;
+  const webhookPayload = {
+    event: 'whatsapp_sent',
+    quotation_id: payload.quotationId,
+    deal_id: payload.dealId,
+    nome: payload.nome,
+    email: (email || '').trim(),
+    telefone: payload.number,
+  };
+  fetch(n8nUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(webhookPayload),
+    signal: AbortSignal.timeout(5000),
+  }).catch((err) =>
+    console.error('[send-whatsapp] n8n webhook failed:', err.message),
+  );
+}
+
 export async function handler(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -539,6 +560,9 @@ export async function handler(event) {
         await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
       }
 
+      const dealId = payload.deal_id || resolved.dealId || null;
+      if (!dryRun) dispatchN8n({ quotationId, dealId, nome, number }, resolved.email || payload.email);
+
       return jsonResponse(200, {
         success: true,
         dry_run: dryRun,
@@ -560,7 +584,10 @@ export async function handler(event) {
     }
 
     const evolution = dryRun ? null : await sendText(number, text);
-    if (!dryRun) await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
+    if (!dryRun) {
+      await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
+      dispatchN8n({ quotationId, dealId: payload.deal_id || resolved.dealId || null, nome, number }, resolved.email || payload.email);
+    }
 
     return jsonResponse(200, {
       success: true,
