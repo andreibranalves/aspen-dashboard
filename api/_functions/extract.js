@@ -6,7 +6,7 @@ Rule 1 — Quantidade mínima: Se qtd < 30, usar 30.
 Rule 2 — Quantidade exata: Usar a qtd EXATA do cliente. O sistema aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente.
 
 Rule 3 — Regras por Produto:
-- Lenços: Sempre LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70. Se mencionar "laser", usar LNC-SED-LAS-70. Se pedido 55×55cm, cotar 50×50cm.
+- Lenços: Sempre LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70 (bainha). Se mencionar "laser" (sem bainha), usar apenas LNC-SED-LAS-50 + LNC-SED-LAS-70. Se pedir bainha E laser, cotar todos: LNC-SED-LAS-50 + LNC-SED-LAS-70 + LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70 (laser antes da bainha). Se pedido 55×55cm, cotar 50×50cm.
 - Echarpes: Sempre ECH-SED + ECH-CSD.
 - Chapéus: Sempre CHP-PAN + CHP-PNR + CHP-BAM.
 - Cangas: < 100 un → CNG-SAL-70 + CNG-SAL-100. ≥ 100 un → CNG-SAL-70 + CNG-SAL-100 + CNG-VIS-70 + CNG-VIS-100. Se "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100.
