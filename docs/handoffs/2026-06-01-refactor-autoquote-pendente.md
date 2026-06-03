@@ -1,6 +1,6 @@
 # Handoff: 2026-06-01 — Fase 4 (refactor) parcial, pronto para wiring do AutoQuotePage
 
-**Projeto:** aspen-orcamento (legado Vite + Vercel)
+**Projeto:** aspen-dashboard (legado Vite + Vercel)
 **Branch:** `fix/auditoria-2026-05-27` (estado atual)
 **Data:** 2026-06-01 ~18:30 UTC
 
@@ -132,7 +132,7 @@ Branch: `fix/auditoria-2026-05-27` (limpa, tudo commitado)
 
 ## Notas
 
-- O plano completo está em `.hermes/plans/2026-05-27-estabilizacao-aspen-orcamento.md`
+- O plano completo está em `.hermes/plans/2026-05-27-estabilizacao-aspen-dashboard.md`
 - `vercel` CLI está instalado (`v54.6.1`) mas não autenticado neste VPS — deploy é manual ou via git push
 - `APP_PASSWORD` está configurada tanto no `.env` local quanto no Vercel dashboard
 - `npm run lint` pode travar (processa muitos arquivos) — usar `npx eslint <path>` para checagens pontuais

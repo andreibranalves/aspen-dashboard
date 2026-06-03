@@ -476,7 +476,7 @@ async function testSettingsPage(page) {
 }
 
 async function main() {
-  console.log('🎭 Playwright E2E — React Frontend (aspen-orcamento) v2');
+  console.log('🎭 Playwright E2E — React Frontend (aspen-dashboard) v2');
   console.log(`   URL: ${BASE}`);
   console.log('='.repeat(60));
 

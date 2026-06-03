@@ -21,7 +21,7 @@ function check(desc, ok, detail = '') {
 }
 
 async function main() {
-  console.log('🎭 Playwright E2E — Orçamento Manual (aspen-orcamento)');
+  console.log('🎭 Playwright E2E — Orçamento Manual (aspen-dashboard)');
   console.log(`   URL: ${BASE}`);
   console.log('='.repeat(60));
 

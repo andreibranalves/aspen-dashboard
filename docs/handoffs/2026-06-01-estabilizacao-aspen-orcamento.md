@@ -1,12 +1,12 @@
 # Handoff: 2026-06-01 — Estabilização Aspen Orçamento (Fases 1–2)
 
-**Projeto:** aspen-orcamento (legado Vite + Vercel)
+**Projeto:** aspen-dashboard (legado Vite + Vercel)
 **Branch:** `fix/auditoria-2026-05-27`
 **Data:** 2026-06-01 ~20:00 UTC
 
 ## Resumo da Sessão
 
-Avaliamos um diagnóstico de 14 áreas de melhoria do `aspen-orcamento`, validamos cada claim contra o código real, e montamos um plano de estabilização em 5 fases documentado em `.hermes/plans/2026-05-27-estabilizacao-aspen-orcamento.md`. Implementamos as Fases 1 (Segurança) e 2 (Qualidade de Stack). O build passa, lint tem 0 errors 36 warnings (todos `no-unused-vars` preexistentes), e o próximo passo é a Fase 3 (testes unitários do motor operacional).
+Avaliamos um diagnóstico de 14 áreas de melhoria do `aspen-dashboard`, validamos cada claim contra o código real, e montamos um plano de estabilização em 5 fases documentado em `.hermes/plans/2026-05-27-estabilizacao-aspen-dashboard.md`. Implementamos as Fases 1 (Segurança) e 2 (Qualidade de Stack). O build passa, lint tem 0 errors 36 warnings (todos `no-unused-vars` preexistentes), e o próximo passo é a Fase 3 (testes unitários do motor operacional).
 
 ## Decisões
 
@@ -30,7 +30,7 @@ Avaliamos um diagnóstico de 14 áreas de melhoria do `aspen-orcamento`, validam
 | **Criado** | `.prettierrc` | Config Prettier: singleQuote, trailingComma es5, printWidth 100 |
 | **Criado** | `.prettierignore` | Ignora node_modules, public/assets, dist |
 | **Criado** | `static/` | Diretório vazio para assets estáticos |
-| **Criado** | `.hermes/plans/2026-05-27-estabilizacao-aspen-orcamento.md` | Plano completo 5 fases (761 linhas) |
+| **Criado** | `.hermes/plans/2026-05-27-estabilizacao-aspen-dashboard.md` | Plano completo 5 fases (761 linhas) |
 | **Modificado** | `api/[...path].js` | Auth guard (401) + rate limit (429) + rotas login/logout |
 | **Modificado** | `src/App.jsx` | Rota `#/login` renderiza fora do Layout |
 | **Modificado** | `src/lib/api.js` | Intercepta 401 → redirect `#/login` |
@@ -69,7 +69,7 @@ Avaliamos um diagnóstico de 14 áreas de melhoria do `aspen-orcamento`, validam
 - **Rotas públicas (sem auth):** `view`, `login`, `logout`
 - **Rate limits:** extract=10/min, orcamento=20/min, send-whatsapp=5/min, login=10/min
 - **Cookie auth:** `aspen_token` = APP_PASSWORD, httpOnly, Secure, SameSite=Lax, 30 dias
-- **Planos existentes:** `2026-05-27-audit-fixes.md` (6 bugs críticos já corrigidos), `2026-05-27-estabilizacao-aspen-orcamento.md` (plano atual)
+- **Planos existentes:** `2026-05-27-audit-fixes.md` (6 bugs críticos já corrigidos), `2026-05-27-estabilizacao-aspen-dashboard.md` (plano atual)
 
 ## Git
 
@@ -88,7 +88,7 @@ Branch: `fix/auditoria-2026-05-27` (limpa, 1 arquivo modificado não commitado)
 
 ## Notas
 
-- O diagnóstico original está em `/opt/data/webui/attachments/e8c1464b0a4a/diagnostico-aspen-orcamento.md`
-- O plano completo está em `.hermes/plans/2026-05-27-estabilizacao-aspen-orcamento.md`
+- O diagnóstico original está em `/opt/data/webui/attachments/e8c1464b0a4a/diagnostico-aspen-dashboard.md`
+- O plano completo está em `.hermes/plans/2026-05-27-estabilizacao-aspen-dashboard.md`
 - A claim #5 do diagnóstico (duplicação front/back de regras) já foi resolvida anteriormente — regras são backend-only no `extract.js DEFAULT_RULES`
 - `vercel` CLI não está instalado neste ambiente — deploy precisa ser feito manualmente ou via git push

@@ -1,6 +1,6 @@
 # Handoff: 2026-06-01 — AutoQuotePage wiring (6/6 passos CONCLUÍDO)
 
-**Projeto:** aspen-orcamento (legado Vite + Vercel)
+**Projeto:** aspen-dashboard (legado Vite + Vercel)
 **Branch:** `refactor/autoquote-wiring`
 **Data:** 2026-06-01 19:30 UTC
 

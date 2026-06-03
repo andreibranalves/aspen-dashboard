@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-09
 **Status:** Approved
-**Project:** aspen-orcamento
+**Project:** aspen-dashboard
 
 ## Overview
 

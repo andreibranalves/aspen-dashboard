@@ -82,7 +82,7 @@ Estados:
 
 ```bash
 # Build + restart VPS
-cd /opt/data/aspen-orcamento
+cd /opt/data/aspen-dashboard
 npm run build
 kill $(pgrep -f "node scripts/app-server" | head -1)
 PORT=8888 node scripts/app-server.mjs &

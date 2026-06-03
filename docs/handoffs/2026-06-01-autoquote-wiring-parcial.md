@@ -1,6 +1,6 @@
 # Handoff: 2026-06-01 — AutoQuotePage wiring (3/6 passos concluídos)
 
-**Projeto:** aspen-orcamento (legado Vite + Vercel)
+**Projeto:** aspen-dashboard (legado Vite + Vercel)
 **Branch:** `refactor/autoquote-wiring`
 **Data:** 2026-06-01 ~18:45 UTC
 
@@ -63,4 +63,4 @@ Branch: `refactor/autoquote-wiring` (limpa, tudo commitado, NÃO pushada)
 - `vercel` CLI instalado mas não autenticado neste VPS — deploy é manual ou via git push
 - `APP_PASSWORD` configurada no `.env` local + Vercel
 - Componentes criados na sessão anterior (não wireados): `ConfirmDialog`, `StatusBadge`, `EmptyState`, `ErrorState`
-- O plano completo está em `.hermes/plans/2026-05-27-estabilizacao-aspen-orcamento.md`
+- O plano completo está em `.hermes/plans/2026-05-27-estabilizacao-aspen-dashboard.md`
