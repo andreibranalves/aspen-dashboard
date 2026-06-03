@@ -49,10 +49,10 @@ Implementada automação multicanal pós-orçamento conectando o dashboard (Verc
 
 ## Próximos Passos
 
-### Imediato (comece aqui)
-1. Andrei confirma que WhatsApp + email chegaram → marcar Task 6 como done
-2. Fazer deploy do dashboard no Vercel (`vercel deploy --prod`) com `N8N_WEBHOOK_URL` configurada
-3. Verificar ERPNEXT_TOKEN no nó CRM do n8n (parece truncado — confirmar valor correto)
+### Imediato (comece aqui) ✅ TODOS CONCLUÍDOS 2026-06-03
+1. ✅ Andrei confirma que WhatsApp + email chegaram → Task 6 done
+2. ✅ Deploy feito no Vercel (`vercel deploy --prod`) com `N8N_WEBHOOK_URL` configurada (production + preview)
+3. ✅ ERPNEXT_TOKEN verificado — 31 chars, par `api_key:api_secret` correto, não truncado
 
 ### Depois
 - Adicionar nó Error Trigger no workflow n8n (notificar falhas)
