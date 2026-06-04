@@ -54,11 +54,18 @@ Implementada automação multicanal pós-orçamento conectando o dashboard (Verc
 2. ✅ Deploy feito no Vercel (`vercel deploy --prod`) com `N8N_WEBHOOK_URL` configurada (production + preview)
 3. ✅ ERPNEXT_TOKEN verificado — 31 chars, par `api_key:api_secret` correto, não truncado
 
-### Depois
-- Adicionar nó Error Trigger no workflow n8n (notificar falhas)
-- Configurar DKIM/SPF no DNS Hostinger para `aspenestamparia.com` (verificação de domínio Resend)
-- Considerar mover credenciais do n8n para variáveis de ambiente ou Secrets do n8n
-- Adicionar notificação de erro via Telegram (n8n tem nó nativo)
+### Depois ✅ CONCLUÍDOS 2026-06-03
+- ✅ Error Trigger adicionado ao workflow n8n → notifica erros via email (Resend) para andrei.bran.alves@gmail.com
+- ✅ DKIM/SPF para `aspenestamparia.com` já estava verificado no Resend (`status: verified`, sending enabled)
+- ✅ Credenciais migradas: 3 nós de email usam `$env.RESEND_API_KEY`, 2 nós CRM usam `$env.ERPNEXT_TOKEN`. Evolution API key mantida hardcoded (não está no docker-compose; n8n Variables requer licença)
+- ⚠️ Telegram: token do bot está mascarado (`***`) no `.env`. Quando o token real for configurado, trocar o nó `email-err` por Telegram HTTP Request
+- ✅ Nós CRM Update adicionados (estavam planejados mas faltavam): após email1 → CRM stage 1, após email2 → CRM stage 2
+
+### Workflow final (10 nós)
+```
+Webhook → WhatsApp → Wait 24h → Email Orcamento → CRM Update 1 → Wait 72h → Email Follow-up → CRM Update 2
+Error Trigger → Notificar Erro (Email)
+```
 
 ### Bloqueado
 - Nada bloqueado
@@ -69,7 +76,7 @@ Implementada automação multicanal pós-orçamento conectando o dashboard (Verc
 - **Fire-and-forget:** `AbortSignal.timeout(5000)` + `.catch()` — falha no n8n nunca quebra o dashboard
 - **Idempotência:** n8n webhook configurado com dedup key `{{ $json.quotation_id }}` (precisa reativar no workflow de produção)
 - **n8n response mode:** `onReceived` — responde imediatamente, processa em background
-- **Tokens hardcoded:** Resend API key e Evolution API key nos nós HTTP Request do n8n (workaround para PII masking no MCP)
+- **Tokens:** Resend e ERPNEXT migrados para `$env` (docker-compose). Evolution API key permanece hardcoded no nó WhatsApp (ausente do docker-compose, variáveis n8n requerem licença Enterprise). Nota: Token Telegram em `~/.hermes/.env` está mascarado (`***`) — reconfigurar quando disponível.
 
 ## Git
 
@@ -87,4 +94,4 @@ M  api/_functions/send-whatsapp.js
 - **Cuidado com conflitos de webhook:** ao criar novo workflow com mesmo path, deletar o antigo primeiro. O n8n não sobrescreve — dá erro "There is a conflict with one of the webhooks"
 - **PII masking do sistema** impede passar tokens no docker-compose via MCP. Workaround: hardcode nos nós do n8n ou configurar manualmente via UI
 - O **n8n REST API** aceita PATCH para atualizar workflows, mas precisa re-ativar com o novo `versionId` após cada PATCH
-- **CRM node** tem token possivelmente truncado (`2e4b16...83`) — testar com valor completo antes de confiar
+- **CRM nodes:** Adicionados 2 nós HTTP Request (após email1 e email2) que atualizam `custom_follow_up_stage` (1 e 2) via `PUT /api/resource/CRM Deal/{deal_id}`. Usam `$env.ERPNEXT_TOKEN` e `$env.ERPNEXT_BASE`.
