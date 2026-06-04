@@ -58,13 +58,13 @@ Implementada automação multicanal pós-orçamento conectando o dashboard (Verc
 - ✅ Error Trigger adicionado ao workflow n8n → notifica erros via email (Resend) para andrei.bran.alves@gmail.com
 - ✅ DKIM/SPF para `aspenestamparia.com` já estava verificado no Resend (`status: verified`, sending enabled)
 - ✅ Credenciais migradas: 3 nós de email usam `$env.RESEND_API_KEY`, 2 nós CRM usam `$env.ERPNEXT_TOKEN`. Evolution API key mantida hardcoded (não está no docker-compose; n8n Variables requer licença)
-- ⚠️ Telegram: token do bot está mascarado (`***`) no `.env`. Quando o token real for configurado, trocar o nó `email-err` por Telegram HTTP Request
+- ✅ Telegram: notificação de erro configurada via `@aspenestamparia_bot` (token: `8979...yEg` salvo em `~/.hermes/.env`). Nó `email-err` substituído por Telegram HTTP Request.
 - ✅ Nós CRM Update adicionados (estavam planejados mas faltavam): após email1 → CRM stage 1, após email2 → CRM stage 2
 
 ### Workflow final (10 nós)
 ```
 Webhook → WhatsApp → Wait 24h → Email Orcamento → CRM Update 1 → Wait 72h → Email Follow-up → CRM Update 2
-Error Trigger → Notificar Erro (Email)
+Error Trigger → Notificar Erro (Telegram @aspenestamparia_bot)
 ```
 
 ### Bloqueado
