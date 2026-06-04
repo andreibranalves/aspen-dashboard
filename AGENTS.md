@@ -5,9 +5,9 @@ Instructions for code agents working in the Orcamento App subproject. This appli
 ## Quotation PDF Generation (PDF De Orcamento)
 - Do not use the ERPNext `download_pdf` API for final PDFs; `wkhtmltopdf` renders differently.
 - Use Chrome or Edge headless with `--headless=new`, not legacy mode.
-- **Expected Browser path:** `/usr/bin/google-chrome` (or `/usr/bin/microsoft-edge-stable`)
+- **Vercel/serverless**: Uses `@sparticuz/chromium` + `puppeteer-core` (lightweight Chromium for serverless).
 - **Recommended subprocess timeout:** 60 seconds
-- **Default output path:** `C:\Users\Andrei\Downloads\Aspen\Orcamentos\{quotation_name} - {cliente}.pdf`
+- **PDF endpoint:** `POST /api/pdf` — generates on-the-fly, returns PDF binary.
 
 ## Dev Server
 
@@ -21,10 +21,22 @@ Alternative npm command: `npm run dev:vercel`. Frontend-only command: `npm run d
 ## Testing
 
 ```bash
-node test_local.mjs
+node test_local.mjs           # ERPNext integration test (extract + orcamento pipeline)
+npm run test:unit             # Node --test runner (tests/unit/*.test.js)
+npm run test:e2e              # Playwright E2E (tests/orcamento.spec.js + playwright.config.js)
+npm run test:whatsapp         # WhatsApp send handler test
+npm run test:whatsapp-flows   # WhatsApp flows unit test
+npm run test:erp              # alias → node test_local.mjs
+npm run lint                  # ESLint (flat config, scoped by environment)
+npm run lint:fix              # ESLint auto-fix
+npm run format                # Prettier
+npm run format:check          # Prettier --check
+npm run check                 # lint + build
 ```
 
-Runs both functions end-to-end against real ERPNext. Edit the `text` array at the top of the file to test different inputs. Requires a valid `OPENROUTER_API_KEY` in `.env`.
+Runs both functions end-to-end against real ERPNext. Edit the `text` array at the top of `test_local.mjs` to test different inputs. Requires a valid `OPENROUTER_API_KEY` in `.env`.
+
+Unit tests use Node.js built-in `node:test` + `node:assert/strict` (no Jest/Vitest dependency). E2E tests use Playwright with Chromium only. No CI pipeline configured — all tests run manually.
 
 ## Environment Variables
 
@@ -33,36 +45,52 @@ Runs both functions end-to-end against real ERPNext. Edit the `text` array at th
 | `ERPNEXT_TOKEN` | `.env` (local) + Vercel project env (prod) | ERPNext API auth |
 | `OPENROUTER_API_KEY` | `.env` (local) + Vercel project env (prod) | OpenRouter API auth |
 | `OPENROUTER_MODEL` | `.env` (local) + Vercel project env (prod) | Optional model override for extraction |
-| `APP_PASSWORD` | Vercel project env | UI access password |
+| `APP_PASSWORD` | Vercel project env | UI access password (login cookie auth) |
 | `SMTP_PASSWORD` | `.env` (local) + Vercel project env (prod) | Hostinger SMTP — `orcamento@aspenestamparia.com` |
+| `EVOLUTION_BASE_URL` | `.env` (local) + Vercel project env (prod) | Evolution API base URL (WhatsApp) |
+| `EVOLUTION_API_KEY` | `.env` (local) + Vercel project env (prod) | Evolution API auth |
+| `EVOLUTION_INSTANCE` | `.env` (local) + Vercel project env (prod) | Evolution API instance name |
+| `N8N_WEBHOOK_URL` | Vercel project env | n8n webhook for post-quotation drip automation |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel-injected (prod) | Vercel KV — WhatsApp flows persistence |
 
 ## Architecture
 
-Single-page app (`src` built by Vite into `public`) + Vercel API entrypoint:
+Single-page app (`src` built by Vite into `public`) + Vercel API entrypoint. The catch-all router `api/[...path].js` has auth (`api/_lib/auth.js`) and rate-limiting (`api/_lib/rate-limit.js`) guards before dispatching to handlers.
 
 | Function | Route | Purpose |
 |----------|-------|---------|
-| `api/[...path].js` | `/api/*` | Vercel catch-all API route — dispatches to internal handlers |
+| `api/[...path].js` | `/api/*` | Vercel catch-all API route — auth + rate-limit + dispatch |
 | `api/_functions/extract.js` | `POST /api/extract` | AI extraction: text/image → structured orders via OpenRouter |
 | `api/_functions/orcamento.js` | `POST /api/orcamento` | Creates ERPNext Quotation + CRM Deal (two-phase pipeline) |
 | `api/_functions/edit-draft.js` | `POST /api/edit-draft` | Natural-language editing of draft quotations via OpenRouter |
-| `api/_functions/view.js` | `GET /api/view?q={id}` | Renders quotation HTML for browser/print preview |
+| `api/_functions/view.js` | `GET /api/view?q={id}` | Renders quotation HTML for browser/print preview (public, no auth) |
 | `api/_functions/pricing.js` | _(shared lib)_ | Pricing bracket/rate logic — imported by `orcamento.js`, no handler export |
 | `api/_functions/freight.js` | `POST /api/freight` | Freight calculation lookup |
 | `api/_functions/send-whatsapp.js` | `POST /api/send-whatsapp` | Sends WhatsApp message via Evolution API |
+| `api/_functions/whatsapp-flows.js` | `GET/PUT /api/whatsapp-flows` | WhatsApp flow templates — persisted in Vercel KV |
+| `api/_functions/whatsapp-leads.js` | `POST /api/whatsapp-leads` | WhatsApp lead processing |
 | `api/_functions/leads-clients.js` | `POST /api/leads-clients` | Lead/client management |
+| `api/_functions/client-detail.js` | `GET/PUT /api/client-detail` | Single Lead/Customer CRUD |
 | `api/_functions/crm-deals.js` | `POST /api/crm-deals` | CRM deal operations |
 | `api/_functions/crm-update-deal.js` | `POST /api/crm-update-deal` | Update CRM deal fields |
 | `api/_functions/products.js` | `POST /api/products` | Product listing/search |
 | `api/_functions/product-detail.js` | `POST /api/product-detail` | Single product detail |
 | `api/_functions/product-pricing.js` | `POST /api/product-pricing` | Product pricing data |
 | `api/_functions/product-pricing-update.js` | `POST /api/product-pricing-update` | Update product pricing |
+| `api/_functions/product-update.js` | `POST /api/product-update` | Update product fields |
+| `api/_functions/product-activity.js` | `POST /api/product-activity` | Product activity tracking |
 | `api/_functions/pricing-lookup.js` | `POST /api/pricing-lookup` | Direct pricing lookup |
-| `api/_functions/quotations.js` | `POST /api/quotations` | Quotation listing/search |
+| `api/_functions/quotations.js` | `POST /api/quotations` | Quotation listing/search (GET/PUT/DELETE) |
+| `api/_functions/duplicate-quotation.js` | `POST /api/duplicate-quotation` | Duplicate an existing quotation |
 | `api/_functions/sales-orders.js` | `POST /api/sales-orders` | Sales order operations |
 | `api/_functions/sales-order-from-quotation.js` | `POST /api/sales-order-from-quotation` | Create Sales Order from Quotation |
 | `api/_functions/sales-dashboard.js` | `POST /api/sales-dashboard` | Sales dashboard data |
+| `api/_functions/pdf.js` | `POST /api/pdf` | PDF generation (Puppeteer + Chromium headless) |
+| `api/_functions/login.js` | `POST /api/login` | Authentication — sets `aspen_token` cookie (30-day expiry) |
+| `api/_functions/logout.js` | `POST /api/logout` | Clears auth cookie |
 | `api/_lib/function-adapter.js` | _(adapter)_ | Wraps handlers for Vercel req/res compatibility |
+| `api/_lib/auth.js` | _(middleware)_ | Cookie/header-based auth guard |
+| `api/_lib/rate-limit.js` | _(middleware)_ | Vercel KV-backed rate limiter |
 
 ### Two-phase pipeline
 
@@ -100,16 +128,31 @@ Quantity brackets: 30, 100, 300, 500, 1000. Urgent orders: +30% on all rates.
 - Ecobags → ECO-30 + ECO-35 + ECO-50
 - Explicit SKUs always take precedence (Rule 0)
 
-### Frontend (public/index.html)
-Single file — all CSS, HTML, and JS inline. Key functions:
-- `setImage` / `clearImage` — handles paste and drag-drop image input
-- `renderWaTemplate(template, nome, numeroPedido)` — resolves `(Saudacao)` (Bom dia/Boa tarde/Boa noite by hour), `(nome)`, `(primeiro_nome)`, `(numero_pedido)`, `(empresa)`, `(link_orcamento)` tags
-- `buildWhatsApp(telefone, nome, quotationId)` — builds wa.me link with pre-filled message
-- `capitalize(str)` / `fmtPhone(phone)` — display sanitizers (proper case, `(99) 99999-9999`)
-- `createCard / setCardProcessing / setCardDone / setCardError` — per-order result UI; `setCardDone` shows colored dot (green = new customer, red = returning) and "Cliente novo/antigo" label
-- Form submit handler (line ~910): orchestrates the two-phase fetch pipeline
+### Frontend (public/index.html → React SPA in src/)
+The production UI is a React 19 SPA (built by Vite into `public/`). The old single-file `public/index.html` is the build output entry.
 
-Settings tab persists custom extraction rules and WhatsApp template to `localStorage`.
+Key pages (15 total, hash-based routing via `useHashRoute`, no React Router):
+| Hash route | Page component |
+|---|---|
+| `#/dashboard` | DashboardPage |
+| `#/quotations` | QuotationsPage (default) |
+| `#/quotations/:id` | QuotationDetailPage |
+| `#/auto` | AutoQuotePage — two-phase extraction + quotation |
+| `#/manual` | ManualOrcamentoPage |
+| `#/sales-orders` | SalesOrdersPage |
+| `#/sales-orders/:id` | SalesOrderDetailPage |
+| `#/freight` | FreightPage |
+| `#/products` | ProductsPage |
+| `#/products/:sku` | ProductDetailPage |
+| `#/crm` | CrmKanbanPage |
+| `#/leads` | LeadsPage |
+| `#/leads/:tipo/:id` | LeadDetailPage |
+| `#/settings` | SettingsPage |
+| `#/login` | LoginPage (full-screen, no layout) |
+
+UI: Framer design system (dark/light), shadcn-style components (CVA + cn), Lucide icons. Dark mode via `.dark` on `<html>` + localStorage.
+
+State: 90% local `useState` + API fetch. WhatsApp flows use **Vercel KV** as primary storage with localStorage fallback. Extraction drafts use localStorage (`aspen_drafts`). Theme uses localStorage (`aspen_theme`).
 
 ### Quotation naming series
 Format: `ORC-YYYY####` (e.g. `ORC-20261143`). Configured in ERPNext at `/app/naming-series` with prefix `ORC-.YYYY.####`. To reset the counter, set prefix `ORC-2026` to the desired starting value at `/app/naming-series`.
