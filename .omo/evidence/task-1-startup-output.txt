@@ -1,0 +1,21 @@
+Vercel dev --debug startup output (key lines):
+
+[debug] Found config in file "vercel.json"
+[debug] Vercel CLI 50.25.4
+[debug] Imported Builder "@vercel/node" from "...@vercel/node"
+[debug] Imported Builder "@vercel/static-build" from "...@vercel/static-build"
+[debug] Resolved builders: "@vercel/node@latest => 5.6.9, @vercel/static-build@latest => 2.8.43"
+[debug] Adding build match for "api/[...path]" with "@vercel/node@latest"
+[debug] Adding build match for "package.json" with "@vercel/static-build@latest"
+Creating initial build
+Building @vercel/static-build@latest:package.json
+[debug] Using `@vercel/static-build@2.8.43`
+[debug] Creating build process for "package.json"
+yarn run v1.22.22
+$ vite
+VITE v6.4.2 ready in 255 ms
+➜ Local: http://localhost:5173/
+
+NO "Ready!" message appeared.
+Port 3000/3001 LISTENING but HTTP requests timeout (HTTP 000).
+SPA on port 5173 (Vite) works correctly.

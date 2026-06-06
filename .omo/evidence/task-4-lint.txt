@@ -1,0 +1,6 @@
+npm run lint result (after fix):
+- 395 problems (355 errors, 40 warnings)
+- ALL pre-existing (none from our vercel.json change)
+- Errors are in: public/assets/* (built JS bundle) and pre-existing AbortSignal/AbortController patterns
+- Warnings are pre-existing unused vars in various files
+- vercel.json change introduces ZERO new lint issues
