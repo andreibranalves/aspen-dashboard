@@ -552,7 +552,7 @@ export default function AutoQuotePage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-framer-ink">
                   Resultados ({activeDrafts.length})

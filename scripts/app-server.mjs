@@ -97,11 +97,13 @@ function parseBody(req) {
 }
 
 function serveStatic(urlPath, res) {
-  let filePath = urlPath === '/' ? '/index.html' : urlPath;
-  filePath = normalize(join(PUBLIC_DIR, filePath));
+  const relativePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+  let filePath = normalize(join(PUBLIC_DIR, relativePath));
 
   // Security: prevent directory traversal
-  if (!filePath.startsWith(PUBLIC_DIR + '/') && filePath !== PUBLIC_DIR + '/index.html') {
+  const publicPrefix = normalize(PUBLIC_DIR + '/');
+  const indexPath = normalize(join(PUBLIC_DIR, 'index.html'));
+  if (!filePath.startsWith(publicPrefix) && filePath !== indexPath) {
     return false;
   }
 
