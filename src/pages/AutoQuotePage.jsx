@@ -511,9 +511,8 @@ export default function AutoQuotePage() {
                     : lead.isReady
                       ? 'bg-emerald-500/10 text-emerald-600'
                       : 'bg-amber-500/10 text-amber-600';
-
-                  const line2Parts = [lead.nome, lead.email].filter(Boolean);
-                  const line2 = line2Parts.length ? line2Parts.join(' — ') : 'Nome não identificado';
+                  const displayName = lead.nome || 'Nome não identificado';
+                  const displayEmail = lead.email || '';
 
                   return (
                     <button
@@ -524,7 +523,10 @@ export default function AutoQuotePage() {
                     >
                       <div className="min-w-0">
                         <p className="font-medium text-framer-ink truncate">{fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}</p>
-                        <p className="text-xs text-framer-ink-muted truncate">{line2}</p>
+                        <p className="text-xs leading-tight text-framer-ink-muted break-words">{displayName}</p>
+                        {displayEmail ? (
+                          <p className="text-[11px] text-framer-ink-muted/80 truncate">{displayEmail}</p>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5 ml-2">
                         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}>

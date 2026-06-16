@@ -418,20 +418,23 @@ async function getConvertedContactKeys() {
   const emails = new Map();
   const names = new Map();
   const emailPhones = new Map(); // email → phone (for @lid fallback)
+  const quotationNames = new Map(); // quotationId → full customer name
   for (const row of rows || []) {
     const quotationId = String(row.name || '').trim();
+    const customerName = cleanText(row.customer_name);
     const phone = normalizeComparablePhone(row.contact_mobile);
     const email = String(row.contact_email || '').trim().toLowerCase();
     if (phone && quotationId && !phones.has(phone)) phones.set(phone, quotationId);
     if (email && quotationId && !emails.has(email)) emails.set(email, quotationId);
-    const name = String(row.customer_name || '').trim().toLowerCase();
+    const name = customerName.toLowerCase();
     if (name && quotationId && !names.has(name)) names.set(name, quotationId);
+    if (quotationId && customerName && !quotationNames.has(quotationId)) quotationNames.set(quotationId, customerName);
     const fullPhone = normalizeWhatsappPhone(row.contact_mobile);
     if (email && fullPhone && isValidBrazilWhatsappPhone(fullPhone) && !emailPhones.has(email)) {
       emailPhones.set(email, fullPhone);
     }
   }
-  const result = { phones, emails, names, emailPhones };
+  const result = { phones, emails, names, emailPhones, quotationNames };
   _convertedKeysCache = { data: result, ts: Date.now() };
   return result;
 }
@@ -444,6 +447,12 @@ export function findConvertedQuotation(lead, converted) {
   const name = String(lead.nome || '').trim().toLowerCase();
   if (name && converted.names.has(name)) return converted.names.get(name);
   return '';
+}
+
+function resolveCanonicalLeadName(lead, converted) {
+  const quotationId = findConvertedQuotation(lead, converted);
+  const quotationName = quotationId ? cleanText(converted.quotationNames?.get(quotationId)) : '';
+  return quotationName || cleanText(lead.nome);
 }
 
 export function resolveWhatsappDisplayName(extracted, chat, fallbackPhone) {
@@ -576,6 +585,7 @@ export async function handler(event) {
         timestamp,
       };
       lead.quotationId = findConvertedQuotation(lead, converted);
+      lead.nome = resolveCanonicalLeadName(lead, converted) || lead.nome;
       lead.hasQuotation = Boolean(lead.quotationId);
       Object.assign(lead, getWhatsappLeadQuality(lead));
       lead.texto = formatLeadText(lead);
