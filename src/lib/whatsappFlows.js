@@ -68,7 +68,7 @@ export const DEFAULT_WA_FLOWS = [
         id: 'step-context',
         type: 'text',
         template:
-          'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) personalizado(a).',
+          'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) (produto_adjetivo_personalizado).',
       },
       {
         id: 'step-quotation',
@@ -137,10 +137,34 @@ export function normalizeFlow(rawFlow, index = 0) {
   return flow;
 }
 
+const PRODUCT_CATEGORY_GENDERS = {
+  canga: 'f',
+  lenço: 'm',
+  boné: 'm',
+  toalha: 'f',
+  chapéu: 'm',
+  ecobag: 'f',
+  cachecol: 'm',
+};
+
+function normalizeProductSummaryTemplate(template) {
+  return typeof template === 'string'
+    ? template
+        .replace(
+          /\(produto_resumo\)\s+personalizado\(a\)/g,
+          '(produto_resumo) (produto_adjetivo_personalizado)'
+        )
+        .replace(
+          /\(produto_resumo\)\s+personalizados\(as\)/g,
+          '(produto_resumo) (produto_adjetivo_personalizado)'
+        )
+    : template;
+}
+
 function normalizeStep(rawStep, index) {
   const step = { ...STEP_DEFAULTS, ...rawStep };
   step.id = step.id || `step-${index}`;
-  step.template = step.template || '';
+  step.template = normalizeProductSummaryTemplate(step.template || '');
   step.media = step.media || '';
   step.source = step.source || '';
   step.caption = step.caption || '';
@@ -346,13 +370,25 @@ export function flowToSequencePayload(flow) {
  *
  * Supported variables:
  *   (Saudacao), (nome), (primeiro_nome), (numero_pedido),
- *   (empresa), (link_orcamento), (vendedora), (produto_resumo)
+ *   (empresa), (link_orcamento), (vendedora), (produto_resumo),
+ *   (produto_adjetivo_personalizado)
  *
  * (Saudacao) is time-based: 5-11:59 → "Bom dia", 12-17:59 → "Boa tarde",
  * 18-4:59 → "Boa noite".
  *
  * Unknown variables are left as-is.
  */
+function readTemplateContext(ctx, plainKey, tokenKey) {
+  return ctx[plainKey] || ctx[tokenKey] || '';
+}
+
+function productPersonalizationAdjectiveFromCategories(categories = []) {
+  const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
+  return genders.length > 0 && genders.every((gender) => gender === 'f')
+    ? 'personalizadas'
+    : 'personalizados';
+}
+
 export function renderFlowTemplate(template, context) {
   if (!template) return '';
 
@@ -363,18 +399,31 @@ export function renderFlowTemplate(template, context) {
     ctx.Saudacao = getTimeBasedGreeting();
   }
 
+  const productCategories = ctx.categories || ctx.categorias || [];
+  const productPersonalizationAdjective =
+    readTemplateContext(
+      ctx,
+      'produto_adjetivo_personalizado',
+      '(produto_adjetivo_personalizado)'
+    ) || productPersonalizationAdjectiveFromCategories(productCategories);
+
   const variableMap = {
-    '(Saudacao)': ctx.Saudacao || '',
-    '(nome)': ctx.nome || ctx.primeiro_nome || '',
-    '(primeiro_nome)': ctx.primeiro_nome || ctx.nome || '',
-    '(numero_pedido)': ctx.numero_pedido || '',
-    '(empresa)': ctx.empresa || '',
-    '(link_orcamento)': ctx.link_orcamento || '',
-    '(vendedora)': ctx.vendedora || '',
-    '(produto_resumo)': ctx.produto_resumo || '',
+    '(Saudacao)': readTemplateContext(ctx, 'Saudacao', '(Saudacao)'),
+    '(nome)':
+      readTemplateContext(ctx, 'nome', '(nome)') ||
+      readTemplateContext(ctx, 'primeiro_nome', '(primeiro_nome)'),
+    '(primeiro_nome)':
+      readTemplateContext(ctx, 'primeiro_nome', '(primeiro_nome)') ||
+      readTemplateContext(ctx, 'nome', '(nome)'),
+    '(numero_pedido)': readTemplateContext(ctx, 'numero_pedido', '(numero_pedido)'),
+    '(empresa)': readTemplateContext(ctx, 'empresa', '(empresa)'),
+    '(link_orcamento)': readTemplateContext(ctx, 'link_orcamento', '(link_orcamento)'),
+    '(vendedora)': readTemplateContext(ctx, 'vendedora', '(vendedora)'),
+    '(produto_resumo)': readTemplateContext(ctx, 'produto_resumo', '(produto_resumo)'),
+    '(produto_adjetivo_personalizado)': productPersonalizationAdjective,
   };
 
-  let result = template;
+  let result = normalizeProductSummaryTemplate(template);
   for (const [key, value] of Object.entries(variableMap)) {
     result = result.replaceAll(key, value);
   }
@@ -433,10 +482,6 @@ export function parseSampleImages(text) {
 // API-based flow persistence (server-side, replaces localStorage for global state)
 // ---------------------------------------------------------------------------
 
-/** Cache of flows fetched from API. Null if not yet fetched. */
-let _apiFlowsCache = null;
-let _apiSelectedFlowIdCache = null;
-
 /**
  * Fetch flows from the server API.
  * Returns { flows, selectedFlowId, source }.
@@ -450,8 +495,6 @@ export async function fetchFlowsFromApi() {
     if (data.success && Array.isArray(data.flows)) {
       const flows = data.flows.map((f, i) => normalizeFlow(f, i));
       const selectedFlowId = data.selectedFlowId || flows[0]?.id || null;
-      _apiFlowsCache = flows;
-      _apiSelectedFlowIdCache = selectedFlowId;
       return { flows, selectedFlowId, source: data.source || 'api' };
     }
     throw new Error('Invalid API response');
@@ -478,8 +521,6 @@ export async function saveFlowsToApi(flows, selectedFlowId) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.success) {
-      _apiFlowsCache = flows;
-      _apiSelectedFlowIdCache = selectedFlowId;
       // Mirror to localStorage as fallback
       saveWhatsappFlows(flows);
       saveSelectedFlowId(selectedFlowId);

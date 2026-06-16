@@ -21,8 +21,17 @@ export const DEFAULT_WA_FLOWS = [
     max_images_per_category: 0,
     default: true,
     steps: [
-      { id: 'step-greeting', type: 'text', template: 'Segue o orçamento solicitado, (primeiro_nome)!' },
-      { id: 'step-pdf', type: 'document', source: 'quotation_pdf', caption: 'Orçamento (numero_pedido)' },
+      {
+        id: 'step-greeting',
+        type: 'text',
+        template: 'Segue o orçamento solicitado, (primeiro_nome)!',
+      },
+      {
+        id: 'step-pdf',
+        type: 'document',
+        source: 'quotation_pdf',
+        caption: 'Orçamento (numero_pedido)',
+      },
     ],
     sample_images_text: '',
   },
@@ -37,9 +46,23 @@ export const DEFAULT_WA_FLOWS = [
     default: false,
     steps: [
       { id: 'step-greeting', type: 'text', template: 'Boa tarde, (primeiro_nome)! Tudo bem?' },
-      { id: 'step-context', type: 'text', template: 'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) personalizado(a).' },
-      { id: 'step-quotation', type: 'text', template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)' },
-      { id: 'step-samples-intro', type: 'text', template: 'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.' },
+      {
+        id: 'step-context',
+        type: 'text',
+        template:
+          'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) (produto_adjetivo_personalizado).',
+      },
+      {
+        id: 'step-quotation',
+        type: 'text',
+        template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)',
+      },
+      {
+        id: 'step-samples-intro',
+        type: 'text',
+        template:
+          'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.',
+      },
       { id: 'step-product-images', type: 'product_images' },
     ],
     sample_images_text: '',
@@ -51,6 +74,32 @@ const KV_KEY_SELECTED = 'aspen:whatsapp-flows:selected';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
+function normalizeProductSummaryTemplate(template) {
+  return typeof template === 'string'
+    ? template
+        .replace(
+          /\(produto_resumo\)\s+personalizado\(a\)/g,
+          '(produto_resumo) (produto_adjetivo_personalizado)'
+        )
+        .replace(
+          /\(produto_resumo\)\s+personalizados\(as\)/g,
+          '(produto_resumo) (produto_adjetivo_personalizado)'
+        )
+    : template;
+}
+
+function normalizeFlow(flow) {
+  return {
+    ...flow,
+    steps: Array.isArray(flow?.steps)
+      ? flow.steps.map((step) => ({
+          ...step,
+          template: normalizeProductSummaryTemplate(step?.template),
+        }))
+      : [],
+  };
+}
+
 async function readFlows() {
   if (!kv) return null;
   try {
@@ -59,7 +108,11 @@ async function readFlows() {
       kv.get(KV_KEY_SELECTED),
     ]);
     if (Array.isArray(flows) && flows.length > 0) {
-      return { flows, selectedFlowId: selectedFlowId || flows[0]?.id || null };
+      const normalizedFlows = flows.map(normalizeFlow);
+      return {
+        flows: normalizedFlows,
+        selectedFlowId: selectedFlowId || normalizedFlows[0]?.id || null,
+      };
     }
     return null;
   } catch (err) {
@@ -73,10 +126,7 @@ async function writeFlows(flows, selectedFlowId) {
     throw createHttpError(500, 'Armazenamento não configurado.');
   }
   try {
-    await Promise.all([
-      kv.set(KV_KEY_FLOWS, flows),
-      kv.set(KV_KEY_SELECTED, selectedFlowId),
-    ]);
+    await Promise.all([kv.set(KV_KEY_FLOWS, flows), kv.set(KV_KEY_SELECTED, selectedFlowId)]);
   } catch (err) {
     throw createHttpError(
       500,

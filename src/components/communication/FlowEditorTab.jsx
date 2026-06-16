@@ -49,7 +49,8 @@ const PREVIEW_CONTEXT = {
   '(empresa)': 'Aspen Estamparia',
   '(link_orcamento)': 'https://orcamento.aspenestamparia.com/api/view?q=ORC-20261289',
   '(vendedora)': 'Juliana',
-  '(produto_resumo)': 'canga',
+  '(produto_resumo)': 'cangas',
+  '(produto_adjetivo_personalizado)': 'personalizadas',
   '(grupo_produto)': 'canga',
 };
 

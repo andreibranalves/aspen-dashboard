@@ -31,6 +31,24 @@ const PRODUCT_CATEGORY_BY_PREFIX = {
   ECO: 'ecobag',
   CHC: 'cachecol',
 };
+const PRODUCT_SUMMARY_PLURALS = {
+  canga: 'cangas',
+  lenço: 'lenços',
+  boné: 'bonés',
+  toalha: 'toalhas',
+  chapéu: 'chapéus',
+  ecobag: 'ecobags',
+  cachecol: 'cachecóis',
+};
+const PRODUCT_CATEGORY_GENDERS = {
+  canga: 'f',
+  lenço: 'm',
+  boné: 'm',
+  toalha: 'f',
+  chapéu: 'm',
+  ecobag: 'f',
+  cachecol: 'm',
+};
 const CATEGORY_ALIASES = {
   canga: 'canga',
   cangas: 'canga',
@@ -87,6 +105,29 @@ function randomDelay(minMs, maxMs) {
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
+function normalizeProductSummaryTemplate(template) {
+  return String(template || '')
+    .replace(
+      /\(produto_resumo\)\s+personalizado\(a\)/g,
+      '(produto_resumo) (produto_adjetivo_personalizado)'
+    )
+    .replace(
+      /\(produto_resumo\)\s+personalizados\(as\)/g,
+      '(produto_resumo) (produto_adjetivo_personalizado)'
+    );
+}
+
+function pluralizeProductCategory(category) {
+  return PRODUCT_SUMMARY_PLURALS[category] || category;
+}
+
+function productPersonalizationAdjectiveFromCategories(categories = []) {
+  const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
+  return genders.length > 0 && genders.every((gender) => gender === 'f')
+    ? 'personalizadas'
+    : 'personalizados';
+}
+
 function renderTemplate(template, context) {
   const h = new Date().getHours();
   const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
@@ -95,7 +136,11 @@ function renderTemplate(template, context) {
   const groups = context.categories || [];
   const grupoProduto = groups.length > 0 ? groups[0] : 'produto';
 
-  return String(template || '')
+  const productPersonalizationAdjective =
+    context.productPersonalizationAdjective ||
+    productPersonalizationAdjectiveFromCategories(context.categories);
+
+  return normalizeProductSummaryTemplate(template)
     .replace(/\(Saudacao\)/g, saudacao)
     .replace(/\(nome\)/g, nome)
     .replace(/\(primeiro_nome\)/g, primeiroNome)
@@ -104,6 +149,7 @@ function renderTemplate(template, context) {
     .replace(/\(link_orcamento\)/g, context.link || '')
     .replace(/\(vendedora\)/g, context.vendorName || 'Juliana')
     .replace(/\(produto_resumo\)/g, context.productSummary || 'produtos')
+    .replace(/\(produto_adjetivo_personalizado\)/g, productPersonalizationAdjective)
     .replace(/\(grupo_produto\)/g, grupoProduto);
 }
 
@@ -132,10 +178,11 @@ function detectCategories(items = []) {
 }
 
 function productSummaryFromCategories(categories = []) {
-  if (!categories.length) return 'produtos';
-  if (categories.length === 1) return categories[0];
-  if (categories.length === 2) return `${categories[0]} e ${categories[1]}`;
-  return `${categories.slice(0, -1).join(', ')} e ${categories.at(-1)}`;
+  const labels = categories.map(pluralizeProductCategory);
+  if (!labels.length) return 'produtos';
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} e ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} e ${labels.at(-1)}`;
 }
 
 // ── Evolution API ──────────────────────────────────────────────────────────

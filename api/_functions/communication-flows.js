@@ -65,7 +65,7 @@ const DEFAULT_FLOWS = [
         id: 'step-context',
         type: 'text',
         template:
-          'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) personalizado(a).',
+          'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) (produto_adjetivo_personalizado).',
       },
       {
         id: 'step-quotation',
@@ -85,24 +85,52 @@ const DEFAULT_FLOWS = [
 
 // ── Migration: convert old flow steps (image/product_images) → product_media ──
 
+function normalizeProductSummaryTemplate(template) {
+  return typeof template === 'string'
+    ? template
+        .replace(
+          /\(produto_resumo\)\s+personalizado\(a\)/g,
+          '(produto_resumo) (produto_adjetivo_personalizado)'
+        )
+        .replace(
+          /\(produto_resumo\)\s+personalizados\(as\)/g,
+          '(produto_resumo) (produto_adjetivo_personalizado)'
+        )
+    : template;
+}
+
 function migrateStep(step) {
   if (!step) return step;
+  const normalizedStep = {
+    ...step,
+    template: normalizeProductSummaryTemplate(step.template),
+  };
   // Old 'product_images' → new 'product_media'
-  if (step.type === 'product_images') {
-    return { ...step, type: STEP_TYPES.PRODUCT_MEDIA, selection: 'product_group', max_items: 2 };
+  if (normalizedStep.type === 'product_images') {
+    return {
+      ...normalizedStep,
+      type: STEP_TYPES.PRODUCT_MEDIA,
+      selection: 'product_group',
+      max_items: 2,
+    };
   }
   // Old 'image' with media URL → new 'product_media' (treated as fallback)
-  if (step.type === 'image') {
-    return { ...step, type: STEP_TYPES.PRODUCT_MEDIA, selection: 'product_group', max_items: 1 };
+  if (normalizedStep.type === 'image') {
+    return {
+      ...normalizedStep,
+      type: STEP_TYPES.PRODUCT_MEDIA,
+      selection: 'product_group',
+      max_items: 1,
+    };
   }
   // Ensure every step has an id
-  if (!step.id) {
+  if (!normalizedStep.id) {
     return {
-      ...step,
+      ...normalizedStep,
       id: `step_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
     };
   }
-  return step;
+  return normalizedStep;
 }
 
 function migrateFlow(flow) {
