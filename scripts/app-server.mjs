@@ -20,13 +20,9 @@ import { handler as clientDetail } from '../api/_functions/client-detail.js';
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
 import { handler as duplicateQuotation } from '../api/_functions/duplicate-quotation.js';
-import { handler as editDraft } from '../api/_functions/edit-draft.js';
 import { handler as extract } from '../api/_functions/extract.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
-import { handler as login } from '../api/_functions/login.js';
-import { handler as logout } from '../api/_functions/logout.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
-import { handler as pdf } from '../api/_functions/pdf.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
 import { handler as productDetail } from '../api/_functions/product-detail.js';
 import { handler as productUpdate } from '../api/_functions/product-update.js';
@@ -48,13 +44,9 @@ const ROUTES = {
   'crm-deals': crmDeals,
   'crm-update-deal': crmUpdateDeal,
   'duplicate-quotation': duplicateQuotation,
-  'edit-draft': editDraft,
   extract,
   'leads-clients': leadsClients,
-  login,
-  logout,
   orcamento,
-  pdf,
   'pricing-lookup': pricingLookup,
   'product-detail': productDetail,
   'product-update': productUpdate,
@@ -105,13 +97,11 @@ function parseBody(req) {
 }
 
 function serveStatic(urlPath, res) {
-  const relativePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
-  let filePath = normalize(join(PUBLIC_DIR, relativePath));
+  let filePath = urlPath === '/' ? '/index.html' : urlPath;
+  filePath = normalize(join(PUBLIC_DIR, filePath));
 
   // Security: prevent directory traversal
-  const publicPrefix = normalize(PUBLIC_DIR + '/');
-  const indexPath = normalize(join(PUBLIC_DIR, 'index.html'));
-  if (!filePath.startsWith(publicPrefix) && filePath !== indexPath) {
+  if (!filePath.startsWith(PUBLIC_DIR + '/') && filePath !== PUBLIC_DIR + '/index.html') {
     return false;
   }
 

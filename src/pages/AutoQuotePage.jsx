@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Sparkles, FileText, AlertTriangle, RotateCcw, History, MessageCircle, RefreshCw, Image as ImageIcon, X } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters.js';
-import { buildQuotationViewUrl, buildQuotationPdfUrl } from '@/lib/printFormats.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { cn } from '@/lib/utils.js';
 import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
@@ -575,9 +575,6 @@ export default function AutoQuotePage() {
                 const relativeViewUrl = draft.result?.data?.quotation_id
                   ? buildQuotationViewUrl(draft.result.data.quotation_id)
                   : '';
-                const relativePdfUrl = draft.result?.data?.quotation_id
-                  ? buildQuotationPdfUrl(draft.result.data.quotation_id)
-                  : '';
 
                 if (isError) {
                   return (
@@ -609,7 +606,6 @@ export default function AutoQuotePage() {
                     onCreateQuote={createSingleQuote}
                     onDelete={discardDraft}
                     viewUrl={relativeViewUrl}
-                    pdfUrl={relativePdfUrl}
                     waStatus={waStatusByDraft[draft.index]}
                     onSendWhatsApp={handleSendWhatsApp}
                   />

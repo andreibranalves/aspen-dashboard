@@ -3,7 +3,7 @@
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Pencil, X, Plus, Loader2, AlertTriangle, Send, FileText, Check, Download } from 'lucide-react';
+import { Pencil, X, Plus, Loader2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
@@ -32,7 +32,6 @@ export default function SplitResultCard({
   onCreateQuote,
   onDelete,
   viewUrl,
-  pdfUrl,
   waStatus,
   onSendWhatsApp,
 }) {
@@ -384,12 +383,6 @@ export default function SplitResultCard({
               <Button size="sm" variant="secondary" disabled={!viewUrl}>
                 <FileText size={13} />
                 Abrir orçamento
-              </Button>
-            </a>
-            <a href={pdfUrl || '#'} target="_blank" rel="noopener noreferrer" download className={!pdfUrl ? 'pointer-events-none' : undefined}>
-              <Button size="sm" variant="outline" disabled={!pdfUrl}>
-                <Download size={13} />
-                Baixar PDF
               </Button>
             </a>
             <Button

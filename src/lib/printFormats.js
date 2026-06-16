@@ -49,8 +49,3 @@ export function buildQuotationViewUrl(quotationId, printFormat = null) {
   }
   return `/api/view?${params.toString()}`;
 }
-
-export function buildQuotationPdfUrl(quotationId) {
-  const params = new URLSearchParams({ q: quotationId });
-  return `/api/pdf?${params.toString()}`;
-}
