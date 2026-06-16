@@ -68,6 +68,34 @@ function getChatRemoteJid(chat) {
   );
 }
 
+function isGroupChat(chat) {
+  const remoteJid = getChatRemoteJid(chat);
+  const candidateStrings = [
+    remoteJid,
+    chat?.remoteJid,
+    chat?.id,
+    chat?.jid,
+    chat?.owner,
+    chat?.subject,
+    chat?.name,
+  ]
+    .filter(Boolean)
+    .map(value => String(value).toLowerCase());
+
+  if (candidateStrings.some(value => value.includes('@g.us'))) return true;
+  if (candidateStrings.some(value => value.includes('status@broadcast'))) return true;
+
+  return Boolean(
+    chat?.isGroup
+    || chat?.group
+    || chat?.isGrp
+    || chat?.isCommunity
+    || chat?.conversationType === 'group'
+    || chat?.chatType === 'group'
+    || chat?.type === 'group'
+  );
+}
+
 function getChatTimestamp(chat) {
   const candidates = [
     chat?.updatedAt,
@@ -183,6 +211,36 @@ function getInboundPushName(messages) {
     .find(name => name && name !== 'Você' && !/^\d+$/.test(name)) || '';
 }
 
+function isPlaceholderLeadName(value) {
+  const normalized = cleanText(value).toLowerCase();
+  if (!normalized) return true;
+
+  return [
+    'aspen',
+    'aspen estamparia',
+    'contato',
+    'contatos',
+    'contact',
+    'contacts',
+    'você',
+    'voce',
+    'unknown',
+  ].includes(normalized);
+}
+
+function resolveLeadName(chat, messages, extracted, telefone) {
+  const extractedName = cleanText(extracted?.nome);
+  const inboundName = getInboundPushName(messages);
+  const chatNames = [chat?.pushName, chat?.name, chat?.notify]
+    .map(cleanText)
+    .filter(Boolean);
+
+  const preferred = [extractedName, inboundName, ...chatNames]
+    .find(name => name && !isPlaceholderLeadName(name));
+
+  return preferred || firstNonEmpty(extractedName, inboundName, ...chatNames, telefone);
+}
+
 function getMessageText(message) {
   const msg = message?.message || message;
   return cleanText(firstNonEmpty(
@@ -296,10 +354,7 @@ async function evolutionFetch(path, body = {}, timeoutMs = 10000) {
 async function findChats() {
   const payload = await evolutionFetch(`/chat/findChats/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {});
   return unwrapData(payload)
-    .filter(chat => {
-      const jid = getChatRemoteJid(chat);
-      return jid && !jid.includes('@g.us') && !jid.includes('status@broadcast');
-    })
+    .filter(chat => getChatRemoteJid(chat) && !isGroupChat(chat))
     .sort((a, b) => getChatTimestamp(b) - getChatTimestamp(a))
     .slice(0, MAX_CHATS_TO_SCAN);
 }
@@ -392,7 +447,9 @@ export function findConvertedQuotation(lead, converted) {
 }
 
 export function resolveWhatsappDisplayName(extracted, chat, fallbackPhone) {
-  return firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, extracted?.nome, fallbackPhone);
+  const preferred = [cleanText(extracted?.nome), cleanText(chat?.pushName), cleanText(chat?.name), cleanText(chat?.notify)]
+    .find(name => name && !isPlaceholderLeadName(name));
+  return preferred || firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, extracted?.nome, fallbackPhone);
 }
 
 export function prioritizeWhatsappLeads(leads, limit = MAX_LEADS) {
@@ -481,7 +538,7 @@ export async function handler(event) {
         return null;
       }
 
-      const nome = firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, getInboundPushName(messages), extracted?.nome, telefone);
+      const nome = resolveLeadName(chat, messages, extracted, telefone);
 
       // Fallback 3: match email against ERPNext (most reliable for @lid resolution)
       if (!isValidBrazilWhatsappPhone(telefone)) {
