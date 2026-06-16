@@ -7,6 +7,7 @@ import {
   Package,
   Users,
   Settings,
+  MessageCircle,
   Menu,
   X,
   Moon,
@@ -18,24 +19,25 @@ const NAV_SECTIONS = [
   {
     title: 'Operacional',
     items: [
-      { hash: '/auto',         label: 'Auto',         icon: Sparkles },
-      { hash: '/dashboard',    label: 'Dashboard',    icon: BarChart3 },
-      { hash: '/sales-orders', label: 'Pedidos',      icon: ShoppingCart },
-      { hash: '/crm',          label: 'CRM',          icon: Columns3 },
+      { hash: '/auto', label: 'Auto', icon: Sparkles },
+      { hash: '/dashboard', label: 'Dashboard', icon: BarChart3 },
+      { hash: '/sales-orders', label: 'Pedidos', icon: ShoppingCart },
+      { hash: '/crm', label: 'CRM', icon: Columns3 },
     ],
   },
   {
     title: 'Cadastros',
     items: [
-      { hash: '/quotations',   label: 'Orçamentos',   icon: FileText },
-      { hash: '/products',     label: 'Produtos',     icon: Package },
-      { hash: '/leads',        label: 'Leads',        icon: Users },
+      { hash: '/quotations', label: 'Orçamentos', icon: FileText },
+      { hash: '/products', label: 'Produtos', icon: Package },
+      { hash: '/leads', label: 'Leads', icon: Users },
     ],
   },
   {
     title: 'Outros',
     items: [
-      { hash: '/settings',     label: 'Configurações', icon: Settings },
+      { hash: '/comunicacao', label: 'Comunicação', icon: MessageCircle },
+      { hash: '/settings', label: 'Configurações', icon: Settings },
     ],
   },
 ];
@@ -45,7 +47,14 @@ const NAV_SECTIONS = [
  * surface-1 background, hairline borders, ink text,
  * surface-2 hover, hairline active indicator.
  */
-export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate, darkMode, toggleDarkMode }) {
+export default function Sidebar({
+  collapsed,
+  onToggle,
+  currentRoute,
+  onNavigate,
+  darkMode,
+  toggleDarkMode,
+}) {
   return (
     <>
       {/* Overlay mobile */}
@@ -60,11 +69,14 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate,
         className={cn(
           'fixed top-0 left-0 z-30 h-full bg-framer-surface-1 text-framer-ink',
           'flex flex-col transition-all duration-300 overflow-hidden',
-          collapsed ? 'w-0 lg:w-16' : 'w-64',
+          collapsed ? 'w-0 lg:w-16' : 'w-64'
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 border-b border-framer-hairline shrink-0" style={{ height: '4rem' }}>
+        <div
+          className="flex items-center justify-between px-4 border-b border-framer-hairline shrink-0"
+          style={{ height: '4rem' }}
+        >
           {!collapsed && (
             <div className="flex items-center gap-2.5 whitespace-nowrap">
               <img
@@ -104,7 +116,7 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate,
                     'hover:bg-primary/5',
                     currentRoute === hash
                       ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-framer-ink-muted',
+                      : 'text-framer-ink-muted'
                   )}
                   title={collapsed ? label : undefined}
                 >
@@ -125,12 +137,16 @@ export default function Sidebar({ collapsed, onToggle, currentRoute, onNavigate,
             className={cn(
               'w-full flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition-colors',
               'hover:bg-framer-surface-2',
-              collapsed && 'justify-center px-0',
+              collapsed && 'justify-center px-0'
             )}
             aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
-            {darkMode ? <Sun size={16} className="shrink-0" /> : <Moon size={16} className="shrink-0" />}
+            {darkMode ? (
+              <Sun size={16} className="shrink-0" />
+            ) : (
+              <Moon size={16} className="shrink-0" />
+            )}
             {!collapsed && <span>{darkMode ? 'Modo claro' : 'Modo escuro'}</span>}
           </button>
         </div>

@@ -35,8 +35,14 @@ import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js'
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
+import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappFlows } from '../api/_functions/whatsapp-flows.js';
 import { handler as whatsappLeads } from '../api/_functions/whatsapp-leads.js';
+import { handler as communicationFlowPreview } from '../api/_functions/communication-flow-preview.js';
+import { handler as communicationSendEvents } from '../api/_functions/communication-send-events.js';
+import { handler as communicationFlows } from '../api/_functions/communication-flows.js';
+import { handler as communicationMedia } from '../api/_functions/communication-media.js';
+import { handler as communicationMediaUpload } from '../api/_functions/communication-media-upload.js';
 import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
@@ -59,8 +65,14 @@ const ROUTES = {
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
+  'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-flows': whatsappFlows,
   'whatsapp-leads': whatsappLeads,
+  'communication-flow-preview': communicationFlowPreview,
+  'communication-send-events': communicationSendEvents,
+  'communication-flows': communicationFlows,
+  'communication-media': communicationMedia,
+  'communication-media-upload': communicationMediaUpload,
   view,
 };
 
@@ -181,5 +193,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`App server on http://0.0.0.0:${PORT}`);
-  console.log(`Frontend: public/  |  API: 20 handlers`);
+  console.log(`Frontend: public/  |  API: ${Object.keys(ROUTES).length} handlers`);
 });

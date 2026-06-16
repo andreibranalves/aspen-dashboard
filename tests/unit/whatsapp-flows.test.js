@@ -232,14 +232,14 @@ describe('getFlowSummary()', () => {
     assert.equal(getFlowSummary(flow), '2 mensagens');
   });
 
-  it('inclui "fotos por produto" quando há product_images', () => {
+  it('inclui "mídia da biblioteca" quando há product_media/product_images', () => {
     const flow = {
       steps: [
         { type: 'text', template: 'Olá' },
         { type: 'product_images' },
       ],
     };
-    assert.equal(getFlowSummary(flow), '1 mensagem + fotos por produto');
+    assert.equal(getFlowSummary(flow), '1 mensagem + mídia da biblioteca');
   });
 
   it('retorna "vazio" para flow sem passos', () => {

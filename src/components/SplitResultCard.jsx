@@ -10,13 +10,7 @@ import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
 import { searchProducts } from '@/lib/productCache.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
-
-// WhatsApp icon inline SVG
-const WhatsappIcon = (props) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-  </svg>
-);
+import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 
 export default function SplitResultCard({
   draft,
@@ -30,20 +24,22 @@ export default function SplitResultCard({
   selectProduct,
   onRefetchPricing,
   onCreateQuote,
-  onDelete,
   viewUrl,
   waStatus,
+  waFlows = [],
+  waSelectedFlowId = '',
+  onSelectWhatsAppFlow,
   onSendWhatsApp,
 }) {
   const [editing, setEditing] = useState(false);
 
   // ── Per-item product search (local state, like QuotationDetailPage) ──
-  const [itemSearchTerms, setItemSearchTerms] = useState({});   // { ii: term }
-  const [itemResults, setItemResults] = useState({});            // { ii: [...] }
-  const [itemSearching, setItemSearching] = useState({});        // { ii: bool }
-  const [activeSearchIdx, setActiveSearchIdx] = useState(null);  // ii or null
-  const searchTimers = useRef({});  // { ii: timeoutId }
-  const qtyPricingTimer = useRef(null);  // debounced pricing refetch
+  const [itemSearchTerms, setItemSearchTerms] = useState({}); // { ii: term }
+  const [itemResults, setItemResults] = useState({}); // { ii: [...] }
+  const [itemSearching, setItemSearching] = useState({}); // { ii: bool }
+  const [activeSearchIdx, setActiveSearchIdx] = useState(null); // ii or null
+  const searchTimers = useRef({}); // { ii: timeoutId }
+  const qtyPricingTimer = useRef(null); // debounced pricing refetch
 
   // Click outside closes the active dropdown
   useEffect(() => {
@@ -58,53 +54,77 @@ export default function SplitResultCard({
   }, [activeSearchIdx]);
 
   // Debounced product search per item index
-  const onItemSkuChange = useCallback((ii, value) => {
-    setItemSearchTerms(prev => ({ ...prev, [ii]: value }));
-    onUpdateItem(draft.index, ii, 'item_code', value);
-    clearTimeout(searchTimers.current[ii]);
-    if (value && value.length >= 2) {
-      setItemSearching(prev => ({ ...prev, [ii]: true }));
-      searchTimers.current[ii] = setTimeout(async () => {
-        try {
-          const data = await searchProducts(value, 6);
-          setItemResults(prev => ({ ...prev, [ii]: data }));
-        } catch {
-          setItemResults(prev => ({ ...prev, [ii]: [] }));
-        } finally {
-          setItemSearching(prev => ({ ...prev, [ii]: false }));
-        }
-      }, 300);
-    } else {
-      setItemResults(prev => ({ ...prev, [ii]: [] }));
-      setItemSearching(prev => ({ ...prev, [ii]: false }));
-    }
-  }, [draft.index, onUpdateItem]);
+  const onItemSkuChange = useCallback(
+    (ii, value) => {
+      setItemSearchTerms((prev) => ({ ...prev, [ii]: value }));
+      onUpdateItem(draft.index, ii, 'item_code', value);
+      clearTimeout(searchTimers.current[ii]);
+      if (value && value.length >= 2) {
+        setItemSearching((prev) => ({ ...prev, [ii]: true }));
+        searchTimers.current[ii] = setTimeout(async () => {
+          try {
+            const data = await searchProducts(value, 6);
+            setItemResults((prev) => ({ ...prev, [ii]: data }));
+          } catch {
+            setItemResults((prev) => ({ ...prev, [ii]: [] }));
+          } finally {
+            setItemSearching((prev) => ({ ...prev, [ii]: false }));
+          }
+        }, 300);
+      } else {
+        setItemResults((prev) => ({ ...prev, [ii]: [] }));
+        setItemSearching((prev) => ({ ...prev, [ii]: false }));
+      }
+    },
+    [draft.index, onUpdateItem]
+  );
 
   // Select product from dropdown
-  const handleSelectProduct = useCallback((ii, product) => {
-    if (!product?.sku) return;
-    selectProduct(draft.index, ii, product);
-    setItemSearchTerms(prev => ({ ...prev, [ii]: product.nome || product.item_name || product.sku }));
-    setItemResults(prev => ({ ...prev, [ii]: [] }));
-    setActiveSearchIdx(null);
-  }, [draft.index, selectProduct]);
+  const handleSelectProduct = useCallback(
+    (ii, product) => {
+      if (!product?.sku) return;
+      selectProduct(draft.index, ii, product);
+      setItemSearchTerms((prev) => ({
+        ...prev,
+        [ii]: product.nome || product.item_name || product.sku,
+      }));
+      setItemResults((prev) => ({ ...prev, [ii]: [] }));
+      setActiveSearchIdx(null);
+    },
+    [draft.index, selectProduct]
+  );
 
   // Remove item with local state cleanup
-  const handleRemoveItem = useCallback((ii) => {
-    onRemoveItem(draft.index, ii);
-    setItemSearchTerms(prev => { const n = { ...prev }; delete n[ii]; return n; });
-    setItemResults(prev => { const n = { ...prev }; delete n[ii]; return n; });
-    setItemSearching(prev => { const n = { ...prev }; delete n[ii]; return n; });
-    if (activeSearchIdx === ii) setActiveSearchIdx(null);
-  }, [draft.index, onRemoveItem, activeSearchIdx]);
+  const handleRemoveItem = useCallback(
+    (ii) => {
+      onRemoveItem(draft.index, ii);
+      setItemSearchTerms((prev) => {
+        const n = { ...prev };
+        delete n[ii];
+        return n;
+      });
+      setItemResults((prev) => {
+        const n = { ...prev };
+        delete n[ii];
+        return n;
+      });
+      setItemSearching((prev) => {
+        const n = { ...prev };
+        delete n[ii];
+        return n;
+      });
+      if (activeSearchIdx === ii) setActiveSearchIdx(null);
+    },
+    [draft.index, onRemoveItem, activeSearchIdx]
+  );
 
   const isDone = draft.status === 'done' && draft.result?.success;
   const resultData = draft.result?.data;
-  const items = isDone ? (resultData?.items || draft.edited.items || []) : (draft.edited.items || []);
-  const total = items.reduce((sum, it) => sum + ((Number(it.qty) || 0) * (Number(it.rate) || 0)), 0);
+  const items = isDone ? resultData?.items || draft.edited.items || [] : draft.edited.items || [];
+  const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
   const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
-  const validItems = items.filter(it => it.item_code && it.qty > 0).length;
-  const displayItems = editing ? items : items.filter(it => it.item_code);
+  const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
+  const displayItems = editing ? items : items.filter((it) => it.item_code);
   const displayName = resultData?.cliente || draft.edited.nome;
 
   function toggleEditing() {
@@ -125,19 +145,23 @@ export default function SplitResultCard({
       setItemSearching({});
       setActiveSearchIdx(null);
     }
-    setEditing(prev => !prev);
+    setEditing((prev) => !prev);
   }
 
   return (
-    <div className={cn(
-      'rounded-xl border border-framer-hairline bg-card',
-      isProcessing && 'opacity-60 pointer-events-none',
-    )}>
+    <div
+      className={cn(
+        'rounded-xl border border-framer-hairline bg-card',
+        isProcessing && 'opacity-60 pointer-events-none'
+      )}
+    >
       {/* ── Header ── */}
-      <div className={cn(
-        'flex items-start justify-between gap-3 p-4 bg-framer-surface-1/50',
-        !isDone && 'border-b border-framer-hairline',
-      )}>
+      <div
+        className={cn(
+          'flex items-start justify-between gap-3 p-4 bg-framer-surface-1/50',
+          !isDone && 'border-b border-framer-hairline'
+        )}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-framer-ink-muted">
@@ -161,7 +185,7 @@ export default function SplitResultCard({
                 <Input
                   aria-label="Nome"
                   value={draft.edited.nome || ''}
-                  onChange={e => onUpdateField(draft.index, 'nome', e.target.value)}
+                  onChange={(e) => onUpdateField(draft.index, 'nome', e.target.value)}
                   placeholder="Nome"
                   className="h-7 text-xs"
                 />
@@ -172,7 +196,7 @@ export default function SplitResultCard({
                   <Input
                     aria-label="E-mail"
                     value={draft.edited.email || ''}
-                    onChange={e => onUpdateField(draft.index, 'email', e.target.value)}
+                    onChange={(e) => onUpdateField(draft.index, 'email', e.target.value)}
                     placeholder="Email"
                     className="h-7 text-xs"
                   />
@@ -182,7 +206,7 @@ export default function SplitResultCard({
                   <Input
                     aria-label="Telefone"
                     value={draft.edited.telefone || ''}
-                    onChange={e => onUpdateField(draft.index, 'telefone', e.target.value)}
+                    onChange={(e) => onUpdateField(draft.index, 'telefone', e.target.value)}
                     placeholder="Telefone"
                     className="h-7 text-xs"
                   />
@@ -192,11 +216,13 @@ export default function SplitResultCard({
                   <select
                     aria-label="Origem"
                     value={draft.edited.origem || DEFAULT_LEAD_SOURCE}
-                    onChange={e => onUpdateField(draft.index, 'origem', e.target.value)}
+                    onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
                     className="h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-framer-ink shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-framer-accent-blue/30"
                   >
-                    {LEAD_SOURCES.map(source => (
-                      <option key={source.value} value={source.value}>{source.label}</option>
+                    {LEAD_SOURCES.map((source) => (
+                      <option key={source.value} value={source.value}>
+                        {source.label}
+                      </option>
                     ))}
                   </select>
                 </label>
@@ -211,7 +237,9 @@ export default function SplitResultCard({
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{draft.edited.telefone}</span>}
                 {draft.edited.origem && (
-                  <span className="rounded bg-framer-surface-2 px-1.5 py-0.5 text-[10px]">{draft.edited.origem}</span>
+                  <span className="rounded bg-framer-surface-2 px-1.5 py-0.5 text-[10px]">
+                    {draft.edited.origem}
+                  </span>
                 )}
               </div>
             </>
@@ -229,123 +257,158 @@ export default function SplitResultCard({
       {/* ── Items table ── */}
       {!isDone && (
         <div className="overflow-visible">
-        <table className="w-full table-fixed text-xs">
-          <colgroup>
-            <col />
-            <col className="w-24" />
-            <col className="w-28" />
-            <col className="w-28" />
-            <col className="w-8" />
-          </colgroup>
-          <thead>
-            <tr className="border-b border-framer-hairline text-framer-ink-muted">
-              <th className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
-              <th className="px-3 py-2 text-center font-medium">Qtd</th>
-              <th className="px-3 py-2 text-center font-medium">Preço</th>
-              <th className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
-              <th className="py-2 pr-4" />
-            </tr>
-          </thead>
-          <tbody>
-            {displayItems.map((item, ii) => {
-              const hasCode = !!item.item_code;
-              const results = itemResults[ii] || [];
-              const searching = itemSearching[ii] || false;
-              const showDropdown = activeSearchIdx === ii && results.length > 0;
-              const searchValue = itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : (item.item_name || item.item_code || '');
+          <table className="w-full table-fixed text-xs">
+            <colgroup>
+              <col />
+              <col className="w-24" />
+              <col className="w-28" />
+              <col className="w-28" />
+              <col className="w-8" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-framer-hairline text-framer-ink-muted">
+                <th className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
+                <th className="px-3 py-2 text-center font-medium">Qtd</th>
+                <th className="px-3 py-2 text-center font-medium">Preço</th>
+                <th className="py-2 pl-3 pr-4 text-right font-medium">Subtotal</th>
+                <th className="py-2 pr-4" />
+              </tr>
+            </thead>
+            <tbody>
+              {displayItems.map((item, ii) => {
+                const hasCode = !!item.item_code;
+                const results = itemResults[ii] || [];
+                const searching = itemSearching[ii] || false;
+                const showDropdown = activeSearchIdx === ii && results.length > 0;
+                const searchValue =
+                  itemSearchTerms[ii] !== undefined
+                    ? itemSearchTerms[ii]
+                    : item.item_name || item.item_code || '';
 
-              return (
-              <tr key={ii} className="border-b border-framer-hairline last:border-b-0 hover:bg-framer-surface-1/30">
-                <td className="py-2 pl-4 pr-3">
-                  {editing ? (
-                    <div className="relative item-search-cell">
-                      <Input
-                        className="h-7 text-xs pr-6"
-                        placeholder="Buscar SKU ou nome…"
-                        value={searchValue}
-                        onChange={e => onItemSkuChange(ii, e.target.value)}
-                        onFocus={() => setActiveSearchIdx(ii)}
-                      />
-                      {searching && (
-                        <Loader2 size={12} className="animate-spin absolute right-2 top-1.5 text-framer-ink-muted" />
-                      )}
-                      {showDropdown && (
-                        <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-framer-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                          {results.map((p) => (
-                            <button
-                              key={p.sku || p.item_code}
-                              type="button"
-                              className="w-full text-left px-3 py-2 text-xs hover:bg-framer-surface-2 transition-colors flex items-center gap-2"
-                              onMouseDown={e => { e.preventDefault(); handleSelectProduct(ii, p); }}
-                            >
-                              <span className="font-mono text-[10px] text-framer-ink-muted shrink-0">{p.sku || p.item_code}</span>
-                              <span className="truncate">{p.nome || p.item_name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="block truncate font-medium text-framer-ink">
-                      {item.item_name || item.item_code || '—'}
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-center">
-                  {editing ? (
-                    <Input
-                      type="number"
-                      value={item.qty}
-                      onChange={e => {
-                        const val = Math.max(1, Number(e.target.value));
-                        onUpdateItem(draft.index, ii, 'qty', val);
-                        clearTimeout(qtyPricingTimer.current);
-                        qtyPricingTimer.current = setTimeout(() => onRefetchPricing(draft.index), 600);
-                      }}
-                      className="mx-auto h-7 w-16 text-center text-xs"
-                    />
-                  ) : (
-                    hasCode ? item.qty : '—'
-                  )}
-                </td>
-                <td className="px-3 py-2 text-center">
-                  {editing ? (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={item.rate || ''}
-                      onChange={e => onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))}
-                      className="mx-auto h-7 w-20 text-center text-xs"
-                    />
-                  ) : (
-                    item.rate ? formatBRL(item.rate) : '—'
-                  )}
-                </td>
-                <td className="py-2 pl-3 pr-4 text-right font-medium">
-                  {formatBRL((item.qty || 0) * (item.rate || 0))}
-                </td>
-                <td className="py-2 pr-4">
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveItem(ii)}
-                    className="p-0.5 rounded text-framer-ink-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                    title="Remover produto"
+                return (
+                  <tr
+                    key={ii}
+                    className="border-b border-framer-hairline last:border-b-0 hover:bg-framer-surface-1/30"
                   >
-                    <X size={13} />
-                  </button>
-                </td>
-              </tr>
-              );
-            })}
-            {displayItems.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-4 text-center text-xs text-framer-ink-muted">
-                  Nenhum item adicionado
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                    <td className="py-2 pl-4 pr-3">
+                      {editing ? (
+                        <div className="relative item-search-cell">
+                          <Input
+                            className="h-7 text-xs pr-6"
+                            placeholder="Buscar SKU ou nome…"
+                            value={searchValue}
+                            onChange={(e) => onItemSkuChange(ii, e.target.value)}
+                            onFocus={() => setActiveSearchIdx(ii)}
+                          />
+                          {searching && (
+                            <Loader2
+                              size={12}
+                              className="animate-spin absolute right-2 top-1.5 text-framer-ink-muted"
+                            />
+                          )}
+                          {showDropdown && (
+                            <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-framer-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {results.map((p) => (
+                                <button
+                                  key={p.sku || p.item_code}
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-framer-surface-2 transition-colors flex items-center gap-2"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleSelectProduct(ii, p);
+                                  }}
+                                >
+                                  <span className="font-mono text-[10px] text-framer-ink-muted shrink-0">
+                                    {p.sku || p.item_code}
+                                  </span>
+                                  <span className="truncate">{p.nome || p.item_name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="block truncate font-medium text-framer-ink">
+                          {item.item_name || item.item_code || '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {editing ? (
+                        <Input
+                          type="number"
+                          value={item.qty}
+                          onChange={(e) => {
+                            const val = Math.max(1, Number(e.target.value));
+                            onUpdateItem(draft.index, ii, 'qty', val);
+                            clearTimeout(qtyPricingTimer.current);
+                            qtyPricingTimer.current = setTimeout(
+                              () => onRefetchPricing(draft.index),
+                              600
+                            );
+                          }}
+                          className="mx-auto h-7 w-16 text-center text-xs"
+                        />
+                      ) : hasCode ? (
+                        item.qty
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {editing ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={item.rate || ''}
+                          onChange={(e) =>
+                            onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))
+                          }
+                          className="mx-auto h-7 w-20 text-center text-xs"
+                        />
+                      ) : item.rate ? (
+                        formatBRL(item.rate)
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="py-2 pl-3 pr-4 text-right font-medium">
+                      {formatBRL((item.qty || 0) * (item.rate || 0))}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(ii)}
+                        className="p-0.5 rounded text-framer-ink-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                        title="Remover produto"
+                      >
+                        <X size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {displayItems.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-xs text-framer-ink-muted">
+                    Nenhum item adicionado
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {isDone && (
+        <div className="px-4 pb-4 border-t border-framer-hairline bg-framer-surface-1/20">
+          <WhatsAppSendPanel
+            selectedFlowId={waSelectedFlowId}
+            flows={waFlows}
+            status={waStatus}
+            onSelectFlow={(flowId) => onSelectWhatsAppFlow?.(draft.index, flowId)}
+            onSend={() => onSendWhatsApp?.(draft.index)}
+          />
         </div>
       )}
 
@@ -353,25 +416,21 @@ export default function SplitResultCard({
       <div className="flex items-center gap-2 p-3 border-t border-framer-hairline bg-framer-surface-1/30">
         {!isDone && (
           <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleEditing}
-          >
-            <Pencil size={13} />
-            {editing ? 'Concluir' : 'Editar'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              onAddItem(draft.index);
-              if (!editing) toggleEditing();
-            }}
-          >
-            <Plus size={13} />
-            Item
-          </Button>
+            <Button variant="ghost" size="sm" onClick={toggleEditing}>
+              <Pencil size={13} />
+              {editing ? 'Concluir' : 'Editar'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onAddItem(draft.index);
+                if (!editing) toggleEditing();
+              }}
+            >
+              <Plus size={13} />
+              Item
+            </Button>
           </>
         )}
 
@@ -379,21 +438,17 @@ export default function SplitResultCard({
 
         {isDone ? (
           <>
-            <a href={viewUrl || '#'} target="_blank" rel="noopener noreferrer" className={!viewUrl ? 'pointer-events-none' : undefined}>
+            <a
+              href={viewUrl || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={!viewUrl ? 'pointer-events-none' : undefined}
+            >
               <Button size="sm" variant="secondary" disabled={!viewUrl}>
                 <FileText size={13} />
                 Abrir orçamento
               </Button>
             </a>
-            <Button
-              size="sm"
-              onClick={() => onSendWhatsApp?.(draft.index)}
-              disabled={waStatus?.state === 'sending'}
-              className="bg-framer-accent-blue text-white hover:bg-framer-accent-blue/90"
-            >
-              <WhatsappIcon size={14} />
-              {waStatus?.state === 'sending' ? 'Enviando…' : waStatus?.state === 'sent' ? 'Enviado' : 'Enviar WhatsApp'}
-            </Button>
           </>
         ) : (
           <Button

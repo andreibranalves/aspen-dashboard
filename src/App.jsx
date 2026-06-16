@@ -13,6 +13,7 @@ import LeadsPage from '@/pages/LeadsPage.jsx';
 import LeadDetailPage from '@/pages/LeadDetailPage.jsx';
 import SettingsPage from '@/pages/SettingsPage.jsx';
 import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage.jsx';
+import ComunicacaoPage from '@/pages/ComunicacaoPage.jsx';
 import LoginPage from '@/pages/LoginPage.jsx';
 
 function renderPage(route, navigate) {
@@ -63,6 +64,8 @@ function renderPage(route, navigate) {
       return <SettingsPage />;
     case '/manual':
       return <ManualOrcamentoPage />;
+    case '/comunicacao':
+      return <ComunicacaoPage />;
     default:
       return <AutoQuotePage />;
   }

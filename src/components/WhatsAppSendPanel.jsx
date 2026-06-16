@@ -14,7 +14,7 @@ export default function WhatsAppSendPanel({
   onSelectFlow,
   onSend,
 }) {
-  const selectedFlow = flows.find(f => f.id === selectedFlowId) || flows[0];
+  const selectedFlow = flows.find((f) => f.id === selectedFlowId) || flows[0];
   const sequence = selectedFlow ? flowToSequencePayload(selectedFlow) : null;
   const hasValidSteps = sequence && sequence.steps.length > 0;
 
@@ -25,10 +25,12 @@ export default function WhatsAppSendPanel({
         <select
           className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
           value={selectedFlowId}
-          onChange={e => onSelectFlow(e.target.value)}
+          onChange={(e) => onSelectFlow(e.target.value)}
         >
-          {flows.map(flow => (
-            <option key={flow.id} value={flow.id}>{flow.name}</option>
+          {flows.map((flow) => (
+            <option key={flow.id} value={flow.id}>
+              {flow.name}
+            </option>
           ))}
         </select>
         {selectedFlow && (
@@ -55,10 +57,12 @@ export default function WhatsAppSendPanel({
                   : 'Enviar via WhatsApp'}
             </Button>
             {status?.message && (
-              <p className={cn(
-                'text-xs leading-5 text-center',
-                status.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
-              )}>
+              <p
+                className={cn(
+                  'text-xs leading-5 text-center',
+                  status.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
+                )}
+              >
                 {status.message}
               </p>
             )}
@@ -66,8 +70,8 @@ export default function WhatsAppSendPanel({
         ) : (
           <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
             {!selectedFlow
-              ? 'Nenhum fluxo de WhatsApp selecionado. Configure um fluxo em Configurações.'
-              : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Configurações.'}
+              ? 'Nenhum fluxo de WhatsApp disponível.'
+              : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}
           </p>
         )}
       </div>

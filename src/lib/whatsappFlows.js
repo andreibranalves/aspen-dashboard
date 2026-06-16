@@ -12,7 +12,7 @@
 export const LS_WA_FLOWS = 'aspen_wa_flows';
 export const LS_WA_SELECTED_FLOW = 'aspen_wa_selected_flow';
 const LS_WA_FLOWS_VERSION = 'aspen_wa_flows_v';
-const CURRENT_FLOWS_VERSION = 2;  // bump on breaking changes to force re-init
+const CURRENT_FLOWS_VERSION = 2; // bump on breaking changes to force re-init
 
 // ---------------------------------------------------------------------------
 // Step type constants
@@ -22,6 +22,7 @@ export const STEP_TYPES = {
   IMAGE: 'image',
   DOCUMENT: 'document',
   PRODUCT_IMAGES: 'product_images',
+  PRODUCT_MEDIA: 'product_media',
 };
 
 // ---------------------------------------------------------------------------
@@ -38,8 +39,17 @@ export const DEFAULT_WA_FLOWS = [
     max_images_per_category: 0,
     default: true,
     steps: [
-      { id: 'step-greeting', type: 'text', template: 'Segue o orçamento solicitado, (primeiro_nome)!' },
-      { id: 'step-pdf', type: 'document', source: 'quotation_pdf', caption: 'Orçamento (numero_pedido)' },
+      {
+        id: 'step-greeting',
+        type: 'text',
+        template: 'Segue o orçamento solicitado, (primeiro_nome)!',
+      },
+      {
+        id: 'step-pdf',
+        type: 'document',
+        source: 'quotation_pdf',
+        caption: 'Orçamento (numero_pedido)',
+      },
     ],
     sample_images_text: '',
   },
@@ -54,9 +64,23 @@ export const DEFAULT_WA_FLOWS = [
     default: false,
     steps: [
       { id: 'step-greeting', type: 'text', template: 'Boa tarde, (primeiro_nome)! Tudo bem?' },
-      { id: 'step-context', type: 'text', template: 'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) personalizado(a).' },
-      { id: 'step-quotation', type: 'text', template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)' },
-      { id: 'step-samples-intro', type: 'text', template: 'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.' },
+      {
+        id: 'step-context',
+        type: 'text',
+        template:
+          'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) personalizado(a).',
+      },
+      {
+        id: 'step-quotation',
+        type: 'text',
+        template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)',
+      },
+      {
+        id: 'step-samples-intro',
+        type: 'text',
+        template:
+          'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.',
+      },
       { id: 'step-product-images', type: 'product_images' },
     ],
     sample_images_text: '',
@@ -168,7 +192,9 @@ export function loadWhatsappFlows() {
       ls.setItem(LS_WA_FLOWS, JSON.stringify(defaults));
       ls.setItem(LS_WA_FLOWS_VERSION, String(CURRENT_FLOWS_VERSION));
       ls.setItem(LS_WA_SELECTED_FLOW, defaults[0].id);
-    } catch { /* quota exceeded */ }
+    } catch {
+      /* quota exceeded */
+    }
   }
   return defaults;
 }
@@ -230,10 +256,14 @@ export function saveSelectedFlowId(flowId) {
 export function getFlowSummary(flow) {
   if (!flow || !Array.isArray(flow.steps)) return '';
 
-  const textCount = flow.steps.filter((s) => s.type === 'text' && s.template && s.template.trim()).length;
+  const textCount = flow.steps.filter(
+    (s) => s.type === 'text' && s.template && s.template.trim()
+  ).length;
   const docCount = flow.steps.filter((s) => s.type === 'document' && s.source).length;
   const imageCount = flow.steps.filter((s) => s.type === 'image' && s.media).length;
-  const hasProductImages = flow.steps.some((s) => s.type === 'product_images');
+  const hasProductImages = flow.steps.some(
+    (s) => s.type === 'product_images' || s.type === 'product_media'
+  );
 
   const parts = [];
 
@@ -250,7 +280,7 @@ export function getFlowSummary(flow) {
   }
 
   if (hasProductImages) {
-    parts.push('fotos por produto');
+    parts.push('mídia da biblioteca');
   }
 
   return parts.join(' + ') || 'vazio';
@@ -268,33 +298,35 @@ export function getFlowSummary(flow) {
  * - Converts delay seconds to milliseconds.
  */
 export function flowToSequencePayload(flow) {
-  const cleanedSteps = (flow.steps || []).filter((step) => {
-    if (step.type === 'text') {
-      return step.template && step.template.trim().length > 0;
-    }
-    if (step.type === 'image') {
-      return step.media && step.media.trim().length > 0;
-    }
-    if (step.type === 'document') {
-      return step.source && step.source.trim().length > 0;
-    }
-    // product_images and other types pass through
-    return true;
-  }).map((step) => {
-    // Return a clean object with only relevant fields per type
-    const s = { type: step.type };
-    if (step.type === 'text') {
-      s.template = step.template;
-    } else if (step.type === 'document') {
-      s.source = step.source;
-      if (step.caption) s.caption = step.caption;
-    } else if (step.type === 'image') {
-      s.media = step.media;
-      if (step.caption) s.caption = step.caption;
-    }
-    // product_images has no extra fields
-    return s;
-  });
+  const cleanedSteps = (flow.steps || [])
+    .filter((step) => {
+      if (step.type === 'text') {
+        return step.template && step.template.trim().length > 0;
+      }
+      if (step.type === 'image') {
+        return step.media && step.media.trim().length > 0;
+      }
+      if (step.type === 'document') {
+        return step.source && step.source.trim().length > 0;
+      }
+      // product_media and other types pass through
+      return true;
+    })
+    .map((step) => {
+      // Return a clean object with only relevant fields per type
+      const s = { type: step.type };
+      if (step.type === 'text') {
+        s.template = step.template;
+      } else if (step.type === 'document') {
+        s.source = step.source;
+        if (step.caption) s.caption = step.caption;
+      } else if (step.type === 'image') {
+        s.media = step.media;
+        if (step.caption) s.caption = step.caption;
+      }
+      // product_media and product_images have no extra fields
+      return s;
+    });
 
   return {
     vendor_name: flow.vendor_name || '',

@@ -28,6 +28,7 @@ export function toFunctionEvent(req) {
     headers: req.headers || {},
     queryStringParameters: normalizeQuery(req.query),
     body: normalizeBody(req),
+    url: req.url || '',
   };
 }
 

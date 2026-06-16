@@ -10,19 +10,65 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { renderQuotationHtml } from './quotation-html.js';
 import { resolvePrintFormat } from './print-format.js';
 
 // ── Browser paths (system binaries, tried first) ────────────────────────────
 
-const BROWSER_CANDIDATES = [
-  '/usr/bin/google-chrome',
-  '/usr/bin/google-chrome-stable',
-  '/usr/bin/microsoft-edge-stable',
-  '/usr/bin/microsoft-edge',
-  '/usr/bin/chromium-browser',
-  '/usr/bin/chromium',
-];
+function getEnv(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function getBrowserCandidates() {
+  const fromEnv = [
+    getEnv('PUPPETEER_EXECUTABLE_PATH'),
+    getEnv('CHROME_PATH'),
+    getEnv('EDGE_PATH'),
+  ].filter(Boolean);
+
+  if (process.platform === 'win32') {
+    const programFiles = getEnv('PROGRAMFILES', 'ProgramFiles') || 'C:\\Program Files';
+    const programFilesX86 =
+      getEnv('PROGRAMFILES(X86)', 'ProgramFiles(x86)') || 'C:\\Program Files (x86)';
+    const localAppData = getEnv('LOCALAPPDATA', 'LocalAppData');
+
+    return [
+      ...fromEnv,
+      `${programFiles}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${programFilesX86}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${localAppData}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${programFiles}\\Microsoft\\Edge\\Application\\msedge.exe`,
+      `${programFilesX86}\\Microsoft\\Edge\\Application\\msedge.exe`,
+      `${localAppData}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    ].filter(Boolean);
+  }
+
+  if (process.platform === 'darwin') {
+    return [
+      ...fromEnv,
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    ];
+  }
+
+  return [
+    ...fromEnv,
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/microsoft-edge-stable',
+    '/usr/bin/microsoft-edge',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ];
+}
+
+const BROWSER_CANDIDATES = getBrowserCandidates();
 
 // ── System browser discovery (cached) ───────────────────────────────────────
 
@@ -53,39 +99,48 @@ async function pdfWithSystemBrowser(html, opts = {}) {
 
   try {
     writeFileSync(htmlPath, html, 'utf-8');
-    const fileUrl = `file://${htmlPath}`;
+    const fileUrl = pathToFileURL(htmlPath).href;
 
     await new Promise((resolve, reject) => {
-      const proc = spawn(browserPath, [
-        '--headless=new',
-        '--disable-gpu',
-        '--no-sandbox',
-        '--disable-software-rasterizer',
-        '--print-to-pdf=' + pdfPath,
-        '--print-to-pdf-no-header',
-        '--no-pdf-header-footer',
-        fileUrl,
-      ], {
-        timeout,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const proc = spawn(
+        browserPath,
+        [
+          '--headless=new',
+          '--disable-gpu',
+          '--no-sandbox',
+          '--disable-software-rasterizer',
+          '--print-to-pdf=' + pdfPath,
+          '--print-to-pdf-no-header',
+          '--no-pdf-header-footer',
+          fileUrl,
+        ],
+        {
+          timeout,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }
+      );
 
       let stderr = '';
-      proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+      proc.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
 
       proc.on('error', (err) => {
-        reject(Object.assign(
-          new Error(`Falha ao executar ${browserPath}: ${err.message}`),
-          { statusCode: 500 }
-        ));
+        reject(
+          Object.assign(new Error(`Falha ao executar ${browserPath}: ${err.message}`), {
+            statusCode: 500,
+          })
+        );
       });
 
       proc.on('close', (code) => {
         if (code !== 0) {
-          reject(Object.assign(
-            new Error(`Chrome headless encerrou com código ${code}.`),
-            { statusCode: 500, detail: stderr.slice(0, 500) }
-          ));
+          reject(
+            Object.assign(new Error(`Chrome headless encerrou com código ${code}.`), {
+              statusCode: 500,
+              detail: stderr.slice(0, 500),
+            })
+          );
         } else {
           resolve();
         }
@@ -93,20 +148,18 @@ async function pdfWithSystemBrowser(html, opts = {}) {
     });
 
     if (!existsSync(pdfPath)) {
-      throw Object.assign(
-        new Error('PDF não foi gerado pelo Chrome.'),
-        { statusCode: 500 }
-      );
+      throw Object.assign(new Error('PDF não foi gerado pelo Chrome.'), { statusCode: 500 });
     }
 
     return readFileSync(pdfPath);
-
   } finally {
     try {
       if (existsSync(htmlPath)) unlinkSync(htmlPath);
       if (existsSync(pdfPath)) unlinkSync(pdfPath);
       rmSync(tmpDir, { recursive: true, force: true });
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 }
 
@@ -123,11 +176,7 @@ async function pdfWithSparticuz(html, opts = {}) {
   ]);
 
   const browser = await puppeteer.launch({
-    args: [
-      ...chromium.args,
-      '--hide-scrollbars',
-      '--disable-web-security',
-    ],
+    args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
     defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath(),
     headless: chromium.headless,
@@ -149,7 +198,6 @@ async function pdfWithSparticuz(html, opts = {}) {
     });
 
     return Buffer.from(pdfBuffer);
-
   } finally {
     await browser.close().catch(() => {});
   }

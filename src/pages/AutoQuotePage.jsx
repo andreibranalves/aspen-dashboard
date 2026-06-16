@@ -1,5 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Sparkles, FileText, AlertTriangle, RotateCcw, History, MessageCircle, RefreshCw, Image as ImageIcon, X } from 'lucide-react';
+import {
+  Sparkles,
+  FileText,
+  AlertTriangle,
+  RotateCcw,
+  History,
+  MessageCircle,
+  RefreshCw,
+  Image as ImageIcon,
+  X,
+} from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -8,7 +18,7 @@ import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
-import { fetchFlowsFromApi, flowToSequencePayload } from '@/lib/whatsappFlows.js';
+import { fetchFlows, executeFlow } from '@/lib/communicationApi.js';
 
 export default function AutoQuotePage() {
   // ── Helpers ──
@@ -32,23 +42,28 @@ export default function AutoQuotePage() {
 
   // ── WhatsApp send state ──
   const [waStatusByDraft, setWaStatusByDraft] = useState({});
+  const [waFlows, setWaFlows] = useState([]);
+  const [defaultWaFlowId, setDefaultWaFlowId] = useState('');
+  const [waFlowByDraft, setWaFlowByDraft] = useState({});
 
   // ── Extracted hooks ──
   const {
-    drafts, setDrafts,
-    productSearch, setProductSearch,
-    fetchPricing, refetchDraftPricing,
-    updateDraftItem, addDraftItem, removeDraftItem, reorderItems,
-    updateDraftField, updateDraftAddressField,
-    handleUrgenteToggle,
-    approveDraft, discardDraft,
-    onProductSearchChange, closeProductSearch, selectProduct,
+    drafts,
+    setDrafts,
+    setProductSearch,
+    fetchPricing,
+    refetchDraftPricing,
+    updateDraftItem,
+    addDraftItem,
+    removeDraftItem,
+    updateDraftField,
+    discardDraft,
+    selectProduct,
     buildDraftsFromOrders,
   } = useExtractionDrafts();
 
   // ── Image input ──
   const { imageData, imagePreview, clearImage, handleImageFile } = useImageInput();
-
 
   // ── Load recent quotations ──
   const loadHistory = useCallback(async () => {
@@ -56,11 +71,16 @@ export default function AutoQuotePage() {
     try {
       const res = await apiGet('/quotations?limit=5&order_by=creation+desc');
       if (res.data) setHistory(res.data.slice(0, 5));
-    } catch { /* non-critical */ }
-    finally { setHistoryLoading(false); }
+    } catch {
+      /* non-critical */
+    } finally {
+      setHistoryLoading(false);
+    }
   }, []);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   const loadWhatsappLeads = useCallback(async () => {
     setWhatsappLoading(true);
@@ -75,7 +95,26 @@ export default function AutoQuotePage() {
     }
   }, []);
 
-  useEffect(() => { loadWhatsappLeads(); }, [loadWhatsappLeads]);
+  useEffect(() => {
+    loadWhatsappLeads();
+  }, [loadWhatsappLeads]);
+
+  const loadCommunicationFlows = useCallback(async () => {
+    try {
+      const data = await fetchFlows();
+      const flows = Array.isArray(data.flows) ? data.flows : [];
+      setWaFlows(flows);
+      setDefaultWaFlowId(data.selectedFlowId || flows[0]?.id || '');
+    } catch (err) {
+      console.warn('[AutoQuotePage] failed to load communication flows:', err.message);
+      setWaFlows([]);
+      setDefaultWaFlowId('');
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCommunicationFlows();
+  }, [loadCommunicationFlows]);
 
   // ── Remove main padding so panels fill viewport edge-to-edge ──
   useEffect(() => {
@@ -85,10 +124,12 @@ export default function AutoQuotePage() {
     main.className = orig
       .replace(/\bp-4\b/g, '')
       .replace(/\bmd:p-6\b/g, '')
-      .replace(/\s+/g, ' ').trim();
-    return () => { main.className = orig; };
+      .replace(/\s+/g, ' ')
+      .trim();
+    return () => {
+      main.className = orig;
+    };
   }, []);
-
 
   // ── Extract text → build drafts ──
   const handleExtract = useCallback(async () => {
@@ -108,18 +149,20 @@ export default function AutoQuotePage() {
         return;
       }
       let newDrafts = buildDraftsFromOrders(orders, '');
-      const nonUrgent = newDrafts.filter(d => !d.edited.urgente);
+      const nonUrgent = newDrafts.filter((d) => !d.edited.urgente);
       if (nonUrgent.length > 0) newDrafts = await fetchPricing(nonUrgent, false);
-      const urgent = newDrafts.filter(d => d.edited.urgente);
+      const urgent = newDrafts.filter((d) => d.edited.urgente);
       if (urgent.length > 0) await fetchPricing(urgent, true);
-      setDrafts(prev => {
+      setDrafts((prev) => {
         const startIndex = prev.length;
         const appendedDrafts = newDrafts.map((draft, offset) => ({
           ...draft,
           index: startIndex + offset,
         }));
         const next = [...prev, ...appendedDrafts];
-        try { localStorage.setItem('aspen_drafts', JSON.stringify(next)); } catch {}
+        try {
+          localStorage.setItem('aspen_drafts', JSON.stringify(next));
+        } catch {}
         return next;
       });
       loadHistory();
@@ -131,58 +174,68 @@ export default function AutoQuotePage() {
   }, [text, imageData, fetchPricing, buildDraftsFromOrders, loadHistory]);
 
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
-  const createSingleQuote = useCallback(async (draftIndex) => {
-    setDrafts(prev => {
-      const idx = prev.findIndex(d => d.index === draftIndex);
-      if (idx === -1) return prev;
-      const next = [...prev];
-      next[idx] = { ...next[idx], status: 'processing' };
-      return next;
-    });
-    const draft = await new Promise(resolve => {
-      setDrafts(prev => { resolve(prev.find(d => d.index === draftIndex)); return prev; });
-    });
-    if (!draft) return;
-    const payload = {
-      extracted: {
-        nome: draft.edited.nome,
-        email: draft.edited.email || null,
-        telefone: draft.edited.telefone || null,
-        urgente: draft.edited.urgente,
-        origem: draft.edited.origem || undefined,
-        cnpj: draft.edited.cnpj || undefined,
-        endereco: draft.edited.endereco || undefined,
-        items: draft.edited.items
-          .filter(it => it.item_code && it.qty > 0)
-          .map(it => ({
-            item_code: it.item_code,
-            qty: it.qty,
-            rate: it.rate,
-            manual_rate: it._rateManual === true,
-          })),
-        prazo_producao: draft.edited.prazo_producao || undefined,
-      },
-    };
-    try {
-      const res = await apiPost('/orcamento', payload);
-      setDrafts(prev => {
-        const idx = prev.findIndex(d => d.index === draftIndex);
+  const createSingleQuote = useCallback(
+    async (draftIndex) => {
+      setDrafts((prev) => {
+        const idx = prev.findIndex((d) => d.index === draftIndex);
         if (idx === -1) return prev;
         const next = [...prev];
-        next[idx] = { ...next[idx], result: { success: true, data: res }, status: 'done' };
+        next[idx] = { ...next[idx], status: 'processing' };
         return next;
       });
-      loadHistory();
-    } catch (err) {
-      setDrafts(prev => {
-        const idx = prev.findIndex(d => d.index === draftIndex);
-        if (idx === -1) return prev;
-        const next = [...prev];
-        next[idx] = { ...next[idx], result: { success: false, error: err.message }, status: 'error' };
-        return next;
+      const draft = await new Promise((resolve) => {
+        setDrafts((prev) => {
+          resolve(prev.find((d) => d.index === draftIndex));
+          return prev;
+        });
       });
-    }
-  }, [loadHistory]);
+      if (!draft) return;
+      const payload = {
+        extracted: {
+          nome: draft.edited.nome,
+          email: draft.edited.email || null,
+          telefone: draft.edited.telefone || null,
+          urgente: draft.edited.urgente,
+          origem: draft.edited.origem || undefined,
+          cnpj: draft.edited.cnpj || undefined,
+          endereco: draft.edited.endereco || undefined,
+          items: draft.edited.items
+            .filter((it) => it.item_code && it.qty > 0)
+            .map((it) => ({
+              item_code: it.item_code,
+              qty: it.qty,
+              rate: it.rate,
+              manual_rate: it._rateManual === true,
+            })),
+          prazo_producao: draft.edited.prazo_producao || undefined,
+        },
+      };
+      try {
+        const res = await apiPost('/orcamento', payload);
+        setDrafts((prev) => {
+          const idx = prev.findIndex((d) => d.index === draftIndex);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], result: { success: true, data: res }, status: 'done' };
+          return next;
+        });
+        loadHistory();
+      } catch (err) {
+        setDrafts((prev) => {
+          const idx = prev.findIndex((d) => d.index === draftIndex);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = {
+            ...next[idx],
+            result: { success: false, error: err.message },
+            status: 'error',
+          };
+          return next;
+        });
+      }
+    },
+    [loadHistory]
+  );
 
   // ── Load history item: fetch detail and format as text ──
   const loadHistoryItem = useCallback(async (item) => {
@@ -193,7 +246,7 @@ export default function AutoQuotePage() {
       const nome = res.cliente || item.cliente || 'Cliente';
       const email = res.email || '';
       const telefone = res.telefone || '';
-      const itemsText = (res.items || []).map(it => `${it.item_code} ${it.qty} un`).join(', ');
+      const itemsText = (res.items || []).map((it) => `${it.item_code} ${it.qty} un`).join(', ');
       const formatted = [
         `Nome: ${nome}`,
         email ? `E-mail: ${email}` : 'E-mail:',
@@ -208,12 +261,15 @@ export default function AutoQuotePage() {
   }, []);
 
   const useWhatsappLead = useCallback((lead) => {
-    setText(lead.texto || [
-      lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
-      lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
-      lead.telefone ? `Telefone: ${lead.telefone}` : 'Telefone:',
-      'Pedido:',
-    ].join('\n'));
+    setText(
+      lead.texto ||
+        [
+          lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
+          lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
+          lead.telefone ? `Telefone: ${lead.telefone}` : 'Telefone:',
+          'Pedido:',
+        ].join('\n')
+    );
     document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -225,86 +281,111 @@ export default function AutoQuotePage() {
     setError(null);
     setExtracting(false);
     setProductSearch({});
-    try { localStorage.removeItem('aspen_drafts'); } catch {}
-  }, []);
+    setWaStatusByDraft({});
+    setWaFlowByDraft({});
+    try {
+      localStorage.removeItem('aspen_drafts');
+    } catch {}
+  }, [clearImage, setDrafts, setProductSearch]);
 
   const clearResults = useCallback(() => {
     setDrafts([]);
     setProductSearch({});
-    try { localStorage.removeItem('aspen_drafts'); } catch {}
+    setWaStatusByDraft({});
+    setWaFlowByDraft({});
+    try {
+      localStorage.removeItem('aspen_drafts');
+    } catch {}
   }, [setDrafts, setProductSearch]);
 
   // ── WhatsApp handlers ──
-  const handleSendWhatsApp = useCallback(async (draftIndex) => {
-    const draft = drafts.find(d => d.index === draftIndex);
-    if (!draft) {
-      console.warn('[sendWhatsApp] draft not found for index:', draftIndex);
-      setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'error', message: 'Pedido não encontrado.' } }));
-      return;
-    }
-    if (!draft.result?.data?.quotation_id) {
-      console.warn('[sendWhatsApp] missing quotation_id — draft not processed yet:', {
-        draftIndex,
-        hasResult: !!draft.result,
-        hasData: !!draft.result?.data,
-        status: draft.status,
-      });
-      setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'error', message: 'Crie o orçamento antes de enviar WhatsApp.' } }));
-      return;
-    }
+  const handleSelectWhatsAppFlow = useCallback((draftIndex, flowId) => {
+    setWaFlowByDraft((prev) => ({ ...prev, [draftIndex]: flowId }));
+  }, []);
 
-    const resultData = draft.result.data;
-    const quotationId = resultData.quotation_id;
-    const telefone = draft.edited.telefone || resultData.telefone || '';
-    const nome = resultData.cliente || draft.edited.nome || '';
-    const { flows, selectedFlowId } = await fetchFlowsFromApi();
-    const flow = flows.find(f => f.id === selectedFlowId) || flows[0];
+  const handleSendWhatsApp = useCallback(
+    async (draftIndex) => {
+      const draft = drafts.find((d) => d.index === draftIndex);
+      if (!draft) {
+        console.warn('[sendWhatsApp] draft not found for index:', draftIndex);
+        setWaStatusByDraft((prev) => ({
+          ...prev,
+          [draftIndex]: { state: 'error', message: 'Pedido não encontrado.' },
+        }));
+        return;
+      }
+      if (!draft.result?.data?.quotation_id) {
+        console.warn('[sendWhatsApp] missing quotation_id — draft not processed yet:', {
+          draftIndex,
+          hasResult: !!draft.result,
+          hasData: !!draft.result?.data,
+          status: draft.status,
+        });
+        setWaStatusByDraft((prev) => ({
+          ...prev,
+          [draftIndex]: { state: 'error', message: 'Crie o orçamento antes de enviar WhatsApp.' },
+        }));
+        return;
+      }
 
-    setWaStatusByDraft(prev => ({ ...prev, [draftIndex]: { state: 'sending' } }));
+      const resultData = draft.result.data;
+      const quotationId = resultData.quotation_id;
+      const telefone = draft.edited.telefone || resultData.telefone || '';
+      const nome = resultData.cliente || draft.edited.nome || '';
+      const flowId = waFlowByDraft[draftIndex] || defaultWaFlowId || waFlows[0]?.id || '';
 
-    try {
-      const sequence = flow ? flowToSequencePayload(flow) : null;
-      const res = await apiPost('/send-whatsapp', {
-        quotation_id: quotationId,
-        telefone,
-        nome,
-        ...(sequence ? { sequence } : {}),
-        deal_id: resultData.deal_id || null,
-        items: resultData.items || draft.edited.items || [],
-      });
+      if (!flowId) {
+        setWaStatusByDraft((prev) => ({
+          ...prev,
+          [draftIndex]: { state: 'error', message: 'Nenhum fluxo de WhatsApp disponível.' },
+        }));
+        return;
+      }
 
-      const error = res.error ? String(res.error) : '';
-      console.log('[sendWhatsApp] response:', { state: error ? 'error' : 'sent', quotationId, error: error || null });
-      setWaStatusByDraft(prev => ({
-        ...prev,
-        [draftIndex]: {
-          state: error ? 'error' : 'sent',
-          message: error || 'Orçamento enviado com sucesso!',
-        },
-      }));
-    } catch (err) {
-      console.error('[sendWhatsApp] failed:', err.message);
-      setWaStatusByDraft(prev => ({
-        ...prev,
-        [draftIndex]: {
-          state: 'error',
-          message: err.message || 'Erro ao enviar WhatsApp.',
-        },
-      }));
-    }
-  }, [drafts]);
+      setWaStatusByDraft((prev) => ({ ...prev, [draftIndex]: { state: 'sending' } }));
 
-  const activeDrafts = drafts.filter(d => !d.discarded);
+      try {
+        const res = await executeFlow({
+          quotation_id: quotationId,
+          flow_id: flowId,
+          telefone,
+          nome,
+          deal_id: resultData.deal_id || null,
+          items: resultData.items || draft.edited.items || [],
+        });
+
+        setWaStatusByDraft((prev) => ({
+          ...prev,
+          [draftIndex]: {
+            state: 'sent',
+            message: res.duplicate_warning
+              ? res.duplicate_message || 'Fluxo enviado novamente.'
+              : 'Orçamento enviado com sucesso!',
+          },
+        }));
+      } catch (err) {
+        console.error('[sendWhatsApp] failed:', err.message);
+        setWaStatusByDraft((prev) => ({
+          ...prev,
+          [draftIndex]: {
+            state: 'error',
+            message: err.message || 'Erro ao enviar WhatsApp.',
+          },
+        }));
+      }
+    },
+    [defaultWaFlowId, drafts, waFlowByDraft, waFlows]
+  );
+
+  const activeDrafts = drafts.filter((d) => !d.discarded);
   const visibleDrafts = [...activeDrafts].reverse();
 
   return (
     <div className="flex flex-col h-full overflow-hidden animate-fade-in">
       <div className="flex flex-1 overflow-hidden">
-
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex flex-col w-full lg:w-1/2 min-w-0 border-r border-framer-hairline bg-card overflow-hidden">
           <div className="px-4 md:px-6 pt-4 md:pt-5 space-y-4">
-
             {/* Page title */}
             <h1 className="text-lg font-semibold text-framer-ink">Pedido do cliente</h1>
 
@@ -339,28 +420,30 @@ export default function AutoQuotePage() {
                   </div>
                 )}
 
-              <textarea
-                className={cn(
-                  'w-full resize-none overflow-hidden rounded-xl border border-framer-hairline bg-framer-surface-1 px-4 py-3 text-sm leading-6 text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/30',
-                  imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
-                )}
-                placeholder={'Ex: João pediu 200 lenços de seda 70cm. Email joao@email.com, telefone (11) 99999-9999.\n\nTambém pode colar conversas longas ou vários pedidos de uma vez.'}
-                value={text}
-                onChange={e => setText(e.target.value)}
-                disabled={extracting}
-                onPaste={(e) => {
-                  const items = e.clipboardData?.items;
-                  if (items) {
-                    for (const item of items) {
-                      if (item.type.startsWith('image/')) {
-                        e.preventDefault();
-                        handleImageFile(item.getAsFile());
-                        return;
+                <textarea
+                  className={cn(
+                    'w-full resize-none overflow-hidden rounded-xl border border-framer-hairline bg-framer-surface-1 px-4 py-3 text-sm leading-6 text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/30',
+                    imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
+                  )}
+                  placeholder={
+                    'Ex: João pediu 200 lenços de seda 70cm. Email joao@email.com, telefone (11) 99999-9999.\n\nTambém pode colar conversas longas ou vários pedidos de uma vez.'
+                  }
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  disabled={extracting}
+                  onPaste={(e) => {
+                    const items = e.clipboardData?.items;
+                    if (items) {
+                      for (const item of items) {
+                        if (item.type.startsWith('image/')) {
+                          e.preventDefault();
+                          handleImageFile(item.getAsFile());
+                          return;
+                        }
                       }
                     }
-                  }
-                }}
-              />
+                  }}
+                />
               </div>
             </div>
 
@@ -372,18 +455,20 @@ export default function AutoQuotePage() {
                 size="sm"
               >
                 {extracting ? (
-                  <><span className="spinner mr-2" />Extraindo…</>
+                  <>
+                    <span className="spinner mr-2" />
+                    Extraindo…
+                  </>
                 ) : (
-                  <><Sparkles size={14} />Extrair</>
+                  <>
+                    <Sparkles size={14} />
+                    Extrair
+                  </>
                 )}
               </Button>
 
               {(text || imageData) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleReset}
-                >
+                <Button variant="ghost" size="sm" onClick={handleReset}>
                   <RotateCcw size={14} />
                   Limpar
                 </Button>
@@ -452,7 +537,7 @@ export default function AutoQuotePage() {
             {bottomTab === 'recentes' ? (
               historyLoading ? (
                 <div className="space-y-2">
-                  {[1, 2, 3].map(i => (
+                  {[1, 2, 3].map((i) => (
                     <div key={i} className="h-10 rounded-lg bg-framer-surface-2 animate-pulse" />
                   ))}
                 </div>
@@ -471,7 +556,9 @@ export default function AutoQuotePage() {
                       )}
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-framer-ink truncate">{item.cliente || 'Cliente'}</p>
+                        <p className="font-medium text-framer-ink truncate">
+                          {item.cliente || 'Cliente'}
+                        </p>
                         <p className="text-xs text-framer-ink-muted truncate">{item.id}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-2">
@@ -488,8 +575,11 @@ export default function AutoQuotePage() {
               )
             ) : whatsappLoading ? (
               <div className="space-y-1">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse"
+                  >
                     <div className="space-y-1">
                       <div className="h-4 w-28 rounded bg-framer-surface-2" />
                       <div className="h-3 w-44 rounded bg-framer-surface-2" />
@@ -505,7 +595,10 @@ export default function AutoQuotePage() {
             ) : (
               <div className="space-y-1">
                 {whatsappLeads.map((lead) => {
-                  const tagLabel = lead.quotationId || lead.statusLabel || (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
+                  const tagLabel =
+                    lead.quotationId ||
+                    lead.statusLabel ||
+                    (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
                   const tagClass = lead.quotationId
                     ? 'bg-framer-accent-blue/10 text-framer-accent-blue'
                     : lead.isReady
@@ -522,14 +615,22 @@ export default function AutoQuotePage() {
                       className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-framer-ink truncate">{fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}</p>
-                        <p className="text-xs leading-tight text-framer-ink-muted break-words">{displayName}</p>
+                        <p className="font-medium text-framer-ink truncate">
+                          {fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}
+                        </p>
+                        <p className="text-xs leading-tight text-framer-ink-muted break-words">
+                          {displayName}
+                        </p>
                         {displayEmail ? (
-                          <p className="text-[11px] text-framer-ink-muted/80 truncate">{displayEmail}</p>
+                          <p className="text-[11px] text-framer-ink-muted/80 truncate">
+                            {displayEmail}
+                          </p>
                         ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5 ml-2">
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}
+                        >
                           {tagLabel}
                         </span>
                       </div>
@@ -550,7 +651,8 @@ export default function AutoQuotePage() {
               </div>
               <h2 className="text-lg font-semibold text-framer-ink">Nenhum pedido extraído</h2>
               <p className="mt-1 max-w-sm text-sm text-framer-ink-muted">
-                Cole o texto do pedido no painel esquerdo e clique em <strong>Extrair</strong> para gerar orçamentos.
+                Cole o texto do pedido no painel esquerdo e clique em <strong>Extrair</strong> para
+                gerar orçamentos.
               </p>
             </div>
           ) : (
@@ -580,11 +682,16 @@ export default function AutoQuotePage() {
 
                 if (isError) {
                   return (
-                    <div key={draft.index} className="overflow-hidden rounded-[20px] border border-red-300 bg-card shadow-sm">
+                    <div
+                      key={draft.index}
+                      className="overflow-hidden rounded-[20px] border border-red-300 bg-card shadow-sm"
+                    >
                       <div className="flex items-start gap-3 p-5 text-sm text-red-700 dark:text-red-300">
                         <AlertTriangle size={18} className="mt-0.5 shrink-0" />
                         <div>
-                          <p className="font-medium">Falha ao criar orçamento para {capitalize(draft.edited.nome)}</p>
+                          <p className="font-medium">
+                            Falha ao criar orçamento para {capitalize(draft.edited.nome)}
+                          </p>
                           <p>{draft.result?.error || 'Falha desconhecida'}</p>
                         </div>
                       </div>
@@ -609,6 +716,9 @@ export default function AutoQuotePage() {
                     onDelete={discardDraft}
                     viewUrl={relativeViewUrl}
                     waStatus={waStatusByDraft[draft.index]}
+                    waFlows={waFlows}
+                    waSelectedFlowId={waFlowByDraft[draft.index] || defaultWaFlowId}
+                    onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
                     onSendWhatsApp={handleSendWhatsApp}
                   />
                 );
