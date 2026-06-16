@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Sparkles, FileText, AlertTriangle, RotateCcw, History, MessageCircle, RefreshCw } from 'lucide-react';
+import { Sparkles, FileText, AlertTriangle, RotateCcw, History, MessageCircle, RefreshCw, Image as ImageIcon, X } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
@@ -47,7 +47,7 @@ export default function AutoQuotePage() {
   } = useExtractionDrafts();
 
   // ── Image input ──
-  const { imageData, clearImage, handleImageFile } = useImageInput();
+  const { imageData, imagePreview, clearImage, handleImageFile } = useImageInput();
 
 
   // ── Load recent quotations ──
@@ -309,9 +309,41 @@ export default function AutoQuotePage() {
             <h1 className="text-lg font-semibold text-framer-ink">Pedido do cliente</h1>
 
             {/* Text input */}
-            <div>
+            <div className="mt-2">
+              <div className="relative">
+                {imageData && (
+                  <div className="absolute left-3 top-3 z-10">
+                    <div className="group relative h-16 w-16 overflow-hidden rounded-xl border border-framer-hairline bg-framer-surface-2 shadow-sm">
+                      {imagePreview ? (
+                        <img
+                          src={imagePreview}
+                          alt="Prévia da imagem colada"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-framer-accent-blue">
+                          <ImageIcon size={18} />
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={clearImage}
+                        className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/65 text-white opacity-100 transition-colors hover:bg-black/80 sm:opacity-0 sm:group-hover:opacity-100"
+                        aria-label="Remover imagem colada"
+                        title="Remover imagem"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
               <textarea
-                className="mt-2 w-full min-h-[130px] resize-none rounded-xl border border-framer-hairline bg-framer-surface-1 px-4 py-3 text-sm leading-6 text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/30"
+                className={cn(
+                  'w-full resize-none overflow-hidden rounded-xl border border-framer-hairline bg-framer-surface-1 px-4 py-3 text-sm leading-6 text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/30',
+                  imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
+                )}
                 placeholder={'Ex: João pediu 200 lenços de seda 70cm. Email joao@email.com, telefone (11) 99999-9999.\n\nTambém pode colar conversas longas ou vários pedidos de uma vez.'}
                 value={text}
                 onChange={e => setText(e.target.value)}
@@ -329,6 +361,7 @@ export default function AutoQuotePage() {
                   }
                 }}
               />
+              </div>
             </div>
 
             {/* Actions row */}
