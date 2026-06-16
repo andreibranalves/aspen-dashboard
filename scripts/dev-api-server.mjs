@@ -21,7 +21,6 @@ for (const line of envFile.split('\n')) {
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
 import { handler as extract } from '../api/_functions/extract.js';
-import { handler as freight } from '../api/_functions/freight.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
@@ -43,7 +42,6 @@ const ROUTES = {
   'crm-deals': crmDeals,
   'crm-update-deal': crmUpdateDeal,
   extract,
-  freight,
   'leads-clients': leadsClients,
   orcamento,
   'pricing-lookup': pricingLookup,
@@ -67,9 +65,13 @@ const PORT = 8888;
 function parseBody(req) {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
-      try { resolve(JSON.parse(body)); } catch { resolve({}); }
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        resolve({});
+      }
     });
   });
 }
@@ -80,7 +82,9 @@ const server = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204); res.end(); return;
+    res.writeHead(204);
+    res.end();
+    return;
   }
 
   const urlPath = req.url.split('?')[0];

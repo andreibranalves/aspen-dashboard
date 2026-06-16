@@ -21,7 +21,6 @@ import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
 import { handler as duplicateQuotation } from '../api/_functions/duplicate-quotation.js';
 import { handler as extract } from '../api/_functions/extract.js';
-import { handler as freight } from '../api/_functions/freight.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
@@ -42,37 +41,65 @@ import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
   'client-detail': clientDetail,
-  'crm-deals': crmDeals, 'crm-update-deal': crmUpdateDeal,
-  'duplicate-quotation': duplicateQuotation, extract, freight,
-  'leads-clients': leadsClients, orcamento, 'pricing-lookup': pricingLookup,
-  'product-detail': productDetail, 'product-update': productUpdate, 'product-pricing-update': productPricingUpdate,
-  'product-activity': productActivity, 'product-pricing': productPricing, products, quotations,
-  'sales-dashboard': salesDashboard, 'sales-order-from-quotation': salesOrderFromQuotation,
-  'sales-orders': salesOrders, 'send-whatsapp': sendWhatsapp, 'whatsapp-flows': whatsappFlows, 'whatsapp-leads': whatsappLeads, view,
+  'crm-deals': crmDeals,
+  'crm-update-deal': crmUpdateDeal,
+  'duplicate-quotation': duplicateQuotation,
+  extract,
+  'leads-clients': leadsClients,
+  orcamento,
+  'pricing-lookup': pricingLookup,
+  'product-detail': productDetail,
+  'product-update': productUpdate,
+  'product-pricing-update': productPricingUpdate,
+  'product-activity': productActivity,
+  'product-pricing': productPricing,
+  products,
+  quotations,
+  'sales-dashboard': salesDashboard,
+  'sales-order-from-quotation': salesOrderFromQuotation,
+  'sales-orders': salesOrders,
+  'send-whatsapp': sendWhatsapp,
+  'whatsapp-flows': whatsappFlows,
+  'whatsapp-leads': whatsappLeads,
+  view,
 };
 
 const PORT = Number(process.env.PORT || 8888);
 const PUBLIC_DIR = 'public';
 
 const MIME_TYPES = {
-  '.html': 'text/html', '.js': 'application/javascript', '.mjs': 'application/javascript',
-  '.css': 'text/css', '.json': 'application/json', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff',
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.mjs': 'application/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
 };
 
 function parseBody(req) {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({}); } });
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        resolve({});
+      }
+    });
   });
 }
 
 function serveStatic(urlPath, res) {
   let filePath = urlPath === '/' ? '/index.html' : urlPath;
   filePath = normalize(join(PUBLIC_DIR, filePath));
-  
+
   // Security: prevent directory traversal
   if (!filePath.startsWith(PUBLIC_DIR + '/') && filePath !== PUBLIC_DIR + '/index.html') {
     return false;
@@ -87,7 +114,7 @@ function serveStatic(urlPath, res) {
   const ext = extname(filePath).toLowerCase();
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
   const content = readFileSync(filePath);
-  
+
   res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
   res.end(content);
   return true;
@@ -100,7 +127,9 @@ const server = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204); res.end(); return;
+    res.writeHead(204);
+    res.end();
+    return;
   }
 
   const urlPath = req.url.split('?')[0];
@@ -121,7 +150,9 @@ const server = createServer(async (req, res) => {
       const event = {
         httpMethod: req.method,
         body: req.method === 'GET' ? undefined : JSON.stringify(body),
-        queryStringParameters: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams),
+        queryStringParameters: Object.fromEntries(
+          new URL(req.url, 'http://localhost').searchParams
+        ),
         headers: { host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
       };
 
@@ -148,5 +179,5 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`App server on http://0.0.0.0:${PORT}`);
-  console.log(`Frontend: public/  |  API: 21 handlers`);
+  console.log(`Frontend: public/  |  API: 20 handlers`);
 });

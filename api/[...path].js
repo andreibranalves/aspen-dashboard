@@ -7,7 +7,6 @@ import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
 import { handler as duplicateQuotation } from './_functions/duplicate-quotation.js';
 import { handler as editDraft } from './_functions/edit-draft.js';
 import { handler as extract } from './_functions/extract.js';
-import { handler as freight } from './_functions/freight.js';
 import { handler as clientDetail } from './_functions/client-detail.js';
 import { handler as leadsClients } from './_functions/leads-clients.js';
 import { handler as login } from './_functions/login.js';
@@ -37,7 +36,6 @@ const ROUTES = {
   'duplicate-quotation': duplicateQuotation,
   'edit-draft': editDraft,
   extract,
-  freight,
   'leads-clients': leadsClients,
   orcamento,
   pdf,

@@ -13,7 +13,7 @@
 ```
 src/
 ├── main.jsx                         # Entry point React (StrictMode)
-├── App.jsx                          # Router manual (hash) com 15 páginas
+├── App.jsx                          # Router manual (hash) com 14 páginas
 ├── index.css                        # CSS variables + Tailwind (Framer design system)
 ├── hooks/
 │   ├── useHashRoute.js              # Roteamento custom (sem React Router)
@@ -65,7 +65,6 @@ src/
     ├── ManualOrcamentoPage.jsx      # #/manual
     ├── SalesOrdersPage.jsx          # #/sales-orders
     ├── SalesOrderDetailPage.jsx     # #/sales-orders/:id
-    ├── FreightPage.jsx              # #/freight
     ├── ProductsPage.jsx             # #/products
     ├── ProductDetailPage.jsx        # #/products/:sku
     ├── CrmKanbanPage.jsx            # #/crm
@@ -86,12 +85,12 @@ src/
 
 ## Resumo
 
-| Categoria | Contagem |
-|-----------|---------|
-| Páginas | 15 |
-| Hooks | 4 |
-| Libs (pure JS) | 9 |
-| Componentes | 20 (4 UI + 4 layout + 4 skeleton + 8 feature) |
+| Categoria      | Contagem                                      |
+| -------------- | --------------------------------------------- |
+| Páginas        | 14                                            |
+| Hooks          | 4                                             |
+| Libs (pure JS) | 9                                             |
+| Componentes    | 20 (4 UI + 4 layout + 4 skeleton + 8 feature) |
 
 ## Convenções
 
@@ -102,22 +101,21 @@ src/
 - Cores Framer via CSS variables no `:root` + `.dark` override
 - Dark mode controlado por classe `.dark` no `<html>` + localStorage
 
-## Páginas (15)
+## Páginas (14)
 
-| Rota                  | Componente             |
-|-----------------------|------------------------|
-| `/dashboard`          | DashboardPage          |
-| `/quotations`         | QuotationsPage (default)|
-| `/quotations/:id`     | QuotationDetailPage    |
-| `/auto`               | AutoQuotePage          |
-| `/manual`             | ManualOrcamentoPage    |
-| `/sales-orders`       | SalesOrdersPage        |
-| `/sales-orders/:id`   | SalesOrderDetailPage   |
-| `/freight`            | FreightPage            |
-| `/products`           | ProductsPage           |
-| `/products/:sku`      | ProductDetailPage      |
-| `/crm`                | CrmKanbanPage          |
-| `/leads`              | LeadsPage              |
-| `/leads/:tipo/:id`    | LeadDetailPage         |
-| `/settings`           | SettingsPage           |
-| `/login`              | LoginPage (full-screen, sem Layout) |
+| Rota                | Componente                          |
+| ------------------- | ----------------------------------- |
+| `/dashboard`        | DashboardPage                       |
+| `/quotations`       | QuotationsPage (default)            |
+| `/quotations/:id`   | QuotationDetailPage                 |
+| `/auto`             | AutoQuotePage                       |
+| `/manual`           | ManualOrcamentoPage                 |
+| `/sales-orders`     | SalesOrdersPage                     |
+| `/sales-orders/:id` | SalesOrderDetailPage                |
+| `/products`         | ProductsPage                        |
+| `/products/:sku`    | ProductDetailPage                   |
+| `/crm`              | CrmKanbanPage                       |
+| `/leads`            | LeadsPage                           |
+| `/leads/:tipo/:id`  | LeadDetailPage                      |
+| `/settings`         | SettingsPage                        |
+| `/login`            | LoginPage (full-screen, sem Layout) |

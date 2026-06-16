@@ -6,7 +6,6 @@ import QuotationDetailPage from '@/pages/QuotationDetailPage.jsx';
 import SalesOrdersPage from '@/pages/SalesOrdersPage.jsx';
 import SalesOrderDetailPage from '@/pages/SalesOrderDetailPage.jsx';
 import AutoQuotePage from '@/pages/AutoQuotePage.jsx';
-import FreightPage from '@/pages/FreightPage.jsx';
 import CrmKanbanPage from '@/pages/CrmKanbanPage.jsx';
 import ProductsPage from '@/pages/ProductsPage.jsx';
 import ProductDetailPage from '@/pages/ProductDetailPage.jsx';
@@ -46,17 +45,26 @@ function renderPage(route, navigate) {
   }
 
   switch (route) {
-    case '/dashboard':   return <DashboardPage navigate={navigate} />;
-    case '/quotations':  return <QuotationsPage navigate={navigate} />;
-    case '/auto':        return <AutoQuotePage />;
-    case '/sales-orders': return <SalesOrdersPage navigate={navigate} />;
-    case '/freight':     return <FreightPage />;
-    case '/crm':         return <CrmKanbanPage />;
-    case '/products':    return <ProductsPage />;
-    case '/leads':       return <LeadsPage navigate={navigate} />;
-    case '/settings':    return <SettingsPage />;
-    case '/manual':      return <ManualOrcamentoPage />;
-    default:             return <AutoQuotePage />;
+    case '/dashboard':
+      return <DashboardPage navigate={navigate} />;
+    case '/quotations':
+      return <QuotationsPage navigate={navigate} />;
+    case '/auto':
+      return <AutoQuotePage />;
+    case '/sales-orders':
+      return <SalesOrdersPage navigate={navigate} />;
+    case '/crm':
+      return <CrmKanbanPage />;
+    case '/products':
+      return <ProductsPage />;
+    case '/leads':
+      return <LeadsPage navigate={navigate} />;
+    case '/settings':
+      return <SettingsPage />;
+    case '/manual':
+      return <ManualOrcamentoPage />;
+    default:
+      return <AutoQuotePage />;
   }
 }
 

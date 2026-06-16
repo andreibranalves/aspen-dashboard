@@ -17,16 +17,15 @@ export function useSetTopBarActions() {
 // ── Breadcrumb mapping ──
 
 const PAGE_LABELS = {
-  '/dashboard':    'Início',
-  '/quotations':   'Orçamentos',
-  '/auto':         'Auto — Extração',
-  '/manual':       'Novo Orçamento',
+  '/dashboard': 'Início',
+  '/quotations': 'Orçamentos',
+  '/auto': 'Auto — Extração',
+  '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
-  '/freight':      'Cotação de Frete',
-  '/crm':          'CRM — Kanban',
-  '/products':     'Catálogo de Produtos',
-  '/leads':        'Leads / Clientes',
-  '/settings':     'Configurações',
+  '/crm': 'CRM — Kanban',
+  '/products': 'Catálogo de Produtos',
+  '/leads': 'Leads / Clientes',
+  '/settings': 'Configurações',
 };
 
 function getBreadcrumb(route) {
@@ -76,7 +75,10 @@ function getBreadcrumb(route) {
     ];
   }
 
-  return [{ label: 'Início', hash: '/dashboard' }, { label: route, hash: null }];
+  return [
+    { label: 'Início', hash: '/dashboard' },
+    { label: route, hash: null },
+  ];
 }
 
 // ── Layout ──
@@ -93,7 +95,7 @@ export default function Layout({ route, onNavigate, children }) {
   });
 
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => !prev);
+    setSidebarCollapsed((prev) => !prev);
   }, []);
 
   useEffect(() => {
@@ -122,7 +124,7 @@ export default function Layout({ route, onNavigate, children }) {
         className={cn(
           'flex-1 flex flex-col min-w-0 transition-all duration-300',
           'ml-0 lg:ml-16',
-          !sidebarCollapsed && 'lg:ml-64',
+          !sidebarCollapsed && 'lg:ml-64'
         )}
       >
         <TopBar
@@ -133,9 +135,7 @@ export default function Layout({ route, onNavigate, children }) {
           actions={topBarActions}
         />
         <SetTopBarActionsCtx.Provider value={setTopBarActions}>
-          <main className="flex-1 overflow-auto p-4 md:p-6">
-            {children}
-          </main>
+          <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
         </SetTopBarActionsCtx.Provider>
       </div>
     </div>

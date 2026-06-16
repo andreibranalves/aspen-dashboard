@@ -24,7 +24,9 @@ async function testQuotationsPage(page) {
   console.log('\n📋 ── Orçamentos ──');
 
   // Navigate
-  await page.evaluate(() => { location.hash = '#/quotations'; });
+  await page.evaluate(() => {
+    location.hash = '#/quotations';
+  });
   await page.waitForTimeout(800);
 
   // Check topbar title
@@ -56,26 +58,59 @@ async function testQuotationsPage(page) {
 
     if (rows > 0) {
       // Check first row has quotation ID (monospaced) — column 1 (Nº), column 0 is checkbox
-      const firstCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(1).textContent();
-      check('Primeira célula é um Nº de orçamento (formato ORC-)', /ORC-/.test(firstCell), `valor: "${firstCell}"`);
+      const firstCell = await page
+        .locator('.hidden.md\\:block table tbody tr')
+        .first()
+        .locator('td')
+        .nth(1)
+        .textContent();
+      check(
+        'Primeira célula é um Nº de orçamento (formato ORC-)',
+        /ORC-/.test(firstCell),
+        `valor: "${firstCell}"`
+      );
 
       // Check BRL format in value column (column 4: Valor)
-      const valCell = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(4).textContent();
-      check('Valor em formato BRL (R$ X.XXX,XX)', /R\$\s*[\d.]+\,\d{2}/.test(valCell), `valor: "${valCell}"`);
+      const valCell = await page
+        .locator('.hidden.md\\:block table tbody tr')
+        .first()
+        .locator('td')
+        .nth(4)
+        .textContent();
+      check(
+        'Valor em formato BRL (R$ X.XXX,XX)',
+        /R\$\s*[\d.]+\,\d{2}/.test(valCell),
+        `valor: "${valCell}"`
+      );
 
       // Check status badge exists (column 5: Status)
-      const badge = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').nth(5).locator('span').first().textContent();
+      const badge = await page
+        .locator('.hidden.md\\:block table tbody tr')
+        .first()
+        .locator('td')
+        .nth(5)
+        .locator('span')
+        .first()
+        .textContent();
       check('Status badge renderizado', badge && badge.length > 0, `texto: "${badge}"`);
 
       // Check action buttons have aria-labels
-      const ariaBtns = await page.locator('.hidden.md\\:block table tbody tr').first().locator('td').last().locator('button[aria-label], a[aria-label]').count();
+      const ariaBtns = await page
+        .locator('.hidden.md\\:block table tbody tr')
+        .first()
+        .locator('td')
+        .last()
+        .locator('button[aria-label], a[aria-label]')
+        .count();
       check('Ações têm aria-labels (≥3)', ariaBtns >= 3, `encontrados: ${ariaBtns}`);
     }
   }
 
   // ── Mobile cards (set viewport to mobile) ──
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.evaluate(() => { location.hash = '#/quotations'; });
+  await page.evaluate(() => {
+    location.hash = '#/quotations';
+  });
   await page.waitForTimeout(1500);
 
   const mobileCards = await page.locator('.md\\:hidden.space-y-3 > div').count();
@@ -91,7 +126,9 @@ async function testQuotationsPage(page) {
 
   // Reset to desktop
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.evaluate(() => { location.hash = '#/quotations'; });
+  await page.evaluate(() => {
+    location.hash = '#/quotations';
+  });
   await page.waitForTimeout(1500);
 
   // Check totals bar (now says "Nesta página")
@@ -110,11 +147,15 @@ async function testQuotationsPage(page) {
   if (openChipCount > 0) {
     await openChip.first().click();
     await page.waitForTimeout(1500);
-    const chipActive = await openChip.first().evaluate(el => el.className);
-    check('Status chip "Aberto" ativado ao clicar', chipActive.includes('bg-framer-surface-2'), `classe: ${chipActive}`);
+    const chipActive = await openChip.first().evaluate((el) => el.className);
+    check(
+      'Status chip "Aberto" ativado ao clicar',
+      chipActive.includes('bg-framer-surface-2'),
+      `classe: ${chipActive}`
+    );
     // Click "Todos" to reset
     const todosChip = page.locator('main button', { hasText: 'Todos' }).first();
-    if (await todosChip.count() > 0) await todosChip.click();
+    if ((await todosChip.count()) > 0) await todosChip.click();
     await page.waitForTimeout(1000);
   }
 
@@ -128,7 +169,9 @@ async function testQuotationDetail(page) {
   console.log('\n📄 ── Detalhe do Orçamento ──');
 
   // Find first quotation ID from the table
-  await page.evaluate(() => { location.hash = '#/quotations'; });
+  await page.evaluate(() => {
+    location.hash = '#/quotations';
+  });
   await page.waitForTimeout(2000);
 
   const firstRow = page.locator('.hidden.md\\:block table tbody tr').first();
@@ -142,8 +185,15 @@ async function testQuotationDetail(page) {
   await page.waitForTimeout(1500);
 
   // Check detail page loaded
-  const detailId = await page.locator('text=' + firstId).first().textContent();
-  check('Página de detalhe mostra o ID do orçamento', detailId && detailId.includes(firstId), `mostrando: "${detailId}"`);
+  const detailId = await page
+    .locator('text=' + firstId)
+    .first()
+    .textContent();
+  check(
+    'Página de detalhe mostra o ID do orçamento',
+    detailId && detailId.includes(firstId),
+    `mostrando: "${detailId}"`
+  );
 
   // Check back link
   const backLink = await page.locator('text=Voltar para lista').count();
@@ -173,7 +223,7 @@ async function testQuotationDetail(page) {
 
   // Enter edit mode
   const editButton = page.locator('button', { hasText: 'Editar' }).first();
-  if (await editButton.count() > 0) {
+  if ((await editButton.count()) > 0) {
     await editButton.click();
     await page.waitForTimeout(500);
 
@@ -192,7 +242,7 @@ async function testQuotationDetail(page) {
 
     // Cancel edit
     const cancelEditBtn = page.locator('button', { hasText: 'Cancelar' }).first();
-    if (await cancelEditBtn.count() > 0) await cancelEditBtn.click();
+    if ((await cancelEditBtn.count()) > 0) await cancelEditBtn.click();
     await page.waitForTimeout(300);
   }
 }
@@ -200,11 +250,15 @@ async function testQuotationDetail(page) {
 async function testAutoPage(page) {
   console.log('\n🤖 ── Auto / Extração ──');
 
-  await page.evaluate(() => { location.hash = '#/auto'; });
+  await page.evaluate(() => {
+    location.hash = '#/auto';
+  });
   await page.waitForTimeout(800);
 
   // Phase indicator — check by counting the step circles (1..4)
-  const phaseSteps = await page.locator('.rounded-full.bg-current\\/10, [class*=\"rounded-full\"][class*=\"bg-current\"]').count();
+  const phaseSteps = await page
+    .locator('.rounded-full.bg-current\\/10, [class*=\"rounded-full\"][class*=\"bg-current\"]')
+    .count();
   check('Phase indicator com 4 etapas', phaseSteps >= 4);
 
   // Verify each phase label text is present
@@ -247,48 +301,12 @@ async function testAutoPage(page) {
   }
 }
 
-async function testFreightPage(page) {
-  console.log('\n🚚 ── Frete ──');
-
-  await page.evaluate(() => { location.hash = '#/freight'; });
-  await page.waitForTimeout(800);
-
-  // CEP origem
-  const cepOrigem = await page.locator('input[placeholder=\"00000-000\"]').count();
-  check('Inputs de CEP renderizados (origem + destino)', cepOrigem >= 2, `${cepOrigem} input(s)`);
-
-  // Validar CEP buttons (React FreightPage — LocationCard uses "Validar CEP")
-  const searchBtns = await page.locator('button', { hasText: 'Validar CEP' }).count();
-  check('Botões \"Validar CEP\" renderizados', searchBtns >= 2, `${searchBtns} botões`);
-
-  // Package table column header
-  const pkgHeaders = await page.locator('th:has-text("Peso")').count();
-  check('Coluna \"Peso\" na tabela de volumes', pkgHeaders > 0);
-
-  const addPkgBtn = await page.locator('button', { hasText: 'Adicionar volume' }).count();
-  check('Botão \"Adicionar volume\"', addPkgBtn > 0);
-
-  // Seguro — input with aria-label for declared value
-  const seguroInput = await page.locator('input[aria-label*=\"Valor declarado\"]').count();
-  check('Input de seguro da carga', seguroInput > 0);
-
-  // Cotar button — React FreightPage submit button (any state)
-  const cotarBtn = await page.locator('button[type="submit"]').count();
-  check('Botão de submit da cotação renderizado', cotarBtn > 0);
-
-  // Check package inputs have aria-labels (Peso do pacote N)
-  const pkgInputs = await page.locator('input[aria-label*="Peso do pacote"]').count();
-  check('Inputs da tabela de pacotes com aria-label', pkgInputs >= 0, `${pkgInputs} inputs com aria-label`);
-
-  // SkeletonTable component is imported and used for loading state
-  const skeleton = await page.locator('text=Preencha rota').count();
-  check('Formulário de frete renderizado (CTA visível)', skeleton > 0);
-}
-
 async function testCrmKanban(page) {
   console.log('\n📊 ── CRM Kanban ──');
 
-  await page.evaluate(() => { location.hash = '#/crm'; });
+  await page.evaluate(() => {
+    location.hash = '#/crm';
+  });
   await page.waitForTimeout(2000);
 
   // Check loading resolved
@@ -298,7 +316,11 @@ async function testCrmKanban(page) {
   } else {
     // Maybe no deals — check empty state
     const emptyState = await page.locator('text=Nenhum deal').count();
-    check('State: kanban carregou (com deals ou estado vazio)', kanbanHeaders > 0 || emptyState > 0, 'sem deals ou estado vazio');
+    check(
+      'State: kanban carregou (com deals ou estado vazio)',
+      kanbanHeaders > 0 || emptyState > 0,
+      'sem deals ou estado vazio'
+    );
   }
 
   // Check search input
@@ -307,7 +329,15 @@ async function testCrmKanban(page) {
 
   // Check column count (7 pipeline stages expected when there are deals)
   if (kanbanHeaders > 0) {
-    const pipelineStages = ['Novo Lead', 'Contato Feito', 'Orcamento Enviado', 'Em Negociacao', 'Arte Aprovada', 'Pedido Fechado', 'Perdido'];
+    const pipelineStages = [
+      'Novo Lead',
+      'Contato Feito',
+      'Orcamento Enviado',
+      'Em Negociacao',
+      'Arte Aprovada',
+      'Pedido Fechado',
+      'Perdido',
+    ];
     for (const stage of pipelineStages) {
       const visible = await page.locator('text=' + stage).count();
       check(`Estágio \"${stage}\" presente no kanban`, visible > 0);
@@ -318,7 +348,9 @@ async function testCrmKanban(page) {
 async function testProductsPage(page) {
   console.log('\n📦 ── Produtos ──');
 
-  await page.evaluate(() => { location.hash = '#/products'; });
+  await page.evaluate(() => {
+    location.hash = '#/products';
+  });
   await page.waitForTimeout(1500);
 
   // Search input
@@ -328,21 +360,30 @@ async function testProductsPage(page) {
   // Check table (may have data or empty state)
   const tableHeaders = await page.locator('text=SKU').count();
   const emptyState = await page.locator('text=Nenhum produto').count();
-  check('Página de produtos carregou', tableHeaders > 0 || emptyState > 0, tableHeaders > 0 ? 'tabela com dados' : 'estado vazio');
+  check(
+    'Página de produtos carregou',
+    tableHeaders > 0 || emptyState > 0,
+    tableHeaders > 0 ? 'tabela com dados' : 'estado vazio'
+  );
 }
 
 async function testLeadsPage(page) {
   console.log('\n👥 ── Leads ──');
 
-  await page.evaluate(() => { location.hash = '#/leads'; });
+  await page.evaluate(() => {
+    location.hash = '#/leads';
+  });
   await page.waitForTimeout(1500);
 
   // Filter chips
   const todosChip = await page.locator('button', { hasText: 'Todos' }).count();
   const leadsChip = await page.locator('button', { hasText: 'Leads' }).count();
   const clientesChip = await page.locator('button', { hasText: 'Clientes' }).count();
-  check('Chips de filtro (Todos/Leads/Clientes)', todosChip > 0 && leadsChip > 0 && clientesChip > 0,
-    `Todos:${todosChip} Leads:${leadsChip} Clientes:${clientesChip}`);
+  check(
+    'Chips de filtro (Todos/Leads/Clientes)',
+    todosChip > 0 && leadsChip > 0 && clientesChip > 0,
+    `Todos:${todosChip} Leads:${leadsChip} Clientes:${clientesChip}`
+  );
 
   // Search
   const searchInput = await page.locator('input[placeholder*=\"Buscar por nome\"]').count();
@@ -355,7 +396,9 @@ async function testLeadsPage(page) {
 
   // ── Mobile cards ──
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.evaluate(() => { location.hash = '#/leads'; });
+  await page.evaluate(() => {
+    location.hash = '#/leads';
+  });
   await page.waitForTimeout(1000);
 
   const mobileCards = await page.locator('.md\\:hidden.space-y-3 > div').count();
@@ -363,14 +406,18 @@ async function testLeadsPage(page) {
 
   // Reset to desktop
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.evaluate(() => { location.hash = '#/leads'; });
+  await page.evaluate(() => {
+    location.hash = '#/leads';
+  });
   await page.waitForTimeout(1000);
 }
 
 async function testManualOrcamentoPage(page) {
   console.log('\n🛒 ── Novo Orçamento Manual ──');
 
-  await page.evaluate(() => { location.hash = '#/manual'; });
+  await page.evaluate(() => {
+    location.hash = '#/manual';
+  });
   await page.waitForTimeout(1000);
 
   // Page header — TopBar shows "Novo Orçamento" (not "Novo Orçamento Manual")
@@ -413,8 +460,11 @@ async function testManualOrcamentoPage(page) {
     const nomeInput = await page.locator('input[aria-label="Nome do cliente"]').count();
     const emailInput = await page.locator('input[aria-label="Email do cliente"]').count();
     const telInput = await page.locator('input[aria-label="Telefone do cliente"]').count();
-    check('Campos de novo cliente renderizados', nomeInput > 0 && emailInput > 0 && telInput > 0,
-      `nome:${nomeInput} email:${emailInput} tel:${telInput}`);
+    check(
+      'Campos de novo cliente renderizados',
+      nomeInput > 0 && emailInput > 0 && telInput > 0,
+      `nome:${nomeInput} email:${emailInput} tel:${telInput}`
+    );
 
     // Fill client info
     await page.locator('input[aria-label="Nome do cliente"]').fill('Cliente Teste');
@@ -440,7 +490,9 @@ async function testManualOrcamentoPage(page) {
 async function testSettingsPage(page) {
   console.log('\n⚙️ ── Config ──');
 
-  await page.evaluate(() => { location.hash = '#/settings'; });
+  await page.evaluate(() => {
+    location.hash = '#/settings';
+  });
   await page.waitForTimeout(800);
 
   // Rules section — check for label now (not bare text)
@@ -487,7 +539,7 @@ async function main() {
   });
   const page = await context.newPage();
   const consoleErrors = [];
-  page.on('console', msg => {
+  page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text());
   });
 
@@ -498,17 +550,24 @@ async function main() {
 
     // Check app loaded
     const title = await page.title();
-    check('Página carregou com título \"Aspen Orçamento\"', title === 'Aspen Orçamento', `título: "${title}"`);
+    check(
+      'Página carregou com título \"Aspen Orçamento\"',
+      title === 'Aspen Orçamento',
+      `título: "${title}"`
+    );
 
     // Check sidebar brand
     const brand = await page.locator('text=Aspen Orçamento').first().textContent();
-    check('Sidebar mostra \"Aspen Orçamento\"', brand && brand.includes('Aspen'), `texto: "${brand}"`);
+    check(
+      'Sidebar mostra \"Aspen Orçamento\"',
+      brand && brand.includes('Aspen'),
+      `texto: "${brand}"`
+    );
 
     // Run all page tests
     await testQuotationsPage(page);
     await testQuotationDetail(page);
     await testAutoPage(page);
-    await testFreightPage(page);
     await testCrmKanban(page);
     await testProductsPage(page);
     await testLeadsPage(page);
@@ -516,8 +575,11 @@ async function main() {
     await testSettingsPage(page);
 
     // Browser console check
-    check('Sem erros de console no navegador', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
-
+    check(
+      'Sem erros de console no navegador',
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 3).join(' | ')
+    );
   } catch (err) {
     FAIL.push(`  ❌ ERRO FATAL: ${err.message}`);
   } finally {
@@ -531,12 +593,12 @@ async function main() {
 
   if (PASS.length > 0) {
     console.log(`\n✅ PASSES (${PASS.length}):`);
-    PASS.forEach(p => console.log(p));
+    PASS.forEach((p) => console.log(p));
   }
 
   if (FAIL.length > 0) {
     console.log(`\n❌ FAILS (${FAIL.length}):`);
-    FAIL.forEach(f => console.log(f));
+    FAIL.forEach((f) => console.log(f));
   }
 
   console.log(`\n🏁 ${PASS.length}/${total} passaram`);
@@ -545,7 +607,7 @@ async function main() {
   process.exit(FAIL.length > 0 ? 1 : 0);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Fatal:', err);
   process.exit(1);
 });
