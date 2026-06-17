@@ -116,7 +116,7 @@ export default function Sidebar({
                     'hover:bg-primary/5',
                     currentRoute === hash
                       ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-fg-muted'
+                      : 'text-fg'
                   )}
                   title={collapsed ? label : undefined}
                 >
