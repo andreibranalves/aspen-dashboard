@@ -426,7 +426,7 @@ export default function AutoQuotePage() {
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
                   placeholder={
-                    'Ex: João pediu 200 lenços de seda 70cm. Email joao@email.com, telefone (11) 99999-9999.\n\nTambém pode colar conversas longas ou vários pedidos de uma vez.'
+                    'Cole aqui a mensagem do cliente, formato natural é aceito. Inclua nome, telefone, e-mail, produto e quantidade.\n\nEx.: "João Lopes, 200 lenços de cetim de seda, joao@gmail.com, (11) 99999-9999."'
                   }
                   value={text}
                   onChange={(e) => setText(e.target.value)}
