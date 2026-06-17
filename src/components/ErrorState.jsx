@@ -19,14 +19,14 @@ export default function ErrorState({
         className,
       )}
     >
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-900/20">
-        <AlertTriangle size={36} className="text-red-400" />
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+        <AlertTriangle size={36} className="text-destructive/60" />
       </div>
-      <h3 className="text-lg font-medium text-red-700 dark:text-red-400">
+      <h3 className="text-lg font-medium text-destructive">
         {message}
       </h3>
       {detail && (
-        <p className="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+        <p className="mt-1 max-w-sm text-sm text-fg-muted">
           {detail}
         </p>
       )}

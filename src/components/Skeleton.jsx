@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils.js';
 export default function Skeleton({ className = '', ...props }) {
   return (
     <div
-      className={cn('animate-pulse bg-muted/50 rounded-md', className)}
+      className={cn('animate-pulse bg-surface-muted/50 rounded-md', className)}
       role="status"
       aria-label="Carregando"
       {...props}

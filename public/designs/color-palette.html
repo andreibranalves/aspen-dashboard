@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Palette — Aspen Orçamento</title>
+    <style>
+      :root {
+        --canvas: #ffffff;
+        --surface-1: #ffffff;
+        --surface-2: #f1f1f1;
+        --hairline: #dbdbdb;
+        --hairline-soft: #ebebeb;
+        --ink: #121212;
+        --ink-muted: #6b6b6b;
+        --background: #ffffff;
+        --foreground: #121212;
+        --card: #ffffff;
+        --border: #dbdbdb;
+        --input: #dbdbdb;
+        --primary: #165cd8;
+        --secondary: #f1f1f1;
+        --accent: #f1f1f1;
+        --destructive: #b91c1c;
+        --success: #15803d;
+        --violet: #6a4cf5;
+        --magenta: #d44df0;
+        --orange: #ff7a3d;
+        --coral: #ff5577;
+      }
+
+      body[data-theme='dark'] {
+        --canvas: #141414;
+        --surface-1: #141414;
+        --surface-2: #1c1c1c;
+        --hairline: #262626;
+        --hairline-soft: #1a1a1a;
+        --ink: #ffffff;
+        --ink-muted: #999999;
+        --background: #141414;
+        --foreground: #ffffff;
+        --card: #141414;
+        --border: #262626;
+        --input: #262626;
+        --primary: #165cd8;
+        --secondary: #141414;
+        --accent: #141414;
+        --destructive: #b91c1c;
+        --success: #22c55e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+      body {
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        background: var(--background);
+        color: var(--foreground);
+        padding: 24px;
+      }
+
+      .wrap {
+        max-width: 1280px;
+        margin: 0 auto;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+      h1 {
+        font-size: 28px;
+        margin: 0;
+      }
+      .sub {
+        color: var(--ink-muted);
+        margin: 6px 0 0;
+        font-size: 14px;
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        border: 1px solid var(--hairline);
+        background: var(--surface-1);
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 10px 14px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .chip.active {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+
+      .grid {
+        display: grid;
+        gap: 18px;
+      }
+      .grid.cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .grid.cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .grid.cols-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      @media (max-width: 980px) {
+        .grid.cols-2,
+        .grid.cols-3,
+        .grid.cols-4 {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 18px;
+      }
+      .panel h2 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+      .panel p.note {
+        margin: -6px 0 14px;
+        color: var(--ink-muted);
+        font-size: 13px;
+      }
+
+      .swatch {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        background: var(--surface-1);
+        min-height: 108px;
+      }
+      .swatch .preview {
+        height: 62px;
+        border-bottom: 1px solid var(--border);
+      }
+      .swatch .meta {
+        padding: 12px;
+      }
+      .swatch .name {
+        font-weight: 700;
+        font-size: 14px;
+        margin: 0 0 4px;
+      }
+      .swatch .value {
+        font-size: 12px;
+        color: var(--ink-muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+        padding: 10px 14px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: default;
+      }
+      .btn.default {
+        background: var(--primary);
+        color: #fff;
+      }
+      .btn.secondary {
+        background: var(--surface-1);
+        color: var(--ink);
+        border-color: var(--hairline);
+      }
+      .btn.outline {
+        background: transparent;
+        color: var(--ink);
+        border-color: var(--hairline);
+      }
+      .btn.ghost {
+        background: transparent;
+        color: var(--ink);
+      }
+      .btn.success {
+        background: var(--success);
+        color: #fff;
+      }
+      .btn.destructive {
+        background: var(--destructive);
+        color: #fff;
+      }
+      .btn.link {
+        background: transparent;
+        color: var(--primary);
+        text-decoration: underline;
+        padding-inline: 4px;
+      }
+
+      .big {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        font-weight: 700;
+      }
+
+      .label {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--ink-muted);
+        margin: 0 0 10px;
+      }
+      .gray-legend {
+        display: grid;
+        gap: 10px;
+      }
+      .gray-line {
+        display: grid;
+        grid-template-columns: 140px 1fr 120px;
+        gap: 12px;
+        align-items: center;
+      }
+      .gray-line .bar {
+        height: 34px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+      }
+      .gray-line code {
+        font-size: 12px;
+        color: var(--ink-muted);
+      }
+      @media (max-width: 720px) {
+        .gray-line {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body data-theme="light">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Palette — Aspen Orçamento</h1>
+          <p class="sub">Visualização rápida das cores do app, com foco nos cinzas e nos botões.</p>
+        </div>
+        <div class="chips" aria-label="Trocar tema">
+          <button class="chip active" data-theme-btn="light">Light</button>
+          <button class="chip" data-theme-btn="dark">Dark</button>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <section class="panel">
+          <h2>Cinzas / neutros</h2>
+          <p class="note">É aqui que ficam os “cinzas” do app.</p>
+          <div class="gray-legend">
+            <div class="gray-line">
+              <div class="label">Canvas</div>
+              <div class="bar" style="background: var(--canvas)"></div>
+              <code>#ffffff / #141414</code>
+            </div>
+            <div class="gray-line">
+              <div class="label">Surface 1</div>
+              <div class="bar" style="background: var(--surface-1)"></div>
+              <code>#ffffff / #141414</code>
+            </div>
+            <div class="gray-line">
+              <div class="label">Surface 2</div>
+              <div class="bar" style="background: var(--surface-2)"></div>
+              <code>#f1f1f1 / #1c1c1c</code>
+            </div>
+            <div class="gray-line">
+              <div class="label">Hairline</div>
+              <div class="bar" style="background: var(--hairline)"></div>
+              <code>#dbdbdb / #262626</code>
+            </div>
+            <div class="gray-line">
+              <div class="label">Hairline soft</div>
+              <div class="bar" style="background: var(--hairline-soft)"></div>
+              <code>#ebebeb / #1a1a1a</code>
+            </div>
+            <div class="gray-line">
+              <div class="label">Ink muted</div>
+              <div class="bar" style="background: var(--ink-muted)"></div>
+              <code>#6b6b6b / #999999</code>
+            </div>
+            <div class="gray-line">
+              <div class="label">Ink</div>
+              <div class="bar" style="background: var(--ink)"></div>
+              <code>#121212 / #ffffff</code>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Botões</h2>
+          <p class="note">Comparação visual entre variantes principais.</p>
+          <div class="row">
+            <div class="btn default">default</div>
+            <div class="btn secondary">secondary</div>
+            <div class="btn outline">outline</div>
+            <div class="btn ghost">ghost</div>
+            <div class="btn success">success</div>
+            <div class="btn destructive">destructive</div>
+            <div class="btn link">link</div>
+          </div>
+          <div style="height: 14px"></div>
+          <div class="grid cols-2">
+            <div>
+              <div class="label">Primary / azul</div>
+              <div class="big" style="background: var(--primary); color: #fff">#165cd8</div>
+            </div>
+            <div>
+              <div class="label">Success / verde</div>
+              <div class="big" style="background: var(--success); color: #fff">success</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div style="height: 18px"></div>
+
+      <section class="panel">
+        <h2>Cores principais do tema</h2>
+        <p class="note">Tokens semânticos usados pelo app.</p>
+        <div class="grid cols-4" id="swatches"></div>
+      </section>
+
+      <div style="height: 18px"></div>
+
+      <section class="panel">
+        <h2>Gradientes / extras</h2>
+        <div class="grid cols-4">
+          <div class="swatch">
+            <div
+              class="preview"
+              style="background: linear-gradient(135deg, var(--violet), var(--magenta))"
+            ></div>
+            <div class="meta">
+              <p class="name">violet → magenta</p>
+              <div class="value">#6a4cf5 → #d44df0</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div
+              class="preview"
+              style="background: linear-gradient(135deg, var(--orange), var(--coral))"
+            ></div>
+            <div class="meta">
+              <p class="name">orange → coral</p>
+              <div class="value">#ff7a3d → #ff5577</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="preview" style="background: var(--primary)"></div>
+            <div class="meta">
+              <p class="name">accent-blue</p>
+              <div class="value">#165cd8</div>
+            </div>
+          </div>
+          <div class="swatch">
+            <div class="preview" style="background: var(--destructive)"></div>
+            <div class="meta">
+              <p class="name">destructive</p>
+              <div class="value">red</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      const tokens = [
+        ['background', 'var(--background)', '#ffffff / #141414'],
+        ['foreground', 'var(--foreground)', '#121212 / #ffffff'],
+        ['card', 'var(--card)', '#ffffff / #141414'],
+        ['border', 'var(--border)', '#dbdbdb / #262626'],
+        ['input', 'var(--input)', '#dbdbdb / #262626'],
+        ['primary', 'var(--primary)', '#165cd8'],
+        ['secondary', 'var(--secondary)', '#f1f1f1 / #141414'],
+        ['muted', 'var(--muted)', '#f1f1f1 / #141414'],
+        ['accent', 'var(--accent)', '#f1f1f1 / #141414'],
+        ['destructive', 'var(--destructive)', '#b91c1c'],
+        ['success', 'var(--success)', '#15803d / #22c55e'],
+        ['canvas', 'var(--canvas)', '#ffffff / #141414'],
+        ['surface-1', 'var(--surface-1)', '#ffffff / #141414'],
+        ['surface-2', 'var(--surface-2)', '#f1f1f1 / #1c1c1c'],
+        ['hairline', 'var(--hairline)', '#dbdbdb / #262626'],
+        ['hairline-soft', 'var(--hairline-soft)', '#ebebeb / #1a1a1a'],
+        ['ink', 'var(--ink)', '#121212 / #ffffff'],
+        ['ink-muted', 'var(--ink-muted)', '#6b6b6b / #999999'],
+      ];
+
+      const swatches = document.getElementById('swatches');
+      swatches.innerHTML = tokens
+        .map(
+          ([name, value, label]) => `
+        <div class="swatch">
+          <div class="preview" style="background: ${value}"></div>
+          <div class="meta">
+            <p class="name">${name}</p>
+            <div class="value">${label}</div>
+          </div>
+        </div>
+      `
+        )
+        .join('');
+
+      const buttons = document.querySelectorAll('[data-theme-btn]');
+      buttons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const theme = btn.getAttribute('data-theme-btn');
+          document.body.dataset.theme = theme;
+          buttons.forEach((b) => b.classList.toggle('active', b === btn));
+        });
+      });
+    </script>
+  </body>
+</html>

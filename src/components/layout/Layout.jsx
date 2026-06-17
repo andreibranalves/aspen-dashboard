@@ -110,7 +110,7 @@ export default function Layout({ route, onNavigate, children }) {
   const breadcrumbItems = getBreadcrumb(route);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-framer-canvas">
+    <div className="h-screen flex overflow-hidden bg-page">
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={toggleSidebar}

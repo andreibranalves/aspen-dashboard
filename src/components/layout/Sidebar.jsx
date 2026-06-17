@@ -43,9 +43,9 @@ const NAV_SECTIONS = [
 ];
 
 /**
- * Sidebar — Framer dark navigation.
- * surface-1 background, hairline borders, ink text,
- * surface-2 hover, hairline active indicator.
+ * Sidebar — Alpine dark navigation.
+ * shell background, line borders, fg text,
+ * surface-muted hover, primary active indicator.
  */
 export default function Sidebar({
   collapsed,
@@ -67,14 +67,14 @@ export default function Sidebar({
 
       <aside
         className={cn(
-          'fixed top-0 left-0 z-30 h-full bg-framer-surface-1 text-framer-ink',
+          'fixed top-0 left-0 z-30 h-full bg-shell text-fg',
           'flex flex-col transition-all duration-300 overflow-hidden',
           collapsed ? 'w-0 lg:w-16' : 'w-64'
         )}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-4 border-b border-framer-hairline shrink-0"
+          className="flex items-center justify-between px-4 border-b border-line shrink-0"
           style={{ height: '4rem' }}
         >
           {!collapsed && (
@@ -88,7 +88,7 @@ export default function Sidebar({
           )}
           <button
             onClick={onToggle}
-            className="p-1.5 rounded-md hover:bg-framer-surface-2 transition-colors"
+            className="p-1.5 rounded-md hover:bg-surface-muted transition-colors"
             aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
           >
             {collapsed ? <Menu size={20} /> : <X size={20} />}
@@ -101,12 +101,12 @@ export default function Sidebar({
             <div key={section.title} className="mb-2">
               {/* Section header — hidden when collapsed */}
               {!collapsed && (
-                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-framer-ink-muted/50">
+                <div className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-fg-muted/50">
                   {section.title}
                 </div>
               )}
               {/* Section divider when collapsed */}
-              {collapsed && <div className="mx-3 my-2 border-t border-framer-hairline" />}
+              {collapsed && <div className="mx-3 my-2 border-t border-line" />}
               {section.items.map(({ hash, label, icon: Icon }) => (
                 <button
                   key={hash}
@@ -116,7 +116,7 @@ export default function Sidebar({
                     'hover:bg-primary/5',
                     currentRoute === hash
                       ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-framer-ink-muted'
+                      : 'text-fg-muted'
                   )}
                   title={collapsed ? label : undefined}
                 >
@@ -129,14 +129,14 @@ export default function Sidebar({
         </nav>
 
         {/* Footer — Dark/Light toggle */}
-        <div className="px-4 py-3 border-t border-framer-hairline shrink-0 space-y-3">
+        <div className="px-4 py-3 border-t border-line shrink-0 space-y-3">
           {/* Theme toggle */}
           <button
             type="button"
             onClick={toggleDarkMode}
             className={cn(
               'w-full flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition-colors',
-              'hover:bg-framer-surface-2',
+              'hover:bg-surface-muted',
               collapsed && 'justify-center px-0'
             )}
             aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}

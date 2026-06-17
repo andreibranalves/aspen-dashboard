@@ -2,29 +2,29 @@ import { cn } from '@/lib/utils.js';
 import { forwardRef } from 'react';
 
 /**
- * Button — Framer pill button system.
- * DEFAULT: accent-blue pill (primary CTA)
- * SECONDARY: surface-1 pill (charcoal)
- * OUTLINE: hairline border pill
+ * Button — Alpine pill button system.
+ * DEFAULT: primary pill (CTA)
+ * SECONDARY: surface pill
+ * OUTLINE: line border pill
  * GHOST: transparent with hover
- * DESTRUCTIVE: red pill
- * SUCCESS: green pill
+ * DESTRUCTIVE: destructive pill
+ * SUCCESS: success pill
  */
 const variants = {
   default:
-    'bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.97]',
+    'bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97]',
   destructive:
-    'bg-red-600 text-white hover:bg-red-700 active:scale-[0.97]',
+    'bg-destructive text-on-solid hover:bg-destructive/90 active:scale-[0.97]',
   outline:
-    'border border-framer-hairline bg-transparent text-framer-ink hover:bg-primary/5 active:scale-[0.97]',
+    'border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97]',
   secondary:
-    'bg-framer-surface-1 text-framer-ink hover:bg-framer-surface-2 active:scale-[0.97]',
+    'bg-surface text-fg hover:bg-surface-muted active:scale-[0.97]',
   ghost:
-    'text-framer-ink hover:bg-primary/5',
+    'text-fg hover:bg-primary/5',
   link:
     'text-primary underline-offset-4 hover:underline',
   success:
-    'bg-framer-success text-white hover:bg-framer-success/90 active:scale-[0.97]',
+    'bg-success text-on-solid hover:bg-success/90 active:scale-[0.97]',
 };
 
 const sizes = {
@@ -47,7 +47,7 @@ const Button = forwardRef(({
     <Comp
       className={cn(
         'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/50 focus-visible:ring-offset-2 focus-visible:ring-offset-framer-canvas',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page',
         'disabled:pointer-events-none disabled:opacity-40',
         '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
         variants[variant],

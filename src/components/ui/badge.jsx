@@ -1,17 +1,17 @@
 import { cn } from '@/lib/utils.js';
 
 /**
- * StatusBadge — Framer dark status chips.
- * Surface-1 background with subtle colored text for each status.
+ * StatusBadge — Alpine status chips.
+ * Neutral surface with semantic color text for each status.
  */
 const badgeVariants = {
-  Draft:     'bg-framer-surface-2 text-framer-ink-muted',
-  Open:      'bg-framer-accent-blue/10 text-framer-accent-blue',
-  Replied:   'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-  Ordered:   'bg-framer-success/10 text-framer-success',
-  Lost:      'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-  Expired:   'bg-framer-surface-2 text-framer-ink-muted/50',
-  Cancelled: 'bg-framer-surface-2 text-framer-ink-muted/40 line-through',
+  Draft:     'tone-neutral-soft',
+  Open:      'tone-primary-soft',
+  Replied:   'tone-warning-soft',
+  Ordered:   'tone-success-soft',
+  Lost:      'tone-destructive-soft',
+  Expired:   'tone-neutral-muted',
+  Cancelled: 'tone-neutral-muted line-through',
 };
 
 export function StatusBadge({ status, label, className }) {

@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════════════════
-   Framer-inspired Design System — Aspen Orçamento
-   Dark + light tokens built from /DESIGN.md
+   Alpine Design System — Aspen Orçamento
+   Neutros com viés azul + semânticos coerentes (light + dark)
+   Vocabulário: page / surface / shell / line / fg
    ═══════════════════════════════════════════════════════ */
 
-/* Inter Variable — Framer body typeface */
 @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
 
 @tailwind base;
@@ -15,8 +15,8 @@
     display: inline-block;
     width: 16px;
     height: 16px;
-    border: 2px solid hsl(var(--muted-foreground) / 0.3);
-    border-top-color: hsl(var(--foreground));
+    border: 2px solid hsl(var(--fg-muted) / 0.3);
+    border-top-color: hsl(var(--fg));
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }
@@ -27,86 +27,75 @@
 
 @layer base {
   :root {
-    /* ── Light Framer surface tokens ── */
-    --background: 0 0% 100%;            /* canvas     #ffffff (matches surface-1/sidebar) */
-    --foreground: 0 0% 7%;              /* ink        #121212 */
-    --card: 0 0% 100%;                  /* surface-1  #ffffff */
-    --card-foreground: 0 0% 7%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 7%;
-    --primary: 218.4 81.5% 46.7%;           /* #165cd8 accent blue */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 94.5%;
-    --secondary-foreground: 0 0% 7%;
-    --muted: 0 0% 94.5%;
-    --muted-foreground: 0 0% 42%;
-    --accent: 0 0% 94.5%;
-    --accent-foreground: 0 0% 7%;
-    --destructive: 0 74% 42%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 86%;
-    --input: 0 0% 86%;
-    --ring: 218.4 81.5% 46.7%;
+    /* ── Light Alpine tokens ── */
+    --page: 0 0% 100%;                  /* #ffffff */
+    --surface: 0 0% 100%;               /* #ffffff — igual a page no light */
+    --surface-muted: 218 47% 95%;        /* #eef2f9 — cinza com viés azul */
+    --shell: 215 46% 93%;               /* #e4ebf5 — sidebar/topbar mais frio */
+    --line: 215 32% 88%;                /* #d8e0eb — bordas/divisórias */
+    --fg: 223 42% 12%;                  /* #11182a — texto principal */
+    --fg-muted: 223 18% 44%;            /* #5c6b84 — texto secundário */
+    --on-solid: 0 0% 100%;              /* #ffffff — texto sobre áreas sólidas */
+
+    /* ── Semânticos ── */
+    --primary: 218 82% 47%;             /* #165cd8 */
+    --success: 155 65% 29%;             /* #1a7a4c */
+    --warning: 35 75% 41%;              /* #b86e1a — âmbar terroso */
+    --destructive: 1 52% 50%;           /* #c2403f */
+    /* info = primary (mesmo valor) */
+
+    /* ── Decorativos ── */
+    --accent-ice: #57b6e0;
+    --accent-twilight: #15317a;
+    --accent-amber: #f0a857;
+    --gradient-glacier: linear-gradient(135deg, var(--accent-ice), var(--accent-twilight));
+
+    /* ── Compatibilidade shadcn (aliases internos) ── */
+    --background: var(--page);
+    --foreground: var(--fg);
+    --card: var(--surface);
+    --card-foreground: var(--fg);
+    --popover: var(--surface);
+    --popover-foreground: var(--fg);
+    --primary-foreground: var(--on-solid);
+    --secondary: var(--surface-muted);
+    --secondary-foreground: var(--fg);
+    --muted: var(--surface-muted);
+    --muted-foreground: var(--fg-muted);
+    --accent: var(--surface-muted);
+    --accent-foreground: var(--fg);
+    --destructive-foreground: var(--on-solid);
+    --border: var(--line);
+    --input: var(--line);
+    --ring: var(--primary);
     --radius: 0.625rem;
-
-    /* ── Framer-specific extras consumed by tailwind.config.js ── */
-    --canvas: 0 0% 100%;                /* #ffffff (matches surface-1/sidebar) */
-    --surface-1: 0 0% 100%;             /* #ffffff */
-    --surface-2: 0 0% 94.5%;            /* #f1f1f1 */
-    --hairline: 0 0% 86%;               /* #dbdbdb */
-    --hairline-soft: 0 0% 92%;          /* #ebebeb */
-    --ink: 0 0% 7%;                     /* #121212 */
-    --ink-muted: 0 0% 42%;              /* #6b6b6b */
-    --accent-blue: 51.33% 0.2020 261.2;     /* #165cd8 in OKLCH */
-    --success: 142 71% 32%;
-
-    /* Gradient anchors */
-    --gradient-violet: #6a4cf5;
-    --gradient-magenta: #d44df0;
-    --gradient-orange: #ff7a3d;
-    --gradient-coral: #ff5577;
   }
 
   .dark {
-    /* ── Framer dark surface tokens ── */
-    --background: 0 0% 7.8%;            /* canvas     #141414 (matches surface-1) */
-    --foreground: 0 0% 100%;            /* ink        #ffffff */
-    --card: 0 0% 7.8%;                  /* surface-1  #141414 */
-    --card-foreground: 0 0% 100%;
-    --popover: 0 0% 7.8%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 218.4 81.5% 46.7%;           /* #165cd8 accent blue */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 7.8%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 0 0% 7.8%;
-    --muted-foreground: 0 0% 60%;
-    --accent: 0 0% 7.8%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 218.4 81.5% 46.7%;
+    /* ── Dark Alpine tokens ── */
+    --page: 222 36% 9%;                 /* #0f1420 */
+    --surface: 222 36% 9%;              /* #0f1420 — igual a page */
+    --surface-muted: 218 30% 15%;        /* #1a2230 */
+    --shell: 218 33% 12%;               /* #151c28 */
+    --line: 219 26% 22%;                /* #2a3447 */
+    --fg: 217 45% 96%;                  /* #f2f5fa */
+    --fg-muted: 217 21% 63%;            /* #8e9db5 */
+    --on-solid: 0 0% 100%;              /* #ffffff */
 
-    --canvas: 0 0% 7.8%;                /* #141414 (matches surface-1) */
-    --surface-1: 0 0% 7.8%;             /* #141414 */
-    --surface-2: 0 0% 11%;              /* #1c1c1c */
-    --hairline: 0 0% 14.9%;             /* #262626 */
-    --hairline-soft: 0 0% 10.2%;        /* #1a1a1a */
-    --ink: 0 0% 100%;                   /* #ffffff */
-    --ink-muted: 0 0% 60%;              /* #999999 */
-    --accent-blue: 51.33% 0.2020 261.2;     /* #165cd8 in OKLCH */
-    --success: 142 71% 45%;
+    /* ── Semânticos ── */
+    --primary: 218 82% 47%;             /* #165cd8 — igual ao light */
+    --success: 155 58% 49%;             /* #34c77e */
+    --warning: 36 84% 64%;              /* #f0a857 */
+    --destructive: 1 68% 65%;           /* #e2696a */
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-line;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-page text-fg;
     font-family: 'Inter', 'Inter Variable', system-ui, -apple-system, sans-serif;
     font-feature-settings: "cv01" 1, "cv05" 1, "cv09" 1, "cv11" 1, "ss03" 1, "ss07" 1, "dlig" 1, "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
@@ -123,58 +112,81 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
+  background: hsl(var(--fg-muted) / 0.3);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: hsl(var(--fg-muted) / 0.5);
 }
 
-/* ══ Focus ring — accent-blue, per Framer level-3 ══ */
+/* ══ Focus ring — derived from primary ══ */
 @layer base {
   *:focus-visible {
     outline: none;
   }
 }
 
-/* ══ Utility classes for Framer patterns ══ */
+/* ══ Tone utilities — semantic soft chips/alerts ══ */
+@layer components {
+  .tone-primary-soft {
+    @apply bg-primary/10 text-primary rounded-full border border-transparent;
+  }
+  .tone-success-soft {
+    @apply bg-success/10 text-success rounded-full border border-transparent;
+  }
+  .tone-warning-soft {
+    @apply bg-warning/10 text-warning rounded-full border border-transparent;
+  }
+  .tone-destructive-soft {
+    @apply bg-destructive/10 text-destructive rounded-full border border-transparent;
+  }
+  .tone-info-soft {
+    @apply bg-primary/10 text-primary rounded-full border border-transparent;
+  }
+  .tone-neutral-soft {
+    @apply bg-surface-muted text-fg-muted rounded-full border border-transparent;
+  }
+  .tone-neutral-muted {
+    @apply bg-surface-muted text-fg-muted/50;
+  }
+}
+
+/* ══ Utility classes for Alpine patterns ══ */
 @layer components {
   .btn-pill {
     @apply inline-flex items-center justify-center gap-2 rounded-full;
     @apply text-sm font-medium transition-all duration-200;
-    @apply focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--background))];
+    @apply focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--page))];
     @apply disabled:pointer-events-none disabled:opacity-50;
   }
 
-  .card-framer {
-    @apply rounded-xl border border-[hsl(var(--hairline))];
-    @apply bg-[hsl(var(--surface-1))];
+  .card-alpine {
+    @apply rounded-xl border border-line bg-surface;
   }
 
-  .card-framer-featured {
-    @apply rounded-xl border border-[hsl(var(--hairline))];
-    @apply bg-[hsl(var(--surface-2))];
+  .card-alpine-featured {
+    @apply rounded-xl border border-line bg-surface-muted;
   }
 
-  .spotlight-violet {
-    background: linear-gradient(135deg, var(--gradient-violet), var(--gradient-magenta));
+  .spotlight-glacier {
+    background: var(--gradient-glacier);
     @apply rounded-3xl text-white p-8;
   }
 
-  .divider-hairline {
-    @apply border-t border-[hsl(var(--hairline))];
+  .divider-line {
+    @apply border-t border-line;
   }
 
-  .input-framer {
-    @apply rounded-[10px] border border-[hsl(var(--hairline))] bg-[hsl(var(--surface-1))];
-    @apply text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))];
+  .input-alpine {
+    @apply rounded-[10px] border border-line bg-surface;
+    @apply text-fg placeholder:text-fg-muted;
     @apply px-3.5 py-2.5 text-[15px] leading-[1.3];
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring)/0.15)] focus-visible:ring-offset-0;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/15 focus-visible:ring-offset-0;
     @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
 }
 
 ::selection {
-  background: hsl(var(--ring) / 0.25);
-  color: hsl(var(--foreground));
+  background: hsl(var(--primary) / 0.25);
+  color: hsl(var(--fg));
 }

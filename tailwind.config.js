@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ['class'], // kept for compatibility — all tokens are dark-only in :root
+  darkMode: ['class'],
   content: [
     './index.html',
     './src/**/*.{js,jsx}',
@@ -11,63 +11,93 @@ export default {
         sans: ['Inter', 'Inter Variable', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
+        // ── Alpine vocabulary (canonical) ──
+        line: 'hsl(var(--line))',
+        page: 'hsl(var(--page))',
+        surface: {
+          DEFAULT: 'hsl(var(--surface))',
+          muted: 'hsl(var(--surface-muted))',
+        },
+        shell: 'hsl(var(--shell))',
+        fg: {
+          DEFAULT: 'hsl(var(--fg))',
+          muted: 'hsl(var(--fg-muted))',
+        },
+        'on-solid': 'hsl(var(--on-solid))',
+
         primary: {
           DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
+          foreground: 'hsl(var(--on-solid))',
         },
-        secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--on-solid))',
+        },
+        warning: {
+          DEFAULT: 'hsl(var(--warning))',
+          foreground: 'hsl(var(--on-solid))',
         },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
+          foreground: 'hsl(var(--on-solid))',
         },
-        muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
-        },
-        popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))',
-        },
-        card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
+        info: {
+          DEFAULT: 'hsl(var(--primary))',          // alias → primary
+          foreground: 'hsl(var(--on-solid))',
         },
 
-        // ── Framer named tokens (theme-aware via CSS variables) ──
+        // ── Shadcn compatibility aliases (internos, não públicos) ──
+        border: 'hsl(var(--line))',
+        input: 'hsl(var(--line))',
+        ring: 'hsl(var(--primary))',
+        background: 'hsl(var(--page))',
+        foreground: 'hsl(var(--fg))',
+        card: {
+          DEFAULT: 'hsl(var(--surface))',
+          foreground: 'hsl(var(--fg))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--surface))',
+          foreground: 'hsl(var(--fg))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--surface-muted))',
+          foreground: 'hsl(var(--fg))',
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--surface-muted))',
+          foreground: 'hsl(var(--fg-muted))',
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--surface-muted))',
+          foreground: 'hsl(var(--fg))',
+        },
+
+        // ── Sidebar (theme-aware) ──
+        sidebar: {
+          DEFAULT: 'hsl(var(--shell))',
+          foreground: 'hsl(var(--fg))',
+          hover: 'hsl(var(--surface-muted))',
+          active: 'hsl(var(--line))',
+        },
+
+        // ── Framer legacy aliases (backward compat, remove in Stage 2) ──
         framer: {
-          canvas: 'hsl(var(--canvas))',
-          'surface-1': 'hsl(var(--surface-1))',
-          'surface-2': 'hsl(var(--surface-2))',
-          hairline: 'hsl(var(--hairline))',
-          'hairline-soft': 'hsl(var(--hairline-soft))',
-          ink: 'hsl(var(--ink))',
-          'ink-muted': 'hsl(var(--ink-muted))',
-          'accent-blue': 'oklch(var(--accent-blue) / <alpha-value>)',
+          canvas: 'hsl(var(--page))',
+          'surface-1': 'hsl(var(--surface))',
+          'surface-2': 'hsl(var(--surface-muted))',
+          'surface-3': 'hsl(var(--surface-muted))',
+          hairline: 'hsl(var(--line))',
+          'hairline-soft': 'hsl(var(--line))',
+          ink: 'hsl(var(--fg))',
+          'ink-muted': 'hsl(var(--fg-muted))',
+          'accent-blue': 'hsl(var(--primary))',
           success: 'hsl(var(--success))',
+          warning: 'hsl(var(--warning))',
           'gradient-violet': '#6a4cf5',
           'gradient-magenta': '#d44df0',
           'gradient-orange': '#ff7a3d',
           'gradient-coral': '#ff5577',
-        },
-
-        // ── Sidebar (theme-aware Framer shell) ──
-        sidebar: {
-          DEFAULT: 'hsl(var(--surface-1))',
-          foreground: 'hsl(var(--ink))',
-          hover: 'hsl(var(--surface-2))',
-          active: 'hsl(var(--hairline))',
         },
       },
       borderRadius: {
