@@ -7,7 +7,10 @@ import { Menu, ChevronRight } from 'lucide-react';
  */
 export default function TopBar({ route, onMenuClick, breadcrumbItems, onNavigate, actions }) {
   return (
-    <header className="flex items-center justify-between px-4 md:px-6 shrink-0 border-b border-line bg-shell" style={{ height: '4rem' }}>
+    <header
+      className="flex items-center justify-between px-4 md:px-6 shrink-0 border-b border-line bg-page"
+      style={{ height: '4rem' }}
+    >
       <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={onMenuClick}
@@ -35,11 +38,7 @@ export default function TopBar({ route, onMenuClick, breadcrumbItems, onNavigate
           ))}
         </nav>
       </div>
-      {actions && (
-        <div className="flex items-center gap-2 shrink-0">
-          {actions}
-        </div>
-      )}
+      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
     </header>
   );
 }
