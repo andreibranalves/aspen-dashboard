@@ -3,7 +3,17 @@
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Pencil, X, Plus, Loader2, AlertTriangle, Send, FileText, Check } from 'lucide-react';
+import {
+  Pencil,
+  X,
+  Plus,
+  Loader2,
+  AlertTriangle,
+  Send,
+  FileText,
+  Check,
+  Phone,
+} from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
@@ -286,10 +296,7 @@ export default function SplitResultCard({
                     : item.item_name || item.item_code || '';
 
                 return (
-                  <tr
-                    key={ii}
-                    className="border-b border-line last:border-b-0 hover:bg-surface/30"
-                  >
+                  <tr key={ii} className="border-b border-line last:border-b-0 hover:bg-surface/30">
                     <td className="py-2 pl-4 pr-3">
                       {editing ? (
                         <div className="relative item-search-cell">
@@ -401,13 +408,14 @@ export default function SplitResultCard({
       )}
 
       {isDone && (
-        <div className="px-4 pb-4 border-t border-line bg-surface/20">
+        <div className="px-4 pb-2 border-t border-line bg-surface/20">
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
             status={waStatus}
             onSelectFlow={(flowId) => onSelectWhatsAppFlow?.(draft.index, flowId)}
             onSend={() => onSendWhatsApp?.(draft.index)}
+            hideButton
           />
         </div>
       )}
@@ -449,6 +457,18 @@ export default function SplitResultCard({
                 Abrir orçamento
               </Button>
             </a>
+            <Button
+              size="sm"
+              disabled={waStatus?.state === 'sending'}
+              onClick={() => onSendWhatsApp?.(draft.index)}
+            >
+              <Phone size={13} />
+              {waStatus?.state === 'sent'
+                ? 'Enviado'
+                : waStatus?.state === 'sending'
+                  ? 'Enviando…'
+                  : 'Enviar WhatsApp'}
+            </Button>
           </>
         ) : (
           <Button
@@ -461,6 +481,16 @@ export default function SplitResultCard({
           </Button>
         )}
       </div>
+      {isDone && waStatus?.message && (
+        <p
+          className={cn(
+            'px-4 pb-3 text-xs leading-5 text-center',
+            waStatus.state === 'error' ? 'text-destructive' : 'text-fg-muted'
+          )}
+        >
+          {waStatus.message}
+        </p>
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ export default function WhatsAppSendPanel({
   status,
   onSelectFlow,
   onSend,
+  hideButton = false,
 }) {
   const selectedFlow = flows.find((f) => f.id === selectedFlowId) || flows[0];
   const sequence = selectedFlow ? flowToSequencePayload(selectedFlow) : null;
@@ -39,42 +40,44 @@ export default function WhatsAppSendPanel({
           </span>
         )}
       </div>
-      <div className="mt-3 space-y-2">
-        {hasValidSteps ? (
-          <>
-            <Button
-              type="button"
-              size="lg"
-              className="w-full"
-              disabled={status?.state === 'sending'}
-              onClick={onSend}
-            >
-              <Phone size={16} />
-              {status?.state === 'sent'
-                ? 'Enviado pelo WhatsApp'
-                : status?.state === 'sending'
-                  ? 'Enviando…'
-                  : 'Enviar via WhatsApp'}
-            </Button>
-            {status?.message && (
-              <p
-                className={cn(
-                  'text-xs leading-5 text-center',
-                  status.state === 'error' ? 'text-destructive' : 'text-fg-muted'
-                )}
+      {!hideButton && (
+        <div className="mt-3 space-y-2">
+          {hasValidSteps ? (
+            <>
+              <Button
+                type="button"
+                size="lg"
+                className="w-full"
+                disabled={status?.state === 'sending'}
+                onClick={onSend}
               >
-                {status.message}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="text-xs text-warning mb-2">
-            {!selectedFlow
-              ? 'Nenhum fluxo de WhatsApp disponível.'
-              : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}
-          </p>
-        )}
-      </div>
+                <Phone size={16} />
+                {status?.state === 'sent'
+                  ? 'Enviado pelo WhatsApp'
+                  : status?.state === 'sending'
+                    ? 'Enviando…'
+                    : 'Enviar via WhatsApp'}
+              </Button>
+              {status?.message && (
+                <p
+                  className={cn(
+                    'text-xs leading-5 text-center',
+                    status.state === 'error' ? 'text-destructive' : 'text-fg-muted'
+                  )}
+                >
+                  {status.message}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-warning mb-2">
+              {!selectedFlow
+                ? 'Nenhum fluxo de WhatsApp disponível.'
+                : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}
+            </p>
+          )}
+        </div>
+      )}
     </>
   );
 }
