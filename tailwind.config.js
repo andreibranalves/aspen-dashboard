@@ -1,10 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: ['class'],
-  content: [
-    './index.html',
-    './src/**/*.{js,jsx}',
-  ],
+  content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       fontFamily: {
@@ -42,7 +39,7 @@ export default {
           foreground: 'hsl(var(--on-solid))',
         },
         info: {
-          DEFAULT: 'hsl(var(--primary))',          // alias → primary
+          DEFAULT: 'hsl(var(--primary))', // alias → primary
           foreground: 'hsl(var(--on-solid))',
         },
 

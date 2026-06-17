@@ -66,7 +66,9 @@ export default function LoginPage({ navigate }) {
               'inline-flex items-center justify-center w-14 h-14 rounded-2xl',
               'mb-4 shadow-lg shadow-primary/20'
             )}
-            style={{ background: 'linear-gradient(135deg, var(--accent-ice), var(--accent-twilight))' }}
+            style={{
+              background: 'linear-gradient(135deg, var(--accent-ice), var(--accent-twilight))',
+            }}
           >
             <ShieldAlert className="w-7 h-7 text-white" />
           </div>
@@ -91,7 +93,9 @@ export default function LoginPage({ navigate }) {
             />
           </div>
 
-          {error && <p className="text-center text-sm text-destructive/60 animate-in fade-in">{error}</p>}
+          {error && (
+            <p className="text-center text-sm text-destructive/60 animate-in fade-in">{error}</p>
+          )}
 
           <Button type="submit" disabled={loading || !password.trim()} className="w-full" size="lg">
             {loading ? (
