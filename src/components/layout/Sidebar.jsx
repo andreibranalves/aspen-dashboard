@@ -119,7 +119,10 @@ export default function Sidebar({
                   )}
                   title={collapsed ? label : undefined}
                 >
-                  <Icon size={20} className="shrink-0 text-primary" />
+                  <Icon
+                    size={20}
+                    className={cn('shrink-0', currentRoute === hash ? 'text-primary' : 'text-fg')}
+                  />
                   {!collapsed && <span className="truncate">{label}</span>}
                 </button>
               ))}
@@ -142,9 +145,9 @@ export default function Sidebar({
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
             {darkMode ? (
-              <Sun size={16} className="shrink-0 text-primary" />
+              <Sun size={16} className="shrink-0 text-fg" />
             ) : (
-              <Moon size={16} className="shrink-0 text-primary" />
+              <Moon size={16} className="shrink-0 text-fg" />
             )}
             {!collapsed && <span>{darkMode ? 'Modo claro' : 'Modo escuro'}</span>}
           </button>
