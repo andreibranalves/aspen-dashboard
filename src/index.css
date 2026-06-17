@@ -167,6 +167,17 @@
   }
 }
 
+/* ══ Sidebar — sempre escuro ══ */
+@layer base {
+  aside {
+    --shell: 218 33% 12%; /* dark */
+    --fg: 217 45% 96%; /* dark */
+    --fg-muted: 217 21% 63%; /* dark */
+    --line: 219 26% 22%; /* dark */
+    --surface-muted: 218 30% 15%; /* dark */
+  }
+}
+
 /* ══ Utility classes for Alpine patterns ══ */
 @layer components {
   .btn-pill {

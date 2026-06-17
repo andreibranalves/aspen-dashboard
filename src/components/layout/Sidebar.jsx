@@ -80,7 +80,7 @@ export default function Sidebar({
           {!collapsed && (
             <div className="flex items-center gap-2.5 whitespace-nowrap">
               <img
-                src={darkMode ? '/logo_branca.svg' : '/logo_marinho.svg'}
+                src="/logo_branca.svg"
                 alt="Aspen Estamparia"
                 style={{ height: '2rem', width: 'auto' }}
               />
