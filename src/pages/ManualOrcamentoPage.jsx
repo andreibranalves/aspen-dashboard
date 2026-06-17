@@ -378,14 +378,14 @@ export default function ManualOrcamentoPage() {
     <div className="space-y-6 animate-fade-in">
       {/* ══ Success Result ══ */}
       {result && (
-        <div className="bg-framer-success/10 border border-framer-success/30 rounded-xl p-5 space-y-4">
+        <div className="bg-success/10 border border-success/30 rounded-xl p-5 space-y-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-framer-success flex items-center justify-center">
+            <div className="w-9 h-9 rounded-full bg-success flex items-center justify-center">
               <Check size={18} className="text-white" />
             </div>
             <div>
-              <p className="font-semibold text-framer-success">Orçamento criado com sucesso</p>
-              <p className="text-sm text-framer-success/70">
+              <p className="font-semibold text-success">Orçamento criado com sucesso</p>
+              <p className="text-sm text-success/70">
                 {capitalize(result.cliente)} · {result.quotation_id}
               </p>
             </div>
@@ -397,7 +397,7 @@ export default function ManualOrcamentoPage() {
                 href={buildQuotationViewUrl(result.quotation_id)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-surface-1 border border-framer-hairline rounded-full text-sm text-framer-success hover:bg-framer-surface-2 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-line rounded-full text-sm text-success hover:bg-surface-muted transition-colors"
               >
                 <ExternalLink size={14} /> Visualizar PDF
               </a>
@@ -411,7 +411,7 @@ export default function ManualOrcamentoPage() {
                   href={waLink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-framer-success text-white rounded-full text-sm hover:bg-framer-success/90 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success text-white rounded-full text-sm hover:bg-success/90 transition-colors"
                 >
                   <MessageCircle size={14} /> WhatsApp
                 </a>
@@ -428,10 +428,10 @@ export default function ManualOrcamentoPage() {
       {/* ══ Error ══ */}
       {error && !result && (
         <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle size={20} className="text-red-500 shrink-0" />
+          <AlertTriangle size={20} className="text-destructive shrink-0" />
           <div>
-            <p className="font-medium text-red-800 dark:text-red-200">Erro ao criar orçamento</p>
-            <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+            <p className="font-medium text-destructive">Erro ao criar orçamento</p>
+            <p className="text-sm text-destructive">{error}</p>
           </div>
         </div>
       )}
@@ -441,21 +441,21 @@ export default function ManualOrcamentoPage() {
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
             <div className="space-y-5 min-w-0">
               {/* ══ 1. Cliente ══ */}
-              <section aria-label="Seleção de cliente" className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+              <section aria-label="Seleção de cliente" className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
                       <UserPlus size={18} /> 1. Cliente
                     </h2>
-                    <p className="text-sm text-muted-foreground mt-1">Use um cadastro existente ou crie o contato nesta venda.</p>
+                    <p className="text-sm text-fg-muted mt-1">Use um cadastro existente ou crie o contato nesta venda.</p>
                   </div>
 
-                  <div className="flex gap-1 bg-muted rounded-lg p-0.5 w-fit">
+                  <div className="flex gap-1 bg-surface-muted rounded-lg p-0.5 w-fit">
                     <button
                       onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.NEW ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
+                        clientType === CLIENT_TYPE.NEW ? 'bg-surface-muted font-medium text-fg' : 'text-fg-muted hover:text-fg',
                       )}
                       aria-label="Cadastrar novo cliente"
                     >
@@ -465,7 +465,7 @@ export default function ManualOrcamentoPage() {
                       onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.EXISTING ? 'bg-framer-surface-2 font-medium text-framer-ink' : 'text-framer-ink-muted hover:text-framer-ink',
+                        clientType === CLIENT_TYPE.EXISTING ? 'bg-surface-muted font-medium text-fg' : 'text-fg-muted hover:text-fg',
                       )}
                       aria-label="Buscar cliente existente"
                     >
@@ -477,7 +477,7 @@ export default function ManualOrcamentoPage() {
                 {clientType === CLIENT_TYPE.EXISTING ? (
                   <div className="space-y-3">
                     <div className="relative w-full">
-                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
                       <Input
                         placeholder="Buscar por nome, email ou telefone…"
                         value={clientSearch}
@@ -487,33 +487,33 @@ export default function ManualOrcamentoPage() {
                       />
                       {clientSearching && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                          <Loader2 size={14} className="animate-spin text-fg-muted" />
                         </div>
                       )}
                     </div>
 
                     {clientResults.length > 0 && (
-                      <div className="border border-border rounded-xl divide-y divide-border max-h-60 overflow-y-auto bg-card">
+                      <div className="border border-line rounded-xl divide-y divide-border max-h-60 overflow-y-auto bg-surface">
                         {clientResults.map(client => (
                           <button
                             key={client.id}
                             onClick={() => selectClient(client)}
                             className={cn(
-                              'w-full text-left px-3 py-3 hover:bg-muted/50 transition-colors flex items-center justify-between gap-3',
+                              'w-full text-left px-3 py-3 hover:bg-surface-muted/50 transition-colors flex items-center justify-between gap-3',
                               selectedClient?.id === client.id && 'bg-primary/5',
                             )}
                             aria-label={`Selecionar ${client.nome}`}
                           >
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate">{client.nome || client.id}</p>
-                              <p className="text-xs text-muted-foreground truncate">
+                              <p className="text-xs text-fg-muted truncate">
                                 {[client.email, client.telefone ? fmtPhone(client.telefone) : '', client.tipo === 'lead' ? 'Lead' : 'Cliente']
                                   .filter(Boolean).join(' · ')}
                               </p>
                             </div>
                             <span className={cn(
                               'text-[10px] px-2 py-1 rounded-full shrink-0',
-                              client.tipo === 'lead' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-success/10 text-framer-success',
+                              client.tipo === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success',
                             )}>
                               {client.tipo === 'lead' ? 'Lead' : 'Cliente'}
                             </span>
@@ -525,7 +525,7 @@ export default function ManualOrcamentoPage() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Nome *</label>
+                      <label className="text-xs text-fg-muted mb-1 block">Nome *</label>
                       <Input
                         placeholder="Nome completo"
                         value={newClient.nome}
@@ -534,7 +534,7 @@ export default function ManualOrcamentoPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+                      <label className="text-xs text-fg-muted mb-1 block">Email</label>
                       <Input
                         type="email"
                         placeholder="email@exemplo.com"
@@ -544,7 +544,7 @@ export default function ManualOrcamentoPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Telefone</label>
+                      <label className="text-xs text-fg-muted mb-1 block">Telefone</label>
                       <Input
                         placeholder="(11) 99999-9999"
                         value={formatPhoneInput(newClient.telefone)}
@@ -558,13 +558,13 @@ export default function ManualOrcamentoPage() {
                 )}
 
                 {selectedClient && clientType === CLIENT_TYPE.EXISTING && (
-                  <div className="flex flex-wrap items-center gap-2 text-sm bg-framer-accent-blue/5 border border-framer-accent-blue/20 text-framer-ink rounded-xl px-3 py-2">
-                    <Check size={14} className="text-framer-accent-blue" />
+                  <div className="flex flex-wrap items-center gap-2 text-sm bg-primary/5 border border-primary/20 text-fg rounded-xl px-3 py-2">
+                    <Check size={14} className="text-primary" />
                     <span className="font-medium">{selectedClient.nome}</span>
-                    {selectedClient.email && <span className="text-framer-ink-muted">· {selectedClient.email}</span>}
-                    {selectedClient.telefone && <span className="text-framer-ink-muted">· {fmtPhone(selectedClient.telefone)}</span>}
+                    {selectedClient.email && <span className="text-fg-muted">· {selectedClient.email}</span>}
+                    {selectedClient.telefone && <span className="text-fg-muted">· {fmtPhone(selectedClient.telefone)}</span>}
                     {selectedClient.cnpj && (
-                      <span className="text-framer-ink-muted text-xs font-mono">· CNPJ {formatCnpj(selectedClient.cnpj)}</span>
+                      <span className="text-fg-muted text-xs font-mono">· CNPJ {formatCnpj(selectedClient.cnpj)}</span>
                     )}
                   </div>
                 )}
@@ -576,10 +576,10 @@ export default function ManualOrcamentoPage() {
                 )}
 
                 {/* ── Origem (obrigatória, sempre visível) ── */}
-                <div className="space-y-1 pt-3 border-t border-border">
-                  <label className="text-xs font-medium text-framer-ink-muted">Origem do lead *</label>
+                <div className="space-y-1 pt-3 border-t border-line">
+                  <label className="text-xs font-medium text-fg-muted">Origem do lead *</label>
                   <select
-                    className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
+                    className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >
@@ -592,9 +592,9 @@ export default function ManualOrcamentoPage() {
 
                 {/* ── CNPJ (opcional) ── */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-framer-ink-muted">CNPJ (opcional)</label>
+                  <label className="text-xs font-medium text-fg-muted">CNPJ (opcional)</label>
                   <div className="relative">
-                    <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
+                    <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
                     <Input
                       className="h-10 pl-9 text-sm font-mono"
                       value={cnpj ? formatCnpj(cnpj) : ''}
@@ -603,7 +603,7 @@ export default function ManualOrcamentoPage() {
                     />
                   </div>
                   {cnpj && !isValidCnpj(cnpj) && (
-                    <p className="text-xs text-red-500">CNPJ inválido. Corrija ou deixe em branco.</p>
+                    <p className="text-xs text-destructive">CNPJ inválido. Corrija ou deixe em branco.</p>
                   )}
                 </div>
 
@@ -612,7 +612,7 @@ export default function ManualOrcamentoPage() {
                   <button
                     type="button"
                     onClick={() => setShowAddress(!showAddress)}
-                    className="flex items-center gap-2 text-xs font-medium text-framer-ink-muted hover:text-framer-ink transition-colors"
+                    className="flex items-center gap-2 text-xs font-medium text-fg-muted hover:text-fg transition-colors"
                   >
                     <MapPin size={14} />
                     Endereço opcional
@@ -621,7 +621,7 @@ export default function ManualOrcamentoPage() {
                   {showAddress && (
                     <div className="mt-2 grid gap-3 md:grid-cols-2">
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">CEP</span>
+                        <span className="text-[10px] text-fg-muted">CEP</span>
                         <Input
                           className="h-9 text-sm font-mono"
                           value={address.cep}
@@ -630,7 +630,7 @@ export default function ManualOrcamentoPage() {
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">Logradouro</span>
+                        <span className="text-[10px] text-fg-muted">Logradouro</span>
                         <Input
                           className="h-9 text-sm"
                           value={address.logradouro}
@@ -639,7 +639,7 @@ export default function ManualOrcamentoPage() {
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">Número</span>
+                        <span className="text-[10px] text-fg-muted">Número</span>
                         <Input
                           className="h-9 text-sm"
                           value={address.numero}
@@ -648,7 +648,7 @@ export default function ManualOrcamentoPage() {
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">Complemento</span>
+                        <span className="text-[10px] text-fg-muted">Complemento</span>
                         <Input
                           className="h-9 text-sm"
                           value={address.complemento}
@@ -657,7 +657,7 @@ export default function ManualOrcamentoPage() {
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">Bairro</span>
+                        <span className="text-[10px] text-fg-muted">Bairro</span>
                         <Input
                           className="h-9 text-sm"
                           value={address.bairro}
@@ -666,7 +666,7 @@ export default function ManualOrcamentoPage() {
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">Cidade</span>
+                        <span className="text-[10px] text-fg-muted">Cidade</span>
                         <Input
                           className="h-9 text-sm"
                           value={address.cidade}
@@ -675,7 +675,7 @@ export default function ManualOrcamentoPage() {
                         />
                       </label>
                       <label className="space-y-1">
-                        <span className="text-[10px] text-framer-ink-muted">UF</span>
+                        <span className="text-[10px] text-fg-muted">UF</span>
                         <Input
                           className="h-9 text-sm w-20"
                           value={address.uf}
@@ -687,30 +687,30 @@ export default function ManualOrcamentoPage() {
                     </div>
                   )}
                   {!showAddress && hasAnyAddressField(address) && (
-                    <p className="mt-1 text-xs text-framer-ink-muted">{formatAddressSummary(address)}</p>
+                    <p className="mt-1 text-xs text-fg-muted">{formatAddressSummary(address)}</p>
                   )}
                 </div>
               </section>
 
               {/* ══ 2. Itens ══ */}
-              <section aria-label="Itens do orçamento" className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+              <section aria-label="Itens do orçamento" className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
                       <PackagePlus size={18} /> 2. Itens do orçamento
                     </h2>
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-fg-muted mt-1">
                       Busque o produto e ajuste quantidade ou preço na própria tabela.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 text-sm text-fg-muted">
                     <ShoppingCart size={15} />
                     {items.length} {items.length === 1 ? 'item' : 'itens'}
                   </div>
                 </div>
 
                 <div className="relative w-full">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
                   <Input
                     placeholder="Digite SKU ou nome para adicionar um produto…"
                     value={productSearch}
@@ -720,22 +720,22 @@ export default function ManualOrcamentoPage() {
                   />
                   {productSearching && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                      <Loader2 size={14} className="animate-spin text-fg-muted" />
                     </div>
                   )}
                 </div>
 
                 {productResults.length > 0 && (
-                  <div className="border border-border rounded-xl overflow-hidden bg-card divide-y divide-border max-h-72 overflow-y-auto">
+                  <div className="border border-line rounded-xl overflow-hidden bg-surface divide-y divide-border max-h-72 overflow-y-auto">
                     {productResults.map(product => (
-                      <div key={product.sku} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between hover:bg-muted/30 transition-colors">
+                      <div key={product.sku} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between hover:bg-surface-muted/30 transition-colors">
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-framer-ink">
-                            <span className="font-mono text-framer-accent-blue">{product.sku}</span>
-                            <span className="text-framer-ink-muted"> · </span>
+                          <p className="text-sm font-medium text-fg">
+                            <span className="font-mono text-primary">{product.sku}</span>
+                            <span className="text-fg-muted"> · </span>
                             {product.nome}
                           </p>
-                          {product.categoria && <p className="text-xs text-muted-foreground mt-0.5">{product.categoria}</p>}
+                          {product.categoria && <p className="text-xs text-fg-muted mt-0.5">{product.categoria}</p>}
                         </div>
                         <Button
                           type="button"
@@ -778,19 +778,19 @@ export default function ManualOrcamentoPage() {
                                 <TableCell className="min-w-[280px]">
                                   <div className="space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <span className="font-mono text-xs text-framer-accent-blue">{item.sku}</span>
+                                      <span className="font-mono text-xs text-primary">{item.sku}</span>
                                       {item._rateManual && (
                                         <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-300">
                                           preço manual
                                         </span>
                                       )}
                                       {Number(item.rate) === 0 && (
-                                        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-300">
+                                        <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-destructive dark:text-red-300">
                                           sem preço
                                         </span>
                                       )}
                                     </div>
-                                    <p className="text-sm font-medium text-framer-ink">{item.nome}</p>
+                                    <p className="text-sm font-medium text-fg">{item.nome}</p>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -805,9 +805,9 @@ export default function ManualOrcamentoPage() {
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-center justify-end gap-2">
-                                    {rowLoading && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
+                                    {rowLoading && <Loader2 size={14} className="animate-spin text-fg-muted" />}
                                     <div className="relative w-32">
-                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-fg-muted">R$</span>
                                       <Input
                                         type="number"
                                         min="0"
@@ -822,7 +822,7 @@ export default function ManualOrcamentoPage() {
                                       <button
                                         type="button"
                                         onClick={() => resetItemRate(item._key)}
-                                        className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-framer-accent-blue transition-colors"
+                                        className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-surface-muted hover:text-primary transition-colors"
                                         aria-label={`Recalcular preço de ${item.sku}`}
                                       >
                                         <RotateCcw size={14} />
@@ -837,7 +837,7 @@ export default function ManualOrcamentoPage() {
                                   <button
                                     type="button"
                                     onClick={() => removeItem(item._key)}
-                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/100/10 hover:text-destructive transition-colors"
                                     aria-label={`Remover ${item.sku}`}
                                   >
                                     <Trash2 size={15} />
@@ -854,11 +854,11 @@ export default function ManualOrcamentoPage() {
                       {items.map(item => {
                         const rowLoading = pricingRows.has(item._key);
                         return (
-                          <div key={item._key} className="border border-border rounded-xl p-3 space-y-3 bg-framer-surface-1">
+                          <div key={item._key} className="border border-line rounded-xl p-3 space-y-3 bg-surface">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-mono text-xs text-framer-accent-blue">{item.sku}</span>
+                                  <span className="font-mono text-xs text-primary">{item.sku}</span>
                                   {item._rateManual && <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-300">preço manual</span>}
                                 </div>
                                 <p className="text-sm font-medium mt-1">{item.nome}</p>
@@ -866,7 +866,7 @@ export default function ManualOrcamentoPage() {
                               <button
                                 type="button"
                                 onClick={() => removeItem(item._key)}
-                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/100/10 hover:text-destructive transition-colors"
                                 aria-label={`Remover ${item.sku}`}
                               >
                                 <Trash2 size={15} />
@@ -874,7 +874,7 @@ export default function ManualOrcamentoPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                               <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Quantidade</label>
+                                <label className="text-xs text-fg-muted mb-1 block">Quantidade</label>
                                 <Input
                                   type="number"
                                   min="1"
@@ -885,11 +885,11 @@ export default function ManualOrcamentoPage() {
                                 />
                               </div>
                               <div>
-                                <label className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                <label className="text-xs text-fg-muted mb-1 flex items-center gap-1">
                                   Unitário {rowLoading && <Loader2 size={11} className="animate-spin" />}
                                 </label>
                                 <div className="relative">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-fg-muted">R$</span>
                                   <Input
                                     type="number"
                                     min="0"
@@ -902,16 +902,16 @@ export default function ManualOrcamentoPage() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center justify-between border-t border-border pt-2">
+                            <div className="flex items-center justify-between border-t border-line pt-2">
                               {item._rateManual ? (
                                 <button
                                   type="button"
                                   onClick={() => resetItemRate(item._key)}
-                                  className="inline-flex items-center gap-1.5 text-xs text-framer-accent-blue"
+                                  className="inline-flex items-center gap-1.5 text-xs text-primary"
                                 >
                                   <RotateCcw size={12} /> Recalcular tabela
                                 </button>
-                              ) : <span className="text-xs text-muted-foreground">Preço da tabela</span>}
+                              ) : <span className="text-xs text-fg-muted">Preço da tabela</span>}
                               <span className="font-semibold">{formatBRL(item.qty * item.rate)}</span>
                             </div>
                           </div>
@@ -920,16 +920,16 @@ export default function ManualOrcamentoPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-border bg-muted/20 overflow-hidden">
-                    <div className="grid grid-cols-[1fr_88px_120px_120px] gap-3 border-b border-border bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground max-md:hidden">
+                  <div className="rounded-xl border border-dashed border-line bg-surface-muted/20 overflow-hidden">
+                    <div className="grid grid-cols-[1fr_88px_120px_120px] gap-3 border-b border-line bg-surface-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-fg-muted max-md:hidden">
                       <span>Produto</span>
                       <span className="text-right">Qtd</span>
                       <span className="text-right">Unitário</span>
                       <span className="text-right">Total</span>
                     </div>
-                    <div className="px-4 py-10 text-center text-muted-foreground">
-                      <ShoppingCart size={36} className="mx-auto text-muted-foreground/40" />
-                      <p className="mt-3 font-medium text-framer-ink">Nenhum produto na tabela</p>
+                    <div className="px-4 py-10 text-center text-fg-muted">
+                      <ShoppingCart size={36} className="mx-auto text-fg-muted/40" />
+                      <p className="mt-3 font-medium text-fg">Nenhum produto na tabela</p>
                       <p className="mt-1 text-sm">Pesquise acima e clique em Adicionar. Depois edite quantidade e preço direto nas colunas da linha.</p>
                     </div>
                   </div>
@@ -937,12 +937,12 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 3. Condições ══ */}
-              <section aria-label="Condições do orçamento" className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+              <section aria-label="Condições do orçamento" className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
                 <div>
                   <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
                     <FileText size={18} /> 3. Condições e fechamento
                   </h2>
-                  <p className="text-sm text-muted-foreground mt-1">Defina prazo, urgência e observações antes de criar.</p>
+                  <p className="text-sm text-fg-muted mt-1">Defina prazo, urgência e observações antes de criar.</p>
                 </div>
 
                 {hasZeroPrice && (
@@ -954,7 +954,7 @@ export default function ManualOrcamentoPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Prazo de produção</label>
+                    <label className="text-xs text-fg-muted mb-1 block">Prazo de produção</label>
                     <Input
                       placeholder="Ex: 10 a 15 dias"
                       value={prazo}
@@ -962,10 +962,10 @@ export default function ManualOrcamentoPage() {
                       aria-label="Prazo de produção"
                     />
                   </div>
-                  <div className="rounded-xl border border-border bg-framer-surface-1 px-3 py-2 flex items-center justify-between gap-3">
+                  <div className="rounded-xl border border-line bg-surface px-3 py-2 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium">Pedido urgente</p>
-                      <p className="text-xs text-muted-foreground">Recalcula itens com preço automático em +30%.</p>
+                      <p className="text-xs text-fg-muted">Recalcula itens com preço automático em +30%.</p>
                     </div>
                     <label className="relative inline-flex cursor-pointer items-center">
                       <input
@@ -974,16 +974,16 @@ export default function ManualOrcamentoPage() {
                         onChange={e => onUrgenteChange(e.target.checked)}
                         className="peer sr-only"
                       />
-                      <span className="h-6 w-11 rounded-full bg-muted transition-colors peer-checked:bg-framer-accent-blue" />
+                      <span className="h-6 w-11 rounded-full bg-surface-muted transition-colors peer-checked:bg-primary" />
                       <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
                     </label>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Observações</label>
+                  <label className="text-xs text-fg-muted mb-1 block">Observações</label>
                   <textarea
-                    className="w-full min-h-[88px] rounded-[10px] border border-framer-hairline bg-framer-surface-1 px-3 py-2 text-sm text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 resize-y"
+                    className="w-full min-h-[88px] rounded-[10px] border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 resize-y"
                     placeholder="Detalhes de arte, entrega, acabamentos ou condições comerciais…"
                     value={observacoes}
                     onChange={e => setObservacoes(e.target.value)}
@@ -991,52 +991,52 @@ export default function ManualOrcamentoPage() {
                   />
                 </div>
 
-                <div className="rounded-xl border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-line bg-surface-muted/20 px-3 py-2 text-sm text-fg-muted">
                   {canSubmit ? 'Revise o resumo ao lado e crie o orçamento.' : 'Informe cliente e ao menos um item para liberar a criação.'}
                 </div>
               </section>
             </div>
 
             {/* ══ Side Summary ══ */}
-            <aside className="xl:sticky xl:top-0 bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+            <aside className="xl:sticky xl:top-0 bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
                 <Calculator size={17} /> Resumo
               </div>
 
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="text-fg-muted">Cliente</span>
                   <span className="font-medium text-right truncate max-w-[180px]">
                     {getClientInfo().nome || 'Não informado'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Itens</span>
+                  <span className="text-fg-muted">Itens</span>
                   <span className="font-medium">{items.length}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Urgência</span>
-                  <span className={cn('font-medium', urgente ? 'text-framer-accent-blue' : 'text-framer-ink')}>{urgente ? '+30%' : 'Normal'}</span>
+                  <span className="text-fg-muted">Urgência</span>
+                  <span className={cn('font-medium', urgente ? 'text-primary' : 'text-fg')}>{urgente ? '+30%' : 'Normal'}</span>
                 </div>
                 {manualPriceCount > 0 && (
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Preços manuais</span>
+                    <span className="text-fg-muted">Preços manuais</span>
                     <span className="font-medium text-amber-600 dark:text-amber-300">{manualPriceCount}</span>
                   </div>
                 )}
               </div>
 
-              <div className="border-t border-border pt-4">
+              <div className="border-t border-line pt-4">
                 <div className="flex items-end justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">Subtotal</span>
+                  <span className="text-sm text-fg-muted">Subtotal</span>
                   <span className="text-2xl font-bold tracking-tight">{formatBRL(subtotal)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-xs text-fg-muted mt-2">
                   O valor enviado usa exatamente os preços visíveis na tabela.
                 </p>
               </div>
 
-              <div className="border-t border-border pt-4 space-y-2">
+              <div className="border-t border-line pt-4 space-y-2">
                 <Button
                   onClick={handleSubmit}
                   disabled={!canSubmit}
@@ -1055,7 +1055,7 @@ export default function ManualOrcamentoPage() {
                 <Button variant="outline" onClick={resetForm} disabled={submitting} className="w-full">
                   Limpar tudo
                 </Button>
-                <p className="text-xs text-muted-foreground text-center">
+                <p className="text-xs text-fg-muted text-center">
                   {canSubmit ? 'Pronto para criar no ERPNext.' : 'Cliente e itens são obrigatórios.'}
                 </p>
               </div>

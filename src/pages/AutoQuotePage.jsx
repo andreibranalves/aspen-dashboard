@@ -384,17 +384,17 @@ export default function AutoQuotePage() {
     <div className="flex flex-col h-full overflow-hidden animate-fade-in">
       <div className="flex flex-1 overflow-hidden">
         {/* ── LEFT PANEL (50%) ── */}
-        <div className="panel-left flex flex-col w-full lg:w-1/2 min-w-0 border-r border-framer-hairline bg-card overflow-hidden">
+        <div className="panel-left flex flex-col w-full lg:w-1/2 min-w-0 border-r border-line bg-surface overflow-hidden">
           <div className="px-4 md:px-6 pt-4 md:pt-5 space-y-4">
             {/* Page title */}
-            <h1 className="text-lg font-semibold text-framer-ink">Pedido do cliente</h1>
+            <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
 
             {/* Text input */}
             <div className="mt-2">
               <div className="relative">
                 {imageData && (
                   <div className="absolute left-3 top-3 z-10">
-                    <div className="group relative h-16 w-16 overflow-hidden rounded-xl border border-framer-hairline bg-framer-surface-2 shadow-sm">
+                    <div className="group relative h-16 w-16 overflow-hidden rounded-xl border border-line bg-surface-muted shadow-sm">
                       {imagePreview ? (
                         <img
                           src={imagePreview}
@@ -402,7 +402,7 @@ export default function AutoQuotePage() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center text-framer-accent-blue">
+                        <div className="flex h-full w-full items-center justify-center text-primary">
                           <ImageIcon size={18} />
                         </div>
                       )}
@@ -422,7 +422,7 @@ export default function AutoQuotePage() {
 
                 <textarea
                   className={cn(
-                    'w-full resize-none overflow-hidden rounded-xl border border-framer-hairline bg-framer-surface-1 px-4 py-3 text-sm leading-6 text-framer-ink placeholder:text-framer-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/30',
+                    'w-full resize-none overflow-hidden rounded-xl border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
                   placeholder={
@@ -490,17 +490,17 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Bottom tabs: recent quotations + WhatsApp leads ── */}
-          <div className="border-t border-framer-hairline px-4 md:px-6 pt-4 pb-3 mt-auto">
+          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="inline-flex rounded-lg bg-framer-surface-2 p-0.5">
+              <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
                 <button
                   type="button"
                   onClick={() => setBottomTab('whatsapp')}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                     bottomTab === 'whatsapp'
-                      ? 'bg-card text-framer-ink shadow-sm'
-                      : 'text-framer-ink-muted hover:text-framer-ink'
+                      ? 'bg-surface text-fg shadow-sm'
+                      : 'text-fg-muted hover:text-fg'
                   )}
                 >
                   <MessageCircle size={13} />
@@ -512,8 +512,8 @@ export default function AutoQuotePage() {
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
                     bottomTab === 'recentes'
-                      ? 'bg-card text-framer-ink shadow-sm'
-                      : 'text-framer-ink-muted hover:text-framer-ink'
+                      ? 'bg-surface text-fg shadow-sm'
+                      : 'text-fg-muted hover:text-fg'
                   )}
                 >
                   <History size={13} />
@@ -526,7 +526,7 @@ export default function AutoQuotePage() {
                   type="button"
                   onClick={loadWhatsappLeads}
                   disabled={whatsappLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-framer-ink-muted hover:bg-framer-surface-2 hover:text-framer-ink disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-60"
                 >
                   <RefreshCw size={12} className={whatsappLoading ? 'animate-spin' : ''} />
                   Atualizar
@@ -538,11 +538,11 @@ export default function AutoQuotePage() {
               historyLoading ? (
                 <div className="space-y-2">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-10 rounded-lg bg-framer-surface-2 animate-pulse" />
+                    <div key={i} className="h-10 rounded-lg bg-surface-muted animate-pulse" />
                   ))}
                 </div>
               ) : history.length === 0 ? (
-                <p className="text-xs text-framer-ink-muted">Nenhum orçamento recente.</p>
+                <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
               ) : (
                 <div className="space-y-1">
                   {history.map((item, idx) => (
@@ -551,21 +551,21 @@ export default function AutoQuotePage() {
                       type="button"
                       onClick={() => loadHistoryItem(item)}
                       className={cn(
-                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors',
+                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
                         idx === history.length - 1 && 'pb-1'
                       )}
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-framer-ink truncate">
+                        <p className="font-medium text-fg truncate">
                           {item.cliente || 'Cliente'}
                         </p>
-                        <p className="text-xs text-framer-ink-muted truncate">{item.id}</p>
+                        <p className="text-xs text-fg-muted truncate">{item.id}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-[11px] text-framer-ink-muted whitespace-nowrap">
+                        <span className="text-[11px] text-fg-muted whitespace-nowrap">
                           {formatDate(item.data)}
                         </span>
-                        <span className="text-xs font-medium text-framer-ink whitespace-nowrap">
+                        <span className="text-xs font-medium text-fg whitespace-nowrap">
                           {formatBRL(item.valor)}
                         </span>
                       </div>
@@ -581,17 +581,17 @@ export default function AutoQuotePage() {
                     className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse"
                   >
                     <div className="space-y-1">
-                      <div className="h-4 w-28 rounded bg-framer-surface-2" />
-                      <div className="h-3 w-44 rounded bg-framer-surface-2" />
+                      <div className="h-4 w-28 rounded bg-surface-muted" />
+                      <div className="h-3 w-44 rounded bg-surface-muted" />
                     </div>
-                    <div className="h-5 w-20 rounded-full bg-framer-surface-2" />
+                    <div className="h-5 w-20 rounded-full bg-surface-muted" />
                   </div>
                 ))}
               </div>
             ) : whatsappError ? (
-              <p className="text-xs text-red-500">{whatsappError}</p>
+              <p className="text-xs text-destructive">{whatsappError}</p>
             ) : whatsappLeads.length === 0 ? (
-              <p className="text-xs text-framer-ink-muted">Nenhuma conversa recente encontrada.</p>
+              <p className="text-xs text-fg-muted">Nenhuma conversa recente encontrada.</p>
             ) : (
               <div className="space-y-1">
                 {whatsappLeads.map((lead) => {
@@ -600,10 +600,10 @@ export default function AutoQuotePage() {
                     lead.statusLabel ||
                     (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
                   const tagClass = lead.quotationId
-                    ? 'bg-framer-accent-blue/10 text-framer-accent-blue'
+                    ? 'bg-primary/10 text-primary'
                     : lead.isReady
-                      ? 'bg-emerald-500/10 text-emerald-600'
-                      : 'bg-amber-500/10 text-amber-600';
+                      ? 'bg-emerald-500/10 text-success'
+                      : 'tone-warning-soft';
                   const displayName = lead.nome || 'Nome não identificado';
                   const displayEmail = lead.email || '';
 
@@ -612,17 +612,17 @@ export default function AutoQuotePage() {
                       key={lead.id || lead.remoteJid || lead.telefone}
                       type="button"
                       onClick={() => useWhatsappLead(lead)}
-                      className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-framer-surface-2 transition-colors"
+                      className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-framer-ink truncate">
+                        <p className="font-medium text-fg truncate">
                           {fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}
                         </p>
-                        <p className="text-xs leading-tight text-framer-ink-muted break-words">
+                        <p className="text-xs leading-tight text-fg-muted break-words">
                           {displayName}
                         </p>
                         {displayEmail ? (
-                          <p className="text-[11px] text-framer-ink-muted/80 truncate">
+                          <p className="text-[11px] text-fg-muted/80 truncate">
                             {displayEmail}
                           </p>
                         ) : null}
@@ -643,14 +643,14 @@ export default function AutoQuotePage() {
         </div>
 
         {/* ── RIGHT PANEL (50%) ── */}
-        <div className="w-full lg:w-1/2 min-w-0 bg-framer-canvas px-4 md:px-6 pt-4 md:pt-5 pb-0">
+        <div className="w-full lg:w-1/2 min-w-0 bg-page px-4 md:px-6 pt-4 md:pt-5 pb-0">
           {activeDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-framer-surface-2 mb-4">
-                <FileText size={32} className="text-framer-ink-muted" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-muted mb-4">
+                <FileText size={32} className="text-fg-muted" />
               </div>
-              <h2 className="text-lg font-semibold text-framer-ink">Nenhum pedido extraído</h2>
-              <p className="mt-1 max-w-sm text-sm text-framer-ink-muted">
+              <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>
+              <p className="mt-1 max-w-sm text-sm text-fg-muted">
                 Cole o texto do pedido no painel esquerdo e clique em <strong>Extrair</strong> para
                 gerar orçamentos.
               </p>
@@ -658,7 +658,7 @@ export default function AutoQuotePage() {
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-framer-ink">
+                <h2 className="text-lg font-semibold text-fg">
                   Resultados ({activeDrafts.length})
                 </h2>
                 <Button
@@ -666,7 +666,7 @@ export default function AutoQuotePage() {
                   size="sm"
                   onClick={clearResults}
                   disabled={activeDrafts.length === 0}
-                  className="text-framer-ink-muted"
+                  className="text-fg-muted"
                 >
                   <RotateCcw size={14} />
                   Limpar lista
@@ -684,9 +684,9 @@ export default function AutoQuotePage() {
                   return (
                     <div
                       key={draft.index}
-                      className="overflow-hidden rounded-[20px] border border-red-300 bg-card shadow-sm"
+                      className="overflow-hidden rounded-[20px] border border-destructive/30 bg-surface shadow-sm"
                     >
-                      <div className="flex items-start gap-3 p-5 text-sm text-red-700 dark:text-red-300">
+                      <div className="flex items-start gap-3 p-5 text-sm text-destructive">
                         <AlertTriangle size={18} className="mt-0.5 shrink-0" />
                         <div>
                           <p className="font-medium">

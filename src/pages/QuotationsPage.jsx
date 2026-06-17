@@ -251,7 +251,7 @@ export default function QuotationsPage({ navigate }) {
 
   // Action button component (reusable) — 40x40 hit area
   const ActionBtn = ({ icon: Icon, label, href, onClick, colorClass = '' }) => {
-    const cls = `inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-framer-surface-2 transition-colors ${colorClass}`;
+    const cls = `inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors ${colorClass}`;
     if (href) {
       return (
         <a
@@ -301,7 +301,7 @@ export default function QuotationsPage({ navigate }) {
           icon={Trash2}
           label={`Excluir orçamento ${row.id}`}
           onClick={() => handleDelete(row.id)}
-          colorClass="hover:bg-red-500/10 hover:text-red-600"
+          colorClass="hover:bg-destructive/100/10 hover:text-destructive"
         />
       </div>
     );
@@ -324,7 +324,7 @@ export default function QuotationsPage({ navigate }) {
               ${
                 status === s
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'
+                  : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'
               }`}
           >
             {STATUS_DISPLAY[i]}
@@ -341,7 +341,7 @@ export default function QuotationsPage({ navigate }) {
         <div className="relative max-w-md flex-1">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
           />
           <Input
             placeholder="Buscar por Nº ou Cliente…"
@@ -351,12 +351,12 @@ export default function QuotationsPage({ navigate }) {
             aria-label="Buscar orçamentos"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           >
             {PAGE_SIZES.map((n) => (
               <option key={n} value={n}>
@@ -372,8 +372,8 @@ export default function QuotationsPage({ navigate }) {
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <AlertTriangle size={32} className="text-red-400" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <AlertTriangle size={32} className="text-destructive/60" />
           <p>Erro ao carregar orçamentos</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, status, page, limit)}>
@@ -384,8 +384,8 @@ export default function QuotationsPage({ navigate }) {
 
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <Clipboard size={36} className="text-muted-foreground/40" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <Clipboard size={36} className="text-fg-muted/40" />
           <p>Nenhum orçamento encontrado</p>
           <p className="text-sm">Tente ajustar os filtros ou criar um novo orçamento.</p>
         </div>
@@ -404,7 +404,7 @@ export default function QuotationsPage({ navigate }) {
                     checked={allSelected}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
                 </TableHead>
                 <TableHead className="w-[160px]">Nº</TableHead>
@@ -419,7 +419,7 @@ export default function QuotationsPage({ navigate }) {
               {data.map((row) => (
                 <TableRow
                   key={row.id}
-                  className={`cursor-pointer bg-card ${selectedIds.includes(row.id) ? 'bg-primary/5' : ''}`}
+                  className={`cursor-pointer bg-surface ${selectedIds.includes(row.id) ? 'bg-primary/5' : ''}`}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
                   <TableCell className="w-12 px-3" onClick={(e) => e.stopPropagation()}>
@@ -428,11 +428,11 @@ export default function QuotationsPage({ navigate }) {
                       checked={selectedIds.includes(row.id)}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Selecionar orçamento ${row.id}`}
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                   </TableCell>
                   <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                  <TableCell className="whitespace-nowrap text-fg-muted">
                     {formatDate(row.data)}
                   </TableCell>
                   <TableCell>{row.cliente}</TableCell>
@@ -457,7 +457,7 @@ export default function QuotationsPage({ navigate }) {
           {data.map((row) => (
             <div
               key={row.id}
-              className={`bg-card rounded-lg border border-border shadow-sm p-4 space-y-3 cursor-pointer ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              className={`bg-surface rounded-lg border border-line shadow-sm p-4 space-y-3 cursor-pointer ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
               <div className="flex items-center justify-between gap-3">
@@ -470,15 +470,15 @@ export default function QuotationsPage({ navigate }) {
                     checked={selectedIds.includes(row.id)}
                     onChange={() => toggleSelected(row.id)}
                     aria-label={`Selecionar orçamento ${row.id}`}
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
                   <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
                 </div>
                 <StatusBadge status={row.status} label={STATUS_LABELS[row.status] || row.status} />
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{row.cliente || '—'}</span>
-                <span className="text-muted-foreground text-xs">{formatDate(row.data)}</span>
+                <span className="text-fg-muted">{row.cliente || '—'}</span>
+                <span className="text-fg-muted text-xs">{formatDate(row.data)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-mono font-semibold">{formatBRL(row.valor)}</span>
@@ -507,19 +507,19 @@ export default function QuotationsPage({ navigate }) {
 
       {/* Totals bar + Pagination (desktop only, mobile cards are self-contained) */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:flex bg-card rounded-lg border border-border shadow-sm p-4 items-center justify-between flex-wrap gap-4">
+        <div className="hidden md:flex bg-surface rounded-lg border border-line shadow-sm p-4 items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-6">
             <div>
-              <span className="text-xs text-muted-foreground">Nesta página</span>
+              <span className="text-xs text-fg-muted">Nesta página</span>
               <p className="font-semibold">
                 {totalsQty} orçamento{totalsQty !== 1 ? 's' : ''}
               </p>
             </div>
             <div>
-              <span className="text-xs text-muted-foreground">Valor Total (página)</span>
+              <span className="text-xs text-fg-muted">Valor Total (página)</span>
               <p className="font-semibold">{formatBRL(totalsSum)}</p>
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-fg-muted">
               {status ? STATUS_LABELS[status] || status : 'todos os status'}
             </div>
           </div>
@@ -527,7 +527,7 @@ export default function QuotationsPage({ navigate }) {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">
+              <span className="text-fg-muted">
                 Página {page} de {totalPages} · {totalRecords} orçamento
                 {totalRecords !== 1 ? 's' : ''}
               </span>
@@ -567,7 +567,7 @@ export default function QuotationsPage({ navigate }) {
       {/* Pagination (mobile only) */}
       {!loading && !error && data.length > 0 && totalPages > 1 && (
         <div className="md:hidden flex items-center justify-between text-sm pt-2">
-          <span className="text-muted-foreground text-xs">
+          <span className="text-fg-muted text-xs">
             Página {page} de {totalPages} · {totalRecords} registro{totalRecords !== 1 ? 's' : ''}
           </span>
           <div className="flex gap-1">
@@ -595,17 +595,17 @@ export default function QuotationsPage({ navigate }) {
         className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto max-w-7xl px-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-framer-hairline bg-framer-surface-1/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
               <div className="flex flex-wrap items-center gap-6">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <div className="flex items-center gap-2 text-sm font-medium text-fg">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
                     checked={allSelected}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
                   <span>
                     {selectedCount} proposta{selectedCount !== 1 ? 's' : ''} selecionada
@@ -613,7 +613,7 @@ export default function QuotationsPage({ navigate }) {
                   </span>
                 </div>
                 <div>
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="block text-xs text-fg-muted">
                     Valor total selecionado
                   </span>
                   <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>

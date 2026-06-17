@@ -25,16 +25,16 @@ export default function DraftItemTable({
   addDraftItem,
 }) {
   return (
-    <div className="overflow-hidden rounded-[20px] border border-framer-hairline">
-      <div className="flex items-center justify-between gap-3 border-b border-framer-hairline bg-framer-surface-1/50 px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-framer-ink">
+    <div className="overflow-hidden rounded-[20px] border border-line">
+      <div className="flex items-center justify-between gap-3 border-b border-line bg-surface/50 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-fg">
           <Package size={16} className="text-primary" /> Itens sugeridos
         </div>
-        <span className="text-xs text-framer-ink-muted">{validItems} item(s) válidos</span>
+        <span className="text-xs text-fg-muted">{validItems} item(s) válidos</span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-sm">
-          <thead className="bg-framer-surface-1/70 text-xs text-framer-ink-muted">
+          <thead className="bg-surface/70 text-xs text-fg-muted">
             <tr>
               <th className="w-10 p-3"></th>
               <th className="p-3 text-left">Produto</th>
@@ -61,9 +61,9 @@ export default function DraftItemTable({
                     const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
                     if (from !== ii) reorderItems(draftIdx, from, ii);
                   }}
-                  className="border-t border-framer-hairline transition-colors hover:bg-primary/5"
+                  className="border-t border-line transition-colors hover:bg-primary/5"
                 >
-                  <td className="p-2 text-center text-muted-foreground">
+                  <td className="p-2 text-center text-fg-muted">
                     <GripVertical size={14} className={cn(!isApproved && 'cursor-grab')} />
                   </td>
                   <td className="p-2 relative">
@@ -93,31 +93,31 @@ export default function DraftItemTable({
                         disabled={isApproved}
                       />
                       {productSearch[draftIdx]?.loading && (
-                        <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
+                        <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />
                       )}
                     </div>
                     {productSearch[draftIdx]?.open && productSearch[draftIdx]?.results?.length > 0 && (
-                      <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      <div className="absolute z-20 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
                         {productSearch[draftIdx].results.map(p => (
                           <button
                             key={p.sku}
                             type="button"
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-muted/50 transition-colors flex items-center justify-between gap-2"
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-surface-muted/50 transition-colors flex items-center justify-between gap-2"
                             onMouseDown={e => {
                               e.preventDefault();
                               selectProduct(draftIdx, ii, p);
                             }}
                           >
                             <div className="min-w-0">
-                              <span className="font-mono text-framer-accent-blue">{p.sku}</span>
-                              <span className="text-framer-ink-muted ml-2">{p.nome}</span>
+                              <span className="font-mono text-primary">{p.sku}</span>
+                              <span className="text-fg-muted ml-2">{p.nome}</span>
                             </div>
-                            {p.categoria && <span className="text-[10px] text-muted-foreground shrink-0">{p.categoria}</span>}
+                            {p.categoria && <span className="text-[10px] text-fg-muted shrink-0">{p.categoria}</span>}
                           </button>
                         ))}
                       </div>
                     )}
-                    {item.item_name && <p className="mt-1 text-xs text-framer-ink-muted">{item.item_name}</p>}
+                    {item.item_name && <p className="mt-1 text-xs text-fg-muted">{item.item_name}</p>}
                   </td>
                   <td className="p-2">
                     <Input
@@ -151,13 +151,13 @@ export default function DraftItemTable({
                       disabled={isApproved}
                     />
                   </td>
-                  <td className="p-2 text-right text-sm font-medium text-framer-ink">{formatBRL(amount)}</td>
+                  <td className="p-2 text-right text-sm font-medium text-fg">{formatBRL(amount)}</td>
                   <td className="p-2 text-center">
                     {!isApproved && (
                       <button
                         type="button"
                         onClick={() => removeDraftItem(draftIdx, ii)}
-                        className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-600"
+                        className="rounded-full p-1 text-fg-muted transition-colors hover:bg-destructive/100/10 hover:text-destructive"
                         aria-label="Remover item"
                       >
                         <X size={14} />
@@ -174,7 +174,7 @@ export default function DraftItemTable({
         <button
           type="button"
           onClick={() => addDraftItem(draftIdx)}
-          className="flex w-full items-center justify-center gap-2 border-t border-framer-hairline p-3 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+          className="flex w-full items-center justify-center gap-2 border-t border-line p-3 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
         >
           <Plus size={14} /> Adicionar produto
         </button>

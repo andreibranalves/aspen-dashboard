@@ -159,12 +159,12 @@ export default function ProductsPage() {
   return (
     <div className="space-y-4 pb-28 animate-fade-in">
       {/* Page title */}
-      <h1 className="text-2xl font-semibold text-framer-ink">Produtos</h1>
+      <h1 className="text-2xl font-semibold text-fg">Produtos</h1>
 
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input
             placeholder="Buscar por SKU ou nome…"
             value={search}
@@ -172,12 +172,12 @@ export default function ProductsPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>
@@ -188,7 +188,7 @@ export default function ProductsPage() {
 
       {/* Sorting */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-muted-foreground mr-1">Ordenar por</span>
+        <span className="text-sm text-fg-muted mr-1">Ordenar por</span>
         {SORT_OPTIONS.map(opt => (
           <button
             key={opt.value}
@@ -196,8 +196,8 @@ export default function ProductsPage() {
             onClick={() => { setSort(opt.value); setPage(1); }}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               sort === opt.value
-                ? 'bg-framer-accent-blue text-white'
-                : 'bg-framer-surface-2 text-framer-ink-muted hover:bg-framer-surface-3 hover:text-framer-ink'
+                ? 'bg-primary text-white'
+                : 'bg-surface-muted text-fg-muted hover:bg-surface-muted hover:text-fg'
             }`}
           >
             {opt.label}
@@ -210,8 +210,8 @@ export default function ProductsPage() {
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <AlertTriangle size={32} className="text-red-400" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <AlertTriangle size={32} className="text-destructive/60" />
           <p>Erro ao carregar produtos</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, page, limit, sort)}>Tentar novamente</Button>
@@ -220,8 +220,8 @@ export default function ProductsPage() {
 
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <Tag size={36} className="text-muted-foreground/40" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <Tag size={36} className="text-fg-muted/40" />
           <p>Nenhum produto encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>
@@ -241,7 +241,7 @@ export default function ProductsPage() {
                       checked={allSelected}
                       onChange={(e) => toggleSelectAll(e.target.checked)}
                       aria-label="Selecionar todos os produtos desta página"
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                   </TableHead>
                   <TableHead>Nome</TableHead>
@@ -259,7 +259,7 @@ export default function ProductsPage() {
                   return (
                     <TableRow
                       key={sku}
-                      className={`cursor-pointer hover:bg-muted/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
+                      className={`cursor-pointer hover:bg-surface-muted/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
                     >
                       <TableCell className="w-12 px-3" onClick={(e) => e.stopPropagation()}>
@@ -268,20 +268,20 @@ export default function ProductsPage() {
                           checked={isSelected}
                           onChange={() => toggleSelected(sku)}
                           aria-label={`Selecionar produto ${sku}`}
-                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                          className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                         />
                       </TableCell>
                       <TableCell>{p.nome || p.item_name}</TableCell>
-                      <TableCell className="text-muted-foreground max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
+                      <TableCell className="text-fg-muted max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
                       <TableCell className="font-mono text-sm pl-6">{sku}</TableCell>
-                      <TableCell className="text-muted-foreground text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
+                      <TableCell className="text-fg-muted text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
                       <TableCell className="text-center font-medium pl-4">
                         {p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => handleDelete(sku)}
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
                           aria-label={`Excluir produto ${sku}`}
                           title={`Excluir ${sku}`}
                         >
@@ -302,7 +302,7 @@ export default function ProductsPage() {
               return (
                 <div
                   key={sku}
-                  className={`rounded-xl border border-border bg-card shadow-sm transition-colors ${isSelected ? 'ring-2 ring-primary/30' : ''}`}
+                  className={`rounded-xl border border-line bg-surface shadow-sm transition-colors ${isSelected ? 'ring-2 ring-primary/30' : ''}`}
                 >
                   <div className="flex items-start gap-3 p-4">
                     <div className="pt-1" onClick={(e) => e.stopPropagation()}>
@@ -311,7 +311,7 @@ export default function ProductsPage() {
                         checked={isSelected}
                         onChange={() => toggleSelected(sku)}
                         aria-label={`Selecionar produto ${sku}`}
-                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                        className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                       />
                     </div>
                     <button
@@ -323,16 +323,16 @@ export default function ProductsPage() {
                       <div>
                         <p className="text-sm font-semibold text-card-foreground line-clamp-2">{p.nome || p.item_name}</p>
                         {p.descricao && (
-                          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{p.descricao}</p>
+                          <p className="mt-0.5 text-xs text-fg-muted line-clamp-1">{p.descricao}</p>
                         )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          <span className="font-mono text-framer-accent-blue">{sku}</span>
+                        <p className="mt-1 text-xs text-fg-muted">
+                          <span className="font-mono text-primary">{sku}</span>
                           {' · '}
                           {p.unidade || p.stock_uom || 'und'}
                           {p.preco_minimo != null && (
                             <>
                               {' · '}
-                              <span className="font-medium text-framer-ink">{formatBRL(p.preco_minimo)}</span>
+                              <span className="font-medium text-fg">{formatBRL(p.preco_minimo)}</span>
                             </>
                           )}
                         </p>
@@ -340,7 +340,7 @@ export default function ProductsPage() {
                     </button>
                     <button
                       onClick={() => handleDelete(sku)}
-                      className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-red-500/10 hover:text-red-600 transition-colors shrink-0"
+                      className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors shrink-0"
                       aria-label={`Excluir produto ${sku}`}
                       title={`Excluir ${sku}`}
                     >
@@ -357,7 +357,7 @@ export default function ProductsPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
+          <span className="text-fg-muted">
             Página {page} de {totalPages} · {totalRecords} produto{totalRecords !== 1 ? 's' : ''}
           </span>
           <div className="flex gap-1">
@@ -381,9 +381,9 @@ export default function ProductsPage() {
         className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto max-w-7xl px-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-framer-hairline bg-framer-surface-1/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <div className="flex items-center gap-2 text-sm font-medium text-fg">
                 <span>
                   {selectedCount} produto{selectedCount !== 1 ? 's' : ''} selecionado{selectedCount !== 1 ? 's' : ''}
                 </span>

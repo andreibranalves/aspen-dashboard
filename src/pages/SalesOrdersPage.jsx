@@ -134,30 +134,30 @@ export default function SalesOrdersPage({ navigate }) {
             e.stopPropagation();
             navigate(`/quotations/${encodeURIComponent(item.source_quotation)}`);
           }}
-          className="text-framer-accent-blue hover:underline text-sm"
+          className="text-primary hover:underline text-sm"
         >
           {item.source_quotation}
         </button>
       );
     }
-    return <span className="text-muted-foreground">—</span>;
+    return <span className="text-fg-muted">—</span>;
   };
 
   // ── Summary card component ──────────────────────────────────────────────────
   const SummaryCard = ({ icon: Icon, label, value, subtitle, colorClass }) => {
     return (
-      <div className="flex items-start gap-3 rounded-lg border border-framer-hairline bg-card p-4 shadow-sm flex-1 min-w-[160px]">
+      <div className="flex items-start gap-3 rounded-lg border border-line bg-surface p-4 shadow-sm flex-1 min-w-[160px]">
         <div className={cn(
           'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-          colorClass || 'bg-framer-surface-2 text-framer-ink-muted',
+          colorClass || 'bg-surface-muted text-fg-muted',
         )}>
           <Icon size={20} />
         </div>
         <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="text-lg font-semibold text-framer-ink truncate">{value}</p>
+          <p className="text-xs text-fg-muted">{label}</p>
+          <p className="text-lg font-semibold text-fg truncate">{value}</p>
           {subtitle && (
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
+            <p className="text-xs text-fg-muted">{subtitle}</p>
           )}
         </div>
       </div>
@@ -183,25 +183,25 @@ export default function SalesOrdersPage({ navigate }) {
             subtitle={summaryData.revenue_delta_pct !== undefined
               ? `${summaryData.revenue_delta_pct >= 0 ? '+' : ''}${summaryData.revenue_delta_pct}% vs período anterior`
               : undefined}
-            colorClass="bg-framer-success/10 text-framer-success"
+            colorClass="bg-success/10 text-success"
           />
           <SummaryCard
             icon={ShoppingCart}
             label="Pedidos"
             value={String(summaryData.orders || 0)}
-            colorClass="bg-framer-accent-blue/10 text-framer-accent-blue"
+            colorClass="bg-primary/10 text-primary"
           />
           <SummaryCard
             icon={TrendingUp}
             label="Ticket Médio"
             value={formatBRL(summaryData.average_ticket || 0)}
-            colorClass="bg-amber-500/10 text-amber-600"
+            colorClass="tone-warning-soft"
           />
           <SummaryCard
             icon={Package}
             label="Pedidos em Aberto"
             value={String(summaryData.open_orders || 0)}
-            colorClass="bg-purple-500/10 text-purple-600"
+            colorClass="tone-info-soft"
           />
         </div>
       )}
@@ -217,8 +217,8 @@ export default function SalesOrdersPage({ navigate }) {
               className={cn(
                 'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors',
                 period === p.value
-                  ? 'bg-framer-accent-blue text-white'
-                  : 'bg-framer-surface-2 text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1',
+                  ? 'bg-primary text-white'
+                  : 'bg-surface-muted text-fg-muted hover:text-fg hover:bg-surface',
               )}
             >
               {p.label}
@@ -230,7 +230,7 @@ export default function SalesOrdersPage({ navigate }) {
         <select
           value={status}
           onChange={onStatusChange}
-          className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+          className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           aria-label="Filtrar por status"
         >
           {STATUSES.map((s, i) => (
@@ -240,7 +240,7 @@ export default function SalesOrdersPage({ navigate }) {
 
         {/* Search */}
         <div className="relative max-w-md flex-1 min-w-[200px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input
             placeholder="Buscar por Nº ou Cliente…"
             value={searchDraft}
@@ -251,12 +251,12 @@ export default function SalesOrdersPage({ navigate }) {
         </div>
 
         {/* Limit selector */}
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span className="whitespace-nowrap">Itens/página</span>
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           >
             {[10, 25, 50, 100].map(n => (
               <option key={n} value={n}>{n}</option>
@@ -267,11 +267,11 @@ export default function SalesOrdersPage({ navigate }) {
 
       {/* Loading */}
       {loading && (
-        <div className="rounded-lg border border-framer-hairline bg-card shadow-sm">
+        <div className="rounded-lg border border-line bg-surface shadow-sm">
           <div className="p-8 space-y-4">
-            <div className="h-4 w-48 bg-framer-surface-2 rounded animate-pulse" />
+            <div className="h-4 w-48 bg-surface-muted rounded animate-pulse" />
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-12 bg-framer-surface-2 rounded animate-pulse" />
+              <div key={i} className="h-12 bg-surface-muted rounded animate-pulse" />
             ))}
           </div>
         </div>
@@ -279,7 +279,7 @@ export default function SalesOrdersPage({ navigate }) {
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <p className="text-lg">Erro ao carregar pedidos</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={fetchOrders}>
@@ -290,8 +290,8 @@ export default function SalesOrdersPage({ navigate }) {
 
       {/* Empty */}
       {!loading && !error && items.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <ShoppingCart size={36} className="text-muted-foreground/40" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <ShoppingCart size={36} className="text-fg-muted/40" />
           <p>Nenhum pedido encontrado</p>
           <p className="text-sm">Tente ajustar os filtros ou criar um novo pedido.</p>
         </div>
@@ -316,11 +316,11 @@ export default function SalesOrdersPage({ navigate }) {
               {items.map(row => (
                 <TableRow
                   key={row.id}
-                  className="cursor-pointer bg-card"
+                  className="cursor-pointer bg-surface"
                   onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
                 >
                   <TableCell className="font-mono text-sm">{row.id}</TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                  <TableCell className="whitespace-nowrap text-fg-muted">
                     {row.date ? new Date(row.date).toLocaleDateString('pt-BR') : '—'}
                   </TableCell>
                   <TableCell>{row.customer_name || row.customer || '—'}</TableCell>
@@ -335,7 +335,7 @@ export default function SalesOrdersPage({ navigate }) {
                       {STATUS_LABELS[row.status] || row.status}
                     </span>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="text-sm text-fg-muted">
                     {formatDelivery(row)}
                   </TableCell>
                   <TableCell className="text-sm">
@@ -354,7 +354,7 @@ export default function SalesOrdersPage({ navigate }) {
           {items.map(row => (
             <div
               key={row.id}
-              className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-3 cursor-pointer"
+              className="bg-surface rounded-lg border border-line shadow-sm p-4 space-y-3 cursor-pointer"
               onClick={() => navigate(`/sales-orders/${encodeURIComponent(row.id)}`)}
             >
               <div className="flex items-center justify-between gap-3">
@@ -367,25 +367,25 @@ export default function SalesOrdersPage({ navigate }) {
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-framer-ink truncate">{row.customer_name || row.customer || '—'}</span>
-                <span className="text-muted-foreground text-xs">
+                <span className="text-fg truncate">{row.customer_name || row.customer || '—'}</span>
+                <span className="text-fg-muted text-xs">
                   {row.date ? new Date(row.date).toLocaleDateString('pt-BR') : '—'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-mono font-semibold">{formatBRL(row.grand_total)}</span>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-fg-muted">
                   {formatDelivery(row)}
                 </div>
               </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="flex items-center justify-between text-xs text-fg-muted">
                 <span>Origem: {row.source_quotation ? (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       navigate(`/quotations/${encodeURIComponent(row.source_quotation)}`);
                     }}
-                    className="text-framer-accent-blue hover:underline"
+                    className="text-primary hover:underline"
                   >
                     {row.source_quotation}
                   </button>
@@ -399,7 +399,7 @@ export default function SalesOrdersPage({ navigate }) {
       {/* Pagination */}
       {!loading && !error && items.length > 0 && (
         <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-sm text-fg-muted">
             Página {page} de {totalPages}
           </div>
           <div className="flex items-center gap-2">
@@ -411,7 +411,7 @@ export default function SalesOrdersPage({ navigate }) {
             >
               ‹ Anterior
             </Button>
-            <span className="text-sm text-muted-foreground px-2">
+            <span className="text-sm text-fg-muted px-2">
               {page} / {totalPages}
             </span>
             <Button
@@ -433,15 +433,15 @@ export default function SalesOrdersPage({ navigate }) {
 
 function statusBadgeClass(status) {
   const map = {
-    'Draft': 'bg-framer-surface-2 text-framer-ink-muted',
-    'On Hold': 'bg-amber-500/10 text-amber-600',
-    'To Pay': 'bg-orange-500/10 text-orange-600',
-    'To Deliver and Bill': 'bg-framer-accent-blue/10 text-framer-accent-blue',
-    'To Bill': 'bg-purple-500/10 text-purple-600',
-    'To Deliver': 'bg-cyan-500/10 text-cyan-600',
-    'Completed': 'bg-framer-success/10 text-framer-success',
-    'Cancelled': 'bg-framer-surface-2 text-framer-ink-muted/40 line-through',
-    'Closed': 'bg-framer-surface-2 text-framer-ink-muted/50',
+    'Draft': 'bg-surface-muted text-fg-muted',
+    'On Hold': 'tone-warning-soft',
+    'To Pay': 'tone-warning-soft',
+    'To Deliver and Bill': 'bg-primary/10 text-primary',
+    'To Bill': 'tone-info-soft',
+    'To Deliver': 'tone-info-soft',
+    'Completed': 'bg-success/10 text-success',
+    'Cancelled': 'bg-surface-muted text-fg-muted/40 line-through',
+    'Closed': 'bg-surface-muted text-fg-muted/50',
   };
-  return map[status] || 'bg-framer-surface-2 text-framer-ink-muted';
+  return map[status] || 'bg-surface-muted text-fg-muted';
 }

@@ -12,7 +12,7 @@ export default function PageHeader({ title, action, className }) {
   return (
     <div className={cn('flex items-start justify-between gap-4 flex-wrap', className)}>
       <div className="space-y-1 min-w-0">
-        <h1 className="text-2xl font-semibold text-framer-ink">{title}</h1>
+        <h1 className="text-2xl font-semibold text-fg">{title}</h1>
       </div>
       {action && (
         <div className="shrink-0">{action}</div>

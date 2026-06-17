@@ -306,8 +306,8 @@ export default function ProductDetailPage({ sku, navigate }) {
 
   if (error === 'not_found') {
     return (
-      <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-        <Search size={40} className="text-muted-foreground/40" />
+      <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+        <Search size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Produto não encontrado</p>
         <p className="text-sm">O SKU &quot;{decodedSku}&quot; não existe no catálogo.</p>
         <Button variant="outline" className="min-h-10" onClick={() => navigate('/products')}>
@@ -319,7 +319,7 @@ export default function ProductDetailPage({ sku, navigate }) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
+      <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
         <AlertTriangle size={40} className="text-destructive" />
         <p className="text-lg font-medium">Erro ao carregar produto</p>
         <p className="text-sm">{error}</p>
@@ -344,7 +344,7 @@ export default function ProductDetailPage({ sku, navigate }) {
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
           toast.type === 'success'
-            ? 'bg-framer-success/10 text-framer-success border border-framer-success/30'
+            ? 'bg-success/10 text-success border border-success/30'
             : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40'
         }`}>
           {toast.type === 'success' ? <Check size={16} className="inline" /> : <X size={16} className="inline" />} {toast.message}
@@ -355,16 +355,16 @@ export default function ProductDetailPage({ sku, navigate }) {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* ── LEFT: Image only ── */}
         <div className="lg:col-span-4">
-          <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+          <div className="bg-surface rounded-2xl border border-line shadow-sm overflow-hidden">
             {hasImage ? (
               <div className="aspect-square">
                 <img src={produto.imagem} alt={produto.nome} className="w-full h-full object-cover"
                   onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               </div>
             ) : (
-              <div className="aspect-square bg-gradient-to-br from-framer-surface-1 to-framer-surface-2 flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <Package size={48} className="text-muted-foreground/30" />
-                <span className="text-xs text-muted-foreground">Imagem</span>
+              <div className="aspect-square bg-gradient-to-br from-surface to-surface-muted flex flex-col items-center justify-center text-fg-muted gap-2">
+                <Package size={48} className="text-fg-muted/30" />
+                <span className="text-xs text-fg-muted">Imagem</span>
               </div>
             )}
           </div>
@@ -383,13 +383,13 @@ export default function ProductDetailPage({ sku, navigate }) {
               <div>
                 <h2 className="text-2xl font-bold inline">{produto.nome || decodedSku}</h2>
                 <div className="inline-flex items-center gap-2 text-xs ml-3 align-middle">
-                  <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-muted-foreground">{produto.sku}</span>
-                  <span className={`rounded-md px-2 py-0.5 font-medium ${produto.ativo ? 'bg-framer-success/10 text-framer-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
+                  <span className="rounded-md bg-surface-muted px-2 py-0.5 font-mono text-fg-muted">{produto.sku}</span>
+                  <span className={`rounded-md px-2 py-0.5 font-medium ${produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}>
                     {produto.ativo ? 'Ativo' : 'Inativo'}
                   </span>
                 </div>
                 {produto.descricao && (
-                  <p className="text-sm text-muted-foreground mt-1.5">{produto.descricao}</p>
+                  <p className="text-sm text-fg-muted mt-1.5">{produto.descricao}</p>
                 )}
               </div>
             </div>
@@ -397,29 +397,29 @@ export default function ProductDetailPage({ sku, navigate }) {
 
           {/* Edit: Produto card */}
           {editing && (
-            <div className="bg-card rounded-2xl border border-border shadow-sm p-5 space-y-4 relative">
+            <div className="bg-surface rounded-2xl border border-line shadow-sm p-5 space-y-4 relative">
               {/* Toggle Ativo */}
               <label className="absolute top-3 right-3 inline-flex items-center gap-2 cursor-pointer">
-                <span className="text-xs text-muted-foreground">Ativo</span>
+                <span className="text-xs text-fg-muted">Ativo</span>
                 <div className="relative">
                   <input type="checkbox" checked={edited.ativo} onChange={(e) => setEdited(prev => ({ ...prev, ativo: e.target.checked }))}
                     className="sr-only peer" />
-                  <div className="w-9 h-5 rounded-full bg-muted peer-checked:bg-framer-success transition-colors"></div>
+                  <div className="w-9 h-5 rounded-full bg-surface-muted peer-checked:bg-success transition-colors"></div>
                   <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow peer-checked:translate-x-4 transition-transform"></div>
                 </div>
               </label>
-              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">{isNewProduct ? 'Novo Produto' : 'Produto'}</h3>
+              <h3 className="text-sm font-bold text-fg-muted uppercase tracking-widest">{isNewProduct ? 'Novo Produto' : 'Produto'}</h3>
 
               {/* Row 1: Nome 100% */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Nome</label>
+                <label className="text-xs font-medium text-fg-muted">Nome</label>
                 <Input value={edited.nome} onChange={(e) => setEdited(prev => ({ ...prev, nome: e.target.value }))}
                   className="min-h-10" placeholder="Nome do produto" />
               </div>
 
               {/* Row 2: Descrição 100% */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground">Descrição</label>
+                <label className="text-xs font-medium text-fg-muted">Descrição</label>
                 <Input value={edited.descricao} onChange={(e) => setEdited(prev => ({ ...prev, descricao: e.target.value }))}
                   className="min-h-10" placeholder="Descrição do produto…" />
               </div>
@@ -427,7 +427,7 @@ export default function ProductDetailPage({ sku, navigate }) {
               {/* Row 3: SKU | Categoria | Unidade */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">SKU</label>
+                  <label className="text-xs font-medium text-fg-muted">SKU</label>
                   <Input
                     value={isNewProduct ? edited.sku : produto.sku}
                     disabled={!isNewProduct}
@@ -437,12 +437,12 @@ export default function ProductDetailPage({ sku, navigate }) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Categoria</label>
+                  <label className="text-xs font-medium text-fg-muted">Categoria</label>
                   <Input value={edited.categoria} onChange={(e) => setEdited(prev => ({ ...prev, categoria: e.target.value }))}
                     className="min-h-10" placeholder="Grupo" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Unidade</label>
+                  <label className="text-xs font-medium text-fg-muted">Unidade</label>
                   <Input value={edited.unidade} onChange={(e) => setEdited(prev => ({ ...prev, unidade: e.target.value }))}
                     className="min-h-10" placeholder="und" />
                 </div>
@@ -451,12 +451,12 @@ export default function ProductDetailPage({ sku, navigate }) {
               {/* Row 4: Prazo de produção | Custo unitário */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Prazo de produção (dias)</label>
+                  <label className="text-xs font-medium text-fg-muted">Prazo de produção (dias)</label>
                   <Input type="number" value={edited.prazo || ''} onChange={(e) => setEdited(prev => ({ ...prev, prazo: e.target.value }))}
                     className="min-h-10" placeholder="dias" min="1" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Custo unitário (R$)</label>
+                  <label className="text-xs font-medium text-fg-muted">Custo unitário (R$)</label>
                   <Input type="number" step="0.01" min="0" value={edited.custo || ''}
                     onChange={(e) => setEdited(prev => ({ ...prev, custo: e.target.value }))}
                     className="min-h-10" placeholder="0,00" />
@@ -466,8 +466,8 @@ export default function ProductDetailPage({ sku, navigate }) {
           )}
 
           {/* ── PRICING ── */}
-          <div className="bg-card rounded-2xl border border-border shadow-sm p-5 space-y-4">
-            <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Preços por quantidade</h3>
+          <div className="bg-surface rounded-2xl border border-line shadow-sm p-5 space-y-4">
+            <h3 className="text-sm font-bold text-fg-muted uppercase tracking-widest">Preços por quantidade</h3>
 
             {/* View: horizontal cards */}
             {!editing && (
@@ -481,19 +481,19 @@ export default function ProductDetailPage({ sku, navigate }) {
 
                   return (
                     <div key={faixa} className="text-center">
-                      <div className={`rounded-xl p-3 border ${isStar ? 'bg-framer-accent-blue/5 border-framer-accent-blue/20 ring-1 ring-framer-accent-blue/10' : 'bg-framer-surface-1 border-framer-surface-2'}`}>
-                        <p className={`text-[10px] font-semibold mb-1 ${isStar ? 'text-framer-accent-blue font-bold' : 'text-muted-foreground'}`}>
+                      <div className={`rounded-xl p-3 border ${isStar ? 'bg-primary/5 border-primary/20 ring-1 ring-primary/10' : 'bg-surface border-surface-muted'}`}>
+                        <p className={`text-[10px] font-semibold mb-1 ${isStar ? 'text-primary font-bold' : 'text-fg-muted'}`}>
                           {faixa.toLocaleString('pt-BR')} un.
                         </p>
-                        <div className={`w-full h-2 rounded-full mb-2 ${isStar ? 'bg-framer-accent-blue/10' : 'bg-muted'}`}>
-                          <div className={`h-full rounded-full ${isStar ? 'bg-framer-accent-blue' : 'bg-framer-ink-muted/30'}`} style={{ width: `${barWidth}%` }}></div>
+                        <div className={`w-full h-2 rounded-full mb-2 ${isStar ? 'bg-primary/10' : 'bg-surface-muted'}`}>
+                          <div className={`h-full rounded-full ${isStar ? 'bg-primary' : 'bg-fg-muted/30'}`} style={{ width: `${barWidth}%` }}></div>
                         </div>
-                        <p className={`font-mono text-sm font-bold ${isStar ? 'text-framer-ink font-extrabold' : 'text-framer-ink'}`}>
+                        <p className={`font-mono text-sm font-bold ${isStar ? 'text-fg font-extrabold' : 'text-fg'}`}>
                           {rate != null ? formatBRL(rate) : '—'}
                         </p>
                         {custo > 0 && marginData && marginData.margin > 0 && (
                           <p className={`text-[10px] font-medium mt-0.5 ${
-                            marginData.margin > 50 ? 'text-framer-success' : marginData.margin > 30 ? 'text-framer-warning' : 'text-destructive'
+                            marginData.margin > 50 ? 'text-success' : marginData.margin > 30 ? 'text-warning' : 'text-destructive'
                           }`}>
                             margem {formatPct(marginData.margin)}
                           </p>
@@ -512,7 +512,7 @@ export default function ProductDetailPage({ sku, navigate }) {
                   const isStar = faixa === 1000;
                   return (
                     <div key={faixa} className="text-center">
-                      <p className={`text-[10px] font-semibold mb-1.5 ${isStar ? 'text-framer-accent-blue font-bold' : 'text-muted-foreground'}`}>
+                      <p className={`text-[10px] font-semibold mb-1.5 ${isStar ? 'text-primary font-bold' : 'text-fg-muted'}`}>
                         {faixa.toLocaleString('pt-BR')} un.
                       </p>
                       <Input
@@ -520,7 +520,7 @@ export default function ProductDetailPage({ sku, navigate }) {
                         aria-label={`Preço da faixa ${faixa} unidades`}
                         value={edited.rates?.[faixa] ?? ''}
                         onChange={(e) => setEdited(prev => ({ ...prev, rates: { ...prev.rates, [faixa]: e.target.value } }))}
-                        className={`w-full text-center min-h-10 font-mono font-semibold ${isStar ? 'border-framer-accent-blue/20 bg-framer-accent-blue/5 font-bold' : ''}`}
+                        className={`w-full text-center min-h-10 font-mono font-semibold ${isStar ? 'border-primary/20 bg-primary/5 font-bold' : ''}`}
                         placeholder="0,00"
                       />
                     </div>
@@ -528,49 +528,49 @@ export default function ProductDetailPage({ sku, navigate }) {
                 })}
               </div>
             )}
-            <p className="text-xs text-muted-foreground text-center">Barras = redução % em relação a 30 un. Urgente: +30%.</p>
+            <p className="text-xs text-fg-muted text-center">Barras = redução % em relação a 30 un. Urgente: +30%.</p>
           </div>
 
           {/* ── KPI Summary Row ── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
-              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Custo Unitário</p>
-              <p className="text-2xl font-bold text-framer-ink">{custo > 0 ? formatBRL(custo) : '—'}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">base para cálculos</p>
+            <div className="bg-surface rounded-xl border border-line shadow-sm p-4">
+              <p className="text-xs text-fg-muted uppercase font-semibold tracking-wide mb-1">Custo Unitário</p>
+              <p className="text-2xl font-bold text-fg">{custo > 0 ? formatBRL(custo) : '—'}</p>
+              <p className="text-xs text-fg-muted mt-0.5">base para cálculos</p>
             </div>
-            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
-              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Margem Média (%)</p>
-              <p className="text-2xl font-bold text-framer-success">{kpis ? formatPct(kpis.avgMargin) : '—'}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">média entre faixas</p>
+            <div className="bg-surface rounded-xl border border-line shadow-sm p-4">
+              <p className="text-xs text-fg-muted uppercase font-semibold tracking-wide mb-1">Margem Média (%)</p>
+              <p className="text-2xl font-bold text-success">{kpis ? formatPct(kpis.avgMargin) : '—'}</p>
+              <p className="text-xs text-fg-muted mt-0.5">média entre faixas</p>
             </div>
-            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
-              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Margem Média (R$)</p>
-              <p className="text-2xl font-bold text-framer-accent-blue">{kpis ? formatBRL(kpis.avgMarginReais) : '—'}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{kpis ? 'média entre faixas' : custo > 0 ? 'adicione preços' : 'defina o custo'}</p>
+            <div className="bg-surface rounded-xl border border-line shadow-sm p-4">
+              <p className="text-xs text-fg-muted uppercase font-semibold tracking-wide mb-1">Margem Média (R$)</p>
+              <p className="text-2xl font-bold text-primary">{kpis ? formatBRL(kpis.avgMarginReais) : '—'}</p>
+              <p className="text-xs text-fg-muted mt-0.5">{kpis ? 'média entre faixas' : custo > 0 ? 'adicione preços' : 'defina o custo'}</p>
             </div>
-            <div className="bg-card rounded-xl border border-border shadow-sm p-4">
-              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide mb-1">Lucro Total Máximo</p>
-              <p className="text-2xl font-bold text-framer-success">{kpis ? formatBRL(kpis.bestProfit.totalProfit) : '—'}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{kpis ? `${kpis.bestProfit.faixa.toLocaleString('pt-BR')} un.` : custo > 0 ? 'adicione preços' : 'defina o custo'}</p>
+            <div className="bg-surface rounded-xl border border-line shadow-sm p-4">
+              <p className="text-xs text-fg-muted uppercase font-semibold tracking-wide mb-1">Lucro Total Máximo</p>
+              <p className="text-2xl font-bold text-success">{kpis ? formatBRL(kpis.bestProfit.totalProfit) : '—'}</p>
+              <p className="text-xs text-fg-muted mt-0.5">{kpis ? `${kpis.bestProfit.faixa.toLocaleString('pt-BR')} un.` : custo > 0 ? 'adicione preços' : 'defina o custo'}</p>
             </div>
           </div>
 
           {/* ── Atividade recente ── */}
           {!editing && atividades.length > 0 && (
-            <div className="bg-card rounded-2xl border border-border shadow-sm p-5 space-y-3">
-              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Atividade recente</h3>
+            <div className="bg-surface rounded-2xl border border-line shadow-sm p-5 space-y-3">
+              <h3 className="text-sm font-bold text-fg-muted uppercase tracking-widest">Atividade recente</h3>
               <div className="space-y-2 text-sm">
                 {atividades.map((a, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                  <div key={i} className="flex items-center gap-3 py-2 border-b border-line last:border-0">
                     <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                      a.tipo === 'orcamento' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' :
-                      a.tipo === 'preco' ? 'bg-framer-success/10 text-framer-success' :
+                      a.tipo === 'orcamento' ? 'bg-primary/10 text-primary' :
+                      a.tipo === 'preco' ? 'bg-success/10 text-success' :
                       'bg-yellow-50 text-yellow-600 dark:bg-yellow-500/10 dark:text-yellow-400'
                     }`}>
                       {a.tipo === 'orcamento' ? 'O' : a.tipo === 'preco' ? '$' : 'E'}
                     </span>
-                    <span className="flex-1 text-muted-foreground">{a.texto}</span>
-                    <span className="text-xs text-muted-foreground">{a.data}</span>
+                    <span className="flex-1 text-fg-muted">{a.texto}</span>
+                    <span className="text-xs text-fg-muted">{a.data}</span>
                   </div>
                 ))}
               </div>
@@ -579,7 +579,7 @@ export default function ProductDetailPage({ sku, navigate }) {
 
           {/* ── Footer ── */}
           {!editing && (
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-xs text-fg-muted text-center">
               {produto.modificado_em ? `Atualizado em ${formatDate(produto.modificado_em)}` : ''}
             </p>
           )}

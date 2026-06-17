@@ -167,7 +167,7 @@ function TipoBadge({ doctype }) {
   const isLead = doctype !== 'Customer';
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
-      isLead ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-success/10 text-framer-success'
+      isLead ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'
     }`}>
       {tipoLabel(doctype)}
     </span>
@@ -176,16 +176,16 @@ function TipoBadge({ doctype }) {
 
 function SectionCard({ title, description, icon: Icon, children }) {
   return (
-    <section className="bg-card rounded-xl border border-border shadow-sm p-5 space-y-4">
+    <section className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
       <div className="flex items-start gap-3">
         {Icon && (
-          <div className="mt-0.5 rounded-full bg-framer-surface-2 p-2 text-framer-ink-muted">
+          <div className="mt-0.5 rounded-full bg-surface-muted p-2 text-fg-muted">
             <Icon size={16} />
           </div>
         )}
         <div>
-          <h2 className="text-sm font-semibold text-framer-ink">{title}</h2>
-          {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+          <h2 className="text-sm font-semibold text-fg">{title}</h2>
+          {description && <p className="text-xs text-fg-muted mt-0.5">{description}</p>}
         </div>
       </div>
       {children}
@@ -196,8 +196,8 @@ function SectionCard({ title, description, icon: Icon, children }) {
 function InfoField({ label, value, children, className = '' }) {
   return (
     <div className={className}>
-      <span className="text-framer-ink-muted text-[11px] uppercase tracking-wide">{label}</span>
-      {children || <p className="mt-1 text-sm font-medium text-framer-ink break-words">{value || '—'}</p>}
+      <span className="text-fg-muted text-[11px] uppercase tracking-wide">{label}</span>
+      {children || <p className="mt-1 text-sm font-medium text-fg break-words">{value || '—'}</p>}
     </div>
   );
 }
@@ -208,7 +208,7 @@ function SelectBox({ value, onChange, children, disabled = false, className = ''
       value={value || ''}
       onChange={onChange}
       disabled={disabled}
-      className={`mt-1 h-10 w-full text-sm border border-framer-hairline rounded-[10px] px-3 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25 disabled:opacity-50 ${className}`}
+      className={`mt-1 h-10 w-full text-sm border border-line rounded-[10px] px-3 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-50 ${className}`}
     >
       {children}
     </select>
@@ -431,8 +431,8 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
 
   if (error === 'not_found') {
     return (
-      <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-        <UserRound size={40} className="text-muted-foreground/40" />
+      <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+        <UserRound size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Registro não encontrado</p>
         <p className="text-sm">Não encontramos {tipoLabel(doctype).toLowerCase()} &quot;{decodedId}&quot;.</p>
         <Button variant="outline" className="min-h-10" onClick={() => navigate('/leads')}>
@@ -445,7 +445,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
+      <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
         <AlertTriangle size={40} className="text-destructive" />
         <p className="text-lg font-medium">Erro ao carregar cadastro</p>
         <p className="text-sm">{error}</p>
@@ -500,7 +500,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
           toast.type === 'success'
-            ? 'bg-framer-success/10 text-framer-success border border-framer-success/30'
+            ? 'bg-success/10 text-success border border-success/30'
             : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40'
         }`}>
           {toast.type === 'success' ? <Check size={16} className="inline mr-1" /> : <AlertTriangle size={16} className="inline mr-1" />}
@@ -512,19 +512,19 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         title={isNewLead ? 'Novo Lead' : (detail.display_name || decodedId)}
       />
 
-      <section className="bg-card rounded-xl border border-border shadow-sm p-5">
+      <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4 min-w-0">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-framer-accent-blue/10 text-xl font-semibold text-framer-accent-blue">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-xl font-semibold text-primary">
               {getInitials(detail.display_name)}
             </div>
             <div className="min-w-0 space-y-3">
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-xl font-semibold text-framer-ink truncate">{detail.display_name || 'Sem nome'}</h2>
+                  <h2 className="text-xl font-semibold text-fg truncate">{detail.display_name || 'Sem nome'}</h2>
                   <TipoBadge doctype={detail.doctype || doctype} />
                 </div>
-                <p className="text-sm text-muted-foreground">{detail.empresa || 'Empresa não informada'}</p>
+                <p className="text-sm text-fg-muted">{detail.empresa || 'Empresa não informada'}</p>
               </div>
               <QualityBadges badges={isNewLead ? [] : qualityBadges(detail)} />
               {!isNewLead && <ContextActions actions={actions} />}
@@ -541,22 +541,22 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
               <InfoField label="Nome">
                 {editMode ? (
                   <Input value={editFields.nome || ''} onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))} className="mt-1 text-sm" placeholder="Nome do lead" />
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.display_name || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.display_name || '—'}</p>}
               </InfoField>
               <InfoField label="Empresa">
                 {editMode ? (
                   <Input value={editFields.empresa || ''} onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))} className="mt-1 text-sm" placeholder="Nome da empresa" />
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.empresa || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.empresa || '—'}</p>}
               </InfoField>
               <InfoField label="E-mail">
                 {editMode ? (
                   <Input value={editFields.email || ''} onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))} className={inputClass(editFields.email && !isValidEmail(editFields.email))} placeholder="email@exemplo.com" />
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.email || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.email || '—'}</p>}
               </InfoField>
               <InfoField label="Telefone">
                 {editMode ? (
                   <Input value={editFields.telefone || ''} onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))} className={inputClass(editFields.telefone && !isValidPhone(editFields.telefone))} placeholder="(99) 99999-9999" />
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{fmtPhone(detail.telefone) || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{fmtPhone(detail.telefone) || '—'}</p>}
               </InfoField>
               <InfoField label="Origem">
                 {editMode && (detail.doctype || doctype) === 'Lead' ? (
@@ -564,14 +564,14 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                     <option value="">Selecione</option>
                     {LEAD_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
                   </SelectBox>
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.origem || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.origem || '—'}</p>}
               </InfoField>
               {!isNewLead && (
                 <InfoField label="Criado / modificado">
-                  <p className="mt-1 text-sm font-medium text-framer-ink">
+                  <p className="mt-1 text-sm font-medium text-fg">
                     {detail.creation ? new Date(detail.creation).toLocaleString('pt-BR') : '—'}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-fg-muted">
                     Modificado: {detail.modified ? new Date(detail.modified).toLocaleString('pt-BR') : '—'}
                   </p>
                 </InfoField>
@@ -588,7 +588,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                     <option value="pf">Pessoa Física</option>
                     <option value="pj">Pessoa Jurídica</option>
                   </SelectBox>
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.person_type === 'pf' ? 'Pessoa Física' : detail.person_type === 'pj' ? 'Pessoa Jurídica' : '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.person_type === 'pf' ? 'Pessoa Física' : detail.person_type === 'pj' ? 'Pessoa Jurídica' : '—'}</p>}
               </InfoField>
               <InfoField label={editMode && editFields.personType === 'pf' ? 'CPF' : editMode && editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}>
                 {editMode ? (
@@ -603,19 +603,19 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                     placeholder={editFields.personType === 'pf' ? '000.000.000-00' : '00.000.000/0000-00'}
                     disabled={!editFields.personType}
                   />
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{formatTaxId(detail.tax_id, detail.person_type) || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{formatTaxId(detail.tax_id, detail.person_type) || '—'}</p>}
               </InfoField>
               <InfoField label="Contribuinte">
                 {editMode ? (
                   <SelectBox value={editFields.contribuinte || '0'} onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}>
                     {CONTRIBUINTE_OPTS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                   </SelectBox>
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{CONTRIBUINTE_OPTS.find(o => o.value === detail.contribuinte)?.label || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{CONTRIBUINTE_OPTS.find(o => o.value === detail.contribuinte)?.label || '—'}</p>}
               </InfoField>
               <InfoField label="Inscrição estadual">
                 {editMode ? (
                   <Input value={editFields.inscricaoEstadual || ''} onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))} className="mt-1 text-sm" placeholder="IE" />
-                ) : <p className="mt-1 text-sm font-medium text-framer-ink">{detail.inscricao_estadual || '—'}</p>}
+                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.inscricao_estadual || '—'}</p>}
               </InfoField>
             </div>
           </SectionCard>
@@ -674,17 +674,17 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
           <SectionCard title="Atividade recente" description="Atalhos para o contexto comercial." icon={FileText}>
             <div className="space-y-4">
               {detail.latest_quotation ? (
-                <div className="rounded-xl border border-framer-hairline bg-framer-surface-1/50 p-4 space-y-2">
+                <div className="rounded-xl border border-line bg-surface/50 p-4 space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className="text-[11px] uppercase tracking-wide text-framer-ink-muted">Último orçamento</span>
-                      <p className="mt-1 text-sm font-semibold text-framer-ink">{detail.latest_quotation.name}</p>
+                      <span className="text-[11px] uppercase tracking-wide text-fg-muted">Último orçamento</span>
+                      <p className="mt-1 text-sm font-semibold text-fg">{detail.latest_quotation.name}</p>
                     </div>
-                    <span className="inline-flex rounded-full bg-framer-surface-2 px-2 py-0.5 text-[11px] font-medium text-framer-ink-muted">
+                    <span className="inline-flex rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-fg-muted">
                       {detail.latest_quotation.status || '—'}
                     </span>
                   </div>
-                  <div className="text-xs text-muted-foreground space-y-0.5">
+                  <div className="text-xs text-fg-muted space-y-0.5">
                     {detail.latest_quotation.date && <p>Data: {formatDate(detail.latest_quotation.date)}</p>}
                     {detail.latest_quotation.grand_total != null && <p>Total: {formatBRL(detail.latest_quotation.grand_total)}</p>}
                   </div>
@@ -692,35 +692,35 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                     <Button variant="outline" size="sm" onClick={() => navigate(`/quotations/${detail.latest_quotation.name}`)}>
                       Abrir página
                     </Button>
-                    <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-framer-hairline px-3 text-xs font-medium text-framer-ink hover:bg-primary/5" href={buildQuotationErpUrl(null, detail.latest_quotation.name)} target="_blank" rel="noopener noreferrer">
+                    <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-line px-3 text-xs font-medium text-fg hover:bg-primary/5" href={buildQuotationErpUrl(null, detail.latest_quotation.name)} target="_blank" rel="noopener noreferrer">
                       ERPNext
                       <ExternalLink size={12} />
                     </a>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhum orçamento recente vinculado.</p>
+                <p className="text-sm text-fg-muted">Nenhum orçamento recente vinculado.</p>
               )}
 
               {detail.deal ? (
-                <div className="rounded-xl border border-framer-hairline bg-framer-surface-1/50 p-4 space-y-2">
+                <div className="rounded-xl border border-line bg-surface/50 p-4 space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <span className="text-[11px] uppercase tracking-wide text-framer-ink-muted">Deal CRM</span>
-                      <p className="mt-1 text-sm font-semibold text-framer-ink">{detail.deal.name}</p>
+                      <span className="text-[11px] uppercase tracking-wide text-fg-muted">Deal CRM</span>
+                      <p className="mt-1 text-sm font-semibold text-fg">{detail.deal.name}</p>
                     </div>
-                    <span className="inline-flex rounded-full bg-framer-accent-blue/10 px-2 py-0.5 text-[11px] font-medium text-framer-accent-blue">
+                    <span className="inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                       {detail.deal.status || '—'}
                     </span>
                   </div>
-                  {detail.deal.next_step && <p className="text-xs text-muted-foreground">{detail.deal.next_step}</p>}
-                  <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-framer-hairline px-3 text-xs font-medium text-framer-ink hover:bg-primary/5" href={buildCrmDealErpUrl(null, detail.deal.name)} target="_blank" rel="noopener noreferrer">
+                  {detail.deal.next_step && <p className="text-xs text-fg-muted">{detail.deal.next_step}</p>}
+                  <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-line px-3 text-xs font-medium text-fg hover:bg-primary/5" href={buildCrmDealErpUrl(null, detail.deal.name)} target="_blank" rel="noopener noreferrer">
                     Abrir no ERPNext
                     <ExternalLink size={12} />
                   </a>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhum deal CRM vinculado.</p>
+                <p className="text-sm text-fg-muted">Nenhum deal CRM vinculado.</p>
               )}
             </div>
           </SectionCard>

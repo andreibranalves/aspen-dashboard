@@ -14,7 +14,7 @@ export default function SkeletonKanban({ title = 'Carregando…' }) {
     <div className="flex flex-col items-center gap-3" aria-label="Carregando kanban">
       <div className="flex gap-4 overflow-x-auto pb-4 min-h-[60vh] w-full">
         {Array.from({ length: columns }, (_, ci) => (
-          <div key={ci} className="flex-shrink-0 w-72 bg-card border border-border rounded-lg flex flex-col">
+          <div key={ci} className="flex-shrink-0 w-72 bg-surface border border-line rounded-lg flex flex-col">
             {/* Column header */}
             <div className="px-4 py-3 flex items-center justify-between">
               <Skeleton className="h-5 w-28" />
@@ -24,7 +24,7 @@ export default function SkeletonKanban({ title = 'Carregando…' }) {
             {/* Cards */}
             <div className="flex-1 px-2 pb-2 space-y-2 min-h-[120px]">
               {Array.from({ length: cardsPerCol[ci] }, (_, ri) => (
-                <div key={ri} className="bg-background rounded-lg border border-border shadow-sm p-3 space-y-2">
+                <div key={ri} className="bg-page rounded-lg border border-line shadow-sm p-3 space-y-2">
                   <Skeleton className={`h-4 ${ri % 2 === 0 ? 'w-28' : 'w-36'}`} />
                   <Skeleton className="h-3 w-44 opacity-50" />
                   <div className="flex items-center gap-2 pt-1">
@@ -36,7 +36,7 @@ export default function SkeletonKanban({ title = 'Carregando…' }) {
           </div>
         ))}
       </div>
-      <p className="text-muted-foreground text-sm">{title}</p>
+      <p className="text-fg-muted text-sm">{title}</p>
     </div>
   );
 }

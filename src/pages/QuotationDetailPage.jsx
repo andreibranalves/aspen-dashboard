@@ -270,8 +270,8 @@ export default function QuotationDetailPage({ id, navigate }) {
         <button onClick={() => navigate('/quotations')} className="text-sm text-primary hover:underline">
           ← Voltar para Orçamentos
         </button>
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <AlertTriangle size={32} className="text-red-400" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <AlertTriangle size={32} className="text-destructive/60" />
           <p>Erro ao carregar orçamento</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={loadDetail}>Tentar novamente</Button>
@@ -296,7 +296,7 @@ export default function QuotationDetailPage({ id, navigate }) {
       </button>
 
       {/* Detail card */}
-      <div className="bg-card rounded-lg border border-border shadow-sm">
+      <div className="bg-surface rounded-lg border border-line shadow-sm">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -309,7 +309,7 @@ export default function QuotationDetailPage({ id, navigate }) {
           <div className="flex items-center gap-3">
             {data.sales_order_id ? (
               <>
-                <span className="text-xs text-muted-foreground">Pedido criado: SAL-ORD-{data.sales_order_id}</span>
+                <span className="text-xs text-fg-muted">Pedido criado: SAL-ORD-{data.sales_order_id}</span>
                 <Button
                   variant="outline"
                   size="sm"
@@ -329,7 +329,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                   {converting ? 'Gerando pedido de venda…' : 'Gerar Pedido de Venda'}
                 </Button>
                 {convertStatus && (
-                  <span className={`text-xs ${convertStatus.startsWith('Erro') ? 'text-red-400' : 'text-muted-foreground'}`}>
+                  <span className={`text-xs ${convertStatus.startsWith('Erro') ? 'text-destructive/60' : 'text-fg-muted'}`}>
                     {convertStatus}
                   </span>
                 )}
@@ -341,15 +341,15 @@ export default function QuotationDetailPage({ id, navigate }) {
         {/* Meta */}
         <div className="px-6 py-4 border-b grid grid-cols-3 gap-6">
           <div>
-            <span className="text-xs text-muted-foreground">Cliente</span>
+            <span className="text-xs text-fg-muted">Cliente</span>
             <p className="font-medium">{data.cliente || '—'}</p>
           </div>
           <div>
-            <span className="text-xs text-muted-foreground">Data</span>
+            <span className="text-xs text-fg-muted">Data</span>
             <p>{formatDate(data.data)}</p>
           </div>
           <div>
-            <span className="text-xs text-muted-foreground">Validade</span>
+            <span className="text-xs text-fg-muted">Validade</span>
             <p>{formatDate(data.validade)}</p>
           </div>
         </div>
@@ -390,7 +390,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                     >
                       {/* Drag handle — only the grip icon is draggable, not the whole row */}
                       <TableCell
-                        className="cursor-grab text-muted-foreground p-2"
+                        className="cursor-grab text-fg-muted p-2"
                         draggable
                         onDragStart={e => handleDragStart(e, key)}
                       >
@@ -408,11 +408,11 @@ export default function QuotationDetailPage({ id, navigate }) {
                         />
                         {searching && (
                           <div className="absolute right-2 top-2">
-                            <Loader2 size={12} className="animate-spin text-muted-foreground" />
+                            <Loader2 size={12} className="animate-spin text-fg-muted" />
                           </div>
                         )}
                         {showDropdown && (
-                          <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                             {results.map((p) => (
                               <button
                                 key={p.sku || p.item_code}
@@ -420,7 +420,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
                                 onMouseDown={e => { e.preventDefault(); selectProduct(key, p); }}
                               >
-                                <span className="font-mono text-xs text-muted-foreground">{p.sku || p.item_code}</span>
+                                <span className="font-mono text-xs text-fg-muted">{p.sku || p.item_code}</span>
                                 <span className="truncate">{p.nome || p.item_name}</span>
                               </button>
                             ))}
@@ -474,7 +474,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                       <TableCell className="p-2">
                         <button
                           onClick={() => removeItemByKey(key)}
-                          className="text-muted-foreground hover:text-red-600 transition-colors"
+                          className="text-fg-muted hover:text-destructive transition-colors"
                           title="Remover"
                         >
                           <X size={16} />
@@ -529,12 +529,12 @@ export default function QuotationDetailPage({ id, navigate }) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <Button variant="outline" size="sm" className="text-framer-success">
+                <Button variant="outline" size="sm" className="text-success">
                   <Phone size={14} /> WhatsApp
                 </Button>
               </a>
               <div className="flex-1" />
-              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-800/40 dark:hover:bg-red-500/10">
+              <Button onClick={handleDelete} variant="outline" size="sm" className="text-red-700 border-red-200 hover:bg-destructive/10 dark:text-destructive/60 dark:border-red-800/40 dark:hover:bg-destructive/100/10">
                 <Trash2 size={14} /> Excluir
               </Button>
             </>
@@ -552,7 +552,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                 <Plus size={14} /> Item
               </Button>
               {saveStatus && (
-                <span className={`text-xs ${saveStatus.startsWith('Erro') ? 'text-red-400' : 'text-muted-foreground'}`}>
+                <span className={`text-xs ${saveStatus.startsWith('Erro') ? 'text-destructive/60' : 'text-fg-muted'}`}>
                   {saveStatus}
                 </span>
               )}

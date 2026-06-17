@@ -16,7 +16,7 @@ function CardIcon({ status }) {
     case 'draft':    return <Pencil size={16} />;
     case 'approved': return <Check size={18} className="text-primary" />;
     case 'done':     return <Check size={18} className="text-primary font-bold" />;
-    case 'error':    return <X size={18} className="text-red-400 font-bold" />;
+    case 'error':    return <X size={18} className="text-destructive/60 font-bold" />;
     case 'processing':
     default:         return <Skeleton className="h-4 w-4 rounded-full" />;
   }
@@ -55,12 +55,12 @@ export default function DraftReviewCard({
     <div
       key={i}
       className={cn(
-        'overflow-hidden rounded-[24px] border border-framer-hairline bg-card shadow-sm transition-all',
+        'overflow-hidden rounded-[24px] border border-line bg-surface shadow-sm transition-all',
         isApproved && 'border-primary/40 bg-primary/5',
       )}
     >
       {/* ── Header ── */}
-      <div className="flex flex-col gap-4 border-b border-framer-hairline bg-framer-surface-1/50 p-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex flex-col gap-4 border-b border-line bg-surface/50 p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
           <span className={cn(
             'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
@@ -70,15 +70,15 @@ export default function DraftReviewCard({
           </span>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-framer-ink-muted">Pedido {displayIdx + 1} de {totalDrafts}</span>
+              <span className="text-sm font-medium text-fg-muted">Pedido {displayIdx + 1} de {totalDrafts}</span>
               {isApproved && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Aprovado</span>}
               {draft.edited.urgente && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">Urgente</span>}
             </div>
           </div>
         </div>
-        <div className="rounded-[20px] border border-framer-hairline bg-card px-5 py-4 text-left lg:min-w-[220px] lg:text-right">
-          <p className="text-xs font-medium text-framer-ink-muted">Total estimado</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-framer-ink">{formatBRL(total)}</p>
+        <div className="rounded-[20px] border border-line bg-surface px-5 py-4 text-left lg:min-w-[220px] lg:text-right">
+          <p className="text-xs font-medium text-fg-muted">Total estimado</p>
+          <p className="mt-1 text-2xl font-semibold tracking-tight text-fg">{formatBRL(total)}</p>
         </div>
       </div>
 
@@ -115,25 +115,25 @@ export default function DraftReviewCard({
 
         {/* ── Sidebar: Summary + Actions ── */}
         <aside className="space-y-4">
-          <div className="rounded-[20px] border border-framer-hairline bg-framer-surface-1/50 p-4">
-            <h3 className="text-sm font-semibold text-framer-ink">Resumo</h3>
+          <div className="rounded-[20px] border border-line bg-surface/50 p-4">
+            <h3 className="text-sm font-semibold text-fg">Resumo</h3>
             <dl className="mt-3 space-y-3 text-sm">
               <div className="flex justify-between gap-4">
-                <dt className="text-framer-ink-muted">Produtos</dt>
-                <dd className="font-medium text-framer-ink">{items.length}</dd>
+                <dt className="text-fg-muted">Produtos</dt>
+                <dd className="font-medium text-fg">{items.length}</dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-framer-ink-muted">Unidades</dt>
-                <dd className="font-medium text-framer-ink">{items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0)}</dd>
+                <dt className="text-fg-muted">Unidades</dt>
+                <dd className="font-medium text-fg">{items.reduce((sum, item) => sum + (Number(item.qty) || 0), 0)}</dd>
               </div>
               <div className="flex justify-between gap-4">
-                <dt className="text-framer-ink-muted">Prazo</dt>
-                <dd className="max-w-[140px] text-right font-medium text-framer-ink">{draft.edited.prazo_producao || 'Padrão'}</dd>
+                <dt className="text-fg-muted">Prazo</dt>
+                <dd className="max-w-[140px] text-right font-medium text-fg">{draft.edited.prazo_producao || 'Padrão'}</dd>
               </div>
-              <div className="border-t border-framer-hairline pt-3">
+              <div className="border-t border-line pt-3">
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-framer-ink-muted">Total</dt>
-                  <dd className="text-lg font-semibold text-framer-ink">{formatBRL(total)}</dd>
+                  <dt className="text-fg-muted">Total</dt>
+                  <dd className="text-lg font-semibold text-fg">{formatBRL(total)}</dd>
                 </div>
               </div>
             </dl>

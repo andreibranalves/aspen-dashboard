@@ -151,20 +151,20 @@ export default function SplitResultCard({
   return (
     <div
       className={cn(
-        'rounded-xl border border-framer-hairline bg-card',
+        'rounded-xl border border-line bg-surface',
         isProcessing && 'opacity-60 pointer-events-none'
       )}
     >
       {/* ── Header ── */}
       <div
         className={cn(
-          'flex items-start justify-between gap-3 p-4 bg-framer-surface-1/50',
-          !isDone && 'border-b border-framer-hairline'
+          'flex items-start justify-between gap-3 p-4 bg-surface/50',
+          !isDone && 'border-b border-line'
         )}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-framer-ink-muted">
+            <span className="text-xs font-medium text-fg-muted">
               Pedido {displayIdx + 1} de {totalDrafts}
             </span>
             {draft.edited.urgente && (
@@ -181,7 +181,7 @@ export default function SplitResultCard({
           {editing && !isDone ? (
             <div className="mt-2 space-y-2">
               <label className="block space-y-1">
-                <span className="text-[10px] font-medium text-framer-ink-muted">Nome</span>
+                <span className="text-[10px] font-medium text-fg-muted">Nome</span>
                 <Input
                   aria-label="Nome"
                   value={draft.edited.nome || ''}
@@ -192,7 +192,7 @@ export default function SplitResultCard({
               </label>
               <div className="grid grid-cols-[4fr_3fr_3fr] gap-2">
                 <label className="block space-y-1">
-                  <span className="text-[10px] font-medium text-framer-ink-muted">E-mail</span>
+                  <span className="text-[10px] font-medium text-fg-muted">E-mail</span>
                   <Input
                     aria-label="E-mail"
                     value={draft.edited.email || ''}
@@ -202,7 +202,7 @@ export default function SplitResultCard({
                   />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-[10px] font-medium text-framer-ink-muted">Telefone</span>
+                  <span className="text-[10px] font-medium text-fg-muted">Telefone</span>
                   <Input
                     aria-label="Telefone"
                     value={draft.edited.telefone || ''}
@@ -212,12 +212,12 @@ export default function SplitResultCard({
                   />
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-[10px] font-medium text-framer-ink-muted">Origem</span>
+                  <span className="text-[10px] font-medium text-fg-muted">Origem</span>
                   <select
                     aria-label="Origem"
                     value={draft.edited.origem || DEFAULT_LEAD_SOURCE}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
-                    className="h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-framer-ink shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-framer-accent-blue/30"
+                    className="h-7 w-full rounded-md border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
                   >
                     {LEAD_SOURCES.map((source) => (
                       <option key={source.value} value={source.value}>
@@ -230,14 +230,14 @@ export default function SplitResultCard({
             </div>
           ) : (
             <>
-              <h3 className="mt-1 text-sm font-semibold text-framer-ink truncate">
+              <h3 className="mt-1 text-sm font-semibold text-fg truncate">
                 {capitalize(displayName) || 'Cliente'}
               </h3>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-framer-ink-muted">
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-fg-muted">
                 {draft.edited.email && <span>{draft.edited.email}</span>}
                 {draft.edited.telefone && <span>{draft.edited.telefone}</span>}
                 {draft.edited.origem && (
-                  <span className="rounded bg-framer-surface-2 px-1.5 py-0.5 text-[10px]">
+                  <span className="rounded bg-surface-muted px-1.5 py-0.5 text-[10px]">
                     {draft.edited.origem}
                   </span>
                 )}
@@ -246,10 +246,10 @@ export default function SplitResultCard({
           )}
         </div>
         <div className="text-right shrink-0">
-          <p className="text-[10px] font-medium text-framer-ink-muted uppercase">Total</p>
-          <p className="text-lg font-bold text-framer-ink">{formatBRL(totalUrgente)}</p>
+          <p className="text-[10px] font-medium text-fg-muted uppercase">Total</p>
+          <p className="text-lg font-bold text-fg">{formatBRL(totalUrgente)}</p>
           {draft.edited.urgente && (
-            <p className="text-[10px] text-framer-ink-muted">Base: {formatBRL(total)}</p>
+            <p className="text-[10px] text-fg-muted">Base: {formatBRL(total)}</p>
           )}
         </div>
       </div>
@@ -266,7 +266,7 @@ export default function SplitResultCard({
               <col className="w-8" />
             </colgroup>
             <thead>
-              <tr className="border-b border-framer-hairline text-framer-ink-muted">
+              <tr className="border-b border-line text-fg-muted">
                 <th className="py-2 pl-4 pr-3 text-left font-medium">Produto</th>
                 <th className="px-3 py-2 text-center font-medium">Qtd</th>
                 <th className="px-3 py-2 text-center font-medium">Preço</th>
@@ -288,7 +288,7 @@ export default function SplitResultCard({
                 return (
                   <tr
                     key={ii}
-                    className="border-b border-framer-hairline last:border-b-0 hover:bg-framer-surface-1/30"
+                    className="border-b border-line last:border-b-0 hover:bg-surface/30"
                   >
                     <td className="py-2 pl-4 pr-3">
                       {editing ? (
@@ -303,22 +303,22 @@ export default function SplitResultCard({
                           {searching && (
                             <Loader2
                               size={12}
-                              className="animate-spin absolute right-2 top-1.5 text-framer-ink-muted"
+                              className="animate-spin absolute right-2 top-1.5 text-fg-muted"
                             />
                           )}
                           {showDropdown && (
-                            <div className="absolute z-50 left-0 right-0 mt-1 bg-card border border-framer-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                               {results.map((p) => (
                                 <button
                                   key={p.sku || p.item_code}
                                   type="button"
-                                  className="w-full text-left px-3 py-2 text-xs hover:bg-framer-surface-2 transition-colors flex items-center gap-2"
+                                  className="w-full text-left px-3 py-2 text-xs hover:bg-surface-muted transition-colors flex items-center gap-2"
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     handleSelectProduct(ii, p);
                                   }}
                                 >
-                                  <span className="font-mono text-[10px] text-framer-ink-muted shrink-0">
+                                  <span className="font-mono text-[10px] text-fg-muted shrink-0">
                                     {p.sku || p.item_code}
                                   </span>
                                   <span className="truncate">{p.nome || p.item_name}</span>
@@ -328,7 +328,7 @@ export default function SplitResultCard({
                           )}
                         </div>
                       ) : (
-                        <span className="block truncate font-medium text-framer-ink">
+                        <span className="block truncate font-medium text-fg">
                           {item.item_name || item.item_code || '—'}
                         </span>
                       )}
@@ -379,7 +379,7 @@ export default function SplitResultCard({
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
-                        className="p-0.5 rounded text-framer-ink-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                        className="p-0.5 rounded text-fg-muted hover:text-destructive hover:bg-destructive/10 transition-colors"
                         title="Remover produto"
                       >
                         <X size={13} />
@@ -390,7 +390,7 @@ export default function SplitResultCard({
               })}
               {displayItems.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-xs text-framer-ink-muted">
+                  <td colSpan={5} className="py-4 text-center text-xs text-fg-muted">
                     Nenhum item adicionado
                   </td>
                 </tr>
@@ -401,7 +401,7 @@ export default function SplitResultCard({
       )}
 
       {isDone && (
-        <div className="px-4 pb-4 border-t border-framer-hairline bg-framer-surface-1/20">
+        <div className="px-4 pb-4 border-t border-line bg-surface/20">
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
@@ -413,7 +413,7 @@ export default function SplitResultCard({
       )}
 
       {/* ── Actions ── */}
-      <div className="flex items-center gap-2 p-3 border-t border-framer-hairline bg-framer-surface-1/30">
+      <div className="flex items-center gap-2 p-3 border-t border-line bg-surface/30">
         {!isDone && (
           <>
             <Button variant="ghost" size="sm" onClick={toggleEditing}>

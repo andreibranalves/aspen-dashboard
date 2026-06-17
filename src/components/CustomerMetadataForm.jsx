@@ -30,7 +30,7 @@ export default function CustomerMetadataForm({
     <>
       {/* ── Name ── */}
       <Input
-        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-framer-ink shadow-none focus-visible:ring-0"
+        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-fg shadow-none focus-visible:ring-0"
         value={edited.nome}
         onChange={e => updateDraftField(draftIdx, 'nome', e.target.value)}
         placeholder="Nome do cliente"
@@ -38,17 +38,17 @@ export default function CustomerMetadataForm({
       />
 
       {/* ── Client metadata card ── */}
-      <div className="rounded-[20px] border border-framer-hairline bg-framer-surface-1/40 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-framer-ink">
+      <div className="rounded-[20px] border border-line bg-surface/40 p-4">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg">
           <User size={16} className="text-primary" /> Cliente
         </div>
 
         {/* Email + Phone */}
         <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-xs font-medium text-framer-ink-muted">Email</span>
+            <span className="text-xs font-medium text-fg-muted">Email</span>
             <div className="relative">
-              <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
+              <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
               <Input
                 className="h-10 pl-9 text-sm"
                 value={edited.email}
@@ -59,9 +59,9 @@ export default function CustomerMetadataForm({
             </div>
           </label>
           <label className="space-y-1">
-            <span className="text-xs font-medium text-framer-ink-muted">Telefone</span>
+            <span className="text-xs font-medium text-fg-muted">Telefone</span>
             <div className="relative">
-              <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
+              <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
               <Input
                 className="h-10 pl-9 text-sm"
                 value={formatPhoneInput(edited.telefone)}
@@ -74,7 +74,7 @@ export default function CustomerMetadataForm({
         </div>
 
         {/* Urgente toggle */}
-        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-framer-hairline px-3 py-2 text-xs font-medium text-framer-ink-muted">
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-full border border-line px-3 py-2 text-xs font-medium text-fg-muted">
           <input
             type="checkbox"
             checked={edited.urgente}
@@ -86,11 +86,11 @@ export default function CustomerMetadataForm({
 
         {/* ── Origem ── */}
         <div className="mt-4 space-y-1">
-          <label className="text-xs font-medium text-framer-ink-muted">Origem do lead *</label>
+          <label className="text-xs font-medium text-fg-muted">Origem do lead *</label>
           <select
             className={cn(
               'w-full rounded-[12px] border px-3 py-2 text-sm',
-              isApproved ? 'border-framer-hairline bg-framer-surface-1 text-framer-ink' : 'border-framer-hairline bg-card text-framer-ink',
+              isApproved ? 'border-line bg-surface text-fg' : 'border-line bg-surface text-fg',
             )}
             value={edited.origem || ''}
             onChange={e => updateDraftField(draftIdx, 'origem', e.target.value)}
@@ -110,9 +110,9 @@ export default function CustomerMetadataForm({
 
         {/* ── CNPJ ── */}
         <div className="mt-3 space-y-1">
-          <label className="text-xs font-medium text-framer-ink-muted">CNPJ (opcional)</label>
+          <label className="text-xs font-medium text-fg-muted">CNPJ (opcional)</label>
           <div className="relative">
-            <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-framer-ink-muted" />
+            <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
             <Input
               className="h-10 pl-9 text-sm font-mono"
               value={edited.cnpj ? formatCnpj(edited.cnpj) : ''}
@@ -122,7 +122,7 @@ export default function CustomerMetadataForm({
             />
           </div>
           {edited.cnpj && !isValidCnpj(edited.cnpj) && (
-            <p className="text-xs text-red-500">CNPJ inválido. Corrija ou deixe em branco.</p>
+            <p className="text-xs text-destructive">CNPJ inválido. Corrija ou deixe em branco.</p>
           )}
         </div>
 
@@ -131,7 +131,7 @@ export default function CustomerMetadataForm({
           <button
             type="button"
             onClick={() => updateDraftField(draftIdx, '_showAddr', !edited._showAddr)}
-            className="flex items-center gap-2 text-xs font-medium text-framer-ink-muted hover:text-framer-ink transition-colors"
+            className="flex items-center gap-2 text-xs font-medium text-fg-muted hover:text-fg transition-colors"
           >
             <MapPin size={14} />
             Endereço opcional
@@ -140,7 +140,7 @@ export default function CustomerMetadataForm({
           {edited._showAddr && (
             <div className="mt-2 grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">CEP</span>
+                <span className="text-[10px] text-fg-muted">CEP</span>
                 <Input
                   className="h-9 text-sm font-mono"
                   value={edited.endereco?.cep || ''}
@@ -150,7 +150,7 @@ export default function CustomerMetadataForm({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">Logradouro</span>
+                <span className="text-[10px] text-fg-muted">Logradouro</span>
                 <Input
                   className="h-9 text-sm"
                   value={edited.endereco?.logradouro || ''}
@@ -160,7 +160,7 @@ export default function CustomerMetadataForm({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">Número</span>
+                <span className="text-[10px] text-fg-muted">Número</span>
                 <Input
                   className="h-9 text-sm"
                   value={edited.endereco?.numero || ''}
@@ -170,7 +170,7 @@ export default function CustomerMetadataForm({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">Complemento</span>
+                <span className="text-[10px] text-fg-muted">Complemento</span>
                 <Input
                   className="h-9 text-sm"
                   value={edited.endereco?.complemento || ''}
@@ -180,7 +180,7 @@ export default function CustomerMetadataForm({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">Bairro</span>
+                <span className="text-[10px] text-fg-muted">Bairro</span>
                 <Input
                   className="h-9 text-sm"
                   value={edited.endereco?.bairro || ''}
@@ -190,7 +190,7 @@ export default function CustomerMetadataForm({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">Cidade</span>
+                <span className="text-[10px] text-fg-muted">Cidade</span>
                 <Input
                   className="h-9 text-sm"
                   value={edited.endereco?.cidade || ''}
@@ -200,7 +200,7 @@ export default function CustomerMetadataForm({
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] text-framer-ink-muted">UF</span>
+                <span className="text-[10px] text-fg-muted">UF</span>
                 <Input
                   className="h-9 text-sm w-20"
                   value={edited.endereco?.uf || ''}
@@ -213,7 +213,7 @@ export default function CustomerMetadataForm({
             </div>
           )}
           {!edited._showAddr && hasAnyAddressField(edited.endereco) && (
-            <p className="mt-1 text-xs text-framer-ink-muted">{formatAddressSummary(edited.endereco)}</p>
+            <p className="mt-1 text-xs text-fg-muted">{formatAddressSummary(edited.endereco)}</p>
           )}
         </div>
       </div>

@@ -450,7 +450,7 @@ export default function LeadsPage({ navigate }) {
 
   const TipoBadge = ({ tipo: t }) => (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-      ${t === 'lead' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-success/10 text-framer-success'}
+      ${t === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'}
     `}>
       {t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—'}
     </span>
@@ -469,7 +469,7 @@ export default function LeadsPage({ navigate }) {
             key={t}
             onClick={() => onTipoClick(t)}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${tipo === t ? 'bg-primary text-primary-foreground' : 'bg-framer-canvas text-framer-ink-muted hover:text-framer-ink hover:bg-framer-surface-1'}
+              ${tipo === t ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'}
             `}
           >
             {TIPO_DISPLAY[i]}
@@ -480,7 +480,7 @@ export default function LeadsPage({ navigate }) {
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input
             placeholder="Buscar por nome…"
             value={search}
@@ -489,12 +489,12 @@ export default function LeadsPage({ navigate }) {
             aria-label="Buscar leads e clientes"
           />
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
           <select
             value={limit}
             onChange={onLimitChange}
-            className="border border-framer-hairline rounded-[10px] px-3 py-2 text-sm bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           >
             {PAGE_SIZES.map(n => (
               <option key={n} value={n}>{n}</option>
@@ -508,8 +508,8 @@ export default function LeadsPage({ navigate }) {
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <AlertTriangle size={32} className="text-red-400" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <AlertTriangle size={32} className="text-destructive/60" />
           <p>Erro ao carregar leads e clientes</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, tipo, page, limit)}>Tentar novamente</Button>
@@ -518,8 +518,8 @@ export default function LeadsPage({ navigate }) {
 
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-muted-foreground gap-3">
-          <Users size={36} className="text-muted-foreground/40" />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <Users size={36} className="text-fg-muted/40" />
           <p>Nenhum lead ou cliente encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>
@@ -538,7 +538,7 @@ export default function LeadsPage({ navigate }) {
                     checked={allSelected}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os registros desta página"
-                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
                 </TableHead>
                 <TableHead>Nome</TableHead>
@@ -554,7 +554,7 @@ export default function LeadsPage({ navigate }) {
                 return (
                 <TableRow
                   key={row.id || row.email}
-                  className={`cursor-pointer hover:bg-framer-surface-2/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
+                  className={`cursor-pointer hover:bg-surface-muted/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
                   onClick={() => navigateToDetail(row)}
                 >
                   <TableCell className="w-12 px-3" onClick={e => e.stopPropagation()}>
@@ -563,19 +563,19 @@ export default function LeadsPage({ navigate }) {
                       checked={isSelected}
                       onChange={() => toggleSelected(row.id)}
                       aria-label={`Selecionar ${row.nome || row.email}`}
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                   </TableCell>
                   <TableCell className="font-medium">{row.nome || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{row.email || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{fmtPhone(row.telefone)}</TableCell>
+                  <TableCell className="text-fg-muted text-sm">{row.email || '—'}</TableCell>
+                  <TableCell className="text-fg-muted text-sm">{fmtPhone(row.telefone)}</TableCell>
                   <TableCell><TipoBadge tipo={row.tipo} /></TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => openDrawer(row)}
-                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-framer-accent-blue/10 hover:text-framer-accent-blue transition-colors"
+                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-primary/10 hover:text-primary transition-colors"
                         aria-label={`Visualização rápida ${row.nome || row.email}`}
                         title={`Visualização rápida ${row.nome || row.email}`}
                       >
@@ -585,7 +585,7 @@ export default function LeadsPage({ navigate }) {
                         <a
                           href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
                           target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-green-600 transition-colors"
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-success transition-colors"
                           aria-label={`WhatsApp ${row.nome || row.email}`}
                           title={`WhatsApp ${row.nome || row.email}`}
                         >
@@ -595,7 +595,7 @@ export default function LeadsPage({ navigate }) {
                       {row.email && (
                         <a
                           href={`mailto:${row.email}`}
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-muted transition-colors"
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors"
                           aria-label={`Email ${row.nome || row.email}`}
                           title={`Email ${row.nome || row.email}`}
                         >
@@ -604,7 +604,7 @@ export default function LeadsPage({ navigate }) {
                       )}
                       <button
                         onClick={() => handleDelete(row.id, row.tipo)}
-                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-red-500/10 hover:text-red-600 transition-colors"
+                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
                         aria-label={`Excluir ${row.nome || row.email}`}
                         title={`Excluir ${row.nome || row.email}`}
                       >
@@ -626,14 +626,14 @@ export default function LeadsPage({ navigate }) {
           {data.map(row => (
             <div
               key={row.id || row.email}
-              className="bg-card rounded-lg border border-border shadow-sm p-4 space-y-2 cursor-pointer hover:bg-framer-surface-2/50 transition-colors"
+              className="bg-surface rounded-lg border border-line shadow-sm p-4 space-y-2 cursor-pointer hover:bg-surface-muted/50 transition-colors"
               onClick={() => navigateToDetail(row)}
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{row.nome || '—'}</span>
                 <TipoBadge tipo={row.tipo} />
               </div>
-              <div className="text-xs text-muted-foreground space-y-0.5">
+              <div className="text-xs text-fg-muted space-y-0.5">
                 {row.email && <div className="flex items-center gap-1"><Mail size={12} /> {row.email}</div>}
                 {row.telefone && <div className="flex items-center gap-1"><Phone size={12} /> {fmtPhone(row.telefone)}</div>}
               </div>
@@ -641,7 +641,7 @@ export default function LeadsPage({ navigate }) {
                 <button
                   type="button"
                   onClick={() => openDrawer(row)}
-                  className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-framer-accent-blue/10 hover:text-framer-accent-blue transition-colors"
+                  className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-primary/10 hover:text-primary transition-colors"
                   aria-label={`Visualização rápida ${row.nome || row.email}`}
                 >
                   <Eye size={18} />
@@ -650,7 +650,7 @@ export default function LeadsPage({ navigate }) {
                   <a
                     href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
                     target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-green-600 transition-colors"
+                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-success transition-colors"
                     aria-label={`WhatsApp ${row.nome || row.email}`}
                   >
                     <Phone size={18} />
@@ -659,7 +659,7 @@ export default function LeadsPage({ navigate }) {
                 {row.email && (
                   <a
                     href={`mailto:${row.email}`}
-                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-muted transition-colors"
+                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors"
                     aria-label={`Email ${row.nome || row.email}`}
                   >
                     <Mail size={18} />
@@ -674,7 +674,7 @@ export default function LeadsPage({ navigate }) {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
+          <span className="text-fg-muted">
             Página {page} de {totalPages} · {totalRecords} registro{totalRecords !== 1 ? 's' : ''}
           </span>
           <div className="flex gap-1">
@@ -737,7 +737,7 @@ export default function LeadsPage({ navigate }) {
                     href={clientDetail.erp_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-framer-surface-2 text-framer-ink hover:bg-framer-accent-blue hover:text-white active:scale-[0.97] transition-all duration-200 no-underline"
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-surface-muted text-fg hover:bg-primary hover:text-white active:scale-[0.97] transition-all duration-200 no-underline"
                   >
                     Abrir no ERPNext
                   </a>
@@ -748,14 +748,14 @@ export default function LeadsPage({ navigate }) {
         }
       >
         {clientLoading && (
-          <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
+          <div className="flex items-center justify-center py-12 text-fg-muted text-sm">
             Carregando detalhes…
           </div>
         )}
 
         {clientError && !clientLoading && (
-          <div className="flex flex-col items-center py-12 text-muted-foreground gap-3">
-            <AlertTriangle size={24} className="text-red-400" />
+          <div className="flex flex-col items-center py-12 text-fg-muted gap-3">
+            <AlertTriangle size={24} className="text-destructive/60" />
             <p className="text-sm">{clientError}</p>
             <Button variant="outline" size="sm" onClick={() => selectedClient && openDrawer({ id: selectedClient.name, tipo: selectedClient.tipo })}>
               Tentar novamente
@@ -767,12 +767,12 @@ export default function LeadsPage({ navigate }) {
           <div className="space-y-4">
             {/* ── Dados Gerais ── */}
             <div>
-              <h3 className="text-xs font-semibold text-framer-ink-muted uppercase tracking-wider mb-2">Dados gerais</h3>
+              <h3 className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">Dados gerais</h3>
               <div className="space-y-2 text-sm">
                 {/* L1: Nome (50%) + Empresa (50%) */}
                 <div className="flex gap-2">
                   <div style={{ width: '50%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Nome</span>
+                    <span className="text-fg-muted text-[10px]">Nome</span>
                     {editMode ? (
                       <Input
                         value={editFields.nome}
@@ -785,7 +785,7 @@ export default function LeadsPage({ navigate }) {
                     )}
                   </div>
                   <div style={{ width: '50%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Empresa</span>
+                    <span className="text-fg-muted text-[10px]">Empresa</span>
                     {editMode ? (
                       <Input
                         value={editFields.empresa || ''}
@@ -802,7 +802,7 @@ export default function LeadsPage({ navigate }) {
                 {/* L2: E-mail (50%) + Telefone (25%) + Origem (25%) */}
                 <div className="flex gap-2">
                   <div style={{ width: '50%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">E-mail</span>
+                    <span className="text-fg-muted text-[10px]">E-mail</span>
                     {editMode ? (
                       <Input
                         value={editFields.email}
@@ -815,7 +815,7 @@ export default function LeadsPage({ navigate }) {
                     )}
                   </div>
                   <div style={{ width: '25%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Telefone</span>
+                    <span className="text-fg-muted text-[10px]">Telefone</span>
                     {editMode ? (
                       <Input
                         value={editFields.telefone}
@@ -828,12 +828,12 @@ export default function LeadsPage({ navigate }) {
                     )}
                   </div>
                   <div style={{ width: '25%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Origem</span>
+                    <span className="text-fg-muted text-[10px]">Origem</span>
                     {editMode ? (
                       <select
                         value={editFields.origem || ''}
                         onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                       >
                         <option value="">Selecione</option>
                         {LEAD_SOURCES.map(src => (
@@ -849,7 +849,7 @@ export default function LeadsPage({ navigate }) {
                 {/* L3: Tipo de Pessoa (33%) + CNPJ/CPF (33%) + Contribuinte (33%) */}
                 <div className="flex gap-2">
                   <div style={{ width: '33%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Tipo de Pessoa</span>
+                    <span className="text-fg-muted text-[10px]">Tipo de Pessoa</span>
                     {editMode ? (
                       <select
                         value={editFields.personType || ''}
@@ -858,7 +858,7 @@ export default function LeadsPage({ navigate }) {
                           personType: e.target.value,
                           taxId: '',
                         }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                       >
                         <option value="">Selecione</option>
                         <option value="pf">Pessoa Física</option>
@@ -871,7 +871,7 @@ export default function LeadsPage({ navigate }) {
                     )}
                   </div>
                   <div style={{ width: '33%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">
+                    <span className="text-fg-muted text-[10px]">
                       {editFields.personType === 'pf' ? 'CPF' : editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}
                     </span>
                     {editMode ? (
@@ -902,12 +902,12 @@ export default function LeadsPage({ navigate }) {
                     )}
                   </div>
                   <div style={{ width: '33%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Contribuinte</span>
+                    <span className="text-fg-muted text-[10px]">Contribuinte</span>
                     {editMode ? (
                       <select
                         value={editFields.contribuinte || '0'}
                         onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                       >
                         {CONTRIBUINTE_OPTS.map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -924,7 +924,7 @@ export default function LeadsPage({ navigate }) {
                 {/* L4: Inscrição Estadual (33%) */}
                 <div className="flex gap-2">
                   <div style={{ width: '33%' }}>
-                    <span className="text-framer-ink-muted text-[10px]">Inscrição Estadual</span>
+                    <span className="text-fg-muted text-[10px]">Inscrição Estadual</span>
                     {editMode ? (
                       <Input
                         value={editFields.inscricaoEstadual || ''}
@@ -942,7 +942,7 @@ export default function LeadsPage({ navigate }) {
 
             {/* ── Endereço ── */}
             <div>
-              <h3 className="text-xs font-semibold text-framer-ink-muted uppercase tracking-wider mb-2">
+              <h3 className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">
                 Endereço
               </h3>
               {editMode ? (
@@ -950,7 +950,7 @@ export default function LeadsPage({ navigate }) {
                   {/* Linha 1: CEP (30%) + Município (50%) + UF (20%) */}
                   <div className="flex gap-2">
                     <div className="relative" style={{ width: '30%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">CEP</span>
+                      <span className="text-fg-muted text-[10px]">CEP</span>
                       <Input
                         value={editFields.endereco?.cep || ''}
                         onChange={e => {
@@ -970,14 +970,14 @@ export default function LeadsPage({ navigate }) {
                           const cep = editFields.endereco?.cep || '';
                           if (cep.replace(/\D/g, '').length === 8) lookupCep(cep, setEditFields);
                         }}
-                        className="absolute right-1 top-5 p-1 rounded-full text-framer-ink-muted hover:text-framer-accent-blue hover:bg-framer-surface-2 transition-colors"
+                        className="absolute right-1 top-5 p-1 rounded-full text-fg-muted hover:text-primary hover:bg-surface-muted transition-colors"
                         title="Buscar CEP"
                       >
                         <Search size={14} />
                       </button>
                     </div>
                     <div style={{ width: '50%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">Município</span>
+                      <span className="text-fg-muted text-[10px]">Município</span>
                       <Input
                         value={editFields.endereco?.municipio || ''}
                         onChange={e => setEditFields(prev => ({
@@ -989,14 +989,14 @@ export default function LeadsPage({ navigate }) {
                       />
                     </div>
                     <div style={{ width: '20%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">UF</span>
+                      <span className="text-fg-muted text-[10px]">UF</span>
                       <select
                         value={editFields.endereco?.uf || ''}
                         onChange={e => setEditFields(prev => ({
                           ...prev,
                           endereco: { ...prev.endereco, uf: e.target.value },
                         }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-framer-hairline rounded-[10px] px-2 bg-framer-surface-1 text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/25"
+                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                       >
                         <option value="">UF</option>
                         {UFS.map(uf => (
@@ -1009,7 +1009,7 @@ export default function LeadsPage({ navigate }) {
                   {/* Linha 2: Endereço (80%) + Número (20%) */}
                   <div className="flex gap-2">
                     <div style={{ width: '80%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">Endereço</span>
+                      <span className="text-fg-muted text-[10px]">Endereço</span>
                       <Input
                         value={editFields.endereco?.endereco || ''}
                         onChange={e => setEditFields(prev => ({
@@ -1021,7 +1021,7 @@ export default function LeadsPage({ navigate }) {
                       />
                     </div>
                     <div style={{ width: '20%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">Número</span>
+                      <span className="text-fg-muted text-[10px]">Número</span>
                       <Input
                         value={editFields.endereco?.numero || ''}
                         onChange={e => setEditFields(prev => ({
@@ -1037,7 +1037,7 @@ export default function LeadsPage({ navigate }) {
                   {/* Linha 3: Bairro (50%) + Complemento (50%) */}
                   <div className="flex gap-2">
                     <div style={{ width: '50%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">Bairro</span>
+                      <span className="text-fg-muted text-[10px]">Bairro</span>
                       <Input
                         value={editFields.endereco?.bairro || ''}
                         onChange={e => setEditFields(prev => ({
@@ -1049,7 +1049,7 @@ export default function LeadsPage({ navigate }) {
                       />
                     </div>
                     <div style={{ width: '50%' }}>
-                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
+                      <span className="text-fg-muted text-[10px]">Complemento</span>
                       <Input
                         value={editFields.endereco?.complemento || ''}
                         onChange={e => setEditFields(prev => ({
@@ -1066,61 +1066,61 @@ export default function LeadsPage({ navigate }) {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                   {clientDetail.address.cep && (
                     <div>
-                      <span className="text-framer-ink-muted text-[10px]">CEP</span>
+                      <span className="text-fg-muted text-[10px]">CEP</span>
                       <p className="font-medium">{clientDetail.address.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}</p>
                     </div>
                   )}
                   {clientDetail.address.municipio && (
                     <div>
-                      <span className="text-framer-ink-muted text-[10px]">Município</span>
+                      <span className="text-fg-muted text-[10px]">Município</span>
                       <p className="font-medium">{clientDetail.address.municipio}{clientDetail.address.uf ? `/${clientDetail.address.uf}` : ''}</p>
                     </div>
                   )}
                   {clientDetail.address.endereco && (
                     <div className="col-span-2">
-                      <span className="text-framer-ink-muted text-[10px]">Endereço</span>
+                      <span className="text-fg-muted text-[10px]">Endereço</span>
                       <p className="font-medium">{clientDetail.address.endereco}{clientDetail.address.numero ? `, ${clientDetail.address.numero}` : ''}</p>
                     </div>
                   )}
                   {clientDetail.address.bairro && (
                     <div>
-                      <span className="text-framer-ink-muted text-[10px]">Bairro</span>
+                      <span className="text-fg-muted text-[10px]">Bairro</span>
                       <p className="font-medium">{clientDetail.address.bairro}</p>
                     </div>
                   )}
                   {clientDetail.address.complemento && (
                     <div>
-                      <span className="text-framer-ink-muted text-[10px]">Complemento</span>
+                      <span className="text-fg-muted text-[10px]">Complemento</span>
                       <p className="font-medium">{clientDetail.address.complemento}</p>
                     </div>
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-framer-ink-muted">Clique em Editar para cadastrar</p>
+                <p className="text-sm text-fg-muted">Clique em Editar para cadastrar</p>
               )}
             </div>
 
             {/* Orçamento recente */}
             {clientDetail.latest_quotation && (
-              <div className="border-t border-framer-hairline pt-3">
-                <span className="text-framer-ink-muted text-xs">Último orçamento</span>
+              <div className="border-t border-line pt-3">
+                <span className="text-fg-muted text-xs">Último orçamento</span>
                 <div className="mt-1 flex items-center gap-2">
                   <a
                     href={buildQuotationErpUrl(null, clientDetail.latest_quotation.name)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-medium text-framer-accent-blue hover:underline"
+                    className="text-sm font-medium text-primary hover:underline"
                   >
                     {clientDetail.latest_quotation.name}
                   </a>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium
-                    ${clientDetail.latest_quotation.status === 'Open' ? 'bg-framer-accent-blue/10 text-framer-accent-blue' : 'bg-framer-surface-2 text-framer-ink-muted'}
+                    ${clientDetail.latest_quotation.status === 'Open' ? 'bg-primary/10 text-primary' : 'bg-surface-muted text-fg-muted'}
                   `}>
                     {clientDetail.latest_quotation.status}
                   </span>
                 </div>
                 {clientDetail.latest_quotation.grand_total != null && (
-                  <p className="text-xs text-framer-ink-muted mt-0.5">
+                  <p className="text-xs text-fg-muted mt-0.5">
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(clientDetail.latest_quotation.grand_total)}
                   </p>
                 )}
@@ -1129,29 +1129,29 @@ export default function LeadsPage({ navigate }) {
 
             {/* Deal vinculado */}
             {clientDetail.deal && (
-              <div className="border-t border-framer-hairline pt-3">
-                <span className="text-framer-ink-muted text-xs">Deal CRM</span>
+              <div className="border-t border-line pt-3">
+                <span className="text-fg-muted text-xs">Deal CRM</span>
                 <div className="mt-1 flex items-center gap-2">
                   <a
                     href={buildCrmDealErpUrl(null, clientDetail.deal.name)}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-medium text-framer-accent-blue hover:underline"
+                    className="text-sm font-medium text-primary hover:underline"
                   >
                     {clientDetail.deal.name}
                   </a>
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-framer-surface-2 text-framer-ink-muted">
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-surface-muted text-fg-muted">
                     {clientDetail.deal.status}
                   </span>
                 </div>
                 {clientDetail.deal.next_step && (
-                  <p className="text-xs text-framer-ink-muted mt-0.5">{clientDetail.deal.next_step}</p>
+                  <p className="text-xs text-fg-muted mt-0.5">{clientDetail.deal.next_step}</p>
                 )}
               </div>
             )}
 
             {/* Datas */}
-            <div className="border-t border-framer-hairline pt-3 text-xs text-framer-ink-muted space-y-0.5">
+            <div className="border-t border-line pt-3 text-xs text-fg-muted space-y-0.5">
               <p>Criado: {clientDetail.creation ? new Date(clientDetail.creation).toLocaleString('pt-BR') : '—'}</p>
               <p>Modificado: {clientDetail.modified ? new Date(clientDetail.modified).toLocaleString('pt-BR') : '—'}</p>
             </div>
@@ -1164,9 +1164,9 @@ export default function LeadsPage({ navigate }) {
         className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto max-w-7xl px-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-framer-hairline bg-framer-surface-1/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
+          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
             <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <div className="flex items-center gap-2 text-sm font-medium text-fg">
                 <span>
                   {selectedCount} registro{selectedCount !== 1 ? 's' : ''} selecionado{selectedCount !== 1 ? 's' : ''}
                 </span>

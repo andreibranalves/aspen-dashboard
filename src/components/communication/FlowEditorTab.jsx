@@ -248,7 +248,7 @@ export default function FlowEditorTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-framer-ink-muted" />
+        <Loader2 size={24} className="animate-spin text-fg-muted" />
       </div>
     );
   }
@@ -270,9 +270,9 @@ export default function FlowEditorTab() {
           Salvar
         </Button>
         {successMsg && (
-          <span className="text-xs text-green-600 dark:text-green-400">{successMsg}</span>
+          <span className="text-xs text-success dark:text-success/80">{successMsg}</span>
         )}
-        {error && <span className="text-xs text-red-500">{error}</span>}
+        {error && <span className="text-xs text-destructive">{error}</span>}
       </div>
 
       {/* Flow selector */}
@@ -285,7 +285,7 @@ export default function FlowEditorTab() {
               'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
               flow.id === selectedFlowId
                 ? 'bg-primary text-white'
-                : 'bg-framer-surface-2 text-framer-ink-muted hover:bg-framer-surface-2/80',
+                : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
             ].join(' ')}
           >
             {flow.name}
@@ -295,17 +295,17 @@ export default function FlowEditorTab() {
 
       {/* Flow editor */}
       {selectedFlow && (
-        <div className="border border-framer-hairline rounded-xl bg-card overflow-hidden">
+        <div className="border border-line rounded-xl bg-surface overflow-hidden">
           {/* Flow metadata */}
           <button
             onClick={() =>
               setExpandedFlow(expandedFlow === selectedFlow.id ? null : selectedFlow.id)
             }
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-framer-surface-2 transition-colors"
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-muted transition-colors"
           >
             <div className="flex items-center gap-3">
-              <span className="text-sm font-medium text-framer-ink">{selectedFlow.name}</span>
-              <span className="text-xs text-framer-ink-muted">
+              <span className="text-sm font-medium text-fg">{selectedFlow.name}</span>
+              <span className="text-xs text-fg-muted">
                 {selectedFlow.steps?.length || 0} etapa(s)
               </span>
             </div>
@@ -315,20 +315,20 @@ export default function FlowEditorTab() {
                   e.stopPropagation();
                   duplicateFlow(selectedFlow.id);
                 }}
-                className="p-1 rounded hover:bg-framer-surface-2"
+                className="p-1 rounded hover:bg-surface-muted"
                 title="Duplicar fluxo"
               >
-                <Copy size={14} className="text-framer-ink-muted" />
+                <Copy size={14} className="text-fg-muted" />
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   deleteFlow(selectedFlow.id);
                 }}
-                className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                className="p-1 rounded hover:bg-destructive/10"
                 title="Remover fluxo"
               >
-                <Trash2 size={14} className="text-red-500" />
+                <Trash2 size={14} className="text-destructive" />
               </button>
               <ChevronUp
                 size={16}
@@ -342,29 +342,29 @@ export default function FlowEditorTab() {
           </button>
 
           {expandedFlow === selectedFlow.id && (
-            <div className="px-4 pb-4 space-y-4 border-t border-framer-hairline pt-4">
+            <div className="px-4 pb-4 space-y-4 border-t border-line pt-4">
               {/* Metadata fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-framer-ink-muted">Nome do fluxo</label>
+                  <label className="text-xs font-medium text-fg-muted">Nome do fluxo</label>
                   <input
                     type="text"
                     value={selectedFlow.name}
                     onChange={(e) => updateFlow(selectedFlow.id, 'name', e.target.value)}
-                    className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm text-framer-ink mt-1"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-1"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-framer-ink-muted">Vendedora</label>
+                  <label className="text-xs font-medium text-fg-muted">Vendedora</label>
                   <input
                     type="text"
                     value={selectedFlow.vendor_name || 'Juliana'}
                     onChange={(e) => updateFlow(selectedFlow.id, 'vendor_name', e.target.value)}
-                    className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm text-framer-ink mt-1"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-1"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-framer-ink-muted">
+                  <label className="text-xs font-medium text-fg-muted">
                     Delay mínimo (seg)
                   </label>
                   <input
@@ -375,11 +375,11 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_min_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm mt-1"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-1"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-framer-ink-muted">
+                  <label className="text-xs font-medium text-fg-muted">
                     Delay máximo (seg)
                   </label>
                   <input
@@ -390,7 +390,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_max_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm mt-1"
+                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-1"
                   />
                 </div>
               </div>
@@ -398,7 +398,7 @@ export default function FlowEditorTab() {
               {/* Steps */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-medium text-framer-ink">Etapas do fluxo</h4>
+                  <h4 className="text-sm font-medium text-fg">Etapas do fluxo</h4>
                   <Button onClick={() => addStep(selectedFlow.id)} size="sm" variant="ghost">
                     <Plus size={14} /> Etapa
                   </Button>
@@ -412,19 +412,19 @@ export default function FlowEditorTab() {
                   return (
                     <div
                       key={step.id}
-                      className="border border-framer-hairline rounded-lg p-3 bg-framer-surface-2/50 space-y-2"
+                      className="border border-line rounded-lg p-3 bg-surface-muted/50 space-y-2"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-framer-ink-muted">
+                        <span className="text-xs font-medium text-fg-muted">
                           Etapa {idx + 1}
                         </span>
-                        <StepIcon size={14} className="text-framer-ink-muted" />
+                        <StepIcon size={14} className="text-fg-muted" />
                         <select
                           value={step.type}
                           onChange={(e) =>
                             handleStepTypeChange(selectedFlow.id, step.id, e.target.value)
                           }
-                          className="text-xs rounded border border-framer-hairline bg-card px-1.5 py-0.5 text-framer-ink"
+                          className="text-xs rounded border border-line bg-surface px-1.5 py-0.5 text-fg"
                         >
                           {STEP_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -436,20 +436,20 @@ export default function FlowEditorTab() {
                         <button
                           onClick={() => moveStep(selectedFlow.id, step.id, -1)}
                           disabled={isFirst}
-                          className="p-0.5 rounded hover:bg-framer-surface-2 disabled:opacity-30"
+                          className="p-0.5 rounded hover:bg-surface-muted disabled:opacity-30"
                         >
                           <ChevronUp size={14} />
                         </button>
                         <button
                           onClick={() => moveStep(selectedFlow.id, step.id, 1)}
                           disabled={isLast}
-                          className="p-0.5 rounded hover:bg-framer-surface-2 disabled:opacity-30"
+                          className="p-0.5 rounded hover:bg-surface-muted disabled:opacity-30"
                         >
                           <ChevronDown size={14} />
                         </button>
                         <button
                           onClick={() => removeStep(selectedFlow.id, step.id)}
-                          className="p-0.5 rounded hover:bg-red-50 text-red-400"
+                          className="p-0.5 rounded hover:bg-destructive/10 text-destructive/60"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -464,9 +464,9 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'template', e.target.value)
                             }
                             placeholder="Digite a mensagem. Use variáveis como (primeiro_nome), (produto_resumo)..."
-                            className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm text-framer-ink min-h-[60px] resize-y"
+                            className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg min-h-[60px] resize-y"
                           />
-                          <p className="text-[10px] text-framer-ink-muted mt-1">
+                          <p className="text-[10px] text-fg-muted mt-1">
                             Preview:{' '}
                             {renderFlowTemplate(step.template || '', PREVIEW_CONTEXT) || '(vazio)'}
                           </p>
@@ -482,9 +482,9 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
                             }
                             placeholder="Legenda do PDF (opcional)"
-                            className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm text-framer-ink"
+                            className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg"
                           />
-                          <p className="text-[10px] text-framer-ink-muted mt-1">
+                          <p className="text-[10px] text-fg-muted mt-1">
                             Envia o PDF do orçamento como documento no WhatsApp.
                           </p>
                         </div>
@@ -493,7 +493,7 @@ export default function FlowEditorTab() {
                       {step.type === STEP_TYPES.PRODUCT_MEDIA && (
                         <div className="space-y-2">
                           <div>
-                            <label className="text-[10px] font-medium text-framer-ink-muted">
+                            <label className="text-[10px] font-medium text-fg-muted">
                               Máx. mídias por grupo
                             </label>
                             <input
@@ -509,11 +509,11 @@ export default function FlowEditorTab() {
                                   Number(e.target.value)
                                 )
                               }
-                              className="w-20 rounded-lg border border-framer-hairline bg-card px-2 py-1 text-sm mt-0.5"
+                              className="w-20 rounded-lg border border-line bg-surface px-2 py-1 text-sm mt-0.5"
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-medium text-framer-ink-muted">
+                            <label className="text-[10px] font-medium text-fg-muted">
                               Template de legenda (opcional)
                             </label>
                             <input
@@ -528,10 +528,10 @@ export default function FlowEditorTab() {
                                 )
                               }
                               placeholder="Ex: Referência de (grupo_produto)"
-                              className="w-full rounded-lg border border-framer-hairline bg-card px-3 py-1.5 text-sm mt-0.5"
+                              className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-0.5"
                             />
                           </div>
-                          <p className="text-[10px] text-framer-ink-muted">
+                          <p className="text-[10px] text-fg-muted">
                             Seleciona automaticamente mídias da biblioteca conforme os produtos do
                             orçamento.
                           </p>
@@ -543,32 +543,32 @@ export default function FlowEditorTab() {
               </div>
 
               {/* Flow Preview Summary */}
-              <div className="border-t border-framer-hairline pt-3">
-                <p className="text-xs font-medium text-framer-ink-muted mb-2">Resumo do fluxo</p>
+              <div className="border-t border-line pt-3">
+                <p className="text-xs font-medium text-fg-muted mb-2">Resumo do fluxo</p>
                 <div className="space-y-1">
                   {(selectedFlow.steps || []).map((step, idx) => {
                     if (step.type === STEP_TYPES.TEXT) {
                       const preview =
                         renderFlowTemplate(step.template || '', PREVIEW_CONTEXT) || '(vazio)';
                       return (
-                        <div key={step.id} className="flex gap-2 text-xs text-framer-ink">
-                          <span className="text-framer-ink-muted shrink-0">{idx + 1}.</span>
+                        <div key={step.id} className="flex gap-2 text-xs text-fg">
+                          <span className="text-fg-muted shrink-0">{idx + 1}.</span>
                           <span className="truncate">{preview}</span>
                         </div>
                       );
                     }
                     if (step.type === STEP_TYPES.DOCUMENT) {
                       return (
-                        <div key={step.id} className="flex gap-2 text-xs text-framer-ink">
-                          <span className="text-framer-ink-muted shrink-0">{idx + 1}.</span>
+                        <div key={step.id} className="flex gap-2 text-xs text-fg">
+                          <span className="text-fg-muted shrink-0">{idx + 1}.</span>
                           <span>📎 PDF do orçamento</span>
                         </div>
                       );
                     }
                     if (step.type === STEP_TYPES.PRODUCT_MEDIA) {
                       return (
-                        <div key={step.id} className="flex gap-2 text-xs text-framer-ink">
-                          <span className="text-framer-ink-muted shrink-0">{idx + 1}.</span>
+                        <div key={step.id} className="flex gap-2 text-xs text-fg">
+                          <span className="text-fg-muted shrink-0">{idx + 1}.</span>
                           <span>🖼️ Mídia da biblioteca por grupo de produto</span>
                         </div>
                       );

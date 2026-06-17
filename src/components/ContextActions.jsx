@@ -28,10 +28,10 @@ export function ContextActions({ actions, className }) {
 
         const buttonClasses = cn(
           'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-200',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/50 focus-visible:ring-offset-1',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
           isDisabled
-            ? 'cursor-not-allowed opacity-35 bg-framer-surface-2 text-framer-ink-muted'
-            : 'bg-framer-surface-2 text-framer-ink hover:bg-framer-accent-blue hover:text-white active:scale-[0.97]',
+            ? 'cursor-not-allowed opacity-35 bg-surface-muted text-fg-muted'
+            : 'bg-surface-muted text-fg hover:bg-primary hover:text-white active:scale-[0.97]',
         );
 
         const content = (

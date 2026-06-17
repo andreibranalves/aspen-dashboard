@@ -31,20 +31,20 @@ export default function SendHistoryTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-framer-ink-muted" />
+        <Loader2 size={24} className="animate-spin text-fg-muted" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <p className="text-sm text-red-500 p-3 rounded-lg bg-red-50 dark:bg-red-900/20">{error}</p>
+      <p className="text-sm text-destructive p-3 rounded-lg bg-destructive/10">{error}</p>
     );
   }
 
   if (events.length === 0) {
     return (
-      <div className="text-center py-12 text-framer-ink-muted">
+      <div className="text-center py-12 text-fg-muted">
         <Clock size={40} className="mx-auto mb-3 opacity-30" />
         <p className="text-sm">Nenhum envio registrado ainda.</p>
         <p className="text-xs mt-1">
@@ -59,38 +59,38 @@ export default function SendHistoryTab() {
       {events.map((evt) => (
         <div
           key={evt.id}
-          className="flex items-start gap-3 p-3 rounded-lg border border-framer-hairline bg-card hover:border-primary/20 transition-colors"
+          className="flex items-start gap-3 p-3 rounded-lg border border-line bg-surface hover:border-primary/20 transition-colors"
         >
           <div className="shrink-0 mt-0.5">
-            {evt.status === 'sent' && <CheckCircle size={16} className="text-green-500" />}
-            {evt.status === 'failed' && <XCircle size={16} className="text-red-500" />}
-            {evt.status === 'skipped' && <Clock size={16} className="text-framer-ink-muted" />}
+            {evt.status === 'sent' && <CheckCircle size={16} className="text-success" />}
+            {evt.status === 'failed' && <XCircle size={16} className="text-destructive" />}
+            {evt.status === 'skipped' && <Clock size={16} className="text-fg-muted" />}
             {evt.status === 'pending' && (
-              <Loader2 size={16} className="text-amber-500 animate-spin" />
+              <Loader2 size={16} className="text-warning animate-spin" />
             )}
             {evt.duplicate_warning && (
               <AlertTriangle
                 size={16}
-                className="text-amber-500"
+                className="text-warning"
                 title="Envio duplicado detectado"
               />
             )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-medium text-framer-ink truncate">
+              <p className="text-sm font-medium text-fg truncate">
                 {evt.flow_name || 'Fluxo'}
               </p>
               {evt.quotation_id && (
-                <span className="text-xs text-framer-ink-muted font-mono">{evt.quotation_id}</span>
+                <span className="text-xs text-fg-muted font-mono">{evt.quotation_id}</span>
               )}
               {evt.duplicate_warning && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-warning/80">
                   Duplicado
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3 text-xs text-framer-ink-muted mt-1">
+            <div className="flex items-center gap-3 text-xs text-fg-muted mt-1">
               <span>{evt.phone}</span>
               <span>·</span>
               <span>
@@ -103,7 +103,7 @@ export default function SendHistoryTab() {
                 </>
               )}
             </div>
-            {evt.error_message && <p className="text-xs text-red-500 mt-1">{evt.error_message}</p>}
+            {evt.error_message && <p className="text-xs text-destructive mt-1">{evt.error_message}</p>}
           </div>
         </div>
       ))}

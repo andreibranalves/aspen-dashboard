@@ -80,25 +80,6 @@ export default {
           hover: 'hsl(var(--surface-muted))',
           active: 'hsl(var(--line))',
         },
-
-        // ── Framer legacy aliases (backward compat, remove in Stage 2) ──
-        framer: {
-          canvas: 'hsl(var(--page))',
-          'surface-1': 'hsl(var(--surface))',
-          'surface-2': 'hsl(var(--surface-muted))',
-          'surface-3': 'hsl(var(--surface-muted))',
-          hairline: 'hsl(var(--line))',
-          'hairline-soft': 'hsl(var(--line))',
-          ink: 'hsl(var(--fg))',
-          'ink-muted': 'hsl(var(--fg-muted))',
-          'accent-blue': 'hsl(var(--primary))',
-          success: 'hsl(var(--success))',
-          warning: 'hsl(var(--warning))',
-          'gradient-violet': '#6a4cf5',
-          'gradient-magenta': '#d44df0',
-          'gradient-orange': '#ff7a3d',
-          'gradient-coral': '#ff5577',
-        },
       },
       borderRadius: {
         xs: '4px',

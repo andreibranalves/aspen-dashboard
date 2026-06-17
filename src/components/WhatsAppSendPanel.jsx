@@ -21,9 +21,9 @@ export default function WhatsAppSendPanel({
   return (
     <>
       <div className="space-y-1 mb-3 mt-4">
-        <label className="text-xs font-medium text-framer-ink-muted">Fluxo de WhatsApp</label>
+        <label className="text-xs font-medium text-fg-muted">Fluxo de WhatsApp</label>
         <select
-          className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
+          className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
           value={selectedFlowId}
           onChange={(e) => onSelectFlow(e.target.value)}
         >
@@ -34,7 +34,7 @@ export default function WhatsAppSendPanel({
           ))}
         </select>
         {selectedFlow && (
-          <span className="block text-xs leading-5 text-framer-ink-muted">
+          <span className="block text-xs leading-5 text-fg-muted">
             {getFlowSummary(selectedFlow)}
           </span>
         )}
@@ -60,7 +60,7 @@ export default function WhatsAppSendPanel({
               <p
                 className={cn(
                   'text-xs leading-5 text-center',
-                  status.state === 'error' ? 'text-red-500' : 'text-framer-ink-muted'
+                  status.state === 'error' ? 'text-destructive' : 'text-fg-muted'
                 )}
               >
                 {status.message}
@@ -68,7 +68,7 @@ export default function WhatsAppSendPanel({
             )}
           </>
         ) : (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+          <p className="text-xs text-warning mb-2">
             {!selectedFlow
               ? 'Nenhum fluxo de WhatsApp disponível.'
               : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}

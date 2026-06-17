@@ -15,7 +15,7 @@ export default function SkeletonDetail({ title = 'Carregando…' }) {
       </div>
 
       {/* Detail card */}
-      <div className="bg-card rounded-lg border border-border shadow-sm w-full">
+      <div className="bg-surface rounded-lg border border-line shadow-sm w-full">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -55,7 +55,7 @@ export default function SkeletonDetail({ title = 'Carregando…' }) {
           <Skeleton className="h-5 w-24 mb-3" />
           <div className="border rounded-md">
             {/* Table header */}
-            <div className="px-4 py-2 border-b bg-muted/30 flex gap-4">
+            <div className="px-4 py-2 border-b bg-surface-muted/30 flex gap-4">
               <Skeleton className="h-5 w-[30%]" />
               <Skeleton className="h-5 w-[15%]" />
               <Skeleton className="h-5 w-[12%]" />
@@ -85,7 +85,7 @@ export default function SkeletonDetail({ title = 'Carregando…' }) {
           </div>
         </div>
       </div>
-      <p className="text-muted-foreground text-sm">{title}</p>
+      <p className="text-fg-muted text-sm">{title}</p>
     </div>
   );
 }

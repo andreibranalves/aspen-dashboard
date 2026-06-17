@@ -85,13 +85,13 @@ export default function MediaUploader({ onUploadComplete }) {
     <div className="space-y-4">
       {/* Product group selector */}
       <div>
-        <label className="text-xs font-medium text-framer-ink-muted mb-1.5 block">
+        <label className="text-xs font-medium text-fg-muted mb-1.5 block">
           Grupo de produto
         </label>
         <select
           value={selectedGroup}
           onChange={(e) => setSelectedGroup(e.target.value)}
-          className="w-full rounded-[12px] border border-framer-hairline bg-card px-3 py-2 text-sm text-framer-ink"
+          className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
           disabled={uploading}
         >
           {PRODUCT_GROUPS.map((g) => (
@@ -112,22 +112,22 @@ export default function MediaUploader({ onUploadComplete }) {
           'relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
           dragging
             ? 'border-primary bg-primary/5'
-            : 'border-framer-hairline hover:border-primary/50 hover:bg-framer-surface-2',
+            : 'border-line hover:border-primary/50 hover:bg-surface-muted',
           uploading ? 'opacity-60 pointer-events-none' : '',
         ].join(' ')}
       >
         {uploading ? (
           <div className="flex flex-col items-center gap-2">
             <Loader2 size={28} className="animate-spin text-primary" />
-            <p className="text-sm text-framer-ink-muted">Enviando arquivo...</p>
+            <p className="text-sm text-fg-muted">Enviando arquivo...</p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <Upload size={28} className="text-framer-ink-muted" />
-            <p className="text-sm text-framer-ink-muted">
+            <Upload size={28} className="text-fg-muted" />
+            <p className="text-sm text-fg-muted">
               Arraste uma imagem ou vídeo aqui, ou clique para selecionar
             </p>
-            <p className="text-xs text-framer-ink-muted/60">
+            <p className="text-xs text-fg-muted/60">
               JPEG, PNG, WebP (até 5 MB) · MP4 (até 16 MB)
             </p>
           </div>
@@ -143,7 +143,7 @@ export default function MediaUploader({ onUploadComplete }) {
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-red-700 dark:text-destructive/60">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <p className="text-sm">{error}</p>
         </div>

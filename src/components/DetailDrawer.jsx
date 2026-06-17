@@ -67,7 +67,7 @@ export function DetailDrawer({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'relative z-10 flex h-full flex-col bg-white shadow-2xl dark:bg-framer-surface-1',
+          'relative z-10 flex h-full flex-col bg-white shadow-2xl dark:bg-surface',
           // Mobile: tela cheia
           'w-full',
           // Desktop: painel lateral com largura limitada
@@ -76,13 +76,13 @@ export function DetailDrawer({
         )}
       >
         {/* Cabeçalho */}
-        <div className="flex shrink-0 items-start justify-between border-b border-framer-hairline px-5 py-4 dark:border-framer-hairline">
+        <div className="flex shrink-0 items-start justify-between border-b border-line px-5 py-4 dark:border-line">
           <div className="min-w-0 flex-1 pr-4">
-            <h2 className="text-lg font-semibold text-framer-ink truncate">
+            <h2 className="text-lg font-semibold text-fg truncate">
               {title || 'Detalhes'}
             </h2>
             {description && (
-              <p className="mt-0.5 text-sm text-framer-ink-muted line-clamp-2">
+              <p className="mt-0.5 text-sm text-fg-muted line-clamp-2">
                 {description}
               </p>
             )}
@@ -90,7 +90,7 @@ export function DetailDrawer({
           <button
             onClick={onClose}
             aria-label="Fechar"
-            className="shrink-0 rounded-full p-1.5 text-framer-ink-muted transition-colors hover:bg-framer-surface-2 hover:text-framer-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-framer-accent-blue/50"
+            className="shrink-0 rounded-full p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
             <X className="size-5" />
           </button>
@@ -98,7 +98,7 @@ export function DetailDrawer({
 
         {/* Ações (se fornecidas) */}
         {actions && (
-          <div className="shrink-0 border-b border-framer-hairline px-5 py-3 dark:border-framer-hairline">
+          <div className="shrink-0 border-b border-line px-5 py-3 dark:border-line">
             {actions}
           </div>
         )}

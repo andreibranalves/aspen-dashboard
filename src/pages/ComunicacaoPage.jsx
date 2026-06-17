@@ -31,7 +31,7 @@ export default function ComunicacaoPage() {
       <PageHeader title="Comunicação" />
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-framer-hairline overflow-x-auto">
+      <div className="flex gap-1 border-b border-line overflow-x-auto">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -43,7 +43,7 @@ export default function ComunicacaoPage() {
                 'flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap border-b-2 -mb-[1px]',
                 isActive
                   ? 'border-primary text-primary'
-                  : 'border-transparent text-framer-ink-muted hover:text-framer-ink',
+                  : 'border-transparent text-fg-muted hover:text-fg',
               ].join(' ')}
             >
               <Icon size={16} />

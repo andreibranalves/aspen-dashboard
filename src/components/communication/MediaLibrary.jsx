@@ -49,14 +49,14 @@ export default function MediaLibrary({ refreshKey }) {
     <div className="space-y-4">
       {/* Filter bar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Filter size={14} className="text-framer-ink-muted shrink-0" />
+        <Filter size={14} className="text-fg-muted shrink-0" />
         <button
           onClick={() => setFilterGroup('')}
           className={[
             'text-xs px-2.5 py-1 rounded-full transition-colors',
             filterGroup === ''
               ? 'bg-primary text-white'
-              : 'bg-framer-surface-2 text-framer-ink-muted hover:bg-framer-surface-2/80',
+              : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
           ].join(' ')}
         >
           Todos ({items.length})
@@ -72,7 +72,7 @@ export default function MediaLibrary({ refreshKey }) {
                 'text-xs px-2.5 py-1 rounded-full transition-colors',
                 filterGroup === g
                   ? 'bg-primary text-white'
-                  : 'bg-framer-surface-2 text-framer-ink-muted hover:bg-framer-surface-2/80',
+                  : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
               ].join(' ')}
             >
               {GROUP_LABELS[g]} ({count})
@@ -84,18 +84,18 @@ export default function MediaLibrary({ refreshKey }) {
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-framer-ink-muted" />
+          <Loader2 size={24} className="animate-spin text-fg-muted" />
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <p className="text-sm text-red-500 p-3 rounded-lg bg-red-50 dark:bg-red-900/20">{error}</p>
+        <p className="text-sm text-destructive p-3 rounded-lg bg-destructive/10">{error}</p>
       )}
 
       {/* Empty state */}
       {!loading && !error && filtered.length === 0 && (
-        <div className="text-center py-12 text-framer-ink-muted">
+        <div className="text-center py-12 text-fg-muted">
           <p className="text-sm">
             {filterGroup
               ? `Nenhuma mídia cadastrada para ${GROUP_LABELS[filterGroup]}.`

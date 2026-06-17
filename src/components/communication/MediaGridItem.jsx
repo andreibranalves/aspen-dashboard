@@ -17,16 +17,16 @@ export default function MediaGridItem({ item, onDelete }) {
   const isVideo = item.kind === 'video';
 
   return (
-    <div className="group relative rounded-xl border border-framer-hairline bg-card overflow-hidden hover:border-primary/30 transition-colors">
+    <div className="group relative rounded-xl border border-line bg-surface overflow-hidden hover:border-primary/30 transition-colors">
       {/* Thumbnail */}
-      <div className="aspect-square bg-framer-surface-2 flex items-center justify-center overflow-hidden">
+      <div className="aspect-square bg-surface-muted flex items-center justify-center overflow-hidden">
         {isVideo ? (
-          <div className="flex flex-col items-center gap-1 text-framer-ink-muted">
+          <div className="flex flex-col items-center gap-1 text-fg-muted">
             <Video size={32} />
             <span className="text-xs">{item.title || 'Vídeo'}</span>
           </div>
         ) : imgError ? (
-          <div className="flex flex-col items-center gap-1 text-framer-ink-muted">
+          <div className="flex flex-col items-center gap-1 text-fg-muted">
             <Image size={32} />
             <span className="text-xs">Sem preview</span>
           </div>
@@ -54,7 +54,7 @@ export default function MediaGridItem({ item, onDelete }) {
 
       {/* Info */}
       <div className="p-3 space-y-1.5">
-        <p className="text-sm font-medium text-framer-ink truncate" title={item.title}>
+        <p className="text-sm font-medium text-fg truncate" title={item.title}>
           {item.title || 'Sem título'}
         </p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -63,7 +63,7 @@ export default function MediaGridItem({ item, onDelete }) {
           </span>
           {item.caption && (
             <span
-              className="text-[10px] text-framer-ink-muted truncate max-w-[120px]"
+              className="text-[10px] text-fg-muted truncate max-w-[120px]"
               title={item.caption}
             >
               {item.caption}
@@ -71,13 +71,13 @@ export default function MediaGridItem({ item, onDelete }) {
           )}
         </div>
         {item.size_bytes > 0 && (
-          <p className="text-[10px] text-framer-ink-muted">
+          <p className="text-[10px] text-fg-muted">
             {formatBytes(item.size_bytes)}
             {item.content_type ? ` · ${item.content_type.split('/')[1]?.toUpperCase()}` : ''}
           </p>
         )}
         {item.active === false && (
-          <span className="text-[10px] text-amber-600 dark:text-amber-400">Inativo</span>
+          <span className="text-[10px] text-warning">Inativo</span>
         )}
       </div>
     </div>

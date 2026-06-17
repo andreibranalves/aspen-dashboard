@@ -57,21 +57,21 @@ export default function LoginPage({ navigate }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-framer-canvas p-4">
+    <div className="min-h-screen flex items-center justify-center bg-page p-4">
       <div className="w-full max-w-sm">
         {/* Logo / branding */}
         <div className="text-center mb-8">
           <div
             className={cn(
               'inline-flex items-center justify-center w-14 h-14 rounded-2xl',
-              'bg-gradient-to-br from-framer-accent-blue to-blue-700',
-              'mb-4 shadow-lg shadow-framer-accent-blue/20'
+              'mb-4 shadow-lg shadow-primary/20'
             )}
+            style={{ background: 'linear-gradient(135deg, var(--accent-ice), var(--accent-twilight))' }}
           >
             <ShieldAlert className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-xl font-semibold text-framer-ink">Aspen Orçamento</h1>
-          <p className="text-sm text-framer-ink-muted mt-1">Entre com a senha para continuar</p>
+          <h1 className="text-xl font-semibold text-fg">Aspen Orçamento</h1>
+          <p className="text-sm text-fg-muted mt-1">Entre com a senha para continuar</p>
         </div>
 
         {/* Form */}
@@ -91,7 +91,7 @@ export default function LoginPage({ navigate }) {
             />
           </div>
 
-          {error && <p className="text-center text-sm text-red-400 animate-in fade-in">{error}</p>}
+          {error && <p className="text-center text-sm text-destructive/60 animate-in fade-in">{error}</p>}
 
           <Button type="submit" disabled={loading || !password.trim()} className="w-full" size="lg">
             {loading ? (

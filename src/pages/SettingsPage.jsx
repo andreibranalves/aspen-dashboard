@@ -13,14 +13,14 @@ export default function SettingsPage() {
       <PageHeader title="Configurações" />
 
       {/* WhatsApp flows moved notice */}
-      <div className="rounded-xl border border-framer-hairline bg-card p-6 space-y-4">
+      <div className="rounded-xl border border-line bg-surface p-6 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
             <MessageCircle size={20} className="text-primary" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold text-framer-ink">Fluxos de WhatsApp</h3>
-            <p className="text-sm text-framer-ink-muted">
+            <h3 className="text-sm font-semibold text-fg">Fluxos de WhatsApp</h3>
+            <p className="text-sm text-fg-muted">
               A configuração de fluxos de WhatsApp, biblioteca de mídias e histórico de envios agora
               está disponível na página dedicada de Comunicação.
             </p>
@@ -36,8 +36,8 @@ export default function SettingsPage() {
       </div>
 
       {/* Future settings cards go here */}
-      <div className="rounded-xl border border-dashed border-framer-hairline bg-card p-12">
-        <p className="text-center text-sm text-framer-ink-muted">
+      <div className="rounded-xl border border-dashed border-line bg-surface p-12">
+        <p className="text-center text-sm text-fg-muted">
           Novas opções de configuração serão adicionadas aqui em breve.
         </p>
       </div>
