@@ -42,7 +42,6 @@ const STEP_TYPE_OPTIONS = [
 ];
 
 const PREVIEW_CONTEXT = {
-  '(Saudacao)': getTimeBasedGreeting(),
   '(nome)': 'Labo Buriti',
   '(primeiro_nome)': 'Labo',
   '(numero_pedido)': 'ORC-20261289',
@@ -53,13 +52,6 @@ const PREVIEW_CONTEXT = {
   '(produto_adjetivo_personalizado)': 'personalizadas',
   '(grupo_produto)': 'canga',
 };
-
-function getTimeBasedGreeting() {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return 'Bom dia';
-  if (hour >= 12 && hour < 18) return 'Boa tarde';
-  return 'Boa noite';
-}
 
 function createStep(type = 'text') {
   const id = `step_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 4)}`;
@@ -364,9 +356,7 @@ export default function FlowEditorTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-fg-muted">
-                    Delay mínimo (seg)
-                  </label>
+                  <label className="text-xs font-medium text-fg-muted">Delay mínimo (seg)</label>
                   <input
                     type="number"
                     min="0"
@@ -379,9 +369,7 @@ export default function FlowEditorTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-fg-muted">
-                    Delay máximo (seg)
-                  </label>
+                  <label className="text-xs font-medium text-fg-muted">Delay máximo (seg)</label>
                   <input
                     type="number"
                     min="0"
@@ -415,9 +403,7 @@ export default function FlowEditorTab() {
                       className="border border-line rounded-lg p-3 bg-surface-muted/50 space-y-2"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-fg-muted">
-                          Etapa {idx + 1}
-                        </span>
+                        <span className="text-xs font-medium text-fg-muted">Etapa {idx + 1}</span>
                         <StepIcon size={14} className="text-fg-muted" />
                         <select
                           value={step.type}

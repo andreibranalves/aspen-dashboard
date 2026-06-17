@@ -8,6 +8,7 @@
 
 import { kv } from '@vercel/kv';
 import { erpGetDoc } from './lib/erpnext.js';
+import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
 
 // ── Template rendering ─────────────────────────────────────────────────────
@@ -38,8 +39,7 @@ function productPersonalizationAdjectiveFromCategories(categories = []) {
 function renderTemplate(template, context) {
   const ctx = { ...context };
   if (template.includes('(Saudacao)') && !ctx.Saudacao) {
-    const h = new Date().getHours();
-    ctx.Saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+    ctx.Saudacao = getTimeBasedGreeting();
   }
   const primeiroNome = (ctx.nome || '').trim().split(/\s+/)[0] || ctx.nome || '';
   const groups = ctx.categories || [];

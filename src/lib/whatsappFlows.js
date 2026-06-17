@@ -373,8 +373,8 @@ export function flowToSequencePayload(flow) {
  *   (empresa), (link_orcamento), (vendedora), (produto_resumo),
  *   (produto_adjetivo_personalizado)
  *
- * (Saudacao) is time-based: 5-11:59 → "Bom dia", 12-17:59 → "Boa tarde",
- * 18-4:59 → "Boa noite".
+ * (Saudacao) is time-based in America/Sao_Paulo: 5-11:59 → "Bom dia",
+ * 12-17:59 → "Boa tarde", 18-4:59 → "Boa noite".
  *
  * Unknown variables are left as-is.
  */
@@ -431,8 +431,22 @@ export function renderFlowTemplate(template, context) {
   return result;
 }
 
-function getTimeBasedGreeting() {
-  const hour = new Date().getHours();
+export const WHATSAPP_TIME_ZONE = 'America/Sao_Paulo';
+
+function getHourInTimeZone(date = new Date(), timeZone = WHATSAPP_TIME_ZONE) {
+  const hourPart = new Intl.DateTimeFormat('pt-BR', {
+    hour: 'numeric',
+    hour12: false,
+    timeZone,
+  })
+    .formatToParts(date)
+    .find((part) => part.type === 'hour');
+
+  return Number.parseInt(hourPart?.value || '0', 10);
+}
+
+export function getTimeBasedGreeting(date = new Date(), timeZone = WHATSAPP_TIME_ZONE) {
+  const hour = getHourInTimeZone(date, timeZone);
   if (hour >= 5 && hour < 12) return 'Bom dia';
   if (hour >= 12 && hour < 18) return 'Boa tarde';
   return 'Boa noite';

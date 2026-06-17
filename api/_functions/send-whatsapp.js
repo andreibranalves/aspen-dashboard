@@ -10,6 +10,7 @@ import {
   ERPNEXT_TOKEN,
 } from './lib/erpnext.js';
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
+import { getTimeBasedGreeting } from './lib/time-greeting.js';
 
 const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -148,8 +149,7 @@ function productPersonalizationAdjectiveFromCategories(categories = []) {
 }
 
 function renderTemplate(template, context) {
-  const h = new Date().getHours();
-  const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+  const saudacao = getTimeBasedGreeting();
   const nome = context.nome || '';
   const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
   const productPersonalizationAdjective =

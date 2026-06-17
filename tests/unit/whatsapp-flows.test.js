@@ -14,6 +14,7 @@ import {
   getFlowSummary,
   flowToSequencePayload,
   renderFlowTemplate,
+  getTimeBasedGreeting,
   parseSampleImages,
   getSelectedFlowId,
   saveSelectedFlowId,
@@ -30,12 +31,20 @@ describe('DEFAULT_WA_FLOWS', () => {
     const main = DEFAULT_WA_FLOWS[0];
     assert.equal(main.id, 'already-talking');
     assert.ok(main.steps.length >= 2);
-    assert.ok(main.steps.some(s => s.type === 'text' && s.template.includes('(primeiro_nome)')));
-    assert.ok(main.steps.some(s => s.type === 'document' && s.source === 'quotation_pdf'));
+    assert.ok(main.steps.some((s) => s.type === 'text' && s.template.includes('(primeiro_nome)')));
+    assert.ok(main.steps.some((s) => s.type === 'document' && s.source === 'quotation_pdf'));
   });
 });
 
 // ── renderFlowTemplate ───────────────────────────────────────────────────────
+
+describe('getTimeBasedGreeting()', () => {
+  it('usa America/Sao_Paulo ao calcular a saudação', () => {
+    assert.equal(getTimeBasedGreeting(new Date('2026-06-17T14:07:00.000Z')), 'Bom dia');
+    assert.equal(getTimeBasedGreeting(new Date('2026-06-17T15:00:00.000Z')), 'Boa tarde');
+    assert.equal(getTimeBasedGreeting(new Date('2026-06-17T02:30:00.000Z')), 'Boa noite');
+  });
+});
 
 describe('renderFlowTemplate()', () => {
   it('substitui (nome) pelo nome completo', () => {
@@ -62,7 +71,7 @@ describe('renderFlowTemplate()', () => {
     const result = renderFlowTemplate('(Saudacao)', {});
     assert.ok(
       ['Bom dia', 'Boa tarde', 'Boa noite'].includes(result),
-      `esperado saudação, recebeu: "${result}"`,
+      `esperado saudação, recebeu: "${result}"`
     );
   });
 
@@ -206,9 +215,7 @@ describe('flowToSequencePayload()', () => {
   it('mantém document source=quotation_pdf como document step (PDF real)', () => {
     const flow = {
       ...DEFAULT_WA_FLOWS[0],
-      steps: [
-        { id: 's1', type: 'document', source: 'quotation_pdf', caption: 'PDF do orçamento' },
-      ],
+      steps: [{ id: 's1', type: 'document', source: 'quotation_pdf', caption: 'PDF do orçamento' }],
     };
     const payload = flowToSequencePayload(flow);
     assert.equal(payload.steps.length, 1);
@@ -234,10 +241,7 @@ describe('getFlowSummary()', () => {
 
   it('inclui "mídia da biblioteca" quando há product_media/product_images', () => {
     const flow = {
-      steps: [
-        { type: 'text', template: 'Olá' },
-        { type: 'product_images' },
-      ],
+      steps: [{ type: 'text', template: 'Olá' }, { type: 'product_images' }],
     };
     assert.equal(getFlowSummary(flow), '1 mensagem + mídia da biblioteca');
   });
@@ -262,22 +266,28 @@ describe('normalizeFlow()', () => {
   });
 
   it('normaliza passos', () => {
-    const flow = normalizeFlow({
-      steps: [{ type: 'text', template: 'Oi' }],
-    }, 0);
+    const flow = normalizeFlow(
+      {
+        steps: [{ type: 'text', template: 'Oi' }],
+      },
+      0
+    );
     assert.equal(flow.steps.length, 1);
     assert.equal(flow.steps[0].id, 'step-0');
     assert.equal(flow.steps[0].template, 'Oi');
   });
 
   it('preserva valores fornecidos', () => {
-    const flow = normalizeFlow({
-      id: 'custom-id',
-      name: 'Custom',
-      delay_min_seconds: 10,
-      max_images_per_category: 5,
-      steps: [],
-    }, 0);
+    const flow = normalizeFlow(
+      {
+        id: 'custom-id',
+        name: 'Custom',
+        delay_min_seconds: 10,
+        max_images_per_category: 5,
+        steps: [],
+      },
+      0
+    );
     assert.equal(flow.id, 'custom-id');
     assert.equal(flow.name, 'Custom');
     assert.equal(flow.delay_min_seconds, 10);

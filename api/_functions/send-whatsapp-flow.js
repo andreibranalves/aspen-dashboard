@@ -12,6 +12,7 @@
 import { kv } from '@vercel/kv';
 import { erpGetDoc, erpGetList, erpPut, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
+import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import {
   KV_KEY_MEDIA_PREFIX,
   KV_KEY_FLOWS,
@@ -129,8 +130,7 @@ function productPersonalizationAdjectiveFromCategories(categories = []) {
 }
 
 function renderTemplate(template, context) {
-  const h = new Date().getHours();
-  const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+  const saudacao = getTimeBasedGreeting();
   const nome = context.nome || '';
   const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
   const groups = context.categories || [];
