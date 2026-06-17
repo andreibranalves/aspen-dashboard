@@ -113,6 +113,7 @@ export default function Sidebar({
                   onClick={() => onNavigate(hash)}
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                    collapsed && 'justify-center gap-0 px-0',
                     'hover:bg-primary/5',
                     currentRoute === hash ? 'bg-primary/10 text-primary font-medium' : 'text-fg'
                   )}
