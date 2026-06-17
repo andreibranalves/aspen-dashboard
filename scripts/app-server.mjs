@@ -36,6 +36,7 @@ import { handler as salesOrderFromQuotation } from '../api/_functions/sales-orde
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
+import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappFlows } from '../api/_functions/whatsapp-flows.js';
 import { handler as whatsappLeads } from '../api/_functions/whatsapp-leads.js';
 import { handler as communicationFlowPreview } from '../api/_functions/communication-flow-preview.js';
@@ -74,6 +75,13 @@ const ROUTES = {
   'communication-media': communicationMedia,
   'communication-media-upload': communicationMediaUpload,
   view,
+  'crm-deals': crmDeals, 'crm-update-deal': crmUpdateDeal,
+  'duplicate-quotation': duplicateQuotation, extract, freight,
+  'leads-clients': leadsClients, orcamento, 'pricing-lookup': pricingLookup,
+  'product-detail': productDetail, 'product-update': productUpdate, 'product-pricing-update': productPricingUpdate,
+  'product-activity': productActivity, 'product-pricing': productPricing, products, quotations,
+  'sales-dashboard': salesDashboard, 'sales-order-from-quotation': salesOrderFromQuotation,
+  'sales-orders': salesOrders, 'send-whatsapp': sendWhatsapp, 'typebot-lead-capture': typebotLeadCapture, 'whatsapp-flows': whatsappFlows, 'whatsapp-leads': whatsappLeads, view,
 };
 
 const PORT = Number(process.env.PORT || 8888);
@@ -168,6 +176,8 @@ const server = createServer(async (req, res) => {
           new URL(req.url, 'http://localhost').searchParams
         ),
         headers: { host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
+        queryStringParameters: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams),
+        headers: { ...req.headers, host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
       };
 
       const result = await handler(event);
@@ -194,4 +204,5 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`App server on http://0.0.0.0:${PORT}`);
   console.log(`Frontend: public/  |  API: ${Object.keys(ROUTES).length} handlers`);
+  console.log(`Frontend: public/  |  API: 22 handlers`);
 });

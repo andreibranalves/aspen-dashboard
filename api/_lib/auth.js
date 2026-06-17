@@ -3,7 +3,7 @@
 const APP_PASSWORD = process.env.APP_PASSWORD;
 
 // Rotas que NÃO exigem autenticação
-const PUBLIC_ROUTES = new Set(['view']);
+const PUBLIC_ROUTES = new Set(['view', 'typebot-lead-capture']);
 
 // Rotas relacionadas a auth que devem ser acessíveis sem token
 const AUTH_ROUTES = new Set(['login', 'logout']);

@@ -12,6 +12,7 @@ const ROUTE_LIMITS = {
   extract: 10,
   orcamento: 20,
   'send-whatsapp': 5,
+  'typebot-lead-capture': 20,
   login: 10,
 };
 
