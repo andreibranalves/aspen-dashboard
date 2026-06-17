@@ -114,9 +114,7 @@ export default function Sidebar({
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                     'hover:bg-primary/5',
-                    currentRoute === hash
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-fg'
+                    currentRoute === hash ? 'bg-primary/10 text-primary font-medium' : 'text-fg'
                   )}
                   title={collapsed ? label : undefined}
                 >
