@@ -141,9 +141,9 @@ export default function Sidebar({
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
             {darkMode ? (
-              <Sun size={16} className="shrink-0" />
+              <Sun size={16} className="shrink-0 text-primary" />
             ) : (
-              <Moon size={16} className="shrink-0" />
+              <Moon size={16} className="shrink-0 text-primary" />
             )}
             {!collapsed && <span>{darkMode ? 'Modo claro' : 'Modo escuro'}</span>}
           </button>
