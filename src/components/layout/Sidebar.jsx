@@ -118,7 +118,7 @@ export default function Sidebar({
                   )}
                   title={collapsed ? label : undefined}
                 >
-                  <Icon size={20} className="shrink-0" />
+                  <Icon size={20} className="shrink-0 text-primary" />
                   {!collapsed && <span className="truncate">{label}</span>}
                 </button>
               ))}
