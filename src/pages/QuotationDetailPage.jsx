@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
+import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { searchProducts } from '@/lib/productCache.js';
 import { cn } from '@/lib/utils.js';
@@ -293,14 +293,6 @@ export default function QuotationDetailPage({ id, navigate }) {
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
-      {/* Back */}
-      <button
-        onClick={() => navigate('/quotations')}
-        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-      >
-        <ArrowLeft size={14} /> Voltar para lista
-      </button>
-
       {/* Detail card */}
       <div className="bg-surface rounded-lg border border-line shadow-sm">
         {/* Header */}
