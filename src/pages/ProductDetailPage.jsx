@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Edit3, Save, X, AlertTriangle, Search, Check, Trash2 } from 'lucide-react';
+import {
+  Package,
+  Tag,
+  FileText,
+  Edit3,
+  Save,
+  X,
+  AlertTriangle,
+  Search,
+  Check,
+  Trash2,
+} from 'lucide-react';
 import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -47,24 +58,44 @@ function buildEditedState(produto, precos = []) {
   };
 }
 
-function SectionCard({ title, description, children }) {
+function SectionCard({ title, description, icon: Icon, children }) {
   return (
     <section className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-fg-muted">{title}</h2>
-        {description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
+      <div className="flex items-start gap-3">
+        {Icon && (
+          <div className="mt-0.5 rounded-full bg-surface-muted p-2 text-fg-muted">
+            <Icon size={16} />
+          </div>
+        )}
+        <div>
+          <h2 className="text-sm font-semibold text-fg">{title}</h2>
+          {description && <p className="text-xs text-fg-muted mt-0.5">{description}</p>}
+        </div>
       </div>
       {children}
     </section>
   );
 }
 
-function InfoField({ label, value }) {
+function InfoField({ label, value, children }) {
   return (
     <div>
-      <span className="text-[11px] uppercase tracking-wide text-fg-muted">{label}</span>
-      <p className="mt-1 text-sm font-medium text-fg break-words">{value || '—'}</p>
+      <span className="text-fg-muted text-[11px] uppercase tracking-wide">{label}</span>
+      {children || <p className="mt-1 text-sm font-medium text-fg break-words">{value || '—'}</p>}
     </div>
+  );
+}
+
+function SelectField({ value, onChange, children, disabled = false, className = '' }) {
+  return (
+    <select
+      value={value || ''}
+      onChange={onChange}
+      disabled={disabled}
+      className={`mt-1 h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-50 ${className}`}
+    >
+      {children}
+    </select>
   );
 }
 
@@ -128,10 +159,9 @@ export default function ProductDetailPage({ sku, navigate }) {
   }, [fetchAtividades]);
 
   const precosRates = useMemo(() => {
-    const source = editing ? edited.rates : null;
     return BRACKETS.map((faixa) => {
       if (editing) {
-        const raw = source?.[faixa];
+        const raw = edited.rates?.[faixa];
         const rate = raw === '' || raw == null ? null : Number(raw);
         return { faixa, rate: Number.isNaN(rate) ? null : rate };
       }
@@ -391,25 +421,53 @@ export default function ProductDetailPage({ sku, navigate }) {
         </div>
       )}
 
-      {isNewProduct && (
-        <div>
-          <h1 className="text-2xl font-semibold text-fg">Novo produto</h1>
-          <p className="mt-1 text-sm text-fg-muted">
-            Cadastre nome, SKU, dados básicos e as 5 faixas de preço.
-          </p>
-        </div>
-      )}
+      <div className="space-y-1">
+        <p className="text-sm text-fg-muted">
+          Produtos /{' '}
+          <span className="font-medium text-fg">{isNewProduct ? 'Novo' : produto.sku}</span>
+        </p>
+        <h1 className="text-2xl font-semibold text-fg">{isNewProduct ? 'Novo produto' : title}</h1>
+      </div>
 
-      <SectionCard
-        title={editing ? 'Dados do produto' : 'Produto'}
-        description={
-          editing ? 'CRUD simples: nome, SKU, status, categoria, unidade e descrição.' : undefined
-        }
-      >
-        {editing ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="text-[11px] uppercase tracking-wide text-fg-muted">Nome</label>
+      <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-4 min-w-0">
+            {hasImage ? (
+              <img
+                src={produto.imagem}
+                alt={produto.nome}
+                className="h-16 w-16 shrink-0 rounded-2xl border border-line object-cover"
+              />
+            ) : (
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Package size={20} />
+              </div>
+            )}
+
+            <div className="min-w-0 space-y-3">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-semibold text-fg truncate">
+                    {produto.nome || 'Sem nome'}
+                  </h2>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}
+                  >
+                    {produto.ativo ? 'Ativo' : 'Inativo'}
+                  </span>
+                </div>
+                <p className="text-sm text-fg-muted font-mono">{produto.sku || '—'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <SectionCard title="Dados gerais" description="Cadastro básico do produto." icon={Package}>
+        <div className="grid grid-cols-1 gap-4">
+          {editing ? (
+            <div>
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
               <Input
                 value={edited.nome || ''}
                 onChange={(e) => setEdited((prev) => ({ ...prev, nome: e.target.value }))}
@@ -417,9 +475,13 @@ export default function ProductDetailPage({ sku, navigate }) {
                 placeholder="Nome do produto"
               />
             </div>
+          ) : (
+            <InfoField label="Nome" value={produto.nome} />
+          )}
 
+          {editing ? (
             <div>
-              <label className="text-[11px] uppercase tracking-wide text-fg-muted">SKU</label>
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">SKU</label>
               <Input
                 value={isNewProduct ? edited.sku || '' : produto.sku || ''}
                 disabled={!isNewProduct}
@@ -428,23 +490,30 @@ export default function ProductDetailPage({ sku, navigate }) {
                 placeholder="LNC-SED-70"
               />
             </div>
+          ) : (
+            <InfoField label="SKU" value={produto.sku} />
+          )}
 
+          {editing ? (
             <div>
-              <label className="text-[11px] uppercase tracking-wide text-fg-muted">Status</label>
-              <select
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">Status</label>
+              <SelectField
                 value={edited.ativo ? 'ativo' : 'inativo'}
                 onChange={(e) =>
                   setEdited((prev) => ({ ...prev, ativo: e.target.value === 'ativo' }))
                 }
-                className="mt-1 h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
               >
                 <option value="ativo">Ativo</option>
                 <option value="inativo">Inativo</option>
-              </select>
+              </SelectField>
             </div>
+          ) : (
+            <InfoField label="Status" value={produto.ativo ? 'Ativo' : 'Inativo'} />
+          )}
 
+          {editing ? (
             <div>
-              <label className="text-[11px] uppercase tracking-wide text-fg-muted">Categoria</label>
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">Categoria</label>
               <Input
                 value={edited.categoria || ''}
                 onChange={(e) => setEdited((prev) => ({ ...prev, categoria: e.target.value }))}
@@ -452,9 +521,13 @@ export default function ProductDetailPage({ sku, navigate }) {
                 placeholder="Categoria"
               />
             </div>
+          ) : (
+            <InfoField label="Categoria" value={produto.categoria || '—'} />
+          )}
 
+          {editing ? (
             <div>
-              <label className="text-[11px] uppercase tracking-wide text-fg-muted">Unidade</label>
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">Unidade</label>
               <Input
                 value={edited.unidade || ''}
                 onChange={(e) => setEdited((prev) => ({ ...prev, unidade: e.target.value }))}
@@ -462,114 +535,71 @@ export default function ProductDetailPage({ sku, navigate }) {
                 placeholder="Und"
               />
             </div>
+          ) : (
+            <InfoField label="Unidade" value={produto.unidade || '—'} />
+          )}
 
-            <div className="md:col-span-2">
-              <label className="text-[11px] uppercase tracking-wide text-fg-muted">Descrição</label>
-              <textarea
-                value={edited.descricao || ''}
-                onChange={(e) => setEdited((prev) => ({ ...prev, descricao: e.target.value }))}
-                className="mt-1 min-h-[96px] w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                placeholder="Descrição do produto"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            {hasImage && (
-              <img
-                src={produto.imagem}
-                alt={produto.nome}
-                className="h-24 w-24 shrink-0 rounded-2xl border border-line object-cover"
-              />
-            )}
-
-            <div className="min-w-0 flex-1 space-y-4">
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-2xl font-semibold text-fg">{title}</h1>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}
-                  >
-                    {produto.ativo ? 'Ativo' : 'Inativo'}
-                  </span>
-                </div>
-                <p className="text-sm text-fg-muted font-mono">{produto.sku}</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <InfoField label="SKU" value={produto.sku} />
-                <InfoField label="Categoria" value={produto.categoria || '—'} />
-                <InfoField label="Unidade" value={produto.unidade || '—'} />
-              </div>
-            </div>
-          </div>
-        )}
+          <InfoField
+            label="Criado / modificado"
+            value={produto.modificado_em ? formatDate(produto.modificado_em) : '—'}
+          />
+        </div>
       </SectionCard>
 
       <SectionCard
         title="Preços por faixa"
-        description={
-          editing
-            ? 'Edite só os preços. As 5 faixas são fixas.'
-            : 'As 5 faixas sempre aparecem; sem preço definido mostramos “—”.'
-        }
+        description="As 5 faixas sempre aparecem; sem preço definido mostramos “—”."
+        icon={Tag}
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] text-sm">
-            <thead>
-              <tr className="border-b border-line text-left">
-                <th className="pb-3 pr-4 text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                  Faixa
-                </th>
-                <th className="pb-3 text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                  Preço
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {BRACKETS.map((faixa) => {
-                const row = precosRates.find((p) => p.faixa === faixa);
-                return (
-                  <tr key={faixa} className="border-b border-line last:border-0">
-                    <td className="py-3 pr-4 font-medium text-fg">
-                      {faixa.toLocaleString('pt-BR')} un.
-                    </td>
-                    <td className="py-3">
-                      {editing ? (
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          aria-label={`Preço da faixa ${faixa} unidades`}
-                          value={edited.rates?.[faixa] ?? ''}
-                          onChange={(e) =>
-                            setEdited((prev) => ({
-                              ...prev,
-                              rates: { ...prev.rates, [faixa]: e.target.value },
-                            }))
-                          }
-                          className="max-w-[180px] text-sm"
-                          placeholder="0,00"
-                        />
-                      ) : (
-                        <span className="font-mono text-fg">
-                          {row?.rate != null ? formatBRL(row.rate) : '—'}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {BRACKETS.map((faixa) => {
+            const row = precosRates.find((p) => p.faixa === faixa);
+            return (
+              <div key={faixa} className="rounded-xl border border-line bg-surface/50 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
+                  {faixa.toLocaleString('pt-BR')} un.
+                </p>
+                {editing ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    aria-label={`Preço da faixa ${faixa} unidades`}
+                    value={edited.rates?.[faixa] ?? ''}
+                    onChange={(e) =>
+                      setEdited((prev) => ({
+                        ...prev,
+                        rates: { ...prev.rates, [faixa]: e.target.value },
+                      }))
+                    }
+                    className="mt-2 text-sm font-mono"
+                    placeholder="0,00"
+                  />
+                ) : (
+                  <p className="mt-2 text-sm font-medium text-fg font-mono">
+                    {row?.rate != null ? formatBRL(row.rate) : '—'}
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </SectionCard>
 
-      {!editing && produto.descricao && (
-        <SectionCard title="Descrição">
-          <p className="text-sm text-fg-muted whitespace-pre-wrap">{produto.descricao}</p>
-        </SectionCard>
-      )}
+      <SectionCard title="Descrição" description="Texto livre do produto." icon={FileText}>
+        {editing ? (
+          <textarea
+            value={edited.descricao || ''}
+            onChange={(e) => setEdited((prev) => ({ ...prev, descricao: e.target.value }))}
+            className="min-h-[110px] w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            placeholder="Descrição do produto"
+          />
+        ) : (
+          <p className="text-sm text-fg break-words whitespace-pre-wrap">
+            {produto.descricao || '—'}
+          </p>
+        )}
+      </SectionCard>
 
       {!isNewProduct && (
         <SectionCard
@@ -579,6 +609,7 @@ export default function ProductDetailPage({ sku, navigate }) {
               ? `Última atualização: ${formatDate(produto.modificado_em)}`
               : 'Contexto recente do produto.'
           }
+          icon={FileText}
         >
           {atividades.length > 0 ? (
             <div className="space-y-3">
