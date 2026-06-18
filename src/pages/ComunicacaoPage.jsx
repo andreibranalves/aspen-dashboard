@@ -31,7 +31,7 @@ export default function ComunicacaoPage() {
       <PageHeader title="Comunicação" />
 
       {/* Tab bar */}
-      <div className="flex gap-1 border-b border-line overflow-x-auto">
+      <div className="flex flex-wrap gap-1 border-b border-line">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
