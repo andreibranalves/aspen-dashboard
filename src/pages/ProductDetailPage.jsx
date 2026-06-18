@@ -464,9 +464,9 @@ export default function ProductDetailPage({ sku, navigate }) {
       </section>
 
       <SectionCard title="Dados gerais" description="Cadastro básico do produto." icon={Package}>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {editing ? (
-            <div>
+            <div className="md:col-span-2">
               <label className="text-fg-muted text-[11px] uppercase tracking-wide">Nome</label>
               <Input
                 value={edited.nome || ''}
@@ -477,6 +477,20 @@ export default function ProductDetailPage({ sku, navigate }) {
             </div>
           ) : (
             <InfoField label="Nome" value={produto.nome} />
+          )}
+
+          {editing ? (
+            <div className="md:col-span-2">
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">Descrição</label>
+              <textarea
+                value={edited.descricao || ''}
+                onChange={(e) => setEdited((prev) => ({ ...prev, descricao: e.target.value }))}
+                className="mt-1 min-h-[110px] w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                placeholder="Descrição do produto"
+              />
+            </div>
+          ) : (
+            <InfoField label="Descrição" value={produto.descricao || '—'} />
           )}
 
           {editing ? (
@@ -584,21 +598,6 @@ export default function ProductDetailPage({ sku, navigate }) {
             );
           })}
         </div>
-      </SectionCard>
-
-      <SectionCard title="Descrição" description="Texto livre do produto." icon={FileText}>
-        {editing ? (
-          <textarea
-            value={edited.descricao || ''}
-            onChange={(e) => setEdited((prev) => ({ ...prev, descricao: e.target.value }))}
-            className="min-h-[110px] w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-            placeholder="Descrição do produto"
-          />
-        ) : (
-          <p className="text-sm text-fg break-words whitespace-pre-wrap">
-            {produto.descricao || '—'}
-          </p>
-        )}
       </SectionCard>
 
       {!isNewProduct && (
