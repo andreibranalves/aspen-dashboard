@@ -437,7 +437,7 @@ export default function ProductDetailPage({ sku, navigate }) {
 
             <div className="min-w-0 space-y-1">
               <p className="text-xs text-fg-muted font-mono leading-none">{produto.sku || '—'}</p>
-              <div className="space-y-0">
+              <div className="space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-semibold text-fg truncate">
                     {produto.nome || 'Sem nome'}
@@ -448,7 +448,9 @@ export default function ProductDetailPage({ sku, navigate }) {
                     {produto.ativo ? 'Ativo' : 'Inativo'}
                   </span>
                 </div>
-                {produto.descricao && <p className="text-sm text-fg-muted">{produto.descricao}</p>}
+                {produto.descricao && (
+                  <p className="text-sm text-fg-muted mt-0.5">{produto.descricao}</p>
+                )}
               </div>
             </div>
           </div>
