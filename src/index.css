@@ -78,7 +78,7 @@
     --page: 222 36% 9%; /* #0f1420 */
     --surface: 222 36% 9%; /* #0f1420 — igual a page */
     --surface-muted: 218 30% 15%; /* #1a2230 */
-    --shell: 218 33% 12%; /* #151c28 */
+    --shell: 222 36% 9%; /* #0f1420 — sidebar (igual ao nav bar no dark) */
     --line: 219 26% 22%; /* #2a3447 */
     --fg: 217 45% 96%; /* #f2f5fa */
     --fg-muted: 217 21% 63%; /* #8e9db5 */
