@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, ExternalLink, FileText, ShoppingCart, Truck, DollarSign, Check } from 'lucide-react';
+import { ExternalLink, FileText, ShoppingCart, Truck, DollarSign, Check } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
 import PageHeader from '@/components/PageHeader.jsx';
@@ -40,7 +40,7 @@ export default function SalesOrderDetailPage({ id, navigate }) {
   // ── Loading ──
   if (loading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 max-w-[1060px] mx-auto">
         <div className="h-4 w-40 bg-surface-muted rounded animate-pulse" />
         <div className="bg-surface rounded-lg border border-line shadow-sm p-6 space-y-4">
           <div className="h-8 w-48 bg-surface-muted rounded animate-pulse" />
@@ -58,13 +58,7 @@ export default function SalesOrderDetailPage({ id, navigate }) {
   // ── Error ──
   if (error) {
     return (
-      <div className="space-y-4">
-        <button
-          onClick={() => navigate('/sales-orders')}
-          className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-        >
-          <ArrowLeft size={14} /> Voltar para Pedidos de Venda
-        </button>
+      <div className="space-y-4 max-w-[1060px] mx-auto">
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <div className="text-destructive/60">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -85,15 +79,7 @@ export default function SalesOrderDetailPage({ id, navigate }) {
   const perBilled = data.per_billed ?? 0;
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Back */}
-      <button
-        onClick={() => navigate('/sales-orders')}
-        className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-      >
-        <ArrowLeft size={14} /> Voltar para lista
-      </button>
-
+    <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
       {/* Header Card */}
       <div className="bg-surface rounded-lg border border-line shadow-sm">
         {/* Header */}
