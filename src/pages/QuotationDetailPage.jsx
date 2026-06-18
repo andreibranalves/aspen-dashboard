@@ -292,7 +292,7 @@ export default function QuotationDetailPage({ id, navigate }) {
   const fullQuotationViewUrl = new URL(quotationViewUrl, window.location.origin).toString();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-[1060px] mx-auto">
       {/* Back */}
       <button
         onClick={() => navigate('/quotations')}
