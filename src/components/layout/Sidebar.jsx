@@ -115,13 +115,18 @@ export default function Sidebar({
                     'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                     collapsed && 'justify-center gap-0 px-0',
                     'hover:bg-primary/5',
-                    currentRoute === hash ? 'bg-primary/10 text-primary font-medium' : 'text-fg'
+                    currentRoute === hash
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-fg-muted'
                   )}
                   title={collapsed ? label : undefined}
                 >
                   <Icon
                     size={20}
-                    className={cn('shrink-0', currentRoute === hash ? 'text-primary' : 'text-fg')}
+                    className={cn(
+                      'shrink-0',
+                      currentRoute === hash ? 'text-primary' : 'text-fg-muted'
+                    )}
                   />
                   {!collapsed && <span className="truncate">{label}</span>}
                 </button>
@@ -137,17 +142,17 @@ export default function Sidebar({
             type="button"
             onClick={toggleDarkMode}
             className={cn(
-              'w-full flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition-colors',
-              'hover:bg-surface-muted',
+              'w-full flex items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition-colors text-fg-muted',
+              'hover:bg-surface-muted hover:text-fg',
               collapsed && 'justify-center px-0'
             )}
             aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
             {darkMode ? (
-              <Sun size={16} className="shrink-0 text-fg" />
+              <Sun size={16} className="shrink-0" />
             ) : (
-              <Moon size={16} className="shrink-0 text-fg" />
+              <Moon size={16} className="shrink-0" />
             )}
             {!collapsed && <span>{darkMode ? 'Modo claro' : 'Modo escuro'}</span>}
           </button>
