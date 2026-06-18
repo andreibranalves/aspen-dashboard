@@ -206,7 +206,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={5} rows={6} title="Carregando produtos…" />}
+      {loading && <SkeletonTable cols={5} rows={6} />}
 
       {/* Error */}
       {!loading && error && (

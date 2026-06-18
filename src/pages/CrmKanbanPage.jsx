@@ -133,7 +133,7 @@ export default function CrmKanbanPage() {
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonKanban title="Carregando pipeline CRM…" />}
+      {loading && <SkeletonKanban />}
 
       {/* Error */}
       {!loading && error && (

@@ -368,7 +368,7 @@ export default function QuotationsPage({ navigate }) {
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={6} rows={8} title="Carregando orçamentos…" />}
+      {loading && <SkeletonTable cols={6} rows={8} />}
 
       {/* Error */}
       {!loading && error && (

@@ -504,7 +504,7 @@ export default function LeadsPage({ navigate }) {
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={5} rows={8} title="Carregando leads e clientes…" />}
+      {loading && <SkeletonTable cols={5} rows={8} />}
 
       {/* Error */}
       {!loading && error && (

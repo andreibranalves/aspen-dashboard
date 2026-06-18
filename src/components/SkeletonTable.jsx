@@ -5,10 +5,9 @@ import Skeleton from '@/components/Skeleton.jsx';
  *
  * @param {number} cols - Quantidade de colunas
  * @param {number} rows - Quantidade de linhas (default 8)
- * @param {string} title - Texto exibido abaixo do skeleton
  * @param {'sm'|'md'|'lg'} size - Tamanho das linhas (default 'md')
  */
-export default function SkeletonTable({ cols = 4, rows = 8, title = 'Carregandoâ€¦', size = 'md' }) {
+export default function SkeletonTable({ cols = 4, rows = 8, size = 'md' }) {
   const rowHeight = size === 'sm' ? 'h-6' : size === 'lg' ? 'h-12' : 'h-8';
   const headerHeight = size === 'sm' ? 'h-5' : size === 'lg' ? 'h-10' : 'h-7';
 
@@ -46,7 +45,6 @@ export default function SkeletonTable({ cols = 4, rows = 8, title = 'Carregandoâ
           ))}
         </div>
       </div>
-      <p className="text-fg-muted text-sm">{title}</p>
     </div>
   );
 }

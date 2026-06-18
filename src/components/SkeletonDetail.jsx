@@ -3,10 +3,8 @@ import Skeleton from '@/components/Skeleton.jsx';
 /**
  * SkeletonDetail — simula uma página de detalhe durante o carregamento.
  * Header + seções com blocos de key-value e uma tabela de itens.
- *
- * @param {string} title - Texto de carregamento
  */
-export default function SkeletonDetail({ title = 'Carregando…' }) {
+export default function SkeletonDetail() {
   return (
     <div className="flex flex-col items-center gap-3 max-w-[1060px] mx-auto w-full" aria-label="Carregando detalhes">
       {/* Back button placeholder */}
@@ -85,7 +83,6 @@ export default function SkeletonDetail({ title = 'Carregando…' }) {
           </div>
         </div>
       </div>
-      <p className="text-fg-muted text-sm">{title}</p>
     </div>
   );
 }

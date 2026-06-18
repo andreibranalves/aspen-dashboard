@@ -286,7 +286,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   }, [decodedSku, edited, error, isNewProduct, loading, product, saving, setTopBarActions, editing]);
 
   // ── Loading / Error states ──
-  if (loading) return <SkeletonDetail title="Carregando produto…" />;
+  if (loading) return <SkeletonDetail />;
 
   if (error === 'not_found') {
     return (

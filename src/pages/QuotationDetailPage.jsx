@@ -267,7 +267,7 @@ export default function QuotationDetailPage({ id, navigate }) {
 
   // ── Loading / Error ──
   if (loading) {
-    return <SkeletonDetail title="Carregando orçamento…" />;
+    return <SkeletonDetail />;
   }
 
   if (error) {

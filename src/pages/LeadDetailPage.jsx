@@ -416,7 +416,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
     return () => setTopBarActions(null);
   }, [cancelEdit, detail, editMode, error, isNewLead, loading, saveEdit, saving, setTopBarActions, startEdit]);
 
-  if (loading) return <SkeletonDetail title="Carregando lead…" />;
+  if (loading) return <SkeletonDetail />;
 
   if (error === 'not_found') {
     return (
@@ -487,9 +487,11 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         </div>
       )}
 
-      <PageHeader
-        title={isNewLead ? 'Novo Lead' : (detail.display_name || decodedId)}
-      />
+      {isNewLead && (
+        <PageHeader
+          title="Novo Lead"
+        />
+      )}
 
       <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">

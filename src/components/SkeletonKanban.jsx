@@ -2,10 +2,8 @@ import Skeleton from '@/components/Skeleton.jsx';
 
 /**
  * SkeletonKanban — simula um quadro Kanban durante o carregamento.
- *
- * @param {string} title - Texto de carregamento
  */
-export default function SkeletonKanban({ title = 'Carregando…' }) {
+export default function SkeletonKanban() {
   const columns = 4;
   // Cada coluna tem um número diferente de cards para parecer realista
   const cardsPerCol = [3, 2, 4, 2];
@@ -36,7 +34,6 @@ export default function SkeletonKanban({ title = 'Carregando…' }) {
           </div>
         ))}
       </div>
-      <p className="text-fg-muted text-sm">{title}</p>
     </div>
   );
 }
