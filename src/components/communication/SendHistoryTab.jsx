@@ -3,7 +3,8 @@
 // Shows quotation_id, phone, flow name, status, steps count, timestamp.
 
 import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle, XCircle, AlertTriangle, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
+import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';
 
 export default function SendHistoryTab() {
   const [events, setEvents] = useState([]);
@@ -29,11 +30,7 @@ export default function SendHistoryTab() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-fg-muted" />
-      </div>
-    );
+    return <SkeletonComunicacao />;
   }
 
   if (error) {

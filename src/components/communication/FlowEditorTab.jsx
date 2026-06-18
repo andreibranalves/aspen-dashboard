@@ -20,6 +20,8 @@ import {
 import { Button } from '@/components/ui/button.jsx';
 import { fetchFlows, saveFlows } from '@/lib/communicationApi.js';
 import { renderFlowTemplate } from '@/lib/whatsappFlows.js';
+import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -139,12 +141,41 @@ export default function FlowEditorTab() {
   }, [flows, selectedFlowId]);
 
   // Flow mutations
-  const addFlow = () => {
+  const addFlow = useCallback(() => {
     const newFlow = createFlow(flows.length);
     setFlows((prev) => [...prev, newFlow]);
     setSelectedFlowId(newFlow.id);
     setExpandedFlow(newFlow.id);
-  };
+  }, [flows.length]);
+
+  const setTopBarActions = useSetTopBarActions();
+
+  useEffect(() => {
+    if (!setTopBarActions) return undefined;
+    if (loading) {
+      setTopBarActions(null);
+      return () => setTopBarActions(null);
+    }
+
+    setTopBarActions(
+      <div className="flex items-center gap-2">
+        <Button onClick={addFlow} size="sm">
+          <Plus size={14} /> Novo fluxo
+        </Button>
+        <Button
+          onClick={handleSave}
+          size="sm"
+          variant={isDirty ? 'default' : 'outline'}
+          disabled={saving || !isDirty}
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          Salvar
+        </Button>
+      </div>,
+    );
+
+    return () => setTopBarActions(null);
+  }, [addFlow, handleSave, isDirty, loading, saving, setTopBarActions]);
 
   const duplicateFlow = (flowId) => {
     const idx = flows.findIndex((f) => f.id === flowId);
@@ -238,29 +269,13 @@ export default function FlowEditorTab() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 size={24} className="animate-spin text-fg-muted" />
-      </div>
-    );
+    return <SkeletonComunicacao />;
   }
 
   return (
     <div className="space-y-6">
-      {/* Header actions */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button onClick={addFlow} size="sm">
-          <Plus size={14} /> Novo fluxo
-        </Button>
-        <Button
-          onClick={handleSave}
-          size="sm"
-          variant={isDirty ? 'default' : 'outline'}
-          disabled={saving || !isDirty}
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          Salvar
-        </Button>
+      {/* Status messages */}
+      <div className="flex items-center gap-2 flex-wrap min-h-[20px]">
         {successMsg && (
           <span className="text-xs text-success dark:text-success/80">{successMsg}</span>
         )}

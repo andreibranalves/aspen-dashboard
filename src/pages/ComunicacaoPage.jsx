@@ -27,7 +27,7 @@ export default function ComunicacaoPage() {
   }, []);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
       <PageHeader title="Comunicação" />
 
       {/* Tab bar */}

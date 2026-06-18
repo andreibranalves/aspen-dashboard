@@ -2,10 +2,11 @@
 // Shows MediaGridItem cards and a delete confirmation flow.
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, Filter } from 'lucide-react';
+import { Filter } from 'lucide-react';
 import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi.js';
 import MediaGridItem from '@/components/communication/MediaGridItem.jsx';
 import ConfirmDialog from '@/components/ConfirmDialog.jsx';
+import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';
 
 export default function MediaLibrary({ refreshKey }) {
   const [items, setItems] = useState([]);
@@ -82,11 +83,7 @@ export default function MediaLibrary({ refreshKey }) {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-fg-muted" />
-        </div>
-      )}
+      {loading && <SkeletonComunicacao />}
 
       {/* Error */}
       {error && (
