@@ -6,7 +6,7 @@ import BackButton from '@/components/ui/back-button.jsx';
  * TopBar — breadcrumb (left) + page-specific actions (right).
  * "Aspen Estamparia" and dark mode toggle removed — toggle lives in Sidebar.
  */
-export default function TopBar({ route, onMenuClick, breadcrumbItems, onNavigate, actions }) {
+export default function TopBar({ route: _route, onMenuClick, breadcrumbItems, onNavigate, actions }) {
   // Show back button on detail pages (e.g. Início > Orçamentos > ORC-1234).
   const parentItem = breadcrumbItems.length >= 3 ? breadcrumbItems[1] : null;
 

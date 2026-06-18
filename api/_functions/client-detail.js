@@ -1,5 +1,5 @@
 import { erpGetDoc, erpGetList, erpPut, erpPost, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
-import { LEAD_SOURCES, normalizeLeadSource, normalizeCnpj, isValidCnpj } from './lib/client-metadata.js';
+import { LEAD_SOURCES, normalizeLeadSource, normalizeCnpj } from './lib/client-metadata.js';
 
 // ── Constants ──
 

@@ -36,7 +36,6 @@ import {
   formatCnpj,
   normalizeAddress,
   hasAnyAddressField,
-  hasMinimumAddressForErp,
   formatAddressSummary,
 } from '@/lib/clientMetadata.js';
 

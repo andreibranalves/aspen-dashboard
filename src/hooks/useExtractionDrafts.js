@@ -3,7 +3,7 @@
 // Extracted from AutoQuotePage.jsx.
 
 import { useState, useCallback, useRef } from 'react';
-import { apiPost, apiGet } from '@/lib/api.js';
+import { apiPost } from '@/lib/api.js';
 import { searchProducts as cachedSearchProducts } from '@/lib/productCache.js';
 import {
   isValidLeadSource,

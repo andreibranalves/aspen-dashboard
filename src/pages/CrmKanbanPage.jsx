@@ -65,14 +65,12 @@ export default function CrmKanbanPage() {
           deals: [...col.deals],
         }));
         let deal = null;
-        let oldColIdx = -1;
         for (let i = 0; i < next.length; i++) {
           const idx = next[i].deals.findIndex((d) => d.id === dealId);
           if (idx !== -1) {
             deal = { ...next[i].deals[idx], status: newStatus };
             next[i].deals.splice(idx, 1);
             next[i].count = next[i].deals.length;
-            oldColIdx = i;
             break;
           }
         }

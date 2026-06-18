@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ExternalLink, FileText, ShoppingCart, Truck, DollarSign, Check } from 'lucide-react';
+import { ExternalLink, FileText, Truck, DollarSign, Check } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
-import { formatBRL, capitalize } from '@/lib/formatters.js';
-import PageHeader from '@/components/PageHeader.jsx';
+import { formatBRL } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
 
 const STATUS_LABELS = {

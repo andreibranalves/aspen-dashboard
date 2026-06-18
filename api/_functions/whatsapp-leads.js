@@ -343,7 +343,7 @@ async function evolutionFetch(path, body = {}, timeoutMs = 10000) {
     body: JSON.stringify(body),
   }, timeoutMs);
   const text = await res.text();
-  let data = null;
+  let data;
   try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
   if (!res.ok) {
     throw createHttpError(502, 'Falha ao consultar WhatsApp.', `[whatsapp-leads] Evolution ${res.status}: ${text.slice(0, 500)}`);

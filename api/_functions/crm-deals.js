@@ -1,12 +1,6 @@
-import { erpGetList, createHttpError } from './lib/erpnext.js';
+import { erpGetList } from './lib/erpnext.js';
 
 // ── Helpers ──
-
-function parsePageLimit(params) {
-  const page = Math.max(1, parseInt(params.page, 10) || 1);
-  const limit = Math.min(200, Math.max(1, parseInt(params.limit, 10) || 50));
-  return { page, limit };
-}
 
 /**
  * Ordem canônica dos estágios do pipeline.
@@ -21,11 +15,6 @@ const PIPELINE_ORDER = [
   'Pedido Fechado',
   'Perdido',
 ];
-
-function stageSortKey(status) {
-  const idx = PIPELINE_ORDER.indexOf(status);
-  return idx === -1 ? 999 : idx;
-}
 
 function mapDeal(d) {
   return {

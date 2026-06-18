@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
-  Plus,
   Sparkles,
   Pencil,
   FileText,

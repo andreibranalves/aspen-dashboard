@@ -1,5 +1,5 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
-import { erpGetDoc, erpPut, createHttpError } from './lib/erpnext.js';
+import { erpGetDoc, erpPut } from './lib/erpnext.js';
 import { saveProductPricing } from './product-pricing.js';
 
 // ── Handler ─────────────────────────────────────────────────────────────────

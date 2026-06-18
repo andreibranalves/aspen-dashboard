@@ -2,14 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { searchProducts } from '@/lib/productCache.js';
-import { cn } from '@/lib/utils.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { StatusBadge } from '@/components/ui/badge.jsx';
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 

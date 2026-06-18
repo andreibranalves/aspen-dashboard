@@ -38,7 +38,7 @@ const Button = forwardRef(({
   className,
   variant = 'default',
   size = 'default',
-  asChild,
+  asChild: _asChild,
   children,
   ...props
 }, ref) => {

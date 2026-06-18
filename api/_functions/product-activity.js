@@ -121,7 +121,7 @@ export async function handler(event) {
 
     // Ordenar por data decrescente, limitar, remover ts
     atividades.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-    const result = atividades.slice(0, limit).map(({ ts, ...rest }) => rest);
+    const result = atividades.slice(0, limit).map(({ ts: _ts, ...rest }) => rest);
 
     return {
       statusCode: 200,

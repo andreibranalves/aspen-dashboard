@@ -3,7 +3,7 @@
 // Period shortcuts: today, 7d, 30d, 90d, month, last_month or custom from+to.
 // Returns summary, top products/customers, sales by day, stale quotations, conversion rate.
 
-import { erpGetList, createHttpError } from './lib/erpnext.js';
+import { erpGetList } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -428,8 +428,7 @@ export async function handler(event) {
     const staleQuotations = await fetchStaleQuotations();
 
     // ── 10. Conversion Rate ─────────────────────────────────────────────
-    const { quotationsCount, ordersFromQuotationCount, conversionRate } =
-      await computeConversionRate(start, end, currentItems);
+    const { conversionRate } = await computeConversionRate(start, end, currentItems);
 
     // ── 11. Response ────────────────────────────────────────────────────
     return {

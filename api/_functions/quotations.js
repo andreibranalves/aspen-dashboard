@@ -343,7 +343,7 @@ async function handleUpdate(quotationId, payload) {
 // ── List Endpoint ───────────────────────────────────────────────────────────
 
 async function handleList(query) {
-  const { status, orderBy, page, limit } = validateListParams(query);
+  const { orderBy, page, limit } = validateListParams(query);
   const { filters, orFilters } = buildListFilters(query);
   const start = (page - 1) * limit;
 

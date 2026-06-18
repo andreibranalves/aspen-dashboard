@@ -2,14 +2,16 @@ import js from '@eslint/js';
 import prettierConfig from 'eslint-config-prettier';
 
 export default [
-  js.configs.recommended,
-  prettierConfig,
+  {
+    ignores: ['public/assets/**', '**/public/assets/**', 'dist/**', 'node_modules/**', 'scripts/playwright-*.mjs'],
+  },
   {
     linterOptions: {
       reportUnusedDisableDirectives: false,
     },
-    ignores: ['public/assets/**', 'dist/**', 'node_modules/**', 'scripts/playwright-*.mjs'],
   },
+  js.configs.recommended,
+  prettierConfig,
   // ── Node.js (API handlers, libs, scripts, tests) ──
   {
     files: ['api/**/*.js', 'scripts/**/*.{js,mjs}', 'test_local.mjs', '*.config.js', 'tailwind.config.js'],
@@ -27,12 +29,14 @@ export default [
         clearTimeout: 'readonly',
         setInterval: 'readonly',
         clearInterval: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-undef': 'error',
-      'no-empty': 'warn',
+      'no-empty': ['warn', { allowEmptyCatch: true }],
     },
   },
   // ── Browser (React frontend) ──
@@ -78,7 +82,7 @@ export default [
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       'no-undef': 'error',
-      'no-empty': 'warn',
+      'no-empty': ['warn', { allowEmptyCatch: true }],
       'react-hooks/exhaustive-deps': 'off',
     },
   },

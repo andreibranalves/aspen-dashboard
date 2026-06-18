@@ -4,7 +4,7 @@
 //
 // Uso: node scripts/test-client-metadata.mjs
 
-import { ok, equal, throws } from 'node:assert/strict';
+import { ok, equal } from 'node:assert/strict';
 
 // ── Frontend helpers (src/lib/clientMetadata.js) ──────────────────────────
 
