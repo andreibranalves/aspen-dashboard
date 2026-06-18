@@ -400,7 +400,6 @@ export default function ProductDetailPage({ sku, navigate }) {
   if (!produto) return null;
 
   const hasImage = Boolean(!editing && produto.imagem && typeof produto.imagem === 'string');
-  const title = isNewProduct ? 'Novo produto' : produto.nome || decodedSku;
 
   return (
     <div className="space-y-5 animate-fade-in max-w-[1060px] mx-auto">
@@ -420,14 +419,6 @@ export default function ProductDetailPage({ sku, navigate }) {
           {toast.message}
         </div>
       )}
-
-      <div className="space-y-1">
-        <p className="text-sm text-fg-muted">
-          Produtos /{' '}
-          <span className="font-medium text-fg">{isNewProduct ? 'Novo' : produto.sku}</span>
-        </p>
-        <h1 className="text-2xl font-semibold text-fg">{isNewProduct ? 'Novo produto' : title}</h1>
-      </div>
 
       <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
