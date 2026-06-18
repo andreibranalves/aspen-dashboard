@@ -8,7 +8,7 @@ import Skeleton from '@/components/Skeleton.jsx';
  */
 export default function SkeletonDetail({ title = 'Carregando…' }) {
   return (
-    <div className="flex flex-col items-center gap-3" aria-label="Carregando detalhes">
+    <div className="flex flex-col items-center gap-3 max-w-[1060px] mx-auto w-full" aria-label="Carregando detalhes">
       {/* Back button placeholder */}
       <div className="self-start">
         <Skeleton className="h-5 w-28" />
