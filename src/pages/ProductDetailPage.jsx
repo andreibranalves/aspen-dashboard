@@ -435,9 +435,9 @@ export default function ProductDetailPage({ sku, navigate }) {
               </div>
             )}
 
-            <div className="min-w-0 space-y-3">
+            <div className="min-w-0 space-y-2">
               <p className="text-sm text-fg-muted font-mono">{produto.sku || '—'}</p>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-semibold text-fg truncate">
                     {produto.nome || 'Sem nome'}
