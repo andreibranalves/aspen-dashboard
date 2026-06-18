@@ -67,6 +67,7 @@ const ROUTES = {
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
+  'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-flows': whatsappFlows,
   'whatsapp-leads': whatsappLeads,
   'communication-flow-preview': communicationFlowPreview,
@@ -75,13 +76,6 @@ const ROUTES = {
   'communication-media': communicationMedia,
   'communication-media-upload': communicationMediaUpload,
   view,
-  'crm-deals': crmDeals, 'crm-update-deal': crmUpdateDeal,
-  'duplicate-quotation': duplicateQuotation, extract, freight,
-  'leads-clients': leadsClients, orcamento, 'pricing-lookup': pricingLookup,
-  'product-detail': productDetail, 'product-update': productUpdate, 'product-pricing-update': productPricingUpdate,
-  'product-activity': productActivity, 'product-pricing': productPricing, products, quotations,
-  'sales-dashboard': salesDashboard, 'sales-order-from-quotation': salesOrderFromQuotation,
-  'sales-orders': salesOrders, 'send-whatsapp': sendWhatsapp, 'typebot-lead-capture': typebotLeadCapture, 'whatsapp-flows': whatsappFlows, 'whatsapp-leads': whatsappLeads, view,
 };
 
 const PORT = Number(process.env.PORT || 8888);
@@ -172,10 +166,6 @@ const server = createServer(async (req, res) => {
       const event = {
         httpMethod: req.method,
         body: req.method === 'GET' ? undefined : JSON.stringify(body),
-        queryStringParameters: Object.fromEntries(
-          new URL(req.url, 'http://localhost').searchParams
-        ),
-        headers: { host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
         queryStringParameters: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams),
         headers: { ...req.headers, host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
       };

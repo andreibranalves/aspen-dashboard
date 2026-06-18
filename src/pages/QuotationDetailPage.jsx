@@ -42,7 +42,7 @@ export default function QuotationDetailPage({ id, navigate }) {
   const [productSearchTerms, setProductSearchTerms] = useState({}); // { _key: searchText }
   const [productResults, setProductResults] = useState({});          // { _key: [...] }
   const [productSearching, setProductSearching] = useState({});      // { _key: bool }
-  const [activeDropdown, setActiveDropdown] = useState(null);        // _key or null
+  const [activeField, setActiveField] = useState(null);              // { key, field } or null
   const productTimer = useRef(null);
   const pricingTimers = useRef({});  // { _key: timeoutId }
 
@@ -84,9 +84,9 @@ export default function QuotationDetailPage({ id, navigate }) {
     setProductSearchTerms(prev => { const n = { ...prev }; delete n[_key]; return n; });
     setProductResults(prev => { const n = { ...prev }; delete n[_key]; return n; });
     setProductSearching(prev => { const n = { ...prev }; delete n[_key]; return n; });
-    if (activeDropdown === _key) setActiveDropdown(null);
+    if (activeField?.key === _key) setActiveField(null);
     delete pricingTimers.current[_key];
-  }, [activeDropdown]);
+  }, [activeField]);
 
   const addItem = useCallback(() => {
     const _key = makeItemKey();
@@ -95,7 +95,7 @@ export default function QuotationDetailPage({ id, navigate }) {
   }, []);
 
   // ── Product search (debounced, ref-based) ──
-  const searchProducts = useCallback(async (_key, term) => {
+  const fetchProductOptions = useCallback(async (_key, term) => {
     if (!term || term.length < 2) {
       setProductResults(prev => ({ ...prev, [_key]: [] }));
       return;
@@ -115,8 +115,14 @@ export default function QuotationDetailPage({ id, navigate }) {
     setProductSearchTerms(prev => ({ ...prev, [_key]: value }));
     updateItem(_key, 'item_code', value);
     clearTimeout(productTimer.current);
-    productTimer.current = setTimeout(() => searchProducts(_key, value), 300);
-  }, [updateItem, searchProducts]);
+    productTimer.current = setTimeout(() => fetchProductOptions(_key, value), 300);
+  }, [updateItem, fetchProductOptions]);
+
+  const onNameChange = useCallback((_key, value) => {
+    updateItem(_key, 'item_name', value);
+    clearTimeout(productTimer.current);
+    productTimer.current = setTimeout(() => fetchProductOptions(_key, value), 300);
+  }, [updateItem, fetchProductOptions]);
 
   // ── Auto-pricing lookup (ref-based debounce, key-based) ──
   const lookupPrice = useCallback(async (_key, sku, qty) => {
@@ -146,7 +152,7 @@ export default function QuotationDetailPage({ id, navigate }) {
     updateItem(_key, 'item_name', product.nome || product.item_name || '');
     setProductSearchTerms(prev => ({ ...prev, [_key]: product.sku }));
     setProductResults(prev => ({ ...prev, [_key]: [] }));
-    setActiveDropdown(null);
+    setActiveField(null);
     // Auto-price after selecting
     setEditedItems(prev => {
       const item = prev.find(it => it._key === _key);
@@ -182,7 +188,7 @@ export default function QuotationDetailPage({ id, navigate }) {
     setProductSearchTerms({});
     setProductResults({});
     setProductSearching({});
-    setActiveDropdown(null);
+    setActiveField(null);
     pricingTimers.current = {};
     setMode('view');
   }, [data]);
@@ -380,7 +386,27 @@ export default function QuotationDetailPage({ id, navigate }) {
                   const searchTerm = productSearchTerms[key] || '';
                   const results = productResults[key] || [];
                   const searching = productSearching[key] || false;
-                  const showDropdown = activeDropdown === key && results.length > 0;
+                  const showDropdown = activeField?.key === key && results.length > 0;
+                  const searchSpinner = searching && (
+                    <div className="absolute right-2 top-2">
+                      <Loader2 size={12} className="animate-spin text-fg-muted" />
+                    </div>
+                  );
+                  const productDropdown = showDropdown && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {results.map((p) => (
+                        <button
+                          key={p.sku || p.item_code}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
+                          onMouseDown={e => { e.preventDefault(); selectProduct(key, p); }}
+                        >
+                          <span className="font-mono text-xs text-fg-muted">{p.sku || p.item_code}</span>
+                          <span className="truncate">{p.nome || p.item_name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
 
                   return (
                     <TableRow
@@ -402,39 +428,24 @@ export default function QuotationDetailPage({ id, navigate }) {
                           className="h-8 text-sm font-mono"
                           placeholder="Buscar SKU ou nome…"
                           value={searchTerm || item.item_code || ''}
-                          onFocus={() => setActiveDropdown(key)}
-                          onBlur={() => setTimeout(() => setActiveDropdown(null), 200)}
+                          onFocus={() => setActiveField({ key, field: 'sku' })}
+                          onBlur={() => setTimeout(() => setActiveField(null), 200)}
                           onChange={e => onSkuChange(key, e.target.value)}
                         />
-                        {searching && (
-                          <div className="absolute right-2 top-2">
-                            <Loader2 size={12} className="animate-spin text-fg-muted" />
-                          </div>
-                        )}
-                        {showDropdown && (
-                          <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {results.map((p) => (
-                              <button
-                                key={p.sku || p.item_code}
-                                type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
-                                onMouseDown={e => { e.preventDefault(); selectProduct(key, p); }}
-                              >
-                                <span className="font-mono text-xs text-fg-muted">{p.sku || p.item_code}</span>
-                                <span className="truncate">{p.nome || p.item_name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        {searchSpinner}
+                        {activeField?.field === 'sku' && productDropdown}
                       </TableCell>
-                      {/* Name */}
-                      <TableCell>
+                      {/* Name with autocomplete */}
+                      <TableCell className="relative">
                         <Input
                           className="h-8 text-sm"
-                          placeholder="Nome do produto"
+                          placeholder="Buscar produto…"
                           value={item.item_name || ''}
-                          onChange={e => updateItem(key, 'item_name', e.target.value)}
+                          onFocus={() => setActiveField({ key, field: 'name' })}
+                          onBlur={() => setTimeout(() => setActiveField(null), 200)}
+                          onChange={e => onNameChange(key, e.target.value)}
                         />
+                        {activeField?.field === 'name' && productDropdown}
                       </TableCell>
                       {/* Qty */}
                       <TableCell className="text-center">
