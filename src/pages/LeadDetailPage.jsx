@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft,
   AlertTriangle,
   Check,
   Edit3,
@@ -387,15 +386,8 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
   useEffect(() => {
     if (!setTopBarActions) return undefined;
 
-    const backButton = (
-      <Button variant="outline" size="sm" aria-label="Voltar para leads" onClick={() => navigate('/leads')}>
-        <ArrowLeft size={16} />
-        Voltar
-      </Button>
-    );
-
     if (loading || error || !detail) {
-      setTopBarActions(backButton);
+      setTopBarActions(null);
       return () => setTopBarActions(null);
     }
 
@@ -413,19 +405,16 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
             </Button>
           </>
         ) : (
-          <>
-            {backButton}
-            <Button variant="default" size="sm" onClick={startEdit} disabled={saving}>
-              <Edit3 size={16} />
-              Editar cadastro
-            </Button>
-          </>
+          <Button variant="default" size="sm" onClick={startEdit} disabled={saving}>
+            <Edit3 size={16} />
+            Editar cadastro
+          </Button>
         )}
       </div>
     );
 
     return () => setTopBarActions(null);
-  }, [cancelEdit, detail, editMode, error, isNewLead, loading, navigate, saveEdit, saving, setTopBarActions, startEdit]);
+  }, [cancelEdit, detail, editMode, error, isNewLead, loading, saveEdit, saving, setTopBarActions, startEdit]);
 
   if (loading) return <SkeletonDetail title="Carregando lead…" />;
 
@@ -435,10 +424,6 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         <UserRound size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Registro não encontrado</p>
         <p className="text-sm">Não encontramos {tipoLabel(doctype).toLowerCase()} &quot;{decodedId}&quot;.</p>
-        <Button variant="outline" className="min-h-10" onClick={() => navigate('/leads')}>
-          <ArrowLeft size={16} className="mr-2" />
-          Voltar para leads
-        </Button>
       </div>
     );
   }
@@ -449,13 +434,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         <AlertTriangle size={40} className="text-destructive" />
         <p className="text-lg font-medium">Erro ao carregar cadastro</p>
         <p className="text-sm">{error}</p>
-        <div className="flex gap-2">
-          <Button variant="outline" className="min-h-10" onClick={() => navigate('/leads')}>
-            <ArrowLeft size={16} className="mr-2" />
-            Voltar
-          </Button>
-          <Button variant="outline" className="min-h-10" onClick={loadDetail}>Tentar novamente</Button>
-        </div>
+        <Button variant="outline" className="min-h-10" onClick={loadDetail}>Tentar novamente</Button>
       </div>
     );
   }

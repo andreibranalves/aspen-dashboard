@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ArrowLeft, Package, Edit3, Save, X, AlertTriangle, Search, Check } from 'lucide-react';
+import { Package, Edit3, Save, X, AlertTriangle, Search, Check } from 'lucide-react';
 import { apiGet, apiPut, apiPost } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters.js';
 import { Button } from '@/components/ui/button.jsx';
@@ -246,18 +246,8 @@ export default function ProductDetailPage({ sku, navigate }) {
   useEffect(() => {
     if (!setTopBarActions) return undefined;
 
-    if (loading) {
+    if (loading || error || !product?.produto) {
       setTopBarActions(null);
-      return () => setTopBarActions(null);
-    }
-
-    if (error || !product?.produto) {
-      setTopBarActions(
-        <Button variant="outline" size="sm" onClick={() => navigate('/products')}>
-          <ArrowLeft size={16} />
-          Voltar
-        </Button>
-      );
       return () => setTopBarActions(null);
     }
 
@@ -284,22 +274,16 @@ export default function ProductDetailPage({ sku, navigate }) {
             </Button>
           </>
         ) : (
-          <>
-            <Button variant="outline" size="sm" onClick={() => navigate('/products')}>
-              <ArrowLeft size={16} />
-              Voltar
-            </Button>
-            <Button size="sm" aria-label="Editar produto" onClick={startEditing}>
-              <Edit3 size={14} />
-              Editar produto
-            </Button>
-          </>
+          <Button size="sm" aria-label="Editar produto" onClick={startEditing}>
+            <Edit3 size={14} />
+            Editar produto
+          </Button>
         )}
       </div>
     );
 
     return () => setTopBarActions(null);
-  }, [decodedSku, edited, error, isNewProduct, loading, navigate, product, saving, setTopBarActions, editing]);
+  }, [decodedSku, edited, error, isNewProduct, loading, product, saving, setTopBarActions, editing]);
 
   // ── Loading / Error states ──
   if (loading) return <SkeletonDetail title="Carregando produto…" />;
@@ -310,9 +294,6 @@ export default function ProductDetailPage({ sku, navigate }) {
         <Search size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Produto não encontrado</p>
         <p className="text-sm">O SKU &quot;{decodedSku}&quot; não existe no catálogo.</p>
-        <Button variant="outline" className="min-h-10" onClick={() => navigate('/products')}>
-          <ArrowLeft size={16} className="mr-2" />Voltar para produtos
-        </Button>
       </div>
     );
   }
@@ -323,10 +304,7 @@ export default function ProductDetailPage({ sku, navigate }) {
         <AlertTriangle size={40} className="text-destructive" />
         <p className="text-lg font-medium">Erro ao carregar produto</p>
         <p className="text-sm">{error}</p>
-        <div className="flex gap-2">
-          <Button variant="outline" className="min-h-10" onClick={() => navigate('/products')}><ArrowLeft size={16} className="mr-2" />Voltar</Button>
-          <Button variant="outline" className="min-h-10" onClick={fetchProduct}>Tentar novamente</Button>
-        </div>
+        <Button variant="outline" className="min-h-10" onClick={fetchProduct}>Tentar novamente</Button>
       </div>
     );
   }
