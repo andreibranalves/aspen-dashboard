@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
-import { Menu, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Menu, ChevronRight } from 'lucide-react';
+import BackButton from '@/components/ui/back-button.jsx';
 
 /**
  * TopBar — breadcrumb (left) + page-specific actions (right).
@@ -23,17 +24,7 @@ export default function TopBar({ route, onMenuClick, breadcrumbItems, onNavigate
           <Menu size={20} className="text-fg" />
         </button>
         {parentItem?.hash && (
-          <button
-            type="button"
-            onClick={() => onNavigate(parentItem.hash)}
-            className="flex items-center gap-2 text-sm text-primary hover:opacity-80 transition-opacity shrink-0"
-            aria-label="Voltar"
-          >
-            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-primary text-white">
-              <ChevronLeft size={16} strokeWidth={2.5} />
-            </span>
-            <span className="font-medium">voltar</span>
-          </button>
+          <BackButton onClick={() => onNavigate(parentItem.hash)} />
         )}
         <nav className="flex items-center gap-1.5 text-sm overflow-hidden">
           {breadcrumbItems.map((item, i) => (
