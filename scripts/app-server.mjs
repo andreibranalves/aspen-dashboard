@@ -136,6 +136,17 @@ function serveStatic(urlPath, res) {
   return true;
 }
 
+function normalizeQueryParams(url) {
+  const params = new URL(url, 'http://localhost').searchParams;
+  const result = {};
+  for (const [key, value] of params) {
+    // Vercel dev proxy may encode '+' as '%2B'; URLSearchParams decodes it back
+    // to a literal '+'. In query strings '+' represents a space, so normalize it.
+    result[key] = value.replace(/\+/g, ' ');
+  }
+  return result;
+}
+
 const server = createServer(async (req, res) => {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -166,7 +177,7 @@ const server = createServer(async (req, res) => {
       const event = {
         httpMethod: req.method,
         body: req.method === 'GET' ? undefined : JSON.stringify(body),
-        queryStringParameters: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams),
+        queryStringParameters: normalizeQueryParams(req.url),
         headers: { ...req.headers, host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
       };
 

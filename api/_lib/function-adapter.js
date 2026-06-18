@@ -7,10 +7,12 @@ function normalizeBody(req) {
 
 function normalizeQuery(query = {}) {
   return Object.fromEntries(
-    Object.entries(query).map(([key, value]) => [
-      key,
-      Array.isArray(value) ? value[value.length - 1] : value,
-    ])
+    Object.entries(query).map(([key, value]) => {
+      const lastValue = Array.isArray(value) ? value[value.length - 1] : value;
+      // Vercel dev may leave '+' undecoded in query values (e.g. "modified+desc").
+      // In application/x-www-form-urlencoded '+' is a space, so decode it here.
+      return [key, typeof lastValue === 'string' ? lastValue.replace(/\+/g, ' ') : lastValue];
+    })
   );
 }
 

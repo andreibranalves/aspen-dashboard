@@ -6,11 +6,13 @@ const BASE = '/api';
 
 async function request(method, path, body) {
   const url = `${BASE}${path}`;
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  };
-  if (body) opts.body = JSON.stringify(body);
+  const opts = { method };
+  // Only send Content-Type when there is a body. Some servers/proxies reject
+  // GET requests that carry an application/json content-type (e.g. 417 Expectation Failed).
+  if (body) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
 
   const res = await fetch(url, opts);
   const data = await res.json().catch(() => null);
