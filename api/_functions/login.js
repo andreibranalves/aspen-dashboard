@@ -40,11 +40,8 @@ export async function handler(event) {
     };
   }
 
-  // ponytail: Secure only on HTTPS — Vercel dev is HTTP so browser rejects Secure cookies
-  const isHttps = (event.headers?.['x-forwarded-proto'] || event.headers?.['X-Forwarded-Proto'] || 'http') === 'https';
-  const secureFlag = isHttps ? 'Secure; ' : '';
   const cookie =
-    `aspen_token=${APP_PASSWORD}; HttpOnly; ${secureFlag}SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}; Path=/`;
+    `aspen_token=${APP_PASSWORD}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}; Path=/`;
 
   return {
     statusCode: 200,
