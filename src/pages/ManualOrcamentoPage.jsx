@@ -374,7 +374,7 @@ export default function ManualOrcamentoPage() {
 
   // ── Render ──
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
       {/* ══ Success Result ══ */}
       {result && (
         <div className="bg-success/10 border border-success/30 rounded-xl p-5 space-y-4">
