@@ -25,6 +25,49 @@
       transform: rotate(360deg);
     }
   }
+
+  /* ── Skeleton loading states ── */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.375rem;
+    background-color: hsl(var(--surface-muted) / 0.55);
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--fg) / 0.05) 50%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: skeleton-shimmer 1.6s infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .skeleton-text {
+    display: inline-block;
+    vertical-align: middle;
+    height: 1lh;
+    border-radius: 0.25rem;
+    background-color: hsl(var(--surface-muted) / 0.55);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton::after,
+    .skeleton-text::after {
+      animation: none;
+    }
+  }
 }
 
 @layer base {
