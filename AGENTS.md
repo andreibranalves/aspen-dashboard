@@ -12,6 +12,28 @@ Instructions for code agents working in the Orcamento App subproject. This appli
 
 ## Dev Server
 
+### Recommended local dev workflow
+
+Because `vercel dev` can hang or fail to start in some environments, use the two-server setup below:
+
+```bash
+# 1. Install dependencies (only once or after package.json changes)
+npm install
+
+# 2. Create .env from the example and fill in real credentials
+cp .env.example .env
+
+# 3. Start the API server (Vercel Functions) on port 8888
+node scripts/dev-api-server.mjs
+
+# 4. In another terminal, start the Vite frontend on port 5173
+npm run dev
+```
+
+The Vite dev server proxies `/api/*` requests to `http://localhost:8888`, so the frontend can call the local API endpoints exactly as it does in production.
+
+### Vercel CLI workflow
+
 ```bash
 vercel dev
 ```
