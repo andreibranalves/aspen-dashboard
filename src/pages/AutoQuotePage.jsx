@@ -106,9 +106,7 @@ export default function AutoQuotePage() {
       setWaFlows(flows);
       // Draft quotes should default to the "already talking" flow if it exists.
       const alreadyTalking = flows.find(
-        (f) =>
-          f.context === 'already_talking' ||
-          /já estou/i.test(f.name || '')
+        (f) => f.context === 'already_talking' || /já estou/i.test(f.name || '')
       );
       setDefaultWaFlowId(alreadyTalking?.id || data.selectedFlowId || flows[0]?.id || '');
     } catch (err) {
@@ -496,8 +494,8 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Bottom tabs: recent quotations + WhatsApp leads ── */}
-          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto">
-            <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[280px] lg:h-[320px]">
+            <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
               <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
                 <button
                   type="button"
@@ -540,112 +538,118 @@ export default function AutoQuotePage() {
               )}
             </div>
 
-            {bottomTab === 'recentes' ? (
-              historyLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-10 rounded-lg bg-surface-muted animate-pulse" />
+            <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-6 md:px-6">
+              {bottomTab === 'recentes' ? (
+                historyLoading ? (
+                  <div className="space-y-2 h-full">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="h-10 rounded-lg bg-surface-muted animate-pulse" />
+                    ))}
+                  </div>
+                ) : history.length === 0 ? (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {history.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => loadHistoryItem(item)}
+                        className={cn(
+                          'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
+                          idx === history.length - 1 && 'pb-1'
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-fg truncate">
+                            {item.cliente || 'Cliente'}
+                          </p>
+                          <p className="text-xs text-fg-muted truncate">{item.id}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          <span className="text-[11px] text-fg-muted whitespace-nowrap">
+                            {formatDate(item.data)}
+                          </span>
+                          <span className="text-xs font-medium text-fg whitespace-nowrap">
+                            {formatBRL(item.valor)}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : whatsappLoading ? (
+                <div className="space-y-1 h-full">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse"
+                    >
+                      <div className="space-y-1">
+                        <div className="h-4 w-28 rounded bg-surface-muted" />
+                        <div className="h-3 w-44 rounded bg-surface-muted" />
+                      </div>
+                      <div className="h-5 w-20 rounded-full bg-surface-muted" />
+                    </div>
                   ))}
                 </div>
-              ) : history.length === 0 ? (
-                <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
+              ) : whatsappError ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-xs text-destructive">{whatsappError}</p>
+                </div>
+              ) : whatsappLeads.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-xs text-fg-muted">Nenhuma conversa recente encontrada.</p>
+                </div>
               ) : (
                 <div className="space-y-1">
-                  {history.map((item, idx) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => loadHistoryItem(item)}
-                      className={cn(
-                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
-                        idx === history.length - 1 && 'pb-1'
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-fg truncate">
-                          {item.cliente || 'Cliente'}
-                        </p>
-                        <p className="text-xs text-fg-muted truncate">{item.id}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-[11px] text-fg-muted whitespace-nowrap">
-                          {formatDate(item.data)}
-                        </span>
-                        <span className="text-xs font-medium text-fg whitespace-nowrap">
-                          {formatBRL(item.valor)}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )
-            ) : whatsappLoading ? (
-              <div className="space-y-1">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse"
-                  >
-                    <div className="space-y-1">
-                      <div className="h-4 w-28 rounded bg-surface-muted" />
-                      <div className="h-3 w-44 rounded bg-surface-muted" />
-                    </div>
-                    <div className="h-5 w-20 rounded-full bg-surface-muted" />
-                  </div>
-                ))}
-              </div>
-            ) : whatsappError ? (
-              <p className="text-xs text-destructive">{whatsappError}</p>
-            ) : whatsappLeads.length === 0 ? (
-              <p className="text-xs text-fg-muted">Nenhuma conversa recente encontrada.</p>
-            ) : (
-              <div className="space-y-1">
-                {whatsappLeads.map((lead) => {
-                  const tagLabel =
-                    lead.quotationId ||
-                    lead.statusLabel ||
-                    (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
-                  const tagClass = lead.quotationId
-                    ? 'bg-primary/10 text-primary'
-                    : lead.isReady
-                      ? 'bg-emerald-500/10 text-success'
-                      : 'tone-warning-soft';
-                  const displayName = lead.nome || 'Nome não identificado';
-                  const displayEmail = lead.email || '';
+                  {whatsappLeads.map((lead) => {
+                    const tagLabel =
+                      lead.quotationId ||
+                      lead.statusLabel ||
+                      (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
+                    const tagClass = lead.quotationId
+                      ? 'bg-primary/10 text-primary'
+                      : lead.isReady
+                        ? 'bg-emerald-500/10 text-success'
+                        : 'tone-warning-soft';
+                    const displayName = lead.nome || 'Nome não identificado';
+                    const displayEmail = lead.email || '';
 
-                  return (
-                    <button
-                      key={lead.id || lead.remoteJid || lead.telefone}
-                      type="button"
-                      onClick={() => useWhatsappLead(lead)}
-                      className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-fg truncate">
-                          {fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}
-                        </p>
-                        <p className="text-xs leading-tight text-fg-muted truncate">
-                          {displayName}
-                          {displayEmail ? (
-                            <span className="text-fg-muted/60 mx-1">-</span>
-                          ) : null}
-                          {displayEmail ? (
-                            <span className="text-[11px] text-fg-muted/80">{displayEmail}</span>
-                          ) : null}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5 ml-2">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}
-                        >
-                          {tagLabel}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    return (
+                      <button
+                        key={lead.id || lead.remoteJid || lead.telefone}
+                        type="button"
+                        onClick={() => useWhatsappLead(lead)}
+                        className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-fg truncate">
+                            {fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}
+                          </p>
+                          <p className="text-xs leading-tight text-fg-muted truncate">
+                            {displayName}
+                            {displayEmail ? <span className="text-fg-muted/60 mx-1">-</span> : null}
+                            {displayEmail ? (
+                              <span className="text-[11px] text-fg-muted/80">{displayEmail}</span>
+                            ) : null}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5 ml-2">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}
+                          >
+                            {tagLabel}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
