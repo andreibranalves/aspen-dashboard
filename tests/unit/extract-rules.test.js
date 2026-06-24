@@ -19,9 +19,13 @@ describe('DEFAULT_RULES — cobertura de produtos', () => {
     assert.ok(DEFAULT_RULES.includes('qtd < 30, usar 30'), 'deve conter regra de qtd mínima');
   });
 
-  it('Lenços → LNC-SED-70 + LNC-CSD-70', () => {
+  it('Lenços → comportamento base e variantes', () => {
     assert.ok(DEFAULT_RULES.includes('LNC-SED-70 + LNC-CSD-70'), 'lenços padrão');
     assert.ok(DEFAULT_RULES.includes('LNC-SED-LAS-70'), 'lenços com laser');
+    assert.ok(DEFAULT_RULES.includes('"seda"'), 'lenço seda');
+    assert.ok(DEFAULT_RULES.includes('"crepe"'), 'lenço crepe');
+    assert.ok(DEFAULT_RULES.includes('"50cm"'), 'lenço 50cm');
+    assert.ok(DEFAULT_RULES.includes('"70cm"'), 'lenço 70cm');
   });
 
   it('Echarpes → ECH-SED + ECH-CSD', () => {
@@ -32,16 +36,17 @@ describe('DEFAULT_RULES — cobertura de produtos', () => {
     assert.ok(DEFAULT_RULES.includes('CHP-PAN + CHP-PNR + CHP-BAM'), 'chapéus');
   });
 
-  it('Cangas — < 100 → CNG-SAL-70 + CNG-SAL-100', () => {
-    const cangaLine = DEFAULT_RULES.split('\n').find(l => l.includes('Cangas'));
-    assert.ok(cangaLine.includes('CNG-SAL-70'), 'canga padrão 70');
-    assert.ok(cangaLine.includes('CNG-SAL-100'), 'canga padrão 100');
+  it('Cangas — comportamento base mantém faixas de quantidade', () => {
+    assert.ok(DEFAULT_RULES.includes('CNG-SAL-70'), 'canga padrão 70');
+    assert.ok(DEFAULT_RULES.includes('CNG-SAL-100'), 'canga padrão 100');
+    assert.ok(DEFAULT_RULES.includes('CNG-VIS-70'), 'canga viscose 70');
+    assert.ok(DEFAULT_RULES.includes('CNG-VIS-100'), 'canga viscose 100');
   });
 
-  it('Cangas — ≥ 100 → + CNG-VIS-70 + CNG-VIS-100', () => {
-    const cangaLine = DEFAULT_RULES.split('\n').find(l => l.includes('Cangas'));
-    assert.ok(cangaLine.includes('CNG-VIS-70'), 'canga viscose 70');
-    assert.ok(cangaLine.includes('CNG-VIS-100'), 'canga viscose 100');
+  it('Cangas — respeita qualificador de material', () => {
+    assert.ok(DEFAULT_RULES.includes('"salinas"'), 'canga salinas');
+    assert.ok(DEFAULT_RULES.includes('"viscose"'), 'canga viscose');
+    assert.ok(DEFAULT_RULES.includes('"laser"'), 'canga laser');
   });
 
   it('Toalhas de Praia → TWL-210 + TWL-280', () => {
@@ -129,5 +134,19 @@ describe('buildSystemPrompt()', () => {
     const prompt = buildSystemPrompt('');
     assert.ok(prompt.includes('"nome": "string"'), 'schema com nome');
     assert.ok(prompt.includes('"items": [{"item_code": "SKU", "qty": N}]'), 'schema com items');
+  });
+
+  it('adiciona instruções de merge quando existingItems é fornecido', () => {
+    const prompt = buildSystemPrompt('', [{ item_code: 'CNG-VIS-70', qty: 100 }]);
+    assert.ok(prompt.includes('COMPLEMENTANDO'), 'deve indicar modo complemento');
+    assert.ok(prompt.includes('CNG-VIS-70'), 'deve listar item existente');
+    assert.ok(prompt.includes('NÃO repita SKUs'), 'deve instruir a não repetir');
+  });
+
+  it('não adiciona instruções de merge quando existingItems está vazio', () => {
+    const prompt1 = buildSystemPrompt('');
+    const prompt2 = buildSystemPrompt('', []);
+    assert.ok(!prompt1.includes('COMPLEMENTANDO'), 'sem existingItems');
+    assert.ok(!prompt2.includes('COMPLEMENTANDO'), 'com array vazio');
   });
 });

@@ -46,6 +46,10 @@ export default function AutoQuotePage() {
   const [defaultWaFlowId, setDefaultWaFlowId] = useState('');
   const [waFlowByDraft, setWaFlowByDraft] = useState({});
 
+  // ── Re-extract state (add items to existing draft) ──
+  const [reExtractTextByDraft, setReExtractTextByDraft] = useState({});
+  const [reExtractLoadingByDraft, setReExtractLoadingByDraft] = useState({});
+
   // ── Extracted hooks ──
   const {
     drafts,
@@ -379,6 +383,72 @@ export default function AutoQuotePage() {
       }
     },
     [defaultWaFlowId, drafts, waFlowByDraft, waFlows]
+  );
+
+  // ── Re-extract handlers (add more items to an existing draft) ──
+  const handleReExtractTextChange = useCallback((draftIndex, value) => {
+    setReExtractTextByDraft((prev) => ({ ...prev, [draftIndex]: value }));
+  }, []);
+
+  const handleSubmitReExtract = useCallback(
+    async (draftIndex) => {
+      const text = reExtractTextByDraft[draftIndex]?.trim();
+      if (!text) return;
+
+      const draft = drafts.find((d) => d.index === draftIndex);
+      if (!draft) return;
+
+      setReExtractLoadingByDraft((prev) => ({ ...prev, [draftIndex]: true }));
+      try {
+        const existingItems = draft.edited.items
+          .filter((it) => it.item_code && it.qty > 0)
+          .map((it) => ({ item_code: it.item_code, qty: it.qty }));
+
+        const res = await apiPost('/extract', {
+          text,
+          existingItems,
+        });
+
+        const newItems = res.orders?.[0]?.items || [];
+        if (!newItems.length) {
+          setReExtractTextByDraft((prev) => ({ ...prev, [draftIndex]: '' }));
+          return;
+        }
+
+        // Add each new item to the draft and re-price afterwards
+        setDrafts((prev) => {
+          const idx = prev.findIndex((d) => d.index === draftIndex);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          const currentItems = [...next[idx].edited.items];
+          for (const it of newItems) {
+            if (!it.item_code || it.qty <= 0) continue;
+            currentItems.push({
+              item_code: it.item_code,
+              qty: it.qty,
+              rate: null,
+            });
+          }
+          next[idx] = {
+            ...next[idx],
+            edited: { ...next[idx].edited, items: currentItems },
+          };
+          try {
+            localStorage.setItem('aspen_drafts', JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+
+        // Re-fetch pricing for the updated draft
+        await refetchDraftPricing(draftIndex);
+        setReExtractTextByDraft((prev) => ({ ...prev, [draftIndex]: '' }));
+      } catch (err) {
+        setError(err.message || 'Erro ao extrair itens adicionais.');
+      } finally {
+        setReExtractLoadingByDraft((prev) => ({ ...prev, [draftIndex]: false }));
+      }
+    },
+    [drafts, reExtractTextByDraft, refetchDraftPricing]
   );
 
   const activeDrafts = drafts.filter((d) => !d.discarded);
@@ -731,6 +801,10 @@ export default function AutoQuotePage() {
                     waSelectedFlowId={waFlowByDraft[draft.index] || defaultWaFlowId}
                     onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
                     onSendWhatsApp={handleSendWhatsApp}
+                    reExtractText={reExtractTextByDraft[draft.index] || ''}
+                    reExtractLoading={reExtractLoadingByDraft[draft.index] || false}
+                    onReExtractTextChange={handleReExtractTextChange}
+                    onSubmitReExtract={handleSubmitReExtract}
                   />
                 );
               })}

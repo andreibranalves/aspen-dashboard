@@ -6,10 +6,26 @@ Rule 1 — Quantidade mínima: Se qtd < 30, usar 30.
 Rule 2 — Quantidade exata: Usar a qtd EXATA do cliente. O sistema aplica as faixas de precificação (30, 100, 300, 500, 1000) automaticamente.
 
 Rule 3 — Regras por Produto:
-- Lenços: Sempre LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70 (bainha). Se mencionar "laser" (sem bainha), usar apenas LNC-SED-LAS-50 + LNC-SED-LAS-70. Se pedir bainha E laser, cotar todos: LNC-SED-LAS-50 + LNC-SED-LAS-70 + LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70 (laser antes da bainha). Se pedido 55×55cm, cotar 50×50cm.
+- Lenços:
+  * Comportamento base (sem qualificador): Sempre LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70 (bainha).
+  * "laser" (sem bainha) → apenas LNC-SED-LAS-50 + LNC-SED-LAS-70.
+  * "bainha" (sem laser) → apenas LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70.
+  * "bainha e laser" / "bainha + laser" → todos: LNC-SED-LAS-50 + LNC-SED-LAS-70 + LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70.
+  * "seda" → apenas LNC-SED-50 + LNC-SED-70.
+  * "crepe" ou "crepe de seda" → apenas LNC-CSD-50 + LNC-CSD-70.
+  * "50cm" / "50×50" → apenas variantes -50.
+  * "70cm" / "70×70" / "55×55" → apenas variantes -70.
+  * Combinações: "lenços laser 70cm" → LNC-SED-LAS-70; "lenços seda 50cm" → LNC-SED-50.
+  * Se pedido 55×55cm sem outra indicação, cotar 50×50cm.
 - Echarpes: Sempre ECH-SED + ECH-CSD.
 - Chapéus: Sempre CHP-PAN + CHP-PNR + CHP-BAM.
-- Cangas: < 100 un → CNG-SAL-70 + CNG-SAL-100. ≥ 100 un → CNG-SAL-70 + CNG-SAL-100 + CNG-VIS-70 + CNG-VIS-100. Se "laser", usar CNG-SAL-LAS-70 ou CNG-SAL-LAS-100.
+- Cangas:
+  * Comportamento base (sem material especificado):
+    - < 100 un → CNG-SAL-70 + CNG-SAL-100
+    - ≥ 100 un → CNG-SAL-70 + CNG-SAL-100 + CNG-VIS-70 + CNG-VIS-100
+  * "salinas" ou "salina" → apenas CNG-SAL-70 + CNG-SAL-100, independente da quantidade.
+  * "viscose" → apenas CNG-VIS-70 + CNG-VIS-100, independente da quantidade.
+  * "laser" → CNG-SAL-LAS-70 e/ou CNG-SAL-LAS-100 conforme quantidade/tamanho.
 - Toalhas de Praia: Sempre TWL-210 + TWL-280.
 - Toalhas de Banho: Sempre TBH-LEM + TBH-URC + TBH-IPA.
 - Bonés: < 100 un → BNE-TAC-VNL. ≥ 100 un → BNE-TAC-SUB + BNE-BRI + BNE-PRE.
@@ -26,13 +42,21 @@ Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAI
 
 Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
-export function buildSystemPrompt(customRules) {
+export function buildSystemPrompt(customRules, existingItems) {
   const rules = customRules?.trim() || DEFAULT_RULES;
+  let mergeInstruction = '';
+  if (Array.isArray(existingItems) && existingItems.length > 0) {
+    const itemsText = existingItems
+      .filter((it) => it && it.item_code)
+      .map((it) => `- ${it.item_code}: ${it.qty || 0} un`)
+      .join('\n');
+    mergeInstruction = `\n\nO usuário está COMPLEMENTANDO um pedido já existente. Os itens já presentes são:\n${itemsText}\n\nINSTRUÇÕES DE MERGE:\n- Retorne APENAS os novos itens no campo "items".\n- NÃO repita SKUs que já existem na lista acima; se o novo texto pedir algo idêntico, ignore.\n- NÃO altere nome, e-mail, telefone, origem, CNPJ ou endereço do pedido original.\n- Se o novo texto não adicionar nenhum item novo, retorne "items": [] e mantenha os dados do cliente.`;
+  }
   return `Você é um assistente de cotação da Aspen Estamparia. Extraia os dados do pedido e aplique as regras de negócio.
 
 REGRAS DE NEGÓCIO:
 
-${rules}
+${rules}${mergeInstruction}
 
 RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 [
@@ -178,7 +202,7 @@ function extractAssistantText(data) {
   return '';
 }
 
-async function extractWithOpenRouter(text, imageBase64, imageMimeType, customRules) {
+async function extractWithOpenRouter(text, imageBase64, imageMimeType, customRules, existingItems) {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
   const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
@@ -202,7 +226,7 @@ async function extractWithOpenRouter(text, imageBase64, imageMimeType, customRul
   const body = {
     model: OPENROUTER_MODEL,
     messages: [
-      { role: 'system', content: buildSystemPrompt(customRules) },
+      { role: 'system', content: buildSystemPrompt(customRules, existingItems) },
       { role: 'user', content: buildUserContent(text, imageBase64, imageMimeType) },
     ],
     temperature: 0.1,
@@ -252,7 +276,8 @@ export async function handler(event) {
       payload.text,
       payload.imageBase64,
       payload.imageMimeType,
-      payload.rules
+      payload.rules,
+      payload.existingItems
     );
     return {
       statusCode: 200,

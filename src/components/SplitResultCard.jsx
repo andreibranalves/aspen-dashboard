@@ -13,6 +13,7 @@ import {
   FileText,
   Check,
   Phone,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatBRL, capitalize } from '@/lib/formatters.js';
@@ -40,8 +41,13 @@ export default function SplitResultCard({
   waSelectedFlowId = '',
   onSelectWhatsAppFlow,
   onSendWhatsApp,
+  reExtractText = '',
+  reExtractLoading = false,
+  onReExtractTextChange,
+  onSubmitReExtract,
 }) {
   const [editing, setEditing] = useState(false);
+  const [showReExtract, setShowReExtract] = useState(false);
 
   // ── Per-item product search (local state, like QuotationDetailPage) ──
   const [itemSearchTerms, setItemSearchTerms] = useState({}); // { ii: term }
@@ -439,6 +445,15 @@ export default function SplitResultCard({
               <Plus size={13} />
               Item
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowReExtract((prev) => !prev)}
+              disabled={reExtractLoading}
+            >
+              <Sparkles size={13} />
+              Extrair mais
+            </Button>
           </>
         )}
 
@@ -481,6 +496,53 @@ export default function SplitResultCard({
           </Button>
         )}
       </div>
+
+      {/* ── Re-extract inline input ── */}
+      {showReExtract && !isDone && (
+        <div className="border-t border-line bg-surface/30 p-3">
+          <div className="flex flex-col gap-2">
+            <textarea
+              className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              rows={2}
+              placeholder="Ex.: também quero 50 lenços"
+              value={reExtractText}
+              onChange={(e) => onReExtractTextChange?.(draft.index, e.target.value)}
+              disabled={reExtractLoading}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowReExtract(false);
+                  onReExtractTextChange?.(draft.index, '');
+                }}
+                disabled={reExtractLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => onSubmitReExtract?.(draft.index)}
+                disabled={reExtractLoading || !reExtractText.trim()}
+              >
+                {reExtractLoading ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin mr-1.5" />
+                    Extraindo…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={13} className="mr-1.5" />
+                    Adicionar
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isDone && waStatus?.message && (
         <p
           className={cn(
