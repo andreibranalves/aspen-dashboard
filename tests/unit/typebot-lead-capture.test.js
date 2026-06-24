@@ -14,6 +14,32 @@ function parseBody(result) {
   return JSON.parse(result.body);
 }
 
+function baseExpectedLead(overrides = {}) {
+  return {
+    nome: '',
+    email: '',
+    telefone: '',
+    origem: 'Website',
+    canal: 'whatsapp',
+    produto: '',
+    mensagem_contexto: '',
+    result_id: null,
+    page_url: null,
+    utm_source: null,
+    utm_campaign: null,
+    utm_medium: null,
+    utm_content: null,
+    utm_term: null,
+    campaign: null,
+    gclid: null,
+    gbraid: null,
+    wbraid: null,
+    fbclid: null,
+    source_cta: null,
+    ...overrides,
+  };
+}
+
 function buildEvent({
   method = 'POST',
   token = 'secret',
@@ -119,19 +145,11 @@ describe('typebot-lead-capture handler', () => {
       lead_id: null,
       existing_lead: null,
       activation_required: true,
-      lead: {
+      lead: baseExpectedLead({
         nome: 'Teste Pi',
         email: 'teste@example.com',
         telefone: '5511999999999',
-        origem: 'Website',
-        canal: 'whatsapp',
-        produto: '',
-        mensagem_contexto: '',
-        result_id: null,
-        page_url: null,
-        utm_source: null,
-        utm_campaign: null,
-      },
+      }),
     });
   });
 
@@ -155,19 +173,10 @@ describe('typebot-lead-capture handler', () => {
       lead_id: null,
       existing_lead: null,
       activation_required: true,
-      lead: {
+      lead: baseExpectedLead({
         nome: 'Ana',
-        email: '',
         telefone: '5511988887777',
-        origem: 'Website',
-        canal: 'whatsapp',
-        produto: '',
-        mensagem_contexto: '',
-        result_id: null,
-        page_url: null,
-        utm_source: null,
-        utm_campaign: null,
-      },
+      }),
     });
   });
 
@@ -203,19 +212,11 @@ describe('typebot-lead-capture handler', () => {
       lead_id: 'LEAD-0001',
       existing_lead: 'LEAD-0001',
       activation_required: false,
-      lead: {
+      lead: baseExpectedLead({
         nome: 'Ana',
         email: 'ana@example.com',
         telefone: '5511999999999',
-        origem: 'Website',
-        canal: 'whatsapp',
-        produto: '',
-        mensagem_contexto: '',
-        result_id: null,
-        page_url: null,
-        utm_source: null,
-        utm_campaign: null,
-      },
+      }),
     });
 
     assert.equal(calls.length, 1);
@@ -260,19 +261,11 @@ describe('typebot-lead-capture handler', () => {
       lead_id: 'LEAD-NEW',
       existing_lead: null,
       activation_required: false,
-      lead: {
+      lead: baseExpectedLead({
         nome: 'Cliente Novo',
         email: 'novo@example.com',
         telefone: '5511988887777',
-        origem: 'Website',
-        canal: 'whatsapp',
-        produto: '',
-        mensagem_contexto: '',
-        result_id: null,
-        page_url: null,
-        utm_source: null,
-        utm_campaign: null,
-      },
+      }),
     });
 
     assert.equal(calls.length, 3);
@@ -325,19 +318,11 @@ describe('typebot-lead-capture handler', () => {
       lead_id: 'LEAD-EXIST',
       existing_lead: 'LEAD-EXIST',
       activation_required: false,
-      lead: {
+      lead: baseExpectedLead({
         nome: 'Cliente Existente',
-        email: '',
         telefone: '5511988887777',
-        origem: 'Website',
-        canal: 'whatsapp',
         produto: 'lenço',
-        mensagem_contexto: '',
-        result_id: null,
-        page_url: null,
-        utm_source: null,
-        utm_campaign: null,
-      },
+      }),
     });
 
     const phoneLookupUrl = new URL(calls[0].url);
@@ -354,6 +339,221 @@ describe('typebot-lead-capture handler', () => {
       lead_name: 'Cliente Existente',
       mobile_no: '5511988887777',
       source: 'Website',
+    });
+  });
+
+  it('repassa campos de attribution no lead quando desativado', async () => {
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'false';
+
+    const result = await handler(
+      buildEvent({
+        body: {
+          nome: 'Teste Attribution',
+          email: 'attr@example.com',
+          result_id: 'r-123',
+          page_url: 'https://aspen.com/produto',
+          utm_source: 'google',
+          utm_medium: 'cpc',
+          utm_campaign: 'verao',
+          utm_content: 'banner-a',
+          utm_term: 'lenco',
+          campaign: 'campanha-vendas',
+          gclid: 'gclid-abc',
+          gbraid: 'gbraid-def',
+          wbraid: 'wbraid-ghi',
+          fbclid: 'fbclid-jkl',
+          source: 'topbar',
+        },
+      })
+    );
+
+    assert.equal(result.statusCode, 200);
+    const body = parseBody(result);
+    assert.deepEqual(
+      body.lead,
+      baseExpectedLead({
+        nome: 'Teste Attribution',
+        email: 'attr@example.com',
+        result_id: 'r-123',
+        page_url: 'https://aspen.com/produto',
+        utm_source: 'google',
+        utm_medium: 'cpc',
+        utm_campaign: 'verao',
+        utm_content: 'banner-a',
+        utm_term: 'lenco',
+        campaign: 'campanha-vendas',
+        gclid: 'gclid-abc',
+        gbraid: 'gbraid-def',
+        wbraid: 'wbraid-ghi',
+        fbclid: 'fbclid-jkl',
+        source_cta: 'topbar',
+      })
+    );
+  });
+
+  it('cria lead novo com custom fields de attribution quando presentes', async () => {
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      const method = options.method || 'GET';
+      if (method === 'GET') return jsonResponse({ data: [] });
+      if (method === 'POST') return jsonResponse({ data: { name: 'LEAD-ATTR' } });
+      throw new Error(`Unexpected method ${method}`);
+    };
+
+    const result = await handler(
+      buildEvent({
+        body: {
+          nome: 'Cliente Attribution',
+          email: 'attr@example.com',
+          telefone: '11999999999',
+          page_url: 'https://aspen.com/produto',
+          utm_source: 'google',
+          utm_medium: 'cpc',
+          utm_campaign: 'verao',
+          utm_content: 'banner-a',
+          utm_term: 'lenco',
+          gclid: 'gclid-abc',
+          gbraid: 'gbraid-def',
+          wbraid: 'wbraid-ghi',
+          fbclid: 'fbclid-jkl',
+          source: 'topbar',
+        },
+      })
+    );
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(parseBody(result).action, 'created');
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2].options.method, 'POST');
+    assert.deepEqual(JSON.parse(calls[2].options.body), {
+      lead_name: 'Cliente Attribution',
+      email_id: 'attr@example.com',
+      mobile_no: '5511999999999',
+      source: 'Website',
+      custom_page_url: 'https://aspen.com/produto',
+      custom_utm_source: 'google',
+      custom_utm_medium: 'cpc',
+      custom_utm_campaign: 'verao',
+      custom_utm_content: 'banner-a',
+      custom_utm_term: 'lenco',
+      custom_gclid: 'gclid-abc',
+      custom_gbraid: 'gbraid-def',
+      custom_wbraid: 'wbraid-ghi',
+      custom_fbclid: 'fbclid-jkl',
+      custom_source_cta: 'topbar',
+    });
+  });
+
+  it('não sobrescreve attribution já preenchido no lead existente (first-touch)', async () => {
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      const method = options.method || 'GET';
+      const parsedUrl = new URL(url);
+      if (method === 'GET' && parsedUrl.searchParams.get('filters')) {
+        const fields = JSON.parse(parsedUrl.searchParams.get('fields') || '[]');
+        assert.ok(fields.includes('custom_utm_source'));
+        assert.ok(fields.includes('custom_gclid'));
+        assert.ok(fields.includes('custom_page_url'));
+        return jsonResponse({
+          data: [
+            {
+              name: 'LEAD-OLD',
+              email_id: 'old@example.com',
+              mobile_no: '5511999999999',
+              custom_gclid: 'gclid-antigo',
+              custom_utm_source: 'google',
+            },
+          ],
+        });
+      }
+      if (method === 'PUT') {
+        return jsonResponse({ data: { name: 'LEAD-OLD' } });
+      }
+      throw new Error(`Unexpected request ${method} ${url}`);
+    };
+
+    const result = await handler(
+      buildEvent({
+        body: {
+          nome: 'Cliente Velho',
+          email: 'old@example.com',
+          page_url: 'https://aspen.com/novo',
+          utm_source: 'facebook',
+          utm_medium: 'social',
+          gclid: 'gclid-novo',
+        },
+      })
+    );
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(parseBody(result).action, 'updated');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].options.method, 'PUT');
+    assert.deepEqual(JSON.parse(calls[1].options.body), {
+      lead_name: 'Cliente Velho',
+      email_id: 'old@example.com',
+      source: 'Website',
+      custom_page_url: 'https://aspen.com/novo',
+      custom_utm_medium: 'social',
+    });
+  });
+
+  it('preenche attribution em lead existente sem custom fields (first-touch)', async () => {
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      const method = options.method || 'GET';
+      if (method === 'GET') {
+        return jsonResponse({
+          data: [
+            {
+              name: 'LEAD-EMPTY',
+              email_id: 'empty@example.com',
+              mobile_no: null,
+              custom_gclid: null,
+              custom_utm_source: '',
+            },
+          ],
+        });
+      }
+      if (method === 'PUT') {
+        return jsonResponse({ data: { name: 'LEAD-EMPTY' } });
+      }
+      throw new Error(`Unexpected request ${method} ${url}`);
+    };
+
+    const result = await handler(
+      buildEvent({
+        body: {
+          nome: 'Cliente Vazio',
+          email: 'empty@example.com',
+          gclid: 'gclid-novo',
+          utm_source: 'google',
+        },
+      })
+    );
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(parseBody(result).action, 'updated');
+    assert.equal(calls[1].options.method, 'PUT');
+    assert.deepEqual(JSON.parse(calls[1].options.body), {
+      lead_name: 'Cliente Vazio',
+      email_id: 'empty@example.com',
+      source: 'Website',
+      custom_gclid: 'gclid-novo',
+      custom_utm_source: 'google',
     });
   });
 
