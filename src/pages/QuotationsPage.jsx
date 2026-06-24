@@ -313,28 +313,6 @@ export default function QuotationsPage({ navigate }) {
         title="Orçamentos"
       />
 
-      {/* Status chips */}
-      <div className="flex flex-wrap gap-2">
-        {STATUSES.map((s, i) => (
-          <button
-            key={s}
-            onClick={() => onStatusClick(s)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${
-                status === s
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'
-              }`}
-          >
-            {STATUS_DISPLAY[i]}
-            {s === '' && totalRecords > 0 && <span className="opacity-70">({totalRecords})</span>}
-            {s !== '' && statusSummary[s] !== undefined && (
-              <span className="opacity-70">({statusSummary[s]})</span>
-            )}
-          </button>
-        ))}
-      </div>
-
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1">
@@ -366,8 +344,30 @@ export default function QuotationsPage({ navigate }) {
         </div>
       </div>
 
+      {/* Status chips */}
+      <div className="flex flex-wrap gap-2">
+        {STATUSES.map((s, i) => (
+          <button
+            key={s}
+            onClick={() => onStatusClick(s)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors
+              ${
+                status === s
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'
+              }`}
+          >
+            {STATUS_DISPLAY[i]}
+            {s === '' && totalRecords > 0 && <span className="opacity-70">({totalRecords})</span>}
+            {s !== '' && statusSummary[s] !== undefined && (
+              <span className="opacity-70">({statusSummary[s]})</span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Loading */}
-      {loading && <SkeletonTable cols={6} rows={8} />}
+      {loading && <SkeletonTable cols={7} rows={8} />}
 
       {/* Error */}
       {!loading && error && (
