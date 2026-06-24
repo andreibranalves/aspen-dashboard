@@ -104,7 +104,13 @@ export default function AutoQuotePage() {
       const data = await fetchFlows();
       const flows = Array.isArray(data.flows) ? data.flows : [];
       setWaFlows(flows);
-      setDefaultWaFlowId(data.selectedFlowId || flows[0]?.id || '');
+      // Draft quotes should default to the "already talking" flow if it exists.
+      const alreadyTalking = flows.find(
+        (f) =>
+          f.context === 'already_talking' ||
+          /já estou/i.test(f.name || '')
+      );
+      setDefaultWaFlowId(alreadyTalking?.id || data.selectedFlowId || flows[0]?.id || '');
     } catch (err) {
       console.warn('[AutoQuotePage] failed to load communication flows:', err.message);
       setWaFlows([]);
