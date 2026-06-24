@@ -74,6 +74,21 @@ function normalizeSource() {
   return 'Website';
 }
 
+const ATTRIBUTION_FIELDS = [
+  'page_url',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'gclid',
+  'gbraid',
+  'wbraid',
+  'fbclid',
+  'source_cta',
+  'result_id',
+];
+
 function normalizeLead(payload) {
   return {
     nome: normalizeText(payload.nome),
@@ -87,6 +102,15 @@ function normalizeLead(payload) {
     page_url: normalizeNullableText(payload.page_url),
     utm_source: normalizeNullableText(payload.utm_source),
     utm_campaign: normalizeNullableText(payload.utm_campaign),
+    utm_medium: normalizeNullableText(payload.utm_medium),
+    utm_content: normalizeNullableText(payload.utm_content),
+    utm_term: normalizeNullableText(payload.utm_term),
+    campaign: normalizeNullableText(payload.campaign),
+    gclid: normalizeNullableText(payload.gclid),
+    gbraid: normalizeNullableText(payload.gbraid),
+    wbraid: normalizeNullableText(payload.wbraid),
+    fbclid: normalizeNullableText(payload.fbclid),
+    source_cta: normalizeNullableText(payload.source),
   };
 }
 
@@ -110,18 +134,36 @@ function isDryRun(payload) {
   return payload.dry_run === true || payload.dryRun === true;
 }
 
-function buildLeadDocPayload(lead) {
+function isEmptyValue(value) {
+  return value == null || value === '';
+}
+
+function buildLeadDocPayload(lead, existing = null) {
   const docPayload = { lead_name: lead.nome };
   if (lead.email) docPayload.email_id = lead.email;
   if (lead.telefone) docPayload.mobile_no = lead.telefone;
   if (lead.origem) docPayload.source = lead.origem;
+
+  for (const attr of ATTRIBUTION_FIELDS) {
+    const incoming = lead[attr];
+    if (isEmptyValue(incoming)) continue;
+    const erpKey = `custom_${attr}`;
+    if (existing && !isEmptyValue(existing[erpKey])) continue;
+    docPayload[erpKey] = incoming;
+  }
+
   return docPayload;
 }
 
+const ATTRIBUTION_ERP_FIELDS = ATTRIBUTION_FIELDS.map((attr) => `custom_${attr}`);
+
 async function findExistingLead(lead, deps) {
+  const baseFields = ['name', 'email_id', 'mobile_no'];
+  const fields = [...baseFields, ...ATTRIBUTION_ERP_FIELDS];
+
   if (lead.email) {
     const byEmail = await deps.erpGetList('Lead', {
-      fields: ['name', 'email_id', 'mobile_no'],
+      fields,
       filters: [['email_id', '=', lead.email]],
       order_by: 'modified desc',
       limit: 1,
@@ -132,7 +174,7 @@ async function findExistingLead(lead, deps) {
   const variants = phoneVariants(lead.telefone);
   if (variants.length > 0) {
     const byPhone = await deps.erpGetList('Lead', {
-      fields: ['name', 'email_id', 'mobile_no'],
+      fields,
       or_filters: variants.map((value) => ['mobile_no', '=', value]),
       order_by: 'modified desc',
       limit: 1,
@@ -163,7 +205,7 @@ async function upsertLead(lead, deps) {
   validateLeadForWrite(lead);
 
   const existing = await findExistingLead(lead, deps);
-  const docPayload = buildLeadDocPayload(lead);
+  const docPayload = buildLeadDocPayload(lead, existing);
 
   if (existing) {
     await deps.erpPut('Lead', existing.name, docPayload);
