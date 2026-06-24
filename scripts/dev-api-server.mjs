@@ -2,20 +2,8 @@
 // Used for local testing without Vercel CLI auth.
 // Start: node scripts/dev-api-server.mjs
 
+import './load-env.mjs';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
-
-// Load env from .env
-const envFile = readFileSync('.env', 'utf8');
-for (const line of envFile.split('\n')) {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith('#')) continue;
-  const eq = trimmed.indexOf('=');
-  if (eq === -1) continue;
-  const key = trimmed.slice(0, eq).trim();
-  const value = trimmed.slice(eq + 1).trim();
-  if (!process.env[key]) process.env[key] = value;
-}
 
 // Import all handlers
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';

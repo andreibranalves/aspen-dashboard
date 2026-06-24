@@ -618,14 +618,15 @@ export default function AutoQuotePage() {
                         <p className="font-medium text-fg truncate">
                           {fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}
                         </p>
-                        <p className="text-xs leading-tight text-fg-muted break-words">
+                        <p className="text-xs leading-tight text-fg-muted truncate">
                           {displayName}
+                          {displayEmail ? (
+                            <span className="text-fg-muted/60 mx-1">-</span>
+                          ) : null}
+                          {displayEmail ? (
+                            <span className="text-[11px] text-fg-muted/80">{displayEmail}</span>
+                          ) : null}
                         </p>
-                        {displayEmail ? (
-                          <p className="text-[11px] text-fg-muted/80 truncate">
-                            {displayEmail}
-                          </p>
-                        ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5 ml-2">
                         <span
