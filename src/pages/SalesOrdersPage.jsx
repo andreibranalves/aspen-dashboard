@@ -38,7 +38,7 @@ export default function SalesOrdersPage({ navigate }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(25);
+  const [limit, setLimit] = useState(10);
   const [period, setPeriod] = useState('30d');
   const [status, setStatus] = useState('');
   const [search, setSearch] = useState('');

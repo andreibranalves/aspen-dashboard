@@ -114,7 +114,7 @@ export default function LeadsPage({ navigate }) {
   const [search, setSearch] = useState('');
   const [tipo, setTipo] = useState('');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const searchTimer = useRef(null);
