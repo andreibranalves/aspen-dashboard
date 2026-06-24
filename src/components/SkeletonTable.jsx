@@ -13,10 +13,11 @@ export default function SkeletonTable({ cols = 4, rows = 8, size = 'md' }) {
 
   // Distribui larguras proporcionais, deixando a primeira coluna mais estreita
   // quando há muitas colunas (simula a coluna de checkbox das tabelas reais).
+  // Colunas do meio usam flex-1 para preencher todo o espaço restante.
   const colWidths = Array.from({ length: cols }, (_, i) => {
-    if (cols >= 5 && i === 0) return 'w-10';
-    if (cols >= 5 && i === cols - 1) return 'w-[15%]';
-    if (cols >= 5) return `${65 / (cols - 2)}%`;
+    if (cols >= 5 && i === 0) return 'w-10 shrink-0';
+    if (cols >= 5 && i === cols - 1) return 'w-[15%] min-w-[100px] shrink-0';
+    if (cols >= 5) return 'flex-1';
     if (i === 0) return 'w-[30%]';
     if (i === cols - 1) return 'w-[15%]';
     return `${55 / (cols - 2)}%`;
