@@ -494,7 +494,7 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Bottom tabs: recent quotations + WhatsApp leads ── */}
-          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[280px] lg:h-[320px]">
+          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[300px] lg:h-[340px]">
             <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
               <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
                 <button
