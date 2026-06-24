@@ -110,7 +110,7 @@ function normalizeLead(payload) {
     gbraid: normalizeNullableText(payload.gbraid),
     wbraid: normalizeNullableText(payload.wbraid),
     fbclid: normalizeNullableText(payload.fbclid),
-    source_cta: normalizeNullableText(payload.source),
+    source_cta: normalizeNullableText(payload.source_cta || payload.source),
   };
 }
 
