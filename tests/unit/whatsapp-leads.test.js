@@ -30,7 +30,7 @@ describe('whatsapp-leads helpers', () => {
     assert.equal(text, [
       'Nome: João Silva',
       'E-mail: joao@example.com',
-      'Telefone: 11999999999',
+      'Telefone: 5511999999999',
       'Pedido: canga — 100 un',
     ].join('\n'));
   });
@@ -41,7 +41,7 @@ describe('whatsapp-leads helpers', () => {
     assert.equal(text, [
       'Nome:',
       'E-mail:',
-      'Telefone: 11988887777',
+      'Telefone: 5511988887777',
       'Pedido:',
     ].join('\n'));
   });
@@ -88,10 +88,10 @@ describe('whatsapp-leads helpers', () => {
     );
   });
 
-  it('usa o nome do WhatsApp quando nome inferido pela IA está vazio', () => {
+  it('usa o nome do WhatsApp antes do nome inferido pela IA', () => {
     assert.equal(
       resolveWhatsappDisplayName(
-        { nome: '' },
+        { nome: 'dramahiara' },
         { pushName: 'Dra Mahiara Liell' },
         '554799632052'
       ),
