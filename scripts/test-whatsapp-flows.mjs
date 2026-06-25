@@ -57,19 +57,19 @@ test('DEFAULT_WA_FLOWS is an array with 2 flows', () => {
   assert.equal(DEFAULT_WA_FLOWS.length, 2);
 });
 
-test('email-first-contact flow exists and has correct structure', () => {
+test('already-talking flow exists and has correct structure', () => {
   const flow = DEFAULT_WA_FLOWS[0];
   assertFlowStructure(flow, 0);
-  assert.equal(flow.id, 'email-first-contact');
-  assert.equal(flow.name, 'Primeiro contato — pedido veio por e-mail');
+  assert.equal(flow.id, 'already-talking');
+  assert.equal(flow.name, 'Já estou falando com o cliente');
   assert.equal(flow.default, true);
 });
 
-test('already-talking flow exists and has correct structure', () => {
+test('email-first-contact flow exists and has correct structure', () => {
   const flow = DEFAULT_WA_FLOWS[1];
   assertFlowStructure(flow, 1);
-  assert.equal(flow.id, 'already-talking');
-  assert.equal(flow.name, 'Já estou falando com o cliente');
+  assert.equal(flow.id, 'email-first-contact');
+  assert.equal(flow.name, 'Primeiro contato — pedido veio por e-mail');
   assert.equal(flow.default, false);
 });
 
@@ -85,19 +85,19 @@ test('constants are exported correctly', () => {
 console.log('\n=== Test 2: flowToSequencePayload ===\n');
 
 test('flowToSequencePayload on already-talking returns correct delay_ms', () => {
-  const flow = DEFAULT_WA_FLOWS[1]; // already-talking
+  const flow = DEFAULT_WA_FLOWS[0]; // already-talking
   const payload = flowToSequencePayload(flow);
   assert.equal(payload.delay_min_ms, 1000);
   assert.equal(payload.delay_max_ms, 2000);
 });
 
-test('flowToSequencePayload on already-talking returns one text step and no document steps (PDF converted to link)', () => {
-  const flow = DEFAULT_WA_FLOWS[1];
+test('flowToSequencePayload on already-talking returns one text step and one document step', () => {
+  const flow = DEFAULT_WA_FLOWS[0];
   const payload = flowToSequencePayload(flow);
   const textSteps = payload.steps.filter(s => s.type === 'text');
   const docSteps = payload.steps.filter(s => s.type === 'document');
   assert.equal(textSteps.length, 1);
-  assert.equal(docSteps.length, 0);
+  assert.equal(docSteps.length, 1);
 });
 
 test('flowToSequencePayload removes empty text/image/document steps', () => {
@@ -125,7 +125,7 @@ test('flowToSequencePayload removes empty text/image/document steps', () => {
 });
 
 test('flowToSequencePayload adds vendor_name, max_images_per_category, sample_images', () => {
-  const flow = DEFAULT_WA_FLOWS[0]; // email-first-contact
+  const flow = DEFAULT_WA_FLOWS[1]; // email-first-contact
   const payload = flowToSequencePayload(flow);
   assert.equal(payload.vendor_name, flow.vendor_name);
   assert.equal(payload.max_images_per_category, flow.max_images_per_category);
@@ -146,18 +146,18 @@ test('flowToSequencePayload converts seconds to milliseconds', () => {
 
 console.log('\n=== Test 3: getFlowSummary ===\n');
 
-test('getFlowSummary for email-first-contact returns correct Portuguese summary', () => {
+test('getFlowSummary for already-talking returns correct Portuguese summary (1 mensagem + PDF)', () => {
   const summary = getFlowSummary(DEFAULT_WA_FLOWS[0]);
-  // 4 text steps + product_images = "4 mensagens + fotos por produto"
-  assert.match(summary, /mensagens?/i);
-  assert.match(summary, /fotos/i);
+  // 1 text step + 1 document step = "1 mensagem + PDF"
+  assert.match(summary, /1 mensagem/i);
+  assert.match(summary, /PDF/i);
 });
 
-test('getFlowSummary for already-talking returns correct Portuguese summary (1 mensagem, no PDF)', () => {
+test('getFlowSummary for email-first-contact returns correct Portuguese summary', () => {
   const summary = getFlowSummary(DEFAULT_WA_FLOWS[1]);
-  // 1 text step = "1 mensagem"
-  assert.match(summary, /1 mensagem/i);
-  assert.ok(!summary.includes('PDF'), 'already-talking should not mention PDF anymore');
+  // 4 text steps + product_images = "4 mensagens + mídia da biblioteca"
+  assert.match(summary, /4 mensagens/i);
+  assert.match(summary, /mídia da biblioteca/i);
 });
 
 test('getFlowSummary handles custom step combinations', () => {
