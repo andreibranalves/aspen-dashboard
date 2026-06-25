@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, AlertTriangle, BarChart3, Clipboard, Send } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api.js';
+import { apiGet, apiPut } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

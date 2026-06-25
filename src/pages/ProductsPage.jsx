@@ -6,8 +6,8 @@ import {
   Trash2,
   PlusCircle,
 } from 'lucide-react';
-import { useHashRoute } from '@/hooks/useHashRoute.js';
-import { apiGet, apiDelete } from '@/lib/api.js';
+import { useHashRoute } from '@/hooks/useHashRoute';
+import { apiGet, apiDelete } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

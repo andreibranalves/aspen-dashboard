@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { searchProducts } from '@/lib/productCache';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';

@@ -30,7 +30,7 @@ src/
 | Componente UI reutilizável | `src/components/ui/*.jsx` |
 | Layout / sidebar / topbar | `src/components/layout/*.jsx` |
 | Tela de comunicação WhatsApp | `src/pages/ComunicacaoPage.jsx` + `src/components/communication/*.jsx` |
-| Chamadas API do frontend | `src/lib/api.js` |
+| Chamadas API do frontend | `src/lib/api.ts` |
 | API de comunicação (WhatsApp) | `src/lib/communicationApi.ts` |
 | Fluxos WhatsApp (KV + fallback) | `src/lib/whatsappFlows.ts` |
 | Cache de produtos (TTL 5min) | `src/lib/productCache.ts` |
@@ -55,4 +55,4 @@ src/
 - Não adicione estado global; prefira `useState` local + contexto só para ações do TopBar.
 - Não quebre a convenção de roteamento manual no `App.jsx` (switch + `startsWith` para detalhes).
 - `public/index.html` é output do Vite; não edite diretamente.
-- `ComunicacaoPage` consome `src/lib/communicationApi.js` e os subcomponents em `components/communication/`.
+- `ComunicacaoPage` consome `src/lib/communicationApi.ts` e os subcomponents em `components/communication/`.

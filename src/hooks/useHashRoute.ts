@@ -6,8 +6,8 @@ import { useState, useEffect, useCallback } from 'react';
  *
  * Navegação: window.location.hash = '#/auto'
  */
-export function useHashRoute() {
-  const [route, setRoute] = useState(() => window.location.hash.slice(1) || '/auto');
+export function useHashRoute(): [string, (hash: string) => void] {
+  const [route, setRoute] = useState<string>(() => window.location.hash.slice(1) || '/auto');
 
   useEffect(() => {
     const onHashChange = () => setRoute(window.location.hash.slice(1) || '/auto');
@@ -15,7 +15,7 @@ export function useHashRoute() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const navigate = useCallback((hash) => {
+  const navigate = useCallback((hash: string) => {
     window.location.hash = hash;
   }, []);
 

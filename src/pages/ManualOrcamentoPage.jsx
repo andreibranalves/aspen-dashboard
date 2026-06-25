@@ -19,7 +19,7 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react';
-import { apiGet, apiPost } from '@/lib/api.js';
+import { apiGet, apiPost } from '@/lib/api';
 import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';

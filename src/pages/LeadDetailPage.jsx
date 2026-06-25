@@ -12,7 +12,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { apiGet, apiPut, apiPost } from '@/lib/api.js';
+import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks';
 import PageHeader from '@/components/PageHeader.jsx';

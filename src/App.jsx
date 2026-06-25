@@ -1,4 +1,4 @@
-import { useHashRoute } from '@/hooks/useHashRoute.js';
+import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout.jsx';
 import DashboardPage from '@/pages/DashboardPage.jsx';
 import QuotationsPage from '@/pages/QuotationsPage.jsx';

@@ -10,7 +10,7 @@ import {
   PlusCircle,
   Copy,
 } from 'lucide-react';
-import { apiGet, apiPost, apiDelete } from '@/lib/api.js';
+import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button';

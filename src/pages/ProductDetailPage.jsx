@@ -11,7 +11,7 @@ import {
   Check,
   Trash2,
 } from 'lucide-react';
-import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api.js';
+import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

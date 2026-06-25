@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, ShoppingCart, TrendingUp, DollarSign, Package } from 'lucide-react';
-import { apiGet } from '@/lib/api.js';
+import { apiGet } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader.jsx';
