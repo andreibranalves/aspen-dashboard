@@ -15,7 +15,7 @@ const {
   LS_WA_FLOWS,
   LS_WA_SELECTED_FLOW,
   STEP_TYPES,
-} = await import('../src/lib/whatsappFlows.js?t=' + Date.now());
+} = await import('../src/lib/whatsappFlows.ts?t=' + Date.now());
 
 let passed = 0;
 let failed = 0;

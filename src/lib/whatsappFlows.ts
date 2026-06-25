@@ -2,7 +2,7 @@
  * WhatsApp Flow Helpers — centralized flow defaults, persistence,
  * payload conversion, summaries, template rendering, and image parsing.
  *
- * Pure JS module — no React imports. Safe in SSR/Node tests where
+ * Pure TS module — no React imports. Safe in SSR/Node tests where
  * localStorage may be unavailable.
  */
 
@@ -23,12 +23,79 @@ export const STEP_TYPES = {
   DOCUMENT: 'document',
   PRODUCT_IMAGES: 'product_images',
   PRODUCT_MEDIA: 'product_media',
-};
+} as const;
+
+export type StepType = (typeof STEP_TYPES)[keyof typeof STEP_TYPES];
+
+// ---------------------------------------------------------------------------
+// Domain types
+// ---------------------------------------------------------------------------
+export interface Step {
+  id: string;
+  type: StepType;
+  template: string;
+  media: string;
+  source: string;
+  caption: string;
+}
+
+export interface Flow {
+  id: string;
+  name: string;
+  description: string;
+  vendor_name: string;
+  delay_min_seconds: number;
+  delay_max_seconds: number;
+  max_images_per_category: number;
+  default: boolean;
+  steps: Step[];
+  sample_images_text: string;
+}
+
+export interface SequenceStep {
+  type: StepType;
+  template?: string;
+  source?: string;
+  caption?: string;
+  media?: string;
+}
+
+export interface SequencePayload {
+  vendor_name: string;
+  delay_min_ms: number;
+  delay_max_ms: number;
+  max_images_per_category: number;
+  sample_images: SampleImages;
+  steps: SequenceStep[];
+}
+
+export interface TemplateContext {
+  Saudacao?: string;
+  nome?: string;
+  primeiro_nome?: string;
+  numero_pedido?: string;
+  empresa?: string;
+  link_orcamento?: string;
+  vendedora?: string;
+  produto_resumo?: string;
+  produto_adjetivo_personalizado?: string;
+  categories?: string[];
+  categorias?: string[];
+  [key: string]: string | string[] | undefined;
+}
+
+export type SampleImages = Record<string, string[]>;
+
+export interface ApiFetchResult {
+  flows: Flow[];
+  selectedFlowId: string | null;
+  source: string;
+}
 
 // ---------------------------------------------------------------------------
 // Default flow definitions
 // ---------------------------------------------------------------------------
-export const DEFAULT_WA_FLOWS = [
+export const DEFAULT_WA_FLOWS: Flow[] = [
   {
     id: 'already-talking',
     name: 'Já estou falando com o cliente',
@@ -43,10 +110,15 @@ export const DEFAULT_WA_FLOWS = [
         id: 'step-greeting',
         type: 'text',
         template: 'Segue o orçamento solicitado, (primeiro_nome)!',
+        media: '',
+        source: '',
+        caption: '',
       },
       {
         id: 'step-pdf',
         type: 'document',
+        template: '',
+        media: '',
         source: 'quotation_pdf',
         caption: 'Orçamento (numero_pedido)',
       },
@@ -63,25 +135,48 @@ export const DEFAULT_WA_FLOWS = [
     max_images_per_category: 2,
     default: false,
     steps: [
-      { id: 'step-greeting', type: 'text', template: 'Boa tarde, (primeiro_nome)! Tudo bem?' },
+      {
+        id: 'step-greeting',
+        type: 'text',
+        template: 'Boa tarde, (primeiro_nome)! Tudo bem?',
+        media: '',
+        source: '',
+        caption: '',
+      },
       {
         id: 'step-context',
         type: 'text',
         template:
           'Meu nome é (vendedora), da (empresa). Recebemos seu pedido de orçamento para (produto_resumo) (produto_adjetivo_personalizado).',
+        media: '',
+        source: '',
+        caption: '',
       },
       {
         id: 'step-quotation',
         type: 'text',
         template: 'Segue o orçamento (numero_pedido):\n(link_orcamento)',
+        media: '',
+        source: '',
+        caption: '',
       },
       {
         id: 'step-samples-intro',
         type: 'text',
         template:
           'Também estou te enviando algumas fotos de referência dos modelos para você visualizar melhor as opções.',
+        media: '',
+        source: '',
+        caption: '',
       },
-      { id: 'step-product-images', type: 'product_images' },
+      {
+        id: 'step-product-images',
+        type: 'product_images',
+        template: '',
+        media: '',
+        source: '',
+        caption: '',
+      },
     ],
     sample_images_text: '',
   },
@@ -90,7 +185,7 @@ export const DEFAULT_WA_FLOWS = [
 // ---------------------------------------------------------------------------
 // ID generation
 // ---------------------------------------------------------------------------
-export function createId(prefix = 'flow') {
+export function createId(prefix = 'flow'): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).substring(2, 6);
   return `${prefix}_${ts}${rand}`;
@@ -99,7 +194,7 @@ export function createId(prefix = 'flow') {
 // ---------------------------------------------------------------------------
 // Flow normalization
 // ---------------------------------------------------------------------------
-const STEP_DEFAULTS = {
+const STEP_DEFAULTS: Step = {
   id: '',
   type: 'text',
   template: '',
@@ -108,7 +203,7 @@ const STEP_DEFAULTS = {
   caption: '',
 };
 
-const FLOW_DEFAULTS = {
+const FLOW_DEFAULTS: Flow = {
   id: '',
   name: '',
   description: '',
@@ -125,8 +220,8 @@ const FLOW_DEFAULTS = {
  * Ensure a raw flow object has all required fields with safe defaults.
  * Each step is also normalized.
  */
-export function normalizeFlow(rawFlow, index = 0) {
-  const flow = { ...FLOW_DEFAULTS, ...rawFlow };
+export function normalizeFlow(rawFlow: Partial<Flow>, index = 0): Flow {
+  const flow = { ...FLOW_DEFAULTS, ...rawFlow } as Flow;
   flow.id = flow.id || (index !== undefined ? `flow_${index}` : createId());
   flow.name = flow.name || `Sequência ${(index || 0) + 1}`;
   flow.delay_min_seconds = Number(flow.delay_min_seconds) || FLOW_DEFAULTS.delay_min_seconds;
@@ -137,7 +232,7 @@ export function normalizeFlow(rawFlow, index = 0) {
   return flow;
 }
 
-const PRODUCT_CATEGORY_GENDERS = {
+const PRODUCT_CATEGORY_GENDERS: Record<string, 'f' | 'm'> = {
   canga: 'f',
   lenço: 'm',
   boné: 'm',
@@ -147,7 +242,7 @@ const PRODUCT_CATEGORY_GENDERS = {
   cachecol: 'm',
 };
 
-function normalizeProductSummaryTemplate(template) {
+function normalizeProductSummaryTemplate(template: string | null | undefined): string {
   return typeof template === 'string'
     ? template
         .replace(
@@ -158,11 +253,11 @@ function normalizeProductSummaryTemplate(template) {
           /\(produto_resumo\)\s+personalizados\(as\)/g,
           '(produto_resumo) (produto_adjetivo_personalizado)'
         )
-    : template;
+    : '';
 }
 
-function normalizeStep(rawStep, index) {
-  const step = { ...STEP_DEFAULTS, ...rawStep };
+function normalizeStep(rawStep: Partial<Step>, index: number): Step {
+  const step: Step = { ...STEP_DEFAULTS, ...rawStep };
   step.id = step.id || `step-${index}`;
   step.template = normalizeProductSummaryTemplate(step.template || '');
   step.media = step.media || '';
@@ -174,7 +269,7 @@ function normalizeStep(rawStep, index) {
 // ---------------------------------------------------------------------------
 // localStorage helpers (with SSR/Node fallback)
 // ---------------------------------------------------------------------------
-function getLocalStorage() {
+function getLocalStorage(): Storage | null {
   try {
     if (typeof localStorage !== 'undefined') {
       return localStorage;
@@ -190,7 +285,7 @@ function getLocalStorage() {
  * Returns a deep clone to avoid mutation of defaults.
  * Migrates old versions automatically.
  */
-export function loadWhatsappFlows() {
+export function loadWhatsappFlows(): Flow[] {
   const ls = getLocalStorage();
   if (ls) {
     try {
@@ -199,7 +294,7 @@ export function loadWhatsappFlows() {
       if (stored && storedVersion >= CURRENT_FLOWS_VERSION) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((f, i) => normalizeFlow(f, i));
+          return parsed.map((f: Partial<Flow>, i: number) => normalizeFlow(f, i));
         }
       }
       // Version mismatch or corrupted data — reset to defaults
@@ -226,7 +321,7 @@ export function loadWhatsappFlows() {
 /**
  * Save flows to localStorage. Silently no-ops in SSR/Node.
  */
-export function saveWhatsappFlows(flows) {
+export function saveWhatsappFlows(flows: Flow[]): void {
   const ls = getLocalStorage();
   if (ls) {
     try {
@@ -241,7 +336,7 @@ export function saveWhatsappFlows(flows) {
 /**
  * Get the selected flow ID from localStorage, falling back to the first flow's ID.
  */
-export function getSelectedFlowId(flows) {
+export function getSelectedFlowId(flows: Flow[]): string | null {
   const ls = getLocalStorage();
   if (ls) {
     try {
@@ -259,11 +354,11 @@ export function getSelectedFlowId(flows) {
 /**
  * Save the selected flow ID to localStorage. Silently no-ops in SSR/Node.
  */
-export function saveSelectedFlowId(flowId) {
+export function saveSelectedFlowId(flowId: string | null): void {
   const ls = getLocalStorage();
   if (ls) {
     try {
-      ls.setItem(LS_WA_SELECTED_FLOW, flowId);
+      ls.setItem(LS_WA_SELECTED_FLOW, String(flowId));
     } catch {
       // unavailable
     }
@@ -277,7 +372,7 @@ export function saveSelectedFlowId(flowId) {
  * Return a human-readable Portuguese summary of a flow.
  * Examples: "4 mensagens + fotos por produto", "1 mensagem + PDF"
  */
-export function getFlowSummary(flow) {
+export function getFlowSummary(flow: { steps?: Step[] } | null | undefined): string {
   if (!flow || !Array.isArray(flow.steps)) return '';
 
   const textCount = flow.steps.filter(
@@ -289,7 +384,7 @@ export function getFlowSummary(flow) {
     (s) => s.type === 'product_images' || s.type === 'product_media'
   );
 
-  const parts = [];
+  const parts: string[] = [];
 
   if (textCount > 0) {
     parts.push(`${textCount} ${textCount === 1 ? 'mensagem' : 'mensagens'}`);
@@ -321,7 +416,7 @@ export function getFlowSummary(flow) {
  * - Parses sample_images_text into the sample_images object.
  * - Converts delay seconds to milliseconds.
  */
-export function flowToSequencePayload(flow) {
+export function flowToSequencePayload(flow: Flow): SequencePayload {
   const cleanedSteps = (flow.steps || [])
     .filter((step) => {
       if (step.type === 'text') {
@@ -338,7 +433,7 @@ export function flowToSequencePayload(flow) {
     })
     .map((step) => {
       // Return a clean object with only relevant fields per type
-      const s = { type: step.type };
+      const s: SequenceStep = { type: step.type };
       if (step.type === 'text') {
         s.template = step.template;
       } else if (step.type === 'document') {
@@ -378,21 +473,27 @@ export function flowToSequencePayload(flow) {
  *
  * Unknown variables are left as-is.
  */
-function readTemplateContext(ctx, plainKey, tokenKey) {
-  return ctx[plainKey] || ctx[tokenKey] || '';
+function readTemplateContext(ctx: TemplateContext, plainKey: string, tokenKey: string): string {
+  const raw = ctx[plainKey] ?? ctx[tokenKey];
+  return typeof raw === 'string' ? raw : '';
 }
 
-function productPersonalizationAdjectiveFromCategories(categories = []) {
-  const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
+function productPersonalizationAdjectiveFromCategories(categories: string[] = []): string {
+  const genders = categories
+    .map((category) => PRODUCT_CATEGORY_GENDERS[category])
+    .filter(Boolean) as ('f' | 'm')[];
   return genders.length > 0 && genders.every((gender) => gender === 'f')
     ? 'personalizadas'
     : 'personalizados';
 }
 
-export function renderFlowTemplate(template, context) {
+export function renderFlowTemplate(
+  template: string | null | undefined,
+  context: TemplateContext
+): string {
   if (!template) return '';
 
-  const ctx = { ...context };
+  const ctx: TemplateContext = { ...context };
 
   // Time-based greeting
   if (!ctx.Saudacao && template.includes('(Saudacao)')) {
@@ -407,7 +508,7 @@ export function renderFlowTemplate(template, context) {
       '(produto_adjetivo_personalizado)'
     ) || productPersonalizationAdjectiveFromCategories(productCategories);
 
-  const variableMap = {
+  const variableMap: Record<string, string> = {
     '(Saudacao)': readTemplateContext(ctx, 'Saudacao', '(Saudacao)'),
     '(nome)':
       readTemplateContext(ctx, 'nome', '(nome)') ||
@@ -433,7 +534,7 @@ export function renderFlowTemplate(template, context) {
 
 export const WHATSAPP_TIME_ZONE = 'America/Sao_Paulo';
 
-function getHourInTimeZone(date = new Date(), timeZone = WHATSAPP_TIME_ZONE) {
+function getHourInTimeZone(date = new Date(), timeZone = WHATSAPP_TIME_ZONE): number {
   const hourPart = new Intl.DateTimeFormat('pt-BR', {
     hour: 'numeric',
     hour12: false,
@@ -445,7 +546,10 @@ function getHourInTimeZone(date = new Date(), timeZone = WHATSAPP_TIME_ZONE) {
   return Number.parseInt(hourPart?.value || '0', 10);
 }
 
-export function getTimeBasedGreeting(date = new Date(), timeZone = WHATSAPP_TIME_ZONE) {
+export function getTimeBasedGreeting(
+  date = new Date(),
+  timeZone = WHATSAPP_TIME_ZONE
+): string {
   const hour = getHourInTimeZone(date, timeZone);
   if (hour >= 5 && hour < 12) return 'Bom dia';
   if (hour >= 12 && hour < 18) return 'Boa tarde';
@@ -464,10 +568,10 @@ export function getTimeBasedGreeting(date = new Date(), timeZone = WHATSAPP_TIME
  *
  * Returns { canga: ['https://...', 'https://...'], lenço: ['https://...'] }
  */
-export function parseSampleImages(text) {
+export function parseSampleImages(text: unknown): SampleImages {
   if (!text || typeof text !== 'string') return {};
 
-  const result = {};
+  const result: SampleImages = {};
   const lines = text.split('\n').filter((line) => line.trim().length > 0);
 
   for (const line of lines) {
@@ -501,19 +605,29 @@ export function parseSampleImages(text) {
  * Returns { flows, selectedFlowId, source }.
  * Falls back to localStorage if API is unreachable.
  */
-export async function fetchFlowsFromApi() {
+export async function fetchFlowsFromApi(): Promise<ApiFetchResult> {
   try {
     const res = await fetch('/api/whatsapp-flows');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = (await res.json()) as {
+      success?: boolean;
+      flows?: unknown[];
+      selectedFlowId?: string | null;
+      source?: string;
+    };
     if (data.success && Array.isArray(data.flows)) {
-      const flows = data.flows.map((f, i) => normalizeFlow(f, i));
+      const flows = data.flows.map((f: unknown, i: number) =>
+        normalizeFlow(f as Partial<Flow>, i)
+      );
       const selectedFlowId = data.selectedFlowId || flows[0]?.id || null;
       return { flows, selectedFlowId, source: data.source || 'api' };
     }
     throw new Error('Invalid API response');
   } catch (err) {
-    console.warn('[whatsappFlows] API fetch failed, falling back to localStorage:', err.message);
+    console.warn(
+      '[whatsappFlows] API fetch failed, falling back to localStorage:',
+      (err as Error).message
+    );
     const flows = loadWhatsappFlows();
     const selectedFlowId = getSelectedFlowId(flows);
     return { flows, selectedFlowId, source: 'localStorage' };
@@ -525,7 +639,10 @@ export async function fetchFlowsFromApi() {
  * Returns true on success, false on failure.
  * Also updates localStorage as a fallback mirror.
  */
-export async function saveFlowsToApi(flows, selectedFlowId) {
+export async function saveFlowsToApi(
+  flows: Flow[],
+  selectedFlowId: string | null
+): Promise<boolean> {
   try {
     const res = await fetch('/api/whatsapp-flows', {
       method: 'PUT',
@@ -533,7 +650,7 @@ export async function saveFlowsToApi(flows, selectedFlowId) {
       body: JSON.stringify({ flows, selectedFlowId }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = (await res.json()) as { success?: boolean; error?: string };
     if (data.success) {
       // Mirror to localStorage as fallback
       saveWhatsappFlows(flows);
@@ -542,7 +659,7 @@ export async function saveFlowsToApi(flows, selectedFlowId) {
     }
     throw new Error(data.error || 'Unknown error');
   } catch (err) {
-    console.error('[whatsappFlows] API save failed:', err.message);
+    console.error('[whatsappFlows] API save failed:', (err as Error).message);
     // Still save to localStorage so the current user doesn't lose changes
     saveWhatsappFlows(flows);
     saveSelectedFlowId(selectedFlowId);

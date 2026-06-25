@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/whatsappFlows.js';
+import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/whatsappFlows.ts';
 
 process.env.EVOLUTION_BASE_URL = 'https://evolution.example.test';
 process.env.EVOLUTION_API_KEY = 'test-key';

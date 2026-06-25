@@ -18,7 +18,7 @@ import {
   parseSampleImages,
   getSelectedFlowId,
   saveSelectedFlowId,
-} from '../../src/lib/whatsappFlows.js';
+} from '../../src/lib/whatsappFlows.ts';
 
 // ── DEFAULT_WA_FLOWS ─────────────────────────────────────────────────────────
 

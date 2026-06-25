@@ -26,7 +26,7 @@ scripts/
 | Run Vite dev server | `npm run dev` → `scripts/vite-dev.mjs` |
 | Load `.env` before handler imports | `scripts/load-env.mjs` |
 | Manual E2E smoke test for a page | `playwright-test-product-detail.mjs`, `playwright-test-react.mjs`, etc. |
-| Unit-test `src/lib/whatsappFlows.js` | `node scripts/test-whatsapp-flows.mjs` |
+| Unit-test `src/lib/whatsappFlows.ts` | `node scripts/test-whatsapp-flows.mjs` |
 | One-off token migration | `node scripts/migrate-tokens.mjs` |
 
 ## CONVENTIONS
@@ -37,7 +37,7 @@ scripts/
 - **Route maps are duplicated** across `api/[...path].js`, `scripts/dev-api-server.mjs`, and `scripts/app-server.mjs`. Keep them in sync.
 - **Dev servers construct a synthetic Lambda `event`** (`httpMethod`, `body`, `queryStringParameters`, `headers`) and call handlers directly. Auth and rate-limit are skipped locally.
 - **Manual Playwright harnesses read `BASE_URL`** (`http://localhost:3000` by default), mock API routes via `page.route()`, and use custom `check`/`assert` helpers instead of `@playwright/test`.
-- **Module tests import source files dynamically** with a cache-busting query string (e.g. `../src/lib/whatsappFlows.js?t=${Date.now()}`).
+- **Module tests import source files dynamically** with a cache-busting query string (e.g. `../src/lib/whatsappFlows.ts?t=${Date.now()}`).
 
 ## ANTI-PATTERNS / NOTES
 
