@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiGet, apiPut, apiPost } from '@/lib/api.js';
-import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters.js';
+import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks.js';
 import PageHeader from '@/components/PageHeader.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';

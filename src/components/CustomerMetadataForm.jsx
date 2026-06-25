@@ -3,9 +3,9 @@
 // Extracted from AutoQuotePage.jsx.
 
 import { Mail, Phone, User, Building2, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input.jsx';
-import { formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import { formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import {
   LEAD_SOURCES,
   isValidCnpj,

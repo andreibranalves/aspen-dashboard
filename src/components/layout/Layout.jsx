@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, createContext, useContext } from 'react';
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { useDarkMode } from '@/hooks/useDarkMode.js';
 
 // ── TopBar actions context ──

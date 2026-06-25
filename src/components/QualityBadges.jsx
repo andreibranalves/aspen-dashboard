@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { AlertTriangle, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
 
 /**

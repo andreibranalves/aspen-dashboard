@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 
 /**
  * DetailDrawer — painel lateral reutilizável para drill-down operacional.

@@ -11,9 +11,9 @@ import {
   X,
 } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api.js';
-import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters.js';
+import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput.js';

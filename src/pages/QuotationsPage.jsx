@@ -11,7 +11,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api.js';
-import { formatBRL, formatDate } from '@/lib/formatters.js';
+import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';

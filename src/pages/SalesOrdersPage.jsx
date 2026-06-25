@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, ShoppingCart, TrendingUp, DollarSign, Package } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
-import { formatBRL } from '@/lib/formatters.js';
-import { cn } from '@/lib/utils.js';
+import { formatBRL } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader.jsx';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';

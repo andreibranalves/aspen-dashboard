@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet, apiDelete } from '@/lib/api.js';
-import { formatBRL } from '@/lib/formatters.js';
+import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import SkeletonTable from '@/components/SkeletonTable.jsx';

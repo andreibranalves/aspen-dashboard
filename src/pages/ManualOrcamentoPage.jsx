@@ -21,9 +21,9 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
 import { searchProducts as cachedSearchProducts } from '@/lib/productCache.js';
-import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters.js';
+import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats.js';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table.jsx';

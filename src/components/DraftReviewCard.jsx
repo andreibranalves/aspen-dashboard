@@ -3,8 +3,8 @@
 // Extracted from AutoQuotePage.jsx.
 
 import { Check, X, Pencil } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
-import { formatBRL } from '@/lib/formatters.js';
+import { cn } from '@/lib/utils';
+import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
 import Skeleton from '@/components/Skeleton.jsx';
 import CustomerMetadataForm from '@/components/CustomerMetadataForm.jsx';

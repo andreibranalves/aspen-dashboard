@@ -4,7 +4,7 @@
 
 import { Package } from 'lucide-react';
 import { Button } from '@/components/ui/button.jsx';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 
 const EMPTY_ICONS = {
   default: Package,

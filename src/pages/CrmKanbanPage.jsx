@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, AlertTriangle, BarChart3, Clipboard, Send } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api.js';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { PIPELINE } from '@/lib/constants.js';

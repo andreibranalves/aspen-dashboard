@@ -3,7 +3,7 @@
 
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button.jsx';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 
 export default function ErrorState({
   message = 'Erro ao carregar dados.',

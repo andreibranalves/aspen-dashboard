@@ -2,7 +2,7 @@
 // Standardized status badge — replaces inline emoji-based status chips.
 // Color scheme maps to semantic states.
 
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { Check, X, Clock, AlertTriangle, Loader2 } from 'lucide-react';
 
 const STATUS_STYLES = {

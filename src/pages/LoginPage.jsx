@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { LogIn, ShieldAlert } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 
 /**
  * LoginPage — tela de autenticação full-screen.

@@ -3,9 +3,9 @@
 // Extracted from AutoQuotePage.jsx.
 
 import { GripVertical, X, Plus, Package, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input.jsx';
-import { formatBRL } from '@/lib/formatters.js';
+import { formatBRL } from '@/lib/formatters';
 
 export default function DraftItemTable({
   items = [],

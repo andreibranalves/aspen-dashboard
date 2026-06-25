@@ -15,8 +15,8 @@ import {
   Phone,
   Sparkles,
 } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
-import { formatBRL, capitalize } from '@/lib/formatters.js';
+import { cn } from '@/lib/utils';
+import { formatBRL, capitalize } from '@/lib/formatters';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
 import { searchProducts } from '@/lib/productCache.js';
 import { Button } from '@/components/ui/button.jsx';

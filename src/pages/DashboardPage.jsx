@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BarChart3, TrendingUp, DollarSign, Package, Clock, ShoppingCart, Users, FileText, ExternalLink } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
-import { formatBRL, capitalize } from '@/lib/formatters.js';
-import { cn } from '@/lib/utils.js';
+import { formatBRL, capitalize } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader.jsx';
 import { Button } from '@/components/ui/button.jsx';
 

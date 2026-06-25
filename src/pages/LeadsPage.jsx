@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus } from 'lucide-react';
 import { apiGet, apiPut, apiDelete } from '@/lib/api.js';
-import { fmtPhone } from '@/lib/formatters.js';
+import { fmtPhone } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import PageHeader from '@/components/PageHeader.jsx';

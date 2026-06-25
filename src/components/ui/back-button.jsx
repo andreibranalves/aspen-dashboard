@@ -1,5 +1,5 @@
 import { ChevronLeft } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { cn } from '@/lib/utils';
 
 /**
  * BackButton — pill button with a left-chevron icon inside a solid primary circle.

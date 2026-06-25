@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ExternalLink, FileText, Truck, DollarSign, Check } from 'lucide-react';
 import { apiGet } from '@/lib/api.js';
-import { formatBRL } from '@/lib/formatters.js';
+import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
 
 const STATUS_LABELS = {
