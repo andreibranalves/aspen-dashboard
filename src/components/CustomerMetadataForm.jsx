@@ -13,7 +13,7 @@ import {
   normalizeCnpj,
   hasAnyAddressField,
   formatAddressSummary,
-} from '@/lib/clientMetadata.js';
+} from '@/lib/clientMetadata';
 
 export default function CustomerMetadataForm({
   draft,

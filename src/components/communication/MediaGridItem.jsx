@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Trash2, Image, Video } from 'lucide-react';
-import { GROUP_LABELS } from '@/lib/communicationApi.js';
+import { GROUP_LABELS } from '@/lib/communicationApi';
 
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return '';

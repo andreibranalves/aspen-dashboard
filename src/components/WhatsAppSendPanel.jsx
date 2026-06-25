@@ -4,8 +4,8 @@
 
 import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button.jsx';
-import { flowToSequencePayload, getFlowSummary } from '@/lib/whatsappFlows.js';
+import { Button } from '@/components/ui/button';
+import { flowToSequencePayload, getFlowSummary } from '@/lib/whatsappFlows';
 
 export default function WhatsAppSendPanel({
   selectedFlowId,

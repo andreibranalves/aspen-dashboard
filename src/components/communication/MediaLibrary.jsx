@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Filter } from 'lucide-react';
-import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi.js';
+import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi';
 import MediaGridItem from '@/components/communication/MediaGridItem.jsx';
 import ConfirmDialog from '@/components/ConfirmDialog.jsx';
 import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';

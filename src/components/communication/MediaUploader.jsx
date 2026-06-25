@@ -5,7 +5,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Upload, Loader2, AlertCircle } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
-import { createMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi.js';
+import { createMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi';
 
 export default function MediaUploader({ onUploadComplete }) {
   const [dragging, setDragging] = useState(false);

@@ -4,14 +4,14 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiPost } from '@/lib/api.js';
-import { searchProducts as cachedSearchProducts } from '@/lib/productCache.js';
+import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
 import {
   isValidLeadSource,
   normalizeCnpj,
   isValidCnpj,
   normalizeAddress,
   normalizeLeadSource,
-} from '@/lib/clientMetadata.js';
+} from '@/lib/clientMetadata';
 
 export function useExtractionDrafts() {
   // ── State ──

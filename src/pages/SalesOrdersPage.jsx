@@ -4,7 +4,7 @@ import { apiGet } from '@/lib/api.js';
 import { formatBRL } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader.jsx';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,

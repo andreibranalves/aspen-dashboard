@@ -3,7 +3,7 @@
 // Uses Lucide icons (no emoji).
 
 import { Package } from 'lucide-react';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const EMPTY_ICONS = {

@@ -18,7 +18,7 @@ import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks';
 import PageHeader from '@/components/PageHeader.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QualityBadges } from '@/components/QualityBadges.jsx';
 import { ContextActions } from '@/components/ContextActions.jsx';

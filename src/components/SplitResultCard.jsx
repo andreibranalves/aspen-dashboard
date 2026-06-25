@@ -17,9 +17,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBRL, capitalize } from '@/lib/formatters';
-import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata.js';
-import { searchProducts } from '@/lib/productCache.js';
-import { Button } from '@/components/ui/button.jsx';
+import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
+import { searchProducts } from '@/lib/productCache';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
 

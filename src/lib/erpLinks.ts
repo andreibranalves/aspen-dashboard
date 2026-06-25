@@ -11,7 +11,7 @@ const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
  * Monta URL genérica para qualquer doctype do ERPNext.
  */
 export function buildErpDocUrl(
-  baseUrl: string | undefined,
+  baseUrl: string | null | undefined,
   doctype: string,
   name: string,
 ): string | null {
@@ -25,35 +25,35 @@ export function buildErpDocUrl(
 // ── Conveniências ──
 
 export function buildQuotationErpUrl(
-  baseUrl: string | undefined,
+  baseUrl: string | null | undefined,
   quotationId: string,
 ): string | null {
   return buildErpDocUrl(baseUrl, 'Quotation', quotationId);
 }
 
 export function buildSalesOrderErpUrl(
-  baseUrl: string | undefined,
+  baseUrl: string | null | undefined,
   salesOrderId: string,
 ): string | null {
   return buildErpDocUrl(baseUrl, 'Sales Order', salesOrderId);
 }
 
 export function buildCustomerErpUrl(
-  baseUrl: string | undefined,
+  baseUrl: string | null | undefined,
   customerId: string,
 ): string | null {
   return buildErpDocUrl(baseUrl, 'Customer', customerId);
 }
 
 export function buildLeadErpUrl(
-  baseUrl: string | undefined,
+  baseUrl: string | null | undefined,
   leadId: string,
 ): string | null {
   return buildErpDocUrl(baseUrl, 'Lead', leadId);
 }
 
 export function buildCrmDealErpUrl(
-  baseUrl: string | undefined,
+  baseUrl: string | null | undefined,
   dealId: string,
 ): string | null {
   return buildErpDocUrl(baseUrl, 'CRM Deal', dealId);

@@ -3,7 +3,7 @@
 // Uses AlertTriangle icon and PT-BR text by default.
 
 import { AlertTriangle, X } from 'lucide-react';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 
 export default function ConfirmDialog({
   open,

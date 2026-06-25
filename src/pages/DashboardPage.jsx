@@ -4,7 +4,7 @@ import { apiGet } from '@/lib/api.js';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader.jsx';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 
 const PERIODS = [
   { key: 'today', label: 'Hoje' },

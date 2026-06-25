@@ -13,7 +13,7 @@ import {
 import { apiGet, apiPost, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import PageHeader from '@/components/PageHeader.jsx';

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, AlertTriangle, BarChart3, Clipboard, Send } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api.js';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/components/SkeletonKanban.jsx';

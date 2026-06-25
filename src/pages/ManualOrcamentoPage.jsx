@@ -20,11 +20,11 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api.js';
-import { searchProducts as cachedSearchProducts } from '@/lib/productCache.js';
+import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -37,7 +37,7 @@ import {
   normalizeAddress,
   hasAnyAddressField,
   formatAddressSummary,
-} from '@/lib/clientMetadata.js';
+} from '@/lib/clientMetadata';
 
 // ── Constants ──
 const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' };

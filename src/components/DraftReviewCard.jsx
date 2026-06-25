@@ -5,7 +5,7 @@
 import { Check, X, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBRL } from '@/lib/formatters';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import Skeleton from '@/components/Skeleton.jsx';
 import CustomerMetadataForm from '@/components/CustomerMetadataForm.jsx';
 import DraftItemTable from '@/components/DraftItemTable.jsx';

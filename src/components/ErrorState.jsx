@@ -2,7 +2,7 @@
 // Standardized error state — for failed data loads with retry support.
 
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export default function ErrorState({

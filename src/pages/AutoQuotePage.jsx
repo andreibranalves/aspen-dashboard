@@ -14,11 +14,11 @@ import { apiPost, apiGet } from '@/lib/api.js';
 import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
-import { fetchFlows, executeFlow } from '@/lib/communicationApi.js';
+import { fetchFlows, executeFlow } from '@/lib/communicationApi';
 
 export default function AutoQuotePage() {
   // ── Helpers ──
