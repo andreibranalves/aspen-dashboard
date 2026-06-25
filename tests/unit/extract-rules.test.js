@@ -22,10 +22,15 @@ describe('DEFAULT_RULES — cobertura de produtos', () => {
   it('Lenços → comportamento base e variantes', () => {
     assert.ok(DEFAULT_RULES.includes('LNC-SED-70 + LNC-CSD-70'), 'lenços padrão');
     assert.ok(DEFAULT_RULES.includes('LNC-SED-LAS-70'), 'lenços com laser');
+    assert.ok(DEFAULT_RULES.includes('LNC-SED-90'), 'lenço seda 90');
+    assert.ok(DEFAULT_RULES.includes('LNC-CSD-90'), 'lenço crepe 90');
     assert.ok(DEFAULT_RULES.includes('"seda"'), 'lenço seda');
     assert.ok(DEFAULT_RULES.includes('"crepe"'), 'lenço crepe');
+    assert.ok(DEFAULT_RULES.includes('"viscose"'), 'lenço viscose');
     assert.ok(DEFAULT_RULES.includes('"50cm"'), 'lenço 50cm');
     assert.ok(DEFAULT_RULES.includes('"70cm"'), 'lenço 70cm');
+    assert.ok(DEFAULT_RULES.includes('"90cm"'), 'lenço 90cm');
+    assert.ok(DEFAULT_RULES.includes('NUNCA deve ser confundida com tamanho'), 'separar qtd de tamanho');
   });
 
   it('Echarpes → ECH-SED + ECH-CSD', () => {
@@ -47,6 +52,9 @@ describe('DEFAULT_RULES — cobertura de produtos', () => {
     assert.ok(DEFAULT_RULES.includes('"salinas"'), 'canga salinas');
     assert.ok(DEFAULT_RULES.includes('"viscose"'), 'canga viscose');
     assert.ok(DEFAULT_RULES.includes('"laser"'), 'canga laser');
+    assert.ok(DEFAULT_RULES.includes('"atoalhada"'), 'canga atoalhada');
+    assert.ok(DEFAULT_RULES.includes('"140cm"'), 'canga 140cm');
+    assert.ok(DEFAULT_RULES.includes('CNG-ATO-70'), 'canga atoalhada SKU');
   });
 
   it('Toalhas de Praia → TWL-210 + TWL-280', () => {

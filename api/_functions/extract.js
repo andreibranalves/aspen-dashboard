@@ -7,25 +7,34 @@ Rule 2 — Quantidade exata: Usar a qtd EXATA do cliente. O sistema aplica as fa
 
 Rule 3 — Regras por Produto:
 - Lenços:
-  * Comportamento base (sem qualificador): Sempre LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70 (bainha).
-  * "laser" (sem bainha) → apenas LNC-SED-LAS-50 + LNC-SED-LAS-70.
-  * "bainha" (sem laser) → apenas LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70.
-  * "bainha e laser" / "bainha + laser" → todos: LNC-SED-LAS-50 + LNC-SED-LAS-70 + LNC-SED-50 + LNC-CSD-50 + LNC-SED-70 + LNC-CSD-70.
-  * "seda" → apenas LNC-SED-50 + LNC-SED-70.
-  * "crepe" ou "crepe de seda" → apenas LNC-CSD-50 + LNC-CSD-70.
-  * "50cm" / "50×50" → apenas variantes -50.
-  * "70cm" / "70×70" / "55×55" → apenas variantes -70.
-  * Combinações: "lenços laser 70cm" → LNC-SED-LAS-70; "lenços seda 50cm" → LNC-SED-50.
-  * Se pedido 55×55cm sem outra indicação, cotar 50×50cm.
+  * Padrão (sem qualificador de tamanho/material/acabamento): LNC-SED-70 + LNC-CSD-70.
+  * "seda" → LNC-SED-70 (ou -50/-90 se o tamanho for especificado).
+  * "crepe" / "cetim de seda" → LNC-CSD-70 (ou -50/-90 se tamanho especificado).
+  * "laser" (sem bainha) → LNC-SED-LAS-70 (ou -50/-90 se tamanho especificado).
+  * "bainha" (sem laser) → LNC-SED-70 + LNC-CSD-70.
+  * "bainha e laser" / "bainha + laser" → LNC-SED-70 + LNC-CSD-70 + LNC-SED-LAS-70.
+  * "viscose" → LNC-VIS-70.
+  * Tamanhos reconhecidos: "50cm" / "50x50" / "55x55" → variantes -50; "70cm" / "70x70" → variantes -70; "90cm" / "90x90" → variantes -90. Só interpretar como tamanho quando vier com "cm" ou formato "NxN".
+  * A QUANTIDADE é o primeiro número do pedido e NUNCA deve ser confundida com tamanho. Ex: "70 lenços 90x90cm" → qty=70, tamanho=90x90cm.
+  * Exemplos:
+    - "70 lenços 90x90cm" → qty 70, LNC-SED-90 + LNC-CSD-90
+    - "50 lenços laser" → qty 50, LNC-SED-LAS-70
+    - "lenços seda 50cm" → LNC-SED-50
 - Echarpes: Sempre ECH-SED + ECH-CSD.
 - Chapéus: Sempre CHP-PAN + CHP-PNR + CHP-BAM.
 - Cangas:
-  * Comportamento base (sem material especificado):
+  * Padrão (sem material/tamanho especificado):
     - < 100 un → CNG-SAL-70 + CNG-SAL-100
     - ≥ 100 un → CNG-SAL-70 + CNG-SAL-100 + CNG-VIS-70 + CNG-VIS-100
-  * "salinas" ou "salina" → apenas CNG-SAL-70 + CNG-SAL-100, independente da quantidade.
-  * "viscose" → apenas CNG-VIS-70 + CNG-VIS-100, independente da quantidade.
-  * "laser" → CNG-SAL-LAS-70 e/ou CNG-SAL-LAS-100 conforme quantidade/tamanho.
+  * "salinas" ou "salina" → CNG-SAL-70 + CNG-SAL-100, independente da quantidade.
+  * "viscose" → CNG-VIS-70 + CNG-VIS-100, independente da quantidade.
+  * "atoalhada" / "crepe salinas" → CNG-ATO-70 + CNG-ATO-100.
+  * "laser" → CNG-SAL-LAS-70 + CNG-SAL-LAS-100.
+  * "140cm" / "140x140" → incluir a variante -140 do material especificado (ou salinas se nenhum material for mencionado).
+  * Exemplos:
+    - "100 cangas viscose" → CNG-VIS-70 + CNG-VIS-100
+    - "50 cangas salinas 140cm" → CNG-SAL-140
+    - "100 cangas atoalhada" → CNG-ATO-70 + CNG-ATO-100
 - Toalhas de Praia: Sempre TWL-210 + TWL-280.
 - Toalhas de Banho: Sempre TBH-LEM + TBH-URC + TBH-IPA.
 - Bonés: < 100 un → BNE-TAC-VNL. ≥ 100 un → BNE-TAC-SUB + BNE-BRI + BNE-PRE.
