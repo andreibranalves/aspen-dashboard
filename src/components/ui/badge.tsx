@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
  * StatusBadge — Alpine status chips.
  * Neutral surface with semantic color text for each status.
  */
-const badgeVariants = {
+const badgeVariants: Record<string, string> = {
   Draft:     'tone-neutral-soft',
   Open:      'tone-primary-soft',
   Replied:   'tone-warning-soft',
@@ -14,7 +14,13 @@ const badgeVariants = {
   Cancelled: 'tone-neutral-muted line-through',
 };
 
-export function StatusBadge({ status, label, className }) {
+interface StatusBadgeProps {
+  status: string;
+  label?: string;
+  className?: string;
+}
+
+export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const variant = badgeVariants[status] || badgeVariants.Draft;
   return (
     <span

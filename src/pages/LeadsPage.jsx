@@ -3,12 +3,12 @@ import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, Chevr
 import { apiGet, apiPut, apiDelete } from '@/lib/api.js';
 import { fmtPhone } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
-import { Input } from '@/components/ui/input.jsx';
+import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/PageHeader.jsx';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table.jsx';
+} from '@/components/ui/table';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
 import { DetailDrawer } from '@/components/DetailDrawer.jsx';
 import { QualityBadges } from '@/components/QualityBadges.jsx';

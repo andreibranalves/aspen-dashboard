@@ -14,8 +14,8 @@ import { apiGet, apiPost, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button.jsx';
-import { Input } from '@/components/ui/input.jsx';
-import { StatusBadge } from '@/components/ui/badge.jsx';
+import { Input } from '@/components/ui/input';
+import { StatusBadge } from '@/components/ui/badge';
 import PageHeader from '@/components/PageHeader.jsx';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
@@ -25,7 +25,7 @@ import {
   TableRow,
   TableHead,
   TableCell,
-} from '@/components/ui/table.jsx';
+} from '@/components/ui/table';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
 
 const STATUS_LABELS = {

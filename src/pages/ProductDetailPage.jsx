@@ -14,7 +14,7 @@ import {
 import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
-import { Input } from '@/components/ui/input.jsx';
+import { Input } from '@/components/ui/input';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 

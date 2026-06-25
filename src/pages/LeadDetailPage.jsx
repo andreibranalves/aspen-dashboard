@@ -19,7 +19,7 @@ import PageHeader from '@/components/PageHeader.jsx';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import { Button } from '@/components/ui/button.jsx';
-import { Input } from '@/components/ui/input.jsx';
+import { Input } from '@/components/ui/input';
 import { QualityBadges } from '@/components/QualityBadges.jsx';
 import { ContextActions } from '@/components/ContextActions.jsx';
 

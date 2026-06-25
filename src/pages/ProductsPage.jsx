@@ -10,12 +10,12 @@ import { useHashRoute } from '@/hooks/useHashRoute.js';
 import { apiGet, apiDelete } from '@/lib/api.js';
 import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button.jsx';
-import { Input } from '@/components/ui/input.jsx';
+import { Input } from '@/components/ui/input';
 import SkeletonTable from '@/components/SkeletonTable.jsx';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table.jsx';
+} from '@/components/ui/table';
 
 const PAGE_SIZES = [10, 25, 50];
 

@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import { Menu, ChevronRight } from 'lucide-react';
-import BackButton from '@/components/ui/back-button.jsx';
+import BackButton from '@/components/ui/back-button';
 
 /**
  * TopBar — breadcrumb (left) + page-specific actions (right).
