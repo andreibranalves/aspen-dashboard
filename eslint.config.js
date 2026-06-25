@@ -1,5 +1,7 @@
 import js from '@eslint/js';
 import prettierConfig from 'eslint-config-prettier';
+import tsParser from '@typescript-eslint/parser';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 export default [
   {
@@ -14,7 +16,7 @@ export default [
   prettierConfig,
   // ── Node.js (API handlers, libs, scripts, tests) ──
   {
-    files: ['api/**/*.js', 'scripts/**/*.{js,mjs}', 'test_local.mjs', '*.config.js', 'tailwind.config.js'],
+    files: ['api/**/*.{js,ts}', 'scripts/**/*.{js,mjs}', 'test_local.mjs', '*.config.js', 'tailwind.config.js'],
     languageOptions: {
       globals: {
         console: 'readonly',
@@ -41,7 +43,7 @@ export default [
   },
   // ── Browser (React frontend) ──
   {
-    files: ['src/**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       parserOptions: {
         ecmaFeatures: { jsx: true },
@@ -84,6 +86,26 @@ export default [
       'no-undef': 'error',
       'no-empty': ['warn', { allowEmptyCatch: true }],
       'react-hooks/exhaustive-deps': 'off',
+    },
+  },
+  // ── TypeScript (frontend + backend futuro) ──
+  {
+    files: ['src/**/*.{ts,tsx}', 'api/**/*.{ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        project: './tsconfig.json',
+        tsconfigRootDir: process.cwd(),
+      },
+    },
+    plugins: {
+      '@typescript-eslint': tsPlugin,
+    },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
   // ── Tests (Playwright) ──
