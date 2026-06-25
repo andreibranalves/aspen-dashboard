@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type ReactNode,
+  type ChangeEvent,
+  type ComponentType,
+} from 'react';
 import {
   Package,
   Tag,
@@ -15,12 +23,58 @@ import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
-import SkeletonDetail from '@/components/SkeletonDetail.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout';
+import SkeletonDetail from '@/components/SkeletonDetail';
 
 const BRACKETS = [30, 100, 300, 500, 1000];
 
-function buildEmptyProduct() {
+interface Produto {
+  sku: string;
+  nome: string;
+  descricao: string | null;
+  categoria: string;
+  unidade: string;
+  ativo: boolean;
+  imagem: string | null;
+  modificado_em: string | null;
+}
+
+interface Preco {
+  faixa: number;
+  rate: number | null;
+}
+
+interface ProductDetail {
+  produto: Produto;
+  precos: Preco[];
+}
+
+interface Atividade {
+  tipo: string;
+  data: string;
+  texto: string;
+}
+
+interface Toast {
+  type: 'success' | 'error';
+  message: string;
+}
+
+interface Rates {
+  [faixa: number]: string;
+}
+
+interface EditedProduct {
+  sku: string;
+  nome: string;
+  descricao: string;
+  categoria: string;
+  unidade: string;
+  ativo: boolean;
+  rates: Rates;
+}
+
+function buildEmptyProduct(): ProductDetail {
   return {
     produto: {
       sku: '',
@@ -36,11 +90,11 @@ function buildEmptyProduct() {
   };
 }
 
-function buildEmptyRates() {
+function buildEmptyRates(): Rates {
   return Object.fromEntries(BRACKETS.map((faixa) => [faixa, '']));
 }
 
-function buildEditedState(produto, precos = []) {
+function buildEditedState(produto?: Produto | null, precos: Preco[] = []): EditedProduct {
   const rates = buildEmptyRates();
   for (const faixa of BRACKETS) {
     const row = precos.find((p) => Number(p.faixa) === faixa);
@@ -58,7 +112,14 @@ function buildEditedState(produto, precos = []) {
   };
 }
 
-function SectionCard({ title, description, icon: Icon, children }) {
+interface SectionCardProps {
+  title: string;
+  description?: string;
+  icon?: ComponentType<{ size?: number }>;
+  children: ReactNode;
+}
+
+function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
   return (
     <section className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
       <div className="flex items-start gap-3">
@@ -77,7 +138,13 @@ function SectionCard({ title, description, icon: Icon, children }) {
   );
 }
 
-function InfoField({ label, value, children }) {
+interface InfoFieldProps {
+  label: string;
+  value?: ReactNode;
+  children?: ReactNode;
+}
+
+function InfoField({ label, value, children }: InfoFieldProps) {
   return (
     <div>
       <span className="text-fg-muted text-[11px] uppercase tracking-wide">{label}</span>
@@ -86,7 +153,15 @@ function InfoField({ label, value, children }) {
   );
 }
 
-function SelectField({ value, onChange, children, disabled = false, className = '' }) {
+interface SelectFieldProps {
+  value?: string;
+  onChange?: (event: ChangeEvent<HTMLSelectElement>) => void;
+  children: ReactNode;
+  disabled?: boolean;
+  className?: string;
+}
+
+function SelectField({ value, onChange, children, disabled = false, className = '' }: SelectFieldProps) {
   return (
     <select
       value={value || ''}
@@ -99,18 +174,23 @@ function SelectField({ value, onChange, children, disabled = false, className = 
   );
 }
 
-export default function ProductDetailPage({ sku, navigate }) {
+interface ProductDetailPageProps {
+  sku: string;
+  navigate: (hash: string) => void;
+}
+
+export default function ProductDetailPage({ sku, navigate }: ProductDetailPageProps) {
   const decodedSku = decodeURIComponent(sku || '');
   const isNewProduct = decodedSku === 'new';
-  const [product, setProduct] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [editing, setEditing] = useState(false);
-  const [edited, setEdited] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [toast, setToast] = useState(null);
-  const [atividades, setAtividades] = useState([]);
+  const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<boolean>(false);
+  const [edited, setEdited] = useState<Partial<EditedProduct>>({});
+  const [saving, setSaving] = useState<boolean>(false);
+  const [deleting, setDeleting] = useState<boolean>(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [atividades, setAtividades] = useState<Atividade[]>([]);
   const setTopBarActions = useSetTopBarActions();
 
   const fetchProduct = useCallback(async () => {
@@ -126,13 +206,14 @@ export default function ProductDetailPage({ sku, navigate }) {
         return;
       }
 
-      const result = await apiGet(`/product-detail?sku=${encodeURIComponent(decodedSku)}`);
+      const result = await apiGet<ProductDetail>(`/product-detail?sku=${encodeURIComponent(decodedSku)}`);
       setProduct(result);
       setEditing(false);
       setEdited({});
     } catch (err) {
-      if (err.status === 404) setError('not_found');
-      else setError(err.message || 'Erro ao carregar produto.');
+      const apiErr = err as { status?: number; message?: string };
+      if (apiErr.status === 404) setError('not_found');
+      else setError(apiErr.message || 'Erro ao carregar produto.');
     } finally {
       setLoading(false);
     }
@@ -141,7 +222,7 @@ export default function ProductDetailPage({ sku, navigate }) {
   const fetchAtividades = useCallback(async () => {
     if (isNewProduct) return;
     try {
-      const result = await apiGet(
+      const result = await apiGet<{ atividades?: Atividade[] }>(
         `/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=3`
       );
       setAtividades(result.atividades || []);
@@ -158,7 +239,7 @@ export default function ProductDetailPage({ sku, navigate }) {
     fetchAtividades();
   }, [fetchAtividades]);
 
-  const precosRates = useMemo(() => {
+  const precosRates = useMemo<Preco[]>(() => {
     return BRACKETS.map((faixa) => {
       if (editing) {
         const raw = edited.rates?.[faixa];
@@ -193,7 +274,7 @@ export default function ProductDetailPage({ sku, navigate }) {
 
     try {
       const { produto } = product || {};
-      const { sku: editedSku, nome, descricao, categoria, unidade, ativo, rates = {} } = edited;
+      const { sku: editedSku, nome, descricao, categoria, unidade, ativo, rates = {} } = edited as EditedProduct;
       const normalizedSku = (editedSku || '').trim();
       const normalizedNome = (nome || '').trim();
 
@@ -221,7 +302,7 @@ export default function ProductDetailPage({ sku, navigate }) {
           unidade: unidade?.trim() || 'Und',
         });
 
-        const extraBody = {};
+        const extraBody: Record<string, unknown> = {};
         if ((descricao || '').trim()) extraBody.descricao = descricao.trim();
         if (ativo !== true) extraBody.ativo = ativo;
         if (precos.length > 0) extraBody.precos = precos;
@@ -235,14 +316,14 @@ export default function ProductDetailPage({ sku, navigate }) {
         return;
       }
 
-      const metadata = {};
+      const metadata: Record<string, unknown> = {};
       if (normalizedNome !== (produto?.nome || '')) metadata.nome = normalizedNome;
       if ((descricao || '') !== (produto?.descricao || '')) metadata.descricao = descricao || '';
       if ((categoria || '') !== (produto?.categoria || '')) metadata.categoria = categoria || '';
       if ((unidade || '') !== (produto?.unidade || '')) metadata.unidade = unidade || '';
       if (ativo !== produto?.ativo) metadata.ativo = ativo;
 
-      const body = {};
+      const body: Record<string, unknown> = {};
       if (Object.keys(metadata).length > 0) Object.assign(body, metadata);
       if (precos.length > 0) body.precos = precos;
 
@@ -251,7 +332,7 @@ export default function ProductDetailPage({ sku, navigate }) {
         return;
       }
 
-      const result = await apiPut(`/product-update?sku=${encodeURIComponent(decodedSku)}`, body);
+      const result = await apiPut<{ success?: boolean }>(`/product-update?sku=${encodeURIComponent(decodedSku)}`, body);
       if (!result.success) {
         setToast({ type: 'error', message: 'Erro ao salvar produto.' });
         return;
@@ -262,7 +343,8 @@ export default function ProductDetailPage({ sku, navigate }) {
       await fetchProduct();
       await fetchAtividades();
     } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Erro ao salvar produto.' });
+      const apiErr = err as { message?: string };
+      setToast({ type: 'error', message: apiErr.message || 'Erro ao salvar produto.' });
     } finally {
       setSaving(false);
     }
@@ -283,7 +365,8 @@ export default function ProductDetailPage({ sku, navigate }) {
       await apiDelete(`/products?id=${encodeURIComponent(decodedSku)}`);
       navigate('/products');
     } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Erro ao excluir produto.' });
+      const apiErr = err as { message?: string };
+      setToast({ type: 'error', message: apiErr.message || 'Erro ao excluir produto.' });
     } finally {
       setDeleting(false);
     }
@@ -425,7 +508,7 @@ export default function ProductDetailPage({ sku, navigate }) {
           <div className="flex items-start gap-4 min-w-0">
             {hasImage ? (
               <img
-                src={produto.imagem}
+                src={produto.imagem ?? undefined}
                 alt={produto.nome}
                 className="h-16 w-16 shrink-0 rounded-2xl border border-line object-cover"
               />

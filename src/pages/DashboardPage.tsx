@@ -1,12 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
-import { BarChart3, TrendingUp, DollarSign, Package, Clock, ShoppingCart, Users, FileText, ExternalLink } from 'lucide-react';
+import {
+  BarChart3,
+  TrendingUp,
+  DollarSign,
+  Package,
+  Clock,
+  ShoppingCart,
+  Users,
+  FileText,
+  ExternalLink,
+  type LucideIcon,
+} from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 
-const PERIODS = [
+interface PeriodOption {
+  key: string;
+  label: string;
+}
+
+const PERIODS: PeriodOption[] = [
   { key: 'today', label: 'Hoje' },
   { key: '7d', label: '7 dias' },
   { key: '30d', label: '30 dias' },
@@ -15,20 +31,90 @@ const PERIODS = [
   { key: 'last_month', label: 'Mês passado' },
 ];
 
-export default function DashboardPage({ navigate }) {
-  const [period, setPeriod] = useState('30d');
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+interface DashboardSummary {
+  total_revenue?: number;
+  revenue_delta?: number;
+  orders_count?: number;
+  orders_delta?: number;
+  avg_ticket?: number;
+  avg_ticket_delta?: number;
+  open_orders?: number;
+  conversion_rate?: number;
+  conversion_delta?: number;
+}
+
+interface TopProduct {
+  sku?: string;
+  product?: string;
+  name?: string;
+  quantity?: number;
+  qty?: number;
+  revenue?: number;
+  total?: number;
+  orders?: number;
+  order_count?: number;
+}
+
+interface TopCustomer {
+  name?: string;
+  customer?: string;
+  revenue?: number;
+  total?: number;
+  orders?: number;
+  order_count?: number;
+}
+
+interface SalesByDay {
+  date?: string;
+  revenue?: number;
+  total?: number;
+}
+
+interface StaleQuotation {
+  id?: string;
+  customer?: string;
+  client?: string;
+  age?: number;
+  days_old?: number;
+  value?: number;
+  total?: number;
+  status?: string;
+}
+
+interface DashboardData {
+  summary?: DashboardSummary;
+  top_products?: TopProduct[];
+  top_customers?: TopCustomer[];
+  sales_by_day?: SalesByDay[];
+  stale_quotations?: StaleQuotation[];
+}
+
+interface DashboardPageProps {
+  navigate: (path: string) => void;
+}
+
+interface SummaryCard {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  delta: number | null | undefined;
+}
+
+export default function DashboardPage({ navigate }: DashboardPageProps) {
+  const [period, setPeriod] = useState<string>('30d');
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiGet(`/sales-dashboard?period=${period}`);
+      const result = await apiGet<DashboardData>(`/sales-dashboard?period=${period}`);
       setData(result);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar dashboard.');
+      const message = err instanceof Error ? err.message : 'Erro ao carregar dashboard.';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -40,14 +126,14 @@ export default function DashboardPage({ navigate }) {
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
-  const deltaClass = (value) => {
+  const deltaClass = (value: unknown): string => {
     if (!value && value !== 0) return '';
     const num = Number(value);
     if (Number.isNaN(num)) return '';
     return num >= 0 ? 'text-success' : 'text-destructive';
   };
 
-  const formatDelta = (value) => {
+  const formatDelta = (value: unknown): string | null => {
     if (!value && value !== 0) return null;
     const num = Number(value);
     if (Number.isNaN(num)) return null;
@@ -60,9 +146,7 @@ export default function DashboardPage({ navigate }) {
   if (loading) {
     return (
       <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-        <PageHeader
-          title="Dashboard"
-        />
+        <PageHeader title="Dashboard" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-3">
@@ -84,9 +168,7 @@ export default function DashboardPage({ navigate }) {
   if (error) {
     return (
       <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-        <PageHeader
-          title="Dashboard"
-        />
+        <PageHeader title="Dashboard" />
         <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
           <div className="flex items-center gap-3 text-destructive">
             <BarChart3 className="h-5 w-5 shrink-0" />
@@ -99,7 +181,7 @@ export default function DashboardPage({ navigate }) {
 
   // ── Summary cards config ─────────────────────────────────────────────────────
 
-  const summaryCards = [
+  const summaryCards: SummaryCard[] = [
     {
       icon: DollarSign,
       label: 'Total vendido',
@@ -135,16 +217,14 @@ export default function DashboardPage({ navigate }) {
   return (
     <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
       {/* ── Header ─────────────────────────────────────────────── */}
-      <PageHeader
-        title="Dashboard"
-      />
+      <PageHeader title="Dashboard" />
 
       {/* ── Period filter chips ─────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         {PERIODS.map((p) => (
           <button
             key={p.key}
-            onClick={() => setPeriod(p.key)}
+            onClick={(): void => setPeriod(p.key)}
             className={cn(
               'px-3 py-1 text-xs rounded-full border transition-colors',
               period === p.key
@@ -192,7 +272,7 @@ export default function DashboardPage({ navigate }) {
             <Package className="h-4 w-4 text-primary" />
             O que vendeu
           </h2>
-          {data?.top_products?.length > 0 ? (
+          {data?.top_products && data.top_products.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -232,7 +312,7 @@ export default function DashboardPage({ navigate }) {
             <Users className="h-4 w-4 text-primary" />
             Top clientes
           </h2>
-          {data?.top_customers?.length > 0 ? (
+          {data?.top_customers && data.top_customers.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -269,7 +349,7 @@ export default function DashboardPage({ navigate }) {
           <TrendingUp className="h-4 w-4 text-primary" />
           Vendas por dia
         </h2>
-        {data?.sales_by_day?.length > 0 ? (
+        {data?.sales_by_day && data.sales_by_day.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -301,7 +381,7 @@ export default function DashboardPage({ navigate }) {
           <FileText className="h-4 w-4 text-primary" />
           Orçamentos para follow-up
         </h2>
-        {data?.stale_quotations?.length > 0 ? (
+        {data?.stale_quotations && data.stale_quotations.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -319,7 +399,7 @@ export default function DashboardPage({ navigate }) {
                   <tr key={q.id || i} className="border-b border-line/50 last:border-0">
                     <td className="py-2 pr-2">
                       <button
-                        onClick={() => navigate(`/quotations/${encodeURIComponent(q.id)}`)}
+                        onClick={(): void => navigate(`/quotations/${encodeURIComponent(q.id || '')}`)}
                         className="text-primary hover:underline font-mono text-xs flex items-center gap-1"
                       >
                         {q.id}
@@ -329,7 +409,7 @@ export default function DashboardPage({ navigate }) {
                     <td className="py-2 pr-2 text-fg truncate max-w-[180px]">
                       {capitalize(q.customer || q.client)}
                     </td>
-                    <td className="py-2 pr-2 text-fg-muted">há {q.age || q.days_old} dias</td>
+                    <td className="py-2 pr-2 text-fg-muted">há {q.age ?? q.days_old} dias</td>
                     <td className="py-2 pr-2 text-right text-fg font-medium">
                       {formatBRL(q.value ?? q.total)}
                     </td>
@@ -342,7 +422,7 @@ export default function DashboardPage({ navigate }) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => navigate(`/quotations/${encodeURIComponent(q.id)}`)}
+                        onClick={(): void => navigate(`/quotations/${encodeURIComponent(q.id || '')}`)}
                       >
                         Abrir
                       </Button>

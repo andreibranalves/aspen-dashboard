@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils';
 import {
   BarChart3,
   ShoppingCart,
@@ -12,10 +13,21 @@ import {
   X,
   Moon,
   Sun,
+  type LucideIcon,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
-const NAV_SECTIONS = [
+interface NavItem {
+  hash: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Operacional',
     items: [
@@ -42,6 +54,15 @@ const NAV_SECTIONS = [
   },
 ];
 
+export interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+  currentRoute: string;
+  onNavigate: (hash: string) => void;
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+}
+
 /**
  * Sidebar — Alpine dark navigation.
  * shell background, line borders, fg text,
@@ -54,7 +75,7 @@ export default function Sidebar({
   onNavigate,
   darkMode,
   toggleDarkMode,
-}) {
+}: SidebarProps) {
   return (
     <>
       {/* Overlay mobile */}

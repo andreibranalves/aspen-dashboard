@@ -1,18 +1,28 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus } from 'lucide-react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import {
+  Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus,
+} from 'lucide-react';
 import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { fmtPhone } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/PageHeader';
-import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import SkeletonTable from '@/components/SkeletonTable.jsx';
-import { DetailDrawer } from '@/components/DetailDrawer.jsx';
-import { QualityBadges } from '@/components/QualityBadges.jsx';
-import { ContextActions } from '@/components/ContextActions.jsx';
+import SkeletonTable from '@/components/SkeletonTable';
+import { DetailDrawer } from '@/components/DetailDrawer';
+import { QualityBadges, type QualityBadge } from '@/components/QualityBadges';
+import { ContextActions, type ContextAction } from '@/components/ContextActions';
 import { buildQuotationErpUrl, buildCrmDealErpUrl } from '@/lib/erpLinks';
 
 const TIPOS = ['', 'lead', 'cliente'];
@@ -30,22 +40,100 @@ const LEAD_SOURCES = ['Google Ads', 'Bríndice', 'Cliente recorrente'];
 
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// ── Types ──
+
+interface Address {
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  complemento?: string;
+  municipio?: string;
+  uf?: string;
+  cep?: string;
+}
+
+interface DataRow {
+  id: string;
+  nome?: string;
+  email?: string;
+  telefone?: string;
+  tipo?: string;
+}
+
+interface LeadsResponse {
+  data?: DataRow[];
+  pagination?: {
+    total_pages?: number;
+    total?: number;
+  };
+}
+
+interface ClientDetail {
+  display_name?: string;
+  email?: string;
+  telefone?: string;
+  origem?: string;
+  person_type?: string;
+  tax_id?: string;
+  empresa?: string;
+  contribuinte?: string;
+  inscricao_estadual?: string;
+  address?: Address;
+  latest_quotation?: {
+    name: string;
+    status: string;
+    grand_total?: number;
+  };
+  deal?: {
+    name: string;
+    status: string;
+    next_step?: string;
+  };
+  erp_url?: string;
+  quality_flags?: string[];
+  creation?: string;
+  modified?: string;
+}
+
+interface EditFields {
+  nome?: string;
+  email?: string;
+  telefone?: string;
+  origem?: string;
+  personType?: string;
+  taxId?: string;
+  empresa?: string;
+  contribuinte?: string;
+  inscricaoEstadual?: string;
+  endereco?: Address;
+}
+
+interface SelectedClient {
+  doctype: 'Lead' | 'Customer';
+  name: string;
+  tipo: string;
+}
+
+interface LeadsPageProps {
+  navigate?: (path: string) => void;
+}
+
 // ── CPF/CNPJ helpers ──
 
-function formatCpf(value) {
+function formatCpf(value: string): string {
   const d = value.replace(/\D/g, '').slice(0, 11);
   return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 }
 
-function formatCnpj(value) {
+function formatCnpj(value: string): string {
   const d = value.replace(/\D/g, '').slice(0, 14);
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 }
 
-function isValidCpf(value) {
+function isValidCpf(value: string): boolean {
   const d = value.replace(/\D/g, '');
   if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
-  const calc = (slice, factor) => {
+  const calc = (slice: string, factor: number): number => {
     let sum = 0;
     for (let i = 0; i < slice.length; i++) sum += Number(slice[i]) * (factor - i);
     const rest = (sum * 10) % 11;
@@ -54,10 +142,10 @@ function isValidCpf(value) {
   return calc(d.slice(0, 9), 10) === Number(d[9]) && calc(d.slice(0, 10), 11) === Number(d[10]);
 }
 
-function isValidCnpj(value) {
+function isValidCnpj(value: string): boolean {
   const d = value.replace(/\D/g, '');
   if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
-  const calc = (slice, weights) => {
+  const calc = (slice: string, weights: number[]): number => {
     let sum = 0;
     for (let i = 0; i < slice.length; i++) sum += Number(slice[i]) * weights[i];
     const rest = sum % 11;
@@ -68,7 +156,7 @@ function isValidCnpj(value) {
   return calc(d.slice(0, 12), w1) === Number(d[12]) && calc(d.slice(0, 13), w2) === Number(d[13]);
 }
 
-function formatTaxId(value, personType) {
+function formatTaxId(value: string, personType: string): string {
   const d = value.replace(/\D/g, '');
   if (personType === 'pf') return formatCpf(d);
   if (personType === 'pj') return formatCnpj(d);
@@ -77,21 +165,21 @@ function formatTaxId(value, personType) {
 
 // ── Email/Phone validators ──
 
-function isValidEmail(value) {
+function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
-function isValidPhone(value) {
+function isValidPhone(value: string): boolean {
   const d = String(value || '').replace(/\D/g, '');
   return d.length >= 10 && d.length <= 11;
 }
 
-async function lookupCep(cep, setEditFields) {
+async function lookupCep(cep: string, setEditFields: Dispatch<SetStateAction<EditFields>>) {
   const digits = cep.replace(/\D/g, '');
   if (digits.length !== 8) return;
   try {
     const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
-    const data = await res.json();
+    const data = await res.json() as Record<string, string>;
     if (data.erro) return;
     setEditFields(prev => ({
       ...prev,
@@ -107,22 +195,22 @@ async function lookupCep(cep, setEditFields) {
   } catch { /* silencioso */ }
 }
 
-export default function LeadsPage({ navigate }) {
-  const [data, setData] = useState([]);
+export default function LeadsPage({ navigate }: LeadsPageProps) {
+  const [data, setData] = useState<DataRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tipo, setTipo] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
-  const searchTimer = useRef(null);
-  const selectAllRef = useRef(null);
-  const [selectedIds, setSelectedIds] = useState([]);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const setTopBarActions = useSetTopBarActions();
 
-  const fetchData = useCallback(async (searchVal, tipoVal, pageNum, limitVal) => {
+  const fetchData = useCallback(async (searchVal: string, tipoVal: string, pageNum: number, limitVal: number) => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
@@ -133,12 +221,12 @@ export default function LeadsPage({ navigate }) {
       if (searchVal) params.set('search', searchVal);
       if (tipoVal) params.set('tipo', tipoVal);
 
-      const result = await apiGet(`/leads-clients?${params.toString()}`);
+      const result = await apiGet<LeadsResponse>(`/leads-clients?${params.toString()}`);
       setData(result.data || []);
       setTotalPages(result.pagination?.total_pages || 0);
       setTotalRecords(result.pagination?.total || 0);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar leads e clientes.');
+      setError((err as Error).message || 'Erro ao carregar leads e clientes.');
     } finally {
       setLoading(false);
     }
@@ -146,21 +234,21 @@ export default function LeadsPage({ navigate }) {
 
   // TopBar actions — Criar Lead button
   useEffect(() => {
-    setTopBarActions(
-      <Button size="sm" onClick={() => navigate('/leads/lead/new')}>
+    setTopBarActions?.(
+      <Button size="sm" onClick={() => navigate?.('/leads/lead/new')}>
         <UserPlus size={16} />
         Criar Lead
       </Button>
     );
-    return () => setTopBarActions(null);
+    return () => setTopBarActions?.(null);
   }, [setTopBarActions, navigate]);
 
   // ── Selection ──
-  const toggleSelected = useCallback((id) => {
+  const toggleSelected = useCallback((id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   }, []);
 
-  const toggleSelectAll = useCallback((checked) => {
+  const toggleSelectAll = useCallback((checked: boolean) => {
     setSelectedIds(checked ? data.map(row => row.id) : []);
   }, [data]);
 
@@ -173,7 +261,7 @@ export default function LeadsPage({ navigate }) {
   }, [someSelected]);
 
   // ── Delete ──
-  const handleDelete = useCallback(async (id, tipoRow) => {
+  const handleDelete = useCallback(async (id: string, tipoRow: string) => {
     if (!confirm(`Tem certeza que deseja excluir ${tipoRow === 'lead' ? 'o lead' : 'o cliente'} ${id}?\n\nEsta ação não pode ser desfeita.`)) return;
     try {
       await apiDelete(`/leads-clients?id=${encodeURIComponent(id)}&tipo=${tipoRow}`);
@@ -181,7 +269,7 @@ export default function LeadsPage({ navigate }) {
       setTotalRecords(prev => prev - 1);
       setSelectedIds(prev => prev.filter(i => i !== id));
     } catch (err) {
-      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
     }
   }, []);
 
@@ -199,66 +287,66 @@ export default function LeadsPage({ navigate }) {
       setPage(nextPage);
       await fetchData(search, tipo, nextPage, limit);
     } catch (err) {
-      alert('Erro ao excluir registros selecionados: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao excluir registros selecionados: ' + ((err as Error).message || 'Tente novamente.'));
     }
   }, [data, selectedIds, page, search, tipo, limit, fetchData]);
 
   // ── Drawer state ──
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null); // { doctype, name, tipo }
-  const [clientDetail, setClientDetail] = useState(null);
+  const [selectedClient, setSelectedClient] = useState<SelectedClient | null>(null); // { doctype, name, tipo }
+  const [clientDetail, setClientDetail] = useState<ClientDetail | null>(null);
   const [clientLoading, setClientLoading] = useState(false);
-  const [clientError, setClientError] = useState(null);
+  const [clientError, setClientError] = useState<string | null>(null);
   const [clientSaving, setClientSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [editFields, setEditFields] = useState({});
+  const [editFields, setEditFields] = useState<EditFields>({});
 
   useEffect(() => { fetchData(search, tipo, page, limit); }, [fetchData, search, tipo, page, limit]);
 
-  const onSearchChange = useCallback((e) => {
+  const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearch(val);
-    clearTimeout(searchTimer.current);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
       fetchData(val, tipo, 1, limit);
     }, 350);
   }, [tipo, limit, fetchData]);
 
-  const onTipoClick = useCallback((t) => {
+  const onTipoClick = useCallback((t: string) => {
     setTipo(t);
     setPage(1);
     fetchData(search, t, 1, limit);
   }, [search, limit, fetchData]);
 
-  const onLimitChange = useCallback((e) => {
+  const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(e.target.value, 10);
     setLimit(newLimit);
     setPage(1);
     fetchData(search, tipo, 1, newLimit);
   }, [search, tipo, fetchData]);
 
-  const navigateToDetail = useCallback((row) => {
+  const navigateToDetail = useCallback((row: DataRow) => {
     if (!row?.id) return;
     const tipoRoute = row.tipo === 'cliente' ? 'cliente' : 'lead';
     if (navigate) navigate(`/leads/${tipoRoute}/${encodeURIComponent(row.id)}`);
     else window.location.hash = `#/leads/${tipoRoute}/${encodeURIComponent(row.id)}`;
   }, [navigate]);
 
-  const getPageNumbers = () => {
+  const getPageNumbers = (): number[] => {
     if (totalPages <= 1) return [];
     const start = Math.max(1, page - 3);
     const end = Math.min(totalPages, start + 6);
-    const nums = [];
+    const nums: number[] = [];
     for (let i = start; i <= end; i++) nums.push(i);
     return nums;
   };
 
   // ── Drawer handlers ──
 
-  const openDrawer = useCallback(async (row) => {
+  const openDrawer = useCallback(async (row: DataRow) => {
     const doctype = row.tipo === 'lead' ? 'Lead' : 'Customer';
-    setSelectedClient({ doctype, name: row.id, tipo: row.tipo });
+    setSelectedClient({ doctype, name: row.id, tipo: row.tipo || '' });
     setClientDetail(null);
     setClientError(null);
     setClientLoading(true);
@@ -267,10 +355,10 @@ export default function LeadsPage({ navigate }) {
     setDrawerOpen(true);
 
     try {
-      const detail = await apiGet(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(row.id)}`);
+      const detail = await apiGet<ClientDetail>(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(row.id)}`);
       setClientDetail(detail);
     } catch (err) {
-      setClientError(err.message || 'Erro ao carregar detalhes.');
+      setClientError((err as Error).message || 'Erro ao carregar detalhes.');
     } finally {
       setClientLoading(false);
     }
@@ -319,7 +407,7 @@ export default function LeadsPage({ navigate }) {
     setClientSaving(true);
     setClientError(null);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         nome: editFields.nome?.trim() || null,
         email: editFields.email?.trim() || null,
         telefone: editFields.telefone?.trim() || null,
@@ -352,7 +440,7 @@ export default function LeadsPage({ navigate }) {
         };
       }
 
-      const updated = await apiPut(
+      const updated = await apiPut<ClientDetail>(
         `/client-detail?doctype=${encodeURIComponent(selectedClient.doctype)}&name=${encodeURIComponent(selectedClient.name)}`,
         payload,
       );
@@ -367,7 +455,7 @@ export default function LeadsPage({ navigate }) {
         ));
       }
     } catch (err) {
-      setClientError(err.message || 'Erro ao salvar.');
+      setClientError((err as Error).message || 'Erro ao salvar.');
     } finally {
       setClientSaving(false);
     }
@@ -375,9 +463,9 @@ export default function LeadsPage({ navigate }) {
 
   // ── Build context actions ──
 
-  const buildContextActions = useCallback(() => {
+  const buildContextActions = useCallback((): ContextAction[] => {
     if (!clientDetail) return [];
-    const actions = [];
+    const actions: ContextAction[] = [];
 
     if (selectedClient) {
       actions.push({
@@ -412,8 +500,7 @@ export default function LeadsPage({ navigate }) {
     if (clientDetail.latest_quotation) {
       actions.push({
         label: 'Orçamento recente',
-        icon: null,
-        href: buildQuotationErpUrl(null, clientDetail.latest_quotation.name),
+        href: buildQuotationErpUrl(null, clientDetail.latest_quotation.name) || undefined,
         title: `Abrir ${clientDetail.latest_quotation.name}`,
       });
     }
@@ -421,8 +508,7 @@ export default function LeadsPage({ navigate }) {
     if (clientDetail.deal) {
       actions.push({
         label: 'Deal vinculado',
-        icon: null,
-        href: buildCrmDealErpUrl(null, clientDetail.deal.name),
+        href: buildCrmDealErpUrl(null, clientDetail.deal.name) || undefined,
         title: `Abrir ${clientDetail.deal.name}`,
       });
     }
@@ -432,10 +518,10 @@ export default function LeadsPage({ navigate }) {
 
   // ── Build quality badges ──
 
-  const buildQualityBadges = useCallback(() => {
+  const buildQualityBadges = useCallback((): QualityBadge[] => {
     if (!clientDetail?.quality_flags) return [];
 
-    const labelMap = {
+    const labelMap: Record<string, QualityBadge> = {
       sem_telefone: { label: 'Sem telefone', type: 'warning' },
       sem_email: { label: 'Sem email', type: 'warning' },
       sem_origem: { label: 'Sem origem', type: 'danger' },
@@ -448,7 +534,7 @@ export default function LeadsPage({ navigate }) {
 
   // ── Components ──
 
-  const TipoBadge = ({ tipo: t }) => (
+  const TipoBadge = ({ tipo: t }: { tipo?: string }) => (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
       ${t === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'}
     `}>
@@ -536,7 +622,7 @@ export default function LeadsPage({ navigate }) {
                     ref={selectAllRef}
                     type="checkbox"
                     checked={allSelected}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => toggleSelectAll(e.target.checked)}
                     aria-label="Selecionar todos os registros desta página"
                     className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
@@ -603,7 +689,7 @@ export default function LeadsPage({ navigate }) {
                         </a>
                       )}
                       <button
-                        onClick={() => handleDelete(row.id, row.tipo)}
+                        onClick={() => handleDelete(row.id, row.tipo || '')}
                         className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
                         aria-label={`Excluir ${row.nome || row.email}`}
                         title={`Excluir ${row.nome || row.email}`}
@@ -876,7 +962,7 @@ export default function LeadsPage({ navigate }) {
                     </span>
                     {editMode ? (
                       <Input
-                        value={formatTaxId(editFields.taxId || '', editFields.personType)}
+                        value={formatTaxId(editFields.taxId || '', editFields.personType || '')}
                         onChange={e => {
                           const raw = e.target.value.replace(/\D/g, '');
                           const maxLen = editFields.personType === 'pf' ? 11 : editFields.personType === 'pj' ? 14 : 14;
@@ -1106,7 +1192,7 @@ export default function LeadsPage({ navigate }) {
                 <span className="text-fg-muted text-xs">Último orçamento</span>
                 <div className="mt-1 flex items-center gap-2">
                   <a
-                    href={buildQuotationErpUrl(null, clientDetail.latest_quotation.name)}
+                    href={buildQuotationErpUrl(null, clientDetail.latest_quotation.name) || undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm font-medium text-primary hover:underline"
@@ -1133,7 +1219,7 @@ export default function LeadsPage({ navigate }) {
                 <span className="text-fg-muted text-xs">Deal CRM</span>
                 <div className="mt-1 flex items-center gap-2">
                   <a
-                    href={buildCrmDealErpUrl(null, clientDetail.deal.name)}
+                    href={buildCrmDealErpUrl(null, clientDetail.deal.name) || undefined}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm font-medium text-primary hover:underline"

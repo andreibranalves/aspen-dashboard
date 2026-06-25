@@ -22,7 +22,7 @@ import { fetchFlows, saveFlows } from '@/lib/communicationApi';
 import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/communicationApi';
 import { renderFlowTemplate } from '@/lib/whatsappFlows';
 import SkeletonComunicacao from '@/components/SkeletonComunicacao';
-import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -178,7 +178,7 @@ export default function FlowEditorTab() {
     setExpandedFlow(newFlow.id);
   }, [flows.length]);
 
-  const setTopBarActions = useSetTopBarActions() as ((actions: ReactNode | null) => void) | null;
+  const setTopBarActions = useSetTopBarActions();
 
   useEffect(() => {
     if (!setTopBarActions) return undefined;

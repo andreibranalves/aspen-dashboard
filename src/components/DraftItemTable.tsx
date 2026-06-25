@@ -1,4 +1,4 @@
-// src/components/DraftItemTable.jsx
+// src/components/DraftItemTable.tsx
 // Items table with SKU autocomplete, qty/rate inputs, drag reorder, and add/remove.
 // Extracted from AutoQuotePage.jsx.
 
@@ -6,6 +6,28 @@ import { GripVertical, X, Plus, Package, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { formatBRL } from '@/lib/formatters';
+import type { Dispatch, SetStateAction } from 'react';
+import type { Draft, DraftItem } from '@/hooks/useExtractionDrafts';
+import type { Product } from '@/lib/productCache';
+import type { ProductSearchEntry } from '@/hooks/useExtractionDrafts';
+
+export interface DraftItemTableProps {
+  items?: DraftItem[];
+  validItems?: number;
+  isApproved?: boolean;
+  draftIdx: number;
+  updateDraftItem: (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => void;
+  onProductSearchChange: (draftIdx: number, val: string) => void;
+  productSearch: Record<number, ProductSearchEntry>;
+  closeProductSearch: (draftIdx: number) => void;
+  selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
+  drafts: Draft[];
+  fetchPricing: (draftsList: Draft[], urgent: boolean) => Promise<Draft[]>;
+  setDrafts: Dispatch<SetStateAction<Draft[]>>;
+  reorderItems: (draftIdx: number, fromIdx: number, toIdx: number) => void;
+  removeDraftItem: (draftIdx: number, itemIdx: number) => void;
+  addDraftItem: (draftIdx: number) => void;
+}
 
 export default function DraftItemTable({
   items = [],
@@ -23,7 +45,7 @@ export default function DraftItemTable({
   reorderItems,
   removeDraftItem,
   addDraftItem,
-}) {
+}: DraftItemTableProps) {
   return (
     <div className="overflow-hidden rounded-[20px] border border-line">
       <div className="flex items-center justify-between gap-3 border-b border-line bg-surface/50 px-4 py-3">
@@ -96,9 +118,9 @@ export default function DraftItemTable({
                         <Loader2 size={14} className="absolute right-2 top-1/2 -translate-y-1/2 animate-spin text-fg-muted" />
                       )}
                     </div>
-                    {productSearch[draftIdx]?.open && productSearch[draftIdx]?.results?.length > 0 && (
+                    {productSearch[draftIdx]?.open && productSearch[draftIdx]?.results && productSearch[draftIdx].results.length > 0 && (
                       <div className="absolute z-20 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
-                        {productSearch[draftIdx].results.map(p => (
+                        {productSearch[draftIdx].results?.map(p => (
                           <button
                             key={p.sku}
                             type="button"
@@ -110,9 +132,9 @@ export default function DraftItemTable({
                           >
                             <div className="min-w-0">
                               <span className="font-mono text-primary">{p.sku}</span>
-                              <span className="text-fg-muted ml-2">{p.nome}</span>
+                              <span className="text-fg-muted ml-2">{String(p.nome || '')}</span>
                             </div>
-                            {p.categoria && <span className="text-[10px] text-fg-muted shrink-0">{p.categoria}</span>}
+                            {(p.categoria as string | undefined) && <span className="text-[10px] text-fg-muted shrink-0">{p.categoria as string}</span>}
                           </button>
                         ))}
                       </div>

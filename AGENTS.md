@@ -22,8 +22,8 @@
 | Task | Location |
 |---|---|
 | Add API endpoint | `api/_functions/*.js` + `api/[...path].js` |
-| Add frontend page | `src/pages/*.jsx` + `src/App.jsx` |
-| Shared UI component | `src/components/ui/*.jsx` |
+| Add frontend page | `src/pages/*.tsx` + `src/App.tsx` |
+| Shared UI component | `src/components/ui/*.tsx` |
 | ERPNext client / error helper | `api/_functions/lib/erpnext.js` |
 | PDF generation | `api/_functions/pdf.js` + `api/_functions/lib/quotation-pdf.js` |
 | Dev server | `scripts/dev-api-server.mjs` / `scripts/app-server.mjs` |
@@ -33,7 +33,8 @@
 
 - **ESM only** — `.js` imports require explicit extension; standalone scripts use `.mjs`.
 - **Vite builds into `public/`** with `emptyOutDir: false`; `public/index.html` is generated output, root `index.html` is source.
-- **Hash-based routing** — no React Router; `useHashRoute` + `App.jsx` manual dispatch.
+- **Hash-based routing** — no React Router; `useHashRoute` + `App.tsx` manual dispatch.
+- **Frontend TypeScript** — all `src/` source files are `.ts`/`.tsx`; imports use extensionless paths via `@/*` alias.
 - **Single catch-all API route** — `api/[...path].js` dispatches to `api/_functions/*.js` via `ROUTES` map.
 - **Handler shape is legacy Lambda** — `handler(event)` returns `{statusCode, body}`; `api/_lib/function-adapter.js` converts from/to Express/Vercel `req/res`.
 - **Local dev bypasses Vercel CLI** — `scripts/dev-api-server.mjs` (port 8888) + `npm run dev` (port 5173); auth/rate-limit are NOT applied locally.

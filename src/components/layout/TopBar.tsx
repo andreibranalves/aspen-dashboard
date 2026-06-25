@@ -1,12 +1,27 @@
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Menu, ChevronRight } from 'lucide-react';
 import BackButton from '@/components/ui/back-button';
+import type { BreadcrumbItem } from './Layout';
+
+export interface TopBarProps {
+  route?: string;
+  onMenuClick: () => void;
+  breadcrumbItems: BreadcrumbItem[];
+  onNavigate: (hash: string) => void;
+  actions?: ReactNode;
+}
 
 /**
  * TopBar — breadcrumb (left) + page-specific actions (right).
  * "Aspen Estamparia" and dark mode toggle removed — toggle lives in Sidebar.
  */
-export default function TopBar({ route: _route, onMenuClick, breadcrumbItems, onNavigate, actions }) {
+export default function TopBar({
+  route: _route,
+  onMenuClick,
+  breadcrumbItems,
+  onNavigate,
+  actions,
+}: TopBarProps) {
   // Show back button on detail pages (e.g. Início > Orçamentos > ORC-1234).
   const parentItem = breadcrumbItems.length >= 3 ? breadcrumbItems[1] : null;
 
@@ -24,7 +39,7 @@ export default function TopBar({ route: _route, onMenuClick, breadcrumbItems, on
           <Menu size={20} className="text-fg" />
         </button>
         {parentItem?.hash && (
-          <BackButton onClick={() => onNavigate(parentItem.hash)} />
+          <BackButton onClick={() => onNavigate(parentItem.hash!)} />
         )}
         <nav className="flex items-center gap-1.5 text-sm overflow-hidden">
           {breadcrumbItems.map((item, i) => (
@@ -33,7 +48,7 @@ export default function TopBar({ route: _route, onMenuClick, breadcrumbItems, on
               {item.hash ? (
                 <button
                   type="button"
-                  onClick={() => onNavigate(item.hash)}
+                  onClick={() => onNavigate(item.hash!)}
                   className="text-fg-muted hover:text-fg transition-colors truncate"
                 >
                   {item.label}

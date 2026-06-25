@@ -1,22 +1,25 @@
 import { cn } from '@/lib/utils';
 import { ExternalLink } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+export interface ContextAction {
+  label: string;
+  icon?: LucideIcon;
+  href?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
+}
+
+export interface ContextActionsProps {
+  actions?: ContextAction[];
+  className?: string;
+}
 
 /**
  * ContextActions — grupo de ações rápidas para drawers e páginas de detalhe.
- *
- * Props:
- *   actions: Array<{
- *     label: string,
- *     icon?: React.ComponentType<{className?:string}>,
- *     href?: string,       // abre em nova aba com target=_blank
- *     onClick?: () => void,
- *     disabled?: boolean,
- *     title?: string,      // tooltip
- *   }>
- *   className?: string
  */
-
-export function ContextActions({ actions, className }) {
+export function ContextActions({ actions, className }: ContextActionsProps) {
   if (!actions || actions.length === 0) return null;
 
   return (

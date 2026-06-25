@@ -1,40 +1,65 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent } from 'react';
 import { Search, AlertTriangle, BarChart3, Clipboard, Send } from 'lucide-react';
 import { apiGet, apiPut } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PIPELINE } from '@/lib/constants';
-import SkeletonKanban from '@/components/SkeletonKanban.jsx';
+import SkeletonKanban from '@/components/SkeletonKanban';
 
-function daysAgo(dateStr) {
+interface Deal {
+  id: string;
+  lead_name?: string;
+  email?: string;
+  quotation?: string;
+  follow_up_stage?: number;
+  modificado_em?: string;
+  criado_em?: string;
+  status?: string;
+}
+
+interface Column {
+  status: string;
+  count: number;
+  deals: Deal[];
+}
+
+interface CrmDealsResponse {
+  columns: Column[];
+}
+
+interface UpdateDealResult {
+  success: boolean;
+}
+
+function daysAgo(dateStr?: string | null): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '—';
   const now = new Date();
-  const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+  const diff = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
   if (diff === 0) return 'hoje';
   if (diff === 1) return '1 dia';
   return `${diff} dias`;
 }
 
 export default function CrmKanbanPage() {
-  const [columns, setColumns] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [draggingId, setDraggingId] = useState(null);
-  const searchTimer = useRef(null);
+  const [columns, setColumns] = useState<Column[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState<string>('');
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchData = useCallback(async (searchVal) => {
+  const fetchData = useCallback(async (searchVal: string) => {
     setLoading(true);
     setError(null);
     try {
       const url = searchVal ? `/crm-deals?search=${encodeURIComponent(searchVal)}` : '/crm-deals';
-      const data = await apiGet(url);
+      const data = await apiGet<CrmDealsResponse>(url);
       setColumns(data.columns || []);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar pipeline CRM.');
+      setError((err as Error).message || 'Erro ao carregar pipeline CRM.');
     } finally {
       setLoading(false);
     }
@@ -45,10 +70,12 @@ export default function CrmKanbanPage() {
   }, [fetchData]);
 
   const onSearchChange = useCallback(
-    (e) => {
+    (e: ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
       setSearch(val);
-      clearTimeout(searchTimer.current);
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+      }
       searchTimer.current = setTimeout(() => {
         fetchData(val);
       }, 350);
@@ -57,14 +84,14 @@ export default function CrmKanbanPage() {
   );
 
   const moveDeal = useCallback(
-    async (dealId, newStatus) => {
+    async (dealId: string, newStatus: string) => {
       // Optimistic update
       setColumns((prev) => {
         const next = prev.map((col) => ({
           ...col,
           deals: [...col.deals],
         }));
-        let deal = null;
+        let deal: Deal | null = null;
         for (let i = 0; i < next.length; i++) {
           const idx = next[i].deals.findIndex((d) => d.id === dealId);
           if (idx !== -1) {
@@ -86,8 +113,8 @@ export default function CrmKanbanPage() {
 
         // Sort by pipeline order
         next.sort((a, b) => {
-          const ai = PIPELINE.indexOf(a.status);
-          const bi = PIPELINE.indexOf(b.status);
+          const ai = PIPELINE.indexOf(a.status as (typeof PIPELINE)[number]);
+          const bi = PIPELINE.indexOf(b.status as (typeof PIPELINE)[number]);
           if (ai !== -1 && bi !== -1) return ai - bi;
           if (ai !== -1) return -1;
           if (bi !== -1) return 1;
@@ -99,7 +126,7 @@ export default function CrmKanbanPage() {
 
       // API call
       try {
-        const result = await apiPut('/crm-update-deal', { deal_id: dealId, status: newStatus });
+        const result = await apiPut<UpdateDealResult>('/crm-update-deal', { deal_id: dealId, status: newStatus });
         if (!result.success) {
           fetchData(search); // reload on failure
         }
@@ -177,11 +204,11 @@ export default function CrmKanbanPage() {
                     'flex-1 px-2 pb-2 space-y-2 min-h-[120px] rounded-b-lg transition-colors',
                     draggingId && 'bg-primary/5'
                   )}
-                  onDragOver={(e) => {
+                  onDragOver={(e: DragEvent<HTMLDivElement>) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'move';
                   }}
-                  onDrop={(e) => {
+                  onDrop={(e: DragEvent<HTMLDivElement>) => {
                     e.preventDefault();
                     const dealId = e.dataTransfer.getData('text/plain');
                     if (dealId && col.status) {
@@ -194,7 +221,7 @@ export default function CrmKanbanPage() {
                     <div
                       key={deal.id}
                       draggable
-                      onDragStart={(e) => {
+                      onDragStart={(e: DragEvent<HTMLDivElement>) => {
                         setDraggingId(deal.id);
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('text/plain', deal.id);
@@ -218,7 +245,7 @@ export default function CrmKanbanPage() {
                             {deal.quotation}
                           </span>
                         )}
-                        {deal.follow_up_stage > 0 && (
+                        {deal.follow_up_stage && deal.follow_up_stage > 0 && (
                           <span className="inline-flex items-center text-xs bg-surface-muted text-fg rounded px-1.5 py-0.5">
                             <Send size={12} className="mr-1" /> Follow-up {deal.follow_up_stage}
                           </span>

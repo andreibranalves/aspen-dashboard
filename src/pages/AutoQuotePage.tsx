@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type ClipboardEvent } from 'react';
 import {
   Sparkles,
   FileText,
@@ -17,12 +17,36 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
-import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
-import { fetchFlows, executeFlow } from '@/lib/communicationApi';
+import { useExtractionDrafts, type Draft } from '@/hooks/useExtractionDrafts';
+import { fetchFlows, executeFlow, type CommunicationFlow } from '@/lib/communicationApi';
+
+interface HistoryItem {
+  id: string;
+  cliente?: string;
+  data?: string;
+  valor?: string | number;
+}
+
+interface WhatsappLead {
+  id?: string;
+  remoteJid?: string;
+  telefone?: string;
+  nome?: string;
+  email?: string;
+  texto?: string;
+  quotationId?: string;
+  statusLabel?: string;
+  isReady?: boolean;
+}
+
+interface WaStatus {
+  state?: 'sending' | 'sent' | 'error';
+  message?: string;
+}
 
 export default function AutoQuotePage() {
   // ── Helpers ──
-  const fmtWhatsappPhone = (phone) => {
+  const fmtWhatsappPhone = (phone: string | undefined) => {
     const digits = String(phone || '').replace(/\D/g, '');
     // Strip 55 country code prefix
     const local = digits.startsWith('55') ? digits.slice(2) : digits;
@@ -30,25 +54,25 @@ export default function AutoQuotePage() {
   };
 
   // ── Input state ──
-  const [text, setText] = useState('');
-  const [extracting, setExtracting] = useState(false);
-  const [error, setError] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [bottomTab, setBottomTab] = useState('whatsapp');
-  const [whatsappLeads, setWhatsappLeads] = useState([]);
-  const [whatsappLoading, setWhatsappLoading] = useState(false);
-  const [whatsappError, setWhatsappError] = useState(null);
+  const [text, setText] = useState<string>('');
+  const [extracting, setExtracting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  const [bottomTab, setBottomTab] = useState<'whatsapp' | 'recentes'>('whatsapp');
+  const [whatsappLeads, setWhatsappLeads] = useState<WhatsappLead[]>([]);
+  const [whatsappLoading, setWhatsappLoading] = useState<boolean>(false);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
 
   // ── WhatsApp send state ──
-  const [waStatusByDraft, setWaStatusByDraft] = useState({});
-  const [waFlows, setWaFlows] = useState([]);
-  const [defaultWaFlowId, setDefaultWaFlowId] = useState('');
-  const [waFlowByDraft, setWaFlowByDraft] = useState({});
+  const [waStatusByDraft, setWaStatusByDraft] = useState<Record<number, WaStatus>>({});
+  const [waFlows, setWaFlows] = useState<CommunicationFlow[]>([]);
+  const [defaultWaFlowId, setDefaultWaFlowId] = useState<string>('');
+  const [waFlowByDraft, setWaFlowByDraft] = useState<Record<number, string>>({});
 
   // ── Re-extract state (add items to existing draft) ──
-  const [reExtractTextByDraft, setReExtractTextByDraft] = useState({});
-  const [reExtractLoadingByDraft, setReExtractLoadingByDraft] = useState({});
+  const [reExtractTextByDraft, setReExtractTextByDraft] = useState<Record<number, string>>({});
+  const [reExtractLoadingByDraft, setReExtractLoadingByDraft] = useState<Record<number, boolean>>({});
 
   // ── Extracted hooks ──
   const {
@@ -61,7 +85,6 @@ export default function AutoQuotePage() {
     addDraftItem,
     removeDraftItem,
     updateDraftField,
-    discardDraft,
     selectProduct,
     buildDraftsFromOrders,
   } = useExtractionDrafts();
@@ -73,7 +96,7 @@ export default function AutoQuotePage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await apiGet('/quotations?limit=5&order_by=creation+desc');
+      const res = await apiGet<{ data?: HistoryItem[] }>('/quotations?limit=5&order_by=creation+desc');
       if (res.data) setHistory(res.data.slice(0, 5));
     } catch {
       /* non-critical */
@@ -90,10 +113,10 @@ export default function AutoQuotePage() {
     setWhatsappLoading(true);
     setWhatsappError(null);
     try {
-      const res = await apiGet('/whatsapp-leads');
+      const res = await apiGet<{ data?: WhatsappLead[] }>('/whatsapp-leads');
       setWhatsappLeads(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      setWhatsappError(err.message || 'Erro ao buscar conversas do WhatsApp.');
+      setWhatsappError((err as Error).message || 'Erro ao buscar conversas do WhatsApp.');
     } finally {
       setWhatsappLoading(false);
     }
@@ -114,7 +137,7 @@ export default function AutoQuotePage() {
       );
       setDefaultWaFlowId(alreadyTalking?.id || data.selectedFlowId || flows[0]?.id || '');
     } catch (err) {
-      console.warn('[AutoQuotePage] failed to load communication flows:', err.message);
+      console.warn('[AutoQuotePage] failed to load communication flows:', (err as Error).message);
       setWaFlows([]);
       setDefaultWaFlowId('');
     }
@@ -145,7 +168,9 @@ export default function AutoQuotePage() {
     setExtracting(true);
     setError(null);
     try {
-      const res = await apiPost('/extract', {
+      const res = await apiPost<{
+        orders?: Record<string, unknown>[];
+      }>('/extract', {
         text: text || null,
         imageBase64: imageData?.base64 || null,
         imageMimeType: imageData?.mime || null,
@@ -175,7 +200,7 @@ export default function AutoQuotePage() {
       });
       loadHistory();
     } catch (err) {
-      setError(err.message || 'Erro na extração.');
+      setError((err as Error).message || 'Erro na extração.');
     } finally {
       setExtracting(false);
     }
@@ -183,7 +208,7 @@ export default function AutoQuotePage() {
 
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
   const createSingleQuote = useCallback(
-    async (draftIndex) => {
+    async (draftIndex: number) => {
       setDrafts((prev) => {
         const idx = prev.findIndex((d) => d.index === draftIndex);
         if (idx === -1) return prev;
@@ -191,7 +216,7 @@ export default function AutoQuotePage() {
         next[idx] = { ...next[idx], status: 'processing' };
         return next;
       });
-      const draft = await new Promise((resolve) => {
+      const draft = await new Promise<Draft | undefined>((resolve) => {
         setDrafts((prev) => {
           resolve(prev.find((d) => d.index === draftIndex));
           return prev;
@@ -219,7 +244,7 @@ export default function AutoQuotePage() {
         },
       };
       try {
-        const res = await apiPost('/orcamento', payload);
+        const res = await apiPost<Record<string, unknown>>('/orcamento', payload);
         setDrafts((prev) => {
           const idx = prev.findIndex((d) => d.index === draftIndex);
           if (idx === -1) return prev;
@@ -235,7 +260,7 @@ export default function AutoQuotePage() {
           const next = [...prev];
           next[idx] = {
             ...next[idx],
-            result: { success: false, error: err.message },
+            result: { success: false, error: (err as Error).message },
             status: 'error',
           };
           return next;
@@ -246,10 +271,15 @@ export default function AutoQuotePage() {
   );
 
   // ── Load history item: fetch detail and format as text ──
-  const loadHistoryItem = useCallback(async (item) => {
+  const loadHistoryItem = useCallback(async (item: HistoryItem) => {
     setError(null);
     try {
-      const res = await apiGet(`/quotations?id=${encodeURIComponent(item.id)}`);
+      const res = await apiGet<{
+        cliente?: string;
+        email?: string;
+        telefone?: string;
+        items?: { item_code?: string; qty?: number }[];
+      }>(`/quotations?id=${encodeURIComponent(item.id)}`);
       if (!res) return;
       const nome = res.cliente || item.cliente || 'Cliente';
       const email = res.email || '';
@@ -268,7 +298,7 @@ export default function AutoQuotePage() {
     }
   }, []);
 
-  const useWhatsappLead = useCallback((lead) => {
+  const useWhatsappLead = useCallback((lead: WhatsappLead) => {
     setText(
       lead.texto ||
         [
@@ -307,12 +337,12 @@ export default function AutoQuotePage() {
   }, [setDrafts, setProductSearch]);
 
   // ── WhatsApp handlers ──
-  const handleSelectWhatsAppFlow = useCallback((draftIndex, flowId) => {
+  const handleSelectWhatsAppFlow = useCallback((draftIndex: number, flowId: string) => {
     setWaFlowByDraft((prev) => ({ ...prev, [draftIndex]: flowId }));
   }, []);
 
   const handleSendWhatsApp = useCallback(
-    async (draftIndex) => {
+    async (draftIndex: number) => {
       const draft = drafts.find((d) => d.index === draftIndex);
       if (!draft) {
         console.warn('[sendWhatsApp] draft not found for index:', draftIndex);
@@ -337,9 +367,9 @@ export default function AutoQuotePage() {
       }
 
       const resultData = draft.result.data;
-      const quotationId = resultData.quotation_id;
-      const telefone = draft.edited.telefone || resultData.telefone || '';
-      const nome = resultData.cliente || draft.edited.nome || '';
+      const quotationId = resultData.quotation_id as string;
+      const telefone = draft.edited.telefone || (resultData.telefone as string) || '';
+      const nome = (resultData.cliente as string) || draft.edited.nome || '';
       const flowId = waFlowByDraft[draftIndex] || defaultWaFlowId || waFlows[0]?.id || '';
 
       if (!flowId) {
@@ -358,8 +388,8 @@ export default function AutoQuotePage() {
           flow_id: flowId,
           telefone,
           nome,
-          deal_id: resultData.deal_id || null,
-          items: resultData.items || draft.edited.items || [],
+          deal_id: (resultData.deal_id as string | null) || null,
+          items: (resultData.items as unknown[]) || draft.edited.items || [],
         });
 
         setWaStatusByDraft((prev) => ({
@@ -372,12 +402,12 @@ export default function AutoQuotePage() {
           },
         }));
       } catch (err) {
-        console.error('[sendWhatsApp] failed:', err.message);
+        console.error('[sendWhatsApp] failed:', (err as Error).message);
         setWaStatusByDraft((prev) => ({
           ...prev,
           [draftIndex]: {
             state: 'error',
-            message: err.message || 'Erro ao enviar WhatsApp.',
+            message: (err as Error).message || 'Erro ao enviar WhatsApp.',
           },
         }));
       }
@@ -386,12 +416,12 @@ export default function AutoQuotePage() {
   );
 
   // ── Re-extract handlers (add more items to an existing draft) ──
-  const handleReExtractTextChange = useCallback((draftIndex, value) => {
+  const handleReExtractTextChange = useCallback((draftIndex: number, value: string) => {
     setReExtractTextByDraft((prev) => ({ ...prev, [draftIndex]: value }));
   }, []);
 
   const handleSubmitReExtract = useCallback(
-    async (draftIndex) => {
+    async (draftIndex: number) => {
       const text = reExtractTextByDraft[draftIndex]?.trim();
       if (!text) return;
 
@@ -404,7 +434,9 @@ export default function AutoQuotePage() {
           .filter((it) => it.item_code && it.qty > 0)
           .map((it) => ({ item_code: it.item_code, qty: it.qty }));
 
-        const res = await apiPost('/extract', {
+        const res = await apiPost<{
+          orders?: { items?: { item_code?: string; qty?: number }[] }[];
+        }>('/extract', {
           text,
           existingItems,
         });
@@ -422,10 +454,10 @@ export default function AutoQuotePage() {
           const next = [...prev];
           const currentItems = [...next[idx].edited.items];
           for (const it of newItems) {
-            if (!it.item_code || it.qty <= 0) continue;
+            if (!it.item_code || (it.qty ?? 0) <= 0) continue;
             currentItems.push({
               item_code: it.item_code,
-              qty: it.qty,
+              qty: it.qty ?? 0,
               rate: null,
             });
           }
@@ -443,7 +475,7 @@ export default function AutoQuotePage() {
         await refetchDraftPricing(draftIndex);
         setReExtractTextByDraft((prev) => ({ ...prev, [draftIndex]: '' }));
       } catch (err) {
-        setError(err.message || 'Erro ao extrair itens adicionais.');
+        setError((err as Error).message || 'Erro ao extrair itens adicionais.');
       } finally {
         setReExtractLoadingByDraft((prev) => ({ ...prev, [draftIndex]: false }));
       }
@@ -505,7 +537,7 @@ export default function AutoQuotePage() {
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   disabled={extracting}
-                  onPaste={(e) => {
+                  onPaste={(e: ClipboardEvent<HTMLTextAreaElement>) => {
                     const items = e.clipboardData?.items;
                     if (items) {
                       for (const item of items) {
@@ -758,7 +790,7 @@ export default function AutoQuotePage() {
                 const isError = draft.status === 'error';
                 const isProcessing = draft.status === 'processing';
                 const relativeViewUrl = draft.result?.data?.quotation_id
-                  ? buildQuotationViewUrl(draft.result.data.quotation_id)
+                  ? buildQuotationViewUrl(String(draft.result.data.quotation_id))
                   : '';
 
                 if (isError) {
@@ -794,7 +826,6 @@ export default function AutoQuotePage() {
                     selectProduct={selectProduct}
                     onRefetchPricing={refetchDraftPricing}
                     onCreateQuote={createSingleQuote}
-                    onDelete={discardDraft}
                     viewUrl={relativeViewUrl}
                     waStatus={waStatusByDraft[draft.index]}
                     waFlows={waFlows}

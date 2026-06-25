@@ -1,14 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LogIn, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+interface LoginPageProps {
+  navigate: (hash: string) => void;
+}
+
 /**
  * LoginPage — tela de autenticação full-screen.
  * Mostrada quando a API retorna 401 ou quando o usuário acessa #/login.
  */
-export default function LoginPage({ navigate }) {
+export default function LoginPage({ navigate }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +32,7 @@ export default function LoginPage({ navigate }) {
       .catch(() => {});
   }, []);
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!password.trim()) return;
 
@@ -42,12 +46,12 @@ export default function LoginPage({ navigate }) {
         body: JSON.stringify({ password }),
       });
 
-      const data = await res.json().catch(() => null);
+      const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
 
       if (res.ok) {
         navigate('/quotations');
       } else {
-        setError(data?.error || 'Erro ao autenticar.');
+        setError(typeof data?.error === 'string' ? data.error : 'Erro ao autenticar.');
       }
     } catch {
       setError('Erro de conexão. Verifique sua internet.');
@@ -83,7 +87,7 @@ export default function LoginPage({ navigate }) {
               type="password"
               placeholder="Senha de acesso"
               value={password}
-              onChange={(e) => {
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
                 setPassword(e.target.value);
                 setError('');
               }}

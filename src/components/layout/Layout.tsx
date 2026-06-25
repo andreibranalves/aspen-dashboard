@@ -1,6 +1,15 @@
-import { useState, useCallback, useEffect, createContext, useContext } from 'react';
-import Sidebar from './Sidebar.jsx';
-import TopBar from './TopBar.jsx';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  createContext,
+  useContext,
+  type ReactNode,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import Sidebar from './Sidebar';
+import TopBar from './TopBar';
 import { cn } from '@/lib/utils';
 import { useDarkMode } from '@/hooks/useDarkMode';
 
@@ -8,15 +17,22 @@ import { useDarkMode } from '@/hooks/useDarkMode';
 // Pages call useSetTopBarActions(jsx) to set action buttons in the TopBar.
 // Pass null to clear (e.g. on unmount).
 
-export const SetTopBarActionsCtx = createContext(null);
+export type SetTopBarActions = Dispatch<SetStateAction<ReactNode | null>>;
 
-export function useSetTopBarActions() {
+export const SetTopBarActionsCtx = createContext<SetTopBarActions | null>(null);
+
+export function useSetTopBarActions(): SetTopBarActions | null {
   return useContext(SetTopBarActionsCtx);
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  hash: string | null;
 }
 
 // ── Breadcrumb mapping ──
 
-const PAGE_LABELS = {
+const PAGE_LABELS: Record<string, string> = {
   '/dashboard': 'Início',
   '/quotations': 'Orçamentos',
   '/auto': 'Auto — Extração',
@@ -28,7 +44,7 @@ const PAGE_LABELS = {
   '/settings': 'Configurações',
 };
 
-function getBreadcrumb(route) {
+function getBreadcrumb(route: string): BreadcrumbItem[] {
   if (route === '/dashboard') {
     return [{ label: 'Início', hash: null }];
   }
@@ -83,9 +99,15 @@ function getBreadcrumb(route) {
 
 // ── Layout ──
 
-export default function Layout({ route, onNavigate, children }) {
+export interface LayoutProps {
+  route: string;
+  onNavigate: (hash: string) => void;
+  children: ReactNode;
+}
+
+export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const { darkMode, toggleDarkMode } = useDarkMode();
-  const [topBarActions, setTopBarActions] = useState(null);
+  const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -103,9 +125,6 @@ export default function Layout({ route, onNavigate, children }) {
       setSidebarCollapsed(true);
     }
   }, [route]);
-
-  // Clear actions on route change — pages re-set them in their own useEffect
-  // (Moved to each page's cleanup instead, to avoid race with page effects)
 
   const breadcrumbItems = getBreadcrumb(route);
 

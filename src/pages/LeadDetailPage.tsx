@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  type ReactNode,
+  type ChangeEventHandler,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
   AlertTriangle,
   Check,
@@ -16,12 +25,12 @@ import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks';
 import PageHeader from '@/components/PageHeader';
-import SkeletonDetail from '@/components/SkeletonDetail.jsx';
-import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
+import SkeletonDetail from '@/components/SkeletonDetail';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { QualityBadges } from '@/components/QualityBadges.jsx';
-import { ContextActions } from '@/components/ContextActions.jsx';
+import { QualityBadges } from '@/components/QualityBadges';
+import { ContextActions, type ContextAction } from '@/components/ContextActions';
 
 const CONTRIBUINTE_OPTS = [
   { value: '0', label: '0 - Não informado' },
@@ -33,49 +42,114 @@ const CONTRIBUINTE_OPTS = [
 const LEAD_SOURCES = ['Google Ads', 'Bríndice', 'Cliente recorrente'];
 const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+// ── Types ──
+
+interface Address {
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  complemento?: string;
+  municipio?: string;
+  uf?: string;
+  cep?: string;
+}
+
+interface LatestQuotation {
+  name: string;
+  status?: string;
+  date?: string;
+  grand_total?: number | string;
+}
+
+interface Deal {
+  name: string;
+  status?: string;
+  next_step?: string;
+}
+
+interface LeadDetail {
+  doctype: string;
+  name: string;
+  display_name: string;
+  empresa: string;
+  email: string;
+  telefone: string;
+  origem: string;
+  person_type: string;
+  tax_id: string;
+  contribuinte: string;
+  inscricao_estadual: string;
+  address: Address;
+  quality_flags: string[];
+  latest_quotation: LatestQuotation | null;
+  deal: Deal | null;
+  erp_url: string | null;
+  creation?: string;
+  modified?: string;
+}
+
+interface EditFields {
+  nome: string;
+  email: string;
+  telefone: string;
+  origem: string;
+  personType: string;
+  taxId: string;
+  empresa: string;
+  contribuinte: string;
+  inscricaoEstadual: string;
+  endereco: Address;
+}
+
+interface LeadDetailPageProps {
+  tipo: string;
+  id: string;
+  navigate: (hash: string) => void;
+}
+
 // ── Format/validation helpers ──
 
-function formatCpf(value) {
+function formatCpf(value: unknown): string {
   const d = String(value || '').replace(/\D/g, '').slice(0, 11);
   return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
 }
 
-function formatCnpj(value) {
+function formatCnpj(value: unknown): string {
   const d = String(value || '').replace(/\D/g, '').slice(0, 14);
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 }
 
-function formatTaxId(value, personType) {
+function formatTaxId(value: unknown, personType: string | undefined): string {
   const d = String(value || '').replace(/\D/g, '');
   if (personType === 'pf') return formatCpf(d);
   if (personType === 'pj') return formatCnpj(d);
   if (d.length === 11) return formatCpf(d);
   if (d.length === 14) return formatCnpj(d);
-  return value || '';
+  return String(value || '');
 }
 
-function isValidEmail(value) {
+function isValidEmail(value: unknown): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
-function isValidPhone(value) {
+function isValidPhone(value: unknown): boolean {
   const d = String(value || '').replace(/\D/g, '');
   return d.length >= 10 && d.length <= 11;
 }
 
-function getDoctype(tipo) {
+function getDoctype(tipo: string): string {
   return tipo === 'cliente' || tipo === 'customer' ? 'Customer' : 'Lead';
 }
 
-function getTipoFromDoctype(doctype) {
+function getTipoFromDoctype(doctype: string): string {
   return doctype === 'Customer' ? 'cliente' : 'lead';
 }
 
-function tipoLabel(doctype) {
+function tipoLabel(doctype: string): string {
   return doctype === 'Customer' ? 'Cliente' : 'Lead';
 }
 
-function getInitials(name) {
+function getInitials(name: unknown): string {
   return String(name || 'Lead')
     .trim()
     .split(/\s+/)
@@ -84,19 +158,19 @@ function getInitials(name) {
     .join('') || 'LD';
 }
 
-function qualityBadges(detail) {
-  const labelMap = {
+function qualityBadges(detail: LeadDetail) {
+  const labelMap: Record<string, { label: string; type: 'warning' | 'danger' | 'info' | 'success' }> = {
     sem_telefone: { label: 'Sem telefone', type: 'warning' },
     sem_email: { label: 'Sem email', type: 'warning' },
     sem_origem: { label: 'Sem origem', type: 'danger' },
     sem_cnpj: { label: 'Sem CNPJ', type: 'info' },
     endereco_incompleto: { label: 'Endereço incompleto', type: 'warning' },
   };
-  if (!detail?.quality_flags?.length) return [{ label: 'Cadastro completo', type: 'success' }];
-  return detail.quality_flags.map(flag => labelMap[flag] || { label: flag, type: 'warning' });
+  if (!detail?.quality_flags?.length) return [{ label: 'Cadastro completo', type: 'success' as const }];
+  return detail.quality_flags.map(flag => labelMap[flag] || { label: flag, type: 'warning' as const });
 }
 
-function buildEditFields(detail) {
+function buildEditFields(detail: LeadDetail): EditFields {
   return {
     nome: detail.display_name || '',
     email: detail.email || '',
@@ -119,7 +193,7 @@ function buildEditFields(detail) {
   };
 }
 
-function buildEmptyLeadDetail(doctype = 'Lead') {
+function buildEmptyLeadDetail(doctype = 'Lead'): LeadDetail {
   return {
     doctype,
     name: '',
@@ -140,21 +214,24 @@ function buildEmptyLeadDetail(doctype = 'Lead') {
   };
 }
 
-async function lookupCep(cep, setEditFields) {
+async function lookupCep(
+  cep: string | undefined,
+  setEditFields: Dispatch<SetStateAction<EditFields>>,
+) {
   const digits = String(cep || '').replace(/\D/g, '');
   if (digits.length !== 8) return;
   try {
     const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
-    const data = await res.json();
+    const data = (await res.json()) as Record<string, unknown>;
     if (data.erro) return;
     setEditFields(prev => ({
       ...prev,
       endereco: {
         ...prev.endereco,
-        endereco: data.logradouro || prev.endereco?.endereco || '',
-        bairro: data.bairro || prev.endereco?.bairro || '',
-        municipio: data.localidade || prev.endereco?.municipio || '',
-        uf: data.uf || prev.endereco?.uf || '',
+        endereco: String(data.logradouro || prev.endereco?.endereco || ''),
+        bairro: String(data.bairro || prev.endereco?.bairro || ''),
+        municipio: String(data.localidade || prev.endereco?.municipio || ''),
+        uf: String(data.uf || prev.endereco?.uf || ''),
       },
     }));
   } catch { /* best-effort */ }
@@ -162,7 +239,11 @@ async function lookupCep(cep, setEditFields) {
 
 // ── Small UI components ──
 
-function TipoBadge({ doctype }) {
+interface TipoBadgeProps {
+  doctype: string;
+}
+
+function TipoBadge({ doctype }: TipoBadgeProps) {
   const isLead = doctype !== 'Customer';
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
@@ -173,7 +254,14 @@ function TipoBadge({ doctype }) {
   );
 }
 
-function SectionCard({ title, description, icon: Icon, children }) {
+interface SectionCardProps {
+  title: string;
+  description?: string;
+  icon?: LucideIcon;
+  children: ReactNode;
+}
+
+function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
   return (
     <section className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
       <div className="flex items-start gap-3">
@@ -192,7 +280,14 @@ function SectionCard({ title, description, icon: Icon, children }) {
   );
 }
 
-function InfoField({ label, value, children, className = '' }) {
+interface InfoFieldProps {
+  label: string;
+  value?: string;
+  children?: ReactNode;
+  className?: string;
+}
+
+function InfoField({ label, value, children, className = '' }: InfoFieldProps) {
   return (
     <div className={className}>
       <span className="text-fg-muted text-[11px] uppercase tracking-wide">{label}</span>
@@ -201,7 +296,15 @@ function InfoField({ label, value, children, className = '' }) {
   );
 }
 
-function SelectBox({ value, onChange, children, disabled = false, className = '' }) {
+interface SelectBoxProps {
+  value?: string;
+  onChange: ChangeEventHandler<HTMLSelectElement>;
+  children: ReactNode;
+  disabled?: boolean;
+  className?: string;
+}
+
+function SelectBox({ value, onChange, children, disabled = false, className = '' }: SelectBoxProps) {
   return (
     <select
       value={value || ''}
@@ -214,11 +317,11 @@ function SelectBox({ value, onChange, children, disabled = false, className = ''
   );
 }
 
-function inputClass(invalid) {
+function inputClass(invalid: boolean): string {
   return `mt-1 text-sm ${invalid ? 'border-red-400 focus-visible:ring-red-400/25' : ''}`;
 }
 
-function addressLine(address) {
+function addressLine(address: Address | undefined): string {
   if (!address) return 'Endereço não cadastrado';
   const first = [address.endereco, address.numero].filter(Boolean).join(', ');
   const second = [address.bairro, address.complemento].filter(Boolean).join(' · ');
@@ -226,17 +329,28 @@ function addressLine(address) {
   return [first, second, city, address.cep ? address.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2') : null].filter(Boolean).join(' · ') || 'Endereço não cadastrado';
 }
 
-export default function LeadDetailPage({ tipo, id, navigate }) {
+export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPageProps) {
   const decodedId = decodeURIComponent(id || '');
   const doctype = getDoctype(tipo);
   const isNewLead = decodedId === 'new';
-  const [detail, setDetail] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [editFields, setEditFields] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [detail, setDetail] = useState<LeadDetail | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | 'not_found' | null>(null);
+  const [editMode, setEditMode] = useState<boolean>(false);
+  const [editFields, setEditFields] = useState<EditFields>({
+    nome: '',
+    email: '',
+    telefone: '',
+    origem: '',
+    personType: '',
+    taxId: '',
+    empresa: '',
+    contribuinte: '0',
+    inscricaoEstadual: '',
+    endereco: {},
+  });
+  const [saving, setSaving] = useState<boolean>(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const setTopBarActions = useSetTopBarActions();
 
   const loadDetail = useCallback(async () => {
@@ -253,13 +367,25 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         return;
       }
 
-      const result = await apiGet(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(decodedId)}`);
+      const result = await apiGet<LeadDetail>(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(decodedId)}`);
       setDetail(result);
       setEditMode(false);
-      setEditFields({});
+      setEditFields({
+        nome: '',
+        email: '',
+        telefone: '',
+        origem: '',
+        personType: '',
+        taxId: '',
+        empresa: '',
+        contribuinte: '0',
+        inscricaoEstadual: '',
+        endereco: {},
+      });
     } catch (err) {
-      if (err.status === 404) setError('not_found');
-      else setError(err.message || 'Erro ao carregar lead.');
+      const apiErr = err as { status?: number; message?: string };
+      if (apiErr.status === 404) setError('not_found');
+      else setError(apiErr.message || 'Erro ao carregar lead.');
     } finally {
       setLoading(false);
     }
@@ -285,7 +411,18 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
       return;
     }
     setEditMode(false);
-    setEditFields({});
+    setEditFields({
+      nome: '',
+      email: '',
+      telefone: '',
+      origem: '',
+      personType: '',
+      taxId: '',
+      empresa: '',
+      contribuinte: '0',
+      inscricaoEstadual: '',
+      endereco: {},
+    });
   }, [isNewLead, navigate]);
 
   const saveEdit = useCallback(async () => {
@@ -294,7 +431,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
     setError(null);
     setToast(null);
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         nome: editFields.nome?.trim() || null,
         email: editFields.email?.trim() || null,
         telefone: editFields.telefone?.trim() || null,
@@ -335,26 +472,27 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
       }
 
       if (isNewLead) {
-        const created = await apiPost('/leads-clients', {
+        const created = await apiPost<Record<string, unknown>>('/leads-clients', {
           tipo: getTipoFromDoctype(doctype),
           nome: payload.nome,
           email: payload.email || undefined,
           telefone: payload.telefone || undefined,
           origem: payload.origem || undefined,
         });
-        const createdId = created.created || created.name || created.id;
+        const createdId = String(created.created || created.name || created.id || '');
         if (!createdId) {
           setToast({ type: 'error', message: 'Lead criado, mas não foi possível abrir o cadastro.' });
           navigate('/leads');
           return;
         }
 
-        const extraPayload = { ...payload };
+        const extraPayload: Record<string, unknown> = { ...payload };
         delete extraPayload.nome;
         delete extraPayload.email;
         delete extraPayload.telefone;
         delete extraPayload.origem;
-        const hasEndereco = Object.values(extraPayload.endereco || {}).some(value => String(value || '').trim());
+        const endereco = extraPayload.endereco as Record<string, unknown> | undefined;
+        const hasEndereco = endereco ? Object.values(endereco).some(value => String(value || '').trim()) : false;
         if (!hasEndereco) delete extraPayload.endereco;
         if (Object.keys(extraPayload).length > 0) {
           await apiPut(
@@ -368,16 +506,28 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
         return;
       }
 
-      const updated = await apiPut(
+      const updated = await apiPut<LeadDetail>(
         `/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(decodedId)}`,
         payload,
       );
       setDetail(updated);
       setEditMode(false);
-      setEditFields({});
+      setEditFields({
+        nome: '',
+        email: '',
+        telefone: '',
+        origem: '',
+        personType: '',
+        taxId: '',
+        empresa: '',
+        contribuinte: '0',
+        inscricaoEstadual: '',
+        endereco: {},
+      });
       setToast({ type: 'success', message: 'Cadastro atualizado com sucesso.' });
     } catch (err) {
-      setToast({ type: 'error', message: err.message || 'Erro ao salvar cadastro.' });
+      const apiErr = err as { message?: string };
+      setToast({ type: 'error', message: apiErr.message || 'Erro ao salvar cadastro.' });
     } finally {
       setSaving(false);
     }
@@ -472,7 +622,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
       href: detail.erp_url,
       title: 'Abrir no ERPNext',
     } : null,
-  ].filter(Boolean);
+  ].filter(Boolean) as ContextAction[];
 
   return (
     <div className="space-y-5 animate-fade-in max-w-[1060px] mx-auto">
@@ -531,12 +681,12 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
               </InfoField>
               <InfoField label="E-mail">
                 {editMode ? (
-                  <Input value={editFields.email || ''} onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))} className={inputClass(editFields.email && !isValidEmail(editFields.email))} placeholder="email@exemplo.com" />
+                  <Input value={editFields.email || ''} onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))} className={inputClass(Boolean(editFields.email && !isValidEmail(editFields.email)))} placeholder="email@exemplo.com" />
                 ) : <p className="mt-1 text-sm font-medium text-fg">{detail.email || '—'}</p>}
               </InfoField>
               <InfoField label="Telefone">
                 {editMode ? (
-                  <Input value={editFields.telefone || ''} onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))} className={inputClass(editFields.telefone && !isValidPhone(editFields.telefone))} placeholder="(99) 99999-9999" />
+                  <Input value={editFields.telefone || ''} onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))} className={inputClass(Boolean(editFields.telefone && !isValidPhone(editFields.telefone)))} placeholder="(99) 99999-9999" />
                 ) : <p className="mt-1 text-sm font-medium text-fg">{fmtPhone(detail.telefone) || '—'}</p>}
               </InfoField>
               <InfoField label="Origem">
@@ -670,10 +820,10 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                     {detail.latest_quotation.grand_total != null && <p>Total: {formatBRL(detail.latest_quotation.grand_total)}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
-                    <Button variant="outline" size="sm" onClick={() => navigate(`/quotations/${detail.latest_quotation.name}`)}>
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/quotations/${detail.latest_quotation?.name}`)}>
                       Abrir página
                     </Button>
-                    <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-line px-3 text-xs font-medium text-fg hover:bg-primary/5" href={buildQuotationErpUrl(null, detail.latest_quotation.name)} target="_blank" rel="noopener noreferrer">
+                    <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-line px-3 text-xs font-medium text-fg hover:bg-primary/5" href={buildQuotationErpUrl(null, detail.latest_quotation.name) ?? undefined} target="_blank" rel="noopener noreferrer">
                       ERPNext
                       <ExternalLink size={12} />
                     </a>
@@ -695,7 +845,7 @@ export default function LeadDetailPage({ tipo, id, navigate }) {
                     </span>
                   </div>
                   {detail.deal.next_step && <p className="text-xs text-fg-muted">{detail.deal.next_step}</p>}
-                  <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-line px-3 text-xs font-medium text-fg hover:bg-primary/5" href={buildCrmDealErpUrl(null, detail.deal.name)} target="_blank" rel="noopener noreferrer">
+                  <a className="inline-flex h-8 items-center justify-center gap-2 rounded-full border border-line px-3 text-xs font-medium text-fg hover:bg-primary/5" href={buildCrmDealErpUrl(null, detail.deal.name) ?? undefined} target="_blank" rel="noopener noreferrer">
                     Abrir no ERPNext
                     <ExternalLink size={12} />
                   </a>

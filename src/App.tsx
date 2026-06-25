@@ -1,22 +1,22 @@
 import { useHashRoute } from '@/hooks/useHashRoute';
-import Layout from '@/components/layout/Layout.jsx';
-import DashboardPage from '@/pages/DashboardPage.jsx';
-import QuotationsPage from '@/pages/QuotationsPage.jsx';
-import QuotationDetailPage from '@/pages/QuotationDetailPage.jsx';
-import SalesOrdersPage from '@/pages/SalesOrdersPage.jsx';
-import SalesOrderDetailPage from '@/pages/SalesOrderDetailPage.jsx';
-import AutoQuotePage from '@/pages/AutoQuotePage.jsx';
-import CrmKanbanPage from '@/pages/CrmKanbanPage.jsx';
-import ProductsPage from '@/pages/ProductsPage.jsx';
-import ProductDetailPage from '@/pages/ProductDetailPage.jsx';
-import LeadsPage from '@/pages/LeadsPage.jsx';
-import LeadDetailPage from '@/pages/LeadDetailPage.jsx';
-import SettingsPage from '@/pages/SettingsPage.jsx';
-import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage.jsx';
-import ComunicacaoPage from '@/pages/ComunicacaoPage.jsx';
-import LoginPage from '@/pages/LoginPage.jsx';
+import Layout from '@/components/layout/Layout';
+import DashboardPage from '@/pages/DashboardPage';
+import QuotationsPage from '@/pages/QuotationsPage';
+import QuotationDetailPage from '@/pages/QuotationDetailPage';
+import SalesOrdersPage from '@/pages/SalesOrdersPage';
+import SalesOrderDetailPage from '@/pages/SalesOrderDetailPage';
+import AutoQuotePage from '@/pages/AutoQuotePage';
+import CrmKanbanPage from '@/pages/CrmKanbanPage';
+import ProductsPage from '@/pages/ProductsPage';
+import ProductDetailPage from '@/pages/ProductDetailPage';
+import LeadsPage from '@/pages/LeadsPage';
+import LeadDetailPage from '@/pages/LeadDetailPage';
+import SettingsPage from '@/pages/SettingsPage';
+import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage';
+import ComunicacaoPage from '@/pages/ComunicacaoPage';
+import LoginPage from '@/pages/LoginPage';
 
-function renderPage(route, navigate) {
+function renderPage(route: string, navigate: (hash: string) => void) {
   // Login page — full screen, no layout
   if (route === '/login') return <LoginPage navigate={navigate} />;
   // Detail page: #/quotations/ORC-20261143

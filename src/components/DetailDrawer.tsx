@@ -1,24 +1,20 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+export interface DetailDrawerProps {
+  open: boolean;
+  onClose?: () => void;
+  title?: string;
+  description?: string;
+  actions?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}
+
 /**
  * DetailDrawer — painel lateral reutilizável para drill-down operacional.
- *
- * Comportamento:
- *   Desktop (lg+): overlay escuro + painel à direita com largura limitada.
- *   Mobile (<lg): tela quase cheia, rolável internamente.
- *
- * Props:
- *   open        — controla visibilidade
- *   onClose     — callback para fechar (Escape também fecha)
- *   title       — título do drawer
- *   description — subtítulo opcional
- *   actions     — nó React opcional (ex: <ContextActions>)
- *   children    — conteúdo principal (rolável)
- *   className   — classe extra para o container
  */
-
 export function DetailDrawer({
   open,
   onClose,
@@ -27,11 +23,11 @@ export function DetailDrawer({
   actions,
   children,
   className,
-}) {
+}: DetailDrawerProps) {
   // Fecha ao pressionar Escape
   const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === 'Escape' && open) {
+    (e: Event) => {
+      if ((e as KeyboardEvent).key === 'Escape' && open) {
         onClose?.();
       }
     },

@@ -1,14 +1,16 @@
 import Skeleton from '@/components/Skeleton';
 
+export interface SkeletonTableProps {
+  cols?: number;
+  rows?: number;
+  size?: 'sm' | 'md' | 'lg';
+}
+
 /**
  * SkeletonTable — simula uma tabela durante o carregamento.
  * As alturas espelham as classes do componente Table real (h-10 no header, p-4 nas células).
- *
- * @param {number} cols - Quantidade de colunas
- * @param {number} rows - Quantidade de linhas (default 8)
- * @param {'sm'|'md'|'lg'} size - Tamanho das linhas (default 'md')
  */
-export default function SkeletonTable({ cols = 4, rows = 8, size = 'md' }) {
+export default function SkeletonTable({ cols = 4, rows = 8, size = 'md' }: SkeletonTableProps) {
   const rowHeight = size === 'sm' ? 'h-10' : size === 'lg' ? 'h-16' : 'h-14';
 
   // Distribui larguras proporcionais, deixando a primeira coluna mais estreita

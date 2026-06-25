@@ -3,6 +3,7 @@
 // Route: #/comunicacao
 
 import { useState, useCallback } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import FlowEditorTab from '@/components/communication/FlowEditorTab';
@@ -11,7 +12,13 @@ import MediaLibrary from '@/components/communication/MediaLibrary';
 import SendHistoryTab from '@/components/communication/SendHistoryTab';
 import ChannelsTab from '@/components/communication/ChannelsTab';
 
-const TABS = [
+interface TabItem {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const TABS: TabItem[] = [
   { id: 'flows', label: 'Fluxos WhatsApp', icon: MessageSquare },
   { id: 'media', label: 'Biblioteca de mídias', icon: Image },
   { id: 'history', label: 'Histórico de envios', icon: Clock },
@@ -19,8 +26,8 @@ const TABS = [
 ];
 
 export default function ComunicacaoPage() {
-  const [activeTab, setActiveTab] = useState('flows');
-  const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<string>('flows');
+  const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
 
   const handleUploadComplete = useCallback(() => {
     setMediaRefreshKey((k) => k + 1);

@@ -1,31 +1,38 @@
 import { cn } from '@/lib/utils';
-import { AlertTriangle, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Info, CheckCircle2, type LucideIcon } from 'lucide-react';
 
-/**
- * QualityBadges — exibe chips compactos com indicadores de qualidade de dados.
- *
- * Props:
- *   badges: Array<{ label, type: 'warning'|'danger'|'info'|'success', title? }>
- *   className?: string
- *
- * Se a lista estiver vazia, renderiza null (sem quebrar layout).
- */
+type BadgeType = 'warning' | 'danger' | 'info' | 'success';
 
-const typeStyles = {
+const typeStyles: Record<BadgeType, string> = {
   warning: 'tone-warning-soft',
-  danger:  'tone-destructive-soft',
-  info:    'tone-info-soft',
+  danger: 'tone-destructive-soft',
+  info: 'tone-info-soft',
   success: 'tone-success-soft',
 };
 
-const typeIcons = {
+const typeIcons: Record<BadgeType, LucideIcon> = {
   warning: AlertTriangle,
-  danger:  AlertCircle,
-  info:    Info,
+  danger: AlertCircle,
+  info: Info,
   success: CheckCircle2,
 };
 
-export function QualityBadges({ badges, className }) {
+export interface QualityBadge {
+  label: string;
+  type: BadgeType;
+  title?: string;
+}
+
+export interface QualityBadgesProps {
+  badges?: QualityBadge[];
+  className?: string;
+}
+
+/**
+ * QualityBadges — exibe chips compactos com indicadores de qualidade de dados.
+ * Se a lista estiver vazia, renderiza null (sem quebrar layout).
+ */
+export function QualityBadges({ badges, className }: QualityBadgesProps) {
   if (!badges || badges.length === 0) return null;
 
   return (

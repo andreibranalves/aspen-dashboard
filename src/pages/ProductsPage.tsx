@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -11,38 +11,62 @@ import { apiGet, apiDelete } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import SkeletonTable from '@/components/SkeletonTable.jsx';
-import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
+import SkeletonTable from '@/components/SkeletonTable';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 
 const PAGE_SIZES = [10, 25, 50];
 
-const SORT_OPTIONS = [
+interface SortOption {
+  value: string;
+  label: string;
+}
+
+const SORT_OPTIONS: SortOption[] = [
   { value: 'item_name asc', label: 'nome' },
   { value: 'modified desc', label: 'mais recentes' },
   { value: 'modified asc', label: 'data de atualização' },
   { value: 'item_code asc', label: 'código (sku)' },
 ];
 
+interface Product {
+  sku?: string;
+  item_code?: string;
+  nome?: string;
+  item_name?: string;
+  descricao?: string;
+  unidade?: string;
+  stock_uom?: string;
+  preco_minimo?: number | string;
+}
+
+interface ProductsApiResponse {
+  data?: Product[];
+  pagination?: {
+    total_pages?: number;
+    total?: number;
+  };
+}
+
 export default function ProductsPage() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [sort, setSort] = useState('modified desc');
-  const searchTimer = useRef(null);
-  const selectAllRef = useRef(null);
+  const [data, setData] = useState<Product[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState<string>('');
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sort, setSort] = useState<string>('modified desc');
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [, navigate] = useHashRoute();
   const setTopBarActions = useSetTopBarActions();
 
-  const fetchData = useCallback(async (searchVal, pageNum, limitVal, sortVal) => {
+  const fetchData = useCallback(async (searchVal: string, pageNum: number, limitVal: number, sortVal: string) => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
@@ -53,12 +77,12 @@ export default function ProductsPage() {
       if (searchVal) params.set('search', searchVal);
       if (sortVal) params.set('order_by', sortVal);
 
-      const result = await apiGet(`/products?${params.toString()}`);
+      const result = await apiGet<ProductsApiResponse>(`/products?${params.toString()}`);
       setData(result.data || []);
       setTotalPages(result.pagination?.total_pages || 0);
       setTotalRecords(result.pagination?.total || 0);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar produtos.');
+      setError((err as Error).message || 'Erro ao carregar produtos.');
     } finally {
       setLoading(false);
     }
@@ -66,53 +90,53 @@ export default function ProductsPage() {
 
   // TopBar actions — Criar Produto
   useEffect(() => {
-    setTopBarActions(
+    setTopBarActions?.(
       <Button size="sm" onClick={() => navigate('/products/new')}>
         <PlusCircle size={16} />
         Criar Produto
       </Button>
     );
-    return () => setTopBarActions(null);
+    return () => setTopBarActions?.(null);
   }, [setTopBarActions, navigate]);
 
   useEffect(() => { fetchData(search, page, limit, sort); }, [fetchData, search, page, limit, sort]);
 
-  const onSearchChange = useCallback((e) => {
+  const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearch(val);
-    clearTimeout(searchTimer.current);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
       fetchData(val, 1, limit, sort);
     }, 350);
   }, [limit, sort, fetchData]);
 
-  const onLimitChange = useCallback((e) => {
+  const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(e.target.value, 10);
     setLimit(newLimit);
     setPage(1);
     fetchData(search, 1, newLimit, sort);
   }, [search, sort, fetchData]);
 
-  const getPageNumbers = () => {
+  const getPageNumbers = (): number[] => {
     if (totalPages <= 1) return [];
     const start = Math.max(1, page - 3);
     const end = Math.min(totalPages, start + 6);
-    const nums = [];
+    const nums: number[] = [];
     for (let i = start; i <= end; i++) nums.push(i);
     return nums;
   };
 
   // ── Selection ──
 
-  const toggleSelected = useCallback((sku) => {
+  const toggleSelected = useCallback((sku: string) => {
     setSelectedIds((prev) =>
       prev.includes(sku) ? prev.filter((id) => id !== sku) : [...prev, sku]
     );
   }, []);
 
-  const toggleSelectAll = useCallback((checked) => {
-    setSelectedIds(checked ? data.map((row) => row.sku) : []);
+  const toggleSelectAll = useCallback((checked: boolean) => {
+    setSelectedIds(checked ? data.map((row) => row.sku || row.item_code || '') : []);
   }, [data]);
 
   const allSelected = data.length > 0 && selectedIds.length === data.length;
@@ -126,7 +150,7 @@ export default function ProductsPage() {
 
   // ── Delete ──
 
-  const handleDelete = useCallback(async (sku) => {
+  const handleDelete = useCallback(async (sku: string) => {
     if (!confirm(`Tem certeza que deseja excluir o produto ${sku}?\n\nEsta ação não pode ser desfeita.`)) return;
     try {
       await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
@@ -134,23 +158,23 @@ export default function ProductsPage() {
       setTotalRecords((prev) => prev - 1);
       setSelectedIds((prev) => prev.filter((id) => id !== sku));
     } catch (err) {
-      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
     }
   }, []);
 
   const handleBulkDelete = useCallback(async () => {
-    const selected = data.filter((row) => selectedIds.includes(row.sku));
+    const selected = data.filter((row) => selectedIds.includes(row.sku || row.item_code || ''));
     if (selected.length === 0) return;
 
     if (!confirm(`Tem certeza que deseja excluir ${selected.length} produto${selected.length !== 1 ? 's' : ''}?\n\nEssa ação não pode ser desfeita.`)) return;
 
     try {
-      await Promise.all(selected.map((row) => apiDelete(`/products?id=${encodeURIComponent(row.sku)}`)));
+      await Promise.all(selected.map((row) => apiDelete(`/products?id=${encodeURIComponent(row.sku || row.item_code || '')}`)));
       const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
       await fetchData(search, nextPage, limit, sort);
     } catch (err) {
-      alert('Erro ao excluir produtos selecionados: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao excluir produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'));
     }
   }, [data, selectedIds, page, search, limit, sort, fetchData]);
 
@@ -254,7 +278,7 @@ export default function ProductsPage() {
               </TableHeader>
               <TableBody>
                 {data.map(p => {
-                  const sku = p.sku || p.item_code;
+                  const sku = p.sku || p.item_code || '';
                   const isSelected = selectedIds.includes(sku);
                   return (
                     <TableRow
@@ -297,7 +321,7 @@ export default function ProductsPage() {
 
           <div className="md:hidden space-y-3">
             {data.map(p => {
-              const sku = p.sku || p.item_code;
+              const sku = p.sku || p.item_code || '';
               const isSelected = selectedIds.includes(sku);
               return (
                 <div

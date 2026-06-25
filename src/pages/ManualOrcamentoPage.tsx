@@ -1,4 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import {
+  useState,
+  useCallback,
+  useRef,
+  type ChangeEvent,
+} from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -20,7 +25,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
-import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
+import { searchProducts as cachedSearchProducts, type Product } from '@/lib/productCache';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
@@ -37,61 +42,99 @@ import {
   normalizeAddress,
   hasAnyAddressField,
   formatAddressSummary,
+  type Address,
 } from '@/lib/clientMetadata';
 
 // ── Constants ──
-const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' };
+const CLIENT_TYPE = { EXISTING: 'existing', NEW: 'new' } as const;
 const DEFAULT_QTY = 30;
 
-function toNumber(value, fallback = 0) {
+interface Client {
+  id: string;
+  nome: string;
+  email?: string;
+  telefone?: string;
+  cnpj?: string;
+  tipo?: string;
+}
+
+interface NewClient {
+  nome: string;
+  email: string;
+  telefone: string;
+}
+
+interface CartItem {
+  _key: string;
+  sku: string;
+  nome: string;
+  qty: number;
+  rate: number;
+  _rateManual: boolean;
+}
+
+interface PricingLookupResponse {
+  items?: Array<{ rate?: number | string }>;
+}
+
+interface LeadsClientsResponse {
+  data?: Client[];
+}
+
+interface OrcamentoResponse extends Record<string, unknown> {
+  cliente?: string;
+  quotation_id?: string;
+}
+
+function toNumber(value: string | number, fallback = 0): number {
   const parsed = Number(String(value).replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function makeItemKey(sku) {
+function makeItemKey(sku: string): string {
   return `${sku}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export default function ManualOrcamentoPage() {
   // ── Client state ──
-  const [clientType, setClientType] = useState(CLIENT_TYPE.NEW);
-  const [clientSearch, setClientSearch] = useState('');
-  const [clientResults, setClientResults] = useState([]);
-  const [clientSearching, setClientSearching] = useState(false);
-  const [selectedClient, setSelectedClient] = useState(null);
-  const [newClient, setNewClient] = useState({ nome: '', email: '', telefone: '' });
-  const clientTimer = useRef(null);
+  const [clientType, setClientType] = useState<string>(CLIENT_TYPE.NEW);
+  const [clientSearch, setClientSearch] = useState<string>('');
+  const [clientResults, setClientResults] = useState<Client[]>([]);
+  const [clientSearching, setClientSearching] = useState<boolean>(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [newClient, setNewClient] = useState<NewClient>({ nome: '', email: '', telefone: '' });
+  const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Client metadata ──
-  const [leadSource, setLeadSource] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [address, setAddress] = useState({ ...EMPTY_ADDRESS });
-  const [showAddress, setShowAddress] = useState(false);
+  const [leadSource, setLeadSource] = useState<string>('');
+  const [cnpj, setCnpj] = useState<string>('');
+  const [address, setAddress] = useState<Address>({ ...EMPTY_ADDRESS });
+  const [showAddress, setShowAddress] = useState<boolean>(false);
 
   // ── Product state ──
-  const [productSearch, setProductSearch] = useState('');
-  const [productResults, setProductResults] = useState([]);
-  const [productSearching, setProductSearching] = useState(false);
-  const [addingSku, setAddingSku] = useState(null);
-  const [pricingRows, setPricingRows] = useState(new Set());
-  const productTimer = useRef(null);
+  const [productSearch, setProductSearch] = useState<string>('');
+  const [productResults, setProductResults] = useState<Product[]>([]);
+  const [productSearching, setProductSearching] = useState<boolean>(false);
+  const [addingSku, setAddingSku] = useState<string | null>(null);
+  const [pricingRows, setPricingRows] = useState<Set<string>>(new Set());
+  const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Cart state ──
-  const [items, setItems] = useState([]); // { sku, nome, qty, rate, _key, _rateManual }
+  const [items, setItems] = useState<CartItem[]>([]); // { sku, nome, qty, rate, _key, _rateManual }
 
   // ── Form state ──
-  const [prazo, setPrazo] = useState('');
-  const [observacoes, setObservacoes] = useState('');
-  const [urgente, setUrgente] = useState(false);
+  const [prazo, setPrazo] = useState<string>('');
+  const [observacoes, setObservacoes] = useState<string>('');
+  const [urgente, setUrgente] = useState<boolean>(false);
 
   // ── Submit state ──
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [result, setResult] = useState<OrcamentoResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Pricing helpers ──
-  const lookupRate = useCallback(async (sku, qty, urgentValue = urgente) => {
-    const res = await apiPost('/pricing-lookup', {
+  const lookupRate = useCallback(async (sku: string, qty: number, urgentValue = urgente): Promise<number> => {
+    const res = await apiPost<PricingLookupResponse>('/pricing-lookup', {
       items: [{ item_code: sku, qty }],
       urgent: urgentValue,
     });
@@ -99,7 +142,7 @@ export default function ManualOrcamentoPage() {
     return priced?.rate != null ? Number(priced.rate) : 0;
   }, [urgente]);
 
-  const repriceAutoItems = useCallback(async (urgentValue) => {
+  const repriceAutoItems = useCallback(async (urgentValue: boolean) => {
     const autoItems = items.filter(item => !item._rateManual);
     if (autoItems.length === 0) return;
 
@@ -111,7 +154,7 @@ export default function ManualOrcamentoPage() {
       })));
       const priceMap = new Map(pricedItems.map(item => [item._key, item.rate]));
       setItems(prev => prev.map(item => (
-        priceMap.has(item._key) ? { ...item, rate: priceMap.get(item._key) } : item
+        priceMap.has(item._key) ? { ...item, rate: priceMap.get(item._key) ?? item.rate } : item
       )));
     } catch {
       // mantém os preços atuais se o ERP não responder
@@ -121,11 +164,11 @@ export default function ManualOrcamentoPage() {
   }, [items, lookupRate]);
 
   // ── Client search ──
-  const searchClients = useCallback(async (term) => {
+  const searchClients = useCallback(async (term: string) => {
     if (!term || term.length < 2) { setClientResults([]); return; }
     setClientSearching(true);
     try {
-      const res = await apiGet(`/leads-clients?search=${encodeURIComponent(term)}&limit=10&tipo=todos`);
+      const res = await apiGet<LeadsClientsResponse>(`/leads-clients?search=${encodeURIComponent(term)}&limit=10&tipo=todos`);
       setClientResults(res.data || []);
     } catch {
       setClientResults([]);
@@ -134,15 +177,15 @@ export default function ManualOrcamentoPage() {
     }
   }, []);
 
-  const onClientSearchChange = useCallback((e) => {
+  const onClientSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setClientSearch(val);
     setSelectedClient(null);
-    clearTimeout(clientTimer.current);
+    if (clientTimer.current) clearTimeout(clientTimer.current);
     clientTimer.current = setTimeout(() => searchClients(val), 300);
   }, [searchClients]);
 
-  const selectClient = useCallback((c) => {
+  const selectClient = useCallback((c: Client) => {
     setSelectedClient(c);
     setClientSearch(`${c.nome} (${c.email || c.telefone || c.id})`);
     setClientResults([]);
@@ -154,7 +197,7 @@ export default function ManualOrcamentoPage() {
   }, [cnpj]);
 
   // ── Product search ──
-  const searchProductsLocal = useCallback(async (term) => {
+  const searchProductsLocal = useCallback(async (term: string) => {
     if (!term || term.length < 2) { setProductResults([]); return; }
     setProductSearching(true);
     try {
@@ -167,15 +210,15 @@ export default function ManualOrcamentoPage() {
     }
   }, []);
 
-  const onProductSearchChange = useCallback((e) => {
+  const onProductSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setProductSearch(val);
-    clearTimeout(productTimer.current);
+    if (productTimer.current) clearTimeout(productTimer.current);
     productTimer.current = setTimeout(() => searchProductsLocal(val), 300);
   }, [searchProductsLocal]);
 
   // ── Item operations ──
-  const addProduct = useCallback(async (product) => {
+  const addProduct = useCallback(async (product: Product) => {
     if (!product?.sku || addingSku) return;
     setAddingSku(product.sku);
     setError(null);
@@ -187,7 +230,7 @@ export default function ManualOrcamentoPage() {
         {
           _key: makeItemKey(product.sku),
           sku: product.sku,
-          nome: product.nome,
+          nome: product.nome || product.sku,
           qty: DEFAULT_QTY,
           rate,
           _rateManual: false,
@@ -201,7 +244,7 @@ export default function ManualOrcamentoPage() {
         {
           _key: makeItemKey(product.sku),
           sku: product.sku,
-          nome: product.nome,
+          nome: product.nome || product.sku,
           qty: DEFAULT_QTY,
           rate: 0,
           _rateManual: false,
@@ -214,7 +257,7 @@ export default function ManualOrcamentoPage() {
     }
   }, [addingSku, lookupRate, urgente]);
 
-  const updateItemQty = useCallback(async (_key, value) => {
+  const updateItemQty = useCallback(async (_key: string, value: string | number) => {
     const qty = Math.max(1, toNumber(value, 1));
     const current = items.find(item => item._key === _key);
     if (!current) return;
@@ -237,14 +280,14 @@ export default function ManualOrcamentoPage() {
     }
   }, [items, lookupRate, urgente]);
 
-  const updateItemRate = useCallback((_key, value) => {
+  const updateItemRate = useCallback((_key: string, value: string | number) => {
     const rate = Math.max(0, toNumber(value, 0));
     setItems(prev => prev.map(item => (
       item._key === _key ? { ...item, rate, _rateManual: true } : item
     )));
   }, []);
 
-  const resetItemRate = useCallback(async (_key) => {
+  const resetItemRate = useCallback(async (_key: string) => {
     const current = items.find(item => item._key === _key);
     if (!current) return;
     setPricingRows(prev => new Set(prev).add(_key));
@@ -264,11 +307,11 @@ export default function ManualOrcamentoPage() {
     }
   }, [items, lookupRate, urgente]);
 
-  const removeItem = useCallback((_key) => {
+  const removeItem = useCallback((_key: string) => {
     setItems(prev => prev.filter(item => item._key !== _key));
   }, []);
 
-  const onUrgenteChange = useCallback((checked) => {
+  const onUrgenteChange = useCallback((checked: boolean) => {
     setUrgente(checked);
     repriceAutoItems(checked);
   }, [repriceAutoItems]);
@@ -279,7 +322,7 @@ export default function ManualOrcamentoPage() {
   const hasZeroPrice = items.some(item => Number(item.rate) === 0);
 
   // ── Active client info ──
-  const getClientInfo = useCallback(() => {
+  const getClientInfo = useCallback((): { nome: string; email: string; telefone: string } => {
     if (clientType === CLIENT_TYPE.EXISTING && selectedClient) {
       return {
         nome: selectedClient.nome,
@@ -330,22 +373,23 @@ export default function ManualOrcamentoPage() {
         },
       };
 
-      const res = await apiPost('/orcamento', payload);
+      const res = await apiPost<OrcamentoResponse>('/orcamento', payload);
       setResult(res);
     } catch (err) {
-      setError(err.message || 'Erro ao criar orçamento.');
+      const message = err instanceof Error ? err.message : 'Erro ao criar orçamento.';
+      setError(message);
     } finally {
       setSubmitting(false);
     }
-  }, [getClientInfo, items, urgente, prazo, observacoes]);
+  }, [getClientInfo, items, urgente, prazo, observacoes, leadSource, cnpj, address]);
 
   // ── WhatsApp link builder ──
-  const buildWaLink = useCallback((telefone, nome, quotationId, quotationLink) => {
+  const buildWaLink = useCallback((telefone: string, nome: string | undefined, quotationId: string | undefined, quotationLink: string): string | null => {
     if (!telefone) return null;
     const digits = telefone.replace(/\D/g, '').replace(/^55(\d{10,11})$/, '$1');
     if (digits.length < 10) return null;
     const linkLine = quotationLink ? `\n${quotationLink}` : '';
-    const text = `Olá, ${nome}! Segue seu orçamento ${quotationId}.${linkLine}\nQualquer dúvida estamos à disposição. Aspen Estamparia`;
+    const text = `Olá, ${nome || ''}! Segue seu orçamento ${quotationId}.${linkLine}\nQualquer dúvida estamos à disposição. Aspen Estamparia`;
     return `https://wa.me/55${digits}?text=${encodeURIComponent(text)}`;
   }, []);
 
@@ -734,7 +778,7 @@ export default function ManualOrcamentoPage() {
                             <span className="text-fg-muted"> · </span>
                             {product.nome}
                           </p>
-                          {product.categoria && <p className="text-xs text-fg-muted mt-0.5">{product.categoria}</p>}
+                          {Boolean(product.categoria) && <p className="text-xs text-fg-muted mt-0.5">{String(product.categoria)}</p>}
                         </div>
                         <Button
                           type="button"

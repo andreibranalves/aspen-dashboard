@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ChangeEvent,
+  type MouseEvent,
+} from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { Search, ShoppingCart, TrendingUp, DollarSign, Package } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
@@ -10,7 +18,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<string, string> = {
   'Draft': 'Rascunho',
   'On Hold': 'Em espera',
   'To Pay': 'A pagar',
@@ -22,7 +30,12 @@ const STATUS_LABELS = {
   'Closed': 'Fechado',
 };
 
-const PERIODS = [
+interface PeriodOption {
+  value: string;
+  label: string;
+}
+
+const PERIODS: PeriodOption[] = [
   { value: 'today', label: 'Hoje' },
   { value: '7d', label: '7d' },
   { value: '30d', label: '30d' },
@@ -33,23 +46,57 @@ const PERIODS = [
 const STATUSES = ['', 'Draft', 'On Hold', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
 const STATUS_DISPLAY = ['Todos', 'Rascunho', 'Em espera', 'A entregar e faturar', 'A faturar', 'A entregar', 'Concluído', 'Cancelado', 'Fechado'];
 
-export default function SalesOrdersPage({ navigate }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [period, setPeriod] = useState('30d');
-  const [status, setStatus] = useState('');
-  const [search, setSearch] = useState('');
-  const [searchDraft, setSearchDraft] = useState('');
-  const [summary, setSummary] = useState(null);
-  const [totalPages, setTotalPages] = useState(1);
-  const searchTimer = useRef(null);
+interface SalesOrdersPageProps {
+  navigate: (path: string) => void;
+}
+
+interface DashboardSummary {
+  revenue?: number;
+  revenue_delta_pct?: number;
+  orders?: number;
+  average_ticket?: number;
+  open_orders?: number;
+}
+
+interface DashboardResponse {
+  success?: boolean;
+  summary?: DashboardSummary;
+}
+
+interface SalesOrderItem {
+  id: string;
+  date?: string;
+  customer_name?: string;
+  customer?: string;
+  grand_total?: number | string;
+  status?: string;
+  delivery_date?: string;
+  per_delivered?: number | string;
+  source_quotation?: string;
+}
+
+interface OrdersResponse {
+  items?: SalesOrderItem[];
+  has_more?: boolean;
+}
+
+export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
+  const [items, setItems] = useState<SalesOrderItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
+  const [period, setPeriod] = useState<string>('30d');
+  const [status, setStatus] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
+  const [searchDraft, setSearchDraft] = useState<string>('');
+  const [summary, setSummary] = useState<DashboardResponse | null>(null);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Fetch summary on mount ──────────────────────────────────────────────────
   useEffect(() => {
-    apiGet('/sales-dashboard?period=30d').then(d => {
+    apiGet<DashboardResponse>('/sales-dashboard?period=30d').then(d => {
       if (d?.success) setSummary(d);
     }).catch(() => {});
   }, []);
@@ -65,11 +112,11 @@ export default function SalesOrdersPage({ navigate }) {
       if (period) params.set('period', period);
       if (status) params.set('status', status);
       if (search) params.set('search', search);
-      const data = await apiGet(`/sales-orders?${params}`);
+      const data = await apiGet<OrdersResponse>(`/sales-orders?${params}`);
       setItems(data.items || []);
       setTotalPages(data.has_more ? page + 1 : page);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar pedidos.');
+      setError((err as Error).message || 'Erro ao carregar pedidos.');
     } finally {
       setLoading(false);
     }
@@ -81,10 +128,10 @@ export default function SalesOrdersPage({ navigate }) {
   }, [fetchOrders]);
 
   // ── Debounced search ────────────────────────────────────────────────────────
-  const onSearchChange = useCallback((e) => {
+  const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearchDraft(val);
-    clearTimeout(searchTimer.current);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setSearch(val);
       setPage(1);
@@ -92,26 +139,26 @@ export default function SalesOrdersPage({ navigate }) {
   }, []);
 
   // ── Period change ───────────────────────────────────────────────────────────
-  const onPeriodChange = useCallback((p) => {
+  const onPeriodChange = useCallback((p: string) => {
     setPeriod(p);
     setPage(1);
   }, []);
 
   // ── Status change ───────────────────────────────────────────────────────────
-  const onStatusChange = useCallback((e) => {
+  const onStatusChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     setStatus(e.target.value);
     setPage(1);
   }, []);
 
   // ── Limit change ────────────────────────────────────────────────────────────
-  const onLimitChange = useCallback((e) => {
+  const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(e.target.value, 10);
     setLimit(newLimit);
     setPage(1);
   }, []);
 
   // ── Format delivery info ────────────────────────────────────────────────────
-  const formatDelivery = (item) => {
+  const formatDelivery = (item: SalesOrderItem) => {
     if (item.delivery_date) {
       const d = new Date(item.delivery_date);
       if (!isNaN(d.getTime())) {
@@ -126,13 +173,13 @@ export default function SalesOrdersPage({ navigate }) {
   };
 
   // ── Format source quotation ─────────────────────────────────────────────────
-  const formatSource = (item) => {
+  const formatSource = (item: SalesOrderItem) => {
     if (item.source_quotation) {
       return (
         <button
-          onClick={(e) => {
+          onClick={(e: MouseEvent<HTMLButtonElement>) => {
             e.stopPropagation();
-            navigate(`/quotations/${encodeURIComponent(item.source_quotation)}`);
+            navigate(`/quotations/${encodeURIComponent(item.source_quotation!)}`);
           }}
           className="text-primary hover:underline text-sm"
         >
@@ -144,7 +191,15 @@ export default function SalesOrdersPage({ navigate }) {
   };
 
   // ── Summary card component ──────────────────────────────────────────────────
-  const SummaryCard = ({ icon: Icon, label, value, subtitle, colorClass }) => {
+  interface SummaryCardProps {
+    icon: LucideIcon;
+    label: string;
+    value: string;
+    subtitle?: string;
+    colorClass?: string;
+  }
+
+  const SummaryCard = ({ icon: Icon, label, value, subtitle, colorClass }: SummaryCardProps) => {
     return (
       <div className="flex items-start gap-3 rounded-lg border border-line bg-surface p-4 shadow-sm flex-1 min-w-[160px]">
         <div className={cn(
@@ -332,7 +387,7 @@ export default function SalesOrdersPage({ navigate }) {
                       'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                       statusBadgeClass(row.status),
                     )}>
-                      {STATUS_LABELS[row.status] || row.status}
+                      {STATUS_LABELS[row.status || ''] || row.status}
                     </span>
                   </TableCell>
                   <TableCell className="text-sm text-fg-muted">
@@ -363,7 +418,7 @@ export default function SalesOrdersPage({ navigate }) {
                   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                   statusBadgeClass(row.status),
                 )}>
-                  {STATUS_LABELS[row.status] || row.status}
+                  {STATUS_LABELS[row.status || ''] || row.status}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -381,9 +436,9 @@ export default function SalesOrdersPage({ navigate }) {
               <div className="flex items-center justify-between text-xs text-fg-muted">
                 <span>Origem: {row.source_quotation ? (
                   <button
-                    onClick={(e) => {
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
                       e.stopPropagation();
-                      navigate(`/quotations/${encodeURIComponent(row.source_quotation)}`);
+                      navigate(`/quotations/${encodeURIComponent(row.source_quotation || '')}`);
                     }}
                     className="text-primary hover:underline"
                   >
@@ -431,8 +486,8 @@ export default function SalesOrdersPage({ navigate }) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function statusBadgeClass(status) {
-  const map = {
+function statusBadgeClass(status: string | undefined): string {
+  const map: Record<string, string> = {
     'Draft': 'bg-surface-muted text-fg-muted',
     'On Hold': 'tone-warning-soft',
     'To Pay': 'tone-warning-soft',
@@ -443,5 +498,5 @@ function statusBadgeClass(status) {
     'Cancelled': 'bg-surface-muted text-fg-muted/40 line-through',
     'Closed': 'bg-surface-muted text-fg-muted/50',
   };
-  return map[status] || 'bg-surface-muted text-fg-muted';
+  return map[status || ''] || 'bg-surface-muted text-fg-muted';
 }

@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ChangeEvent,
+  type ComponentType,
+  type MouseEvent,
+} from 'react';
 import {
   Search,
   Sparkles,
@@ -17,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import PageHeader from '@/components/PageHeader';
-import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table,
   TableHeader,
@@ -26,9 +34,9 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import SkeletonTable from '@/components/SkeletonTable.jsx';
+import SkeletonTable from '@/components/SkeletonTable';
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
   Open: 'Aberto',
   Replied: 'Respondido',
@@ -51,25 +59,59 @@ const STATUS_DISPLAY = [
 ];
 const PAGE_SIZES = [10, 25, 50];
 
-export default function QuotationsPage({ navigate }) {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [statusSummary, setStatusSummary] = useState({});
-  const [selectedIds, setSelectedIds] = useState([]);
-  const searchTimer = useRef(null);
-  const selectAllRef = useRef(null);
+interface QuotationRow {
+  id: string;
+  data?: string;
+  cliente?: string;
+  valor?: string | number;
+  status: string;
+}
+
+interface QuotationsApiResponse {
+  data?: QuotationRow[];
+  pagination?: {
+    total_pages?: number;
+    total?: number;
+  };
+  status_summary?: Record<string, number>;
+}
+
+interface DuplicateQuotationResponse {
+  success: boolean;
+  new_id: string;
+}
+
+interface QuotationsPageProps {
+  navigate: (hash: string) => void;
+}
+
+interface ActionBtnProps {
+  icon: ComponentType<{ size?: number }>;
+  label: string;
+  href?: string;
+  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
+  colorClass?: string;
+}
+
+export default function QuotationsPage({ navigate }: QuotationsPageProps) {
+  const [data, setData] = useState<QuotationRow[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState<string>('');
+  const [status, setStatus] = useState<string>('');
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(10);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
+  const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
   const setTopBarActions = useSetTopBarActions();
 
   // TopBar actions
   useEffect(() => {
-    setTopBarActions(
+    setTopBarActions?.(
       <div className="flex items-center gap-2">
         <Button onClick={() => navigate('/auto')} variant="default" size="sm">
           <Sparkles size={16} />
@@ -81,39 +123,44 @@ export default function QuotationsPage({ navigate }) {
         </Button>
       </div>
     );
-    return () => setTopBarActions(null);
+    return () => setTopBarActions?.(null);
   }, [navigate, setTopBarActions]);
 
-  const fetchData = useCallback(async (searchVal, statusVal, pageNum, limitVal) => {
-    setLoading(true);
-    setError(null);
-    setSelectedIds([]);
-    try {
-      const params = new URLSearchParams();
-      params.set('page', String(pageNum));
-      params.set('limit', String(limitVal));
-      if (searchVal) params.set('search', searchVal);
-      if (statusVal) params.set('status', statusVal);
+  const fetchData = useCallback(
+    async (searchVal: string, statusVal: string, pageNum: number, limitVal: number) => {
+      setLoading(true);
+      setError(null);
+      setSelectedIds([]);
+      try {
+        const params = new URLSearchParams();
+        params.set('page', String(pageNum));
+        params.set('limit', String(limitVal));
+        if (searchVal) params.set('search', searchVal);
+        if (statusVal) params.set('status', statusVal);
 
-      const result = await apiGet(`/quotations?${params.toString()}`);
-      setData(result.data || []);
-      setTotalPages(result.pagination?.total_pages || 0);
-      setTotalRecords(result.pagination?.total || 0);
-      setStatusSummary(result.status_summary || {});
-    } catch (err) {
-      console.error('[quotations]', err);
-      setError(err.message || 'Erro ao carregar orçamentos.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        const result = await apiGet<QuotationsApiResponse>(`/quotations?${params.toString()}`);
+        setData(result.data || []);
+        setTotalPages(result.pagination?.total_pages || 0);
+        setTotalRecords(result.pagination?.total || 0);
+        setStatusSummary(result.status_summary || {});
+      } catch (err) {
+        console.error('[quotations]', err);
+        setError((err as Error).message || 'Erro ao carregar orçamentos.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   // Debounced search
   const onSearchChange = useCallback(
-    (e) => {
+    (e: ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
       setSearch(val);
-      clearTimeout(searchTimer.current);
+      if (searchTimer.current) {
+        clearTimeout(searchTimer.current);
+      }
       searchTimer.current = setTimeout(() => {
         setPage(1);
         fetchData(val, status, 1, limit);
@@ -123,7 +170,7 @@ export default function QuotationsPage({ navigate }) {
   );
 
   const onStatusClick = useCallback(
-    (s) => {
+    (s: string) => {
       setStatus(s);
       setPage(1);
       fetchData(search, s, 1, limit);
@@ -132,7 +179,7 @@ export default function QuotationsPage({ navigate }) {
   );
 
   const onPageChange = useCallback(
-    (p) => {
+    (p: number) => {
       setPage(p);
       fetchData(search, status, p, limit);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -141,7 +188,7 @@ export default function QuotationsPage({ navigate }) {
   );
 
   const onLimitChange = useCallback(
-    (e) => {
+    (e: ChangeEvent<HTMLSelectElement>) => {
       const newLimit = parseInt(e.target.value, 10);
       setLimit(newLimit);
       setPage(1);
@@ -155,45 +202,50 @@ export default function QuotationsPage({ navigate }) {
     fetchData('', '', 1, limit);
   }, []);
 
-  const handleDelete = useCallback(async (id) => {
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (
+        !confirm(
+          `Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`
+        )
       )
-    )
-      return;
-    try {
-      await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
-      setData((prev) => prev.filter((r) => r.id !== id));
-      setTotalRecords((prev) => prev - 1);
-    } catch (err) {
-      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
-    }
-  }, []);
+        return;
+      try {
+        await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
+        setData((prev) => prev.filter((r) => r.id !== id));
+        setTotalRecords((prev) => prev - 1);
+      } catch (err) {
+        alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
+      }
+    },
+    []
+  );
 
   const handleDuplicate = useCallback(
-    async (id) => {
+    async (id: string) => {
       if (!confirm(`Duplicar o orçamento ${id}? Será criada uma cópia com nova numeração.`)) return;
       try {
-        const result = await apiPost('/duplicate-quotation', { quotation_id: id });
+        const result = await apiPost<DuplicateQuotationResponse>('/duplicate-quotation', {
+          quotation_id: id,
+        });
         if (result.success) {
           navigate(`/quotations/${encodeURIComponent(result.new_id)}`);
         }
       } catch (err) {
-        alert('Erro ao duplicar: ' + (err.message || 'Tente novamente.'));
+        alert('Erro ao duplicar: ' + ((err as Error).message || 'Tente novamente.'));
       }
     },
     [navigate]
   );
 
-  const toggleSelected = useCallback((id) => {
+  const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
     );
   }, []);
 
   const toggleSelectAll = useCallback(
-    (checked) => {
+    (checked: boolean) => {
       setSelectedIds(checked ? data.map((row) => row.id) : []);
     },
     [data]
@@ -220,12 +272,12 @@ export default function QuotationsPage({ navigate }) {
       setPage(nextPage);
       await fetchData(search, status, nextPage, limit);
     } catch (err) {
-      alert('Erro ao excluir propostas selecionadas: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao excluir propostas selecionadas: ' + ((err as Error).message || 'Tente novamente.'));
     }
   }, [data, selectedIds, page, search, status, limit, fetchData]);
 
   const totalsQty = data.length;
-  const totalsSum = data.reduce((s, r) => s + (r.valor || 0), 0);
+  const totalsSum = data.reduce((s, r) => s + (Number(r.valor) || 0), 0);
   const selectedRows = data.filter((row) => selectedIds.includes(row.id));
   const selectedCount = selectedRows.length;
   const selectedTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
@@ -249,7 +301,7 @@ export default function QuotationsPage({ navigate }) {
   };
 
   // Action button component (reusable) — 40x40 hit area
-  const ActionBtn = ({ icon: Icon, label, href, onClick, colorClass = '' }) => {
+  const ActionBtn = ({ icon: Icon, label, href, onClick, colorClass = '' }: ActionBtnProps) => {
     const cls = `inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors ${colorClass}`;
     if (href) {
       return (
@@ -281,7 +333,7 @@ export default function QuotationsPage({ navigate }) {
     );
   };
 
-  const actionButtons = (row) => {
+  const actionButtons = (row: QuotationRow) => {
     const viewUrl = buildQuotationViewUrl(row.id);
     return (
       <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -309,17 +361,12 @@ export default function QuotationsPage({ navigate }) {
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
       {/* PageHeader + primary action */}
-      <PageHeader
-        title="Orçamentos"
-      />
+      <PageHeader title="Orçamentos" />
 
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-          />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input
             placeholder="Buscar por Nº ou Cliente…"
             value={search}
@@ -612,9 +659,7 @@ export default function QuotationsPage({ navigate }) {
                   </span>
                 </div>
                 <div>
-                  <span className="block text-xs text-fg-muted">
-                    Valor total selecionado
-                  </span>
+                  <span className="block text-xs text-fg-muted">Valor total selecionado</span>
                   <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>
                 </div>
               </div>

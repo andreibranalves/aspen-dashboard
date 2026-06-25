@@ -4,7 +4,7 @@ import { apiGet } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
   'On Hold': 'Em espera',
   'To Pay': 'A pagar',
@@ -16,19 +16,49 @@ const STATUS_LABELS = {
   Closed: 'Fechado',
 };
 
-export default function SalesOrderDetailPage({ id, navigate }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+interface SalesOrderItem {
+  item_code: string;
+  item_name?: string;
+  qty: number;
+  rate: number;
+  amount?: number;
+  uom?: string;
+}
+
+interface SalesOrderDetailData {
+  id: string;
+  status: string;
+  customer?: string;
+  cliente?: string;
+  date?: string;
+  data?: string;
+  delivery_date?: string;
+  source_quotation?: string;
+  grand_total?: number;
+  rounded_total?: number;
+  per_delivered?: number;
+  per_billed?: number;
+  items?: SalesOrderItem[];
+}
+
+interface SalesOrderDetailPageProps {
+  id: string;
+  navigate: (path: string) => void;
+}
+
+export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailPageProps) {
+  const [data, setData] = useState<SalesOrderDetailData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchDetail = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiGet(`/sales-orders?id=${encodeURIComponent(id)}`);
+      const result = await apiGet<SalesOrderDetailData>(`/sales-orders?id=${encodeURIComponent(id)}`);
       setData(result);
     } catch (err) {
-      setError(err.message || 'Erro ao carregar pedido.');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar pedido.');
     } finally {
       setLoading(false);
     }

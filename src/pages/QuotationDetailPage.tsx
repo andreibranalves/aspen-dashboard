@@ -1,7 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ChangeEvent,
+  type DragEvent,
+  type MouseEvent,
+} from 'react';
 import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { searchProducts } from '@/lib/productCache';
+import { searchProducts, type Product } from '@/lib/productCache';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button';
@@ -10,9 +18,9 @@ import { StatusBadge } from '@/components/ui/badge';
 import {
   TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import SkeletonDetail from '@/components/SkeletonDetail.jsx';
+import SkeletonDetail from '@/components/SkeletonDetail';
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
   Open: 'Aberto',
   Replied: 'Respondido',
@@ -22,28 +30,52 @@ const STATUS_LABELS = {
   Cancelled: 'Cancelado',
 };
 
-function makeItemKey() {
+interface QuotationItem {
+  _key: string;
+  item_code: string;
+  item_name: string;
+  qty: number;
+  rate: number;
+  _rateManual?: boolean;
+}
+
+interface QuotationData {
+  id: string;
+  status: string;
+  cliente?: string;
+  data?: string;
+  validade?: string;
+  sales_order_id?: string;
+  items?: QuotationItem[];
+}
+
+interface QuotationDetailPageProps {
+  id: string;
+  navigate: (path: string) => void;
+}
+
+function makeItemKey(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export default function QuotationDetailPage({ id, navigate }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [mode, setMode] = useState('view'); // 'view' | 'edit'
-  const [editedItems, setEditedItems] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState('');
-  const [converting, setConverting] = useState(false);
-  const [convertStatus, setConvertStatus] = useState('');
+export default function QuotationDetailPage({ id, navigate }: QuotationDetailPageProps) {
+  const [data, setData] = useState<QuotationData | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'view' | 'edit'>('view'); // 'view' | 'edit'
+  const [editedItems, setEditedItems] = useState<QuotationItem[]>([]);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<string>('');
+  const [converting, setConverting] = useState<boolean>(false);
+  const [convertStatus, setConvertStatus] = useState<string>('');
 
   // ── Product autocomplete ──
-  const [productSearchTerms, setProductSearchTerms] = useState({}); // { _key: searchText }
-  const [productResults, setProductResults] = useState({});          // { _key: [...] }
-  const [productSearching, setProductSearching] = useState({});      // { _key: bool }
-  const [activeField, setActiveField] = useState(null);              // { key, field } or null
-  const productTimer = useRef(null);
-  const pricingTimers = useRef({});  // { _key: timeoutId }
+  const [productSearchTerms, setProductSearchTerms] = useState<Record<string, string>>({}); // { _key: searchText }
+  const [productResults, setProductResults] = useState<Record<string, Product[]>>({});          // { _key: [...] }
+  const [productSearching, setProductSearching] = useState<Record<string, boolean>>({});      // { _key: bool }
+  const [activeField, setActiveField] = useState<{ key: string; field: 'sku' | 'name' } | null>(null); // { key, field } or null
+  const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pricingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});  // { _key: timeoutId }
 
   // ── Load ──
   const loadDetail = useCallback(async () => {
@@ -51,14 +83,14 @@ export default function QuotationDetailPage({ id, navigate }) {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiGet(`/quotations?id=${encodeURIComponent(id)}`);
+      const result = await apiGet<QuotationData>(`/quotations?id=${encodeURIComponent(id)}`);
       if (!result || !result.id) throw new Error('Orçamento não encontrado.');
       setData(result);
       setEditedItems((result.items || []).map(item => ({ ...item, _key: makeItemKey() })));
       setMode('view');
     } catch (err) {
       console.error('[detail]', err);
-      setError(err.message || 'Erro ao carregar orçamento.');
+      setError((err instanceof Error ? err.message : null) || 'Erro ao carregar orçamento.');
     } finally {
       setLoading(false);
     }
@@ -71,13 +103,13 @@ export default function QuotationDetailPage({ id, navigate }) {
   const total = items.reduce((s, item) => s + (item.qty || 0) * (item.rate || 0), 0);
 
   // ── Edit mode helpers (key-based) ──
-  const updateItem = useCallback((_key, field, value) => {
+  const updateItem = useCallback((_key: string, field: keyof QuotationItem, value: unknown) => {
     setEditedItems(prev => prev.map(item =>
       item._key === _key ? { ...item, [field]: value, ...(field === 'rate' ? { _rateManual: true } : {}), ...(field === 'item_code' ? { _rateManual: undefined } : {}) } : item
     ));
   }, []);
 
-  const removeItemByKey = useCallback((_key) => {
+  const removeItemByKey = useCallback((_key: string) => {
     setEditedItems(prev => prev.filter(item => item._key !== _key));
     // Clean up product search state for removed item
     setProductSearchTerms(prev => { const n = { ...prev }; delete n[_key]; return n; });
@@ -94,15 +126,15 @@ export default function QuotationDetailPage({ id, navigate }) {
   }, []);
 
   // ── Product search (debounced, ref-based) ──
-  const fetchProductOptions = useCallback(async (_key, term) => {
+  const fetchProductOptions = useCallback(async (_key: string, term: string) => {
     if (!term || term.length < 2) {
       setProductResults(prev => ({ ...prev, [_key]: [] }));
       return;
     }
     setProductSearching(prev => ({ ...prev, [_key]: true }));
     try {
-      const data = await searchProducts(term, 6);
-      setProductResults(prev => ({ ...prev, [_key]: data }));
+      const result = await searchProducts(term, 6);
+      setProductResults(prev => ({ ...prev, [_key]: result }));
     } catch {
       setProductResults(prev => ({ ...prev, [_key]: [] }));
     } finally {
@@ -110,45 +142,52 @@ export default function QuotationDetailPage({ id, navigate }) {
     }
   }, []);
 
-  const onSkuChange = useCallback((_key, value) => {
+  const onSkuChange = useCallback((_key: string, value: string) => {
     setProductSearchTerms(prev => ({ ...prev, [_key]: value }));
     updateItem(_key, 'item_code', value);
-    clearTimeout(productTimer.current);
+    if (productTimer.current) clearTimeout(productTimer.current);
     productTimer.current = setTimeout(() => fetchProductOptions(_key, value), 300);
   }, [updateItem, fetchProductOptions]);
 
-  const onNameChange = useCallback((_key, value) => {
+  const onNameChange = useCallback((_key: string, value: string) => {
     updateItem(_key, 'item_name', value);
-    clearTimeout(productTimer.current);
+    if (productTimer.current) clearTimeout(productTimer.current);
     productTimer.current = setTimeout(() => fetchProductOptions(_key, value), 300);
   }, [updateItem, fetchProductOptions]);
 
   // ── Auto-pricing lookup (ref-based debounce, key-based) ──
-  const lookupPrice = useCallback(async (_key, sku, qty) => {
+  interface PricingLookupResponse {
+    items?: Array<{
+      rate?: number;
+      item_name?: string;
+    }>;
+  }
+
+  const lookupPrice = useCallback(async (_key: string, sku: string, qty: number) => {
     if (!sku || !qty) return;
     try {
-      const result = await apiPost('/pricing-lookup', { items: [{ item_code: sku, qty: Number(qty) }] });
+      const result = await apiPost<PricingLookupResponse>('/pricing-lookup', { items: [{ item_code: sku, qty: Number(qty) }] });
       const priced = result?.items?.[0];
       if (priced?.rate !== undefined && priced?.rate !== null) {
         setEditedItems(prev => prev.map(item => {
           if (item._key !== _key || item._rateManual) return item;
-          return { ...item, rate: priced.rate, item_name: priced.item_name || item.item_name };
+          return { ...item, rate: priced.rate ?? item.rate, item_name: priced.item_name || item.item_name };
         }));
       }
     } catch (err) {
-      console.warn('[detail] pricing lookup failed:', err.message);
+      console.warn('[detail] pricing lookup failed:', err instanceof Error ? err.message : err);
     }
   }, []);
 
-  const schedulePricingLookup = useCallback((_key, sku, qty) => {
-    clearTimeout(pricingTimers.current[_key]);
+  const schedulePricingLookup = useCallback((_key: string, sku: string, qty: number) => {
+    if (pricingTimers.current[_key]) clearTimeout(pricingTimers.current[_key]);
     pricingTimers.current[_key] = setTimeout(() => lookupPrice(_key, sku, qty), 400);
   }, [lookupPrice]);
 
-  const selectProduct = useCallback((_key, product) => {
+  const selectProduct = useCallback((_key: string, product: Product) => {
     if (!product?.sku) return;
     updateItem(_key, 'item_code', product.sku);
-    updateItem(_key, 'item_name', product.nome || product.item_name || '');
+    updateItem(_key, 'item_name', product.nome || (product as Record<string, unknown>).item_name as string || '');
     setProductSearchTerms(prev => ({ ...prev, [_key]: product.sku }));
     setProductResults(prev => ({ ...prev, [_key]: [] }));
     setActiveField(null);
@@ -163,19 +202,23 @@ export default function QuotationDetailPage({ id, navigate }) {
   }, [updateItem, schedulePricingLookup]);
 
   // ── Save ──
+  interface SavePayload {
+    items: Array<Omit<QuotationItem, '_key'>>;
+  }
+
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaveStatus('Salvando…');
     try {
       // Strip _key before sending to API
-      const payload = { items: editedItems.map(({ _key, ...item }) => item) };
+      const payload: SavePayload = { items: editedItems.map(({ _key, ...item }) => item) };
       await apiPut(`/quotations?id=${encodeURIComponent(id)}`, payload);
       setSaveStatus('Salvo!');
       setTimeout(() => setSaveStatus(''), 2000);
       // Reload
       await loadDetail();
     } catch (err) {
-      setSaveStatus('Erro ao salvar: ' + (err.message || 'Tente novamente.'));
+      setSaveStatus('Erro ao salvar: ' + (err instanceof Error ? err.message : 'Tente novamente.'));
     } finally {
       setSaving(false);
     }
@@ -199,57 +242,67 @@ export default function QuotationDetailPage({ id, navigate }) {
       await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
       navigate('/quotations');
     } catch (err) {
-      alert('Erro ao excluir: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao excluir: ' + (err instanceof Error ? err.message : 'Tente novamente.'));
     }
   }, [id, navigate]);
 
   // ── Create Sales Order ──
+  interface SalesOrderResponse {
+    already_exists?: boolean;
+    sales_order_id?: string;
+  }
+
   const handleCreateSalesOrder = useCallback(async () => {
     if (!window.confirm(`Gerar e confirmar pedido de venda para o orçamento ${id}?`)) return;
     setConverting(true);
     setConvertStatus('Gerando pedido de venda…');
     try {
-      const result = await apiPost('/sales-order-from-quotation', { quotation_id: id });
+      const result = await apiPost<SalesOrderResponse>('/sales-order-from-quotation', { quotation_id: id });
       setConvertStatus(result.already_exists ? 'Pedido já existia.' : 'Pedido de venda criado e confirmado.');
       await loadDetail(); // refresh to show linked SO
       if (result.sales_order_id) navigate(`/sales-orders/${result.sales_order_id}`);
     } catch (err) {
-      setConvertStatus(err.message || 'Erro ao gerar pedido de venda.');
+      setConvertStatus(err instanceof Error ? err.message : 'Erro ao gerar pedido de venda.');
     } finally {
       setConverting(false);
     }
   }, [id, loadDetail, navigate]);
 
   // ── Duplicate ──
-  const [duplicating, setDuplicating] = useState(false);
+  const [duplicating, setDuplicating] = useState<boolean>(false);
+
+  interface DuplicateResponse {
+    success?: boolean;
+    new_id?: string;
+  }
 
   const handleDuplicate = useCallback(async () => {
     if (!confirm(`Duplicar o orçamento ${id}? Será criada uma cópia com nova numeração.`)) return;
     setDuplicating(true);
     try {
-      const result = await apiPost('/duplicate-quotation', { quotation_id: id });
+      const result = await apiPost<DuplicateResponse>('/duplicate-quotation', { quotation_id: id });
       if (result.success && result.new_id) {
         navigate(`/quotations/${result.new_id}`);
       }
     } catch (err) {
-      alert('Erro ao duplicar: ' + (err.message || 'Tente novamente.'));
+      alert('Erro ao duplicar: ' + (err instanceof Error ? err.message : 'Tente novamente.'));
     } finally {
       setDuplicating(false);
     }
   }, [id, navigate]);
 
   // ── Drag-and-drop reorder ──
-  const handleDragStart = useCallback((e, _key) => {
+  const handleDragStart = useCallback((e: DragEvent<HTMLTableCellElement>, _key: string) => {
     e.dataTransfer.setData('text/plain', _key);
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
-  const handleDragOver = useCallback((e) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLTableRowElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleDrop = useCallback((e, targetKey) => {
+  const handleDrop = useCallback((e: DragEvent<HTMLTableRowElement>, targetKey: string) => {
     e.preventDefault();
     const sourceKey = e.dataTransfer.getData('text/plain');
     if (sourceKey === targetKey) return;
@@ -387,13 +440,13 @@ export default function QuotationDetailPage({ id, navigate }) {
                     <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                       {results.map((p) => (
                         <button
-                          key={p.sku || p.item_code}
+                          key={p.sku || (p as Record<string, unknown>).item_code as string}
                           type="button"
                           className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
-                          onMouseDown={e => { e.preventDefault(); selectProduct(key, p); }}
+                          onMouseDown={(e: MouseEvent<HTMLButtonElement>) => { e.preventDefault(); selectProduct(key, p); }}
                         >
-                          <span className="font-mono text-xs text-fg-muted">{p.sku || p.item_code}</span>
-                          <span className="truncate">{p.nome || p.item_name}</span>
+                          <span className="font-mono text-xs text-fg-muted">{p.sku || (p as Record<string, unknown>).item_code as string}</span>
+                          <span className="truncate">{p.nome || (p as Record<string, unknown>).item_name as string}</span>
                         </button>
                       ))}
                     </div>
@@ -403,13 +456,13 @@ export default function QuotationDetailPage({ id, navigate }) {
                     <TableRow
                       key={key}
                       onDragOver={handleDragOver}
-                      onDrop={e => handleDrop(e, key)}
+                      onDrop={(e: DragEvent<HTMLTableRowElement>) => handleDrop(e, key)}
                     >
                       {/* Drag handle — only the grip icon is draggable, not the whole row */}
                       <TableCell
                         className="cursor-grab text-fg-muted p-2"
                         draggable
-                        onDragStart={e => handleDragStart(e, key)}
+                        onDragStart={(e: DragEvent<HTMLTableCellElement>) => handleDragStart(e, key)}
                       >
                         <GripVertical size={14} />
                       </TableCell>
@@ -421,7 +474,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           value={searchTerm || item.item_code || ''}
                           onFocus={() => setActiveField({ key, field: 'sku' })}
                           onBlur={() => setTimeout(() => setActiveField(null), 200)}
-                          onChange={e => onSkuChange(key, e.target.value)}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => onSkuChange(key, e.target.value)}
                         />
                         {searchSpinner}
                         {activeField?.field === 'sku' && productDropdown}
@@ -434,7 +487,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           value={item.item_name || ''}
                           onFocus={() => setActiveField({ key, field: 'name' })}
                           onBlur={() => setTimeout(() => setActiveField(null), 200)}
-                          onChange={e => onNameChange(key, e.target.value)}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => onNameChange(key, e.target.value)}
                         />
                         {activeField?.field === 'name' && productDropdown}
                       </TableCell>
@@ -445,7 +498,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           min="1"
                           className="h-8 w-20 text-sm mx-auto"
                           value={item.qty || ''}
-                          onChange={e => {
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => {
                             const val = Number(e.target.value);
                             if (!isNaN(val)) {
                               updateItem(key, 'qty', val);
@@ -462,7 +515,7 @@ export default function QuotationDetailPage({ id, navigate }) {
                           step="0.01"
                           className="h-8 w-28 text-sm mx-auto"
                           value={item.rate || ''}
-                          onChange={e => {
+                          onChange={(e: ChangeEvent<HTMLInputElement>) => {
                             const val = parseFloat(e.target.value);
                             if (!isNaN(val)) updateItem(key, 'rate', val);
                           }}
