@@ -16,7 +16,7 @@ import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button.jsx';
 import SplitResultCard from '@/components/SplitResultCard.jsx';
-import { useImageInput } from '@/hooks/useImageInput.js';
+import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts.js';
 import { fetchFlows, executeFlow } from '@/lib/communicationApi.js';
 

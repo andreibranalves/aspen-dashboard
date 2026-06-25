@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 const STORAGE_KEY = 'aspen_theme';
 
-function getInitialTheme() {
+function getInitialTheme(): boolean {
   if (typeof window === 'undefined') return true;
 
   try {
@@ -21,7 +21,7 @@ function getInitialTheme() {
  * Persists in localStorage and applies/removes the `dark` class on <html>.
  */
 export function useDarkMode() {
-  const [darkMode, setDarkMode] = useState(getInitialTheme);
+  const [darkMode, setDarkMode] = useState<boolean>(getInitialTheme);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);

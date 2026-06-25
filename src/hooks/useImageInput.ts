@@ -1,20 +1,28 @@
-// src/hooks/useImageInput.js
+// src/hooks/useImageInput.ts
 // Autocontained hook for image paste, drop, and file selection.
 // Extracted from AutoQuotePage.jsx.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import type { DragEvent } from 'react';
+
+export interface ImageData {
+  base64: string;
+  mime: string;
+}
 
 export function useImageInput() {
-  const [imageData, setImageData] = useState(null); // { base64, mime }
-  const [imagePreview, setImagePreview] = useState(null); // data URL for <img>
-  const imageInputRef = useRef(null);
+  const [imageData, setImageData] = useState<ImageData | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleImageFile = useCallback((file) => {
+  const handleImageFile = useCallback((file: File | null) => {
     if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      setImageData({ base64: e.target.result.split(',')[1], mime: file.type });
-      setImagePreview(e.target.result);
+      const result = e.target?.result;
+      if (typeof result !== 'string') return;
+      setImageData({ base64: result.split(',')[1] ?? '', mime: file.type });
+      setImagePreview(result);
     };
     reader.readAsDataURL(file);
   }, []);
@@ -27,7 +35,7 @@ export function useImageInput() {
 
   // Paste handler
   useEffect(() => {
-    const onPaste = (e) => {
+    const onPaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
       for (const item of items) {
@@ -43,16 +51,16 @@ export function useImageInput() {
   }, [handleImageFile]);
 
   // Drag handlers
-  const handleDragOver = useCallback((e) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.currentTarget.classList.add('ring-2', 'ring-primary');
   }, []);
 
-  const handleDragLeave = useCallback((e) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLElement>) => {
     e.currentTarget.classList.remove('ring-2', 'ring-primary');
   }, []);
 
-  const handleDrop = useCallback((e) => {
+  const handleDrop = useCallback((e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.currentTarget.classList.remove('ring-2', 'ring-primary');
     if (e.dataTransfer.files[0]) handleImageFile(e.dataTransfer.files[0]);

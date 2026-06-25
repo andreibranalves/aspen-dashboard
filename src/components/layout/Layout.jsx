@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, createContext, useContext } from 'rea
 import Sidebar from './Sidebar.jsx';
 import TopBar from './TopBar.jsx';
 import { cn } from '@/lib/utils';
-import { useDarkMode } from '@/hooks/useDarkMode.js';
+import { useDarkMode } from '@/hooks/useDarkMode';
 
 // ── TopBar actions context ──
 // Pages call useSetTopBarActions(jsx) to set action buttons in the TopBar.
