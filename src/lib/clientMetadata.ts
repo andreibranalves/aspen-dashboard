@@ -1,14 +1,20 @@
 // ── Origem / Lead Source ─────────────────────────────────────────────────────
 
-export const LEAD_SOURCES = [
+export interface LeadSource {
+  value: string;
+  label: string;
+}
+
+export const LEAD_SOURCES: LeadSource[] = [
   { value: 'Google Ads', label: 'Google Ads' },
   { value: 'Bríndice', label: 'Bríndice' },
   { value: 'Cliente recorrente', label: 'Cliente recorrente' },
 ];
 
-const accInsensitive = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const accInsensitive = (s: string): string =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-export function normalizeLeadSource(value) {
+export function normalizeLeadSource(value: unknown): string {
   const v = String(value || '').trim();
   if (!v) return '';
   const key = accInsensitive(v);
@@ -18,22 +24,22 @@ export function normalizeLeadSource(value) {
 
 export const DEFAULT_LEAD_SOURCE = 'Google Ads';
 
-export function isValidLeadSource(value) {
+export function isValidLeadSource(value: unknown): boolean {
   if (!value) return false;
-  const key = accInsensitive(value);
+  const key = accInsensitive(String(value));
   return LEAD_SOURCES.some(s => accInsensitive(s.value) === key);
 }
 
-export function getLeadSourceLabel(value) {
+export function getLeadSourceLabel(value: unknown): string {
   if (!value) return '';
-  const key = accInsensitive(value);
+  const key = accInsensitive(String(value));
   const src = LEAD_SOURCES.find(s => accInsensitive(s.value) === key);
-  return src ? src.label : value || '';
+  return src ? src.label : String(value || '');
 }
 
 // ── CNPJ ─────────────────────────────────────────────────────────────────────
 
-export function onlyDigits(value) {
+export function onlyDigits(value: unknown): string {
   return String(value || '').replace(/\D/g, '');
 }
 
@@ -41,7 +47,7 @@ export function onlyDigits(value) {
  * Normaliza CNPJ para 14 dígitos ou string vazia.
  * Remove pontuação e espaços.
  */
-export function normalizeCnpj(value) {
+export function normalizeCnpj(value: unknown): string {
   return onlyDigits(value).slice(0, 14);
 }
 
@@ -50,7 +56,7 @@ export function normalizeCnpj(value) {
  * Aceita string vazia (CNPJ opcional).
  * Retorna true se vazio, ou true/false conforme validade dos dígitos.
  */
-export function isValidCnpj(value) {
+export function isValidCnpj(value: unknown): boolean {
   const digits = normalizeCnpj(value);
   if (digits.length === 0) return true; // opcional
   if (digits.length !== 14) return false;
@@ -59,7 +65,7 @@ export function isValidCnpj(value) {
   if (/^(\d)\1{13}$/.test(digits)) return false;
 
   // Cálculo dos dígitos verificadores
-  const calc = (slice, weights) => {
+  const calc = (slice: string, weights: number[]): number => {
     let sum = 0;
     for (let i = 0; i < slice.length; i++) {
       sum += Number(slice[i]) * weights[i];
@@ -80,9 +86,9 @@ export function isValidCnpj(value) {
 /**
  * Formata CNPJ para exibição: 00.000.000/0000-00
  */
-export function formatCnpj(value) {
+export function formatCnpj(value: unknown): string {
   const digits = normalizeCnpj(value);
-  if (digits.length !== 14) return value;
+  if (digits.length !== 14) return String(value || '');
   return digits.replace(
     /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
     '$1.$2.$3/$4-$5'
@@ -91,7 +97,17 @@ export function formatCnpj(value) {
 
 // ── Endereço ─────────────────────────────────────────────────────────────────
 
-export const EMPTY_ADDRESS = {
+export interface Address {
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+}
+
+export const EMPTY_ADDRESS: Address = {
   cep: '',
   logradouro: '',
   numero: '',
@@ -104,23 +120,24 @@ export const EMPTY_ADDRESS = {
 /**
  * Normaliza um objeto de endereço, garantindo todas as chaves e valores string.
  */
-export function normalizeAddress(address) {
+export function normalizeAddress(address: unknown): Address {
   if (!address || typeof address !== 'object') return { ...EMPTY_ADDRESS };
+  const a = address as Record<string, unknown>;
   return {
-    cep: onlyDigits(address.cep || ''),
-    logradouro: String(address.logradouro || '').trim(),
-    numero: String(address.numero || '').trim(),
-    complemento: String(address.complemento || '').trim(),
-    bairro: String(address.bairro || '').trim(),
-    cidade: String(address.cidade || '').trim(),
-    uf: String(address.uf || '').trim().toUpperCase(),
+    cep: onlyDigits(a.cep),
+    logradouro: String(a.logradouro || '').trim(),
+    numero: String(a.numero || '').trim(),
+    complemento: String(a.complemento || '').trim(),
+    bairro: String(a.bairro || '').trim(),
+    cidade: String(a.cidade || '').trim(),
+    uf: String(a.uf || '').trim().toUpperCase(),
   };
 }
 
 /**
  * Retorna true se ao menos um campo do endereço está preenchido.
  */
-export function hasAnyAddressField(address) {
+export function hasAnyAddressField(address: unknown): boolean {
   const a = normalizeAddress(address);
   return Object.values(a).some(v => v.length > 0);
 }
@@ -129,7 +146,7 @@ export function hasAnyAddressField(address) {
  * Retorna true se o endereço tem dados mínimos para criar Address no ERPNext:
  * logradouro + numero, cidade, e país (sempre Brasil).
  */
-export function hasMinimumAddressForErp(address) {
+export function hasMinimumAddressForErp(address: unknown): boolean {
   const a = normalizeAddress(address);
   return !!(a.logradouro || a.numero) && !!a.cidade;
 }
@@ -137,7 +154,7 @@ export function hasMinimumAddressForErp(address) {
 /**
  * Resumo de endereço para exibição compacta.
  */
-export function formatAddressSummary(address) {
+export function formatAddressSummary(address: unknown): string {
   const a = normalizeAddress(address);
   const line1 = [a.logradouro, a.numero].filter(Boolean).join(', ');
   const line2 = [a.bairro, a.cidade, a.uf].filter(Boolean).join(' - ');
