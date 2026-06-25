@@ -4,7 +4,7 @@ import { apiGet, apiPut } from '@/lib/api.js';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
-import { PIPELINE } from '@/lib/constants.js';
+import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/components/SkeletonKanban.jsx';
 
 function daysAgo(dateStr) {

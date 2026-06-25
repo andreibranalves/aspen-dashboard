@@ -13,7 +13,7 @@ import SkeletonTable from '@/components/SkeletonTable.jsx';
 import { DetailDrawer } from '@/components/DetailDrawer.jsx';
 import { QualityBadges } from '@/components/QualityBadges.jsx';
 import { ContextActions } from '@/components/ContextActions.jsx';
-import { buildQuotationErpUrl, buildCrmDealErpUrl } from '@/lib/erpLinks.js';
+import { buildQuotationErpUrl, buildCrmDealErpUrl } from '@/lib/erpLinks';
 
 const TIPOS = ['', 'lead', 'cliente'];
 const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];

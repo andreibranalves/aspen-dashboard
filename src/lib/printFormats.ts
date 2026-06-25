@@ -1,4 +1,10 @@
-export const PRINT_FORMAT_OPTIONS = [
+export interface PrintFormatOption {
+  value: string;
+  label: string;
+  description: string;
+}
+
+export const PRINT_FORMAT_OPTIONS: PrintFormatOption[] = [
   {
     value: 'Aspen 1.0',
     label: 'Tabela padrão',
@@ -14,12 +20,12 @@ export const PRINT_FORMAT_OPTIONS = [
 export const DEFAULT_PRINT_FORMAT = PRINT_FORMAT_OPTIONS[0].value;
 export const LS_ACTIVE_PRINT_FORMAT = 'aspen_active_print_format';
 
-export function normalizePrintFormat(value) {
+export function normalizePrintFormat(value: unknown): string {
   const raw = String(value || '').trim();
   return PRINT_FORMAT_OPTIONS.find(option => option.value === raw)?.value || DEFAULT_PRINT_FORMAT;
 }
 
-export function loadActivePrintFormat() {
+export function loadActivePrintFormat(): string {
   try {
     return normalizePrintFormat(localStorage.getItem(LS_ACTIVE_PRINT_FORMAT));
   } catch {
@@ -27,7 +33,7 @@ export function loadActivePrintFormat() {
   }
 }
 
-export function saveActivePrintFormat(value) {
+export function saveActivePrintFormat(value: unknown): string {
   const normalized = normalizePrintFormat(value);
   try {
     localStorage.setItem(LS_ACTIVE_PRINT_FORMAT, normalized);
@@ -37,11 +43,11 @@ export function saveActivePrintFormat(value) {
   return normalized;
 }
 
-export function getPrintFormatLabel(value) {
+export function getPrintFormatLabel(value: unknown): string {
   return PRINT_FORMAT_OPTIONS.find(option => option.value === normalizePrintFormat(value))?.label || PRINT_FORMAT_OPTIONS[0].label;
 }
 
-export function buildQuotationViewUrl(quotationId, printFormat = null) {
+export function buildQuotationViewUrl(quotationId: string, printFormat: unknown = null): string {
   const params = new URLSearchParams({ q: quotationId });
   const normalized = normalizePrintFormat(printFormat);
   if (normalized && normalized !== DEFAULT_PRINT_FORMAT) {

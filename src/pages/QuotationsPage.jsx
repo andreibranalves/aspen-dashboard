@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api.js';
 import { formatBRL, formatDate } from '@/lib/formatters';
-import { buildQuotationViewUrl } from '@/lib/printFormats.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { StatusBadge } from '@/components/ui/badge.jsx';

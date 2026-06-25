@@ -7,7 +7,7 @@ export const PIPELINE = [
   'Arte Aprovada',
   'Pedido Fechado',
   'Perdido',
-];
+] as const;
 
 export const APP_NAME = 'Aspen Orçamento';
 export const APP_VERSION = '2.0.0';

@@ -3,7 +3,7 @@ import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTria
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api.js';
 import { searchProducts } from '@/lib/productCache.js';
 import { formatBRL, formatDate } from '@/lib/formatters';
-import { buildQuotationViewUrl } from '@/lib/printFormats.js';
+import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button.jsx';
 import { Input } from '@/components/ui/input.jsx';
 import { StatusBadge } from '@/components/ui/badge.jsx';
