@@ -31,10 +31,10 @@ src/
 | Layout / sidebar / topbar | `src/components/layout/*.jsx` |
 | Tela de comunicação WhatsApp | `src/pages/ComunicacaoPage.jsx` + `src/components/communication/*.jsx` |
 | Chamadas API do frontend | `src/lib/api.js` |
-| API de comunicação (WhatsApp) | `src/lib/communicationApi.js` |
+| API de comunicação (WhatsApp) | `src/lib/communicationApi.ts` |
 | Fluxos WhatsApp (KV + fallback) | `src/lib/whatsappFlows.ts` |
-| Cache de produtos (TTL 5min) | `src/lib/productCache.js` |
-| Metadados cliente (CNPJ/endereço) | `src/lib/clientMetadata.js` |
+| Cache de produtos (TTL 5min) | `src/lib/productCache.ts` |
+| Metadados cliente (CNPJ/endereço) | `src/lib/clientMetadata.ts` |
 | Formatadores (moeda/data/fone) | `src/lib/formatters.js` |
 | Constantes do pipeline CRM | `src/lib/constants.js` |
 

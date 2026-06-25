@@ -4,9 +4,10 @@
 
 `feat/typescript-phase-3` (criado a partir do `master` após a Fase 2)
 
-## Commits (5)
+## Commits (6)
 
 ```
+fix: align test-client-metadata.mjs and docs with migrated .ts files
 59998d5 fix: align test-whatsapp-flows.mjs with actual DEFAULT_WA_FLOWS order
 34c1e35 chore: convert whatsappFlows.js and communicationApi.js to TypeScript
 4706b63 chore: convert clientMetadata.js and productCache.js to TypeScript
@@ -114,6 +115,22 @@ d6fe8a1 chore: convert button.jsx to TypeScript
   - `getFlowSummary('already-talking')` = `"1 mensagem + PDF"`
   - `getFlowSummary('email-first-contact')` = `"4 mensagens + mídia da biblioteca"`
 
+### 5. Ajustes pós-review — import e documentação desatualizados
+
+- `scripts/test-client-metadata.mjs`:
+  - Corrigido import de `'../src/lib/clientMetadata.js'` → `'../src/lib/clientMetadata.ts'`.
+  - Atualizados comentários que ainda citavam `clientMetadata.js`.
+  - Atualizadas expectativas do teste para refletir a implementação atual de `clientMetadata.ts`:
+    - `LEAD_SOURCES` tem 3 opções (`Google Ads`, `Bríndice`, `Cliente recorrente`).
+    - `DEFAULT_LEAD_SOURCE = 'Google Ads'`.
+    - Origens antigas (`Indicação`, `Cliente antigo / recorrente`, `Orgânico / Site`, `Outro`) são inválidas.
+    - `getLeadSourceLabel('Brindice')` retorna `'Bríndice'` (normalização de acentos).
+- `src/AGENTS.md`:
+  - Atualizadas entradas da tabela "WHERE TO LOOK" para refletir a migração:
+    - `src/lib/communicationApi.js` → `src/lib/communicationApi.ts`
+    - `src/lib/productCache.js` → `src/lib/productCache.ts`
+    - `src/lib/clientMetadata.js` → `src/lib/clientMetadata.ts`
+
 ## Verificação
 
 | Comando | Resultado |
@@ -124,11 +141,12 @@ d6fe8a1 chore: convert button.jsx to TypeScript
 | `npm run check` | ✅ passou |
 | `npm run test:unit` | ✅ 134 testes, 0 falhas |
 | `node scripts/test-whatsapp-flows.mjs` | ✅ 29 testes, 0 falhas |
+| `node scripts/test-client-metadata.mjs` | ✅ 35 testes, 0 falhas |
 
 ## Estado do repo
 
 - `git status` limpo.
-- Branch `feat/typescript-phase-3` está 5 commits à frente do `master`.
+- Branch `feat/typescript-phase-3` está 6 commits à frente do `master`.
 
 ---
 
@@ -199,4 +217,5 @@ Converter os testes `.js` restantes para `.ts`:
 2. Os imports foram normalizados para extensionless em todos os consumidores dos módulos migrados.
 3. `formatCnpj` teve uma pequena mudança de retorno (sempre string), mas sem impacto nos consumidores.
 4. O script `scripts/test-whatsapp-flows.mjs` foi corrigido para refletir o estado real de `DEFAULT_WA_FLOWS`.
-5. `npm run check` e `npm run test:unit` passam.
+5. O script `scripts/test-client-metadata.mjs` foi corrigido para importar `.ts` e refletir as 3 origens atuais de `LEAD_SOURCES`.
+6. `npm run check`, `npm run test:unit`, `node scripts/test-whatsapp-flows.mjs` e `node scripts/test-client-metadata.mjs` passam.
