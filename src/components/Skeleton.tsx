@@ -1,17 +1,22 @@
+import type { ElementType, HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
  * Skeleton — bloco animado base com shimmer.
- *
- * @param {string} [as='div'] - Elemento HTML a ser renderizado.
- * @param {'rect'|'circle'|'text'} [variant='rect'] - Forma do skeleton.
  */
+export interface SkeletonProps extends HTMLAttributes<HTMLElement> {
+  /** Elemento HTML a ser renderizado. */
+  as?: ElementType;
+  /** Forma do skeleton. */
+  variant?: 'rect' | 'circle' | 'text';
+}
+
 export default function Skeleton({
   className = '',
   as: Component = 'div',
   variant = 'rect',
   ...props
-}) {
+}: SkeletonProps) {
   const variantClass =
     variant === 'circle'
       ? 'rounded-full'

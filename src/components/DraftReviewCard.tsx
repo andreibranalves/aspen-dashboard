@@ -1,25 +1,57 @@
-// src/components/DraftReviewCard.jsx
+// src/components/DraftReviewCard.tsx
 // Full review card for a single draft: header, client metadata, items table, summary, and actions.
 // Extracted from AutoQuotePage.jsx.
 
+import type { Dispatch, SetStateAction } from 'react';
 import { Check, X, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
-import Skeleton from '@/components/Skeleton.jsx';
-import CustomerMetadataForm from '@/components/CustomerMetadataForm.jsx';
+import Skeleton from '@/components/Skeleton';
+import CustomerMetadataForm from '@/components/CustomerMetadataForm';
 import DraftItemTable from '@/components/DraftItemTable.jsx';
+import type { Draft, DraftItem, DraftEdited } from '@/hooks/useExtractionDrafts';
+import type { Address } from '@/lib/clientMetadata';
+import type { ProductSearchEntry } from '@/hooks/useExtractionDrafts';
 
 // ── Card status icon ──
-function CardIcon({ status }) {
+function CardIcon({ status }: { status: string }) {
   switch (status) {
-    case 'draft':    return <Pencil size={16} />;
+    case 'draft': return <Pencil size={16} />;
     case 'approved': return <Check size={18} className="text-primary" />;
-    case 'done':     return <Check size={18} className="text-primary font-bold" />;
-    case 'error':    return <X size={18} className="text-destructive/60 font-bold" />;
+    case 'done': return <Check size={18} className="text-primary font-bold" />;
+    case 'error': return <X size={18} className="text-destructive/60 font-bold" />;
     case 'processing':
-    default:         return <Skeleton className="h-4 w-4 rounded-full" />;
+    default: return <Skeleton className="h-4 w-4 rounded-full" />;
   }
+}
+
+export interface DraftReviewCardProps {
+  draft: Draft;
+  displayIdx: number;
+  totalDrafts: number;
+  isApproved: boolean;
+  items: DraftItem[];
+  total: number;
+  validItems: number;
+  onApprove: (draftIdx: number) => void;
+  onDiscard: (draftIdx: number) => void;
+  // CustomerMetadataForm props
+  updateDraftField: (draftIdx: number, field: keyof DraftEdited, value: unknown) => void;
+  updateDraftAddressField: (draftIdx: number, field: keyof Address, value: unknown) => void;
+  onUrgenteToggle: (draftIdx: number, checked: boolean) => void;
+  // DraftItemTable props
+  updateDraftItem: (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => void;
+  onProductSearchChange: (draftIdx: number, val: string) => void;
+  productSearch: Record<number, ProductSearchEntry>;
+  closeProductSearch: (draftIdx: number) => void;
+  selectProduct: (draftIdx: number, itemIdx: number, product: Record<string, unknown>) => void;
+  drafts: Draft[];
+  fetchPricing: (draftsList: Draft[], urgent: boolean) => Promise<Draft[]>;
+  setDrafts: Dispatch<SetStateAction<Draft[]>>;
+  reorderItems: (draftIdx: number, fromIdx: number, toIdx: number) => void;
+  removeDraftItem: (draftIdx: number, itemIdx: number) => void;
+  addDraftItem: (draftIdx: number) => void;
 }
 
 export default function DraftReviewCard({
@@ -32,11 +64,9 @@ export default function DraftReviewCard({
   validItems,
   onApprove,
   onDiscard,
-  // CustomerMetadataForm props
   updateDraftField,
   updateDraftAddressField,
   onUrgenteToggle,
-  // DraftItemTable props
   updateDraftItem,
   onProductSearchChange,
   productSearch,
@@ -48,7 +78,7 @@ export default function DraftReviewCard({
   reorderItems,
   removeDraftItem,
   addDraftItem,
-}) {
+}: DraftReviewCardProps) {
   const i = draft.index;
 
   return (
@@ -95,7 +125,7 @@ export default function DraftReviewCard({
           />
 
           <DraftItemTable
-            items={items}
+            items={items as unknown as never[]}
             validItems={validItems}
             isApproved={isApproved}
             draftIdx={i}

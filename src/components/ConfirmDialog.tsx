@@ -1,9 +1,20 @@
-// src/components/ConfirmDialog.jsx
+// src/components/ConfirmDialog.tsx
 // Reusable confirmation dialog — replaces window.confirm().
 // Uses AlertTriangle icon and PT-BR text by default.
 
 import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+export interface ConfirmDialogProps {
+  open: boolean;
+  title?: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'destructive' | 'default';
+  onConfirm?: () => void;
+  onCancel?: () => void;
+}
 
 export default function ConfirmDialog({
   open,
@@ -11,10 +22,10 @@ export default function ConfirmDialog({
   message = 'Tem certeza que deseja prosseguir?',
   confirmLabel = 'Confirmar',
   cancelLabel = 'Cancelar',
-  variant = 'destructive', // 'destructive' | 'default'
+  variant = 'destructive',
   onConfirm,
   onCancel,
-}) {
+}: ConfirmDialogProps) {
   if (!open) return null;
 
   return (

@@ -1,4 +1,4 @@
-// src/components/SplitResultCard.jsx
+// src/components/SplitResultCard.tsx
 // Compact result card for the split-panel auto page.
 // Leaner version of DraftReviewCard — no full customer form, no summary sidebar.
 
@@ -19,9 +19,36 @@ import { cn } from '@/lib/utils';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
 import { searchProducts } from '@/lib/productCache';
+import type { Product } from '@/lib/productCache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import WhatsAppSendPanel from '@/components/WhatsAppSendPanel.jsx';
+import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
+import type { Draft, DraftItem, DraftEdited } from '@/hooks/useExtractionDrafts';
+import type { CommunicationFlow } from '@/lib/communicationApi';
+
+export interface SplitResultCardProps {
+  draft: Draft;
+  displayIdx: number;
+  totalDrafts: number;
+  isProcessing?: boolean;
+  onUpdateField: (draftIdx: number, field: keyof DraftEdited, value: unknown) => void;
+  onUpdateItem: (draftIdx: number, itemIdx: number, field: keyof DraftItem, value: unknown) => void;
+  onRemoveItem: (draftIdx: number, itemIdx: number) => void;
+  onAddItem: (draftIdx: number) => void;
+  selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
+  onRefetchPricing: (draftIdx: number) => Promise<void>;
+  onCreateQuote: (draftIdx: number) => void;
+  viewUrl?: string;
+  waStatus?: { state?: 'sending' | 'sent' | 'error'; message?: string };
+  waFlows?: CommunicationFlow[];
+  waSelectedFlowId?: string;
+  onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
+  onSendWhatsApp?: (draftIdx: number) => void;
+  reExtractText?: string;
+  reExtractLoading?: boolean;
+  onReExtractTextChange?: (draftIdx: number, value: string) => void;
+  onSubmitReExtract?: (draftIdx: number) => void;
+}
 
 export default function SplitResultCard({
   draft,
@@ -45,23 +72,23 @@ export default function SplitResultCard({
   reExtractLoading = false,
   onReExtractTextChange,
   onSubmitReExtract,
-}) {
+}: SplitResultCardProps) {
   const [editing, setEditing] = useState(false);
   const [showReExtract, setShowReExtract] = useState(false);
 
   // ── Per-item product search (local state, like QuotationDetailPage) ──
-  const [itemSearchTerms, setItemSearchTerms] = useState({}); // { ii: term }
-  const [itemResults, setItemResults] = useState({}); // { ii: [...] }
-  const [itemSearching, setItemSearching] = useState({}); // { ii: bool }
-  const [activeSearchIdx, setActiveSearchIdx] = useState(null); // ii or null
-  const searchTimers = useRef({}); // { ii: timeoutId }
-  const qtyPricingTimer = useRef(null); // debounced pricing refetch
+  const [itemSearchTerms, setItemSearchTerms] = useState<Record<number, string>>({});
+  const [itemResults, setItemResults] = useState<Record<number, Product[]>>({});
+  const [itemSearching, setItemSearching] = useState<Record<number, boolean>>({});
+  const [activeSearchIdx, setActiveSearchIdx] = useState<number | null>(null);
+  const searchTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const qtyPricingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Click outside closes the active dropdown
   useEffect(() => {
     if (activeSearchIdx === null) return;
-    const handler = (e) => {
-      if (!e.target.closest('.item-search-cell')) {
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element).closest('.item-search-cell')) {
         setActiveSearchIdx(null);
       }
     };
@@ -71,10 +98,10 @@ export default function SplitResultCard({
 
   // Debounced product search per item index
   const onItemSkuChange = useCallback(
-    (ii, value) => {
+    (ii: number, value: string) => {
       setItemSearchTerms((prev) => ({ ...prev, [ii]: value }));
       onUpdateItem(draft.index, ii, 'item_code', value);
-      clearTimeout(searchTimers.current[ii]);
+      if (searchTimers.current[ii]) clearTimeout(searchTimers.current[ii]);
       if (value && value.length >= 2) {
         setItemSearching((prev) => ({ ...prev, [ii]: true }));
         searchTimers.current[ii] = setTimeout(async () => {
@@ -97,12 +124,12 @@ export default function SplitResultCard({
 
   // Select product from dropdown
   const handleSelectProduct = useCallback(
-    (ii, product) => {
+    (ii: number, product: Product) => {
       if (!product?.sku) return;
       selectProduct(draft.index, ii, product);
       setItemSearchTerms((prev) => ({
         ...prev,
-        [ii]: product.nome || product.item_name || product.sku,
+        [ii]: String(product.nome || (product.item_name as string | undefined) || product.sku),
       }));
       setItemResults((prev) => ({ ...prev, [ii]: [] }));
       setActiveSearchIdx(null);
@@ -112,7 +139,7 @@ export default function SplitResultCard({
 
   // Remove item with local state cleanup
   const handleRemoveItem = useCallback(
-    (ii) => {
+    (ii: number) => {
       onRemoveItem(draft.index, ii);
       setItemSearchTerms((prev) => {
         const n = { ...prev };
@@ -136,17 +163,17 @@ export default function SplitResultCard({
 
   const isDone = draft.status === 'done' && draft.result?.success;
   const resultData = draft.result?.data;
-  const items = isDone ? resultData?.items || draft.edited.items || [] : draft.edited.items || [];
+  const items = isDone ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || [] : draft.edited.items || [];
   const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
   const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const displayItems = editing ? items : items.filter((it) => it.item_code);
-  const displayName = resultData?.cliente || draft.edited.nome;
+  const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
 
   function toggleEditing() {
     if (!editing) {
       // Pre-fill search terms with existing item names
-      const terms = {};
+      const terms: Record<number, string> = {};
       items.forEach((item, ii) => {
         if (item.item_code) terms[ii] = item.item_name || item.item_code;
       });
@@ -323,7 +350,7 @@ export default function SplitResultCard({
                             <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                               {results.map((p) => (
                                 <button
-                                  key={p.sku || p.item_code}
+                                  key={p.sku || (p.item_code as string | undefined)}
                                   type="button"
                                   className="w-full text-left px-3 py-2 text-xs hover:bg-surface-muted transition-colors flex items-center gap-2"
                                   onMouseDown={(e) => {
@@ -332,9 +359,9 @@ export default function SplitResultCard({
                                   }}
                                 >
                                   <span className="font-mono text-[10px] text-fg-muted shrink-0">
-                                    {p.sku || p.item_code}
+                                    {p.sku || (p.item_code as string | undefined)}
                                   </span>
-                                  <span className="truncate">{p.nome || p.item_name}</span>
+                                  <span className="truncate">{String(p.nome || (p.item_name as string | undefined) || '—')}</span>
                                 </button>
                               ))}
                             </div>
@@ -354,7 +381,7 @@ export default function SplitResultCard({
                           onChange={(e) => {
                             const val = Math.max(1, Number(e.target.value));
                             onUpdateItem(draft.index, ii, 'qty', val);
-                            clearTimeout(qtyPricingTimer.current);
+                            if (qtyPricingTimer.current) clearTimeout(qtyPricingTimer.current);
                             qtyPricingTimer.current = setTimeout(
                               () => onRefetchPricing(draft.index),
                               600

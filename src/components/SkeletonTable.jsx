@@ -1,4 +1,4 @@
-import Skeleton from '@/components/Skeleton.jsx';
+import Skeleton from '@/components/Skeleton';
 
 /**
  * SkeletonTable — simula uma tabela durante o carregamento.

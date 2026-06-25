@@ -5,7 +5,7 @@
 // para configurações gerais futuras.
 
 import { MessageCircle, ExternalLink } from 'lucide-react';
-import PageHeader from '@/components/PageHeader.jsx';
+import PageHeader from '@/components/PageHeader';
 
 export default function SettingsPage() {
   return (

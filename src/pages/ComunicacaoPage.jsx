@@ -4,12 +4,12 @@
 
 import { useState, useCallback } from 'react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
-import PageHeader from '@/components/PageHeader.jsx';
-import FlowEditorTab from '@/components/communication/FlowEditorTab.jsx';
-import MediaUploader from '@/components/communication/MediaUploader.jsx';
-import MediaLibrary from '@/components/communication/MediaLibrary.jsx';
-import SendHistoryTab from '@/components/communication/SendHistoryTab.jsx';
-import ChannelsTab from '@/components/communication/ChannelsTab.jsx';
+import PageHeader from '@/components/PageHeader';
+import FlowEditorTab from '@/components/communication/FlowEditorTab';
+import MediaUploader from '@/components/communication/MediaUploader';
+import MediaLibrary from '@/components/communication/MediaLibrary';
+import SendHistoryTab from '@/components/communication/SendHistoryTab';
+import ChannelsTab from '@/components/communication/ChannelsTab';
 
 const TABS = [
   { id: 'flows', label: 'Fluxos WhatsApp', icon: MessageSquare },

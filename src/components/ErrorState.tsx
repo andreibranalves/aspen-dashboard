@@ -1,9 +1,17 @@
-// src/components/ErrorState.jsx
+// src/components/ErrorState.tsx
 // Standardized error state — for failed data loads with retry support.
 
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+export interface ErrorStateProps {
+  message?: string;
+  detail?: string;
+  onRetry?: () => void;
+  retryLabel?: string;
+  className?: string;
+}
 
 export default function ErrorState({
   message = 'Erro ao carregar dados.',
@@ -11,7 +19,7 @@ export default function ErrorState({
   onRetry,
   retryLabel = 'Tentar novamente',
   className,
-}) {
+}: ErrorStateProps) {
   return (
     <div
       className={cn(

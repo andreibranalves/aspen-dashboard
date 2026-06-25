@@ -15,7 +15,7 @@ import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import SplitResultCard from '@/components/SplitResultCard.jsx';
+import SplitResultCard from '@/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
 import { fetchFlows, executeFlow } from '@/lib/communicationApi';

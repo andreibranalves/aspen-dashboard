@@ -1,11 +1,22 @@
-// src/components/WhatsAppSendPanel.jsx
+// src/components/WhatsAppSendPanel.tsx
 // WhatsApp flow selector + send button for quotation result cards.
 // Extracted from AutoQuotePage.jsx.
 
 import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { flowToSequencePayload, getFlowSummary } from '@/lib/whatsappFlows';
+import { flowToSequencePayload, getFlowSummary, normalizeFlow } from '@/lib/whatsappFlows';
+import type { Flow } from '@/lib/whatsappFlows';
+import type { CommunicationFlow } from '@/lib/communicationApi';
+
+export interface WhatsAppSendPanelProps {
+  selectedFlowId?: string;
+  flows?: CommunicationFlow[];
+  status?: { state?: 'sending' | 'sent' | 'error'; message?: string };
+  onSelectFlow?: (flowId: string) => void;
+  onSend?: () => void;
+  hideButton?: boolean;
+}
 
 export default function WhatsAppSendPanel({
   selectedFlowId,
@@ -14,8 +25,8 @@ export default function WhatsAppSendPanel({
   onSelectFlow,
   onSend,
   hideButton = false,
-}) {
-  const selectedFlow = flows.find((f) => f.id === selectedFlowId) || flows[0];
+}: WhatsAppSendPanelProps) {
+  const selectedFlow = normalizeFlow(((flows.find((f) => f.id === selectedFlowId) || flows[0] || {})) as unknown as Partial<Flow>);
   const sequence = selectedFlow ? flowToSequencePayload(selectedFlow) : null;
   const hasValidSteps = sequence && sequence.steps.length > 0;
 
@@ -26,7 +37,7 @@ export default function WhatsAppSendPanel({
         <select
           className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
           value={selectedFlowId}
-          onChange={(e) => onSelectFlow(e.target.value)}
+          onChange={(e) => onSelectFlow?.(e.target.value)}
         >
           {flows.map((flow) => (
             <option key={flow.id} value={flow.id}>

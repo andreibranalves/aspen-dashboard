@@ -1,12 +1,13 @@
-// src/components/EmptyState.jsx
+// src/components/EmptyState.tsx
 // Standardized empty state — for lists, tables, and pages with no data.
 // Uses Lucide icons (no emoji).
 
+import type { LucideIcon } from 'lucide-react';
 import { Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-const EMPTY_ICONS = {
+const EMPTY_ICONS: Record<string, LucideIcon> = {
   default: Package,
   products: Package,
   quotations: Package,
@@ -14,15 +15,25 @@ const EMPTY_ICONS = {
   leads: Package,
 };
 
+export interface EmptyStateProps {
+  icon?: LucideIcon;
+  iconType?: 'default' | 'products' | 'quotations' | 'orders' | 'leads';
+  title?: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  className?: string;
+}
+
 export default function EmptyState({
   icon: Icon,
-  iconType = 'default', // 'default' | 'products' | 'quotations' | 'orders' | 'leads'
+  iconType = 'default',
   title = 'Nenhum item encontrado',
   description = '',
   actionLabel = '',
   onAction,
   className,
-}) {
+}: EmptyStateProps) {
   const IconComponent = Icon || EMPTY_ICONS[iconType] || EMPTY_ICONS.default;
 
   return (

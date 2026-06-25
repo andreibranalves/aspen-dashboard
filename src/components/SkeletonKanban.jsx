@@ -1,4 +1,4 @@
-import Skeleton from '@/components/Skeleton.jsx';
+import Skeleton from '@/components/Skeleton';
 
 /**
  * SkeletonKanban — simula o quadro Kanban do CRM durante o carregamento.

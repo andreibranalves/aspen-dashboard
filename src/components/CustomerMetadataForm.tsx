@@ -1,4 +1,4 @@
-// src/components/CustomerMetadataForm.jsx
+// src/components/CustomerMetadataForm.tsx
 // Client metadata form: name, email, phone, urgent checkbox, lead source, CNPJ, and collapsible address.
 // Extracted from AutoQuotePage.jsx.
 
@@ -14,6 +14,17 @@ import {
   hasAnyAddressField,
   formatAddressSummary,
 } from '@/lib/clientMetadata';
+import type { Draft, DraftEdited } from '@/hooks/useExtractionDrafts';
+import type { Address } from '@/lib/clientMetadata';
+
+export interface CustomerMetadataFormProps {
+  draft: Draft;
+  draftIdx: number;
+  isApproved: boolean;
+  updateDraftField: (draftIdx: number, field: keyof DraftEdited, value: unknown) => void;
+  updateDraftAddressField: (draftIdx: number, field: keyof Address, value: unknown) => void;
+  onUrgenteToggle: (draftIdx: number, checked: boolean) => void;
+}
 
 export default function CustomerMetadataForm({
   draft,
@@ -22,7 +33,7 @@ export default function CustomerMetadataForm({
   updateDraftField,
   updateDraftAddressField,
   onUrgenteToggle,
-}) {
+}: CustomerMetadataFormProps) {
   const edited = draft.edited;
   const original = draft.original;
 
@@ -101,7 +112,7 @@ export default function CustomerMetadataForm({
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
-          {original?.origem && edited.origem === original.origem && (
+          {Boolean(original?.origem) && edited.origem === (original.origem as string | undefined) && (
             <span className="inline-block rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
               Sugerido pela IA
             </span>
@@ -137,7 +148,7 @@ export default function CustomerMetadataForm({
             Endereço opcional
             {edited._showAddr ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
-          {edited._showAddr && (
+          {Boolean(edited._showAddr) && (
             <div className="mt-2 grid gap-3 md:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-[10px] text-fg-muted">CEP</span>

@@ -4,15 +4,21 @@
 import { useState } from 'react';
 import { Trash2, Image, Video } from 'lucide-react';
 import { GROUP_LABELS } from '@/lib/communicationApi';
+import type { MediaItem } from '@/lib/communicationApi';
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MediaGridItem({ item, onDelete }) {
+export interface MediaGridItemProps {
+  item: MediaItem;
+  onDelete?: (item: MediaItem) => void;
+}
+
+export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
   const [imgError, setImgError] = useState(false);
   const isVideo = item.kind === 'video';
 

@@ -2,20 +2,25 @@
 // Uses @vercel/blob/client upload() to send directly to Blob,
 // then saves metadata via POST /api/communication-media.
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, type DragEvent } from 'react';
 import { Upload, Loader2, AlertCircle } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
 import { createMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi';
+import type { ProductGroup } from '@/lib/communicationApi';
 
-export default function MediaUploader({ onUploadComplete }) {
+export interface MediaUploaderProps {
+  onUploadComplete?: () => void;
+}
+
+export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState(PRODUCT_GROUPS[0]);
-  const fileInputRef = useRef(null);
+  const [selectedGroup, setSelectedGroup] = useState<ProductGroup>(PRODUCT_GROUPS[0]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = useCallback(
-    async (files) => {
+    async (files: FileList | null) => {
       if (!files || files.length === 0) return;
       const file = files[0]; // Upload one at a time
 
@@ -54,7 +59,7 @@ export default function MediaUploader({ onUploadComplete }) {
         onUploadComplete?.();
       } catch (err) {
         console.error('[MediaUploader]', err);
-        setError(err.message || 'Erro no upload. Verifique se o Blob Store está configurado.');
+        setError((err as Error).message || 'Erro no upload. Verifique se o Blob Store está configurado.');
       } finally {
         setUploading(false);
       }
@@ -63,20 +68,20 @@ export default function MediaUploader({ onUploadComplete }) {
   );
 
   const onDrop = useCallback(
-    (e) => {
+    (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setDragging(false);
-      handleFiles(e.dataTransfer?.files);
+      handleFiles(e.dataTransfer?.files ?? null);
     },
     [handleFiles]
   );
 
-  const onDragOver = useCallback((e) => {
+  const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(true);
   }, []);
 
-  const onDragLeave = useCallback((e) => {
+  const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(false);
   }, []);
@@ -90,7 +95,7 @@ export default function MediaUploader({ onUploadComplete }) {
         </label>
         <select
           value={selectedGroup}
-          onChange={(e) => setSelectedGroup(e.target.value)}
+          onChange={(e) => setSelectedGroup(e.target.value as ProductGroup)}
           className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
           disabled={uploading}
         >

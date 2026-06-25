@@ -4,16 +4,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Filter } from 'lucide-react';
 import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi';
-import MediaGridItem from '@/components/communication/MediaGridItem.jsx';
-import ConfirmDialog from '@/components/ConfirmDialog.jsx';
-import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';
+import type { MediaItem, ProductGroup } from '@/lib/communicationApi';
+import MediaGridItem from '@/components/communication/MediaGridItem';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import SkeletonComunicacao from '@/components/SkeletonComunicacao';
 
-export default function MediaLibrary({ refreshKey }) {
-  const [items, setItems] = useState([]);
+export interface MediaLibraryProps {
+  refreshKey?: number | string;
+}
+
+export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
+  const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filterGroup, setFilterGroup] = useState('');
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [filterGroup, setFilterGroup] = useState<ProductGroup | ''>('');
+  const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -22,7 +27,7 @@ export default function MediaLibrary({ refreshKey }) {
       const data = await fetchMedia({ active: true });
       setItems(data.items || []);
     } catch (err) {
-      setError(err.message);
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -38,7 +43,7 @@ export default function MediaLibrary({ refreshKey }) {
       await deleteMedia(deleteTarget.id);
       setItems((prev) => prev.filter((m) => m.id !== deleteTarget.id));
     } catch (err) {
-      setError(err.message);
+      setError((err as Error).message);
     } finally {
       setDeleteTarget(null);
     }

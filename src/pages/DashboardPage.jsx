@@ -3,7 +3,7 @@ import { BarChart3, TrendingUp, DollarSign, Package, Clock, ShoppingCart, Users,
 import { apiGet } from '@/lib/api';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import PageHeader from '@/components/PageHeader.jsx';
+import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 
 const PERIODS = [

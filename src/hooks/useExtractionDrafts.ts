@@ -33,6 +33,7 @@ export interface DraftEdited {
   endereco: Address;
   items: DraftItem[];
   prazo_producao: string;
+  _showAddr?: boolean;
   [key: string]: unknown;
 }
 

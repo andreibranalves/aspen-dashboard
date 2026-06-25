@@ -15,7 +15,7 @@ import {
 import { apiGet, apiPut, apiPost } from '@/lib/api';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks';
-import PageHeader from '@/components/PageHeader.jsx';
+import PageHeader from '@/components/PageHeader';
 import SkeletonDetail from '@/components/SkeletonDetail.jsx';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import { Button } from '@/components/ui/button';

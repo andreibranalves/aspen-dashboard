@@ -4,10 +4,23 @@
 
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
-import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';
+import SkeletonComunicacao from '@/components/SkeletonComunicacao';
+
+interface SendEvent {
+  id: string;
+  status: 'sent' | 'failed' | 'skipped' | 'pending';
+  flow_name?: string;
+  quotation_id?: string;
+  phone?: string;
+  steps_sent?: number;
+  steps_planned?: number;
+  sent_at?: string;
+  duplicate_warning?: boolean;
+  error_message?: string;
+}
 
 export default function SendHistoryTab() {
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState<SendEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -22,7 +35,7 @@ export default function SendHistoryTab() {
         const data = await res.json();
         setEvents(data.items || []);
       } catch (err) {
-        setError(err.message);
+        setError((err as Error).message);
       } finally {
         setLoading(false);
       }
@@ -69,7 +82,7 @@ export default function SendHistoryTab() {
               <AlertTriangle
                 size={16}
                 className="text-warning"
-                title="Envio duplicado detectado"
+                aria-label="Envio duplicado detectado"
               />
             )}
           </div>

@@ -4,7 +4,7 @@
 //
 // Uses communication-flows API (new KV namespace) for persistence.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import {
   Plus,
   Trash2,
@@ -19,8 +19,9 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchFlows, saveFlows } from '@/lib/communicationApi';
+import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/communicationApi';
 import { renderFlowTemplate } from '@/lib/whatsappFlows';
-import SkeletonComunicacao from '@/components/SkeletonComunicacao.jsx';
+import SkeletonComunicacao from '@/components/SkeletonComunicacao';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -29,21 +30,23 @@ const STEP_TYPES = {
   TEXT: 'text',
   DOCUMENT: 'document',
   PRODUCT_MEDIA: 'product_media',
-};
+} as const;
 
-const STEP_TYPE_ICONS = {
+type StepType = typeof STEP_TYPES[keyof typeof STEP_TYPES];
+
+const STEP_TYPE_ICONS: Record<StepType, typeof MessageSquare> = {
   [STEP_TYPES.TEXT]: MessageSquare,
   [STEP_TYPES.DOCUMENT]: FileText,
   [STEP_TYPES.PRODUCT_MEDIA]: Camera,
 };
 
-const STEP_TYPE_OPTIONS = [
+const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
   { value: STEP_TYPES.TEXT, label: 'Texto' },
   { value: STEP_TYPES.DOCUMENT, label: 'PDF do orçamento' },
   { value: STEP_TYPES.PRODUCT_MEDIA, label: 'Mídia da biblioteca' },
 ];
 
-const PREVIEW_CONTEXT = {
+const PREVIEW_CONTEXT: Record<string, string> = {
   '(nome)': 'Labo Buriti',
   '(primeiro_nome)': 'Labo',
   '(numero_pedido)': 'ORC-20261289',
@@ -55,33 +58,60 @@ const PREVIEW_CONTEXT = {
   '(grupo_produto)': 'canga',
 };
 
-function createStep(type = 'text') {
+interface TextStep {
+  id: string;
+  type: 'text';
+  template: string;
+}
+
+interface DocumentStep {
+  id: string;
+  type: 'document';
+  source: 'quotation_pdf';
+  caption?: string;
+}
+
+interface ProductMediaStep {
+  id: string;
+  type: 'product_media';
+  selection?: string;
+  max_items?: number;
+  caption_template?: string;
+}
+
+type FlowStep = TextStep | DocumentStep | ProductMediaStep;
+
+interface EditableFlow extends CommunicationFlow {
+  steps: FlowStep[];
+}
+
+function createStep(type: StepType = STEP_TYPES.TEXT): FlowStep {
   const id = `step_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 4)}`;
   switch (type) {
     case STEP_TYPES.TEXT:
-      return { id, type: 'text', template: '' };
+      return { id, type: STEP_TYPES.TEXT, template: '' };
     case STEP_TYPES.DOCUMENT:
-      return { id, type: 'document', source: 'quotation_pdf', caption: '' };
+      return { id, type: STEP_TYPES.DOCUMENT, source: 'quotation_pdf', caption: '' };
     case STEP_TYPES.PRODUCT_MEDIA:
       return {
         id,
-        type: 'product_media',
+        type: STEP_TYPES.PRODUCT_MEDIA,
         selection: 'product_group',
         max_items: 1,
         caption_template: '',
       };
     default:
-      return { id, type: 'text', template: '' };
+      return { id, type: STEP_TYPES.TEXT, template: '' };
   }
 }
 
-function createFlow(index) {
+function createFlow(index: number): EditableFlow {
   return {
     id: `flow_${Date.now().toString(36)}${index}`,
     name: `Novo Fluxo ${index + 1}`,
     description: '',
-    context: 'email_first_contact',
-    channel: 'whatsapp',
+    context: 'email_first_contact' as FlowContext,
+    channel: 'whatsapp' as FlowChannel,
     vendor_name: 'Juliana',
     delay_min_seconds: 5,
     delay_max_seconds: 8,
@@ -94,10 +124,10 @@ function createFlow(index) {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function FlowEditorTab() {
-  const [flows, setFlows] = useState([]);
-  const [savedFlows, setSavedFlows] = useState([]);
+  const [flows, setFlows] = useState<EditableFlow[]>([]);
+  const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
-  const [expandedFlow, setExpandedFlow] = useState(null);
+  const [expandedFlow, setExpandedFlow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -111,12 +141,12 @@ export default function FlowEditorTab() {
     (async () => {
       try {
         const data = await fetchFlows();
-        const loaded = (data.flows || []).map((f, i) => ({ ...f, id: f.id || `flow_${i}` }));
+        const loaded = (data.flows || []).map((f, i) => ({ ...f, id: f.id || `flow_${i}` })) as EditableFlow[];
         setFlows(loaded);
         setSavedFlows(loaded);
         setSelectedFlowId(data.selectedFlowId || loaded[0]?.id || '');
       } catch (err) {
-        setError(err.message);
+        setError((err as Error).message);
       } finally {
         setLoading(false);
       }
@@ -134,7 +164,7 @@ export default function FlowEditorTab() {
       setSuccessMsg('Fluxos salvos com sucesso.');
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
-      setError(err.message);
+      setError((err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -148,7 +178,7 @@ export default function FlowEditorTab() {
     setExpandedFlow(newFlow.id);
   }, [flows.length]);
 
-  const setTopBarActions = useSetTopBarActions();
+  const setTopBarActions = useSetTopBarActions() as ((actions: ReactNode | null) => void) | null;
 
   useEffect(() => {
     if (!setTopBarActions) return undefined;
@@ -171,16 +201,16 @@ export default function FlowEditorTab() {
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           Salvar
         </Button>
-      </div>,
+      </div> as ReactNode,
     );
 
     return () => setTopBarActions(null);
   }, [addFlow, handleSave, isDirty, loading, saving, setTopBarActions]);
 
-  const duplicateFlow = (flowId) => {
+  const duplicateFlow = (flowId: string) => {
     const idx = flows.findIndex((f) => f.id === flowId);
     if (idx === -1) return;
-    const dup = JSON.parse(JSON.stringify(flows[idx]));
+    const dup = JSON.parse(JSON.stringify(flows[idx])) as EditableFlow;
     dup.id = `flow_${Date.now().toString(36)}`;
     dup.name = `${dup.name} (cópia)`;
     const next = [...flows];
@@ -189,7 +219,7 @@ export default function FlowEditorTab() {
     setSelectedFlowId(dup.id);
   };
 
-  const deleteFlow = (flowId) => {
+  const deleteFlow = (flowId: string) => {
     if (flows.length <= 1) {
       setError('É necessário pelo menos um fluxo.');
       return;
@@ -199,12 +229,12 @@ export default function FlowEditorTab() {
     if (selectedFlowId === flowId) setSelectedFlowId(next[0]?.id || '');
   };
 
-  const updateFlow = (flowId, field, value) => {
+  const updateFlow = (flowId: string, field: keyof EditableFlow, value: unknown) => {
     setFlows((prev) => prev.map((f) => (f.id === flowId ? { ...f, [field]: value } : f)));
   };
 
   // Step mutations
-  const addStep = (flowId) => {
+  const addStep = (flowId: string) => {
     setFlows((prev) =>
       prev.map((f) => {
         if (f.id !== flowId) return f;
@@ -213,7 +243,7 @@ export default function FlowEditorTab() {
     );
   };
 
-  const updateStep = (flowId, stepId, field, value) => {
+  const updateStep = (flowId: string, stepId: string, field: string, value: unknown) => {
     setFlows((prev) =>
       prev.map((f) => {
         if (f.id !== flowId) return f;
@@ -225,7 +255,7 @@ export default function FlowEditorTab() {
     );
   };
 
-  const removeStep = (flowId, stepId) => {
+  const removeStep = (flowId: string, stepId: string) => {
     setFlows((prev) =>
       prev.map((f) => {
         if (f.id !== flowId) return f;
@@ -235,7 +265,7 @@ export default function FlowEditorTab() {
     );
   };
 
-  const moveStep = (flowId, stepId, direction) => {
+  const moveStep = (flowId: string, stepId: string, direction: number) => {
     setFlows((prev) =>
       prev.map((f) => {
         if (f.id !== flowId) return f;
@@ -250,7 +280,7 @@ export default function FlowEditorTab() {
     );
   };
 
-  const handleStepTypeChange = (flowId, stepId, newType) => {
+  const handleStepTypeChange = (flowId: string, stepId: string, newType: StepType) => {
     setFlows((prev) =>
       prev.map((f) => {
         if (f.id !== flowId) return f;
@@ -423,7 +453,7 @@ export default function FlowEditorTab() {
                         <select
                           value={step.type}
                           onChange={(e) =>
-                            handleStepTypeChange(selectedFlow.id, step.id, e.target.value)
+                            handleStepTypeChange(selectedFlow.id, step.id, e.target.value as StepType)
                           }
                           className="text-xs rounded border border-line bg-surface px-1.5 py-0.5 text-fg"
                         >

@@ -14,10 +14,10 @@ src/
 ├── pages/                # 15 páginas (ver WHERE TO LOOK)
 ├── components/
 │   ├── layout/           # Layout, Sidebar, TopBar
-│   ├── ui/               # button, input, badge, table, back-button
-│   ├── communication/    # subviews da ComunicacaoPage (WhatsApp mídia/fluxos)
-│   └── *.jsx             # componentes feature/shared
-├── hooks/                # useHashRoute, useDarkMode, useExtractionDrafts, useImageInput
+│   ├── ui/               # button, input, badge, table, back-button (tsx)
+│   ├── communication/    # subviews da ComunicacaoPage (WhatsApp mídia/fluxos) — parcial em tsx
+│   └── *.jsx / *.tsx     # componentes feature/shared
+├── hooks/                # useHashRoute, useDarkMode, useExtractionDrafts, useImageInput (tsx)
 └── lib/                  # helpers puros (api, formatters, whatsappFlows, etc.)
 ```
 
@@ -27,16 +27,16 @@ src/
 |---|---|
 | Adicionar página | `src/pages/*.jsx` + `src/App.jsx` |
 | Adicionar rota | `src/App.jsx` (`renderPage`) |
-| Componente UI reutilizável | `src/components/ui/*.jsx` |
+| Componente UI reutilizável | `src/components/ui/*.tsx` |
 | Layout / sidebar / topbar | `src/components/layout/*.jsx` |
-| Tela de comunicação WhatsApp | `src/pages/ComunicacaoPage.jsx` + `src/components/communication/*.jsx` |
+| Tela de comunicação WhatsApp | `src/pages/ComunicacaoPage.jsx` + `src/components/communication/*.{jsx,tsx}` |
 | Chamadas API do frontend | `src/lib/api.ts` |
 | API de comunicação (WhatsApp) | `src/lib/communicationApi.ts` |
 | Fluxos WhatsApp (KV + fallback) | `src/lib/whatsappFlows.ts` |
 | Cache de produtos (TTL 5min) | `src/lib/productCache.ts` |
 | Metadados cliente (CNPJ/endereço) | `src/lib/clientMetadata.ts` |
-| Formatadores (moeda/data/fone) | `src/lib/formatters.js` |
-| Constantes do pipeline CRM | `src/lib/constants.js` |
+| Formatadores (moeda/data/fone) | `src/lib/formatters.ts` |
+| Constantes do pipeline CRM | `src/lib/constants.ts` |
 
 ## CONVENTIONS
 

@@ -4,7 +4,7 @@ import { apiGet, apiPut, apiDelete } from '@/lib/api';
 import { fmtPhone } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import PageHeader from '@/components/PageHeader.jsx';
+import PageHeader from '@/components/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,

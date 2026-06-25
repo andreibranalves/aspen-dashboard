@@ -16,7 +16,7 @@ import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
-import PageHeader from '@/components/PageHeader.jsx';
+import PageHeader from '@/components/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout.jsx';
 import {
   Table,
