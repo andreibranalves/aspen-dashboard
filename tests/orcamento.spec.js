@@ -106,7 +106,8 @@ const MOCK_WHATSAPP_LEADS = {
       produto: 'canga',
       quantidade: 100,
       resumo: 'Cliente: preciso de 100 cangas',
-      texto: 'Nome: Maria WhatsApp\nE-mail: maria@teste.com\nTelefone: 5511999991234\nPedido: canga — 100 un',
+      texto:
+        'Nome: Maria WhatsApp\nE-mail: maria@teste.com\nTelefone: 5511999991234\nPedido: canga — 100 un',
     },
   ],
 };
@@ -130,18 +131,50 @@ async function setupApiMocks(page) {
     });
   });
 
-  // Mock other API calls the page might make on load (quotations list, etc.)
-  await page.route('**/api/quotations', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: [] }) });
+  // Mock other API calls the page might make on load.
+  await page.route('**/api/quotations**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: [] }),
+    });
   });
 
-  await page.route('**/api/whatsapp-leads', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_WHATSAPP_LEADS) });
+  await page.route('**/api/communication-flows**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: [] }),
+    });
+  });
+
+  await page.route('**/api/whatsapp-leads**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(MOCK_WHATSAPP_LEADS),
+    });
   });
 }
 
 async function setupLeadsMocks(page) {
   let currentDetail = { ...MOCK_LEAD_DETAIL };
+
+  await page.route('**/api/quotations**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: [] }),
+    });
+  });
+
+  await page.route('**/api/communication-flows**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: [] }),
+    });
+  });
 
   await page.route('**/api/leads-clients**', async (route) => {
     await route.fulfill({
@@ -165,10 +198,16 @@ async function setupLeadsMocks(page) {
         tax_id: body.tax_id || currentDetail.tax_id,
         contribuinte: body.contribuinte || currentDetail.contribuinte,
         inscricao_estadual: body.inscricao_estadual || currentDetail.inscricao_estadual,
-        address: body.endereco ? { ...currentDetail.address, ...body.endereco } : currentDetail.address,
+        address: body.endereco
+          ? { ...currentDetail.address, ...body.endereco }
+          : currentDetail.address,
         modified: '2026-05-20T12:00:00.000Z',
       };
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(currentDetail) });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(currentDetail),
+      });
       return;
     }
 
@@ -183,7 +222,6 @@ async function setupLeadsMocks(page) {
 // ── Tests ──
 
 test.describe('Auto Quote — Fluxo Principal', () => {
-
   test('página /auto carrega com formulário visível', async ({ page }) => {
     await setupApiMocks(page);
     await page.goto('/#/auto');
@@ -251,14 +289,13 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
-    await page.getByRole('button', { name: /WhatsApp/i }).click();
+    await page.getByRole('button', { name: /^WhatsApp$/i }).click();
     await page.getByText('Maria WhatsApp').click();
 
     const textarea = page.locator('textarea').first();
     await expect(textarea).toHaveValue(MOCK_WHATSAPP_LEADS.data[0].texto);
     await expect(page.getByText(/Resultados \(/i)).toHaveCount(0);
   });
-
 });
 
 test.describe('Leads — Página single e visualização rápida', () => {
@@ -266,11 +303,15 @@ test.describe('Leads — Página single e visualização rápida', () => {
     await setupLeadsMocks(page);
     await page.goto('/#/leads');
 
-    await expect(page.getByRole('main').getByRole('heading', { name: /^Leads$/i })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('main').getByRole('heading', { name: /^Leads$/i })).toBeVisible({
+      timeout: 10000,
+    });
     await page.locator('tbody tr').filter({ hasText: 'João Silva' }).first().click();
 
     await expect(page).toHaveURL(/#\/leads\/lead\/LEAD-001/);
-    await expect(page.locator('main h1').filter({ hasText: 'João Silva' }).first()).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 2 })
+    ).toBeVisible({ timeout: 10000 });
     await expect(page.getByText(/Silva Eventos/i).first()).toBeVisible();
     await expect(page.getByText(/Atividade recente/i)).toBeVisible();
     await expect(page.getByText(/ORC-20260001/i).first()).toBeVisible();
@@ -292,12 +333,18 @@ test.describe('Leads — Página single e visualização rápida', () => {
     await setupLeadsMocks(page);
     await page.goto('/#/leads/lead/LEAD-001');
 
-    await expect(page.locator('main h1').filter({ hasText: 'João Silva' }).first()).toBeVisible({ timeout: 10000 });
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 2 })
+    ).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /Editar cadastro/i }).click();
     await page.locator('input[placeholder="Nome do lead"]').fill('João Silva Atualizado');
     await page.getByRole('button', { name: /^Salvar$/i }).click();
 
-    await expect(page.getByText(/Cadastro atualizado com sucesso/i)).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('main h1').filter({ hasText: 'João Silva Atualizado' }).first()).toBeVisible();
+    await expect(page.getByText(/Cadastro atualizado com sucesso/i)).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: 'João Silva Atualizado', level: 2 })
+    ).toBeVisible();
   });
 });
