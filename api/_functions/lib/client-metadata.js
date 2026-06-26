@@ -1,3 +1,4 @@
+// @ts-check
 // Shared client metadata normalization & validation for orcamento pipeline.
 // Imported by orcamento.js. Uses erpnext.js for ERPNext calls and createHttpError.
 //
@@ -6,6 +7,27 @@
 //            normalizeAddressPayload, buildAddressPayload } from './client-metadata.js';
 
 import { createHttpError, erpGetList } from './erpnext.js';
+
+/**
+ * @typedef {object} AddressPayload
+ * @property {string} cep
+ * @property {string} logradouro
+ * @property {string} numero
+ * @property {string} complemento
+ * @property {string} bairro
+ * @property {string} cidade
+ * @property {string} uf
+ */
+
+/**
+ * @typedef {object} BuildAddressPayloadOptions
+ * @property {unknown} address
+ * @property {string} nomeCliente
+ * @property {string} email
+ * @property {string} telefone
+ * @property {'Customer' | 'Lead'} entityType
+ * @property {string} entityId
+ */
 
 // ── Origem / Lead Source ─────────────────────────────────────────────────────
 
@@ -16,10 +38,7 @@ export const LEAD_SOURCES = [
   'Cliente recorrente',
 ];
 
-/**
- * Normaliza valor de origem: trim, capitalização esperada.
- * Retorna string vazia se não fornecida.
- */
+/** @param {unknown} value @returns {string} */
 export function normalizeLeadSource(value) {
   const v = String(value || '').trim();
   if (!v) return '';
@@ -30,10 +49,7 @@ export function normalizeLeadSource(value) {
   return found || v;
 }
 
-/**
- * Valida se a origem existe na lista canônica.
- * Retorna true se valor (normalizado) é uma origem conhecida.
- */
+/** @param {unknown} value @returns {boolean} */
 export function isValidLeadSource(value) {
   const v = normalizeLeadSource(value);
   return v !== '' && LEAD_SOURCES.includes(v);
@@ -89,9 +105,7 @@ export async function validateLeadSourceInErp(source) {
 
 // ── CNPJ ─────────────────────────────────────────────────────────────────────
 
-/**
- * Remove tudo exceto dígitos.
- */
+/** @param {unknown} value @returns {string} */
 export function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -132,10 +146,7 @@ export function isValidCnpj(value) {
 
 // ── Endereço ─────────────────────────────────────────────────────────────────
 
-/**
- * Normaliza payload de endereço do frontend para o formato esperado.
- * Garante todas as chaves com valores string.
- */
+/** @param {unknown} address @returns {AddressPayload} */
 export function normalizeAddressPayload(address) {
   if (!address || typeof address !== 'object') {
     return {
@@ -148,22 +159,19 @@ export function normalizeAddressPayload(address) {
       uf: '',
     };
   }
+  const a = /** @type {Record<string, unknown>} */ (address);
   return {
-    cep: onlyDigits(address.cep || ''),
-    logradouro: String(address.logradouro || '').trim(),
-    numero: String(address.numero || '').trim(),
-    complemento: String(address.complemento || '').trim(),
-    bairro: String(address.bairro || '').trim(),
-    cidade: String(address.cidade || '').trim(),
-    uf: String(address.uf || '').trim().toUpperCase(),
+    cep: onlyDigits(a.cep || ''),
+    logradouro: String(a.logradouro || '').trim(),
+    numero: String(a.numero || '').trim(),
+    complemento: String(a.complemento || '').trim(),
+    bairro: String(a.bairro || '').trim(),
+    cidade: String(a.cidade || '').trim(),
+    uf: String(a.uf || '').trim().toUpperCase(),
   };
 }
 
-/**
- * Retorna true se o endereço tem dados mínimos para criar Address ERPNext:
- * (logradouro E numero) OU (logradouro com cidade) OU (numero com cidade).
- * city e country são obrigatórios; country sempre 'Brazil'.
- */
+/** @param {unknown} address @returns {boolean} */
 export function hasMinimumAddressForErp(address) {
   const a = normalizeAddressPayload(address);
   const hasLine1 = !!(a.logradouro || a.numero);
@@ -171,16 +179,8 @@ export function hasMinimumAddressForErp(address) {
 }
 
 /**
- * Constrói payload para criar Address no ERPNext.
- *
- * @param {object} opts
- * @param {object} opts.address - Objeto de endereço normalizado
- * @param {string} opts.nomeCliente - Nome do cliente para address_title
- * @param {string} opts.email - Email do cliente
- * @param {string} opts.telefone - Telefone do cliente
- * @param {string} opts.entityType - 'Customer' ou 'Lead'
- * @param {string} opts.entityId - ID da entidade no ERPNext
- * @returns {object} Payload para erpPost('Address', ...)
+ * @param {BuildAddressPayloadOptions} opts
+ * @returns {Record<string, unknown>}
  */
 export function buildAddressPayload({ address, nomeCliente, email, telefone, entityType, entityId }) {
   const a = normalizeAddressPayload(address);

@@ -10,16 +10,20 @@ const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 // ── Error handling ──────────────────────────────────────────────────────────
 
 /**
+ * @typedef {Error & { statusCode: number, logMessage: string }} HttpError
+ */
+
+/**
  * Create a structured error with separate public (user-facing) and internal (log) messages.
  * Non-2xx ERPNext responses throw these; handler catch blocks read .statusCode and .logMessage.
  *
  * @param {number} statusCode - HTTP status code
  * @param {string} publicMessage - Safe Portuguese message for the client
  * @param {string} [logMessage] - Internal details for server logs (defaults to publicMessage)
- * @returns {Error} Error with statusCode and logMessage properties
+ * @returns {HttpError} Error with statusCode and logMessage properties
  */
 function createHttpError(statusCode, publicMessage, logMessage) {
-  const error = new Error(publicMessage);
+  const error = /** @type {HttpError} */ (new Error(publicMessage));
   error.statusCode = statusCode;
   error.logMessage = logMessage || publicMessage;
   return error;

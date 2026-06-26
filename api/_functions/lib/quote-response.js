@@ -1,3 +1,4 @@
+// @ts-check
 // api/_functions/lib/quote-response.js
 // Response assembly for the quotation pipeline.
 // Extracted from orcamento.js — no behavior changes.
@@ -7,13 +8,42 @@ const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 import { resolvePrintFormat } from './print-format.js';
 
+/**
+ * @typedef {object} VercelEventLike
+ * @property {Record<string, string | undefined>} [headers]
+ */
+
+/**
+ * @typedef {object} SavedQuoteItem
+ * @property {string} item_code
+ * @property {number} qty
+ * @property {number} rate
+ */
+
+/**
+ * @typedef {object} BuildQuoteResponseOptions
+ * @property {VercelEventLike} event
+ * @property {string} quotationId
+ * @property {string} dealId
+ * @property {string} entityId
+ * @property {'Customer' | 'Lead' | string} entityType
+ * @property {boolean} customerIsNew
+ * @property {string} nomeCliente
+ * @property {boolean} urgente
+ * @property {SavedQuoteItem[]} savedItems
+ * @property {string} origem
+ * @property {unknown[]} [warnings]
+ */
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** @param {string} baseUrl @param {string} quotationId @returns {string} */
 function buildViewUrl(baseUrl, quotationId) {
   const params = new URLSearchParams({ q: quotationId });
   return `${baseUrl}/api/view?${params.toString()}`;
 }
 
+/** @param {VercelEventLike} event @returns {string} */
 function buildBaseUrl(event) {
   const host = event.headers?.host || 'project-xr5jg.vercel.app';
   const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
@@ -71,6 +101,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
 
 // ── URL shortening ───────────────────────────────────────────────────────────
 
+/** @param {string} longUrl @returns {Promise<string>} */
 async function shortenUrl(longUrl) {
   try {
     const tinyRes = await fetch(
@@ -90,23 +121,7 @@ async function shortenUrl(longUrl) {
 
 // ── Result builder ───────────────────────────────────────────────────────────
 
-/**
- * Build the full API response object for a completed quotation.
- *
- * @param {object} opts
- * @param {object} opts.event - Vercel event object (for host/protocol)
- * @param {string} opts.quotationId
- * @param {string} opts.dealId
- * @param {string} opts.entityId
- * @param {string} opts.entityType
- * @param {boolean} opts.customerIsNew
- * @param {string} opts.nomeCliente
- * @param {boolean} opts.urgente
- * @param {Array} opts.savedItems - [{item_code, qty, rate}]
- * @param {string} opts.origem
- * @param {Array} [opts.warnings] - optional warning objects
- * @returns {Promise<object>} result object ready for JSON.stringify
- */
+/** @param {BuildQuoteResponseOptions} opts @returns {Promise<Record<string, unknown>>} */
 export async function buildQuoteResponse({
   event,
   quotationId,
