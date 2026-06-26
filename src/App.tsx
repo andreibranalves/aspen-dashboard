@@ -1,40 +1,59 @@
+import { Suspense, lazy, type ReactNode } from 'react';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
-import DashboardPage from '@/pages/DashboardPage';
-import QuotationsPage from '@/pages/QuotationsPage';
-import QuotationDetailPage from '@/pages/QuotationDetailPage';
-import SalesOrdersPage from '@/pages/SalesOrdersPage';
-import SalesOrderDetailPage from '@/pages/SalesOrderDetailPage';
+import PageLoader from '@/components/PageLoader';
+
+// Eager pages — rota padrão e tela de login (críticas, pequenas)
 import AutoQuotePage from '@/pages/AutoQuotePage';
-import CrmKanbanPage from '@/pages/CrmKanbanPage';
-import ProductsPage from '@/pages/ProductsPage';
-import ProductDetailPage from '@/pages/ProductDetailPage';
-import LeadsPage from '@/pages/LeadsPage';
-import LeadDetailPage from '@/pages/LeadDetailPage';
-import SettingsPage from '@/pages/SettingsPage';
-import ManualOrcamentoPage from '@/pages/ManualOrcamentoPage';
-import ComunicacaoPage from '@/pages/ComunicacaoPage';
 import LoginPage from '@/pages/LoginPage';
+
+// Lazy pages — carregadas sob demanda ao navegar
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const QuotationsPage = lazy(() => import('@/pages/QuotationsPage'));
+const QuotationDetailPage = lazy(() => import('@/pages/QuotationDetailPage'));
+const SalesOrdersPage = lazy(() => import('@/pages/SalesOrdersPage'));
+const SalesOrderDetailPage = lazy(() => import('@/pages/SalesOrderDetailPage'));
+const CrmKanbanPage = lazy(() => import('@/pages/CrmKanbanPage'));
+const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
+const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
+const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
+const LeadDetailPage = lazy(() => import('@/pages/LeadDetailPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const ManualOrcamentoPage = lazy(() => import('@/pages/ManualOrcamentoPage'));
+const ComunicacaoPage = lazy(() => import('@/pages/ComunicacaoPage'));
 
 function renderPage(route: string, navigate: (hash: string) => void) {
   // Login page — full screen, no layout
   if (route === '/login') return <LoginPage navigate={navigate} />;
+
   // Detail page: #/quotations/ORC-20261143
   if (route.startsWith('/quotations/')) {
     const id = route.split('/quotations/')[1];
-    return <QuotationDetailPage id={id} navigate={navigate} />;
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <QuotationDetailPage id={id} navigate={navigate} />
+      </Suspense>
+    );
   }
 
   // Detail page: #/sales-orders/VP-20261143
   if (route.startsWith('/sales-orders/')) {
     const id = route.split('/sales-orders/')[1];
-    return <SalesOrderDetailPage id={id} navigate={navigate} />;
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <SalesOrderDetailPage id={id} navigate={navigate} />
+      </Suspense>
+    );
   }
 
   // Product detail page: #/products/LNC-SED-70
   if (route.startsWith('/products/')) {
     const sku = route.split('/products/')[1];
-    return <ProductDetailPage sku={sku} navigate={navigate} />;
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <ProductDetailPage sku={sku} navigate={navigate} />
+      </Suspense>
+    );
   }
 
   // Lead/Customer detail page: #/leads/lead/CRM-LEAD-... or #/leads/cliente/CUST-...
@@ -42,33 +61,58 @@ function renderPage(route: string, navigate: (hash: string) => void) {
     const parts = route.split('/');
     const tipo = parts[2];
     const id = parts.slice(3).join('/');
-    if (tipo && id) return <LeadDetailPage tipo={tipo} id={id} navigate={navigate} />;
+    if (tipo && id) {
+      return (
+        <Suspense fallback={<PageLoader />}>
+          <LeadDetailPage tipo={tipo} id={id} navigate={navigate} />
+        </Suspense>
+      );
+    }
   }
+
+  let page: ReactNode;
 
   switch (route) {
     case '/dashboard':
-      return <DashboardPage navigate={navigate} />;
+      page = <DashboardPage navigate={navigate} />;
+      break;
     case '/quotations':
-      return <QuotationsPage navigate={navigate} />;
+      page = <QuotationsPage navigate={navigate} />;
+      break;
     case '/auto':
-      return <AutoQuotePage />;
+      page = <AutoQuotePage />;
+      break;
     case '/sales-orders':
-      return <SalesOrdersPage navigate={navigate} />;
+      page = <SalesOrdersPage navigate={navigate} />;
+      break;
     case '/crm':
-      return <CrmKanbanPage />;
+      page = <CrmKanbanPage />;
+      break;
     case '/products':
-      return <ProductsPage />;
+      page = <ProductsPage />;
+      break;
     case '/leads':
-      return <LeadsPage navigate={navigate} />;
+      page = <LeadsPage navigate={navigate} />;
+      break;
     case '/settings':
-      return <SettingsPage />;
+      page = <SettingsPage />;
+      break;
     case '/manual':
-      return <ManualOrcamentoPage />;
+      page = <ManualOrcamentoPage />;
+      break;
     case '/comunicacao':
-      return <ComunicacaoPage />;
+      page = <ComunicacaoPage />;
+      break;
     default:
-      return <AutoQuotePage />;
+      page = <AutoQuotePage />;
   }
+
+  // AutoQuotePage is eager; wrap lazy pages (all switch cases except auto/default)
+  if (route === '/auto' || route === '' || route === '/') {
+    return page;
+  }
+
+  return <Suspense fallback={<PageLoader />}>{page}</Suspense>;
 }
 
 export default function App() {
