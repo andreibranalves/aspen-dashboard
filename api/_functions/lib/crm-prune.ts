@@ -138,7 +138,14 @@ export async function getPruneCandidates(
     limit: 10000,
   });
 
-  const linkedQuotationNames = await fetchLinkedQuotationNames(quotationNames, deps);
+  let linkedQuotationNames: Set<string>;
+  try {
+    linkedQuotationNames = await fetchLinkedQuotationNames(quotationNames, deps);
+  } catch {
+    // Permission error on Sales Order Item — treat all as not linked (safe: won't falsely exclude)
+    console.warn('[crm-prune] Cannot access Sales Order Item for linked quotation check.');
+    linkedQuotationNames = new Set();
+  }
 
   return quotations
     .filter((quotation) => !linkedQuotationNames.has(cleanString(quotation.name)))
