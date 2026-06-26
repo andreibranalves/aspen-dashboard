@@ -16,6 +16,21 @@ export default defineConfig({
   build: {
     outDir: 'public',
     emptyOutDir: false, // preserva arquivos não-gerados (dashboard-old.html etc)
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) {
+            return 'react-vendor';
+          }
+          if (/node_modules\/(tailwind-merge|clsx|class-variance-authority)\//.test(id)) {
+            return 'ui-vendor';
+          }
+          if (/node_modules\/lucide-react\//.test(id)) {
+            return 'icons';
+          }
+        },
+      },
+    },
   },
   server: {
     port: 5173,
