@@ -180,7 +180,11 @@ const server = createServer(async (req, res) => {
         httpMethod: req.method,
         body: req.method === 'GET' ? undefined : JSON.stringify(body),
         queryStringParameters: normalizeQueryParams(req.url),
-        headers: { ...req.headers, host: req.headers.host || 'localhost', 'x-forwarded-proto': 'https' },
+        headers: {
+          ...req.headers,
+          host: req.headers.host || 'localhost',
+          'x-forwarded-proto': 'https',
+        },
       };
 
       const result = await handler(event);

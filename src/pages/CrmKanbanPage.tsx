@@ -164,7 +164,9 @@ export default function CrmKanbanPage() {
     setPruneSummary(null);
     try {
       const result = await apiPost<PruneResult>('/crm-prune-candidates', { deal_ids });
-      setPruneSummary(`${result.updated} oportunidades marcadas como Perdido. ${result.skipped} ignoradas.`);
+      setPruneSummary(
+        `${result.updated} oportunidades marcadas como Perdido. ${result.skipped} ignoradas.`
+      );
       setPruneOpen(false);
       await Promise.all([fetchData(search), fetchPruneCandidates()]);
     } catch (err) {
@@ -217,7 +219,10 @@ export default function CrmKanbanPage() {
 
       // API call
       try {
-        const result = await apiPut<UpdateDealResult>('/crm-update-deal', { deal_id: dealId, status: newStatus });
+        const result = await apiPut<UpdateDealResult>('/crm-update-deal', {
+          deal_id: dealId,
+          status: newStatus,
+        });
         if (!result.success) {
           fetchData(search); // reload on failure
         }
@@ -236,10 +241,7 @@ export default function CrmKanbanPage() {
     <div className="space-y-4 animate-fade-in">
       {/* Search */}
       <div className="relative max-w-md">
-        <Search
-          size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted"
-        />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
         <Input
           placeholder="Buscar por nome do lead…"
           value={search}
@@ -268,8 +270,8 @@ export default function CrmKanbanPage() {
           <div>
             <p className="font-medium text-sm text-fg">Limpeza de pipeline disponível</p>
             <p className="text-sm text-fg-muted">
-              Existem {pruneCandidates.length} orçamentos enviados há 30 dias ou mais sem pedido fechado
-              e sem atualização nos últimos 7 dias.
+              Existem {pruneCandidates.length} orçamentos enviados há 30 dias ou mais sem pedido
+              fechado e sem atualização nos últimos 7 dias.
             </p>
           </div>
           <Button variant="outline" onClick={() => setPruneOpen(true)}>
@@ -355,9 +357,7 @@ export default function CrmKanbanPage() {
                     >
                       <p className="font-medium text-sm">{deal.lead_name || '—'}</p>
                       {deal.email && (
-                        <p className="text-xs text-fg-muted truncate mt-0.5">
-                          {deal.email}
-                        </p>
+                        <p className="text-xs text-fg-muted truncate mt-0.5">{deal.email}</p>
                       )}
                       <div className="flex items-center gap-2 mt-2 flex-wrap">
                         {deal.quotation && (
@@ -410,11 +410,21 @@ export default function CrmKanbanPage() {
                 <thead>
                   <tr className="border-b border-line">
                     <th className="text-left py-2 pr-2 w-10">&nbsp;</th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Lead</th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Orçamento</th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Idade</th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Última alteração</th>
-                    <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
+                      Lead
+                    </th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
+                      Orçamento
+                    </th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
+                      Idade
+                    </th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
+                      Última alteração
+                    </th>
+                    <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">
+                      Valor
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -429,10 +439,16 @@ export default function CrmKanbanPage() {
                         />
                       </td>
                       <td className="py-2 pr-2 text-fg">{candidate.lead_name || 'Sem nome'}</td>
-                      <td className="py-2 pr-2 font-mono text-xs text-primary">{candidate.quotation}</td>
+                      <td className="py-2 pr-2 font-mono text-xs text-primary">
+                        {candidate.quotation}
+                      </td>
                       <td className="py-2 pr-2 text-fg-muted">{candidate.age_days} dias</td>
-                      <td className="py-2 pr-2 text-fg-muted">{formatDateBR(candidate.deal_modified)}</td>
-                      <td className="py-2 text-right text-fg font-medium">{formatBRL(candidate.grand_total)}</td>
+                      <td className="py-2 pr-2 text-fg-muted">
+                        {formatDateBR(candidate.deal_modified)}
+                      </td>
+                      <td className="py-2 text-right text-fg font-medium">
+                        {formatBRL(candidate.grand_total)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -444,10 +460,18 @@ export default function CrmKanbanPage() {
                 {selectedPruneIds.size} de {pruneCandidates.length} selecionadas
               </p>
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="outline" onClick={() => setPruneOpen(false)} disabled={pruneSubmitting}>
+                <Button
+                  variant="outline"
+                  onClick={() => setPruneOpen(false)}
+                  disabled={pruneSubmitting}
+                >
                   Cancelar
                 </Button>
-                <Button variant="destructive" onClick={submitPrune} disabled={pruneSubmitting || selectedPruneIds.size === 0}>
+                <Button
+                  variant="destructive"
+                  onClick={submitPrune}
+                  disabled={pruneSubmitting || selectedPruneIds.size === 0}
+                >
                   {pruneSubmitting ? 'Marcando...' : 'Marcar selecionados como Perdido'}
                 </Button>
               </div>

@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { VercelRequestLike, VercelResponseLike, FunctionEvent, FunctionResult } from './_lib/types.js';
+import type {
+  VercelRequestLike,
+  VercelResponseLike,
+  FunctionEvent,
+  FunctionResult,
+} from './_lib/types.js';
 import { wrapFunctionHandler } from './_lib/function-adapter.js';
 import { isAuthenticated, getRouteName } from './_lib/auth.js';
 import { checkRateLimit } from './_lib/rate-limit.js';
@@ -80,7 +85,7 @@ const ROUTES: Record<string, HandlerFunction> = {
 
 export default async function handler(
   req: VercelRequestLike,
-  res: VercelResponseLike,
+  res: VercelResponseLike
 ): Promise<void> {
   // ── Auth guard ──
   if (!isAuthenticated(req)) {
@@ -104,6 +109,6 @@ export default async function handler(
 
   return wrapFunctionHandler(routeHandler)(
     req as unknown as IncomingMessage,
-    res as unknown as ServerResponse,
+    res as unknown as ServerResponse
   );
 }

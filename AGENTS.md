@@ -19,15 +19,15 @@
 
 ## WHERE TO LOOK
 
-| Task | Location |
-|---|---|
-| Add API endpoint | `api/_functions/*.js` + `api/[...path].js` |
-| Add frontend page | `src/pages/*.tsx` + `src/App.tsx` |
-| Shared UI component | `src/components/ui/*.tsx` |
-| ERPNext client / error helper | `api/_functions/lib/erpnext.js` |
-| PDF generation | `api/_functions/pdf.js` + `api/_functions/lib/quotation-pdf.js` |
-| Dev server | `scripts/dev-api-server.mjs` / `scripts/app-server.mjs` |
-| Tests | `tests/unit/*.test.js`, `tests/*.spec.js`, `test_local.mjs` |
+| Task                          | Location                                                        |
+| ----------------------------- | --------------------------------------------------------------- |
+| Add API endpoint              | `api/_functions/*.js` + `api/[...path].js`                      |
+| Add frontend page             | `src/pages/*.tsx` + `src/App.tsx`                               |
+| Shared UI component           | `src/components/ui/*.tsx`                                       |
+| ERPNext client / error helper | `api/_functions/lib/erpnext.js`                                 |
+| PDF generation                | `api/_functions/pdf.js` + `api/_functions/lib/quotation-pdf.js` |
+| Dev server                    | `scripts/dev-api-server.mjs` / `scripts/app-server.mjs`         |
+| Tests                         | `tests/unit/*.test.js`, `tests/*.spec.js`, `test_local.mjs`     |
 
 ## CONVENTIONS (DEVIATIONS FROM STANDARD)
 

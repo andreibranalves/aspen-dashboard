@@ -107,7 +107,11 @@ const server = createServer(async (req, res) => {
       httpMethod: req.method,
       body: req.method === 'GET' ? undefined : JSON.stringify(body),
       queryStringParameters: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams),
-      headers: { ...req.headers, host: req.headers.host || `localhost:${PORT}`, 'x-forwarded-proto': 'http' },
+      headers: {
+        ...req.headers,
+        host: req.headers.host || `localhost:${PORT}`,
+        'x-forwarded-proto': 'http',
+      },
       rawUrl: req.url,
     };
 
