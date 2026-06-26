@@ -5,7 +5,7 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 export default [
   {
-    ignores: ['public/assets/**', '**/public/assets/**', 'dist/**', 'node_modules/**', 'scripts/playwright-*.mjs'],
+    ignores: ['public/assets/**', '**/public/assets/**', 'dist/**', 'node_modules/**', '.worktrees/**', 'scripts/playwright-*.mjs', 'api/**/*.js', 'api/**/*.js.map'],
   },
   {
     linterOptions: {
