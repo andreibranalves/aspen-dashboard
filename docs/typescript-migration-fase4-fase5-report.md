@@ -167,6 +167,7 @@ Cada página recebeu:
 - `QuotationDetailPage.tsx`: fallback `priced.rate ?? item.rate`
 - `SalesOrdersPage.tsx`: `encodeURIComponent(row.source_quotation || '')`
 - `ManualOrcamentoPage.tsx`: `Boolean(product.categoria)` + `String(product.categoria)`
+- `tailwind.config.js`: atualizado `content` de `./src/**/*.{js,jsx}` para `./src/**/*.{js,jsx,ts,tsx}` para restaurar a geração das classes Tailwind após a migração para `.tsx`.
 
 ### 7. Documentação
 
