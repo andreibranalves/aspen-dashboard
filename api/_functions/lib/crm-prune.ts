@@ -124,14 +124,9 @@ async function fetchLinkedQuotationNames(
 ): Promise<Set<string>> {
   if (quotationNames.length === 0) return new Set();
 
-  const rows = await batchInQuery(
-    'Sales Order Item',
+  const rows = await batchInQuery('Sales Order Item', 'prevdoc_docname', quotationNames, [], deps, [
     'prevdoc_docname',
-    quotationNames,
-    [],
-    deps,
-    ['prevdoc_docname']
-  );
+  ]);
 
   return new Set(rows.map((row) => cleanString(row.prevdoc_docname)).filter(Boolean));
 }
@@ -226,6 +221,7 @@ export async function pruneDeals(
 
     await deps.erpPut('CRM Deal', dealId, {
       status: PRUNE_LOST_STATUS,
+      lost_reason: 'Unresponsive Prospect',
       next_step: PRUNE_NEXT_STEP,
     });
     updated += 1;

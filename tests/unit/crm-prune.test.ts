@@ -148,6 +148,7 @@ describe('crm-prune helper', () => {
         name: 'DEAL-VALID',
         payload: {
           status: 'Perdido',
+          lost_reason: 'Unresponsive Prospect',
           next_step: 'Marcado como perdido por limpeza de pipeline: sem resposta após 30 dias.',
         },
       },
