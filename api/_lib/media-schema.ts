@@ -1,15 +1,20 @@
-// Shared constants and helpers for Communication Media + Flows.
-// Used by communication-media.js, communication-flows.js, send-whatsapp-flow.js.
-
 export const KV_PREFIX = 'aspen:communication';
-export const KV_KEY_FLOWS = `${KV_PREFIX}:flows`;
-export const KV_KEY_FLOWS_SELECTED = `${KV_PREFIX}:flows:selected`;
-export const KV_KEY_MEDIA_PREFIX = `${KV_PREFIX}:media-assets:`;
-export const KV_KEY_SEND_EVENTS_PREFIX = `${KV_PREFIX}:send-events:`;
+export const KV_KEY_FLOWS: string = `${KV_PREFIX}:flows`;
+export const KV_KEY_FLOWS_SELECTED: string = `${KV_PREFIX}:flows:selected`;
+export const KV_KEY_MEDIA_PREFIX: string = `${KV_PREFIX}:media-assets:`;
+export const KV_KEY_SEND_EVENTS_PREFIX: string = `${KV_PREFIX}:send-events:`;
 
-export const PRODUCT_GROUPS = ['canga', 'lenço', 'boné', 'toalha', 'chapéu', 'ecobag', 'cachecol'];
+export const PRODUCT_GROUPS: string[] = [
+  'canga',
+  'lenço',
+  'boné',
+  'toalha',
+  'chapéu',
+  'ecobag',
+  'cachecol',
+];
 
-export const GROUP_LABELS = {
+export const GROUP_LABELS: Record<string, string> = {
   canga: 'Canga',
   lenço: 'Lenço',
   boné: 'Boné',
@@ -19,12 +24,12 @@ export const GROUP_LABELS = {
   cachecol: 'Cachecol',
 };
 
-export const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4'];
+export const ALLOWED_MIME_TYPES: string[] = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4'];
 
-export const MAX_SIZE_IMAGE = 5 * 1024 * 1024; // 5 MB
-export const MAX_SIZE_VIDEO = 16 * 1024 * 1024; // 16 MB (WhatsApp practical limit)
+export const MAX_SIZE_IMAGE = 5 * 1024 * 1024;
+export const MAX_SIZE_VIDEO = 16 * 1024 * 1024;
 
-export const FLOW_CONTEXTS = [
+export const FLOW_CONTEXTS: string[] = [
   'already_talking',
   'email_first_contact',
   'form_first_contact',
@@ -35,22 +40,16 @@ export const STEP_TYPES = {
   TEXT: 'text',
   DOCUMENT: 'document',
   PRODUCT_MEDIA: 'product_media',
-};
+} as const;
 
-/**
- * Generate a unique ID with a prefix.
- * Uses base36 timestamp + random component for readability.
- */
-export function createId(prefix = 'media') {
+export function createId(prefix = 'media'): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).substring(2, 6);
   return `${prefix}_${ts}${rand}`;
 }
 
-/**
- * Create a sanitized media asset object from raw input.
- */
-export function createMediaAsset(raw) {
+// ponytail: `any` for the raw input object — this is a sanitizer boundary, unknown would just add casts
+export function createMediaAsset(raw: Record<string, unknown>): Record<string, unknown> {
   const now = new Date().toISOString();
   return {
     id: raw.id || createId('media'),
@@ -62,28 +61,38 @@ export function createMediaAsset(raw) {
     product_code: raw.product_code ? String(raw.product_code).trim().toUpperCase() : null,
     kind:
       raw.kind ||
-      (String(raw.content_type || raw.mimeType || '').startsWith('video/') ? 'video' : 'image'),
-    blob_url: String(raw.blob_url || raw.blobUrl || raw.url || '').trim(),
+      (String(raw.content_type || (raw as Record<string, string>).mimeType || '').startsWith(
+        'video/'
+      )
+        ? 'video'
+        : 'image'),
+    blob_url: String(
+      raw.blob_url || (raw as Record<string, string>).blobUrl || raw.url || ''
+    ).trim(),
     pathname: String(raw.pathname || '').trim(),
-    content_type: String(raw.content_type || raw.mimeType || raw.contentType || '').trim(),
-    size_bytes: Number.isFinite(raw.size_bytes || raw.sizeBytes || raw.size)
-      ? raw.size_bytes || raw.sizeBytes || raw.size
+    content_type: String(
+      raw.content_type ||
+        (raw as Record<string, string>).mimeType ||
+        (raw as Record<string, string>).contentType ||
+        ''
+    ).trim(),
+    size_bytes: Number.isFinite(
+      raw.size_bytes || (raw as Record<string, number>).sizeBytes || raw.size
+    )
+      ? ((raw.size_bytes || (raw as Record<string, number>).sizeBytes || raw.size) as number)
       : 0,
     caption: String(raw.caption || '').trim(),
     active: raw.active !== false,
-    sort_order: Number.isFinite(raw.sort_order || raw.sortOrder)
-      ? raw.sort_order || raw.sortOrder
+    sort_order: Number.isFinite(raw.sort_order || (raw as Record<string, number>).sortOrder)
+      ? ((raw.sort_order || (raw as Record<string, number>).sortOrder) as number)
       : 0,
-    created_at: raw.created_at || raw.createdAt || now,
+    created_at: raw.created_at || (raw as Record<string, string>).createdAt || now,
     updated_at: now,
-    created_by: String(raw.created_by || raw.createdBy || '').trim(),
+    created_by: String(raw.created_by || (raw as Record<string, string>).createdBy || '').trim(),
   };
 }
 
-/**
- * Create a default flow step of a given type.
- */
-export function createStep(type = 'text') {
+export function createStep(type = 'text'): Record<string, unknown> {
   const id = `step_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 4)}`;
   switch (type) {
     case STEP_TYPES.TEXT:
@@ -103,15 +112,12 @@ export function createStep(type = 'text') {
   }
 }
 
-/**
- * Create a default flow object.
- */
-export function createFlow(raw = {}) {
+export function createFlow(raw: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: raw.id || `flow_${Date.now().toString(36)}`,
     name: raw.name || 'Novo Fluxo',
     description: raw.description || '',
-    context: FLOW_CONTEXTS.includes(raw.context) ? raw.context : 'manual',
+    context: FLOW_CONTEXTS.includes(raw.context as string) ? raw.context : 'manual',
     channel: 'whatsapp',
     vendor_name: raw.vendor_name || 'Juliana',
     enabled: raw.enabled !== false,
