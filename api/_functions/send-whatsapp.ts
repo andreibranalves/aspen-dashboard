@@ -1,6 +1,7 @@
 // POST /api/send-whatsapp — sends quotation messages via Evolution API.
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   erpGetList,
   erpGetDoc,
@@ -32,7 +33,7 @@ const DEFAULT_SEQUENCE_STEPS = [
   },
   { type: 'product_images' },
 ];
-const PRODUCT_CATEGORY_BY_PREFIX = {
+const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
   CNG: 'canga',
   LNC: 'lenço',
   BNE: 'boné',
@@ -41,7 +42,7 @@ const PRODUCT_CATEGORY_BY_PREFIX = {
   ECO: 'ecobag',
   CHC: 'cachecol',
 };
-const PRODUCT_SUMMARY_PLURALS = {
+const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
   canga: 'cangas',
   lenço: 'lenços',
   boné: 'bonés',
@@ -50,7 +51,7 @@ const PRODUCT_SUMMARY_PLURALS = {
   ecobag: 'ecobags',
   cachecol: 'cachecóis',
 };
-const PRODUCT_CATEGORY_GENDERS = {
+const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   canga: 'f',
   lenço: 'm',
   boné: 'm',
@@ -59,7 +60,7 @@ const PRODUCT_CATEGORY_GENDERS = {
   ecobag: 'f',
   cachecol: 'm',
 };
-const CATEGORY_ALIASES = {
+const CATEGORY_ALIASES: Record<string, string> = {
   canga: 'canga',
   cangas: 'canga',
   lenco: 'lenço',
@@ -82,7 +83,7 @@ const CATEGORY_ALIASES = {
 
 // ── Basic helpers ───────────────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
+function jsonResponse(statusCode: number, body: unknown): FunctionResult {
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
@@ -90,7 +91,7 @@ function jsonResponse(statusCode, body) {
   };
 }
 
-function normalizePhone(phone) {
+function normalizePhone(phone: unknown): string {
   if (!phone) return '';
   let digits = String(phone).replace(/\D/g, '');
   digits = digits.replace(/^55(\d{10,11})$/, '$1').replace(/^0(\d{10,11})$/, '$1');
@@ -98,26 +99,26 @@ function normalizePhone(phone) {
   return `55${digits}`;
 }
 
-function firstNonEmpty(...values) {
+function firstNonEmpty(...values: Array<string | undefined | null>): string {
   return values.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
 }
 
-function toPositiveInt(value, fallback, min, max) {
+function toPositiveInt(value: unknown, fallback: number, min: number, max: number): number {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
   return Math.min(max, Math.max(min, Math.round(num)));
 }
 
-function publicBaseUrl(event) {
-  const host = event.headers?.host || 'project-xr5jg.vercel.app';
+function publicBaseUrl(event: { headers?: Record<string, string | string[] | undefined> }): string {
+  const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
   const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
   const protocol = isLocalHost
     ? 'http'
-    : (event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    : String(event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
   return `${protocol}://${host}`;
 }
 
-function absoluteUrl(url, baseUrl) {
+function absoluteUrl(url: unknown, baseUrl: string): string {
   if (!url) return '';
   const value = String(url).trim();
   if (/^https?:\/\//i.test(value) || /^data:/i.test(value)) return value;
@@ -125,7 +126,7 @@ function absoluteUrl(url, baseUrl) {
   return `${baseUrl}/${value}`;
 }
 
-function normalizeProductSummaryTemplate(template) {
+function normalizeProductSummaryTemplate(template: string): string {
   return String(template || DEFAULT_TEMPLATE)
     .replace(
       /\(produto_resumo\)\s+personalizado\(a\)/g,
@@ -137,18 +138,29 @@ function normalizeProductSummaryTemplate(template) {
     );
 }
 
-function pluralizeProductCategory(category) {
+function pluralizeProductCategory(category: string): string {
   return PRODUCT_SUMMARY_PLURALS[category] || category;
 }
 
-function productPersonalizationAdjectiveFromCategories(categories = []) {
+function productPersonalizationAdjectiveFromCategories(categories: string[] = []): string {
   const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
   return genders.length > 0 && genders.every((gender) => gender === 'f')
     ? 'personalizadas'
     : 'personalizados';
 }
 
-function renderTemplate(template, context) {
+interface TemplateContext {
+  nome: string;
+  quotationId: string;
+  link: string;
+  vendorName: string;
+  productSummary: string;
+  categories: string[];
+  pdfUrl?: string;
+  productPersonalizationAdjective?: string;
+}
+
+function renderTemplate(template: string, context: TemplateContext): string {
   const saudacao = getTimeBasedGreeting();
   const nome = context.nome || '';
   const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
@@ -168,9 +180,9 @@ function renderTemplate(template, context) {
     .replace(/\(produto_adjetivo_personalizado\)/g, productPersonalizationAdjective);
 }
 
-function parseContactFromRemarks(remarks = '') {
+function parseContactFromRemarks(remarks = ''): { nome: string; email: string; telefone: string } {
   const match = String(remarks).match(/Contato:\s*([^|]*)\|\s*([^|]*)\|\s*([^|]*)/i);
-  if (!match) return {};
+  if (!match) return { nome: '', email: '', telefone: '' };
   return {
     nome: match[1]?.trim() || '',
     email: match[2]?.trim() || '',
@@ -178,17 +190,17 @@ function parseContactFromRemarks(remarks = '') {
   };
 }
 
-function normalizeCategory(value) {
+function normalizeCategory(value: unknown): string {
   const key = String(value || '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-  return CATEGORY_ALIASES[key] || value;
+  return CATEGORY_ALIASES[key] || String(value);
 }
 
-function detectCategories(items = []) {
-  const categories = [];
+function detectCategories(items: Array<Record<string, unknown>> = []): string[] {
+  const categories: string[] = [];
   for (const item of items || []) {
     const sku = String(item?.sku || item?.item_code || item?.itemCode || '')
       .trim()
@@ -200,7 +212,7 @@ function detectCategories(items = []) {
   return categories;
 }
 
-function productSummaryFromCategories(categories = []) {
+function productSummaryFromCategories(categories: string[] = []): string {
   const labels = categories.map(pluralizeProductCategory);
   if (!labels.length) return 'produtos';
   if (labels.length === 1) return labels[0];
@@ -208,28 +220,64 @@ function productSummaryFromCategories(categories = []) {
   return `${labels.slice(0, -1).join(', ')} e ${labels.at(-1)}`;
 }
 
-function normalizeSampleImages(sampleImages = {}, baseUrl) {
-  const normalized = {};
+function normalizeSampleImages(
+  sampleImages: Record<string, unknown> = {},
+  baseUrl: string
+): Record<string, string[]> {
+  const normalized: Record<string, string[]> = {};
   for (const [rawCategory, rawUrls] of Object.entries(sampleImages || {})) {
     const category = normalizeCategory(rawCategory);
     const urls = Array.isArray(rawUrls) ? rawUrls : String(rawUrls || '').split(/\n|,/);
-    normalized[category] = urls.map((url) => absoluteUrl(url, baseUrl)).filter(Boolean);
+    normalized[category] = urls.map((url) => absoluteUrl(url, baseUrl)).filter(Boolean) as string[];
   }
   return normalized;
 }
 
-function buildSequenceSteps({ payload, sequence, context, baseUrl }) {
+interface SequenceStep {
+  type: string;
+  template?: string;
+  text?: string;
+  media?: string;
+  mimetype?: string;
+  fileName?: string;
+  caption?: string;
+  source?: string;
+  url?: string;
+  category?: string;
+  selection?: string;
+  max_items?: number;
+  caption_template?: string;
+}
+
+function buildSequenceSteps({
+  payload,
+  sequence,
+  context,
+  baseUrl,
+}: {
+  payload: Record<string, unknown>;
+  sequence: Record<string, unknown> | null;
+  context: TemplateContext;
+  baseUrl: string;
+}): SequenceStep[] {
   const rawSteps =
-    Array.isArray(sequence?.steps) && sequence.steps.length > 0
-      ? sequence.steps
+    Array.isArray(sequence?.steps) && (sequence.steps as unknown[]).length > 0
+      ? (sequence.steps as SequenceStep[])
       : DEFAULT_SEQUENCE_STEPS;
-  const maxImagesPerCategory = toPositiveInt(sequence?.max_images_per_category, 2, 0, 6);
+  const maxImagesPerCategory = toPositiveInt(
+    (sequence as Record<string, unknown>)?.max_images_per_category,
+    2,
+    0,
+    6
+  );
   const categories = context.categories;
   const sampleImages = normalizeSampleImages(
-    sequence?.sample_images || payload.sample_images || {},
+    (sequence?.sample_images as Record<string, unknown> | undefined) ||
+      (payload.sample_images as Record<string, unknown> | undefined) ||
+      {},
     baseUrl
   );
-  const planned = [];
+  const planned: SequenceStep[] = [];
 
   for (const rawStep of rawSteps.slice(0, 12)) {
     const type = String(rawStep?.type || 'text');
@@ -294,25 +342,31 @@ function buildSequenceSteps({ payload, sequence, context, baseUrl }) {
   return planned;
 }
 
-function wait(ms) {
+function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function randomDelay(minMs, maxMs) {
+function randomDelay(minMs: number, maxMs: number): number {
   if (maxMs <= minMs) return minMs;
   return Math.round(minMs + Math.random() * (maxMs - minMs));
 }
 
 // ── Quotation context resolution ────────────────────────────────────────────
 
-async function resolveContactFromQuotation(quotationId) {
-  if (!quotationId) return {};
+async function resolveContactFromQuotation(quotationId: string): Promise<{
+  quotation: Record<string, unknown>;
+  dealId: string | null;
+  nome: string;
+  email: string;
+  telefone: string;
+}> {
+  if (!quotationId) return { quotation: {}, dealId: null, nome: '', email: '', telefone: '' };
 
   const quotation = await erpGetDoc('Quotation', quotationId).catch((err) => {
     throw createHttpError(
-      err?.statusCode === 404 ? 404 : 502,
+      (err as { statusCode?: number })?.statusCode === 404 ? 404 : 502,
       'Orçamento não encontrado.',
-      `[send-whatsapp] erpGetDoc(Quotation, ${quotationId}) failed: ${err?.logMessage || err?.message || err}`
+      `[send-whatsapp] erpGetDoc(Quotation, ${quotationId}) failed: ${(err as { logMessage?: string })?.logMessage || (err as Error)?.message || String(err)}`
     );
   });
 
@@ -324,60 +378,86 @@ async function resolveContactFromQuotation(quotationId) {
     );
   }
 
-  const remarksContact = parseContactFromRemarks(quotation.remarks);
-  let nome = firstNonEmpty(quotation.customer_name, remarksContact.nome, quotation.party_name);
-  let email = firstNonEmpty(quotation.contact_email, remarksContact.email);
+  const remarksContact = parseContactFromRemarks(quotation.remarks as string | undefined);
+  let nome = firstNonEmpty(
+    quotation.customer_name as string | undefined,
+    remarksContact.nome,
+    quotation.party_name as string | undefined
+  );
+  let email = firstNonEmpty(
+    quotation.contact_email as string | undefined,
+    remarksContact.email
+  );
   let telefone = firstNonEmpty(
-    quotation.contact_mobile,
-    quotation.contact_phone,
+    quotation.contact_mobile as string | undefined,
+    quotation.contact_phone as string | undefined,
     remarksContact.telefone
   );
 
   // Party fallback: Lead/Customer data.
   if ((!telefone || !email || !nome) && quotation.quotation_to && quotation.party_name) {
     try {
-      const party = await erpGetDoc(quotation.quotation_to, quotation.party_name);
-      telefone = firstNonEmpty(telefone, party?.mobile_no, party?.phone, party?.phone_no);
-      email = firstNonEmpty(email, party?.email_id, party?.email);
+      const party = await erpGetDoc(
+        quotation.quotation_to as string,
+        quotation.party_name as string
+      );
+      telefone = firstNonEmpty(
+        telefone,
+        party?.mobile_no as string | undefined,
+        party?.phone as string | undefined,
+        party?.phone_no as string | undefined
+      );
+      email = firstNonEmpty(
+        email,
+        party?.email_id as string | undefined,
+        party?.email as string | undefined
+      );
       nome = firstNonEmpty(
         nome,
-        party?.first_name,
-        party?.lead_name,
-        party?.customer_name,
-        party?.name
+        party?.first_name as string | undefined,
+        party?.lead_name as string | undefined,
+        party?.customer_name as string | undefined,
+        party?.name as string | undefined
       );
     } catch (err) {
-      console.warn('[send-whatsapp] party lookup failed:', err?.logMessage || err?.message || err);
+      console.warn(
+        '[send-whatsapp] party lookup failed:',
+        (err as { logMessage?: string })?.logMessage || (err as Error)?.message || err
+      );
     }
   }
 
   // Contact fallback by contact_person or email.
   if ((!telefone || !email) && quotation.contact_person) {
     try {
-      const contact = await erpGetDoc('Contact', quotation.contact_person);
+      const contact = await erpGetDoc('Contact', quotation.contact_person as string);
       telefone = firstNonEmpty(
         telefone,
-        contact?.mobile_no,
-        contact?.phone,
-        contact?.phone_nos?.find((p) => p.is_primary_mobile_no)?.phone,
-        contact?.phone_nos?.[0]?.phone
+        contact?.mobile_no as string | undefined,
+        contact?.phone as string | undefined,
+        (
+          contact?.phone_nos as Array<{ is_primary_mobile_no?: boolean; phone?: string }> | undefined
+        )?.find((p) => p.is_primary_mobile_no)?.phone,
+        (contact?.phone_nos as Array<{ phone?: string }> | undefined)?.[0]?.phone
       );
       email = firstNonEmpty(
         email,
-        contact?.email_id,
-        contact?.email_ids?.find((e) => e.is_primary)?.email_id,
-        contact?.email_ids?.[0]?.email_id
+        contact?.email_id as string | undefined,
+        (
+          contact?.email_ids as Array<{ is_primary?: boolean; email_id?: string }> | undefined
+        )?.find((e) => e.is_primary)?.email_id,
+        (contact?.email_ids as Array<{ email_id?: string }> | undefined)?.[0]?.email_id
       );
     } catch (err) {
       console.warn(
         '[send-whatsapp] contact_person lookup failed:',
-        err?.logMessage || err?.message || err
+        (err as { logMessage?: string })?.logMessage || (err as Error)?.message || err
       );
     }
   }
 
   // CRM Deal fallback — orcamento.js stores mobile_no and custom_quotation there.
-  let dealId = null;
+  let dealId: string | null = null;
   try {
     const deals = await erpGetList('CRM Deal', {
       filters: [['custom_quotation', '=', quotationId]],
@@ -386,13 +466,16 @@ async function resolveContactFromQuotation(quotationId) {
     });
     if (deals.length > 0) {
       const deal = deals[0];
-      dealId = deal.name;
-      telefone = firstNonEmpty(telefone, deal.mobile_no);
-      email = firstNonEmpty(email, deal.email);
-      nome = firstNonEmpty(nome, deal.lead_name);
+      dealId = deal.name as string;
+      telefone = firstNonEmpty(telefone, deal.mobile_no as string | undefined);
+      email = firstNonEmpty(email, deal.email as string | undefined);
+      nome = firstNonEmpty(nome, deal.lead_name as string | undefined);
     }
   } catch (err) {
-    console.warn('[send-whatsapp] deal lookup failed:', err?.logMessage || err?.message || err);
+    console.warn(
+      '[send-whatsapp] deal lookup failed:',
+      (err as { logMessage?: string })?.logMessage || (err as Error)?.message || err
+    );
   }
 
   return {
@@ -406,8 +489,8 @@ async function resolveContactFromQuotation(quotationId) {
 
 // ── Evolution API ───────────────────────────────────────────────────────────
 
-function assertEvolutionConfig() {
-  const missing = [];
+function assertEvolutionConfig(): void {
+  const missing: string[] = [];
   if (!EVOLUTION_BASE_URL) missing.push('EVOLUTION_BASE_URL');
   if (!EVOLUTION_API_KEY) missing.push('EVOLUTION_API_KEY');
   if (!EVOLUTION_INSTANCE) missing.push('EVOLUTION_INSTANCE');
@@ -420,10 +503,10 @@ function assertEvolutionConfig() {
   }
 }
 
-async function evolutionPost(path, body) {
+async function evolutionPost(path: string, body: Record<string, unknown>): Promise<unknown> {
   const url = `${EVOLUTION_BASE_URL}${path}`;
-  let res;
-  let responseBody;
+  let res: Response;
+  let responseBody: unknown;
   try {
     res = await fetch(url, {
       method: 'POST',
@@ -438,34 +521,35 @@ async function evolutionPost(path, body) {
     throw createHttpError(
       502,
       'Falha ao conectar com o WhatsApp. Tente novamente.',
-      `[send-whatsapp] Evolution fetch failed: ${err.message}`
+      `[send-whatsapp] Evolution fetch failed: ${(err as Error).message}`
     );
   }
 
   if (!res.ok) {
+    const rb = responseBody as Record<string, unknown> | null;
     const detail =
-      responseBody?.message ||
-      responseBody?.error ||
-      responseBody?.response?.message ||
+      rb?.message ||
+      rb?.error ||
+      (rb?.response as Record<string, unknown> | undefined)?.message ||
       JSON.stringify(responseBody || {});
     throw createHttpError(
       res.status === 401 || res.status === 403 ? 502 : 400,
       'Não foi possível enviar a mensagem pelo WhatsApp. Verifique se a instância está conectada.',
-      `[send-whatsapp] Evolution ${res.status}: ${detail}`
+      `[send-whatsapp] Evolution ${res.status}: ${String(detail)}`
     );
   }
 
   return responseBody;
 }
 
-async function sendText(number, text) {
+async function sendText(number: string, text: string): Promise<unknown> {
   return evolutionPost(`/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
     number,
     text,
   });
 }
 
-async function fetchQuotationPdfBuffer(quotationId) {
+async function fetchQuotationPdfBuffer(quotationId: string): Promise<Buffer> {
   try {
     const { buffer } = await generateQuotationPdf(quotationId, { timeout: 30000 });
     if (!buffer || buffer.length === 0) {
@@ -477,16 +561,16 @@ async function fetchQuotationPdfBuffer(quotationId) {
     }
     return buffer;
   } catch (err) {
-    if (err?.statusCode) throw err;
+    if ((err as { statusCode?: number })?.statusCode) throw err;
     throw createHttpError(
       502,
       'Falha ao gerar o PDF do orçamento.',
-      `[send-whatsapp] generateQuotationPdf error for ${quotationId}: ${err.message}`
+      `[send-whatsapp] generateQuotationPdf error for ${quotationId}: ${(err as Error).message}`
     );
   }
 }
 
-async function sendMedia(number, step) {
+async function sendMedia(number: string, step: SequenceStep): Promise<unknown> {
   // ── Quotation PDF marker ──
   let media = step.media;
   if (media && typeof media === 'string' && media.startsWith('__pdf__:')) {
@@ -517,11 +601,11 @@ async function sendMedia(number, step) {
       const buffer = Buffer.from(await res.arrayBuffer());
       media = buffer.toString('base64');
     } catch (err) {
-      if (err?.statusCode) throw err;
+      if ((err as { statusCode?: number })?.statusCode) throw err;
       throw createHttpError(
         502,
         'Falha ao processar a mídia para envio.',
-        `[send-whatsapp] media download error: ${err.message}`
+        `[send-whatsapp] media download error: ${(err as Error).message}`
       );
     }
   }
@@ -536,12 +620,12 @@ async function sendMedia(number, step) {
   });
 }
 
-async function sendStep(number, step) {
-  if (step.type === 'text') return sendText(number, step.text);
+async function sendStep(number: string, step: SequenceStep): Promise<unknown> {
+  if (step.type === 'text') return sendText(number, step.text || '');
   return sendMedia(number, step);
 }
 
-async function markDealAsSent(dealId, quotationId) {
+async function markDealAsSent(dealId: string | null, quotationId: string): Promise<void> {
   if (!dealId) return;
   try {
     await erpPut('CRM Deal', dealId, {
@@ -551,13 +635,16 @@ async function markDealAsSent(dealId, quotationId) {
       custom_follow_up_stage: 0,
     });
   } catch (err) {
-    console.warn('[send-whatsapp] deal update failed:', err?.logMessage || err?.message || err);
+    console.warn(
+      '[send-whatsapp] deal update failed:',
+      (err as { logMessage?: string })?.logMessage || (err as Error)?.message || err
+    );
   }
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-async function dispatchN8n(payload, email) {
+async function dispatchN8n(payload: Record<string, unknown>, email?: string): Promise<void> {
   const n8nUrl = process.env.N8N_WEBHOOK_URL;
   if (!n8nUrl) return;
   const timeoutSignal =
@@ -577,17 +664,17 @@ async function dispatchN8n(payload, email) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(webhookPayload),
     signal: timeoutSignal,
-  }).catch((err) => console.error('[send-whatsapp] n8n webhook failed:', err.message));
+  }).catch((err: Error) => console.error('[send-whatsapp] n8n webhook failed:', err.message));
 }
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  let payload;
+  let payload: Record<string, unknown>;
   try {
-    payload = JSON.parse(event.body || '{}');
+    payload = JSON.parse(event.body || '{}') as Record<string, unknown>;
   } catch {
     return jsonResponse(400, { error: 'JSON inválido' });
   }
@@ -598,10 +685,25 @@ export async function handler(event) {
 
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
     const shouldResolveQuotation = quotationId && !dryRun;
-    const resolved = shouldResolveQuotation ? await resolveContactFromQuotation(quotationId) : {};
+    const resolved = shouldResolveQuotation
+      ? await resolveContactFromQuotation(quotationId)
+      : ({ quotation: {}, dealId: null, nome: '', email: '', telefone: '' } as {
+          quotation: Record<string, unknown>;
+          dealId: string | null;
+          nome: string;
+          email: string;
+          telefone: string;
+        });
 
-    const nome = firstNonEmpty(payload.nome, resolved.nome);
-    const rawPhone = firstNonEmpty(payload.telefone, payload.phone, resolved.telefone);
+    const nome = firstNonEmpty(
+      payload.nome as string | undefined,
+      resolved.nome
+    );
+    const rawPhone = firstNonEmpty(
+      payload.telefone as string | undefined,
+      payload.phone as string | undefined,
+      resolved.telefone
+    );
     const number = normalizePhone(rawPhone);
     if (!number) {
       throw createHttpError(400, 'Telefone inválido ou ausente para envio via WhatsApp.');
@@ -609,44 +711,53 @@ export async function handler(event) {
 
     const baseUrl = publicBaseUrl(event);
     const link = firstNonEmpty(
-      payload.link_orcamento,
-      payload.short_url,
+      payload.link_orcamento as string | undefined,
+      payload.short_url as string | undefined,
       quotationId ? `${baseUrl}/api/view?q=${encodeURIComponent(quotationId)}` : ''
     );
 
-    const sequence = payload.whatsapp_sequence || payload.sequence || null;
-    const items =
-      payload.items ||
+    const sequence = (payload.whatsapp_sequence as Record<string, unknown> | undefined) ||
+      (payload.sequence as Record<string, unknown> | undefined) ||
+      null;
+    const items = (payload.items ||
       payload.order_items ||
       payload.quotation_items ||
-      resolved.quotation?.items ||
-      [];
+      (resolved.quotation as Record<string, unknown>)?.items ||
+      []) as Array<Record<string, unknown>>;
     const categories = detectCategories(items);
     const productSummary = firstNonEmpty(
-      payload.produto_resumo,
-      payload.product_summary,
-      sequence?.product_summary,
+      payload.produto_resumo as string | undefined,
+      payload.product_summary as string | undefined,
+      (sequence?.product_summary as string | undefined),
       productSummaryFromCategories(categories)
     );
-    const context = {
+    const context: TemplateContext = {
       nome,
       quotationId,
       link,
-      vendorName: sequence?.vendor_name || payload.vendedora || payload.vendor_name || 'Juliana',
+      vendorName:
+        (sequence?.vendor_name as string | undefined) ||
+        (payload.vendedora as string | undefined) ||
+        (payload.vendor_name as string | undefined) ||
+        'Juliana',
       productSummary,
       categories,
-      pdfUrl: firstNonEmpty(payload.pdf_url, payload.pdfUrl, sequence?.pdf_url),
+      pdfUrl: firstNonEmpty(
+        payload.pdf_url as string | undefined,
+        payload.pdfUrl as string | undefined,
+        sequence?.pdf_url as string | undefined
+      ),
     };
 
     if (sequence) {
       const delayMinMs = toPositiveInt(
-        sequence.delay_min_ms ?? sequence.delayMinMs,
+        (sequence as Record<string, unknown>)?.delay_min_ms ?? (sequence as Record<string, unknown>)?.delayMinMs,
         5000,
         0,
         30000
       );
       const delayMaxMs = toPositiveInt(
-        sequence.delay_max_ms ?? sequence.delayMaxMs,
+        (sequence as Record<string, unknown>)?.delay_max_ms ?? (sequence as Record<string, unknown>)?.delayMaxMs,
         Math.max(delayMinMs, 8000),
         delayMinMs,
         45000
@@ -659,25 +770,32 @@ export async function handler(event) {
         );
       }
 
-      const evolution = [];
+      const evolution: unknown[] = [];
       if (!dryRun) {
         for (let i = 0; i < steps.length; i++) {
           if (i > 0) await wait(randomDelay(delayMinMs, delayMaxMs));
           const response = await sendStep(number, steps[i]);
           evolution.push(response);
         }
-        await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
+        await markDealAsSent(
+          (payload.deal_id as string) || resolved.dealId,
+          quotationId
+        );
       }
 
-      const dealId = payload.deal_id || resolved.dealId || null;
-      if (!dryRun)
-        dispatchN8n({ quotationId, dealId, nome, number }, resolved.email || payload.email);
+      const dealId = (payload.deal_id as string) || resolved.dealId || null;
+      if (!dryRun) {
+        await dispatchN8n(
+          { quotationId, dealId, nome, number },
+          resolved.email || (payload.email as string | undefined)
+        );
+      }
 
       return jsonResponse(200, {
         success: true,
         dry_run: dryRun,
         quotation_id: quotationId || null,
-        deal_id: payload.deal_id || resolved.dealId || null,
+        deal_id: (payload.deal_id as string) || resolved.dealId || null,
         number,
         delay_min_ms: delayMinMs,
         delay_max_ms: delayMaxMs,
@@ -689,17 +807,32 @@ export async function handler(event) {
     }
 
     const text =
-      firstNonEmpty(payload.mensagem, payload.message) || renderTemplate(payload.template, context);
+      firstNonEmpty(
+        payload.mensagem as string | undefined,
+        payload.message as string | undefined
+      ) ||
+      renderTemplate(
+        payload.template as string,
+        context
+      );
     if (!text.trim()) {
       throw createHttpError(400, 'Mensagem vazia.');
     }
 
     const evolution = dryRun ? null : await sendText(number, text);
     if (!dryRun) {
-      await markDealAsSent(payload.deal_id || resolved.dealId, quotationId);
-      dispatchN8n(
-        { quotationId, dealId: payload.deal_id || resolved.dealId || null, nome, number },
-        resolved.email || payload.email
+      await markDealAsSent(
+        (payload.deal_id as string) || resolved.dealId,
+        quotationId
+      );
+      await dispatchN8n(
+        {
+          quotationId,
+          dealId: (payload.deal_id as string) || resolved.dealId || null,
+          nome,
+          number,
+        },
+        resolved.email || (payload.email as string | undefined)
       );
     }
 
@@ -707,14 +840,15 @@ export async function handler(event) {
       success: true,
       dry_run: dryRun,
       quotation_id: quotationId || null,
-      deal_id: payload.deal_id || resolved.dealId || null,
+      deal_id: (payload.deal_id as string) || resolved.dealId || null,
       number,
       message: text,
       evolution,
     });
   } catch (err) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[send-whatsapp]', err?.logMessage || err?.message || err);
-    return jsonResponse(code, { error: err?.message || 'Erro interno.' });
+    const typedErr = err as { statusCode?: number; logMessage?: string; message?: string };
+    const code = Number.isInteger(typedErr?.statusCode) ? typedErr.statusCode! : 500;
+    console.error('[send-whatsapp]', typedErr?.logMessage || typedErr?.message || err);
+    return jsonResponse(code, { error: typedErr?.message || 'Erro interno.' });
   }
 }
