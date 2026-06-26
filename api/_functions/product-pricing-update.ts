@@ -8,7 +8,7 @@ import { erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
  * Upsert a single Pricing Rule bracket for a given SKU.
  * Returns { faixa, rate, status, rule_name }.
  */
-async function upsertBracket(sku, faixa, rate) {
+async function upsertBracket(sku: string, faixa: string, rate: number): Promise<Record<string, unknown>> {
   const title = `${sku}-${faixa}`;
 
   // Buscar Pricing Rule existente pelo titulo

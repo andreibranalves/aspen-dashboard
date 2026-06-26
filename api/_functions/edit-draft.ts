@@ -24,29 +24,29 @@ function createHttpError(statusCode: number, publicMessage: string, logMessage?:
   return error;
 }
 
-function parseJsonSafely(raw) {
-  try { return JSON.parse(raw); } catch { return null; }
+function parseJsonSafely(raw: unknown): Record<string, unknown> | null {
+  try { return JSON.parse(raw as string); } catch { return null; }
 }
 
-function unwrapJsonText(raw) {
+function unwrapJsonText(raw: unknown): string {
   const trimmed = String(raw || '').trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fenced ? fenced[1].trim() : trimmed;
 }
 
-function extractAssistantText(data) {
-  const content = data?.choices?.[0]?.message?.content;
+function extractAssistantText(data: Record<string, unknown>): string {
+  const content: unknown = (data as any)?.choices?.[0]?.message?.content;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
-      .filter(part => part?.type === 'text' && typeof part.text === 'string')
-      .map(part => part.text)
+      .filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
+      .map((part: any) => part.text)
       .join('');
   }
   return '';
 }
 
-function validateDraft(draft) {
+function validateDraft(draft: Record<string, unknown>): void {
   if (!draft || typeof draft !== 'object' || Array.isArray(draft)) {
     throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Draft não é um objeto');
   }
@@ -81,7 +81,7 @@ function validateDraft(draft) {
   }
 }
 
-async function editDraftWithOpenRouter(prompt, currentDraft) {
+async function editDraftWithOpenRouter(prompt: string, currentDraft: unknown): Promise<Record<string, unknown>> {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
   const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
@@ -93,7 +93,7 @@ async function editDraftWithOpenRouter(prompt, currentDraft) {
     throw createHttpError(400, 'Informe um comando de edição.');
   }
 
-  const headers = {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${OPENROUTER_API_KEY}`,
     'Content-Type': 'application/json',
     'X-OpenRouter-Title': 'Aspen Orcamento App',
@@ -125,11 +125,11 @@ async function editDraftWithOpenRouter(prompt, currentDraft) {
   const data = parseJsonSafely(responseText);
 
   if (!res.ok) {
-    const upstreamMessage = data?.error?.message || responseText || `OpenRouter retornou HTTP ${res.status}`;
+    const upstreamMessage = (data?.error as Record<string, unknown>)?.message as string || responseText || `OpenRouter retornou HTTP ${res.status}`;
     throw createHttpError(502, 'Falha ao interpretar edição.', `OpenRouter HTTP ${res.status}: ${upstreamMessage}`);
   }
 
-  const raw = extractAssistantText(data);
+  const raw = extractAssistantText(data ?? {});
   if (!raw) {
     throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Resposta sem conteúdo textual');
   }

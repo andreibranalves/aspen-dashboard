@@ -1,5 +1,5 @@
 // GET    /api/communication-media        — list media assets (scan KV by prefix)
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 // GET    /api/communication-media/:id    — single media asset
 // POST   /api/communication-media        — create media asset metadata (after Blob upload)
 // PUT    /api/communication-media/:id    — update media asset
@@ -23,7 +23,7 @@ import {
 /**
  * Extract resource ID from the URL path after /api/communication-media/
  */
-function extractId(event) {
+function extractId(event: Record<string, any>): string | null {
   const queryId = String(event.queryStringParameters?.id || '').trim();
   if (queryId) return queryId;
 
@@ -40,7 +40,7 @@ function extractId(event) {
 
 // ── KV helpers ─────────────────────────────────────────────────────────────
 
-async function scanMediaKeys() {
+async function scanMediaKeys(): Promise<string[]> {
   // kv.scanIterator requires Node 18+ / Vercel Edge compatible
   try {
     const result = await kv.scan(0, { match: `${KV_KEY_MEDIA_PREFIX}*`, count: 200 });
@@ -51,7 +51,7 @@ async function scanMediaKeys() {
   }
 }
 
-async function readAllMedia() {
+async function readAllMedia(): Promise<unknown[]> {
   try {
     const keys = await scanMediaKeys();
     if (keys.length === 0) return [];
@@ -63,16 +63,16 @@ async function readAllMedia() {
   }
 }
 
-async function readMedia(id) {
+async function readMedia(id: string): Promise<any[] | null> {
   try {
-    return await kv.get(`${KV_KEY_MEDIA_PREFIX}${id}`);
+    return await kv.get(`${KV_KEY_MEDIA_PREFIX}${id}`) as any[] | null;
   } catch (err: any) {
     console.warn(`[communication-media] KV read ${id} failed:`, err.message);
     return null;
   }
 }
 
-async function writeMedia(asset) {
+async function writeMedia(asset: Record<string, any>): Promise<void> {
   try {
     await kv.set(`${KV_KEY_MEDIA_PREFIX}${asset.id}`, asset);
   } catch (err: any) {
@@ -84,7 +84,7 @@ async function writeMedia(asset) {
   }
 }
 
-async function deleteMediaFromKV(id) {
+async function deleteMediaFromKV(id: string): Promise<void> {
   try {
     await kv.del(`${KV_KEY_MEDIA_PREFIX}${id}`);
   } catch (err: any) {
@@ -94,7 +94,7 @@ async function deleteMediaFromKV(id) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
+const jsonResponse: JsonResponseFn = (statusCode, body) => {
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
@@ -132,9 +132,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   // ── GET: List all media ──
   if (method === 'GET' && !id) {
     try {
-      let items: Record<string, unknown>[] = await readAllMedia() as Record<string, unknown>[];
-      const q = event.queryStringParameters || {};
-      items = filterItems(items, q);
+      let items: Record<string, unknown>[] = (await readAllMedia()) as Record<string, unknown>[];
+      const q: Record<string, string> = (event.queryStringParameters || {}) as Record<string, string>;
+      items = filterItems(items, q as Record<string, string>);
 
       // Sort by sort_order then created_at desc
       items.sort(
@@ -223,13 +223,13 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         'content_type',
         'size_bytes',
       ];
-      const merged: Record<string, unknown> = { ...(existing as Record<string, unknown>) };
+      const merged: Record<string, unknown> = { ...(existing as any as Record<string, unknown>) };
       for (const field of updatableFields) {
         if (payload[field] !== undefined) merged[field] = payload[field];
       }
       merged.updated_at = new Date().toISOString();
 
-      const asset = createMediaAsset(merged);
+      const asset = createMediaAsset(merged as Record<string, any>);
       await writeMedia(asset);
       return jsonResponse(200, { success: true, item: asset });
     } catch (err: any) {
@@ -247,14 +247,14 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (method === 'DELETE' && id) {
     try {
       const existing = await readMedia(id);
-      const existingRecord = existing as Record<string, unknown> | null;
+      const existingRecord = existing as any as Record<string, unknown> | null;
       if (!existingRecord) return jsonResponse(404, { error: 'Mídia não encontrada.' });
 
       // Attempt Blob deletion (best-effort, non-blocking)
       if (existingRecord.blob_url) {
         try {
           await blobDelete(existingRecord.blob_url as string);
-        } catch (blobErr) {
+        } catch (blobErr: any) {
           console.warn(
             `[communication-media] Blob delete failed for ${existingRecord.blob_url}:`,
             blobErr.message

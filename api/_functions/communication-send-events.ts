@@ -1,5 +1,5 @@
 // GET /api/communication-send-events
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 //
 // Lists WhatsApp flow send events from KV.
 // Query params: quotation_id, phone, flow_id, status, limit (default 50)
@@ -12,13 +12,11 @@ import { KV_KEY_SEND_EVENTS_PREFIX } from '../_lib/media-schema.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
+const jsonResponse: JsonResponseFn = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 

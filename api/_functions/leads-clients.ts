@@ -4,8 +4,8 @@ import { erpGetList, erpDelete, erpPost, createHttpError } from './lib/erpnext.j
 // ── Helpers ──
 
 function parsePageLimit(params: Record<string, string | undefined>) {
-  const page = Math.max(1, parseInt(params.page, 10) || 1);
-  const limit = Math.min(200, Math.max(1, parseInt(params.limit, 10) || 50));
+  const page = Math.max(1, parseInt(params.page ?? '1', 10) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(params.limit ?? '50', 10) || 50));
   return { page, limit };
 }
 

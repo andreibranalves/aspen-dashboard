@@ -1,11 +1,12 @@
 // POST /api/communication-flow-preview
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 //
 // Renders a CommunicationFlow into a preview array of steps with resolved
 // template variables and media selections. Can work with mock context
 // (no quotationId) or real context (with quotationId from ERPNext).
 //
 // Used by the flow editor's preview panel and the pre-send confirmation dialog.
+
 
 import { kv } from '@vercel/kv';
 import { erpGetDoc } from './lib/erpnext.js';
@@ -14,7 +15,7 @@ import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
-function normalizeProductSummaryTemplate(template) {
+function normalizeProductSummaryTemplate(template: unknown): string {
   return String(template || '')
     .replace(
       /\(produto_resumo\)\s+personalizado\(a\)/g,
@@ -26,18 +27,18 @@ function normalizeProductSummaryTemplate(template) {
     );
 }
 
-function pluralizeProductCategory(category) {
+function pluralizeProductCategory(category: string): string {
   return PRODUCT_SUMMARY_PLURALS[category] || category;
 }
 
-function productPersonalizationAdjectiveFromCategories(categories = []) {
+function productPersonalizationAdjectiveFromCategories(categories: string[] = []): string {
   const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
   return genders.length > 0 && genders.every((gender) => gender === 'f')
     ? 'personalizadas'
     : 'personalizados';
 }
 
-function renderTemplate(template, context) {
+function renderTemplate(template: string, context: Record<string, any>): string {
   const ctx = { ...context };
   if (template.includes('(Saudacao)') && !ctx.Saudacao) {
     ctx.Saudacao = getTimeBasedGreeting();
@@ -65,7 +66,7 @@ function renderTemplate(template, context) {
 
 // ── Product category detection ─────────────────────────────────────────────
 
-const PRODUCT_CATEGORY_BY_PREFIX = {
+const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
   CNG: 'canga',
   LNC: 'lenço',
   BNE: 'boné',
@@ -74,7 +75,7 @@ const PRODUCT_CATEGORY_BY_PREFIX = {
   ECO: 'ecobag',
   CHC: 'cachecol',
 };
-const PRODUCT_SUMMARY_PLURALS = {
+const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
   canga: 'cangas',
   lenço: 'lenços',
   boné: 'bonés',
@@ -83,7 +84,7 @@ const PRODUCT_SUMMARY_PLURALS = {
   ecobag: 'ecobags',
   cachecol: 'cachecóis',
 };
-const PRODUCT_CATEGORY_GENDERS = {
+const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   canga: 'f',
   lenço: 'm',
   boné: 'm',
@@ -93,20 +94,20 @@ const PRODUCT_CATEGORY_GENDERS = {
   cachecol: 'm',
 };
 
-function detectCategories(items = []) {
-  const categories = [];
+function detectCategories(items: Record<string, any>[] = []): string[] {
+  const categories: string[] = [];
   for (const item of items || []) {
     const sku = String(item?.sku || item?.item_code || item?.itemCode || '')
       .trim()
       .toUpperCase();
     const prefix = sku.split('-')[0];
-    const category = PRODUCT_CATEGORY_BY_PREFIX[prefix];
+    const category = (PRODUCT_CATEGORY_BY_PREFIX as Record<string, string>)[prefix];
     if (category && !categories.includes(category)) categories.push(category);
   }
   return categories;
 }
 
-function productSummaryFromCategories(categories = []) {
+function productSummaryFromCategories(categories: string[] = []): string {
   const labels = categories.map(pluralizeProductCategory);
   if (!labels.length) return 'produtos';
   if (labels.length === 1) return labels[0];
@@ -130,7 +131,7 @@ function getMockContext() {
 
 // ── Quotation context resolution ───────────────────────────────────────────
 
-async function resolveQuotationContext(quotationId) {
+async function resolveQuotationContext(quotationId: string): Promise<Record<string, any> | null> {
   try {
     const quotation = await erpGetDoc('Quotation', quotationId);
     if (!quotation) return null;
@@ -197,13 +198,12 @@ async function resolveMediaUrls(categories: string[]) {
 
 // ── JSON response ──────────────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
-  return {
+const jsonResponse: JsonResponseFn = (statusCode, body) =>
+  ({
     statusCode,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  };
-}
+  });
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 

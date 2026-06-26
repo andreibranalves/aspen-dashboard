@@ -13,14 +13,29 @@ import { erpGetList, erpGetDoc, createHttpError } from './lib/erpnext.js';
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const VALID_STATUSES = [
-  'Draft', 'To Deliver and Bill', 'To Deliver', 'To Bill',
-  'Completed', 'Cancelled', 'Closed',
+  'Draft',
+  'To Deliver and Bill',
+  'To Deliver',
+  'To Bill',
+  'Completed',
+  'Cancelled',
+  'Closed',
 ];
 
 const LIST_FIELDS = [
-  'name', 'transaction_date', 'customer', 'customer_name',
-  'grand_total', 'rounded_total', 'status', 'docstatus',
-  'delivery_date', 'per_delivered', 'per_billed', 'creation', 'modified',
+  'name',
+  'transaction_date',
+  'customer',
+  'customer_name',
+  'grand_total',
+  'rounded_total',
+  'status',
+  'docstatus',
+  'delivery_date',
+  'per_delivered',
+  'per_billed',
+  'creation',
+  'modified',
 ];
 
 const ITEM_FIELDS = ['item_code', 'item_name', 'qty', 'uom', 'rate', 'amount', 'prevdoc_docname'];
@@ -36,7 +51,7 @@ const ITEM_FIELDS = ['item_code', 'item_name', 'qty', 'uom', 'rate', 'amount', '
  * @param {string} [to]   - Custom end date YYYY-MM-DD
  * @returns {{ start: string, end: string }}
  */
-function getPeriodDates(period, from, to) {
+function getPeriodDates(period: string, from: string | undefined, to: string | undefined) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   let start;
@@ -86,14 +101,14 @@ function getPeriodDates(period, from, to) {
  * @param {object} query - Query string parameters
  * @returns {{ filters: Array, orFilters: Array|null }}
  */
-function buildListFilters(query) {
+function buildListFilters(query: Record<string, string | undefined>) {
   const search = (query.search || '').trim();
   const status = (query.status || '').trim();
   const period = (query.period || '').trim().toLowerCase();
   const from = (query.from || '').trim();
   const to = (query.to || '').trim();
 
-  const filters = [];
+  const filters: any[] = [];
 
   // ── Status filter ───────────────────────────────────────────────────────
   if (status && VALID_STATUSES.includes(status)) {
@@ -141,21 +156,24 @@ function buildListFilters(query) {
  * @param {Array} orders - Sales Order objects (must have .name)
  * @returns {Promise<Array>}
  */
-async function attachSourceQuotations(orders) {
+async function attachSourceQuotations(orders: Record<string, unknown>[]) {
   if (orders.length === 0) return orders;
 
   const fetchPromises = orders.map(async (order) => {
     try {
-      const doc = await erpGetDoc('Sales Order', order.name, { fields: ITEM_FIELDS });
-      const items = doc?.items || [];
+      const doc = await erpGetDoc('Sales Order', order.name as string, { fields: ITEM_FIELDS });
+      const items = (doc?.items || []) as Record<string, unknown>[];
       // Find first non-empty prevdoc_docname
-      const source = items.find(item => item.prevdoc_docname)?.prevdoc_docname || null;
+      const source =
+        (items.find((item: Record<string, unknown>) => item.prevdoc_docname)?.prevdoc_docname as
+          | string
+          | undefined) || null;
       order.source_quotation = source;
     } catch (err: any) {
       console.warn(
         '[sales-orders] Failed to load items for',
         order.name,
-        err?.logMessage || err?.message || err,
+        err?.logMessage || err?.message || err
       );
       order.source_quotation = null;
     }
@@ -171,37 +189,41 @@ async function attachSourceQuotations(orders) {
  * @param {object} doc - Full Sales Order document from erpGetDoc
  * @returns {string|null}
  */
-function getSourceQuotationFromDoc(doc) {
-  const items = doc?.items || [];
-  const sourceItem = items.find(item => item.prevdoc_docname);
-  return sourceItem?.prevdoc_docname || null;
+function getSourceQuotationFromDoc(doc: Record<string, unknown>) {
+  const items = (doc?.items || []) as Record<string, unknown>[];
+  const sourceItem = items.find((item: Record<string, unknown>) => item.prevdoc_docname);
+  return (sourceItem?.prevdoc_docname as string) || null;
 }
 
 // ── Parameter Validation ────────────────────────────────────────────────────
 
-function validateListParams(query) {
+function validateListParams(query: Record<string, string | undefined>) {
   // status
   const status = (query.status || '').trim();
   if (status && !VALID_STATUSES.includes(status)) {
     throw createHttpError(
       400,
       'Status inválido. Valores aceitos: ' + VALID_STATUSES.join(', '),
-      `[sales-orders] invalid status: "${status}"`,
+      `[sales-orders] invalid status: "${status}"`
     );
   }
 
   // page
-  let page = parseInt(query.page, 10);
+  let page = parseInt(query.page || '', 10);
   if (isNaN(page) || page === 0) page = 1;
   if (page < 1) {
     throw createHttpError(400, 'Página inválida.', `[sales-orders] invalid page: ${query.page}`);
   }
 
   // limit
-  let limit = parseInt(query.limit, 10);
+  let limit = parseInt(query.limit || '', 10);
   if (isNaN(limit) || limit === 0) limit = 25;
   if (limit > 200) {
-    throw createHttpError(400, 'Limite máximo é 200 registros por página.', `[sales-orders] limit exceeds 200: ${limit}`);
+    throw createHttpError(
+      400,
+      'Limite máximo é 200 registros por página.',
+      `[sales-orders] limit exceeds 200: ${limit}`
+    );
   }
 
   return { status, page, limit };
@@ -209,7 +231,7 @@ function validateListParams(query) {
 
 // ── Detail Endpoint ─────────────────────────────────────────────────────────
 
-async function handleDetail(orderId) {
+async function handleDetail(orderId: string) {
   let order;
   try {
     order = await erpGetDoc('Sales Order', orderId);
@@ -217,7 +239,7 @@ async function handleDetail(orderId) {
     throw createHttpError(
       err?.statusCode === 404 ? 404 : 502,
       'Pedido de Venda não encontrado.',
-      `[sales-orders] erpGetDoc(${orderId}) failed: ${err?.logMessage || err?.message || err}`,
+      `[sales-orders] erpGetDoc(${orderId}) failed: ${err?.logMessage || err?.message || err}`
     );
   }
 
@@ -225,20 +247,22 @@ async function handleDetail(orderId) {
     throw createHttpError(
       404,
       'Pedido de Venda não encontrado.',
-      `[sales-orders] null response for ${orderId}`,
+      `[sales-orders] null response for ${orderId}`
     );
   }
 
   // Map items with per-item source_quotation
-  const items = (order.items || []).map(item => ({
-    item_code: item.item_code || '',
-    item_name: item.item_name || '',
-    qty: item.qty ?? 0,
-    uom: item.uom || '',
-    rate: item.rate ?? 0,
-    amount: item.amount ?? 0,
-    source_quotation: item.prevdoc_docname || null,
-  }));
+  const items = ((order.items || []) as Record<string, unknown>[]).map(
+    (item: Record<string, unknown>) => ({
+      item_code: item.item_code || '',
+      item_name: item.item_name || '',
+      qty: item.qty ?? 0,
+      uom: item.uom || '',
+      rate: item.rate ?? 0,
+      amount: item.amount ?? 0,
+      source_quotation: item.prevdoc_docname || null,
+    })
+  );
 
   const sourceQuotation = getSourceQuotationFromDoc(order);
 
@@ -261,7 +285,7 @@ async function handleDetail(orderId) {
 
 // ── List Endpoint ───────────────────────────────────────────────────────────
 
-async function handleList(query) {
+async function handleList(query: Record<string, string | undefined>) {
   const { page, limit } = validateListParams(query);
   const { filters, orFilters } = buildListFilters(query);
   const start = (page - 1) * limit;
@@ -289,7 +313,7 @@ async function handleList(query) {
   await attachSourceQuotations(rawOrders);
 
   // 4. Map to response shape
-  const items = rawOrders.map(o => ({
+  const items = rawOrders.map((o) => ({
     id: o.name,
     date: o.transaction_date || '',
     customer: o.customer || '',

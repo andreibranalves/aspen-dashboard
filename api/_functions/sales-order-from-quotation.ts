@@ -10,7 +10,7 @@ import { erpGetList, erpGetDoc, erpPost, erpCallMethod, createHttpError } from '
  * Extract a `.name` property from the response of a Frappe method call.
  * Frappe returns { message: { name: 'ORD-...' } } or similar shapes.
  */
-function resolveDocName(mapped) {
+function resolveDocName(mapped: any): string | null {
   if (typeof mapped === 'string') return mapped;
   if (mapped?.name) return mapped.name;
   if (mapped?.data?.name) return mapped.data.name;
@@ -21,7 +21,7 @@ function resolveDocName(mapped) {
 /**
  * Normalise the mapped doc so it has at least `doctype` and `items`.
  */
-function normaliseMappedDoc(mapped) {
+function normaliseMappedDoc(mapped: any): any {
   // If the method returned the full doc directly
   if (mapped?.doctype) return mapped;
   // Sometimes Frappe wraps it in message.data
@@ -34,7 +34,7 @@ function normaliseMappedDoc(mapped) {
  * Try to update the CRM Deal linked to this quotation.  Never throws.
  * Returns `true` if the update succeeded, `false` otherwise.
  */
-async function tryUpdateCrmDeal(quotationId, salesOrderName) {
+async function tryUpdateCrmDeal(quotationId: string, salesOrderName: string): Promise<boolean> {
   try {
     const deals = await erpGetList('CRM Deal', {
       filters: [['custom_quotation', '=', quotationId]],
@@ -60,7 +60,7 @@ async function tryUpdateCrmDeal(quotationId, salesOrderName) {
         },
       });
       return true;
-    } catch (fullErr) {
+    } catch (fullErr: any) {
       // Fallback: status-only (custom_sales_order field may not exist)
       console.warn(
         '[sales-order-from-quotation] Falha ao atualizar deal com custom_sales_order, tentando apenas status:',
@@ -88,7 +88,7 @@ async function tryUpdateCrmDeal(quotationId, salesOrderName) {
  *
  * Returns { alreadyExists: boolean, existingOrder: object|null }
  */
-async function checkDuplicate(quotationId) {
+async function checkDuplicate(quotationId: string): Promise<{ alreadyExists: boolean; existingOrder: any }> {
   try {
     // Preferred path: query child table (Sales Order Item) for prevdoc_docname
     const items = await erpGetList('Sales Order Item', {
@@ -108,7 +108,7 @@ async function checkDuplicate(quotationId) {
     }
 
     return { alreadyExists: false, existingOrder: null };
-  } catch (_err) {
+  } catch (_err: any) {
     // Fallback: child table query may fail (field missing, permission issue)
     // Search recent Sales Orders and check items manually
     console.warn(
@@ -135,7 +135,7 @@ async function checkDuplicate(quotationId) {
 
         const items = fullOrder.items || [];
         const hasMatch = items.some(
-          item => item.prevdoc_docname === quotationId
+          (item: any) => item.prevdoc_docname === quotationId
         );
         if (hasMatch && fullOrder.docstatus !== 2) {
           return { alreadyExists: true, existingOrder: fullOrder };
@@ -210,7 +210,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     if (quotation.docstatus === 0) {
       try {
         await erpCallMethod('frappe.client.submit', { doc: quotation });
-      } catch (submitErr) {
+      } catch (submitErr: any) {
         throw createHttpError(
           400,
           'Não foi possível confirmar o orçamento antes de gerar o pedido. Revise os itens e tente novamente.',
@@ -226,7 +226,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         'erpnext.selling.doctype.quotation.quotation.make_sales_order',
         { source_name: quotationId }
       );
-    } catch (mapErr) {
+    } catch (mapErr: any) {
       throw createHttpError(
         400,
         'Não foi possível converter o orçamento em pedido de venda. Verifique os itens e tente novamente.',
@@ -265,7 +265,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     if (salesOrder.docstatus === 0 || salesOrder.docstatus === undefined) {
       try {
         await erpCallMethod('frappe.client.submit', { doc: salesOrder });
-      } catch (soSubmitErr) {
+      } catch (soSubmitErr: any) {
         throw createHttpError(
           400,
           'Não foi possível confirmar o pedido de venda automaticamente.',

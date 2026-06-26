@@ -1,5 +1,5 @@
 // POST /api/communication-media-upload
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 //
 // Vercel Blob client upload token generation using handleUpload from @vercel/blob/client.
 //
@@ -23,13 +23,11 @@ import {
 
 // ── JSON response helper ───────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
+const jsonResponse: JsonResponseFn = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 

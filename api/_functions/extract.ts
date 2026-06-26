@@ -250,7 +250,7 @@ async function extractWithOpenRouter(
 
   validateInput(text, imageBase64, imageMimeType);
 
-  const headers = {
+  const headers: Record<string, string> = {
     Authorization: `Bearer ${OPENROUTER_API_KEY}`,
     'Content-Type': 'application/json',
     'X-OpenRouter-Title': 'Aspen Orcamento App',

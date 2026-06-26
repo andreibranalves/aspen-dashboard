@@ -1,5 +1,10 @@
 // POST /api/typebot-lead-capture
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type {
+  FunctionEvent,
+  FunctionResult,
+  JsonResponseFn,
+  LegacyHandler,
+} from '../_lib/types.js';
 //
 // Validates a Bearer token, normalizes the inbound payload, and reproduces the
 // current production diagnostic response while the route is disabled. When the
@@ -9,45 +14,45 @@ import { createHttpError, erpGetList, erpPost, erpPut } from './lib/erpnext.js';
 
 const LIVE_DEPS = { erpGetList, erpPost, erpPut };
 
-function jsonResponse(statusCode, body) {
+const jsonResponse: JsonResponseFn = (statusCode: number, body: unknown): FunctionResult => {
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   };
-}
+};
 
-function parseJsonBody(body) {
+function parseJsonBody(body: unknown): Record<string, unknown> {
   if (!body) return {};
-  if (typeof body === 'object') return body;
+  if (typeof body === 'object') return body as Record<string, unknown>;
   try {
-    return JSON.parse(body);
+    return JSON.parse(body as string);
   } catch {
     throw new Error('JSON inválido.');
   }
 }
 
-function normalizeText(value) {
+function normalizeText(value: unknown) {
   return String(value || '').trim();
 }
 
-function normalizeNullableText(value) {
+function normalizeNullableText(value: unknown) {
   const normalized = normalizeText(value);
   return normalized || null;
 }
 
-function normalizeEmail(value) {
+function normalizeEmail(value: unknown) {
   return normalizeText(value).toLowerCase();
 }
 
-function normalizePhone(value) {
+function normalizePhone(value: unknown) {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return '';
   if (digits.length === 10 || digits.length === 11) return `55${digits}`;
   return digits;
 }
 
-function phoneVariants(phone) {
+function phoneVariants(phone: unknown): string[] {
   const normalized = normalizePhone(phone);
   if (!normalized) return [];
 
@@ -71,7 +76,7 @@ function phoneVariants(phone) {
   return [...variants];
 }
 
-function normalizeSource(value: unknown) {
+function normalizeSource(_value: unknown) {
   return 'Website';
 }
 
@@ -90,7 +95,7 @@ const ATTRIBUTION_FIELDS = [
   'result_id',
 ];
 
-function normalizeLead(payload) {
+function normalizeLead(payload: Record<string, unknown>) {
   return {
     nome: normalizeText(payload.nome),
     email: normalizeEmail(payload.email),
@@ -131,15 +136,18 @@ function isEnabled() {
   return String(process.env.TYPEBOT_LEAD_CAPTURE_ENABLED || '').toLowerCase() === 'true';
 }
 
-function isDryRun(payload) {
+function isDryRun(payload: Record<string, unknown>) {
   return payload.dry_run === true || payload.dryRun === true;
 }
 
-function isEmptyValue(value) {
+function isEmptyValue(value: unknown): boolean {
   return value == null || value === '';
 }
 
-function buildLeadDocPayload(lead, existing = null) {
+function buildLeadDocPayload(
+  lead: Record<string, unknown>,
+  existing: Record<string, unknown> | null = null
+) {
   const docPayload: Record<string, unknown> = { lead_name: lead.nome };
   if (lead.email) docPayload.email_id = lead.email;
   if (lead.telefone) docPayload.mobile_no = lead.telefone;
@@ -158,14 +166,14 @@ function buildLeadDocPayload(lead, existing = null) {
 
 const ATTRIBUTION_ERP_FIELDS = ATTRIBUTION_FIELDS.map((attr) => `custom_${attr}`);
 
-async function findExistingLead(lead, deps) {
+async function findExistingLead(lead: Record<string, unknown>, deps: typeof LIVE_DEPS) {
   const baseFields = ['name', 'email_id', 'mobile_no'];
   const fields = [...baseFields, ...ATTRIBUTION_ERP_FIELDS];
 
   if (lead.email) {
     const byEmail = await deps.erpGetList('Lead', {
       fields,
-      filters: [['email_id', '=', lead.email]],
+      filters: [['email_id', '=', lead.email as string]],
       order_by: 'modified desc',
       limit: 1,
     });
@@ -186,13 +194,13 @@ async function findExistingLead(lead, deps) {
   return null;
 }
 
-function validateLeadForWrite(lead) {
+function validateLeadForWrite(lead: Record<string, unknown>) {
   if (!lead.nome) {
     throw createHttpError(400, 'Nome é obrigatório.');
   }
 }
 
-async function simulateUpsert(lead, deps) {
+async function simulateUpsert(lead: Record<string, unknown>, deps: typeof LIVE_DEPS) {
   validateLeadForWrite(lead);
   const existing = await findExistingLead(lead, deps);
   return {
@@ -202,7 +210,7 @@ async function simulateUpsert(lead, deps) {
   };
 }
 
-async function upsertLead(lead, deps) {
+async function upsertLead(lead: Record<string, unknown>, deps: typeof LIVE_DEPS) {
   validateLeadForWrite(lead);
 
   const existing = await findExistingLead(lead, deps);
@@ -226,12 +234,12 @@ async function upsertLead(lead, deps) {
 }
 
 function createHandler(deps = LIVE_DEPS) {
-  return async function typebotLeadCaptureHandler(event) {
+  return async function typebotLeadCaptureHandler(event: FunctionEvent) {
     if (event.httpMethod !== 'POST') {
       return jsonResponse(405, { error: 'Method Not Allowed' });
     }
 
-    if (!isAuthorized(event.headers)) {
+    if (!isAuthorized(event.headers as Record<string, string | undefined>)) {
       return jsonResponse(401, { error: 'Não autorizado.' });
     }
 

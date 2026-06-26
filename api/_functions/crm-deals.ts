@@ -17,7 +17,7 @@ const PIPELINE_ORDER = [
   'Perdido',
 ];
 
-function mapDeal(d) {
+function mapDeal(d: Record<string, unknown>): Record<string, unknown> {
   return {
     id: d.name,
     lead_name: d.lead_name || 'Sem nome',
@@ -61,9 +61,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     const mapped = deals.map(mapDeal);
 
     // Agrupa por status
-    const groups = {};
+    const groups: Record<string, Record<string, unknown>[]> = {};
     for (const deal of mapped) {
-      const s = deal.status || 'Novo Lead';
+      const s = (deal.status as string) || 'Novo Lead';
       if (!groups[s]) groups[s] = [];
       groups[s].push(deal);
     }

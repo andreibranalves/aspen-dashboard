@@ -5,7 +5,16 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 
 export default [
   {
-    ignores: ['public/assets/**', '**/public/assets/**', 'dist/**', 'node_modules/**', '.worktrees/**', 'scripts/playwright-*.mjs', 'api/**/*.js', 'api/**/*.js.map'],
+    ignores: [
+      'public/assets/**',
+      '**/public/assets/**',
+      'dist/**',
+      'node_modules/**',
+      '.worktrees/**',
+      'scripts/playwright-*.mjs',
+      'api/**/*.js',
+      'api/**/*.js.map',
+    ],
   },
   {
     linterOptions: {
@@ -16,7 +25,13 @@ export default [
   prettierConfig,
   // ── Node.js (API handlers, libs, scripts, tests) ──
   {
-    files: ['api/**/*.{js,ts}', 'scripts/**/*.{js,mjs}', 'test_local.mjs', '*.config.js', 'tailwind.config.js'],
+    files: [
+      'api/**/*.{js,ts}',
+      'scripts/**/*.{js,mjs}',
+      'test_local.mjs',
+      '*.config.js',
+      'tailwind.config.js',
+    ],
     languageOptions: {
       globals: {
         console: 'readonly',

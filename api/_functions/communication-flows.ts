@@ -1,5 +1,5 @@
 // GET /api/communication-flows — returns flows from aspen:communication:flows KV
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 // PUT /api/communication-flows — saves flows to aspen:communication:flows KV
 //
 // Mirrors whatsapp-flows.js but writes to the new aspen:communication:* namespace.
@@ -86,7 +86,7 @@ const DEFAULT_FLOWS = [
 
 // ── Migration: convert old flow steps (image/product_images) → product_media ──
 
-function normalizeProductSummaryTemplate(template) {
+function normalizeProductSummaryTemplate(template: unknown): string {
   return typeof template === 'string'
     ? template
         .replace(
@@ -97,12 +97,12 @@ function normalizeProductSummaryTemplate(template) {
           /\(produto_resumo\)\s+personalizados\(as\)/g,
           '(produto_resumo) (produto_adjetivo_personalizado)'
         )
-    : template;
+    : String(template || '');
 }
 
-function migrateStep(step) {
+function migrateStep(step: Record<string, any>): Record<string, any> {
   if (!step) return step;
-  const normalizedStep = {
+  const normalizedStep: Record<string, any> = {
     ...step,
     template: normalizeProductSummaryTemplate(step.template),
   };
@@ -134,7 +134,7 @@ function migrateStep(step) {
   return normalizedStep;
 }
 
-function migrateFlow(flow) {
+function migrateFlow(flow: Record<string, any>): Record<string, any> {
   const migrated = createFlow({
     ...flow,
     steps: Array.isArray(flow.steps) ? flow.steps.map(migrateStep) : [],
@@ -182,7 +182,7 @@ async function readFlows() {
           source: 'kv',
         };
       }
-    } catch (migrationErr) {
+    } catch (migrationErr: any) {
       console.warn('[communication-flows] migration read failed:', migrationErr.message);
     }
 
@@ -193,7 +193,7 @@ async function readFlows() {
   }
 }
 
-async function writeFlows(flows, selectedFlowId) {
+async function writeFlows(flows: Record<string, any>[], selectedFlowId: string): Promise<void> {
   try {
     await Promise.all([
       kv.set(KV_KEY_FLOWS, flows),
@@ -210,13 +210,11 @@ async function writeFlows(flows, selectedFlowId) {
 
 // ── JSON response helper ───────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
+const jsonResponse: JsonResponseFn = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 

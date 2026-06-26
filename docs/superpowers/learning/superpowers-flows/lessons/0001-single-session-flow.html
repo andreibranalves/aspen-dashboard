@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lição 1 — Fluxo em uma única sessão</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+
+<h1>Lição 1 — Fluxo em uma única sessão</h1>
+
+<p><strong>Objetivo:</strong> saber conduzir uma ideia até o código dentro da mesma conversa, sem que o agente pule etapas.</p>
+
+<h2>Cenário</h2>
+<p>Você tem uma ideia nova e quer implementá-la. A sessão está vazia: o agente ainda não conversou com você sobre isso.</p>
+
+<h2>Passo a passo</h2>
+
+<h3>1. Comece com <code>brainstorming</code></h3>
+<p>Não peça código ainda. A skill vai fazer perguntas, propor abordagens e escrever um spec.</p>
+
+<div class="prompt">
+  <div class="label">Prompt</div>
+  <pre><code>No projeto /home/andrei/projects/aspen-dashboard, quero [descreva a ideia].
+Use a skill brainstorming para criar o spec.
+Não escreva código.</code></pre>
+</div>
+
+<div class="note">
+  <strong>Por que não pular?</strong> O spec é o contrato. Se você aprovar um spec ruim, o plano e o código vão refletir esse erro.
+</div>
+
+<h3>2. Aprove o spec</h3>
+<p>O agente apresentará seções e pedirá aprovação. Responda <em>sim</em> ou peça ajustes. Quando aprovar, ele escreve o arquivo em <code>docs/superpowers/specs/</code>.</p>
+
+<h3>3. Peça o plano com <code>writing-plans</code></h3>
+
+<div class="prompt">
+  <div class="label">Prompt</div>
+  <pre><code>O spec `docs/superpowers/specs/YYYY-MM-DD-&lt;tema&gt;-design.md`
+já está aprovado. Use a skill writing-plans para criar o plano de
+implementação. Não execute ainda.</code></pre>
+</div>
+
+<h3>4. Execute com <code>subagent-driven-development</code></h3>
+<p>Como você está na mesma sessão, essa skill é geralmente a melhor escolha: um subagente por tarefa, com revisão entre elas.</p>
+
+<div class="prompt">
+  <div class="label">Prompt</div>
+  <pre><code>Execute o plano `docs/superpowers/plans/YYYY-MM-DD-&lt;tema&gt;.md`
+usando a skill subagent-driven-development. Valide cada tarefa e
+rode os checks finais.</code></pre>
+</div>
+
+<h3>5. Finalize com <code>finishing-a-development-branch</code></h3>
+<p>Depois que tudo passar, o agente oferece opções de merge/PR.</p>
+
+<h2>Resumo visual</h2>
+<div class="flow">
+  <span class="step">brainstorming</span>
+  <span class="arrow">→</span>
+  <span class="step">writing-plans</span>
+  <span class="arrow">→</span>
+  <span class="step">subagent-driven-development</span>
+  <span class="arrow">→</span>
+  <span class="step">finishing-a-development-branch</span>
+</div>
+
+<h2>Exercício rápido</h2>
+<p>Releia o <a href="../reference/superpowers-flows-cheatsheet.html">cheat sheet</a> e identifique qual skill está faltando neste pedido:</p>
+<blockquote>
+"Implemente a feature X no projeto Aspen."
+</blockquote>
+<p>Resposta: está faltando <code>brainstorming</code> e <code>writing-plans</code>. O agente pode até executar, mas sem spec/plano o resultado será imprevisível.</p>
+
+<footer>
+  <p>Próxima: <a href="0002-multi-session-flow.html">Lição 2 — Retomando em outra sessão</a> · <a href="../reference/superpowers-flows-cheatsheet.html">Cheat sheet</a></p>
+</footer>
+
+</body>
+</html>

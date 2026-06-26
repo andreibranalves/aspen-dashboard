@@ -9,12 +9,12 @@ const STANDARD_SELLING = 'Standard Selling';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function isErpNotFound(err) {
+function isErpNotFound(err: any): boolean {
   const msg = `${err?.statusCode || ''} ${err?.message || ''} ${err?.logMessage || ''}`;
   return msg.includes('404');
 }
 
-async function fetchPricingRuleByTitle(title) {
+async function fetchPricingRuleByTitle(title: string): Promise<any> {
   const rules = await erpGetList('Pricing Rule', {
     fields: ['name', 'title'],
     filters: [['title', '=', title]],
@@ -34,7 +34,7 @@ async function fetchPricingRuleByTitle(title) {
   };
 }
 
-async function fetchItemPrice(sku) {
+async function fetchItemPrice(sku: string): Promise<any> {
   const prices = await erpGetList('Item Price', {
     fields: ['name', 'item_code', 'price_list', 'price_list_rate'],
     filters: [
@@ -56,15 +56,15 @@ async function fetchItemPrice(sku) {
   };
 }
 
-function formatPriceRow(faixa, rate, origem, detalhes = {}) {
+function formatPriceRow(faixa: number, rate: number | null, origem: string, detalhes: Record<string, any> = {}): Record<string, any> {
   const hasPrice = rate != null && !Number.isNaN(Number(rate));
   const numericRate = hasPrice ? Number(rate) : null;
 
   return {
     faixa,
     qty: faixa,
-    rate: numericRate,
-    urgent_rate: hasPrice ? getUrgentRate(numericRate) : null,
+      rate: numericRate as number,
+    urgent_rate: hasPrice ? getUrgentRate(numericRate as number) : null,
     origem,
     origem_label: origem === 'pricing_rule_bracket'
       ? 'Pricing Rule por faixa'
@@ -79,7 +79,7 @@ function formatPriceRow(faixa, rate, origem, detalhes = {}) {
   };
 }
 
-export async function resolveProductPricing(sku) {
+export async function resolveProductPricing(sku: string): Promise<Record<string, any>[]> {
   const skuRule = await fetchPricingRuleByTitle(sku);
   const itemPrice = skuRule ? null : await fetchItemPrice(sku);
 
@@ -118,7 +118,7 @@ export async function resolveProductPricing(sku) {
   return rows;
 }
 
-async function upsertBracketPricingRule(sku, faixa, rate) {
+async function upsertBracketPricingRule(sku: string, faixa: number, rate: number): Promise<Record<string, any>> {
   const title = `${sku}-${faixa}`;
   const existing = await erpGetList('Pricing Rule', {
     fields: ['name', 'title'],
@@ -145,7 +145,7 @@ async function upsertBracketPricingRule(sku, faixa, rate) {
   return { faixa, rate, status: 'criado', origem: 'pricing_rule_bracket', rule_name: created?.name || title, rule_title: title };
 }
 
-export async function saveProductPricing(sku, precos) {
+export async function saveProductPricing(sku: string, precos: Record<string, any>[]): Promise<Record<string, any>> {
   let item;
   try {
     item = await erpGetDoc('Item', sku);
@@ -191,7 +191,7 @@ export async function saveProductPricing(sku, precos) {
   };
 }
 
-function json(statusCode, payload) {
+function json(statusCode: number, payload: unknown): FunctionResult {
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },

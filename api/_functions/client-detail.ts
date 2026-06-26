@@ -19,21 +19,21 @@ const EDITABLE_FIELDS = {
 
 // ── Helpers ──
 
-function buildErpUrl(doctype, name) {
+function buildErpUrl(doctype: string, name: string): string {
   const route = doctype.toLowerCase().replace(/\s+/g, '-');
   return `${ERPNEXT_BASE}/app/${route}/${encodeURIComponent(name)}`;
 }
 
-function buildSummaryAddress(addr) {
+function buildSummaryAddress(addr: Record<string, unknown> | null): Record<string, unknown> | null {
   if (!addr) return null;
   // Parse address_line1: "Rua X, 123" → endereco="Rua X", numero="123"
-  const line1 = addr.address_line1 || '';
+  const line1 = (addr.address_line1 as string) || '';
   const lastComma = line1.lastIndexOf(',');
   const endereco = lastComma > 0 ? line1.substring(0, lastComma).trim() : line1.trim();
   const numero = lastComma > 0 ? line1.substring(lastComma + 1).trim() : null;
 
   // Parse address_line2: "Centro - Sala 2" → bairro="Centro", complemento="Sala 2"
-  const line2 = addr.address_line2 || '';
+  const line2 = (addr.address_line2 as string) || '';
   const dash = line2.indexOf(' - ');
   const bairro = dash > 0 ? line2.substring(0, dash).trim() : (line2.trim() || null);
   const complemento = dash > 0 ? line2.substring(dash + 3).trim() : null;
@@ -69,7 +69,7 @@ function computeQualityFlags(doc: Record<string, unknown>, doctype: string, addr
 
 // ── GET: detalhe de Lead/Customer ──
 
-async function handleGet(doctype, name) {
+async function handleGet(doctype: string, name: string): Promise<Record<string, unknown>> {
   // 1. Fetch documento principal
   const fields = doctype === 'Lead'
     ? [
@@ -185,7 +185,7 @@ async function handleGet(doctype, name) {
 
 // ── PUT: edição segura ──
 
-async function handlePut(doctype, name, rawBody) {
+async function handlePut(doctype: string, name: string, rawBody: string): Promise<Record<string, unknown>> {
   let payload;
   try { payload = JSON.parse(rawBody); }
   catch { throw createHttpError(400, 'JSON inválido.'); }
@@ -195,7 +195,7 @@ async function handlePut(doctype, name, rawBody) {
   }
 
   const updates: Record<string, unknown> = {};
-  const allowed = EDITABLE_FIELDS[doctype] || [];
+  const allowed = EDITABLE_FIELDS[doctype as keyof typeof EDITABLE_FIELDS] || [];
 
   // Mapeia nomes amigáveis do frontend para campos do ERPNext
   // Lead: lead_name é computado (first_name + last_name) — mapeamos nome → first_name

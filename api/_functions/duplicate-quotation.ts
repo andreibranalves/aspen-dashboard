@@ -28,7 +28,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     }
 
     // 2. Build items array (strip name/parent fields)
-    const items = (src.items || []).map(item => ({
+    const items = (src.items || []).map((item: Record<string, unknown>) => ({
       item_code: item.item_code,
       item_name: item.item_name,
       description: item.description || '',

@@ -9,7 +9,8 @@
 // Reuses Evolution API patterns from send-whatsapp.js.
 // Storage: Vercel KV for flows, media, and send events.
 
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { HttpError } from './lib/erpnext.js';
 import { kv } from '@vercel/kv';
 import { erpGetDoc, erpGetList, erpPut, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
@@ -24,7 +25,7 @@ const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
 
-const PRODUCT_CATEGORY_BY_PREFIX = {
+const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
   CNG: 'canga',
   LNC: 'lenço',
   BNE: 'boné',
@@ -33,7 +34,7 @@ const PRODUCT_CATEGORY_BY_PREFIX = {
   ECO: 'ecobag',
   CHC: 'cachecol',
 };
-const PRODUCT_SUMMARY_PLURALS = {
+const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
   canga: 'cangas',
   lenço: 'lenços',
   boné: 'bonés',
@@ -42,7 +43,7 @@ const PRODUCT_SUMMARY_PLURALS = {
   ecobag: 'ecobags',
   cachecol: 'cachecóis',
 };
-const PRODUCT_CATEGORY_GENDERS = {
+const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   canga: 'f',
   lenço: 'm',
   boné: 'm',
@@ -51,7 +52,7 @@ const PRODUCT_CATEGORY_GENDERS = {
   ecobag: 'f',
   cachecol: 'm',
 };
-const CATEGORY_ALIASES = {
+const CATEGORY_ALIASES: Record<string, string> = {
   canga: 'canga',
   cangas: 'canga',
   lenco: 'lenço',
@@ -76,15 +77,13 @@ const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function jsonResponse(statusCode, body) {
-  return {
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
+const jsonResponse: JsonResponseFn = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
-function normalizePhone(phone) {
+function normalizePhone(phone: unknown): string {
   if (!phone) return '';
   let digits = String(phone).replace(/\D/g, '');
   digits = digits.replace(/^55(\d{10,11})$/, '$1').replace(/^0(\d{10,11})$/, '$1');
@@ -92,22 +91,23 @@ function normalizePhone(phone) {
   return `55${digits}`;
 }
 
-function firstNonEmpty(...values) {
-  return values.find((v) => typeof v === 'string' && v.trim())?.trim() || '';
+function firstNonEmpty(...values: unknown[]): string {
+  const found = values.find((v) => typeof v === 'string' && v.trim());
+  return typeof found === 'string' ? found.trim() : '';
 }
 
-function wait(ms) {
+function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function randomDelay(minMs, maxMs) {
+function randomDelay(minMs: number, maxMs: number): number {
   if (maxMs <= minMs) return minMs;
   return Math.round(minMs + Math.random() * (maxMs - minMs));
 }
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
-function normalizeProductSummaryTemplate(template) {
+function normalizeProductSummaryTemplate(template: unknown): string {
   return String(template || '')
     .replace(
       /\(produto_resumo\)\s+personalizado\(a\)/g,
@@ -119,7 +119,7 @@ function normalizeProductSummaryTemplate(template) {
     );
 }
 
-function pluralizeProductCategory(category) {
+function pluralizeProductCategory(category: string): string {
   return PRODUCT_SUMMARY_PLURALS[category] || category;
 }
 
@@ -130,7 +130,7 @@ function productPersonalizationAdjectiveFromCategories(categories = []) {
     : 'personalizados';
 }
 
-function renderTemplate(template, context) {
+function renderTemplate(template: string, context: Record<string, any>): string {
   const saudacao = getTimeBasedGreeting();
   const nome = context.nome || '';
   const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
@@ -156,19 +156,19 @@ function renderTemplate(template, context) {
 
 // ── Category detection ─────────────────────────────────────────────────────
 
-function normalizeCategory(value) {
+function normalizeCategory(value: unknown): string {
   const key = String(value || '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
-  return CATEGORY_ALIASES[key] || value;
+  return CATEGORY_ALIASES[key] || key;
 }
 
-function detectCategories(items = []) {
-  const categories = [];
-  for (const item of items || []) {
-    const sku = String(item?.sku || item?.item_code || item?.itemCode || '')
+function detectCategories(items: Record<string, unknown>[] = []): string[] {
+  const categories: string[] = [];
+  for (const item of items) {
+    const sku = String((item.sku as string) || (item.item_code as string) || (item.itemCode as string) || '')
       .trim()
       .toUpperCase();
     const prefix = sku.split('-')[0];
@@ -178,7 +178,7 @@ function detectCategories(items = []) {
   return categories;
 }
 
-function productSummaryFromCategories(categories = []) {
+function productSummaryFromCategories(categories: string[] = []): string {
   const labels = categories.map(pluralizeProductCategory);
   if (!labels.length) return 'produtos';
   if (labels.length === 1) return labels[0];
@@ -202,7 +202,7 @@ function assertEvolutionConfig() {
   }
 }
 
-async function evolutionPost(path, body) {
+async function evolutionPost(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const url = `${EVOLUTION_BASE_URL}${path}`;
   let res, responseBody;
   try {
@@ -212,11 +212,12 @@ async function evolutionPost(path, body) {
       body: JSON.stringify(body),
     });
     responseBody = await res.json().catch(() => null);
-  } catch (err) {
+    } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     throw createHttpError(
       502,
       'Falha ao conectar com o WhatsApp.',
-      `Evolution fetch failed: ${err.message}`
+      `Evolution fetch failed: ${msg}`
     );
   }
   if (!res.ok) {
@@ -231,26 +232,26 @@ async function evolutionPost(path, body) {
   return responseBody;
 }
 
-async function sendText(number, text) {
+async function sendText(number: string, text: string): Promise<Record<string, unknown>> {
   return evolutionPost(`/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
     number,
     text,
   });
 }
 
-async function fetchQuotationPdfBuffer(quotationId) {
+async function fetchQuotationPdfBuffer(quotationId: string): Promise<Buffer> {
   try {
     const { buffer } = await generateQuotationPdf(quotationId, { timeout: 30000 });
     if (!buffer || buffer.length === 0) throw createHttpError(502, 'PDF vazio.');
     return buffer;
-  } catch (err) {
-    if (err?.statusCode) throw err;
+  } catch (err: unknown) {
+    if ((err as HttpError)?.statusCode) throw err;
     throw createHttpError(502, 'Falha ao gerar PDF do orçamento.');
   }
 }
 
-async function sendMedia(number, step) {
-  let media = step.media;
+async function sendMedia(number: string, step: Record<string, unknown>): Promise<Record<string, unknown>> {
+  let media: string | undefined = step.media as string | undefined;
 
   // PDF marker
   if (media && typeof media === 'string' && media.startsWith('__pdf__:')) {
@@ -266,8 +267,8 @@ async function sendMedia(number, step) {
       if (!res.ok) throw createHttpError(502, 'Não foi possível baixar a mídia.');
       const buffer = Buffer.from(await res.arrayBuffer());
       media = buffer.toString('base64');
-    } catch (err) {
-      if (err?.statusCode) throw err;
+    } catch (err: unknown) {
+      if ((err as HttpError)?.statusCode) throw err;
       throw createHttpError(502, 'Falha ao processar mídia.');
     }
   }
@@ -282,18 +283,18 @@ async function sendMedia(number, step) {
   });
 }
 
-async function sendStep(number, step) {
-  if (step.type === 'text') return sendText(number, step.text);
+async function sendStep(number: string, step: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (step.type === 'text') return sendText(number, step.text as string);
   return sendMedia(number, step);
 }
 
 // ── Media resolution ───────────────────────────────────────────────────────
 
-async function resolveProductMedia(categories, maxPerGroup = 1) {
+async function resolveProductMedia(categories: string[], maxPerGroup = 1): Promise<Record<string, unknown>[]> {
   if (!categories.length) return [];
 
   // Scan KV for all media assets
-  let keys = [];
+  let keys: string[] = [];
   try {
     const result = await kv.scan(0, { match: `${KV_KEY_MEDIA_PREFIX}*`, count: 200 });
     keys = result[1] || [];
@@ -335,7 +336,7 @@ async function resolveProductMedia(categories, maxPerGroup = 1) {
 
 // ── Duplicate detection ─────────────────────────────────────────────────────
 
-async function checkDuplicate(quotationId, phone, flowId) {
+async function checkDuplicate(quotationId: string, phone: string, flowId: string): Promise<boolean> {
   try {
     let keys = [];
     const result = await kv.scan(0, { match: `${KV_KEY_SEND_EVENTS_PREFIX}*`, count: 200 });
@@ -395,15 +396,16 @@ async function recordSendEvent({
   };
   try {
     await kv.set(`${KV_KEY_SEND_EVENTS_PREFIX}${eventId}`, event, { ex: 7 * 24 * 60 * 60 });
-  } catch (err) {
-    console.warn('[send-whatsapp-flow] KV send-event write failed:', err.message);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('[send-whatsapp-flow] KV send-event write failed:', msg);
   }
   return eventId;
 }
 
 // ── CRM Deal update ─────────────────────────────────────────────────────────
 
-async function updateDeal(dealId, quotationId) {
+async function updateDeal(dealId: string | null, quotationId: string): Promise<void> {
   if (!dealId) return;
   try {
     await erpPut('CRM Deal', dealId, {
@@ -412,17 +414,18 @@ async function updateDeal(dealId, quotationId) {
       custom_quotation_sent_date: new Date().toISOString().slice(0, 10),
       custom_follow_up_stage: 0,
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    const httpErr = err as HttpError;
     console.warn(
       '[send-whatsapp-flow] deal update failed:',
-      err?.logMessage || err?.message || err
+      httpErr.logMessage || httpErr.message || err
     );
   }
 }
 
 // ── Flow resolution ────────────────────────────────────────────────────────
 
-async function resolveFlow(flowId) {
+async function resolveFlow(flowId: string): Promise<Record<string, any> | null> {
   try {
     const flows = await kv.get(KV_KEY_FLOWS);
     if (Array.isArray(flows)) {
@@ -437,7 +440,7 @@ async function resolveFlow(flowId) {
 
 // ── Build planned steps from flow ──────────────────────────────────────────
 
-async function buildSteps(flow, context) {
+async function buildSteps(flow: Record<string, any>, context: Record<string, any>): Promise<Record<string, unknown>[]> {
   const steps = [];
   let pdfAdded = false;
 
@@ -470,7 +473,7 @@ async function buildSteps(flow, context) {
 
 // ── N8n webhook ────────────────────────────────────────────────────────────
 
-function fireN8n(payload) {
+function fireN8n(payload: Record<string, unknown>): void {
   const n8nUrl = process.env.N8N_WEBHOOK_URL;
   if (!n8nUrl) return;
   fetch(n8nUrl, {
@@ -510,18 +513,18 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     // Resolve quotation context
     let nome = '',
       telefone = '',
-      dealId = null,
-      items = [];
+      dealId: string | null = null,
+      items: Record<string, unknown>[] = [];
     if (quotationId) {
       try {
-        const quotation = await erpGetDoc('Quotation', quotationId);
+        const quotation = await erpGetDoc('Quotation', quotationId) as Record<string, unknown>;
         nome = firstNonEmpty(payload.nome, quotation?.customer_name, quotation?.party_name);
         telefone = firstNonEmpty(
           payload.phone || payload.telefone,
           quotation?.contact_mobile,
           quotation?.contact_phone
         );
-        items = quotation?.items || [];
+        items = (quotation?.items as Record<string, unknown>[]) || [];
 
         // CRM Deal lookup
         const deals = await erpGetList('CRM Deal', {
@@ -627,9 +630,10 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       evolution,
       send_event_id: sendEventId,
     });
-  } catch (err) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[send-whatsapp-flow]', err?.logMessage || err?.message || err);
-    return jsonResponse(code, { error: err?.message || 'Erro interno.' });
+  } catch (err: unknown) {
+    const httpErr = err as HttpError;
+    const code = Number.isInteger(httpErr?.statusCode) ? httpErr.statusCode : 500;
+    console.error('[send-whatsapp-flow]', httpErr?.logMessage || httpErr?.message || err);
+    return jsonResponse(code, { error: httpErr?.message || 'Erro interno.' });
   }
 }

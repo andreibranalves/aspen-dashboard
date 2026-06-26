@@ -20,7 +20,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     };
   }
 
-  const limit = Math.min(20, Math.max(1, parseInt(params.limit, 10) || 10));
+  const limit = Math.min(20, Math.max(1, parseInt(params.limit ?? '10', 10) || 10));
 
   try {
     const atividades = [];
@@ -34,7 +34,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       });
       for (const q of quotes) {
         const items = q.items || [];
-        const match = items.find(it => it.item_code === sku || it.item_code === sku);
+        const match = items.find((it: Record<string, unknown>) => (it.item_code as string) === sku || (it.item_code as string) === sku);
         if (match) {
           atividades.push({
             tipo: 'orcamento',

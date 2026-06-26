@@ -5,7 +5,7 @@
 //
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, ErpnextListItem } from '../_lib/types.js';
 import { erpGetList, erpGetDoc, erpPut, erpDelete, erpCallMethod, createHttpError } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -84,16 +84,17 @@ function buildSearchOrFilters(query: Record<string, string | undefined>) {
  *
  * Modifies the input array in-place and returns it.
  */
-async function resolveClientNames(quotations) {
+async function resolveClientNames(quotations: ErpnextListItem[]): Promise<ErpnextListItem[]> {
   // Collect lead IDs that need resolution
   const leadIds = new Set<string>();
   for (const q of quotations) {
+    const qtr = q as Record<string, any>;
     if (
-      q.quotation_to === 'Lead' &&
-      q.party_name &&
-      (!q.customer_name || q.customer_name.startsWith('CRM-LEAD-'))
+      qtr.quotation_to === 'Lead' &&
+      qtr.party_name &&
+      (!qtr.customer_name || qtr.customer_name.startsWith('CRM-LEAD-'))
     ) {
-      leadIds.add(q.party_name);
+      leadIds.add(qtr.party_name);
     }
   }
 
@@ -101,28 +102,31 @@ async function resolveClientNames(quotations) {
 
   // Batch-fetch all leads in parallel
   const leadMap = new Map<string, string | null>();
-  const fetchPromises = [...leadIds].map(async (leadId) => {
+  const fetchPromises = [...leadIds].map(async (leadId: string) => {
     try {
       const lead = await erpGetDoc('Lead', leadId, { fields: ['lead_name', 'first_name'] });
       if (lead) {
         leadMap.set(leadId, lead.first_name || lead.lead_name || null);
       }
-    } catch (err) {
+      return;
+    } catch (err: any) {
       console.warn('[quotations] Lead resolve failed for', leadId, err?.logMessage || err?.message || err);
+      return;
     }
   });
   await Promise.all(fetchPromises);
 
   // Apply resolved names
   for (const q of quotations) {
+    const qtr = q as Record<string, any>;
     if (
-      q.quotation_to === 'Lead' &&
-      q.party_name &&
-      (!q.customer_name || q.customer_name.startsWith('CRM-LEAD-'))
+      qtr.quotation_to === 'Lead' &&
+      qtr.party_name &&
+      (!qtr.customer_name || qtr.customer_name.startsWith('CRM-LEAD-'))
     ) {
-      const resolved = leadMap.get(q.party_name);
+      const resolved = leadMap.get(qtr.party_name);
       if (resolved) {
-        q._resolved_client_name = resolved;
+        qtr._resolved_client_name = resolved;
       }
     }
   }
@@ -133,7 +137,7 @@ async function resolveClientNames(quotations) {
 /**
  * Return the display client name for a single quotation row (after batch resolution).
  */
-function clientDisplayName(q) {
+function clientDisplayName(q: Record<string, any>): string {
   // If Lead was resolved, use the resolved name
   if (q._resolved_client_name) return q._resolved_client_name;
   // If Customer with a real name, use it
@@ -161,9 +165,10 @@ async function computeStatusSummary(query: Record<string, string | undefined>) {
 
   const summary = Object.fromEntries(ALL_STATUS_KEYS.map(k => [k, 0]));
   for (const doc of allDocs) {
-    if (doc.docstatus === 0) summary.Draft++;
-    else if (doc.docstatus === 2) summary.Cancelled++;
-    else if (doc.status && summary[doc.status] !== undefined) summary[doc.status]++;
+    const d = doc as Record<string, any>;
+    if (d.docstatus === 0) summary.Draft++;
+    else if (d.docstatus === 2) summary.Cancelled++;
+    else if (d.status && summary[d.status as keyof typeof summary] !== undefined) summary[d.status as keyof typeof summary]++;
   }
   return summary;
 }
@@ -214,7 +219,7 @@ async function handleDetail(quotationId: string) {
   let quotation;
   try {
     quotation = await erpGetDoc('Quotation', quotationId);
-  } catch (err) {
+  } catch (err: any) {
     throw createHttpError(
       err?.statusCode === 404 ? 404 : 502,
       'Orçamento não encontrado.',
@@ -238,13 +243,13 @@ async function handleDetail(quotationId: string) {
       if (lead) {
         cliente = lead.first_name || lead.lead_name || cliente;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[quotations] Lead resolve failed for detail', quotationId, err?.logMessage || err?.message || err);
     }
   }
 
   // Map items
-  const items = (quotation.items || []).map(item => ({
+  const items = (quotation.items || []).map((item: Record<string, any>) => ({
     item_code: item.item_code || '',
     item_name: item.item_name || '',
     qty: item.qty ?? 0,
@@ -268,7 +273,7 @@ async function handleDetail(quotationId: string) {
         sales_order_id = so.name;
       }
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[quotations] SO link lookup failed:', err?.logMessage || err?.message || err);
   }
 
@@ -329,7 +334,7 @@ async function handleUpdate(quotationId: string, payload: Record<string, unknown
 
   try {
     await erpPut('Quotation', quotationId, updatePayload);
-  } catch (err) {
+  } catch (err: any) {
     throw createHttpError(
       err?.statusCode === 400 ? 400 : 502,
       'Erro ao salvar alterações no orçamento.',
@@ -374,7 +379,7 @@ async function handleList(query: Record<string, string | undefined>) {
   await resolveClientNames(rawQuotations);
 
   // 5. Map to response shape
-  const data = rawQuotations.map(q => ({
+  const data = rawQuotations.map((q: Record<string, any>) => ({
     id: q.name,
     data: q.transaction_date || '',
     cliente: clientDisplayName(q),
@@ -415,7 +420,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
             doctype: 'Quotation',
             name: deleteId,
           });
-        } catch (cancelErr) {
+        } catch (cancelErr: any) {
           throw createHttpError(
             400,
             'Não foi possível cancelar o orçamento antes de excluir. Verifique se há documentos vinculados.',

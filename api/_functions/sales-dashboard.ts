@@ -8,7 +8,7 @@ import { erpGetList } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-const PERIOD_LABELS = {
+const PERIOD_LABELS: Record<string, string> = {
   today: 'Hoje',
   '7d': 'Últimos 7 dias',
   '30d': 'Últimos 30 dias',
@@ -18,20 +18,28 @@ const PERIOD_LABELS = {
 };
 
 const SO_FIELDS = [
-  'name', 'transaction_date', 'customer', 'customer_name',
-  'grand_total', 'rounded_total', 'status', 'docstatus',
+  'name',
+  'transaction_date',
+  'customer',
+  'customer_name',
+  'grand_total',
+  'rounded_total',
+  'status',
+  'docstatus',
 ];
 
-const ITEM_FIELDS = [
-  'item_code', 'item_name', 'qty', 'amount', 'parent', 'prevdoc_docname',
-];
+const ITEM_FIELDS = ['item_code', 'item_name', 'qty', 'amount', 'parent', 'prevdoc_docname'];
 
 // ── Period Helpers ──────────────────────────────────────────────────────────
 
 /**
  * Convert period shortcut or custom from/to into { start, end } date strings.
  */
-function getPeriodDates(period, from, to) {
+function getPeriodDates(
+  period: string | undefined,
+  from: string | undefined,
+  to: string | undefined
+) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   let start;
@@ -76,12 +84,16 @@ function getPeriodDates(period, from, to) {
 /**
  * Return a human-readable Portuguese label for the period.
  */
-function getPeriodLabel(period, from, to) {
+function getPeriodLabel(
+  period: string | undefined,
+  from: string | undefined,
+  to: string | undefined
+) {
   if (period && PERIOD_LABELS[period]) {
     return PERIOD_LABELS[period];
   }
 
-  const fmt = (d) => {
+  const fmt = (d: string) => {
     const parts = d.split('-');
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   };
@@ -97,7 +109,7 @@ function getPeriodLabel(period, from, to) {
 /**
  * Given a period [start, end], return the same-length period immediately before.
  */
-function getPreviousPeriodDates(start, end) {
+function getPreviousPeriodDates(start: string, end: string) {
   const s = new Date(start + 'T00:00:00');
   const e = new Date(end + 'T00:00:00');
   // Inclusive length in days
@@ -115,13 +127,10 @@ function getPreviousPeriodDates(start, end) {
 /**
  * Fetch submitted Sales Orders in a date range, sorted ascending by date.
  */
-async function fetchSalesOrders(start, end) {
+async function fetchSalesOrders(start: string, end: string) {
   return erpGetList('Sales Order', {
     fields: SO_FIELDS,
-    filters: [
-      ['transaction_date', 'between', [start, end]] as any,
-      ['docstatus', '=', 1],
-    ],
+    filters: [['transaction_date', 'between', [start, end]] as any, ['docstatus', '=', 1]],
     order_by: 'transaction_date asc',
     limit: 10000,
   });
@@ -131,17 +140,19 @@ async function fetchSalesOrders(start, end) {
  * Fetch child-table items for a list of Sales Order names.
  * Uses the 'in' filter to get all items in a single request.
  */
-async function fetchSalesOrderItems(orderNames) {
+async function fetchSalesOrderItems(orderNames: string[]) {
   if (!orderNames || orderNames.length === 0) return [];
   try {
     return await erpGetList('Sales Order Item', {
       fields: ITEM_FIELDS,
-      filters: [['parent', 'in', orderNames]],
+      filters: [['parent', 'in', orderNames] as any],
       limit: 10000,
     });
   } catch {
     // Permission error on Sales Order Item — return empty, top products will be unavailable
-    console.warn('[sales-dashboard] Cannot access Sales Order Item — top products and conversion rate will be unavailable.');
+    console.warn(
+      '[sales-dashboard] Cannot access Sales Order Item — top products and conversion rate will be unavailable.'
+    );
     return [];
   }
 }
@@ -154,17 +165,19 @@ async function fetchSalesOrderItems(orderNames) {
  * @param {Array} orders - Submitted SOs (docstatus=1) in the period.
  * @returns {{ revenue: number, ordersCount: number, averageTicket: number, openOrders: number }}
  */
-function computeSummary(orders) {
+function computeSummary(orders: Record<string, unknown>[]) {
   // Revenue excludes Closed status
-  const revenueOrders = orders.filter(o => o.status !== 'Closed');
+  const revenueOrders = orders.filter((o: Record<string, unknown>) => o.status !== 'Closed');
   const revenue = revenueOrders.reduce(
-    (sum, o) => sum + (o.rounded_total || o.grand_total || 0),
-    0,
+    (sum: number, o: Record<string, unknown>) =>
+      sum + ((o.rounded_total as number) || (o.grand_total as number) || 0),
+    0
   );
   const ordersCount = orders.length;
   const averageTicket = ordersCount > 0 ? revenue / ordersCount : 0;
   const openOrders = orders.filter(
-    o => !['Completed', 'Cancelled', 'Closed'].includes(o.status),
+    (o: Record<string, unknown>) =>
+      !['Completed', 'Cancelled', 'Closed'].includes(o.status as string)
   ).length;
 
   return { revenue, ordersCount, averageTicket, openOrders };
@@ -176,7 +189,7 @@ function computeSummary(orders) {
  * Aggregate items by item_code: sum qty + revenue, count distinct orders.
  * Sorted by revenue descending, limited to 10.
  */
-function computeTopProducts(items) {
+function computeTopProducts(items: Record<string, unknown>[]) {
   const grouped = new Map();
 
   for (const item of items) {
@@ -201,7 +214,7 @@ function computeTopProducts(items) {
   }
 
   return Array.from(grouped.values())
-    .map(g => ({ ...g, orders: g.orders.size }))
+    .map((g) => ({ ...g, orders: g.orders.size }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 }
@@ -212,7 +225,7 @@ function computeTopProducts(items) {
  * Aggregate orders by customer: sum revenue, count orders.
  * Sorted by revenue descending, limited to 10.
  */
-function computeTopCustomers(orders) {
+function computeTopCustomers(orders: Record<string, unknown>[]) {
   const grouped = new Map();
 
   for (const o of orders) {
@@ -248,7 +261,7 @@ function computeTopCustomers(orders) {
  * Group orders by transaction_date: sum revenue + count.
  * Sorted by date ascending.
  */
-function computeSalesByDay(orders) {
+function computeSalesByDay(orders: Record<string, unknown>[]) {
   const grouped = new Map();
 
   for (const o of orders) {
@@ -296,7 +309,7 @@ async function fetchStaleQuotations() {
   if (quotations.length === 0) return [];
 
   // Batch-check which quotations have linked Sales Orders
-  const quotationNames = quotations.map(q => q.name);
+  const quotationNames = quotations.map((q) => q.name);
   let linkedQuotations = new Set();
   try {
     const linkedSos = await erpGetList('Sales Order Item', {
@@ -304,9 +317,7 @@ async function fetchStaleQuotations() {
       filters: [['prevdoc_docname', 'in', quotationNames] as any],
       limit: 10000,
     });
-    linkedQuotations = new Set(
-      linkedSos.map(i => i.prevdoc_docname).filter(Boolean),
-    );
+    linkedQuotations = new Set(linkedSos.map((i) => i.prevdoc_docname).filter(Boolean));
   } catch {
     // Permission error on Sales Order Item — treat all as stale (no linked SO detected)
     console.warn('[sales-dashboard] Cannot access Sales Order Item for stale quotation check.');
@@ -315,10 +326,10 @@ async function fetchStaleQuotations() {
   // Filter stale (no linked SO), map to response shape, sort by age desc, limit 20
   const now = Date.now();
   return quotations
-    .filter(q => !linkedQuotations.has(q.name))
-    .map(q => {
+    .filter((q) => !linkedQuotations.has(q.name))
+    .map((q) => {
       const ageDays = Math.floor(
-        (now - new Date(q.transaction_date).getTime()) / (1000 * 60 * 60 * 24),
+        (now - new Date(q.transaction_date).getTime()) / (1000 * 60 * 60 * 24)
       );
       return {
         id: q.name,
@@ -343,14 +354,15 @@ async function fetchStaleQuotations() {
  * @param {Array} allItems - All Sales Order Items in the period
  * @returns {{ quotationsCount: number, ordersFromQuotationCount: number, conversionRate: number }}
  */
-async function computeConversionRate(start, end, allItems) {
+async function computeConversionRate(
+  start: string,
+  end: string,
+  allItems: Record<string, unknown>[]
+) {
   // Quotations created in the period (submitted)
   const quotations = await erpGetList('Quotation', {
     fields: ['name'],
-    filters: [
-      ['transaction_date', 'between', [start, end]] as any,
-      ['docstatus', '=', 1],
-    ],
+    filters: [['transaction_date', 'between', [start, end]] as any, ['docstatus', '=', 1]],
     limit: 10000,
   });
   const quotationsCount = quotations.length;
@@ -396,7 +408,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     const currentOrders = await fetchSalesOrders(start, end);
 
     // ── 3. Current period: Items (for top products + conversion rate) ───
-    const currentOrderNames = currentOrders.map(o => o.name);
+    const currentOrderNames = currentOrders.map((o) => o.name);
     const currentItems = await fetchSalesOrderItems(currentOrderNames);
 
     // ── 4. Summary ──────────────────────────────────────────────────────
@@ -409,9 +421,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     const revenueDeltaPct =
       prevSummary.revenue > 0
-        ? Math.round(
-            ((summary.revenue - prevSummary.revenue) / prevSummary.revenue) * 100 * 100,
-          ) / 100
+        ? Math.round(((summary.revenue - prevSummary.revenue) / prevSummary.revenue) * 100 * 100) /
+          100
         : summary.revenue > 0
           ? 100
           : 0;

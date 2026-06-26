@@ -75,7 +75,7 @@ const KV_KEY_SELECTED = 'aspen:whatsapp-flows:selected';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function normalizeProductSummaryTemplate(template) {
+function normalizeProductSummaryTemplate(template: unknown): unknown {
   return typeof template === 'string'
     ? template
         .replace(
@@ -89,11 +89,11 @@ function normalizeProductSummaryTemplate(template) {
     : template;
 }
 
-function normalizeFlow(flow) {
+function normalizeFlow(flow: Record<string, unknown>): Record<string, unknown> {
   return {
     ...flow,
     steps: Array.isArray(flow?.steps)
-      ? flow.steps.map((step) => ({
+      ? (flow.steps as Record<string, unknown>[]).map((step) => ({
           ...step,
           template: normalizeProductSummaryTemplate(step?.template),
         }))
@@ -122,7 +122,7 @@ async function readFlows() {
   }
 }
 
-async function writeFlows(flows, selectedFlowId) {
+async function writeFlows(flows: unknown[], selectedFlowId: string): Promise<void> {
   if (!kv) {
     throw createHttpError(500, 'Armazenamento não configurado.');
   }
