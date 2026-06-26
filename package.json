@@ -6,6 +6,7 @@
     "dev": "node scripts/vite-dev.mjs",
     "dev:vercel": "vercel dev",
     "build:api": "tsc -p api/tsconfig.api.json",
+    "prebuild": "rm -f public/assets/index-*.js public/assets/index-*.css public/assets/index-*.js.map public/assets/index-*.css.map",
     "build": "npm run build:api && vite build",
     "dev:api": "tsc -p api/tsconfig.api.json --watch",
     "preview": "vite preview",
