@@ -93,6 +93,7 @@ export default function CrmKanbanPage() {
   const [selectedPruneIds, setSelectedPruneIds] = useState<Set<string>>(new Set());
   const [pruneSubmitting, setPruneSubmitting] = useState<boolean>(false);
   const [pruneSummary, setPruneSummary] = useState<string | null>(null);
+  const [visiblePerColumn, setVisiblePerColumn] = useState<Record<string, number>>({});
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async (searchVal: string) => {
@@ -322,6 +323,12 @@ export default function CrmKanbanPage() {
                 </div>
 
                 {/* Cards area */}
+                {(() => {
+                  const visible = visiblePerColumn[col.status] ?? 25;
+                  const shown = col.deals.slice(0, visible);
+                  const hidden = col.deals.length - shown.length;
+                  return (
+                    <>
                 <div
                   className={cn(
                     'flex-1 px-2 pb-2 space-y-2 min-h-[120px] rounded-b-lg transition-colors',
@@ -340,7 +347,7 @@ export default function CrmKanbanPage() {
                     setDraggingId(null);
                   }}
                 >
-                  {col.deals.map((deal) => (
+                  {shown.map((deal) => (
                     <div
                       key={deal.id}
                       draggable
@@ -378,6 +385,23 @@ export default function CrmKanbanPage() {
                     </div>
                   ))}
                 </div>
+                {hidden > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisiblePerColumn((prev) => ({
+                        ...prev,
+                        [col.status]: (prev[col.status] ?? 25) + 25,
+                      }))
+                    }
+                    className="px-2 pb-2 text-xs text-fg-muted hover:text-fg transition-colors"
+                  >
+                    Ver mais ({hidden} restantes)
+                  </button>
+                )}
+                </>
+                  );
+                })()}
               </div>
             ))}
           </div>
