@@ -19,6 +19,7 @@ if (!process.env.ERPNEXT_TOKEN) {
 import { handler as clientDetail } from '../api/_functions/client-detail.js';
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
+import { handler as crmPruneCandidates } from '../api/_functions/crm-prune-candidates.js';
 import { handler as duplicateQuotation } from '../api/_functions/duplicate-quotation.js';
 import { handler as extract } from '../api/_functions/extract.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
@@ -49,6 +50,7 @@ import { handler as view } from '../api/_functions/view.js';
 const ROUTES = {
   'client-detail': clientDetail,
   'crm-deals': crmDeals,
+  'crm-prune-candidates': crmPruneCandidates,
   'crm-update-deal': crmUpdateDeal,
   'duplicate-quotation': duplicateQuotation,
   extract,
