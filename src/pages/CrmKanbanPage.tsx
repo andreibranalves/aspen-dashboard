@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent } from 'react';
-import { Search, AlertTriangle, BarChart3, Clipboard, Send } from 'lucide-react';
-import { apiGet, apiPut } from '@/lib/api';
+import { Search, AlertTriangle, BarChart3, Clipboard, Send, X } from 'lucide-react';
+import { apiGet, apiPost, apiPut } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,32 @@ interface UpdateDealResult {
   success: boolean;
 }
 
+interface PruneCandidate {
+  deal_id: string;
+  lead_name: string;
+  quotation: string;
+  quotation_date: string;
+  age_days: number;
+  deal_modified: string;
+  grand_total: number;
+}
+
+interface PruneCandidatesResponse {
+  candidates: PruneCandidate[];
+  meta: {
+    threshold_days: number;
+    protect_recent_days: number;
+    count: number;
+  };
+}
+
+interface PruneResult {
+  success: boolean;
+  updated: number;
+  skipped: number;
+  skipped_deals: Array<{ deal_id: string; reason: string }>;
+}
+
 function daysAgo(dateStr?: string | null): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
@@ -43,12 +69,30 @@ function daysAgo(dateStr?: string | null): string {
   return `${diff} dias`;
 }
 
+function formatBRL(value: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+}
+
+function formatDateBR(value?: string): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+}
+
 export default function CrmKanbanPage() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [pruneCandidates, setPruneCandidates] = useState<PruneCandidate[]>([]);
+  const [pruneLoading, setPruneLoading] = useState<boolean>(false);
+  const [pruneError, setPruneError] = useState<string | null>(null);
+  const [pruneOpen, setPruneOpen] = useState<boolean>(false);
+  const [selectedPruneIds, setSelectedPruneIds] = useState<Set<string>>(new Set());
+  const [pruneSubmitting, setPruneSubmitting] = useState<boolean>(false);
+  const [pruneSummary, setPruneSummary] = useState<string | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async (searchVal: string) => {
@@ -65,9 +109,25 @@ export default function CrmKanbanPage() {
     }
   }, []);
 
+  const fetchPruneCandidates = useCallback(async () => {
+    setPruneLoading(true);
+    setPruneError(null);
+    try {
+      const data = await apiGet<PruneCandidatesResponse>('/crm-prune-candidates');
+      const candidates = data.candidates || [];
+      setPruneCandidates(candidates);
+      setSelectedPruneIds(new Set(candidates.map((candidate) => candidate.deal_id)));
+    } catch (err) {
+      setPruneError((err as Error).message || 'Erro ao carregar limpeza de pipeline.');
+    } finally {
+      setPruneLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData(search);
-  }, [fetchData]);
+    fetchPruneCandidates();
+  }, [fetchData, fetchPruneCandidates]);
 
   const onSearchChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -82,6 +142,37 @@ export default function CrmKanbanPage() {
     },
     [fetchData]
   );
+
+  const togglePruneSelection = useCallback((dealId: string) => {
+    setSelectedPruneIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(dealId)) next.delete(dealId);
+      else next.add(dealId);
+      return next;
+    });
+  }, []);
+
+  const submitPrune = useCallback(async () => {
+    const deal_ids = Array.from(selectedPruneIds);
+    if (deal_ids.length === 0) {
+      setPruneError('Selecione ao menos uma oportunidade para limpar.');
+      return;
+    }
+
+    setPruneSubmitting(true);
+    setPruneError(null);
+    setPruneSummary(null);
+    try {
+      const result = await apiPost<PruneResult>('/crm-prune-candidates', { deal_ids });
+      setPruneSummary(`${result.updated} oportunidades marcadas como Perdido. ${result.skipped} ignoradas.`);
+      setPruneOpen(false);
+      await Promise.all([fetchData(search), fetchPruneCandidates()]);
+    } catch (err) {
+      setPruneError((err as Error).message || 'Erro ao limpar pipeline.');
+    } finally {
+      setPruneSubmitting(false);
+    }
+  }, [fetchData, fetchPruneCandidates, search, selectedPruneIds]);
 
   const moveDeal = useCallback(
     async (dealId: string, newStatus: string) => {
@@ -156,6 +247,36 @@ export default function CrmKanbanPage() {
           className="pl-9"
         />
       </div>
+
+      {/* Prune summary */}
+      {pruneSummary && (
+        <div className="rounded-lg border border-success/30 bg-success/10 text-success px-4 py-3 text-sm">
+          {pruneSummary}
+        </div>
+      )}
+
+      {/* Prune error */}
+      {pruneError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 text-destructive px-4 py-3 text-sm">
+          {pruneError}
+        </div>
+      )}
+
+      {/* Prune banner */}
+      {!pruneLoading && pruneCandidates.length > 0 && (
+        <div className="rounded-lg border border-line bg-surface-muted px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <p className="font-medium text-sm text-fg">Limpeza de pipeline disponível</p>
+            <p className="text-sm text-fg-muted">
+              Existem {pruneCandidates.length} orçamentos enviados há 30 dias ou mais sem pedido fechado
+              e sem atualização nos últimos 7 dias.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => setPruneOpen(true)}>
+            Revisar e marcar como Perdido
+          </Button>
+        </div>
+      )}
 
       {/* Loading */}
       {loading && <SkeletonKanban />}
@@ -259,6 +380,78 @@ export default function CrmKanbanPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Prune modal */}
+      {pruneOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-surface border border-line rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-fg">Revisar limpeza de pipeline</h2>
+                <p className="text-sm text-fg-muted mt-1">
+                  Selecione os orçamentos antigos que devem ser marcados como Perdido.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPruneOpen(false)}
+                className="text-fg-muted hover:text-fg"
+                aria-label="Fechar"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="overflow-auto p-5">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="text-left py-2 pr-2 w-10">&nbsp;</th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Lead</th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Orçamento</th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Idade</th>
+                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Última alteração</th>
+                    <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pruneCandidates.map((candidate) => (
+                    <tr key={candidate.deal_id} className="border-b border-line/50 last:border-0">
+                      <td className="py-2 pr-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedPruneIds.has(candidate.deal_id)}
+                          onChange={() => togglePruneSelection(candidate.deal_id)}
+                          aria-label={`Selecionar ${candidate.lead_name}`}
+                        />
+                      </td>
+                      <td className="py-2 pr-2 text-fg">{candidate.lead_name || 'Sem nome'}</td>
+                      <td className="py-2 pr-2 font-mono text-xs text-primary">{candidate.quotation}</td>
+                      <td className="py-2 pr-2 text-fg-muted">{candidate.age_days} dias</td>
+                      <td className="py-2 pr-2 text-fg-muted">{formatDateBR(candidate.deal_modified)}</td>
+                      <td className="py-2 text-right text-fg font-medium">{formatBRL(candidate.grand_total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="px-5 py-4 border-t border-line flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <p className="text-sm text-fg-muted">
+                {selectedPruneIds.size} de {pruneCandidates.length} selecionadas
+              </p>
+              <div className="flex items-center gap-2 justify-end">
+                <Button variant="outline" onClick={() => setPruneOpen(false)} disabled={pruneSubmitting}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" onClick={submitPrune} disabled={pruneSubmitting || selectedPruneIds.size === 0}>
+                  {pruneSubmitting ? 'Marcando...' : 'Marcar selecionados como Perdido'}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
