@@ -373,7 +373,7 @@ export default function CrmKanbanPage() {
                                   {deal.quotation}
                                 </span>
                               )}
-                              {deal.follow_up_stage && deal.follow_up_stage > 0 && (
+                              {Number(deal.follow_up_stage) > 0 && (
                                 <span className="inline-flex items-center text-xs bg-surface-muted text-fg rounded px-1.5 py-0.5">
                                   <Send size={12} className="mr-1" /> Follow-up{' '}
                                   {deal.follow_up_stage}
