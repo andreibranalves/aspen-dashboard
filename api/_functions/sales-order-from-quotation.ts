@@ -76,7 +76,10 @@ async function tryUpdateCrmDeal(quotationId: string, salesOrderName: string): Pr
       return true;
     }
   } catch (err: any) {
-    console.warn('[sales-order-from-quotation] CRM update failed:', err?.logMessage || err?.message || err);
+    console.warn(
+      '[sales-order-from-quotation] CRM update failed:',
+      err?.logMessage || err?.message || err
+    );
     return false;
   }
 }
@@ -88,7 +91,9 @@ async function tryUpdateCrmDeal(quotationId: string, salesOrderName: string): Pr
  *
  * Returns { alreadyExists: boolean, existingOrder: object|null }
  */
-async function checkDuplicate(quotationId: string): Promise<{ alreadyExists: boolean; existingOrder: any }> {
+async function checkDuplicate(
+  quotationId: string
+): Promise<{ alreadyExists: boolean; existingOrder: any }> {
   try {
     // Preferred path: query child table (Sales Order Item) for prevdoc_docname
     const items = await erpGetList('Sales Order Item', {
@@ -134,9 +139,7 @@ async function checkDuplicate(quotationId: string): Promise<{ alreadyExists: boo
         if (!fullOrder) continue;
 
         const items = fullOrder.items || [];
-        const hasMatch = items.some(
-          (item: any) => item.prevdoc_docname === quotationId
-        );
+        const hasMatch = items.some((item: any) => item.prevdoc_docname === quotationId);
         if (hasMatch && fullOrder.docstatus !== 2) {
           return { alreadyExists: true, existingOrder: fullOrder };
         }
@@ -147,7 +150,10 @@ async function checkDuplicate(quotationId: string): Promise<{ alreadyExists: boo
 
     return { alreadyExists: false, existingOrder: null };
   } catch (err: any) {
-    console.warn('[sales-order-from-quotation] Fallback dedup also failed:', err?.logMessage || err?.message || err);
+    console.warn(
+      '[sales-order-from-quotation] Fallback dedup also failed:',
+      err?.logMessage || err?.message || err
+    );
     return { alreadyExists: false, existingOrder: null };
   }
 }
@@ -182,10 +188,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     // Block cancelled / lost quotations
     const blockedStatuses = ['Cancelled', 'Lost', 'Expired'];
     if (quotation.docstatus === 2 || blockedStatuses.includes(quotation.status)) {
-      throw createHttpError(
-        400,
-        'Este orçamento não pode ser convertido em pedido de venda.'
-      );
+      throw createHttpError(400, 'Este orçamento não pode ser convertido em pedido de venda.');
     }
 
     // ── 3. Dedup check ───────────────────────────────────────────────────
@@ -222,10 +225,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     // ── 5. Call native mapper ────────────────────────────────────────────
     let mapped;
     try {
-      mapped = await erpCallMethod(
-        'erpnext.selling.doctype.quotation.quotation.make_sales_order',
-        { source_name: quotationId }
-      );
+      mapped = await erpCallMethod('erpnext.selling.doctype.quotation.quotation.make_sales_order', {
+        source_name: quotationId,
+      });
     } catch (mapErr: any) {
       throw createHttpError(
         400,

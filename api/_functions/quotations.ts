@@ -6,23 +6,42 @@
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
 import type { FunctionEvent, FunctionResult, ErpnextListItem } from '../_lib/types.js';
-import { erpGetList, erpGetDoc, erpPut, erpDelete, erpCallMethod, createHttpError } from './lib/erpnext.js';
+import {
+  erpGetList,
+  erpGetDoc,
+  erpPut,
+  erpDelete,
+  erpCallMethod,
+  createHttpError,
+} from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const VALID_STATUSES = ['Draft', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled'];
 const ORDER_BY_ALLOWLIST = new Set([
-  'creation desc', 'creation asc',
-  'transaction_date desc', 'transaction_date asc',
-  'name desc', 'name asc',
-  'grand_total desc', 'grand_total asc',
-  'valid_till desc', 'valid_till asc',
+  'creation desc',
+  'creation asc',
+  'transaction_date desc',
+  'transaction_date asc',
+  'name desc',
+  'name asc',
+  'grand_total desc',
+  'grand_total asc',
+  'valid_till desc',
+  'valid_till asc',
 ]);
 const ALL_STATUS_KEYS = ['Draft', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled'];
 
 const LIST_FIELDS = [
-  'name', 'transaction_date', 'customer_name', 'party_name',
-  'quotation_to', 'grand_total', 'status', 'docstatus', 'valid_till',
+  'name',
+  'transaction_date',
+  'customer_name',
+  'party_name',
+  'quotation_to',
+  'grand_total',
+  'status',
+  'docstatus',
+  'valid_till',
 ];
 
 // ── Build Filters ───────────────────────────────────────────────────────────
@@ -110,7 +129,11 @@ async function resolveClientNames(quotations: ErpnextListItem[]): Promise<Erpnex
       }
       return;
     } catch (err: any) {
-      console.warn('[quotations] Lead resolve failed for', leadId, err?.logMessage || err?.message || err);
+      console.warn(
+        '[quotations] Lead resolve failed for',
+        leadId,
+        err?.logMessage || err?.message || err
+      );
       return;
     }
   });
@@ -163,12 +186,13 @@ async function computeStatusSummary(query: Record<string, string | undefined>) {
     limit: 10000,
   });
 
-  const summary = Object.fromEntries(ALL_STATUS_KEYS.map(k => [k, 0]));
+  const summary = Object.fromEntries(ALL_STATUS_KEYS.map((k) => [k, 0]));
   for (const doc of allDocs) {
     const d = doc as Record<string, any>;
     if (d.docstatus === 0) summary.Draft++;
     else if (d.docstatus === 2) summary.Cancelled++;
-    else if (d.status && summary[d.status as keyof typeof summary] !== undefined) summary[d.status as keyof typeof summary]++;
+    else if (d.status && summary[d.status as keyof typeof summary] !== undefined)
+      summary[d.status as keyof typeof summary]++;
   }
   return summary;
 }
@@ -207,7 +231,11 @@ function validateListParams(query: Record<string, string | undefined>) {
   let limit = parseInt(query.limit || '', 10);
   if (isNaN(limit) || limit === 0) limit = 50;
   if (limit > 200) {
-    throw createHttpError(400, 'Limite máximo é 200 registros por página.', `[quotations] limit exceeds 200: ${limit}`);
+    throw createHttpError(
+      400,
+      'Limite máximo é 200 registros por página.',
+      `[quotations] limit exceeds 200: ${limit}`
+    );
   }
 
   return { status, orderBy: orderBy || 'creation desc', page, limit };
@@ -228,7 +256,11 @@ async function handleDetail(quotationId: string) {
   }
 
   if (!quotation) {
-    throw createHttpError(404, 'Orçamento não encontrado.', `[quotations] null response for ${quotationId}`);
+    throw createHttpError(
+      404,
+      'Orçamento não encontrado.',
+      `[quotations] null response for ${quotationId}`
+    );
   }
 
   // Resolve client name
@@ -239,12 +271,18 @@ async function handleDetail(quotationId: string) {
     (!cliente || cliente.startsWith('CRM-LEAD-'))
   ) {
     try {
-      const lead = await erpGetDoc('Lead', quotation.party_name, { fields: ['lead_name', 'first_name'] });
+      const lead = await erpGetDoc('Lead', quotation.party_name, {
+        fields: ['lead_name', 'first_name'],
+      });
       if (lead) {
         cliente = lead.first_name || lead.lead_name || cliente;
       }
     } catch (err: any) {
-      console.warn('[quotations] Lead resolve failed for detail', quotationId, err?.logMessage || err?.message || err);
+      console.warn(
+        '[quotations] Lead resolve failed for detail',
+        quotationId,
+        err?.logMessage || err?.message || err
+      );
     }
   }
 
@@ -322,12 +360,12 @@ async function handleUpdate(quotationId: string, payload: Record<string, unknown
 
   // Build update payload — child table replacement
   const updatePayload = {
-    items: items.map(item => ({
+    items: items.map((item) => ({
       item_code: item.item_code,
-      item_name: item.item_name || '',  // ERPNext requires item_name on child table rows
+      item_name: item.item_name || '', // ERPNext requires item_name on child table rows
       qty: item.qty,
       rate: item.rate,
-      ...(item.uom ? { uom: item.uom } : {}),  // Only include uom if explicitly set; else ERPNext auto-derives from item stock_uom
+      ...(item.uom ? { uom: item.uom } : {}), // Only include uom if explicitly set; else ERPNext auto-derives from item stock_uom
     })),
     ignore_pricing_rule: 1,
   };
@@ -443,7 +481,10 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       try {
         payload = JSON.parse(event.body);
       } catch {
-        return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) } as FunctionResult;
+        return {
+          statusCode: 400,
+          body: JSON.stringify({ error: 'JSON inválido' }),
+        } as FunctionResult;
       }
       const detail = await handleUpdate(query.id, payload);
       return {

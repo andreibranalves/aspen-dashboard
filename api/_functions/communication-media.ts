@@ -65,7 +65,7 @@ async function readAllMedia(): Promise<unknown[]> {
 
 async function readMedia(id: string): Promise<any[] | null> {
   try {
-    return await kv.get(`${KV_KEY_MEDIA_PREFIX}${id}`) as any[] | null;
+    return (await kv.get(`${KV_KEY_MEDIA_PREFIX}${id}`)) as any[] | null;
   } catch (err: any) {
     console.warn(`[communication-media] KV read ${id} failed:`, err.message);
     return null;
@@ -100,7 +100,7 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   };
-}
+};
 
 function filterItems(items: Record<string, unknown>[], query: Record<string, string> = {}) {
   let filtered = items;
@@ -133,13 +133,17 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (method === 'GET' && !id) {
     try {
       let items: Record<string, unknown>[] = (await readAllMedia()) as Record<string, unknown>[];
-      const q: Record<string, string> = (event.queryStringParameters || {}) as Record<string, string>;
+      const q: Record<string, string> = (event.queryStringParameters || {}) as Record<
+        string,
+        string
+      >;
       items = filterItems(items, q as Record<string, string>);
 
       // Sort by sort_order then created_at desc
       items.sort(
         (a, b) =>
-          Number(a.sort_order) - Number(b.sort_order) || String(b.created_at || '').localeCompare(String(a.created_at || ''))
+          Number(a.sort_order) - Number(b.sort_order) ||
+          String(b.created_at || '').localeCompare(String(a.created_at || ''))
       );
 
       return jsonResponse(200, { success: true, items });

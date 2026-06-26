@@ -56,23 +56,29 @@ async function fetchItemPrice(sku: string): Promise<any> {
   };
 }
 
-function formatPriceRow(faixa: number, rate: number | null, origem: string, detalhes: Record<string, any> = {}): Record<string, any> {
+function formatPriceRow(
+  faixa: number,
+  rate: number | null,
+  origem: string,
+  detalhes: Record<string, any> = {}
+): Record<string, any> {
   const hasPrice = rate != null && !Number.isNaN(Number(rate));
   const numericRate = hasPrice ? Number(rate) : null;
 
   return {
     faixa,
     qty: faixa,
-      rate: numericRate as number,
+    rate: numericRate as number,
     urgent_rate: hasPrice ? getUrgentRate(numericRate as number) : null,
     origem,
-    origem_label: origem === 'pricing_rule_bracket'
-      ? 'Pricing Rule por faixa'
-      : origem === 'pricing_rule_sku'
-        ? 'Pricing Rule do SKU'
-        : origem === 'item_price'
-          ? 'Item Price'
-          : 'Não encontrado',
+    origem_label:
+      origem === 'pricing_rule_bracket'
+        ? 'Pricing Rule por faixa'
+        : origem === 'pricing_rule_sku'
+          ? 'Pricing Rule do SKU'
+          : origem === 'item_price'
+            ? 'Item Price'
+            : 'Não encontrado',
     status: hasPrice ? 'found' : 'missing',
     urgent_markup: 0.3,
     ...detalhes,
@@ -89,26 +95,32 @@ export async function resolveProductPricing(sku: string): Promise<Record<string,
     const bracketRule = await fetchPricingRuleByTitle(`${sku}-${faixa}`);
 
     if (bracketRule) {
-      rows.push(formatPriceRow(faixa, bracketRule.rate, 'pricing_rule_bracket', {
-        rule_name: bracketRule.rule_name,
-        rule_title: bracketRule.title,
-      }));
+      rows.push(
+        formatPriceRow(faixa, bracketRule.rate, 'pricing_rule_bracket', {
+          rule_name: bracketRule.rule_name,
+          rule_title: bracketRule.title,
+        })
+      );
       continue;
     }
 
     if (skuRule) {
-      rows.push(formatPriceRow(faixa, skuRule.rate, 'pricing_rule_sku', {
-        rule_name: skuRule.rule_name,
-        rule_title: skuRule.title,
-      }));
+      rows.push(
+        formatPriceRow(faixa, skuRule.rate, 'pricing_rule_sku', {
+          rule_name: skuRule.rule_name,
+          rule_title: skuRule.title,
+        })
+      );
       continue;
     }
 
     if (itemPrice) {
-      rows.push(formatPriceRow(faixa, itemPrice.rate, 'item_price', {
-        item_price_name: itemPrice.item_price_name,
-        price_list: itemPrice.price_list,
-      }));
+      rows.push(
+        formatPriceRow(faixa, itemPrice.rate, 'item_price', {
+          item_price_name: itemPrice.item_price_name,
+          price_list: itemPrice.price_list,
+        })
+      );
       continue;
     }
 
@@ -118,7 +130,11 @@ export async function resolveProductPricing(sku: string): Promise<Record<string,
   return rows;
 }
 
-async function upsertBracketPricingRule(sku: string, faixa: number, rate: number): Promise<Record<string, any>> {
+async function upsertBracketPricingRule(
+  sku: string,
+  faixa: number,
+  rate: number
+): Promise<Record<string, any>> {
   const title = `${sku}-${faixa}`;
   const existing = await erpGetList('Pricing Rule', {
     fields: ['name', 'title'],
@@ -129,7 +145,14 @@ async function upsertBracketPricingRule(sku: string, faixa: number, rate: number
   if (existing.length > 0) {
     const ruleName = existing[0].name;
     await erpPut('Pricing Rule', ruleName, { rate });
-    return { faixa, rate, status: 'atualizado', origem: 'pricing_rule_bracket', rule_name: ruleName, rule_title: title };
+    return {
+      faixa,
+      rate,
+      status: 'atualizado',
+      origem: 'pricing_rule_bracket',
+      rule_name: ruleName,
+      rule_title: title,
+    };
   }
 
   const created = await erpPost('Pricing Rule', {
@@ -142,10 +165,20 @@ async function upsertBracketPricingRule(sku: string, faixa: number, rate: number
     items: [{ item_code: sku }],
   });
 
-  return { faixa, rate, status: 'criado', origem: 'pricing_rule_bracket', rule_name: created?.name || title, rule_title: title };
+  return {
+    faixa,
+    rate,
+    status: 'criado',
+    origem: 'pricing_rule_bracket',
+    rule_name: created?.name || title,
+    rule_title: title,
+  };
 }
 
-export async function saveProductPricing(sku: string, precos: Record<string, any>[]): Promise<Record<string, any>> {
+export async function saveProductPricing(
+  sku: string,
+  precos: Record<string, any>[]
+): Promise<Record<string, any>> {
   let item;
   try {
     item = await erpGetDoc('Item', sku);
@@ -169,19 +202,28 @@ export async function saveProductPricing(sku: string, precos: Record<string, any
     const rate = Number(p.rate);
 
     if (!BRACKETS.includes(faixa) || Number.isNaN(rate) || rate < 0) {
-      resultados.push({ faixa: p.faixa, rate: p.rate, status: 'erro', error: 'Faixa ou preço inválido.' });
+      resultados.push({
+        faixa: p.faixa,
+        rate: p.rate,
+        status: 'erro',
+        error: 'Faixa ou preço inválido.',
+      });
       continue;
     }
 
     try {
       resultados.push(await upsertBracketPricingRule(sku, faixa, rate));
     } catch (err: any) {
-      console.error('[product-pricing]', `Erro ao salvar ${sku}-${faixa}:`, err?.logMessage || err?.message || err);
+      console.error(
+        '[product-pricing]',
+        `Erro ao salvar ${sku}-${faixa}:`,
+        err?.logMessage || err?.message || err
+      );
       resultados.push({ faixa, rate, status: 'erro', error: 'Erro ao salvar no ERPNext.' });
     }
   }
 
-  const erros = resultados.filter(r => r.status === 'erro');
+  const erros = resultados.filter((r) => r.status === 'erro');
   return {
     success: erros.length === 0,
     sku,
@@ -215,8 +257,11 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     if (event.httpMethod === 'POST' || event.httpMethod === 'PUT') {
       let payload;
-      try { payload = JSON.parse(event.body || '{}'); }
-      catch { return json(400, { error: 'JSON inválido.' }); }
+      try {
+        payload = JSON.parse(event.body || '{}');
+      } catch {
+        return json(400, { error: 'JSON inválido.' });
+      }
 
       const { precos } = payload;
       if (!Array.isArray(precos) || precos.length === 0) {
@@ -231,6 +276,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[product-pricing]', err?.logMessage || err?.message || err);
-    return json(code, { error: code === 404 ? 'Produto não encontrado.' : 'Erro ao processar preços do produto.' });
+    return json(code, {
+      error: code === 404 ? 'Produto não encontrado.' : 'Erro ao processar preços do produto.',
+    });
   }
 }

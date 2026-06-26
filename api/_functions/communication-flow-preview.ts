@@ -7,7 +7,6 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 //
 // Used by the flow editor's preview panel and the pre-send confirmation dialog.
 
-
 import { kv } from '@vercel/kv';
 import { erpGetDoc } from './lib/erpnext.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
@@ -172,7 +171,9 @@ async function resolveMediaUrls(categories: string[]) {
   if (keys.length === 0) return [];
 
   const entries = await Promise.all(keys.map((k) => kv.get(k)));
-  const media: Record<string, unknown>[] = (entries.filter(Boolean) as Record<string, unknown>[]).filter((m) => m.active !== false);
+  const media: Record<string, unknown>[] = (
+    entries.filter(Boolean) as Record<string, unknown>[]
+  ).filter((m) => m.active !== false);
 
   const byGroup: Record<string, Record<string, unknown>[]> = {};
   for (const m of media) {
@@ -198,12 +199,11 @@ async function resolveMediaUrls(categories: string[]) {
 
 // ── JSON response ──────────────────────────────────────────────────────────
 
-const jsonResponse: JsonResponseFn = (statusCode, body) =>
-  ({
-    statusCode,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+const jsonResponse: JsonResponseFn = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
