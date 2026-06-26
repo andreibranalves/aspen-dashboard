@@ -6,7 +6,7 @@
 
 ## Resumo executivo
 
-Com as Fases 4 e 5 concluídas, **todo o código-fonte do frontend em `src/` está em TypeScript** (`.ts` / `.tsx`). Não resta nenhum arquivo `.jsx` / `.js` em `src/`, `src/components/`, `src/hooks/`, `src/lib/` ou `src/pages/`. Todos os imports locais foram padronizados para caminhos extensionless via alias `@/*`, e as verificações de lint, type-check, build e testes unitários passam.
+Com as Fases 4 e 5 concluídas, **todo o código-fonte do frontend em `src/` está em TypeScript** (`.ts` / `.tsx`). Não resta nenhum arquivo `.jsx` / `.js` em `src/`, `src/components/`, `src/hooks/`, `src/lib/` ou `src/pages/`. Imports locais foram padronizados como extensionless; aliases `@/*` são usados para imports fora do diretório imediato (imports relativos ainda ocorrem entre arquivos vizinhos, ex: `./App`). As verificações de lint, type-check, build e testes unitários passam.
 
 ---
 
@@ -75,7 +75,7 @@ Arquivos consumidores alterados na Fase 4:
 ### Commits
 
 - `7605fbf` — `chore: convert first batch of components to TypeScript (Fase 5 parcial)`
-- *(commit final desta fase a ser gerado)*
+- `963af9d` — `chore: complete frontend TypeScript migration (Fase 5)`
 
 ### 1. Componentes compartilhados (`src/components/*.tsx`)
 
@@ -209,8 +209,8 @@ public/assets/index-D0Nguihc.js   517.32 kB │ gzip: 141.50 kB
 
 - `src/` está 100% TypeScript: `.ts` / `.tsx` apenas.
 - Nenhum arquivo `.jsx` / `.js` restante em `src/`, `src/components/`, `src/hooks/`, `src/lib/`, `src/pages/`.
-- Todos os imports locais do frontend são extensionless (`@/components/...`, `@/hooks/...`, `@/lib/...`).
-- `git status` aguarda commit final da Fase 5.
+- Todos os imports locais do frontend são extensionless (`@/components/...`, `@/hooks/...`, `@/lib/...`, `./App`, etc.).
+- `git status` limpo após o commit final da Fase 5.
 
 ---
 
