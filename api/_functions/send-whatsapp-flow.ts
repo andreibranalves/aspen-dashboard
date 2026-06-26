@@ -9,6 +9,7 @@
 // Reuses Evolution API patterns from send-whatsapp.js.
 // Storage: Vercel KV for flows, media, and send events.
 
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { kv } from '@vercel/kv';
 import { erpGetDoc, erpGetList, erpPut, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
@@ -303,13 +304,15 @@ async function resolveProductMedia(categories, maxPerGroup = 1) {
   if (keys.length === 0) return [];
 
   const entries = await Promise.all(keys.map((k) => kv.get(k)));
-  const media = entries.filter(Boolean).filter((m) => m.active !== false);
+  const media = (entries.filter(Boolean) as Array<Record<string, unknown>>).filter((m) => m.active !== false);
 
   // Group by product_group
-  const byGroup = {};
+  const byGroup: Record<string, Array<Record<string, unknown>>> = {};
   for (const m of media) {
-    if (!m.product_group || !m.blob_url) continue;
-    (byGroup[m.product_group] = byGroup[m.product_group] || []).push(m);
+    const product_group = m.product_group as string | undefined;
+    const blob_url = m.blob_url as string | undefined;
+    if (!product_group || !blob_url) continue;
+    (byGroup[product_group] = byGroup[product_group] || []).push(m);
   }
 
   // Resolve for each detected category
@@ -322,7 +325,7 @@ async function resolveProductMedia(categories, maxPerGroup = 1) {
         type: 'image',
         media: asset.blob_url,
         mimetype: asset.content_type || 'image/jpeg',
-        fileName: asset.pathname?.split('/').pop() || 'referencia.jpg',
+        fileName: ((asset.pathname as string) || '').split('/').pop() || 'referencia.jpg',
         caption: asset.caption || '',
       });
     }
@@ -340,9 +343,9 @@ async function checkDuplicate(quotationId, phone, flowId) {
 
     const now = Date.now();
     for (const key of keys) {
-      const event = await kv.get(key);
+      const event = await kv.get(key) as Record<string, unknown> | null;
       if (!event) continue;
-      const eventTime = new Date(event.created_at || event.createdAt).getTime();
+      const eventTime = new Date((event.created_at || event.createdAt) as string).getTime();
       if (now - eventTime > DUPLICATE_WINDOW_MS) continue;
       if (event.quotation_id === quotationId && event.phone === phone && event.flow_id === flowId) {
         return true;
@@ -365,6 +368,15 @@ async function recordSendEvent({
   evolution,
   duplicateWarning,
   errorMsg,
+}: {
+  quotationId: string;
+  phone: string;
+  flowId: string;
+  flowName: string;
+  steps: Array<Record<string, unknown>>;
+  evolution: Array<Record<string, unknown>>;
+  duplicateWarning: boolean;
+  errorMsg?: string;
 }) {
   const eventId = `send_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
   const event = {
@@ -473,7 +485,7 @@ function fireN8n(payload) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Method Not Allowed' });
 
   let payload;
@@ -535,8 +547,8 @@ export async function handler(event) {
     if (!number) throw createHttpError(400, 'Telefone inválido ou ausente.');
 
     // Build context
-    const host = event.headers?.host || 'project-xr5jg.vercel.app';
-    const proto = (event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
+    const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
     const baseUrl = `${proto}://${host}`;
     const link = quotationId ? `${baseUrl}/api/view?q=${encodeURIComponent(quotationId)}` : '';
 

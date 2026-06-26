@@ -18,7 +18,7 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
 const DEFAULT_TEMPLATE =
   '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
-const DEFAULT_SEQUENCE_STEPS = [
+const DEFAULT_SEQUENCE_STEPS: SequenceStep[] = [
   { type: 'text', template: 'Olá, (primeiro_nome), tudo bem?' },
   {
     type: 'text',

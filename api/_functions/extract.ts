@@ -223,7 +223,7 @@ function buildUserContent(text?: string, imageBase64?: string, imageMimeType?: s
 }
 
 function extractAssistantText(data: Record<string, unknown>): string {
-  const content = (data?.choices as Array<Record<string, unknown>>)?.[0]?.message?.content as string | undefined;
+  const content = ((data?.choices as Array<Record<string, unknown>>)?.[0]?.message as Record<string, unknown> | undefined)?.content as string | Array<Record<string, unknown>> | undefined;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
@@ -277,14 +277,14 @@ async function extractWithOpenRouter(
   });
 
   const responseText = await res.text();
-  const data = parseJsonSafely(responseText);
+  const data = parseJsonSafely(responseText) as Record<string, unknown>;
 
   if (!res.ok) {
-    const upstreamMessage = data?.error?.message || responseText || `OpenRouter retornou HTTP ${res.status}`;
+    const upstreamMessage = (data?.error as Record<string, unknown> | undefined)?.message as string || responseText || `OpenRouter retornou HTTP ${res.status}`;
     throw createHttpError(502, 'Falha ao extrair pedido no provedor de IA.', `OpenRouter HTTP ${res.status}: ${upstreamMessage}`);
   }
 
-  const raw = extractAssistantText(data);
+  const raw = extractAssistantText(data as Record<string, unknown>);
   if (!raw) {
     throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Resposta sem conteúdo textual');
   }

@@ -85,7 +85,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           const itemPrices = await erpGetList('Item Price', {
             fields: ['item_code', 'price_list_rate'],
             filters: [
-              ['item_code', 'in', skus],
+              ['item_code', 'in', skus] as unknown as (string | number)[],
               ['price_list', '=', 'Standard Selling'],
             ],
             order_by: 'price_list_rate asc',
