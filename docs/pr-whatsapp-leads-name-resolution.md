@@ -25,7 +25,7 @@ This caused two user-facing issues:
 - Extended quotation metadata caching with `quotationNames`, keyed by quotation ID.
 - Added `resolveCanonicalLeadName(lead, converted)` so when a WhatsApp lead matches an existing quotation by phone or email, the list reuses the full ERPNext `customer_name`.
 
-### Frontend: `src/pages/AutoQuotePage.jsx`
+### Frontend: `src/pages/AutoQuotePage.tsx`
 
 - Updated the WhatsApp lead card layout to show name and email on separate lines.
 - Removed the previous one-line combined `name — email` rendering that visually hid surnames in narrow cards.

@@ -1,5 +1,7 @@
 # TypeScript Migration — Next Steps
 
+> Historical note: this document describes the state after Phase 1. Frontend files listed below may already have been migrated in later phases. See `docs/typescript-migration-fase4-fase5-report.md` for the current frontend state.
+
 ## Fase 1 concluída
 
 - TypeScript + `@types/node` instalados.
