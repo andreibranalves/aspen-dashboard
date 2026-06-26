@@ -324,82 +324,83 @@ export default function CrmKanbanPage() {
 
                 {/* Cards area */}
                 {(() => {
-                  const visible = visiblePerColumn[col.status] ?? 25;
+                  const visible = visiblePerColumn[col.status] ?? 10;
                   const shown = col.deals.slice(0, visible);
                   const hidden = col.deals.length - shown.length;
                   return (
                     <>
-                <div
-                  className={cn(
-                    'flex-1 px-2 pb-2 space-y-2 min-h-[120px] rounded-b-lg transition-colors',
-                    draggingId && 'bg-primary/5'
-                  )}
-                  onDragOver={(e: DragEvent<HTMLDivElement>) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                  }}
-                  onDrop={(e: DragEvent<HTMLDivElement>) => {
-                    e.preventDefault();
-                    const dealId = e.dataTransfer.getData('text/plain');
-                    if (dealId && col.status) {
-                      moveDeal(dealId, col.status);
-                    }
-                    setDraggingId(null);
-                  }}
-                >
-                  {shown.map((deal) => (
-                    <div
-                      key={deal.id}
-                      draggable
-                      onDragStart={(e: DragEvent<HTMLDivElement>) => {
-                        setDraggingId(deal.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('text/plain', deal.id);
-                      }}
-                      onDragEnd={() => setDraggingId(null)}
-                      className={cn(
-                        'bg-surface rounded-lg border border-line p-3 cursor-grab active:cursor-grabbing hover:border-fg-muted/30 transition-all',
-                        draggingId === deal.id && 'opacity-50'
-                      )}
-                    >
-                      <p className="font-medium text-sm">{deal.lead_name || '—'}</p>
-                      {deal.email && (
-                        <p className="text-xs text-fg-muted truncate mt-0.5">{deal.email}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        {deal.quotation && (
-                          <span className="inline-flex items-center text-xs bg-primary/10 text-primary rounded px-1.5 py-0.5">
-                            <Clipboard size={12} className="mr-1" />
-                            {deal.quotation}
-                          </span>
+                      <div
+                        className={cn(
+                          'flex-1 px-2 pb-2 space-y-2 min-h-[120px] rounded-b-lg transition-colors',
+                          draggingId && 'bg-primary/5'
                         )}
-                        {deal.follow_up_stage && deal.follow_up_stage > 0 && (
-                          <span className="inline-flex items-center text-xs bg-surface-muted text-fg rounded px-1.5 py-0.5">
-                            <Send size={12} className="mr-1" /> Follow-up {deal.follow_up_stage}
-                          </span>
-                        )}
-                        <span className="text-xs text-fg-muted">
-                          {daysAgo(deal.modificado_em || deal.criado_em)}
-                        </span>
+                        onDragOver={(e: DragEvent<HTMLDivElement>) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(e: DragEvent<HTMLDivElement>) => {
+                          e.preventDefault();
+                          const dealId = e.dataTransfer.getData('text/plain');
+                          if (dealId && col.status) {
+                            moveDeal(dealId, col.status);
+                          }
+                          setDraggingId(null);
+                        }}
+                      >
+                        {shown.map((deal) => (
+                          <div
+                            key={deal.id}
+                            draggable
+                            onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                              setDraggingId(deal.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                              e.dataTransfer.setData('text/plain', deal.id);
+                            }}
+                            onDragEnd={() => setDraggingId(null)}
+                            className={cn(
+                              'bg-surface rounded-lg border border-line p-3 cursor-grab active:cursor-grabbing hover:border-fg-muted/30 transition-all',
+                              draggingId === deal.id && 'opacity-50'
+                            )}
+                          >
+                            <p className="font-medium text-sm">{deal.lead_name || '—'}</p>
+                            {deal.email && (
+                              <p className="text-xs text-fg-muted truncate mt-0.5">{deal.email}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              {deal.quotation && (
+                                <span className="inline-flex items-center text-xs bg-primary/10 text-primary rounded px-1.5 py-0.5">
+                                  <Clipboard size={12} className="mr-1" />
+                                  {deal.quotation}
+                                </span>
+                              )}
+                              {deal.follow_up_stage && deal.follow_up_stage > 0 && (
+                                <span className="inline-flex items-center text-xs bg-surface-muted text-fg rounded px-1.5 py-0.5">
+                                  <Send size={12} className="mr-1" /> Follow-up{' '}
+                                  {deal.follow_up_stage}
+                                </span>
+                              )}
+                              <span className="text-xs text-fg-muted">
+                                {daysAgo(deal.modificado_em || deal.criado_em)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-                {hidden > 0 && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setVisiblePerColumn((prev) => ({
-                        ...prev,
-                        [col.status]: (prev[col.status] ?? 25) + 25,
-                      }))
-                    }
-                    className="px-2 pb-2 text-xs text-fg-muted hover:text-fg transition-colors"
-                  >
-                    Ver mais ({hidden} restantes)
-                  </button>
-                )}
-                </>
+                      {hidden > 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setVisiblePerColumn((prev) => ({
+                              ...prev,
+                              [col.status]: (prev[col.status] ?? 10) + 25,
+                            }))
+                          }
+                          className="px-2 pb-2 text-xs text-fg-muted hover:text-fg transition-colors"
+                        >
+                          Ver mais ({hidden} restantes)
+                        </button>
+                      )}
+                    </>
                   );
                 })()}
               </div>
