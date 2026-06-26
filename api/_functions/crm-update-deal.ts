@@ -1,8 +1,9 @@
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpPut, createHttpError } from './lib/erpnext.js';
 
 // ── Handler ──
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'PUT' && event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -18,7 +19,8 @@ export async function handler(event) {
       throw createHttpError(400, 'deal_id e status são obrigatórios');
     }
 
-    const update = { status };
+    // ponytail: Record<string, unknown> for dynamic object properties
+    const update: Record<string, unknown> = { status };
 
     // Opcional: atualiza estágio de follow-up junto com o status
     if (follow_up_stage !== undefined && follow_up_stage !== null) {
@@ -32,7 +34,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ success: true, deal_id, status }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[crm-update-deal]', err?.logMessage || err?.message || err);
     return {

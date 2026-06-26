@@ -1,4 +1,5 @@
 // GET  /api/whatsapp-flows  — returns all flows + selected flow ID
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // PUT  /api/whatsapp-flows  — saves flows (body: { flows, selectedFlowId })
 // Storage: Vercel KV (primary), falls back to localStorage-like defaults if KV unavailable.
 //
@@ -115,7 +116,7 @@ async function readFlows() {
       };
     }
     return null;
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[whatsapp-flows] KV read failed:', err.message);
     return null;
   }
@@ -127,7 +128,7 @@ async function writeFlows(flows, selectedFlowId) {
   }
   try {
     await Promise.all([kv.set(KV_KEY_FLOWS, flows), kv.set(KV_KEY_SELECTED, selectedFlowId)]);
-  } catch (err) {
+  } catch (err: any) {
     throw createHttpError(
       500,
       'Falha ao salvar fluxos.',
@@ -138,7 +139,7 @@ async function writeFlows(flows, selectedFlowId) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const method = event.httpMethod || 'GET';
 
   // ── GET: return flows ──
@@ -168,7 +169,7 @@ export async function handler(event) {
           source: 'defaults',
         }),
       };
-    } catch (err) {
+    } catch (err: any) {
       console.error('[whatsapp-flows] GET error:', err.message);
       return {
         statusCode: 500,
@@ -207,7 +208,7 @@ export async function handler(event) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ success: true, source: 'kv' }),
       };
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[whatsapp-flows]', err?.logMessage || err?.message || err);
       return {

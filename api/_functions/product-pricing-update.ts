@@ -1,4 +1,5 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -22,7 +23,7 @@ async function upsertBracket(sku, faixa, rate) {
     try {
       await erpPut('Pricing Rule', ruleName, { rate });
       return { faixa, rate, status: 'atualizado', rule_name: ruleName };
-    } catch (err) {
+    } catch (err: any) {
       console.error('[product-pricing-update]', `Erro ao atualizar ${title}:`, err?.logMessage || err?.message || err);
       return { faixa, rate, status: 'erro', rule_name: ruleName, error: err?.message || 'Erro ao atualizar.' };
     }
@@ -40,7 +41,7 @@ async function upsertBracket(sku, faixa, rate) {
       items: [{ item_code: sku }],
     });
     return { faixa, rate, status: 'criado', rule_name: created?.name || title };
-  } catch (err) {
+  } catch (err: any) {
     console.error('[product-pricing-update]', `Erro ao criar ${title}:`, err?.logMessage || err?.message || err);
     return { faixa, rate, status: 'erro', rule_name: null, error: err?.message || 'Erro ao criar.' };
   }
@@ -48,7 +49,7 @@ async function upsertBracket(sku, faixa, rate) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'PUT') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -101,7 +102,7 @@ export async function handler(event) {
     let item;
     try {
       item = await erpGetDoc('Item', sku);
-    } catch (err) {
+    } catch (err: any) {
       if (err?.logMessage?.includes('404') || err?.message?.includes('404')) {
         return {
           statusCode: 404,
@@ -141,7 +142,7 @@ export async function handler(event) {
         resultados,
       }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[product-pricing-update]', err?.logMessage || err?.message || err);
     return {

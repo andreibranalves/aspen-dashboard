@@ -1,4 +1,5 @@
 // POST /api/sales-order-from-quotation — convert a confirmed quotation into a
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // confirmed Sales Order with dedup protection, auto-submit, and CRM update.
 
 import { erpGetList, erpGetDoc, erpPost, erpCallMethod, createHttpError } from './lib/erpnext.js';
@@ -74,7 +75,7 @@ async function tryUpdateCrmDeal(quotationId, salesOrderName) {
       });
       return true;
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[sales-order-from-quotation] CRM update failed:', err?.logMessage || err?.message || err);
     return false;
   }
@@ -145,7 +146,7 @@ async function checkDuplicate(quotationId) {
     }
 
     return { alreadyExists: false, existingOrder: null };
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[sales-order-from-quotation] Fallback dedup also failed:', err?.logMessage || err?.message || err);
     return { alreadyExists: false, existingOrder: null };
   }
@@ -153,7 +154,7 @@ async function checkDuplicate(quotationId) {
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -294,7 +295,7 @@ export async function handler(event) {
         crm_updated: crmUpdated,
       }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[sales-order-from-quotation]', err?.logMessage || err?.message || err);
     return {

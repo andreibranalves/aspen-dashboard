@@ -1,4 +1,5 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
 import { getUrgentRate } from './pricing.js';
 
@@ -148,16 +149,16 @@ export async function saveProductPricing(sku, precos) {
   let item;
   try {
     item = await erpGetDoc('Item', sku);
-  } catch (err) {
+  } catch (err: any) {
     if (isErpNotFound(err)) {
-      const notFound = new Error('Produto não encontrado.');
+      const notFound = new Error('Produto não encontrado.') as Error & { statusCode: number };
       notFound.statusCode = 404;
       throw notFound;
     }
     throw err;
   }
   if (!item) {
-    const err = new Error('Produto não encontrado.');
+    const err = new Error('Produto não encontrado.') as Error & { statusCode: number };
     err.statusCode = 404;
     throw err;
   }
@@ -174,7 +175,7 @@ export async function saveProductPricing(sku, precos) {
 
     try {
       resultados.push(await upsertBracketPricingRule(sku, faixa, rate));
-    } catch (err) {
+    } catch (err: any) {
       console.error('[product-pricing]', `Erro ao salvar ${sku}-${faixa}:`, err?.logMessage || err?.message || err);
       resultados.push({ faixa, rate, status: 'erro', error: 'Erro ao salvar no ERPNext.' });
     }
@@ -200,7 +201,7 @@ function json(statusCode, payload) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const params = event.queryStringParameters || {};
   const sku = (params.sku || '').trim();
 
@@ -227,7 +228,7 @@ export async function handler(event) {
     }
 
     return { statusCode: 405, body: 'Method Not Allowed' };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[product-pricing]', err?.logMessage || err?.message || err);
     return json(code, { error: code === 404 ? 'Produto não encontrado.' : 'Erro ao processar preços do produto.' });

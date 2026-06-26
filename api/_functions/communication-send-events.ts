@@ -1,4 +1,5 @@
 // GET /api/communication-send-events
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 //
 // Lists WhatsApp flow send events from KV.
 // Query params: quotation_id, phone, flow_id, status, limit (default 50)
@@ -21,7 +22,7 @@ function jsonResponse(statusCode, body) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') return jsonResponse(405, { error: 'Método não permitido.' });
 
   try {
@@ -42,7 +43,7 @@ export async function handler(event) {
 
     // Fetch all events
     const entries = await Promise.all(keys.map((k) => kv.get(k)));
-    let items = entries.filter(Boolean);
+    let items: Record<string, unknown>[] = entries.filter(Boolean) as Record<string, unknown>[];
 
     // Filters
     const quotationId = String(q.quotation_id || '').trim();
@@ -58,7 +59,7 @@ export async function handler(event) {
     }
 
     // Sort by created_at descending (most recent first)
-    items.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    items.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
 
     // Limit
     const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
@@ -70,7 +71,7 @@ export async function handler(event) {
       total: items.length,
       source: 'kv',
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[comm-send-events]', err?.logMessage || err?.message || err);
     return jsonResponse(500, { error: err?.message || 'Erro ao listar histórico.' });
   }

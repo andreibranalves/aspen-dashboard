@@ -1,9 +1,10 @@
 // ── Login handler ────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 
 const APP_PASSWORD = process.env.APP_PASSWORD;
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 dias
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,

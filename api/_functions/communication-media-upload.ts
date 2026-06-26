@@ -1,4 +1,5 @@
 // POST /api/communication-media-upload
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 //
 // Vercel Blob client upload token generation using handleUpload from @vercel/blob/client.
 //
@@ -32,7 +33,7 @@ function jsonResponse(statusCode, body) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, { error: 'Método não permitido.' });
   }
@@ -46,20 +47,17 @@ export async function handler(event) {
 
   // Build a synthetic Request for handleUpload (it needs request.url for origin validation)
   const host = event.headers?.host || 'localhost';
-  const proto = (event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
+  const proto = String(event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
   const requestUrl = `${proto}://${host}/api/communication-media-upload`;
 
   try {
     const result = await handleUpload({
       body,
-      request: {
-        // handleUpload only uses request.url for origin checks
-        url: requestUrl,
-        // headers passed as plain object — handleUpload only needs them for request context
-      },
+      request: { url: requestUrl } as unknown as Request,
       onBeforeGenerateToken: async (pathname /* , clientPayload */) => {
         // Validate pathname has a valid product group prefix
-        const parts = pathname.replace(/^\/+/, '').split('/');
+        const safePathname = Array.isArray(pathname) ? pathname[0] : pathname;
+        const parts = safePathname.replace(/^\/+/, '').split('/');
         const productGroup = parts[1]; // aspen-media/{product_group}/...
 
         if (!productGroup || !PRODUCT_GROUPS.includes(productGroup)) {
@@ -92,7 +90,7 @@ export async function handler(event) {
     });
 
     return jsonResponse(200, result);
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 400;
     console.error('[comm-media-upload]', err?.logMessage || err?.message || err);
     return jsonResponse(code, { error: err?.message || 'Erro ao gerar token de upload.' });

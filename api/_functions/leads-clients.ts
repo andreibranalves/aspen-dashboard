@@ -1,21 +1,22 @@
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList, erpDelete, erpPost, createHttpError } from './lib/erpnext.js';
 
 // ── Helpers ──
 
-function parsePageLimit(params) {
+function parsePageLimit(params: Record<string, string | undefined>) {
   const page = Math.max(1, parseInt(params.page, 10) || 1);
   const limit = Math.min(200, Math.max(1, parseInt(params.limit, 10) || 50));
   return { page, limit };
 }
 
-function buildSearchFilter(params, field) {
+function buildSearchFilter(params: Record<string, string | undefined>, field: string) {
   if (!params.search) return undefined;
   const term = params.search.trim();
   if (!term) return undefined;
   return [[field, 'like', `%${term}%`]];
 }
 
-function mapCustomer(c) {
+function mapCustomer(c: Record<string, unknown>) {
   return {
     id: c.name,
     nome: c.customer_name,
@@ -27,7 +28,7 @@ function mapCustomer(c) {
   };
 }
 
-function mapLead(l) {
+function mapLead(l: Record<string, unknown>) {
   return {
     id: l.name,
     nome: l.lead_name,
@@ -41,7 +42,7 @@ function mapLead(l) {
 
 // ── Handler ──
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const params = event.queryStringParameters || {};
 
   // GET — list leads + customers
@@ -58,8 +59,8 @@ export async function handler(event) {
       const searchCustomers = buildSearchFilter(params, 'customer_name');
       const searchLeads = buildSearchFilter(params, 'lead_name');
 
-      let customers = [];
-      let leads = [];
+      let customers: Record<string, unknown>[] = [];
+      let leads: Record<string, unknown>[] = [];
 
       if (tipo === 'cliente' || tipo === 'todos') {
         customers = await erpGetList('Customer', {
@@ -83,7 +84,7 @@ export async function handler(event) {
         ...customers.map(mapCustomer),
         ...leads.map(mapLead),
       ];
-      merged.sort((a, b) => new Date(b.data_criacao) - new Date(a.data_criacao));
+      merged.sort((a: Record<string, unknown>, b: Record<string, unknown>) => new Date(b.data_criacao as string).getTime() - new Date(a.data_criacao as string).getTime());
 
       const total = merged.length;
       const start = (page - 1) * limit;
@@ -102,7 +103,7 @@ export async function handler(event) {
           },
         }),
       };
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[leads-clients] GET', err?.logMessage || err?.message || err);
       return {
@@ -129,7 +130,7 @@ export async function handler(event) {
       if (!nome) throw createHttpError(400, 'Nome é obrigatório.');
 
       const doctype = tipo === 'lead' ? 'Lead' : 'Customer';
-      const docPayload = {};
+      const docPayload: Record<string, unknown> = {};
 
       if (tipo === 'lead') {
         docPayload.lead_name = nome;
@@ -148,7 +149,7 @@ export async function handler(event) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ success: true, created: created.name || created, tipo }),
       };
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[leads-clients] POST', err?.logMessage || err?.message || err);
       return {
@@ -180,7 +181,7 @@ export async function handler(event) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ success: true, deleted: id, tipo }),
       };
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[leads-clients] DELETE', err?.logMessage || err?.message || err);
       return {

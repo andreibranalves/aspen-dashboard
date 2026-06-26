@@ -1,4 +1,5 @@
 // POST /api/typebot-lead-capture
+import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
 //
 // Validates a Bearer token, normalizes the inbound payload, and reproduces the
 // current production diagnostic response while the route is disabled. When the
@@ -70,7 +71,7 @@ function phoneVariants(phone) {
   return [...variants];
 }
 
-function normalizeSource() {
+function normalizeSource(value: unknown) {
   return 'Website';
 }
 
@@ -114,13 +115,13 @@ function normalizeLead(payload) {
   };
 }
 
-function getBearerToken(headers = {}) {
+function getBearerToken(headers: Record<string, string | undefined> = {}) {
   const raw = headers.authorization || headers.Authorization || '';
   const match = /^Bearer\s+(.+)$/i.exec(raw);
   return match?.[1]?.trim() || '';
 }
 
-function isAuthorized(headers = {}) {
+function isAuthorized(headers: Record<string, string | undefined> = {}) {
   const expected = String(process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN || '').trim();
   const received = getBearerToken(headers);
   return !!expected && received === expected;
@@ -139,7 +140,7 @@ function isEmptyValue(value) {
 }
 
 function buildLeadDocPayload(lead, existing = null) {
-  const docPayload = { lead_name: lead.nome };
+  const docPayload: Record<string, unknown> = { lead_name: lead.nome };
   if (lead.email) docPayload.email_id = lead.email;
   if (lead.telefone) docPayload.mobile_no = lead.telefone;
   if (lead.origem) docPayload.source = lead.origem;
@@ -270,7 +271,7 @@ function createHandler(deps = LIVE_DEPS) {
         existing_lead: result.existingLead,
         activation_required: false,
       });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[typebot-lead-capture]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro interno.' });
@@ -278,4 +279,4 @@ function createHandler(deps = LIVE_DEPS) {
   };
 }
 
-export const handler = createHandler();
+export const handler: LegacyHandler = createHandler();

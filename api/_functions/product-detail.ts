@@ -1,10 +1,11 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetDoc } from './lib/erpnext.js';
 import { resolveProductPricing } from './product-pricing.js';
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -27,7 +28,7 @@ export async function handler(event) {
       itemDoc = await erpGetDoc('Item', sku, {
         fields: ['item_code', 'item_name', 'item_group', 'stock_uom', 'disabled', 'image', 'description', 'brand', 'modified'],
       });
-    } catch (err) {
+    } catch (err: any) {
       // erpGetDoc throws for 404 — tratamos como produto não encontrado
       if (err?.logMessage?.includes('404') || err?.message?.includes('404')) {
         return {
@@ -68,7 +69,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ produto, precos }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[product-detail]', err?.logMessage || err?.message || err);
     return {

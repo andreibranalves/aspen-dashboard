@@ -1,4 +1,5 @@
 // GET /api/communication-flows — returns flows from aspen:communication:flows KV
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // PUT /api/communication-flows — saves flows to aspen:communication:flows KV
 //
 // Mirrors whatsapp-flows.js but writes to the new aspen:communication:* namespace.
@@ -186,7 +187,7 @@ async function readFlows() {
     }
 
     return null; // no stored flows found
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[communication-flows] KV read failed:', err.message);
     return null;
   }
@@ -198,7 +199,7 @@ async function writeFlows(flows, selectedFlowId) {
       kv.set(KV_KEY_FLOWS, flows),
       kv.set(KV_KEY_FLOWS_SELECTED, selectedFlowId || ''),
     ]);
-  } catch (err) {
+  } catch (err: any) {
     throw createHttpError(
       500,
       'Falha ao salvar fluxos.',
@@ -219,7 +220,7 @@ function jsonResponse(statusCode, body) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const method = event.httpMethod || 'GET';
 
   // ── GET: return flows ──
@@ -242,7 +243,7 @@ export async function handler(event) {
         selectedFlowId: DEFAULT_FLOWS[0].id,
         source: 'defaults',
       });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-flows]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao carregar fluxos.' });
@@ -268,7 +269,7 @@ export async function handler(event) {
       const normalized = flows.map((f, i) => createFlow({ ...f, id: f.id || `flow_${i}` }));
       await writeFlows(normalized, selectedFlowId || normalized[0]?.id || '');
       return jsonResponse(200, { success: true, source: 'kv' });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-flows]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao salvar fluxos.' });

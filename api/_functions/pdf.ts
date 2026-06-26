@@ -1,8 +1,9 @@
 // GET /api/pdf?q=ORC-XXXX — returns quotation PDF (binary).
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // Used by n8n email follow-up workflow to attach PDFs to emails.
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const quotationId = event.queryStringParameters?.q;
   if (!quotationId) {
     return { statusCode: 400, headers: { 'Content-Type': 'text/plain' }, body: 'Parâmetro ?q= obrigatório' };
@@ -30,7 +31,7 @@ export async function handler(event) {
       body: buffer.toString('base64'),
       isBase64Encoded: true,
     };
-  } catch (err) {
+  } catch (err: any) {
     if (err?.statusCode === 404 || err?.code === 'NOT_FOUND') {
       return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
     }

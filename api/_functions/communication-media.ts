@@ -1,4 +1,5 @@
 // GET    /api/communication-media        — list media assets (scan KV by prefix)
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // GET    /api/communication-media/:id    — single media asset
 // POST   /api/communication-media        — create media asset metadata (after Blob upload)
 // PUT    /api/communication-media/:id    — update media asset
@@ -56,7 +57,7 @@ async function readAllMedia() {
     if (keys.length === 0) return [];
     const entries = await Promise.all(keys.map((k) => kv.get(k)));
     return entries.filter(Boolean);
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[communication-media] KV read all failed:', err.message);
     return [];
   }
@@ -65,7 +66,7 @@ async function readAllMedia() {
 async function readMedia(id) {
   try {
     return await kv.get(`${KV_KEY_MEDIA_PREFIX}${id}`);
-  } catch (err) {
+  } catch (err: any) {
     console.warn(`[communication-media] KV read ${id} failed:`, err.message);
     return null;
   }
@@ -74,7 +75,7 @@ async function readMedia(id) {
 async function writeMedia(asset) {
   try {
     await kv.set(`${KV_KEY_MEDIA_PREFIX}${asset.id}`, asset);
-  } catch (err) {
+  } catch (err: any) {
     throw createHttpError(
       500,
       'Falha ao salvar metadados de mídia.',
@@ -86,7 +87,7 @@ async function writeMedia(asset) {
 async function deleteMediaFromKV(id) {
   try {
     await kv.del(`${KV_KEY_MEDIA_PREFIX}${id}`);
-  } catch (err) {
+  } catch (err: any) {
     console.warn(`[communication-media] KV del ${id} failed:`, err.message);
   }
 }
@@ -101,48 +102,48 @@ function jsonResponse(statusCode, body) {
   };
 }
 
-function filterItems(items, query = {}) {
+function filterItems(items: Record<string, unknown>[], query: Record<string, string> = {}) {
   let filtered = items;
 
   if (query.product_group) {
     const group = String(query.product_group).trim().toLowerCase();
-    filtered = filtered.filter((m) => m.product_group === group);
+    filtered = filtered.filter((m: Record<string, unknown>) => m.product_group === group);
   }
   if (query.active !== undefined && query.active !== '') {
     const active = query.active === '1' || query.active === 'true';
-    filtered = filtered.filter((m) => m.active === active);
+    filtered = filtered.filter((m: Record<string, unknown>) => m.active === active);
   }
   if (query.kind && ALLOWED_MIME_TYPES.find((t) => t.startsWith(query.kind))) {
-    filtered = filtered.filter((m) => m.kind === query.kind);
+    filtered = filtered.filter((m: Record<string, unknown>) => m.kind === query.kind);
   }
   if (query.product_code) {
     const code = String(query.product_code).trim().toUpperCase();
-    filtered = filtered.filter((m) => m.product_code === code);
+    filtered = filtered.filter((m: Record<string, unknown>) => m.product_code === code);
   }
   return filtered;
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const method = event.httpMethod || 'GET';
   const id = extractId(event);
 
   // ── GET: List all media ──
   if (method === 'GET' && !id) {
     try {
-      let items = await readAllMedia();
+      let items: Record<string, unknown>[] = await readAllMedia() as Record<string, unknown>[];
       const q = event.queryStringParameters || {};
       items = filterItems(items, q);
 
       // Sort by sort_order then created_at desc
       items.sort(
         (a, b) =>
-          a.sort_order - b.sort_order || (b.created_at || '').localeCompare(a.created_at || '')
+          Number(a.sort_order) - Number(b.sort_order) || String(b.created_at || '').localeCompare(String(a.created_at || ''))
       );
 
       return jsonResponse(200, { success: true, items });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-media]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao listar mídias.' });
@@ -155,7 +156,7 @@ export async function handler(event) {
       const media = await readMedia(id);
       if (!media) return jsonResponse(404, { error: 'Mídia não encontrada.' });
       return jsonResponse(200, { success: true, item: media });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-media]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao buscar mídia.' });
@@ -188,7 +189,7 @@ export async function handler(event) {
       const asset = createMediaAsset(payload);
       await writeMedia(asset);
       return jsonResponse(201, { success: true, item: asset });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-media]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao criar mídia.' });
@@ -222,7 +223,7 @@ export async function handler(event) {
         'content_type',
         'size_bytes',
       ];
-      const merged = { ...existing };
+      const merged: Record<string, unknown> = { ...(existing as Record<string, unknown>) };
       for (const field of updatableFields) {
         if (payload[field] !== undefined) merged[field] = payload[field];
       }
@@ -231,7 +232,7 @@ export async function handler(event) {
       const asset = createMediaAsset(merged);
       await writeMedia(asset);
       return jsonResponse(200, { success: true, item: asset });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-media]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao atualizar mídia.' });
@@ -246,15 +247,16 @@ export async function handler(event) {
   if (method === 'DELETE' && id) {
     try {
       const existing = await readMedia(id);
-      if (!existing) return jsonResponse(404, { error: 'Mídia não encontrada.' });
+      const existingRecord = existing as Record<string, unknown> | null;
+      if (!existingRecord) return jsonResponse(404, { error: 'Mídia não encontrada.' });
 
       // Attempt Blob deletion (best-effort, non-blocking)
-      if (existing.blob_url) {
+      if (existingRecord.blob_url) {
         try {
-          await blobDelete(existing.blob_url);
+          await blobDelete(existingRecord.blob_url as string);
         } catch (blobErr) {
           console.warn(
-            `[communication-media] Blob delete failed for ${existing.blob_url}:`,
+            `[communication-media] Blob delete failed for ${existingRecord.blob_url}:`,
             blobErr.message
           );
         }
@@ -262,7 +264,7 @@ export async function handler(event) {
 
       await deleteMediaFromKV(id);
       return jsonResponse(200, { success: true, deleted: id });
-    } catch (err) {
+    } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[communication-media]', err?.logMessage || err?.message || err);
       return jsonResponse(code, { error: err?.message || 'Erro ao remover mídia.' });

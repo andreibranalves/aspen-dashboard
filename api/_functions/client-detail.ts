@@ -1,3 +1,4 @@
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetDoc, erpGetList, erpPut, erpPost, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
 import { LEAD_SOURCES, normalizeLeadSource, normalizeCnpj } from './lib/client-metadata.js';
 
@@ -54,8 +55,8 @@ function buildSummaryAddress(addr) {
   };
 }
 
-function computeQualityFlags(doc, doctype, address) {
-  const flags = [];
+function computeQualityFlags(doc: Record<string, unknown>, doctype: string, address: Record<string, unknown> | null) {
+  const flags: string[] = [];
   const phone = doc.mobile_no || doc.phone;
   const email = doc.email_id || doc.email;
   if (!phone) flags.push('sem_telefone');
@@ -93,10 +94,10 @@ async function handleGet(doctype, name) {
 
   // Parse de metadados extras somente quando o campo notes é texto JSON.
   // Em Lead do Frappe CRM, notes é uma child table (array); gravar string nele gera 500 no ERPNext.
-  let notesData = {};
+  let notesData: Record<string, unknown> = {};
   if (typeof doc.notes === 'string' && doc.notes.trim()) {
     try {
-      const parsed = JSON.parse(doc.notes);
+      const parsed: Record<string, unknown> = JSON.parse(doc.notes);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) notesData = parsed;
     } catch { /* notes não contém JSON estruturado */ }
   }
@@ -108,7 +109,7 @@ async function handleGet(doctype, name) {
 
   // 2. Buscar Address vinculado (filtra por address_title,
   //    já que link_doctype/link_name são campos da child table não pesquisáveis via getList)
-  let address = null;
+  let address: Record<string, unknown> | null = null;
   try {
     const addrs = await erpGetList('Address', {
       filters: [['address_title', '=', name]],
@@ -121,7 +122,7 @@ async function handleGet(doctype, name) {
   } catch { /* best-effort */ }
 
   // 3. Buscar último orçamento (Quotation) por party_name
-  let latestQuotation = null;
+  let latestQuotation: Record<string, unknown> | null = null;
   try {
     const quotes = await erpGetList('Quotation', {
       filters: [['party_name', '=', name]],
@@ -140,7 +141,7 @@ async function handleGet(doctype, name) {
   } catch { /* best-effort */ }
 
   // 4. Buscar CRM Deal vinculado (por lead_name ou email)
-  let deal = null;
+  let deal: Record<string, unknown> | null = null;
   try {
     const deals = await erpGetList('CRM Deal', {
       filters: [['lead_name', '=', nome]],
@@ -193,7 +194,7 @@ async function handlePut(doctype, name, rawBody) {
     throw createHttpError(400, 'Corpo da requisição é obrigatório.');
   }
 
-  const updates = {};
+  const updates: Record<string, unknown> = {};
   const allowed = EDITABLE_FIELDS[doctype] || [];
 
   // Mapeia nomes amigáveis do frontend para campos do ERPNext
@@ -262,7 +263,7 @@ async function handlePut(doctype, name, rawBody) {
   // 4.3 Origem (apenas Lead, via utm_source)
   if (doctype === 'Lead' && payload.origem !== undefined) {
     const origemVal = normalizeLeadSource(payload.origem);
-    if (origemVal && !LEAD_SOURCES.includes(origemVal)) {
+    if (origemVal && !(LEAD_SOURCES as readonly string[]).includes(origemVal)) {
       throw createHttpError(400, `Origem "${origemVal}" não reconhecida. Valores aceitos: ${LEAD_SOURCES.join(', ')}.`);
     }
     updates.utm_source = origemVal || null;
@@ -292,7 +293,7 @@ async function handlePut(doctype, name, rawBody) {
     // Só cria/atualiza se tiver pelo menos endereço e município
     // (ERPNext exige address_line1 e city para criar um Address)
     if (endereco && city) {
-      const addressPayload = {
+      const addressPayload: Record<string, unknown> = {
         address_title: name,
         address_type: 'Billing',
         address_line1: addressLine1,
@@ -306,7 +307,7 @@ async function handlePut(doctype, name, rawBody) {
 
       // Verifica se já existe Address vinculado (filtra por address_title,
       // já que link_doctype/link_name são campos da child table não pesquisáveis via getList)
-      let existingAddrName = null;
+      let existingAddrName: string | null = null;
       try {
         const addrs = await erpGetList('Address', {
           filters: [['address_title', '=', name]],
@@ -350,14 +351,14 @@ async function handlePut(doctype, name, rawBody) {
     // Alguns doctypes expõem `notes` como child table (array) ou nem expõem o campo.
     // Só gravamos JSON quando `notes` já é um campo textual; caso contrário, ignoramos
     // esses metadados extras para não quebrar salvamentos básicos (nome/endereço).
-    let currentNotes = {};
+    let currentNotes: Record<string, unknown> = {};
     let canPersistNotesJson = false;
     try {
-      const current = await erpGetDoc(doctype, name, { fields: ['notes'] });
+      const current: Record<string, unknown> | null = await erpGetDoc(doctype, name, { fields: ['notes'] });
       if (typeof current?.notes === 'string') {
         canPersistNotesJson = true;
-        if (current.notes.trim()) {
-          const parsed = JSON.parse(current.notes);
+        if ((current.notes as string).trim()) {
+          const parsed: Record<string, unknown> = JSON.parse(current.notes as string);
           if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
             currentNotes = parsed;
           }
@@ -402,7 +403,7 @@ async function handlePut(doctype, name, rawBody) {
 
 // ── Handler principal ──
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const params = event.queryStringParameters || {};
   const doctype = params.doctype;
   const name = params.name;
@@ -439,7 +440,7 @@ export async function handler(event) {
     }
 
     return { statusCode: 405, body: 'Method Not Allowed' };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[client-detail]', err?.logMessage || err?.message || err);
     return {

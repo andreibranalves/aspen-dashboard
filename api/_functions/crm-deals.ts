@@ -1,3 +1,4 @@
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList } from './lib/erpnext.js';
 
 // ── Helpers ──
@@ -33,7 +34,7 @@ function mapDeal(d) {
 
 // ── Handler ──
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -109,7 +110,7 @@ export async function handler(event) {
         },
       }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[crm-deals]', err?.logMessage || err?.message || err);
     return {

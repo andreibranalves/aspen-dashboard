@@ -1,4 +1,5 @@
 // GET /api/sales-dashboard — aggregated sales metrics for the dashboard.
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 //
 // Period shortcuts: today, 7d, 30d, 90d, month, last_month or custom from+to.
 // Returns summary, top products/customers, sales by day, stale quotations, conversion rate.
@@ -118,7 +119,7 @@ async function fetchSalesOrders(start, end) {
   return erpGetList('Sales Order', {
     fields: SO_FIELDS,
     filters: [
-      ['transaction_date', 'between', [start, end]],
+      ['transaction_date', 'between', [start, end]] as any,
       ['docstatus', '=', 1],
     ],
     order_by: 'transaction_date asc',
@@ -284,7 +285,7 @@ async function fetchStaleQuotations() {
   const quotations = await erpGetList('Quotation', {
     fields: ['name', 'transaction_date', 'customer_name', 'grand_total', 'status'],
     filters: [
-      ['status', 'in', ['Open', 'Replied']],
+      ['status', 'in', ['Open', 'Replied']] as any,
       ['docstatus', '=', 1],
       ['transaction_date', '<=', cutoff],
     ],
@@ -300,7 +301,7 @@ async function fetchStaleQuotations() {
   try {
     const linkedSos = await erpGetList('Sales Order Item', {
       fields: ['prevdoc_docname'],
-      filters: [['prevdoc_docname', 'in', quotationNames]],
+      filters: [['prevdoc_docname', 'in', quotationNames] as any],
       limit: 10000,
     });
     linkedQuotations = new Set(
@@ -347,7 +348,7 @@ async function computeConversionRate(start, end, allItems) {
   const quotations = await erpGetList('Quotation', {
     fields: ['name'],
     filters: [
-      ['transaction_date', 'between', [start, end]],
+      ['transaction_date', 'between', [start, end]] as any,
       ['docstatus', '=', 1],
     ],
     limit: 10000,
@@ -375,7 +376,7 @@ async function computeConversionRate(start, end, allItems) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -456,7 +457,7 @@ export async function handler(event) {
         stale_quotations: staleQuotations,
       }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[sales-dashboard]', err?.logMessage || err?.message || err);
     return {

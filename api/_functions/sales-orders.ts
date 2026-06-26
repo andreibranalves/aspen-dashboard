@@ -1,4 +1,5 @@
 // GET /api/sales-orders — Sales Order list + detail endpoint for the dashboard.
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 //
 // List:   GET /api/sales-orders?page=1&limit=25&period=30d&status=To%20Deliver&search=cliente
 // Detail: GET /api/sales-orders?id=SAL-ORD-2026-00001
@@ -150,7 +151,7 @@ async function attachSourceQuotations(orders) {
       // Find first non-empty prevdoc_docname
       const source = items.find(item => item.prevdoc_docname)?.prevdoc_docname || null;
       order.source_quotation = source;
-    } catch (err) {
+    } catch (err: any) {
       console.warn(
         '[sales-orders] Failed to load items for',
         order.name,
@@ -212,7 +213,7 @@ async function handleDetail(orderId) {
   let order;
   try {
     order = await erpGetDoc('Sales Order', orderId);
-  } catch (err) {
+  } catch (err: any) {
     throw createHttpError(
       err?.statusCode === 404 ? 404 : 502,
       'Pedido de Venda não encontrado.',
@@ -315,7 +316,7 @@ async function handleList(query) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   // GET only
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -341,7 +342,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(list),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[sales-orders]', err?.logMessage || err?.message || err);
     return {

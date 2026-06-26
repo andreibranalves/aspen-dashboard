@@ -1,11 +1,12 @@
 // POST /api/duplicate-quotation — Duplicates a quotation in ERPNext.
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 //
 // Body: { quotation_id: "ORC-20261368" }
 // Returns: { success: true, new_id: "ORC-20261369" }
 
 import { erpGetDoc, erpPost, createHttpError } from './lib/erpnext.js';
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -66,7 +67,7 @@ export async function handler(event) {
         new_id: newQuotation.name,
       }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[duplicate-quotation]', err?.logMessage || err?.message || err);
     return {

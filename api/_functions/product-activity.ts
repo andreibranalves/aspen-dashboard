@@ -1,9 +1,10 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList } from './lib/erpnext.js';
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -44,7 +45,7 @@ export async function handler(event) {
           });
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[product-activity] Quotation query failed:', err?.logMessage || err?.message);
     }
 
@@ -81,7 +82,7 @@ export async function handler(event) {
           ts: v.modified || '',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[product-activity] Pricing Rule Version query failed:', err?.logMessage || err?.message);
     }
 
@@ -115,7 +116,7 @@ export async function handler(event) {
           ts: v.modified || '',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[product-activity] Item Version query failed:', err?.logMessage || err?.message);
     }
 
@@ -128,7 +129,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sku, atividades: result }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[product-activity]', err?.logMessage || err?.message || err);
     return {

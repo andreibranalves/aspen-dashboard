@@ -1,4 +1,5 @@
 // POST /api/edit-draft — interpret a natural-language edit prompt against
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // a current draft and return proposed changes.
 
 const EDIT_SYSTEM_PROMPT = `Você é um assistente de edição de cotação da Aspen Estamparia.
@@ -16,8 +17,8 @@ RETORNE APENAS JSON válido — um objeto com o rascunho editado:
   "items": [{"item_code": "SKU", "qty": N}]
 }`;
 
-function createHttpError(statusCode, publicMessage, logMessage) {
-  const error = new Error(publicMessage);
+function createHttpError(statusCode: number, publicMessage: string, logMessage?: string) {
+  const error = new Error(publicMessage) as unknown as Record<string, unknown>;
   error.statusCode = statusCode;
   error.logMessage = logMessage || publicMessage;
   return error;
@@ -142,7 +143,7 @@ async function editDraftWithOpenRouter(prompt, currentDraft) {
   return parsed;
 }
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -161,7 +162,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ proposed }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[edit-draft]', err?.logMessage || err?.message || err);
     return {

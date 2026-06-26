@@ -1,4 +1,5 @@
 // POST /api/communication-flow-preview
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 //
 // Renders a CommunicationFlow into a preview array of steps with resolved
 // template variables and media selections. Can work with mock context
@@ -148,7 +149,7 @@ async function resolveQuotationContext(quotationId) {
       productSummary,
       categories,
     };
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[flow-preview] quotation resolution failed:', err.message);
     return null;
   }
@@ -156,10 +157,10 @@ async function resolveQuotationContext(quotationId) {
 
 // ── Media resolution ───────────────────────────────────────────────────────
 
-async function resolveMediaUrls(categories) {
+async function resolveMediaUrls(categories: string[]) {
   if (!categories.length) return [];
 
-  let keys = [];
+  let keys: string[] = [];
   try {
     const result = await kv.scan(0, { match: `${KV_KEY_MEDIA_PREFIX}*`, count: 200 });
     keys = result[1] || [];
@@ -170,15 +171,16 @@ async function resolveMediaUrls(categories) {
   if (keys.length === 0) return [];
 
   const entries = await Promise.all(keys.map((k) => kv.get(k)));
-  const media = entries.filter(Boolean).filter((m) => m.active !== false);
+  const media: Record<string, unknown>[] = (entries.filter(Boolean) as Record<string, unknown>[]).filter((m) => m.active !== false);
 
-  const byGroup = {};
+  const byGroup: Record<string, Record<string, unknown>[]> = {};
   for (const m of media) {
-    if (!m.product_group || !m.blob_url) continue;
-    (byGroup[m.product_group] = byGroup[m.product_group] || []).push(m);
+    const group = String(m.product_group || '');
+    if (!group || !m.blob_url) continue;
+    (byGroup[group] = byGroup[group] || []).push(m);
   }
 
-  const resolved = [];
+  const resolved: Record<string, unknown>[] = [];
   for (const cat of categories) {
     const assets = (byGroup[cat] || []).slice(0, 5);
     for (const asset of assets) {
@@ -205,7 +207,7 @@ function jsonResponse(statusCode, body) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Method Not Allowed' });
 
   let payload;
@@ -319,7 +321,7 @@ export async function handler(event) {
       steps: previewSteps,
       warnings,
     });
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[comm-flow-preview]', err?.logMessage || err?.message || err);
     return jsonResponse(code, { error: err?.message || 'Erro ao gerar preview.' });

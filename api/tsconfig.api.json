@@ -6,7 +6,8 @@
     "sourceMap": true,
     "outDir": ".",
     "rootDir": ".",
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": false,
+    "strict": false
   },
   "include": ["./**/*"],
   "exclude": ["**/*.js", "**/*.d.ts"]

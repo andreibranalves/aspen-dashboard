@@ -1,7 +1,8 @@
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { renderQuotationHtml } from './lib/quotation-html.js';
 import { resolvePrintFormat } from './lib/print-format.js';
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const quotationId = event.queryStringParameters?.q;
   if (!quotationId) {
     return { statusCode: 400, headers: { 'Content-Type': 'text/plain' }, body: 'Parâmetro ?q= obrigatório' };
@@ -15,7 +16,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
       body: html,
     };
-  } catch (err) {
+  } catch (err: any) {
     if (err?.statusCode === 404) {
       return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
     }

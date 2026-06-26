@@ -1,4 +1,5 @@
 // GET /api/whatsapp-leads — five most recent WhatsApp conversations with contact readiness status.
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 
 import { erpGetList, createHttpError } from './lib/erpnext.js';
 
@@ -186,7 +187,7 @@ async function getContactPhoneMap() {
     const result = { exact, fuzzy };
     _contactMapCache = { data: result, ts: Date.now() };
     return result;
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[whatsapp-leads] contact map fallback:', err?.message || err);
     return { exact: new Map(), fuzzy: [] };
   }
@@ -395,7 +396,7 @@ async function extractLeadWithOpenRouter(conversationText) {
       email: normalizeLeadEmail(parsed.email || fallback.email),
       telefone: cleanText(parsed.telefone || fallback.telefone || '').replace(/\D/g, ''),
     };
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[whatsapp-leads] OpenRouter extraction fallback:', err?.message || err);
     return fallback;
   }
@@ -412,7 +413,7 @@ async function getConvertedContactKeys() {
     fields: ['name', 'customer_name', 'contact_email', 'contact_mobile'],
     filters: [['docstatus', '!=', 2]],
     order_by: 'creation desc',
-    limit_page_length: 200,
+    limit: 200,
   });
   const phones = new Map();
   const emails = new Map();
@@ -490,7 +491,7 @@ export function shouldIncludeWhatsappLead(lead) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'GET') {
     return jsonResponse(405, { error: 'Method Not Allowed' });
   }
@@ -584,18 +585,19 @@ export async function handler(event) {
         resumo: conversationText.split('\n').slice(-2).join(' · '),
         timestamp,
       };
-      lead.quotationId = findConvertedQuotation(lead, converted);
-      lead.nome = resolveCanonicalLeadName(lead, converted) || lead.nome;
-      lead.hasQuotation = Boolean(lead.quotationId);
-      Object.assign(lead, getWhatsappLeadQuality(lead));
-      lead.texto = formatLeadText(lead);
+      const leadExt = lead as Record<string, unknown>;
+      leadExt.quotationId = findConvertedQuotation(lead, converted);
+      leadExt.nome = resolveCanonicalLeadName(lead, converted) || lead.nome;
+      leadExt.hasQuotation = Boolean(leadExt.quotationId);
+      Object.assign(leadExt, getWhatsappLeadQuality(lead));
+      leadExt.texto = formatLeadText(leadExt);
       return lead;
     });
 
     const candidates = (await Promise.all(candidatePromises)).filter(Boolean);
 
     return jsonResponse(200, { success: true, data: prioritizeWhatsappLeads(candidates) });
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[whatsapp-leads]', err?.logMessage || err?.message || err);
     return jsonResponse(code, { error: err?.statusCode ? err.message : 'Erro interno ao buscar conversas do WhatsApp.' });

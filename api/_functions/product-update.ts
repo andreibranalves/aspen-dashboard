@@ -1,10 +1,11 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetDoc, erpPut } from './lib/erpnext.js';
 import { saveProductPricing } from './product-pricing.js';
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'PUT') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -48,7 +49,7 @@ export async function handler(event) {
     let item;
     try {
       item = await erpGetDoc('Item', sku);
-    } catch (err) {
+    } catch (err: any) {
       if (err?.logMessage?.includes('404') || err?.message?.includes('404')) {
         return {
           statusCode: 404,
@@ -72,7 +73,7 @@ export async function handler(event) {
 
     // ── Update metadata ──
     if (hasMetadata) {
-      const updateFields = {};
+      const updateFields: Record<string, unknown> = {};
       if (nome != null) updateFields.item_name = nome;
       if (descricao != null) updateFields.description = descricao;
       if (categoria != null) updateFields.item_group = categoria;
@@ -83,7 +84,7 @@ export async function handler(event) {
       try {
         await erpPut('Item', sku, updateFields);
         metadataResult = { atualizado: true, campos: Object.keys(updateFields) };
-      } catch (err) {
+      } catch (err: any) {
         console.error('[product-update]', `Erro ao atualizar metadata de ${sku}:`, err?.logMessage || err?.message || err);
         return {
           statusCode: err?.statusCode || 500,
@@ -97,7 +98,7 @@ export async function handler(event) {
     if (hasPricing) {
       try {
         pricingResult = await saveProductPricing(sku, precos);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[product-update]', `Erro ao atualizar preços de ${sku}:`, err?.logMessage || err?.message || err);
         return {
           statusCode: err?.statusCode || 500,
@@ -117,7 +118,7 @@ export async function handler(event) {
         pricing: pricingResult,
       }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[product-update]', err?.logMessage || err?.message || err);
     return {

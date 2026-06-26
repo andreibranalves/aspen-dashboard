@@ -1,4 +1,5 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { getBracket, getRate, getUrgentRate } from './pricing.js';
 import { erpGetList } from './lib/erpnext.js';
 
@@ -7,26 +8,26 @@ const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-async function fetchItemNames(itemCodes) {
+async function fetchItemNames(itemCodes: (string | null | undefined)[]) {
   const uniqueCodes = [...new Set(itemCodes.filter(Boolean))];
   if (uniqueCodes.length === 0) return new Map();
 
   try {
     const items = await erpGetList('Item', {
-      filters: [['name', 'in', uniqueCodes]],
+      filters: [['name', 'in', uniqueCodes]] as Array<Array<string | number>>,
       fields: ['name', 'item_name'],
       limit: uniqueCodes.length,
       order_by: 'name asc',
     });
     return new Map(items.map(item => [item.name, item.item_name || item.name]));
-  } catch (err) {
+  } catch (err: any) {
     console.warn('[pricing-lookup] Falha ao buscar nomes dos itens:', err?.logMessage || err?.message || err);
     return new Map();
   }
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -76,7 +77,7 @@ export async function handler(event) {
     const uniqueItemCodes = [...new Set([...dedupMap.values()].map(entry => entry.item_code))];
     const [settled, itemNames] = await Promise.all([
       Promise.allSettled(uniqueKeys.map((key) => {
-        const { item_code, qty } = dedupMap.get(key);
+        const { item_code, qty } = dedupMap.get(key) as { item_code: string; qty: number; indices: number[] };
         return getRate(item_code, qty, ERPNEXT_BASE, ERPNEXT_TOKEN);
       })),
       fetchItemNames(uniqueItemCodes),
@@ -85,13 +86,13 @@ export async function handler(event) {
     // Map resolved rates back to each dedup entry
     for (let k = 0; k < uniqueKeys.length; k++) {
       const key = uniqueKeys[k];
-      const entry = dedupMap.get(key);
-      let rate;
+      const entry = dedupMap.get(key) as { item_code: string; qty: number; indices: number[] };
+      let rate: number;
 
-      if (settled[k].status === 'fulfilled') {
-        rate = settled[k].value;
+      if ((settled[k] as PromiseFulfilledResult<number>).status === 'fulfilled') {
+        rate = (settled[k] as PromiseFulfilledResult<number>).value;
       } else {
-        console.error('[pricing-lookup]', `Falha ao resolver ${key}:`, settled[k].reason?.message || settled[k].reason);
+        console.error('[pricing-lookup]', `Falha ao resolver ${key}:`, (settled[k] as PromiseRejectedResult).reason?.message || (settled[k] as PromiseRejectedResult).reason);
         rate = 0;
       }
 
@@ -116,7 +117,7 @@ export async function handler(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ success: true, items: results }),
     };
-  } catch (err) {
+  } catch (err: any) {
     const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error('[pricing-lookup]', err?.logMessage || err?.message || err);
     return {

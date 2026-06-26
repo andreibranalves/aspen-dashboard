@@ -1,4 +1,5 @@
 // Shared pricing — imported by orcamento.js and available for frontend use
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // via a pricing-cache endpoint.
 
 import { erpGetList, erpGetDoc } from './lib/erpnext.js';
@@ -7,7 +8,7 @@ import { erpGetList, erpGetDoc } from './lib/erpnext.js';
  * Map a quantity to the closest-lower pricing bracket.
  * Brackets: 30, 100, 300, 500, 1000.
  */
-export function getBracket(qty) {
+export function getBracket(qty: number): number {
   if (qty >= 1000) return 1000;
   if (qty >= 500) return 500;
   if (qty >= 300) return 300;
@@ -19,7 +20,7 @@ export function getBracket(qty) {
  * Compute the urgent (30% markup) rate from a base rate.
  * The result is rounded to 2 decimal places.
  */
-export function getUrgentRate(baseRate) {
+export function getUrgentRate(baseRate: number): number {
   return Math.round(baseRate * 1.30 * 100) / 100;
 }
 
@@ -34,7 +35,12 @@ export function getUrgentRate(baseRate) {
  * @param {string} _erpnextBase - unused; shared module uses global config
  * @param {string} _token - unused; shared module uses process.env.ERPNEXT_TOKEN
  */
-export async function getRate(itemCode, qty, _erpnextBase, _token) {
+export async function getRate(
+  itemCode: string,
+  qty: number,
+  _erpnextBase: string,
+  _token: string | undefined
+): Promise<number> {
   const bracket = getBracket(qty);
 
   // 1. Tiered rule (e.g. LNC-SED-70-30)
@@ -65,14 +71,14 @@ export async function getRate(itemCode, qty, _erpnextBase, _token) {
   });
   if (prices[0]?.price_list_rate != null) return prices[0].price_list_rate;
 
-  const err = new Error(`Preço não encontrado para "${itemCode}" (qtd: ${qty}).`);
+  const err = new Error(`Preço não encontrado para "${itemCode}" (qtd: ${qty}).`) as unknown as Record<string, unknown>;
   err.statusCode = 400;
   throw err;
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-async function fetchPricingRuleRate(ruleName) {
+async function fetchPricingRuleRate(ruleName: string): Promise<number | null> {
   const doc = await erpGetDoc('Pricing Rule', ruleName);
-  return doc?.rate != null ? doc.rate : null;
+  return doc?.rate != null ? (doc.rate as number) : null;
 }
