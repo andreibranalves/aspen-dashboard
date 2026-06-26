@@ -9,8 +9,11 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   }
 
   let payload;
-  try { payload = JSON.parse(event.body); }
-  catch { return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) }; }
+  try {
+    payload = JSON.parse(event.body);
+  } catch {
+    return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
+  }
 
   try {
     const { deal_id, status, follow_up_stage } = payload;
