@@ -9,7 +9,8 @@ import {
 } from 'react';
 import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { searchProducts, type Product } from '@/lib/productCache';
+import { searchProducts } from '@/lib/productCache';
+import type { Product } from '@/types/domain';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button';
@@ -187,7 +188,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   const selectProduct = useCallback((_key: string, product: Product) => {
     if (!product?.sku) return;
     updateItem(_key, 'item_code', product.sku);
-    updateItem(_key, 'item_name', product.nome || (product as Record<string, unknown>).item_name as string || '');
+    updateItem(_key, 'item_name', product.nome || product.item_name || '');
     setProductSearchTerms(prev => ({ ...prev, [_key]: product.sku }));
     setProductResults(prev => ({ ...prev, [_key]: [] }));
     setActiveField(null);
@@ -440,13 +441,13 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
                     <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                       {results.map((p) => (
                         <button
-                          key={p.sku || (p as Record<string, unknown>).item_code as string}
+                          key={p.sku || p.item_code}
                           type="button"
                           className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
                           onMouseDown={(e: MouseEvent<HTMLButtonElement>) => { e.preventDefault(); selectProduct(key, p); }}
                         >
-                          <span className="font-mono text-xs text-fg-muted">{p.sku || (p as Record<string, unknown>).item_code as string}</span>
-                          <span className="truncate">{p.nome || (p as Record<string, unknown>).item_name as string}</span>
+                          <span className="font-mono text-xs text-fg-muted">{p.sku || p.item_code}</span>
+                          <span className="truncate">{p.nome || p.item_name}</span>
                         </button>
                       ))}
                     </div>

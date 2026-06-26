@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
 import { searchProducts } from '@/lib/productCache';
-import type { Product } from '@/lib/productCache';
+import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';

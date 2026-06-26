@@ -13,6 +13,7 @@ import DraftItemTable from '@/components/DraftItemTable';
 import type { Draft, DraftItem, DraftEdited } from '@/hooks/useExtractionDrafts';
 import type { Address } from '@/lib/clientMetadata';
 import type { ProductSearchEntry } from '@/hooks/useExtractionDrafts';
+import type { Product } from '@/types/domain';
 
 // ── Card status icon ──
 function CardIcon({ status }: { status: string }) {
@@ -45,7 +46,7 @@ export interface DraftReviewCardProps {
   onProductSearchChange: (draftIdx: number, val: string) => void;
   productSearch: Record<number, ProductSearchEntry>;
   closeProductSearch: (draftIdx: number) => void;
-  selectProduct: (draftIdx: number, itemIdx: number, product: Record<string, unknown>) => void;
+  selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
   drafts: Draft[];
   fetchPricing: (draftsList: Draft[], urgent: boolean) => Promise<Draft[]>;
   setDrafts: Dispatch<SetStateAction<Draft[]>>;

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { formatBRL } from '@/lib/formatters';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Draft, DraftItem } from '@/hooks/useExtractionDrafts';
-import type { Product } from '@/lib/productCache';
+import type { Product } from '@/types/domain';
 import type { ProductSearchEntry } from '@/hooks/useExtractionDrafts';
 
 export interface DraftItemTableProps {

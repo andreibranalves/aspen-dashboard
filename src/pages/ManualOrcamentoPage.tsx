@@ -25,7 +25,8 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
-import { searchProducts as cachedSearchProducts, type Product } from '@/lib/productCache';
+import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
+import type { Product } from '@/types/domain';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';

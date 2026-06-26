@@ -16,6 +16,7 @@ import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
+import type { Product, ProductsApiResponse } from '@/types/domain';
 
 const PAGE_SIZES = [10, 25, 50];
 
@@ -30,25 +31,6 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'modified asc', label: 'data de atualização' },
   { value: 'item_code asc', label: 'código (sku)' },
 ];
-
-interface Product {
-  sku?: string;
-  item_code?: string;
-  nome?: string;
-  item_name?: string;
-  descricao?: string;
-  unidade?: string;
-  stock_uom?: string;
-  preco_minimo?: number | string;
-}
-
-interface ProductsApiResponse {
-  data?: Product[];
-  pagination?: {
-    total_pages?: number;
-    total?: number;
-  };
-}
 
 export default function ProductsPage() {
   const [data, setData] = useState<Product[]>([]);

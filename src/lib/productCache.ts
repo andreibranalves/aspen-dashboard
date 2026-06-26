@@ -3,13 +3,9 @@
 // Products rarely change — 5 min TTL avoids redundant API calls during
 // repeated searches (type, backspace, re-type).
 
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+import type { Product } from '@/types/domain';
 
-export interface Product {
-  sku: string;
-  nome?: string;
-  [key: string]: unknown;
-}
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface CacheEntry {
   data: Product[];
