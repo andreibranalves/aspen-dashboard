@@ -167,7 +167,7 @@ Cada página recebeu:
 - `QuotationDetailPage.tsx`: fallback `priced.rate ?? item.rate`
 - `SalesOrdersPage.tsx`: `encodeURIComponent(row.source_quotation || '')`
 - `ManualOrcamentoPage.tsx`: `Boolean(product.categoria)` + `String(product.categoria)`
-- `tailwind.config.js`: atualizado `content` de `./src/**/*.{js,jsx}` para `./src/**/*.{js,jsx,ts,tsx}` para restaurar a geração das classes Tailwind após a migração para `.tsx`.
+- `tailwind.config.js`: atualizado `content` de `./src/**/*.{js,jsx}` para `./src/**/*.{js,jsx,ts,tsx}` para restaurar a geração das classes Tailwind após a migração para `.tsx` (commit `8f2875b`).
 
 ### 7. Documentação
 
@@ -197,9 +197,9 @@ Cada página recebeu:
 vite v6.4.2 building for production...
 ✓ 1652 modules transformed
 public/index.html                   0.49 kB │ gzip:   0.32 kB
-public/assets/index-exx1uhLp.css    7.23 kB │ gzip:   2.14 kB
-public/assets/index-D0Nguihc.js   517.32 kB │ gzip: 141.50 kB
-✓ built in 1.77s
+public/assets/index-DL5Jt8GL.css   41.71 kB │ gzip:   8.50 kB
+public/assets/index-WcjFLtg1.js   517.32 kB │ gzip: 141.50 kB
+✓ built in 2.38s
 ```
 
 *(Warning de chunk > 500 kB pré-existente; não introduzido nesta fase.)*
