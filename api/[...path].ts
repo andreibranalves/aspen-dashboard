@@ -1,3 +1,5 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { VercelRequestLike, VercelResponseLike, FunctionEvent, FunctionResult } from './_lib/types.js';
 import { wrapFunctionHandler } from './_lib/function-adapter.js';
 import { isAuthenticated, getRouteName } from './_lib/auth.js';
 import { checkRateLimit } from './_lib/rate-limit.js';
@@ -36,7 +38,9 @@ import { handler as communicationMediaUpload } from './_functions/communication-
 import { handler as pdf } from './_functions/pdf.js';
 import { handler as view } from './_functions/view.js';
 
-const ROUTES = {
+type HandlerFunction = (event: FunctionEvent) => Promise<FunctionResult>;
+
+const ROUTES: Record<string, HandlerFunction> = {
   'client-detail': clientDetail,
   'crm-deals': crmDeals,
   'crm-update-deal': crmUpdateDeal,
@@ -72,23 +76,32 @@ const ROUTES = {
   logout,
 };
 
-export default async function handler(req, res) {
+export default async function handler(
+  req: VercelRequestLike,
+  res: VercelResponseLike,
+): Promise<void> {
   // ── Auth guard ──
   if (!isAuthenticated(req)) {
-    return res.status(401).json({ error: 'Não autorizado. Faça login em /api/login.' });
+    res.status(401).json({ error: 'Não autorizado. Faça login em /api/login.' });
+    return;
   }
 
   // ── Rate limit ──
   if (!checkRateLimit(req)) {
-    return res.status(429).json({ error: 'Muitas requisições. Aguarde um minuto.' });
+    res.status(429).json({ error: 'Muitas requisições. Aguarde um minuto.' });
+    return;
   }
 
   const routeName = getRouteName(req);
   const routeHandler = ROUTES[routeName];
 
   if (!routeHandler) {
-    return res.status(404).json({ error: 'Endpoint não encontrado.' });
+    res.status(404).json({ error: 'Endpoint não encontrado.' });
+    return;
   }
 
-  return wrapFunctionHandler(routeHandler)(req, res);
+  return wrapFunctionHandler(routeHandler)(
+    req as unknown as IncomingMessage,
+    res as unknown as ServerResponse,
+  );
 }
