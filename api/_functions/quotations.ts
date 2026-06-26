@@ -5,6 +5,7 @@
 //
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList, erpGetDoc, erpPut, erpDelete, erpCallMethod, createHttpError } from './lib/erpnext.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -30,7 +31,7 @@ const LIST_FIELDS = [
  * Build ERPNext filters and or_filters arrays from query params.
  * Returns { filters, or_filters } for use with erpGetList.
  */
-function buildListFilters(query) {
+function buildListFilters(query: Record<string, string | undefined>) {
   const search = (query.search || '').trim();
   const status = (query.status || '').trim();
 
@@ -65,7 +66,7 @@ function buildListFilters(query) {
 /**
  * Build or_filters for search only (no status/docstatus — used for status summary).
  */
-function buildSearchOrFilters(query) {
+function buildSearchOrFilters(query: Record<string, string | undefined>) {
   const search = (query.search || '').trim();
   if (!search) return null;
   return [
@@ -85,7 +86,7 @@ function buildSearchOrFilters(query) {
  */
 async function resolveClientNames(quotations) {
   // Collect lead IDs that need resolution
-  const leadIds = new Set();
+  const leadIds = new Set<string>();
   for (const q of quotations) {
     if (
       q.quotation_to === 'Lead' &&
@@ -99,7 +100,7 @@ async function resolveClientNames(quotations) {
   if (leadIds.size === 0) return quotations;
 
   // Batch-fetch all leads in parallel
-  const leadMap = new Map();
+  const leadMap = new Map<string, string | null>();
   const fetchPromises = [...leadIds].map(async (leadId) => {
     try {
       const lead = await erpGetDoc('Lead', leadId, { fields: ['lead_name', 'first_name'] });
@@ -149,7 +150,7 @@ function clientDisplayName(q) {
  * Fetch all quotations matching the search term (no status/docstatus filter),
  * group by status, and return the counts for all 7 status categories.
  */
-async function computeStatusSummary(query) {
+async function computeStatusSummary(query: Record<string, string | undefined>) {
   const orFilters = buildSearchOrFilters(query);
 
   const allDocs = await erpGetList('Quotation', {
@@ -169,7 +170,7 @@ async function computeStatusSummary(query) {
 
 // ── Parameter Validation ────────────────────────────────────────────────────
 
-function validateListParams(query) {
+function validateListParams(query: Record<string, string | undefined>) {
   // status
   const status = (query.status || '').trim();
   if (status && !VALID_STATUSES.includes(status)) {
@@ -191,14 +192,14 @@ function validateListParams(query) {
   }
 
   // page
-  let page = parseInt(query.page, 10);
+  let page = parseInt(query.page || '', 10);
   if (isNaN(page) || page === 0) page = 1;
   if (page < 1) {
     throw createHttpError(400, 'Página inválida.', `[quotations] invalid page: ${query.page}`);
   }
 
   // limit
-  let limit = parseInt(query.limit, 10);
+  let limit = parseInt(query.limit || '', 10);
   if (isNaN(limit) || limit === 0) limit = 50;
   if (limit > 200) {
     throw createHttpError(400, 'Limite máximo é 200 registros por página.', `[quotations] limit exceeds 200: ${limit}`);
@@ -209,7 +210,7 @@ function validateListParams(query) {
 
 // ── Detail Endpoint ─────────────────────────────────────────────────────────
 
-async function handleDetail(quotationId) {
+async function handleDetail(quotationId: string) {
   let quotation;
   try {
     quotation = await erpGetDoc('Quotation', quotationId);
@@ -295,9 +296,9 @@ async function handleDetail(quotationId) {
  * Replaces quotation items (child table) via ERPNext PUT.
  * Always sets ignore_pricing_rule=1 to prevent rate recalculation.
  */
-async function handleUpdate(quotationId, payload) {
-  const items = payload.items;
-  if (!Array.isArray(items) || items.length === 0) {
+async function handleUpdate(quotationId: string, payload: Record<string, unknown>) {
+  const items = (payload.items as Array<Record<string, unknown>>) || [];
+  if (items.length === 0) {
     throw createHttpError(400, 'Campo "items" obrigatório (array não vazio).');
   }
 
@@ -342,7 +343,7 @@ async function handleUpdate(quotationId, payload) {
 
 // ── List Endpoint ───────────────────────────────────────────────────────────
 
-async function handleList(query) {
+async function handleList(query: Record<string, string | undefined>) {
   const { orderBy, page, limit } = validateListParams(query);
   const { filters, orFilters } = buildListFilters(query);
   const start = (page - 1) * limit;
@@ -399,19 +400,20 @@ async function handleList(query) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const query = event.queryStringParameters || {};
 
   try {
     // DELETE: Remove quotation — DELETE /api/quotations?id=ORC-20261143
     if (event.httpMethod === 'DELETE' && query.id) {
+      const deleteId: string = query.id;
       // If submitted (docstatus=1), cancel first — ERPNext doesn't allow direct deletion
       const quotation = await erpGetDoc('Quotation', query.id);
-      if (quotation && quotation.docstatus === 1) {
+      if (quotation && (quotation as Record<string, unknown>).docstatus === 1) {
         try {
           await erpCallMethod('frappe.client.cancel', {
             doctype: 'Quotation',
-            name: query.id,
+            name: deleteId,
           });
         } catch (cancelErr) {
           throw createHttpError(
@@ -421,21 +423,22 @@ export async function handler(event) {
           );
         }
       }
-      await erpDelete('Quotation', query.id);
-      return {
+      await erpDelete('Quotation', deleteId);
+      const result: FunctionResult = {
         statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ success: true, id: query.id }),
+        body: JSON.stringify({ success: true, id: deleteId }),
       };
+      return result;
     }
 
     // PUT: Update quotation items — /api/quotations?id=ORC-20261143
     if (event.httpMethod === 'PUT' && query.id) {
-      let payload;
+      let payload: Record<string, unknown>;
       try {
         payload = JSON.parse(event.body);
       } catch {
-        return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
+        return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) } as FunctionResult;
       }
       const detail = await handleUpdate(query.id, payload);
       return {
@@ -467,12 +470,13 @@ export async function handler(event) {
       body: JSON.stringify(list),
     };
   } catch (err) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[quotations]', err?.logMessage || err?.message || err);
+    const httpErr = err as { statusCode?: number; logMessage?: string; message?: string };
+    const code = Number.isInteger(httpErr?.statusCode) ? httpErr.statusCode! : 500;
+    console.error('[quotations]', httpErr?.logMessage || httpErr?.message || err);
     return {
       statusCode: code,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.message || 'Erro interno.' }),
+      body: JSON.stringify({ error: httpErr?.message || 'Erro interno.' }),
     };
   }
 }
