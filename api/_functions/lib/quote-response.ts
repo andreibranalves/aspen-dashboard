@@ -1,5 +1,4 @@
-// @ts-check
-// api/_functions/lib/quote-response.js
+// api/_functions/lib/quote-response.ts
 // Response assembly for the quotation pipeline.
 // Extracted from orcamento.js — no behavior changes.
 
@@ -8,43 +7,38 @@ const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 import { resolvePrintFormat } from './print-format.js';
 
-/**
- * @typedef {object} VercelEventLike
- * @property {Record<string, string | undefined>} [headers]
- */
+export interface VercelEventLike {
+  headers?: Record<string, string | undefined>;
+}
 
-/**
- * @typedef {object} SavedQuoteItem
- * @property {string} item_code
- * @property {number} qty
- * @property {number} rate
- */
+export interface SavedQuoteItem {
+  item_code: string;
+  qty: number;
+  rate: number;
+}
 
-/**
- * @typedef {object} BuildQuoteResponseOptions
- * @property {VercelEventLike} event
- * @property {string} quotationId
- * @property {string} dealId
- * @property {string} entityId
- * @property {'Customer' | 'Lead' | string} entityType
- * @property {boolean} customerIsNew
- * @property {string} nomeCliente
- * @property {boolean} urgente
- * @property {SavedQuoteItem[]} savedItems
- * @property {string} origem
- * @property {unknown[]} [warnings]
- */
+export interface BuildQuoteResponseOptions {
+  event: VercelEventLike;
+  quotationId: string;
+  dealId: string;
+  entityId: string;
+  entityType: string;
+  customerIsNew: boolean;
+  nomeCliente: string;
+  urgente: boolean;
+  savedItems: SavedQuoteItem[];
+  origem: string;
+  warnings?: Array<{ code: string; message: string }>;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** @param {string} baseUrl @param {string} quotationId @returns {string} */
-function buildViewUrl(baseUrl, quotationId) {
+function buildViewUrl(baseUrl: string, quotationId: string): string {
   const params = new URLSearchParams({ q: quotationId });
   return `${baseUrl}/api/view?${params.toString()}`;
 }
 
-/** @param {VercelEventLike} event @returns {string} */
-function buildBaseUrl(event) {
+function buildBaseUrl(event: VercelEventLike): string {
   const host = event.headers?.host || 'project-xr5jg.vercel.app';
   const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
   const protocol = isLocalHost
@@ -57,14 +51,13 @@ function buildBaseUrl(event) {
 
 /**
  * Fetch and enhance the ERPNext printview HTML.
- *
- * @param {string} quotationId
- * @param {string} entityType - 'Customer' or 'Lead'
- * @param {string} entityId - ERPNext entity ID
- * @param {string} nomeCliente - sanitized client name (for Lead display fix)
- * @returns {Promise<string|null>} HTML string or null
  */
-async function fetchPrintHtml(quotationId, entityType, entityId, nomeCliente) {
+async function fetchPrintHtml(
+  quotationId: string,
+  entityType: string,
+  entityId: string,
+  nomeCliente: string
+): Promise<string | null> {
   const printFormat = await resolvePrintFormat(quotationId);
   const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
@@ -94,7 +87,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
 
     return html;
   } catch (htmlErr) {
-    const err = /** @type {Error} */ (htmlErr);
+    const err = htmlErr as Error;
     console.error('[quote-response] Printview fetch failed:', err.message);
     return null;
   }
@@ -102,8 +95,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
 
 // ── URL shortening ───────────────────────────────────────────────────────────
 
-/** @param {string} longUrl @returns {Promise<string>} */
-async function shortenUrl(longUrl) {
+async function shortenUrl(longUrl: string): Promise<string> {
   try {
     const tinyRes = await fetch(
       `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`,
@@ -122,20 +114,23 @@ async function shortenUrl(longUrl) {
 
 // ── Result builder ───────────────────────────────────────────────────────────
 
-/** @param {BuildQuoteResponseOptions} opts @returns {Promise<Record<string, unknown>>} */
-export async function buildQuoteResponse({
-  event,
-  quotationId,
-  dealId,
-  entityId,
-  entityType,
-  customerIsNew,
-  nomeCliente,
-  urgente,
-  savedItems,
-  origem,
-  warnings = [],
-}) {
+export async function buildQuoteResponse(
+  opts: BuildQuoteResponseOptions
+): Promise<Record<string, unknown>> {
+  const {
+    event,
+    quotationId,
+    dealId,
+    entityId,
+    entityType,
+    customerIsNew,
+    nomeCliente,
+    urgente,
+    savedItems,
+    origem,
+    warnings = [],
+  } = opts;
+
   const baseUrl = buildBaseUrl(event);
   const fullUrl = buildViewUrl(baseUrl, quotationId);
   const shortUrl = await shortenUrl(fullUrl);
@@ -144,8 +139,7 @@ export async function buildQuoteResponse({
   const printFormat = await resolvePrintFormat(quotationId);
   const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
-  /** @type {Record<string, unknown>} */
-  const result = {
+  const result: Record<string, unknown> = {
     success: true,
     quotation_id: quotationId,
     deal_id: dealId,
@@ -153,7 +147,7 @@ export async function buildQuoteResponse({
     customer_new: customerIsNew,
     cliente: nomeCliente,
     urgente,
-    items: savedItems.map((i) => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
+    items: savedItems.map((i: SavedQuoteItem) => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
     pdf_url: pdfUrl,
     print_html: printHtml,
     view_url: fullUrl,

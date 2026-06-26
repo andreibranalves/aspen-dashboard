@@ -1,13 +1,13 @@
-// api/_functions/lib/customer-resolution.js
+// api/_functions/lib/customer-resolution.ts
 // Resolve Customer/Lead/Contact/Address for the quotation pipeline.
 // Extracted from orcamento.js — no behavior changes.
 
 import { createHttpError, erpGetList, erpGetDoc, erpPost, erpPut } from './erpnext.js';
-import { normalizeCnpj } from './client-metadata.js';
+import { normalizeCnpj, hasMinimumAddressForErp, buildAddressPayload } from './client-metadata.js';
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
-function sanitizeName(name) {
+function sanitizeName(name: string): string {
   return name
     .trim()
     .normalize('NFD')
@@ -18,7 +18,7 @@ function sanitizeName(name) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function formatPhone(phone) {
+function formatPhone(phone: string): string {
   if (!phone) return '';
   const d = phone
     .replace(/\D/g, '')
@@ -31,26 +31,37 @@ function formatPhone(phone) {
 
 // ── Party resolution ─────────────────────────────────────────────────────────
 
+export interface ResolvePartyOptions {
+  nome: string;
+  email: string;
+  telefone: string;
+  cnpj: string;
+  origem: string;
+  utmSourceExists: boolean;
+}
+
+export interface ResolvePartyResult {
+  entityId: string;
+  entityType: 'Customer' | 'Lead';
+  contactId: string | null;
+  customerIsNew: boolean;
+  nomeCliente: string;
+  phoneFormatted: string;
+  emailNormalized: string;
+}
+
 /**
  * Resolve the party (Customer or Lead) for a quotation.
- *
- * @param {object} opts
- * @param {string} opts.nome - raw client name
- * @param {string} opts.email - client email (may be empty)
- * @param {string} opts.telefone - raw phone (may be empty)
- * @param {string} opts.cnpj - normalized CNPJ (may be empty)
- * @param {string} opts.origem - validated lead source
- * @param {boolean} opts.utmSourceExists - whether UTM Source record exists
- * @returns {Promise<{ entityId: string, entityType: 'Customer'|'Lead', contactId: string|null, customerIsNew: boolean }>}
  */
-export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSourceExists }) {
+export async function resolveParty(opts: ResolvePartyOptions): Promise<ResolvePartyResult> {
+  const { nome, email, telefone, cnpj, origem, utmSourceExists } = opts;
   const nomeCliente = sanitizeName(nome);
   const phoneFormatted = formatPhone(telefone);
   const emailNormalized = email?.trim().toLowerCase() || '';
 
-  let entityId;
-  let entityType = 'Customer';
-  let contactId = null;
+  let entityId = '';
+  let entityType: 'Customer' | 'Lead' = 'Customer';
+  let contactId: string | null = null;
   let customerIsNew = false;
 
   // 1. Look up by email → Contact → Customer
@@ -59,9 +70,10 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
       filters: [['email_id', '=', emailNormalized]],
     });
     if (contData.length > 0) {
-      contactId = contData[0].name;
+      contactId = contData[0].name as string;
       const fullContact = await erpGetDoc('Contact', contactId);
-      const customerLink = fullContact?.links?.find((l) => l.link_doctype === 'Customer');
+      const links = fullContact?.links as Array<{ link_doctype: string; link_name: string }> | undefined;
+      const customerLink = links?.find((l) => l.link_doctype === 'Customer');
       if (customerLink) {
         entityId = customerLink.link_name;
         entityType = 'Customer';
@@ -75,20 +87,20 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
       filters: [['email_id', '=', emailNormalized]],
     });
     if (leadData.length > 0) {
-      entityId = leadData[0].name;
+      entityId = leadData[0].name as string;
       entityType = 'Lead';
     }
   }
 
   // 3. CNPJ conflict check (only for existing Customers)
-  if (cnpj && entityType === 'Customer') {
+  if (cnpj && entityType === 'Customer' && entityId) {
     const custData = await erpGetList('Customer', {
       filters: [['name', '=', entityId]],
       fields: ['name', 'tax_id'],
       limit: 1,
     });
     if (custData.length > 0) {
-      const existingTaxId = normalizeCnpj(custData[0].tax_id || '');
+      const existingTaxId = normalizeCnpj((custData[0].tax_id as string) || '');
       if (existingTaxId && existingTaxId !== cnpj) {
         throw createHttpError(
           409,
@@ -110,7 +122,7 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
       type: 'Client',
       ...(utmSourceExists ? { utm_source: origem } : {}),
     });
-    entityId = l.name;
+    entityId = l.name as string;
   } else if (entityType === 'Customer') {
     // Update existing Customer name if changed
     const custData = await erpGetList('Customer', {
@@ -121,7 +133,7 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
     }
     // Fill tax_id if blank and CNPJ provided
     if (cnpj) {
-      const existingTaxId = normalizeCnpj(custData[0]?.tax_id || '');
+      const existingTaxId = normalizeCnpj(String(custData[0]?.tax_id || ''));
       if (!existingTaxId) {
         await erpPut('Customer', entityId, { tax_id: cnpj });
       }
@@ -142,14 +154,14 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
 
   // 5. Contact upsert
   if (contactId) {
-    const upd = {};
+    const upd: Record<string, unknown> = {};
     if (emailNormalized)
       upd.email_ids = [{ email_id: emailNormalized, is_primary: 1 }];
     if (phoneFormatted)
       upd.phone_nos = [{ phone: phoneFormatted, is_primary_mobile_no: 1 }];
     if (Object.keys(upd).length) await erpPut('Contact', contactId, upd);
   } else {
-    const cp = {
+    const cp: Record<string, unknown> = {
       first_name: nomeCliente,
       links: [{ link_doctype: entityType, link_name: entityId }],
     };
@@ -158,7 +170,7 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
     if (phoneFormatted)
       cp.phone_nos = [{ phone: phoneFormatted, is_primary_mobile_no: 1 }];
     const con = await erpPost('Contact', cp);
-    contactId = con.name || null;
+    contactId = (con.name as string) || null;
   }
 
   return { entityId, entityType, contactId, customerIsNew, nomeCliente, phoneFormatted, emailNormalized };
@@ -166,32 +178,35 @@ export async function resolveParty({ nome, email, telefone, cnpj, origem, utmSou
 
 // ── Address resolution ───────────────────────────────────────────────────────
 
+export interface ResolveAddressOptions {
+  endereco: Record<string, string>;
+  nomeCliente: string;
+  email: string;
+  telefone: string;
+  entityType: string;
+  entityId: string;
+}
+
+export interface ResolveAddressResult {
+  addressId: string | null;
+  warnings: Array<{ code: string; message: string }>;
+}
+
 /**
  * Create an ERPNext Address for the resolved party if minimum data is present.
- *
- * @param {object} opts
- * @param {object} opts.endereco - normalized address payload
- * @param {string} opts.nomeCliente - sanitized client name
- * @param {string} opts.email - normalized email
- * @param {string} opts.telefone - formatted phone
- * @param {string} opts.entityType - 'Customer' or 'Lead'
- * @param {string} opts.entityId - ERPNext entity ID
- * @returns {Promise<{ addressId: string|null, warnings: Array }>}
  */
-export async function resolveAddress({
-  endereco,
-  nomeCliente,
-  email,
-  telefone,
-  entityType,
-  entityId,
-}) {
-  // We import these lazily to avoid circular deps — the function already
-  // requires them via the parent module imports.
-  const { hasMinimumAddressForErp, buildAddressPayload } = await import('./client-metadata.js');
+export async function resolveAddress(opts: ResolveAddressOptions): Promise<ResolveAddressResult> {
+  const {
+    endereco,
+    nomeCliente,
+    email,
+    telefone,
+    entityType,
+    entityId,
+  } = opts;
 
-  let addressId = null;
-  const warnings = [];
+  let addressId: string | null = null;
+  const warnings: Array<{ code: string; message: string }> = [];
 
   if (hasMinimumAddressForErp(endereco)) {
     try {
@@ -200,15 +215,15 @@ export async function resolveAddress({
         nomeCliente,
         email,
         telefone,
-        entityType,
+        entityType: entityType as 'Customer' | 'Lead',
         entityId,
       });
       const addr = await erpPost('Address', addrPayload);
-      addressId = addr.name || null;
+      addressId = (addr.name as string) || null;
     } catch (addrErr) {
       console.error(
         '[customer-resolution] Address creation failed:',
-        addrErr?.message || addrErr,
+        (addrErr as Error)?.message || addrErr,
       );
       warnings.push({
         code: 'address_create_failed',

@@ -1,4 +1,4 @@
-// api/_functions/lib/deal-resolution.js
+// api/_functions/lib/deal-resolution.ts
 // CRM Deal resolution for the quotation pipeline.
 // Extracted from orcamento.js — no behavior changes.
 
@@ -6,24 +6,25 @@ import { erpGetList, erpPost, erpPut } from './erpnext.js';
 
 // ── Deal lookup ──────────────────────────────────────────────────────────────
 
+export interface FindDealOptions {
+  email: string;
+  nomeOriginal: string;
+  nomeCliente: string;
+}
+
 /**
  * Find an existing CRM Deal by email or lead_name.
- *
- * @param {object} opts
- * @param {string} opts.email - normalized client email (may be empty)
- * @param {string} opts.nomeOriginal - original (raw) client name
- * @param {string} opts.nomeCliente - sanitized client name
- * @returns {Promise<string|null>} deal ID or null
  */
-export async function findDeal({ email, nomeOriginal, nomeCliente }) {
-  let dealId = null;
+export async function findDeal(opts: FindDealOptions): Promise<string | null> {
+  const { email, nomeOriginal, nomeCliente } = opts;
+  let dealId: string | null = null;
 
   // Try by email first
   if (email) {
     const dealData = await erpGetList('CRM Deal', {
       filters: [['email', '=', email]],
     });
-    if (dealData.length > 0) dealId = dealData[0].name;
+    if (dealData.length > 0) dealId = dealData[0].name as string;
   }
 
   // Try by lead_name (both raw and sanitized)
@@ -33,7 +34,7 @@ export async function findDeal({ email, nomeOriginal, nomeCliente }) {
         filters: [['lead_name', '=', nomeBusca]],
       });
       if (dd.length > 0) {
-        dealId = dd[0].name;
+        dealId = dd[0].name as string;
         break;
       }
     }
@@ -44,41 +45,51 @@ export async function findDeal({ email, nomeOriginal, nomeCliente }) {
 
 // ── Deal upsert ──────────────────────────────────────────────────────────────
 
+export interface SavedQuoteItem {
+  item_code: string;
+  qty: number;
+  rate: number;
+}
+
+export interface UpsertDealOptions {
+  dealId: string | null;
+  nomeCliente: string;
+  origem: string;
+  email: string;
+  telefone: string;
+  contactId: string | null;
+  quotationId: string;
+  hoje: string;
+  savedItems: SavedQuoteItem[];
+}
+
 /**
  * Create or update a CRM Deal linked to the quotation.
- *
- * @param {object} opts
- * @param {string|null} opts.dealId - existing deal ID or null
- * @param {string} opts.nomeCliente - sanitized client name
- * @param {string} opts.origem - validated lead source
- * @param {string} opts.email - normalized email
- * @param {string} opts.telefone - formatted phone
- * @param {string|null} opts.contactId - ERPNext Contact ID
- * @param {string} opts.quotationId - new quotation name
- * @param {string} opts.hoje - today's date (ISO YYYY-MM-DD)
- * @param {Array} opts.savedItems - quotation items [{item_code, qty, rate}]
- * @returns {Promise<string>} deal ID
  */
-export async function upsertDeal({
-  dealId,
-  nomeCliente,
-  origem,
-  email,
-  telefone,
-  contactId,
-  quotationId,
-  hoje,
-  savedItems,
-}) {
-  const rawNextStep = savedItems.map((i) => `${i.qty}x ${i.item_code}`).join(', ');
+export async function upsertDeal(opts: UpsertDealOptions): Promise<string> {
+  const {
+    dealId,
+    nomeCliente,
+    origem,
+    email,
+    telefone,
+    contactId,
+    quotationId,
+    hoje,
+    savedItems,
+  } = opts;
+
+  const rawNextStep = savedItems.map((i: SavedQuoteItem) => `${i.qty}x ${i.item_code}`).join(', ');
   const MAX_NEXT_STEP = 140;
   const nextStep =
     rawNextStep.length > MAX_NEXT_STEP
       ? rawNextStep.substring(0, MAX_NEXT_STEP - 3) + '...'
       : rawNextStep;
 
-  if (dealId) {
-    const upd = {
+  let resultId = dealId;
+
+  if (resultId) {
+    const upd: Record<string, unknown> = {
       status: 'Orcamento Enviado',
       source: origem,
       custom_quotation: quotationId,
@@ -89,9 +100,9 @@ export async function upsertDeal({
     if (email) upd.email = email;
     if (telefone) upd.mobile_no = telefone;
     if (contactId) upd.contacts = [{ contact: contactId, is_primary: 1 }];
-    await erpPut('CRM Deal', dealId, upd);
+    await erpPut('CRM Deal', resultId, upd);
   } else {
-    const dp = {
+    const dp: Record<string, unknown> = {
       lead_name: nomeCliente,
       source: origem,
       status: 'Orcamento Enviado',
@@ -101,7 +112,7 @@ export async function upsertDeal({
       custom_quotation_sent_date: hoje,
       custom_follow_up_stage: 0,
       next_step: nextStep,
-      products: savedItems.map((i) => ({
+      products: savedItems.map((i: SavedQuoteItem) => ({
         product_name: i.item_code,
         qty: i.qty,
         rate: i.rate,
@@ -110,8 +121,8 @@ export async function upsertDeal({
     if (email) dp.email = email;
     if (contactId) dp.contacts = [{ contact: contactId, is_primary: 1 }];
     const d = await erpPost('CRM Deal', dp);
-    dealId = d.name;
+    resultId = d.name as string;
   }
 
-  return dealId;
+  return resultId!;
 }

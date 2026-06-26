@@ -1,8 +1,9 @@
-// api/_functions/lib/quote-pipeline.js
+// api/_functions/lib/quote-pipeline.ts
 // Quotation pipeline orchestrator — coordinates customer resolution,
 // pricing, quotation creation, deal upsert, and response assembly.
 // Extracted from orcamento.js — no behavior changes.
 
+import type { FunctionEvent } from '../../_lib/types.js';
 import { createHttpError, erpGetDoc, erpPost } from './erpnext.js';
 import {
   normalizeLeadSource,
@@ -12,43 +13,46 @@ import {
   isValidCnpj,
   normalizeAddressPayload,
 } from './client-metadata.js';
-import { getUrgentRate } from '../pricing.js';
+import { getUrgentRate, getRate } from '../pricing.js';
 import { resolveParty, resolveAddress } from './customer-resolution.js';
 import { findDeal, upsertDeal } from './deal-resolution.js';
 import { buildQuoteResponse } from './quote-response.js';
 
-// ── Pricing (delegated to shared module) ─────────────────────────────────────
-
-import { getRate } from '../pricing.js';
-
 const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
-async function localGetRate(itemCode, qty) {
-  return getRate(itemCode, qty, ERPNEXT_BASE, ERPNEXT_TOKEN);
+async function localGetRate(itemCode: string, qty: number): Promise<number> {
+  return getRate(itemCode, qty, ERPNEXT_BASE, ERPNEXT_TOKEN || '') as Promise<number>;
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
+export interface ExtractedData {
+  nome: string;
+  email?: string;
+  telefone?: string;
+  urgente?: boolean;
+  origem?: string;
+  cnpj?: string;
+  endereco?: Record<string, unknown>;
+  items: Array<{
+    item_code: string;
+    qty: number;
+    rate?: number;
+    manual_rate?: boolean;
+  }>;
+  prazo_producao?: string;
+  observacoes?: string;
+}
+
 /**
  * Run the full quotation pipeline: validate → resolve party → price → create → respond.
- *
- * @param {object} event - Vercel event object (for host/protocol resolution)
- * @param {object} extracted - parsed order data from AI extraction
- * @param {string} extracted.nome - client name
- * @param {string} [extracted.email] - client email
- * @param {string} [extracted.telefone] - client phone
- * @param {boolean} [extracted.urgente] - urgent flag
- * @param {string} [extracted.origem] - lead source
- * @param {string} [extracted.cnpj] - tax ID
- * @param {object} [extracted.endereco] - address object
- * @param {Array} extracted.items - [{item_code, qty, rate?, manual_rate?}]
- * @param {string} [extracted.prazo_producao] - production deadline
- * @param {string} [extracted.observacoes] - notes
- * @returns {Promise<object>} API result with success/error
  */
-export async function runQuotePipeline(event, extracted) {
-  const warnings = [];
+export async function runQuotePipeline(
+  event: FunctionEvent,
+  extracted: ExtractedData
+): Promise<Record<string, unknown>> {
+  const warnings: Array<{ code: string; message: string }> = [];
 
   // ── 0. Validate metadata ──
   const origem = normalizeLeadSource(extracted.origem || '');
@@ -98,10 +102,16 @@ export async function runQuotePipeline(event, extracted) {
   } = party;
 
   // ── 2. Price items ──
-  let items = (extracted.items || []).map((item) => ({
+  let items: Array<{
+    item_code: string;
+    qty: number;
+    rate: number;
+    manual_rate?: boolean;
+    _rateManual?: boolean;
+  }> = (extracted.items || []).map((item) => ({
     item_code: item.item_code,
     qty: item.qty,
-    rate: item.rate,
+    rate: item.rate || 0,
     manual_rate: item.manual_rate === true,
   }));
   items = items.filter((item) => item.item_code && item.qty > 0);
@@ -121,11 +131,14 @@ export async function runQuotePipeline(event, extracted) {
     }
   }
 
-  items = items.map(({ manual_rate, ...item }) => ({ ...item, _rateManual: manual_rate }));
+  items = items.map(({ manual_rate, ...item }) => ({
+    ...item,
+    _rateManual: manual_rate,
+  })) as Array<{ item_code: string; qty: number; rate: number; _rateManual?: boolean }>;
 
   // ── 3. Resolve address ──
   const addrResult = await resolveAddress({
-    endereco,
+    endereco: endereco as unknown as Record<string, string>,
     nomeCliente,
     email,
     telefone,
@@ -154,7 +167,7 @@ export async function runQuotePipeline(event, extracted) {
   if (observacoes) remarksParts.push(`Obs: ${observacoes}`);
   if (origem) remarksParts.push(`Origem: ${origem}`);
 
-  const quotePayload = {
+  const quotePayload: Record<string, unknown> = {
     quotation_to: entityType,
     party_name: entityId,
     customer_name: nomeCliente,
@@ -179,9 +192,9 @@ export async function runQuotePipeline(event, extracted) {
   }
 
   const q = await erpPost('Quotation', quotePayload);
-  const quotationId = q.name;
+  const quotationId = q.name as string;
   const savedQuotation = await erpGetDoc('Quotation', quotationId);
-  const savedItems = savedQuotation?.items || items;
+  const savedItems = (savedQuotation?.items || items) as Array<{ item_code: string; qty: number; rate: number }>;
 
   // ── 6. Upsert CRM Deal ──
   const finalDealId = await upsertDeal({
@@ -198,7 +211,7 @@ export async function runQuotePipeline(event, extracted) {
 
   // ── 7. Build response ──
   return buildQuoteResponse({
-    event,
+    event: event as unknown as import('./quote-response.js').VercelEventLike,
     quotationId,
     dealId: finalDealId,
     entityId,

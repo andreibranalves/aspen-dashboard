@@ -4,26 +4,26 @@
 // Usage:
 //   import { erpGetList, erpGetDoc, erpPost, erpPut, erpDelete, createHttpError } from './lib/erpnext.js';
 
+export interface HttpError extends Error {
+  statusCode: number;
+  logMessage: string;
+}
+
 const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 // ── Error handling ──────────────────────────────────────────────────────────
 
 /**
- * @typedef {Error & { statusCode: number, logMessage: string }} HttpError
- */
-
-/**
  * Create a structured error with separate public (user-facing) and internal (log) messages.
  * Non-2xx ERPNext responses throw these; handler catch blocks read .statusCode and .logMessage.
- *
- * @param {number} statusCode - HTTP status code
- * @param {string} publicMessage - Safe Portuguese message for the client
- * @param {string} [logMessage] - Internal details for server logs (defaults to publicMessage)
- * @returns {HttpError} Error with statusCode and logMessage properties
  */
-function createHttpError(statusCode, publicMessage, logMessage) {
-  const error = /** @type {HttpError} */ (new Error(publicMessage));
+function createHttpError(
+  statusCode: number,
+  publicMessage: string,
+  logMessage?: string
+): HttpError {
+  const error = new Error(publicMessage) as HttpError;
   error.statusCode = statusCode;
   error.logMessage = logMessage || publicMessage;
   return error;
@@ -31,7 +31,7 @@ function createHttpError(statusCode, publicMessage, logMessage) {
 
 // ── Internal helpers ────────────────────────────────────────────────────────
 
-function buildHeaders() {
+function buildHeaders(): Record<string, string> {
   return {
     'Authorization': `token ${ERPNEXT_TOKEN}`,
     'Content-Type': 'application/json',
@@ -42,15 +42,15 @@ function buildHeaders() {
  * Core fetch wrapper: makes the HTTP call, parses JSON, and throws structured
  * errors for non-2xx responses. Never returns raw ERPNext error data to callers.
  */
-async function erpRequest(url, options = {}) {
-  let res;
+async function erpRequest(url: string, options: RequestInit = {}): Promise<Record<string, unknown>> {
+  let res: Response;
   try {
     res = await fetch(url, options);
   } catch (fetchErr) {
     throw createHttpError(
       502,
       'Falha de conexão com o sistema. Verifique sua rede e tente novamente.',
-      `[erpnext] fetch() failed for ${url}: ${fetchErr.message}`
+      `[erpnext] fetch() failed for ${url}: ${(fetchErr as Error).message}`
     );
   }
 
@@ -66,28 +66,30 @@ async function erpRequest(url, options = {}) {
     );
   }
 
-  return body;
+  return body as Record<string, unknown>;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
+
+export interface ErpGetListOpts {
+  fields?: string[];
+  filters?: Array<Array<string | number>>;
+  or_filters?: Array<Array<string | number>>;
+  order_by?: string;
+  limit?: number;
+  start?: number;
+}
 
 /**
  * Fetch a paginated list of documents from an ERPNext DocType.
  *
  * order_by is MANDATORY for reliable pagination (ERPNext bug #49037).
  * Default page size is 20 (ERPNext default).
- *
- * @param {string} doctype - ERPNext DocType name (e.g., 'Quotation', 'Item')
- * @param {object} [opts]
- * @param {string[]} [opts.fields] - Fields to include in the response
- * @param {Array} [opts.filters] - ERPNext filter array, e.g. [['status', '=', 'Draft']]
- * @param {Array} [opts.or_filters] - ERPNext OR filter array (OR-joined with each other, AND-joined with filters)
- * @param {string} [opts.order_by='creation desc'] - Sort order. Do NOT omit for paginated queries.
- * @param {number} [opts.limit] - Page size (limit_page_length, default 20)
- * @param {number} [opts.start] - Offset (limit_start, default 0)
- * @returns {Promise<Array>} Array of document objects
  */
-export async function erpGetList(doctype, opts = {}) {
+export async function erpGetList(
+  doctype: string,
+  opts: ErpGetListOpts = {}
+): Promise<Array<Record<string, unknown>>> {
   const { fields, filters, or_filters, order_by = 'creation desc', limit, start } = opts;
   const params = new URLSearchParams();
   params.set('order_by', order_by);
@@ -99,19 +101,23 @@ export async function erpGetList(doctype, opts = {}) {
 
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}?${params}`;
   const body = await erpRequest(url, { headers: buildHeaders() });
-  return body.data || [];
+  return (body.data as Array<Record<string, unknown>>) || [];
+}
+
+export interface ErpGetDocOpts {
+  fields?: string[];
 }
 
 /**
  * Fetch a single document by DocType and name.
  *
- * @param {string} doctype - ERPNext DocType name
- * @param {string} name - Document name/ID
- * @param {object} [opts]
- * @param {string[]} [opts.fields] - Fields to include (best-effort in V1 API)
- * @returns {Promise<object|null>} Document data or null if not found
+ * fields is best-effort in V1 API.
  */
-export async function erpGetDoc(doctype, name, opts = {}) {
+export async function erpGetDoc(
+  doctype: string,
+  name: string,
+  opts: ErpGetDocOpts = {}
+): Promise<Record<string, unknown> | null> {
   const { fields } = opts;
   const params = new URLSearchParams();
   if (fields) params.set('fields', JSON.stringify(fields));
@@ -119,52 +125,46 @@ export async function erpGetDoc(doctype, name, opts = {}) {
   const qs = params.toString();
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}${qs ? '?' + qs : ''}`;
   const body = await erpRequest(url, { headers: buildHeaders() });
-  return body.data || null;
+  return (body.data as Record<string, unknown>) || null;
 }
 
 /**
  * Create a new ERPNext document.
- *
- * @param {string} doctype - ERPNext DocType name
- * @param {object} payload - Document fields
- * @returns {Promise<object>} Created document data (includes .name)
  */
-export async function erpPost(doctype, payload) {
+export async function erpPost(
+  doctype: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}`;
   const body = await erpRequest(url, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
   });
-  return body.data || {};
+  return (body.data as Record<string, unknown>) || {};
 }
 
 /**
  * Update an existing ERPNext document.
- *
- * @param {string} doctype - ERPNext DocType name
- * @param {string} name - Document name/ID to update
- * @param {object} payload - Fields to update
- * @returns {Promise<object>} Updated document data
  */
-export async function erpPut(doctype, name, payload) {
+export async function erpPut(
+  doctype: string,
+  name: string,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`;
   const body = await erpRequest(url, {
     method: 'PUT',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
   });
-  return body.data || {};
+  return (body.data as Record<string, unknown>) || {};
 }
 
 /**
  * Delete an ERPNext document.
- *
- * @param {string} doctype - ERPNext DocType name
- * @param {string} name - Document name/ID to delete
- * @returns {Promise<void>}
  */
-export async function erpDelete(doctype, name) {
+export async function erpDelete(doctype: string, name: string): Promise<void> {
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`;
   await erpRequest(url, {
     method: 'DELETE',
@@ -179,12 +179,11 @@ export { createHttpError, ERPNEXT_BASE, ERPNEXT_TOKEN };
 /**
  * Call a whitelisted Frappe/ERPNext method via /api/method/<path>.
  * Used for server-side document operations: submit, make_sales_order, etc.
- *
- * @param {string} methodPath - e.g. 'frappe.client.submit' or 'erpnext.selling.doctype.quotation.quotation.make_sales_order'
- * @param {object} [payload={}] - JSON body (args for the method)
- * @returns {Promise<*>} Usually returns message.data or message
  */
-export async function erpCallMethod(methodPath, payload = {}) {
+export async function erpCallMethod(
+  methodPath: string,
+  payload: Record<string, unknown> = {}
+): Promise<unknown> {
   const url = `${ERPNEXT_BASE}/api/method/${encodeURIComponent(methodPath)}`;
   const body = await erpRequest(url, {
     method: 'POST',
@@ -192,5 +191,5 @@ export async function erpCallMethod(methodPath, payload = {}) {
     body: JSON.stringify(payload),
   });
   // Frappe wraps method responses in { message: ... }
-  return body.message ?? body.data ?? body;
+  return (body as Record<string, unknown>).message ?? (body as Record<string, unknown>).data ?? body;
 }

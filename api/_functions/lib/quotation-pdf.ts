@@ -6,7 +6,7 @@
 //   1. System browser via spawn (fast — for VPS / local dev)
 //   2. @sparticuz/chromium + puppeteer-core (for Vercel / serverless)
 
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -16,7 +16,7 @@ import { resolvePrintFormat } from './print-format.js';
 
 // ── Browser paths (system binaries, tried first) ────────────────────────────
 
-function getEnv(...names) {
+function getEnv(...names: string[]): string {
   for (const name of names) {
     const value = process.env[name];
     if (value && value.trim()) return value.trim();
@@ -24,7 +24,7 @@ function getEnv(...names) {
   return '';
 }
 
-function getBrowserCandidates() {
+function getBrowserCandidates(): string[] {
   const fromEnv = [
     getEnv('PUPPETEER_EXECUTABLE_PATH'),
     getEnv('CHROME_PATH'),
@@ -68,14 +68,14 @@ function getBrowserCandidates() {
   ];
 }
 
-const BROWSER_CANDIDATES = getBrowserCandidates();
+const BROWSER_CANDIDATES: string[] = getBrowserCandidates();
 
 // ── System browser discovery (cached) ───────────────────────────────────────
 
-let _systemBrowserPath = null;
+let _systemBrowserPath: string | null = null;
 let _checked = false;
 
-function findSystemBrowser() {
+function findSystemBrowser(): string | null {
   if (_checked) return _systemBrowserPath;
   _checked = true;
   for (const candidate of BROWSER_CANDIDATES) {
@@ -89,9 +89,12 @@ function findSystemBrowser() {
 
 // ── Strategy 1: system browser via spawn ────────────────────────────────────
 
-async function pdfWithSystemBrowser(html, opts = {}) {
+async function pdfWithSystemBrowser(
+  html: string,
+  opts: { timeout?: number } = {}
+): Promise<Buffer> {
   const timeout = opts.timeout || 60000;
-  const browserPath = findSystemBrowser();
+  const browserPath = findSystemBrowser()!;
 
   const tmpDir = mkdtempSync(join(tmpdir(), 'aspen-pdf-'));
   const htmlPath = join(tmpDir, 'quotation.html');
@@ -101,8 +104,8 @@ async function pdfWithSystemBrowser(html, opts = {}) {
     writeFileSync(htmlPath, html, 'utf-8');
     const fileUrl = pathToFileURL(htmlPath).href;
 
-    await new Promise((resolve, reject) => {
-      const proc = spawn(
+    await new Promise<void>((resolve, reject) => {
+      const proc: ChildProcess = spawn(
         browserPath,
         [
           '--headless=new',
@@ -121,11 +124,11 @@ async function pdfWithSystemBrowser(html, opts = {}) {
       );
 
       let stderr = '';
-      proc.stderr.on('data', (chunk) => {
+      proc.stderr!.on('data', (chunk: Buffer) => {
         stderr += chunk.toString();
       });
 
-      proc.on('error', (err) => {
+      proc.on('error', (err: Error) => {
         reject(
           Object.assign(new Error(`Falha ao executar ${browserPath}: ${err.message}`), {
             statusCode: 500,
@@ -133,7 +136,7 @@ async function pdfWithSystemBrowser(html, opts = {}) {
         );
       });
 
-      proc.on('close', (code) => {
+      proc.on('close', (code: number | null) => {
         if (code !== 0) {
           reject(
             Object.assign(new Error(`Chrome headless encerrou com código ${code}.`), {
@@ -165,28 +168,31 @@ async function pdfWithSystemBrowser(html, opts = {}) {
 
 // ── Strategy 2: @sparticuz/chromium + puppeteer-core (serverless fallback) ──
 
-async function pdfWithSparticuz(html, opts = {}) {
+async function pdfWithSparticuz(
+  html: string,
+  opts: { timeout?: number } = {}
+): Promise<Buffer> {
   const timeout = opts.timeout || 60000;
 
   // Dynamic imports — only loaded when needed (keeps cold start light
   // when system browser is available)
-  const [{ default: chromium }, puppeteer] = await Promise.all([
+  const [chromiumMod, puppeteer] = await Promise.all([
     import('@sparticuz/chromium'),
     import('puppeteer-core'),
   ]);
 
+  const chromium = chromiumMod.default;
+
   const browser = await puppeteer.launch({
     args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
-    defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
     timeout,
   });
 
   try {
     const page = await browser.newPage();
     await page.setContent(html, {
-      waitUntil: 'networkidle0',
+      waitUntil: 'networkidle0' as unknown as 'load',
       timeout,
     });
 
@@ -205,20 +211,21 @@ async function pdfWithSparticuz(html, opts = {}) {
 
 // ── Main export ─────────────────────────────────────────────────────────────
 
+export interface GenerateQuotationPdfOptions {
+  timeout?: number;
+  printFormat?: string;
+}
+
 /**
  * Generate a PDF Buffer from quotation HTML.
  *
  * Tries system browser first (spawn), falls back to @sparticuz/chromium
  * + puppeteer-core for serverless environments (Vercel).
- *
- * @param {string} quotationId
- * @param {object} [opts]
- * @param {number} [opts.timeout=60000] - max wait time in ms
- * @param {string} [opts.printFormat] - override print format
- * @returns {Promise<{ buffer: Buffer, customerName: string }>}
- * @throws {Error} if PDF generation fails
  */
-export async function generateQuotationPdf(quotationId, opts = {}) {
+export async function generateQuotationPdf(
+  quotationId: string,
+  opts: GenerateQuotationPdfOptions = {}
+): Promise<{ buffer: Buffer; customerName: string }> {
   const timeout = opts.timeout || 60000;
 
   // Determine the best print format for this quotation
@@ -246,7 +253,7 @@ export async function generateQuotationPdf(quotationId, opts = {}) {
     return { buffer, customerName };
   } catch (err) {
     throw Object.assign(
-      new Error('Falha ao gerar PDF com @sparticuz/chromium: ' + (err.message || err)),
+      new Error('Falha ao gerar PDF com @sparticuz/chromium: ' + ((err as Error).message || err)),
       { statusCode: 500 }
     );
   }

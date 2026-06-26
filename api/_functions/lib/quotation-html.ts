@@ -11,7 +11,7 @@ import { normalizePrintFormat } from './print-format.js';
 /**
  * Escape a string for use in a RegExp constructor.
  */
-function escapeRegExp(string) {
+function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -19,7 +19,7 @@ function escapeRegExp(string) {
  * Resolve a clean customer name from ERPNext Lead if the quotation
  * is for a Lead and the customer_name contains CRM-LEAD.
  */
-async function resolveLeadName(partyName) {
+async function resolveLeadName(partyName: string): Promise<string | null> {
   const token = process.env.ERPNEXT_TOKEN;
   try {
     const res = await fetch(
@@ -27,29 +27,33 @@ async function resolveLeadName(partyName) {
       { headers: { Authorization: `token ${token}` } }
     );
     if (!res.ok) return null;
-    const doc = await res.json();
-    return doc.data?.first_name || doc.data?.lead_name || null;
+    const doc = await res.json() as Record<string, unknown>;
+    const data = doc.data as Record<string, unknown> | undefined;
+    return (data?.first_name as string) || (data?.lead_name as string) || null;
   } catch {
     return null;
   }
 }
 
+export interface RenderQuotationHtmlOptions {
+  includePrintButton?: boolean;
+  forPdf?: boolean;
+  printFormat?: string;
+}
+
 /**
  * Fetch and render the quotation HTML from ERPNext printview.
- *
- * @param {string} quotationId
- * @param {object} [opts]
- * @param {boolean} [opts.includePrintButton=true] — inject "Imprimir / Salvar PDF" button
- * @param {boolean} [opts.forPdf=false] — tweak CSS for PDF output (hide print button, etc.)
- * @returns {Promise<{ html: string, customerName: string }>}
  */
-export async function renderQuotationHtml(quotationId, opts = {}) {
+export async function renderQuotationHtml(
+  quotationId: string,
+  opts: RenderQuotationHtmlOptions = {}
+): Promise<{ html: string; customerName: string }> {
   const { includePrintButton = true, forPdf = false } = opts;
   const printFormat = normalizePrintFormat(opts.printFormat);
   const token = process.env.ERPNEXT_TOKEN;
   const url = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
-  let html;
+  let html: string;
   let customerName = '';
 
   const [printRes, docRes] = await Promise.all([
@@ -67,10 +71,11 @@ export async function renderQuotationHtml(quotationId, opts = {}) {
   html = await printRes.text();
 
   if (docRes.ok) {
-    const doc = await docRes.json();
-    customerName = doc.data?.customer_name || '';
-    const partyName = doc.data?.party_name || '';
-    const quotationTo = doc.data?.quotation_to || '';
+    const doc = await docRes.json() as Record<string, unknown>;
+    const data = doc.data as Record<string, unknown> | undefined;
+    customerName = (data?.customer_name as string) || '';
+    const partyName = (data?.party_name as string) || '';
+    const quotationTo = (data?.quotation_to as string) || '';
 
     let cleanName = customerName;
     if (quotationTo === 'Lead' && partyName && (!customerName || customerName.includes('CRM-LEAD'))) {
@@ -94,7 +99,7 @@ export async function renderQuotationHtml(quotationId, opts = {}) {
     : html.replace('<head>', `<head><title>${pageTitle}</title>`);
 
   // ── CSS / JS injection ──
-  const injections = [];
+  const injections: string[] = [];
 
   // Core print CSS (shared)
   injections.push(`

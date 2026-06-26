@@ -1,4 +1,3 @@
-// @ts-check
 // Shared client metadata normalization & validation for orcamento pipeline.
 // Imported by orcamento.js. Uses erpnext.js for ERPNext calls and createHttpError.
 //
@@ -8,26 +7,15 @@
 
 import { createHttpError, erpGetList } from './erpnext.js';
 
-/**
- * @typedef {object} AddressPayload
- * @property {string} cep
- * @property {string} logradouro
- * @property {string} numero
- * @property {string} complemento
- * @property {string} bairro
- * @property {string} cidade
- * @property {string} uf
- */
-
-/**
- * @typedef {object} BuildAddressPayloadOptions
- * @property {unknown} address
- * @property {string} nomeCliente
- * @property {string} email
- * @property {string} telefone
- * @property {'Customer' | 'Lead'} entityType
- * @property {string} entityId
- */
+export interface AddressPayload {
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+}
 
 // ── Origem / Lead Source ─────────────────────────────────────────────────────
 
@@ -36,35 +24,32 @@ export const LEAD_SOURCES = [
   'Google Ads',
   'Bríndice',
   'Cliente recorrente',
-];
+] as const;
 
-/** @param {unknown} value @returns {string} */
-export function normalizeLeadSource(value) {
+export function normalizeLeadSource(value: unknown): string {
   const v = String(value || '').trim();
   if (!v) return '';
   // Busca accent + case-insensitive na lista canônica
-  /** @param {string} s @returns {string} */
-  const normalize = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const normalize = (s: string): string =>
+    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const vKey = normalize(v);
-  const found = LEAD_SOURCES.find(s => normalize(s) === vKey);
+  const found = (LEAD_SOURCES as readonly string[]).find((s) => normalize(s) === vKey);
   return found || v;
 }
 
-/** @param {unknown} value @returns {boolean} */
-export function isValidLeadSource(value) {
+export function isValidLeadSource(value: unknown): boolean {
   const v = normalizeLeadSource(value);
-  return v !== '' && LEAD_SOURCES.includes(v);
+  return v !== '' && (LEAD_SOURCES as readonly string[]).includes(v);
 }
 
 /**
  * Verifica se a origem existe nos registros do ERPNext (CRM Lead Source e UTM Source).
  * Retorna { crm: true/false, utm: true/false }.
  * Lança erro 409 se a origem não existir em NENHUM dos dois.
- *
- * @param {string} source - Origem normalizada (canônica).
- * @returns {Promise<{ crm: boolean, utm: boolean }>}
  */
-export async function validateLeadSourceInErp(source) {
+export async function validateLeadSourceInErp(
+  source: string
+): Promise<{ crm: boolean; utm: boolean }> {
   if (!isValidLeadSource(source)) {
     throw createHttpError(400, `Origem "${source}" não é reconhecida.`);
   }
@@ -106,25 +91,21 @@ export async function validateLeadSourceInErp(source) {
 
 // ── CNPJ ─────────────────────────────────────────────────────────────────────
 
-/** @param {unknown} value @returns {string} */
-export function onlyDigits(value) {
+export function onlyDigits(value: unknown): string {
   return String(value || '').replace(/\D/g, '');
 }
 
-/** @param {unknown} value @returns {string} */
-export function normalizeCnpj(value) {
+export function normalizeCnpj(value: unknown): string {
   return onlyDigits(value).slice(0, 14);
 }
 
-/** @param {unknown} value @returns {boolean} */
-export function isValidCnpj(value) {
+export function isValidCnpj(value: unknown): boolean {
   const digits = normalizeCnpj(value);
   if (digits.length === 0) return true;
   if (digits.length !== 14) return false;
   if (/^(\d)\1{13}$/.test(digits)) return false;
 
-  /** @param {string} slice @param {number[]} weights @returns {number} */
-  const calc = (slice, weights) => {
+  const calc = (slice: string, weights: number[]): number => {
     let sum = 0;
     for (let i = 0; i < slice.length; i++) {
       sum += Number(slice[i]) * weights[i];
@@ -144,8 +125,7 @@ export function isValidCnpj(value) {
 
 // ── Endereço ─────────────────────────────────────────────────────────────────
 
-/** @param {unknown} address @returns {AddressPayload} */
-export function normalizeAddressPayload(address) {
+export function normalizeAddressPayload(address: unknown): AddressPayload {
   if (!address || typeof address !== 'object') {
     return {
       cep: '',
@@ -157,7 +137,7 @@ export function normalizeAddressPayload(address) {
       uf: '',
     };
   }
-  const a = /** @type {Record<string, unknown>} */ (address);
+  const a = address as Record<string, unknown>;
   return {
     cep: onlyDigits(a.cep || ''),
     logradouro: String(a.logradouro || '').trim(),
@@ -169,18 +149,21 @@ export function normalizeAddressPayload(address) {
   };
 }
 
-/** @param {unknown} address @returns {boolean} */
-export function hasMinimumAddressForErp(address) {
+export function hasMinimumAddressForErp(address: unknown): boolean {
   const a = normalizeAddressPayload(address);
   const hasLine1 = !!(a.logradouro || a.numero);
   return hasLine1 && !!a.cidade;
 }
 
-/**
- * @param {BuildAddressPayloadOptions} opts
- * @returns {Record<string, unknown>}
- */
-export function buildAddressPayload({ address, nomeCliente, email, telefone, entityType, entityId }) {
+export function buildAddressPayload(opts: {
+  address: unknown;
+  nomeCliente: string;
+  email: string;
+  telefone: string;
+  entityType: 'Customer' | 'Lead';
+  entityId: string;
+}): Record<string, unknown> {
+  const { address, nomeCliente, email, telefone, entityType, entityId } = opts;
   const a = normalizeAddressPayload(address);
 
   // Linha 1: logradouro + numero
@@ -194,8 +177,7 @@ export function buildAddressPayload({ address, nomeCliente, email, telefone, ent
   if (a.complemento) line2Parts.push(a.complemento);
   const address_line2 = line2Parts.filter(Boolean).join(' - ') || undefined;
 
-  /** @type {Record<string, unknown>} */
-  const payload = {
+  const payload: Record<string, unknown> = {
     address_title: nomeCliente || entityId || 'Cliente',
     address_type: 'Billing',
     address_line1,
