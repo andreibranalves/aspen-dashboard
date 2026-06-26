@@ -27,6 +27,7 @@ import {
 import { apiGet, apiPost } from '@/lib/api';
 import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
 import type { Product } from '@/types/domain';
+import type { OrcamentoResponse } from '@/types/erpnext';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
@@ -80,11 +81,6 @@ interface PricingLookupResponse {
 
 interface LeadsClientsResponse {
   data?: Client[];
-}
-
-interface OrcamentoResponse extends Record<string, unknown> {
-  cliente?: string;
-  quotation_id?: string;
 }
 
 function toNumber(value: string | number, fallback = 0): number {

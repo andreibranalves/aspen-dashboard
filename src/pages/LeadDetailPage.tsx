@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiGet, apiPut, apiPost } from '@/lib/api';
+import type { LeadCreateResponse } from '@/types/erpnext';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks';
 import PageHeader from '@/components/PageHeader';
@@ -472,7 +473,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
       }
 
       if (isNewLead) {
-        const created = await apiPost<Record<string, unknown>>('/leads-clients', {
+        const created = await apiPost<LeadCreateResponse>('/leads-clients', {
           tipo: getTipoFromDoctype(doctype),
           nome: payload.nome,
           email: payload.email || undefined,
