@@ -46,12 +46,12 @@ export interface DraftEdited {
 
 export interface Draft {
   index: number;
-  original: Record<string, unknown>;
+  original: Record<string, unknown>; // raw ERPNext payload shape is dynamic / not typed
   edited: DraftEdited;
   approved: boolean;
   discarded: boolean;
   status?: 'processing' | 'done' | 'error';
-  result?: { success: boolean; data?: Record<string, unknown>; error?: string };
+  result?: { success: boolean; data?: Record<string, unknown>; error?: string }; // raw ERPNext response payload
 }
 
 export interface ProductSearchEntry {

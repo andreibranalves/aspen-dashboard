@@ -132,7 +132,7 @@ export default function DraftItemTable({
                               <span className="font-mono text-primary">{p.sku}</span>
                               <span className="text-fg-muted ml-2">{String(p.nome || '')}</span>
                             </div>
-                            {(p.categoria as string | undefined) && <span className="text-[10px] text-fg-muted shrink-0">{p.categoria as string}</span>}
+                            {p.categoria && <span className="text-[10px] text-fg-muted shrink-0">{p.categoria}</span>}
                           </button>
                         ))}
                       </div>

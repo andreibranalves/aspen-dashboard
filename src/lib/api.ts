@@ -8,6 +8,8 @@ const BASE = '/api';
 async function request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   const url = `${BASE}${path}`;
   const opts: RequestInit = { method };
+  // Only send Content-Type when there is a body. Some servers/proxies reject
+  // GET requests that carry an application/json content-type (e.g. 417 Expectation Failed).
   if (body) {
     opts.headers = { 'Content-Type': 'application/json' };
     opts.body = JSON.stringify(body);

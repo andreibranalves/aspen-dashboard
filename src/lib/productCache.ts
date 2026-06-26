@@ -3,7 +3,7 @@
 // Products rarely change — 5 min TTL avoids redundant API calls during
 // repeated searches (type, backspace, re-type).
 
-import type { Product } from '@/types/domain';
+import type { Product, ProductsApiResponse } from '@/types/domain';
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -16,10 +16,6 @@ const cache = new Map<string, CacheEntry>();
 
 function getKey(query: string | null | undefined, limit: number): string {
   return `${(query || '').toLowerCase().trim()}::${limit || 8}`;
-}
-
-interface ProductsApiResponse {
-  data?: Product[];
 }
 
 /**

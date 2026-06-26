@@ -129,7 +129,7 @@ export default function SplitResultCard({
       selectProduct(draft.index, ii, product);
       setItemSearchTerms((prev) => ({
         ...prev,
-        [ii]: String(product.nome || (product.item_name as string | undefined) || product.sku),
+        [ii]: String(product.nome || product.item_name || product.sku),
       }));
       setItemResults((prev) => ({ ...prev, [ii]: [] }));
       setActiveSearchIdx(null);
@@ -350,7 +350,7 @@ export default function SplitResultCard({
                             <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
                               {results.map((p) => (
                                 <button
-                                  key={p.sku || (p.item_code as string | undefined)}
+                                  key={p.sku || p.item_code}
                                   type="button"
                                   className="w-full text-left px-3 py-2 text-xs hover:bg-surface-muted transition-colors flex items-center gap-2"
                                   onMouseDown={(e) => {
@@ -359,9 +359,9 @@ export default function SplitResultCard({
                                   }}
                                 >
                                   <span className="font-mono text-[10px] text-fg-muted shrink-0">
-                                    {p.sku || (p.item_code as string | undefined)}
+                                    {p.sku || p.item_code}
                                   </span>
-                                  <span className="truncate">{String(p.nome || (p.item_name as string | undefined) || '—')}</span>
+                                  <span className="truncate">{String(p.nome || p.item_name || '—')}</span>
                                 </button>
                               ))}
                             </div>

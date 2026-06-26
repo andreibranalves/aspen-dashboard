@@ -3,14 +3,9 @@ export interface ApiError extends Error {
   data?: unknown;
 }
 
-export interface ApiResponse<T = unknown> {
-  data?: T;
-  error?: string;
-}
-
 export function createApiError(error: unknown): ApiError {
   if (error instanceof Error) {
-    const apiErr = new Error(error.message) as ApiError;
+    const apiErr = error as ApiError;
     apiErr.status = (error as ApiError).status ?? 500;
     apiErr.data = (error as ApiError).data;
     return apiErr;

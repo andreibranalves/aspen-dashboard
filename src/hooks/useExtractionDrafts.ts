@@ -5,11 +5,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { apiPost } from '@/lib/api';
 import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
-import type { Product } from '@/types/domain';
 import type {
   Draft,
   DraftEdited,
   DraftItem,
+  Product,
   ProductSearchEntry,
 } from '@/types/domain';
 import {
