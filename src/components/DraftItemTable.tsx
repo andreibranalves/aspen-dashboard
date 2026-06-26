@@ -7,9 +7,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { formatBRL } from '@/lib/formatters';
 import type { Dispatch, SetStateAction } from 'react';
-import type { Draft, DraftItem } from '@/hooks/useExtractionDrafts';
-import type { Product } from '@/types/domain';
-import type { ProductSearchEntry } from '@/hooks/useExtractionDrafts';
+import type { Product, Draft, DraftItem, ProductSearchEntry } from '@/types/domain';
 
 export interface DraftItemTableProps {
   items?: DraftItem[];

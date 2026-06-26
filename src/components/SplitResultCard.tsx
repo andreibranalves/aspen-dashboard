@@ -23,7 +23,7 @@ import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
-import type { Draft, DraftItem, DraftEdited } from '@/hooks/useExtractionDrafts';
+import type { Draft, DraftEdited, DraftItem } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/communicationApi';
 
 export interface SplitResultCardProps {

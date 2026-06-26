@@ -17,7 +17,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
-import { useExtractionDrafts, type Draft } from '@/hooks/useExtractionDrafts';
+import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
+import type { Draft } from '@/types/domain';
 import { fetchFlows, executeFlow, type CommunicationFlow } from '@/lib/communicationApi';
 
 interface HistoryItem {

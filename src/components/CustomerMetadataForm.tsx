@@ -14,7 +14,7 @@ import {
   hasAnyAddressField,
   formatAddressSummary,
 } from '@/lib/clientMetadata';
-import type { Draft, DraftEdited } from '@/hooks/useExtractionDrafts';
+import type { Draft, DraftEdited } from '@/types/domain';
 import type { Address } from '@/lib/clientMetadata';
 
 export interface CustomerMetadataFormProps {

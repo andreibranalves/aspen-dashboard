@@ -10,10 +10,9 @@ import { Button } from '@/components/ui/button';
 import Skeleton from '@/components/Skeleton';
 import CustomerMetadataForm from '@/components/CustomerMetadataForm';
 import DraftItemTable from '@/components/DraftItemTable';
-import type { Draft, DraftItem, DraftEdited } from '@/hooks/useExtractionDrafts';
 import type { Address } from '@/lib/clientMetadata';
-import type { ProductSearchEntry } from '@/hooks/useExtractionDrafts';
 import type { Product } from '@/types/domain';
+import type { Draft, DraftEdited, DraftItem, ProductSearchEntry } from '@/types/domain';
 
 // ── Card status icon ──
 function CardIcon({ status }: { status: string }) {
