@@ -22,13 +22,13 @@ export const PRINT_FORMATS: Record<string, { value: string; label: string }> = {
 export function normalizePrintFormat(value: unknown): string {
   const raw = String(value || '').trim();
   if (PRINT_FORMATS[raw]) return PRINT_FORMATS[raw].value;
-  const match = Object.values(PRINT_FORMATS).find(format => format.value === raw);
+  const match = Object.values(PRINT_FORMATS).find((format) => format.value === raw);
   return match?.value || DEFAULT_PRINT_FORMAT;
 }
 
 export function getPrintFormatLabel(value: unknown): string {
   const printFormat = normalizePrintFormat(value);
-  const match = Object.values(PRINT_FORMATS).find(format => format.value === printFormat);
+  const match = Object.values(PRINT_FORMATS).find((format) => format.value === printFormat);
   return match?.label || PRINT_FORMATS.standard.label;
 }
 
@@ -59,10 +59,12 @@ export async function resolvePrintFormat(
       { headers: { Authorization: `token ${token}` } }
     );
     if (!res.ok) {
-      console.warn(`[resolvePrintFormat] ${quotationId} → fetch failed (${res.status}), falling back to "${DEFAULT_PRINT_FORMAT}"`);
+      console.warn(
+        `[resolvePrintFormat] ${quotationId} → fetch failed (${res.status}), falling back to "${DEFAULT_PRINT_FORMAT}"`
+      );
       return DEFAULT_PRINT_FORMAT;
     }
-    const data = await res.json() as Record<string, unknown>;
+    const data = (await res.json()) as Record<string, unknown>;
     const doc = data.data as Record<string, unknown> | undefined;
     const items = doc?.items as Array<unknown> | undefined;
     const itemCount = items?.length || 0;

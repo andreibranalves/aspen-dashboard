@@ -67,17 +67,8 @@ export interface UpsertDealOptions {
  * Create or update a CRM Deal linked to the quotation.
  */
 export async function upsertDeal(opts: UpsertDealOptions): Promise<string> {
-  const {
-    dealId,
-    nomeCliente,
-    origem,
-    email,
-    telefone,
-    contactId,
-    quotationId,
-    hoje,
-    savedItems,
-  } = opts;
+  const { dealId, nomeCliente, origem, email, telefone, contactId, quotationId, hoje, savedItems } =
+    opts;
 
   const rawNextStep = savedItems.map((i: SavedQuoteItem) => `${i.qty}x ${i.item_code}`).join(', ');
   const MAX_NEXT_STEP = 140;

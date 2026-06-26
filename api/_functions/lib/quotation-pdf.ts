@@ -168,10 +168,7 @@ async function pdfWithSystemBrowser(
 
 // ── Strategy 2: @sparticuz/chromium + puppeteer-core (serverless fallback) ──
 
-async function pdfWithSparticuz(
-  html: string,
-  opts: { timeout?: number } = {}
-): Promise<Buffer> {
+async function pdfWithSparticuz(html: string, opts: { timeout?: number } = {}): Promise<Buffer> {
   const timeout = opts.timeout || 60000;
 
   // Dynamic imports — only loaded when needed (keeps cold start light

@@ -72,7 +72,7 @@ async function fetchPrintHtml(
       `<style>
 body > div:first-child:not(.print-format-gutter) { display: none !important; }
 @media print { @page { margin: 0; } body { margin: 0; } }
-</style></head>`,
+</style></head>`
     );
 
     // For Leads, replace the auto-generated name with the real client name
@@ -80,7 +80,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
       const escapedId = entityId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const leadNameRegex = new RegExp(
         `(Nome(?:<[^>]+>)*\\s*:(?:\\s|&nbsp;|<[^>]+>)*)${escapedId}`,
-        'g',
+        'g'
       );
       html = html.replace(leadNameRegex, `$1${nomeCliente}`);
     }
@@ -98,7 +98,7 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
 async function shortenUrl(longUrl: string): Promise<string> {
   try {
     const tinyRes = await fetch(
-      `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`,
+      `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`
     );
     if (tinyRes.ok) {
       const tiny = (await tinyRes.text()).trim();

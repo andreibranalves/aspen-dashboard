@@ -57,10 +57,16 @@ export async function runQuotePipeline(
   // ── 0. Validate metadata ──
   const origem = normalizeLeadSource(extracted.origem || '');
   if (!origem) {
-    throw createHttpError(400, 'Origem do lead é obrigatória. Selecione uma origem antes de criar o orçamento.');
+    throw createHttpError(
+      400,
+      'Origem do lead é obrigatória. Selecione uma origem antes de criar o orçamento.'
+    );
   }
   if (!isValidLeadSource(origem)) {
-    throw createHttpError(400, `Origem "${extracted.origem}" não é reconhecida. Use uma das origens disponíveis.`);
+    throw createHttpError(
+      400,
+      `Origem "${extracted.origem}" não é reconhecida. Use uma das origens disponíveis.`
+    );
   }
 
   // Validate origin exists in ERPNext
@@ -75,7 +81,10 @@ export async function runQuotePipeline(
   // CNPJ validation
   const cnpj = normalizeCnpj(extracted.cnpj || '');
   if (cnpj && !isValidCnpj(cnpj)) {
-    throw createHttpError(400, 'CNPJ informado é inválido. Verifique os dígitos ou deixe em branco.');
+    throw createHttpError(
+      400,
+      'CNPJ informado é inválido. Verifique os dígitos ou deixe em branco.'
+    );
   }
 
   // Address normalization
@@ -194,7 +203,11 @@ export async function runQuotePipeline(
   const q = await erpPost('Quotation', quotePayload);
   const quotationId = q.name as string;
   const savedQuotation = await erpGetDoc('Quotation', quotationId);
-  const savedItems = (savedQuotation?.items || items) as Array<{ item_code: string; qty: number; rate: number }>;
+  const savedItems = (savedQuotation?.items || items) as Array<{
+    item_code: string;
+    qty: number;
+    rate: number;
+  }>;
 
   // ── 6. Upsert CRM Deal ──
   const finalDealId = await upsertDeal({

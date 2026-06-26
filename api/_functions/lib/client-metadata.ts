@@ -20,18 +20,17 @@ export interface AddressPayload {
 // ── Origem / Lead Source ─────────────────────────────────────────────────────
 
 /** Canonical source list — must match frontend LEAD_SOURCES */
-export const LEAD_SOURCES = [
-  'Google Ads',
-  'Bríndice',
-  'Cliente recorrente',
-] as const;
+export const LEAD_SOURCES = ['Google Ads', 'Bríndice', 'Cliente recorrente'] as const;
 
 export function normalizeLeadSource(value: unknown): string {
   const v = String(value || '').trim();
   if (!v) return '';
   // Busca accent + case-insensitive na lista canônica
   const normalize = (s: string): string =>
-    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    s
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
   const vKey = normalize(v);
   const found = (LEAD_SOURCES as readonly string[]).find((s) => normalize(s) === vKey);
   return found || v;
@@ -145,7 +144,9 @@ export function normalizeAddressPayload(address: unknown): AddressPayload {
     complemento: String(a.complemento || '').trim(),
     bairro: String(a.bairro || '').trim(),
     cidade: String(a.cidade || '').trim(),
-    uf: String(a.uf || '').trim().toUpperCase(),
+    uf: String(a.uf || '')
+      .trim()
+      .toUpperCase(),
   };
 }
 

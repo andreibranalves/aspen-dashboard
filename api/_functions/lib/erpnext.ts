@@ -33,7 +33,7 @@ function createHttpError(
 
 function buildHeaders(): Record<string, string> {
   return {
-    'Authorization': `token ${ERPNEXT_TOKEN}`,
+    Authorization: `token ${ERPNEXT_TOKEN}`,
     'Content-Type': 'application/json',
   };
 }
@@ -42,7 +42,10 @@ function buildHeaders(): Record<string, string> {
  * Core fetch wrapper: makes the HTTP call, parses JSON, and throws structured
  * errors for non-2xx responses. Never returns raw ERPNext error data to callers.
  */
-async function erpRequest(url: string, options: RequestInit = {}): Promise<Record<string, unknown>> {
+async function erpRequest(
+  url: string,
+  options: RequestInit = {}
+): Promise<Record<string, unknown>> {
   let res: Response;
   try {
     res = await fetch(url, options);
@@ -191,5 +194,7 @@ export async function erpCallMethod(
     body: JSON.stringify(payload),
   });
   // Frappe wraps method responses in { message: ... }
-  return (body as Record<string, unknown>).message ?? (body as Record<string, unknown>).data ?? body;
+  return (
+    (body as Record<string, unknown>).message ?? (body as Record<string, unknown>).data ?? body
+  );
 }

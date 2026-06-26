@@ -27,7 +27,7 @@ async function resolveLeadName(partyName: string): Promise<string | null> {
       { headers: { Authorization: `token ${token}` } }
     );
     if (!res.ok) return null;
-    const doc = await res.json() as Record<string, unknown>;
+    const doc = (await res.json()) as Record<string, unknown>;
     const data = doc.data as Record<string, unknown> | undefined;
     return (data?.first_name as string) || (data?.lead_name as string) || null;
   } catch {
@@ -71,21 +71,28 @@ export async function renderQuotationHtml(
   html = await printRes.text();
 
   if (docRes.ok) {
-    const doc = await docRes.json() as Record<string, unknown>;
+    const doc = (await docRes.json()) as Record<string, unknown>;
     const data = doc.data as Record<string, unknown> | undefined;
     customerName = (data?.customer_name as string) || '';
     const partyName = (data?.party_name as string) || '';
     const quotationTo = (data?.quotation_to as string) || '';
 
     let cleanName = customerName;
-    if (quotationTo === 'Lead' && partyName && (!customerName || customerName.includes('CRM-LEAD'))) {
+    if (
+      quotationTo === 'Lead' &&
+      partyName &&
+      (!customerName || customerName.includes('CRM-LEAD'))
+    ) {
       const leadName = await resolveLeadName(partyName);
       if (leadName) cleanName = leadName;
     }
 
     if (cleanName && partyName && partyName !== cleanName) {
       const escapedParty = escapeRegExp(partyName);
-      const regex = new RegExp(`(Nome(?:<[^>]+>)*\\s*:(?:\\s|&nbsp;|<[^>]+>)*)${escapedParty}`, 'g');
+      const regex = new RegExp(
+        `(Nome(?:<[^>]+>)*\\s*:(?:\\s|&nbsp;|<[^>]+>)*)${escapedParty}`,
+        'g'
+      );
       html = html.replace(regex, `$1${cleanName}`);
       html = html.replace(new RegExp(escapedParty, 'g'), cleanName);
     }

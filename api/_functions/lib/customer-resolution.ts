@@ -72,7 +72,9 @@ export async function resolveParty(opts: ResolvePartyOptions): Promise<ResolvePa
     if (contData.length > 0) {
       contactId = contData[0].name as string;
       const fullContact = await erpGetDoc('Contact', contactId);
-      const links = fullContact?.links as Array<{ link_doctype: string; link_name: string }> | undefined;
+      const links = fullContact?.links as
+        | Array<{ link_doctype: string; link_name: string }>
+        | undefined;
       const customerLink = links?.find((l) => l.link_doctype === 'Customer');
       if (customerLink) {
         entityId = customerLink.link_name;
@@ -104,7 +106,7 @@ export async function resolveParty(opts: ResolvePartyOptions): Promise<ResolvePa
       if (existingTaxId && existingTaxId !== cnpj) {
         throw createHttpError(
           409,
-          `CNPJ informado (${cnpj}) difere do CNPJ já cadastrado para este cliente. Verifique os dados ou entre em contato com o suporte.`,
+          `CNPJ informado (${cnpj}) difere do CNPJ já cadastrado para este cliente. Verifique os dados ou entre em contato com o suporte.`
         );
       }
     }
@@ -155,25 +157,29 @@ export async function resolveParty(opts: ResolvePartyOptions): Promise<ResolvePa
   // 5. Contact upsert
   if (contactId) {
     const upd: Record<string, unknown> = {};
-    if (emailNormalized)
-      upd.email_ids = [{ email_id: emailNormalized, is_primary: 1 }];
-    if (phoneFormatted)
-      upd.phone_nos = [{ phone: phoneFormatted, is_primary_mobile_no: 1 }];
+    if (emailNormalized) upd.email_ids = [{ email_id: emailNormalized, is_primary: 1 }];
+    if (phoneFormatted) upd.phone_nos = [{ phone: phoneFormatted, is_primary_mobile_no: 1 }];
     if (Object.keys(upd).length) await erpPut('Contact', contactId, upd);
   } else {
     const cp: Record<string, unknown> = {
       first_name: nomeCliente,
       links: [{ link_doctype: entityType, link_name: entityId }],
     };
-    if (emailNormalized)
-      cp.email_ids = [{ email_id: emailNormalized, is_primary: 1 }];
-    if (phoneFormatted)
-      cp.phone_nos = [{ phone: phoneFormatted, is_primary_mobile_no: 1 }];
+    if (emailNormalized) cp.email_ids = [{ email_id: emailNormalized, is_primary: 1 }];
+    if (phoneFormatted) cp.phone_nos = [{ phone: phoneFormatted, is_primary_mobile_no: 1 }];
     const con = await erpPost('Contact', cp);
     contactId = (con.name as string) || null;
   }
 
-  return { entityId, entityType, contactId, customerIsNew, nomeCliente, phoneFormatted, emailNormalized };
+  return {
+    entityId,
+    entityType,
+    contactId,
+    customerIsNew,
+    nomeCliente,
+    phoneFormatted,
+    emailNormalized,
+  };
 }
 
 // ── Address resolution ───────────────────────────────────────────────────────
@@ -196,14 +202,7 @@ export interface ResolveAddressResult {
  * Create an ERPNext Address for the resolved party if minimum data is present.
  */
 export async function resolveAddress(opts: ResolveAddressOptions): Promise<ResolveAddressResult> {
-  const {
-    endereco,
-    nomeCliente,
-    email,
-    telefone,
-    entityType,
-    entityId,
-  } = opts;
+  const { endereco, nomeCliente, email, telefone, entityType, entityId } = opts;
 
   let addressId: string | null = null;
   const warnings: Array<{ code: string; message: string }> = [];
@@ -223,7 +222,7 @@ export async function resolveAddress(opts: ResolveAddressOptions): Promise<Resol
     } catch (addrErr) {
       console.error(
         '[customer-resolution] Address creation failed:',
-        (addrErr as Error)?.message || addrErr,
+        (addrErr as Error)?.message || addrErr
       );
       warnings.push({
         code: 'address_create_failed',
