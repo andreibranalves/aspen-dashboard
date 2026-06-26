@@ -244,3 +244,12 @@ Converter testes `.js` restantes para `.ts`:
 3. **API URLs**: funções de `erpLinks.ts` retornam `string | null`; páginas agora usam `?? undefined` ao passar para atributos `href`/`src`.
 4. **Index signature `unknown`**: campos como `Product.nome`, `Product.categoria` e `DraftEdited._showAddr` ainda exigem `String()` ou casts pontuais. Recomenda-se futuramente estreitar esses tipos.
 5. **Build e testes**: todos os comandos de verificação passam; o bundle continua gerando `public/assets/index-*.js` corretamente.
+
+---
+
+## Post-report fixes
+
+- Fixed Tailwind content globs to include `.ts`/`.tsx`, restoring generated utility CSS after frontend migration.
+- Added guard script `npm run check:tailwind` to prevent recurrence.
+- Added `// @ts-check` to selected backend helper libs.
+- Converted remaining unit test files to `.ts`.
