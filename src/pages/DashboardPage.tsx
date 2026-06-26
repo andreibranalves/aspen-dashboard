@@ -16,6 +16,7 @@ import { formatBRL, capitalize } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
+import type { DashboardData } from '@/types/domain';
 
 interface PeriodOption {
   key: string;
@@ -30,64 +31,6 @@ const PERIODS: PeriodOption[] = [
   { key: 'month', label: 'Este mês' },
   { key: 'last_month', label: 'Mês passado' },
 ];
-
-interface DashboardSummary {
-  total_revenue?: number;
-  revenue_delta?: number;
-  orders_count?: number;
-  orders_delta?: number;
-  avg_ticket?: number;
-  avg_ticket_delta?: number;
-  open_orders?: number;
-  conversion_rate?: number;
-  conversion_delta?: number;
-}
-
-interface TopProduct {
-  sku?: string;
-  product?: string;
-  name?: string;
-  quantity?: number;
-  qty?: number;
-  revenue?: number;
-  total?: number;
-  orders?: number;
-  order_count?: number;
-}
-
-interface TopCustomer {
-  name?: string;
-  customer?: string;
-  revenue?: number;
-  total?: number;
-  orders?: number;
-  order_count?: number;
-}
-
-interface SalesByDay {
-  date?: string;
-  revenue?: number;
-  total?: number;
-}
-
-interface StaleQuotation {
-  id?: string;
-  customer?: string;
-  client?: string;
-  age?: number;
-  days_old?: number;
-  value?: number;
-  total?: number;
-  status?: string;
-}
-
-interface DashboardData {
-  summary?: DashboardSummary;
-  top_products?: TopProduct[];
-  top_customers?: TopCustomer[];
-  sales_by_day?: SalesByDay[];
-  stale_quotations?: StaleQuotation[];
-}
 
 interface DashboardPageProps {
   navigate: (path: string) => void;
