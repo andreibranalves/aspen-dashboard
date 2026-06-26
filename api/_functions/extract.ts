@@ -1,3 +1,5 @@
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+
 // ── Regras de extração padrão ──
 export const DEFAULT_RULES = `Rule 0 — SKU Explícito: Se o cliente informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
 
@@ -51,7 +53,7 @@ Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAI
 
 Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
-export function buildSystemPrompt(customRules, existingItems) {
+export function buildSystemPrompt(customRules?: string, existingItems?: Array<{ item_code: string; qty: number }> | null): string {
   const rules = customRules?.trim() || DEFAULT_RULES;
   let mergeInstruction = '';
   if (Array.isArray(existingItems) && existingItems.length > 0) {
@@ -111,20 +113,25 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp
 const MAX_TEXT_LENGTH = 12000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-function createHttpError(statusCode, publicMessage, logMessage) {
-  const error = new Error(publicMessage);
+interface HttpError extends Error {
+  statusCode: number;
+  logMessage: string;
+}
+
+function createHttpError(statusCode: number, publicMessage: string, logMessage?: string): HttpError {
+  const error = new Error(publicMessage) as HttpError;
   error.statusCode = statusCode;
   error.logMessage = logMessage || publicMessage;
   return error;
 }
 
-function estimateBase64Bytes(base64) {
+function estimateBase64Bytes(base64: string): number {
   const normalized = (base64 || '').replace(/\s+/g, '');
   const padding = normalized.endsWith('==') ? 2 : normalized.endsWith('=') ? 1 : 0;
   return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
 }
 
-function parseJsonSafely(raw) {
+function parseJsonSafely(raw: string): unknown {
   try {
     return JSON.parse(raw);
   } catch {
@@ -132,13 +139,13 @@ function parseJsonSafely(raw) {
   }
 }
 
-function unwrapJsonText(raw) {
+function unwrapJsonText(raw: string): string {
   const trimmed = String(raw || '').trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fenced ? fenced[1].trim() : trimmed;
 }
 
-function validateInput(text, imageBase64, imageMimeType) {
+function validateInput(text?: string, imageBase64?: string, imageMimeType?: string): void {
   if (!text && !imageBase64) {
     throw createHttpError(400, 'Envie texto ou imagem para extrair o pedido.');
   }
@@ -163,8 +170,24 @@ function validateInput(text, imageBase64, imageMimeType) {
   }
 }
 
-function normalizeOrdersPayload(parsed) {
-  const orders = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.orders) ? parsed.orders : null;
+interface OrderItem {
+  item_code: string;
+  qty: number;
+}
+
+interface Order {
+  nome: string;
+  email: string | null;
+  telefone: string | null;
+  urgente: boolean;
+  origem: string | null;
+  cnpj: string | null;
+  endereco: Record<string, string | null>;
+  items: OrderItem[];
+}
+
+function normalizeOrdersPayload(parsed: unknown): Order[] {
+  const orders = Array.isArray(parsed) ? parsed : Array.isArray((parsed as Record<string, unknown>)?.orders) ? (parsed as Record<string, unknown>).orders as Order[] : null;
 
   if (!orders) {
     throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Payload sem array de pedidos');
@@ -184,7 +207,7 @@ function normalizeOrdersPayload(parsed) {
   return orders;
 }
 
-function buildUserContent(text, imageBase64, imageMimeType) {
+function buildUserContent(text?: string, imageBase64?: string, imageMimeType?: string): string | Array<Record<string, unknown>> {
   const promptText = text || 'Extraia os dados do pedido de cotação.';
   if (!imageBase64) return promptText;
 
@@ -199,8 +222,8 @@ function buildUserContent(text, imageBase64, imageMimeType) {
   ];
 }
 
-function extractAssistantText(data) {
-  const content = data?.choices?.[0]?.message?.content;
+function extractAssistantText(data: Record<string, unknown>): string {
+  const content = (data?.choices as Array<Record<string, unknown>>)?.[0]?.message?.content as string | undefined;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
@@ -211,7 +234,13 @@ function extractAssistantText(data) {
   return '';
 }
 
-async function extractWithOpenRouter(text, imageBase64, imageMimeType, customRules, existingItems) {
+async function extractWithOpenRouter(
+  text?: string,
+  imageBase64?: string,
+  imageMimeType?: string,
+  customRules?: string,
+  existingItems?: Array<{ item_code: string; qty: number }> | null
+): Promise<Order[]> {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
   const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
@@ -268,12 +297,12 @@ async function extractWithOpenRouter(text, imageBase64, imageMimeType, customRul
   return normalizeOrdersPayload(parsed);
 }
 
-export async function handler(event) {
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  let payload;
+  let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(event.body);
   } catch {
@@ -282,11 +311,11 @@ export async function handler(event) {
 
   try {
     const orders = await extractWithOpenRouter(
-      payload.text,
-      payload.imageBase64,
-      payload.imageMimeType,
-      payload.rules,
-      payload.existingItems
+      payload.text as string | undefined,
+      payload.imageBase64 as string | undefined,
+      payload.imageMimeType as string | undefined,
+      payload.rules as string | undefined,
+      payload.existingItems as Array<{ item_code: string; qty: number }> | undefined
     );
     return {
       statusCode: 200,
@@ -294,12 +323,13 @@ export async function handler(event) {
       body: JSON.stringify({ orders }),
     };
   } catch (err) {
-    const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[extract]', err?.logMessage || err?.message || err);
+    const typedErr = err as { statusCode?: number; logMessage?: string; message?: string };
+    const statusCode = Number.isInteger(typedErr?.statusCode) ? typedErr.statusCode! : 500;
+    console.error('[extract]', typedErr?.logMessage || typedErr?.message || err);
     return {
       statusCode,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.message || 'Erro interno na extração.' }),
+      body: JSON.stringify({ error: typedErr?.message || 'Erro interno na extração.' }),
     };
   }
 }
