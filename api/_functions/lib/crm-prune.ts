@@ -88,17 +88,50 @@ export function parseDealIds(payload: unknown): string[] {
   return unique;
 }
 
+const BATCH_SIZE = 50; // keep URL query string under ERPNext's nginx limit
+
+/**
+ * Execute an erpGetList call with an `in` filter, splitting large value arrays
+ * into batches to avoid URL-length errors from ERPNext's nginx.
+ */
+async function batchInQuery(
+  doctype: string,
+  field: string,
+  values: string[],
+  extraFilters: Array<Array<any>>,
+  deps: Pick<CrmPruneDeps, 'erpGetList'>,
+  fields?: string[]
+): Promise<Array<Record<string, any>>> {
+  if (values.length === 0) return [];
+
+  const results: Array<Record<string, any>> = [];
+  for (let i = 0; i < values.length; i += BATCH_SIZE) {
+    const chunk = values.slice(i, i + BATCH_SIZE);
+    const chunkResults = await deps.erpGetList(doctype, {
+      fields,
+      filters: [[field, 'in', chunk], ...extraFilters],
+      order_by: 'creation desc',
+      limit: BATCH_SIZE,
+    });
+    results.push(...chunkResults);
+  }
+  return results;
+}
+
 async function fetchLinkedQuotationNames(
   quotationNames: string[],
   deps: Pick<CrmPruneDeps, 'erpGetList'>
 ): Promise<Set<string>> {
   if (quotationNames.length === 0) return new Set();
 
-  const rows = await deps.erpGetList('Sales Order Item', {
-    fields: ['prevdoc_docname'],
-    filters: [['prevdoc_docname', 'in', quotationNames]],
-    limit: 10000,
-  });
+  const rows = await batchInQuery(
+    'Sales Order Item',
+    'prevdoc_docname',
+    quotationNames,
+    [],
+    deps,
+    ['prevdoc_docname']
+  );
 
   return new Set(rows.map((row) => cleanString(row.prevdoc_docname)).filter(Boolean));
 }
@@ -128,15 +161,14 @@ export async function getPruneCandidates(
   const quotationNames = Array.from(dealsByQuotation.keys());
   if (quotationNames.length === 0) return [];
 
-  const quotations = await deps.erpGetList('Quotation', {
-    fields: ['name', 'transaction_date', 'grand_total', 'status'],
-    filters: [
-      ['name', 'in', quotationNames],
-      ['transaction_date', '<=', oldEnoughCutoff],
-    ],
-    order_by: 'transaction_date asc',
-    limit: 10000,
-  });
+  const quotations = await batchInQuery(
+    'Quotation',
+    'name',
+    quotationNames,
+    [['transaction_date', '<=', oldEnoughCutoff]],
+    deps,
+    ['name', 'transaction_date', 'grand_total', 'status']
+  );
 
   let linkedQuotationNames: Set<string>;
   try {
