@@ -43,6 +43,7 @@ export function normalizeLeadSource(value) {
   const v = String(value || '').trim();
   if (!v) return '';
   // Busca accent + case-insensitive na lista canônica
+  /** @param {string} s @returns {string} */
   const normalize = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const vKey = normalize(v);
   const found = LEAD_SOURCES.find(s => normalize(s) === vKey);
@@ -110,22 +111,19 @@ export function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-/**
- * Normaliza para 14 dígitos ou string vazia.
- */
+/** @param {unknown} value @returns {string} */
 export function normalizeCnpj(value) {
   return onlyDigits(value).slice(0, 14);
 }
 
-/**
- * Valida dígitos verificadores. Aceita string vazia (CNPJ opcional).
- */
+/** @param {unknown} value @returns {boolean} */
 export function isValidCnpj(value) {
   const digits = normalizeCnpj(value);
   if (digits.length === 0) return true;
   if (digits.length !== 14) return false;
   if (/^(\d)\1{13}$/.test(digits)) return false;
 
+  /** @param {string} slice @param {number[]} weights @returns {number} */
   const calc = (slice, weights) => {
     let sum = 0;
     for (let i = 0; i < slice.length; i++) {
@@ -196,6 +194,7 @@ export function buildAddressPayload({ address, nomeCliente, email, telefone, ent
   if (a.complemento) line2Parts.push(a.complemento);
   const address_line2 = line2Parts.filter(Boolean).join(' - ') || undefined;
 
+  /** @type {Record<string, unknown>} */
   const payload = {
     address_title: nomeCliente || entityId || 'Cliente',
     address_type: 'Billing',

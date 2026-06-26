@@ -94,7 +94,8 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
 
     return html;
   } catch (htmlErr) {
-    console.error('[quote-response] Printview fetch failed:', htmlErr.message);
+    const err = /** @type {Error} */ (htmlErr);
+    console.error('[quote-response] Printview fetch failed:', err.message);
     return null;
   }
 }
@@ -143,6 +144,7 @@ export async function buildQuoteResponse({
   const printFormat = await resolvePrintFormat(quotationId);
   const pdfUrl = `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(quotationId)}&format=${encodeURIComponent(printFormat)}&no_letterhead=0`;
 
+  /** @type {Record<string, unknown>} */
   const result = {
     success: true,
     quotation_id: quotationId,
