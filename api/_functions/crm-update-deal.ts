@@ -22,6 +22,11 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     // ponytail: Record<string, unknown> for dynamic object properties
     const update: Record<string, unknown> = { status };
 
+    // ERPNext CRM Deal requires lost_reason when moving to Perdido
+    if (status === 'Perdido') {
+      update.lost_reason = 'Unresponsive Prospect';
+    }
+
     // Opcional: atualiza estágio de follow-up junto com o status
     if (follow_up_stage !== undefined && follow_up_stage !== null) {
       update.custom_follow_up_stage = follow_up_stage;
