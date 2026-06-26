@@ -45,7 +45,7 @@ function buildHeaders(): Record<string, string> {
 async function erpRequest(
   url: string,
   options: RequestInit = {}
-): Promise<Record<string, unknown>> {
+): Promise<Record<string, any>> {
   let res: Response;
   try {
     res = await fetch(url, options);
@@ -69,7 +69,7 @@ async function erpRequest(
     );
   }
 
-  return body as Record<string, unknown>;
+  return body as Record<string, any>;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ export interface ErpGetListOpts {
 export async function erpGetList(
   doctype: string,
   opts: ErpGetListOpts = {}
-): Promise<Array<Record<string, unknown>>> {
+): Promise<Array<Record<string, any>>> {
   const { fields, filters, or_filters, order_by = 'creation desc', limit, start } = opts;
   const params = new URLSearchParams();
   params.set('order_by', order_by);
@@ -104,7 +104,7 @@ export async function erpGetList(
 
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}?${params}`;
   const body = await erpRequest(url, { headers: buildHeaders() });
-  return (body.data as Array<Record<string, unknown>>) || [];
+  return (body.data as Array<Record<string, any>>) || [];
 }
 
 export interface ErpGetDocOpts {
@@ -120,7 +120,7 @@ export async function erpGetDoc(
   doctype: string,
   name: string,
   opts: ErpGetDocOpts = {}
-): Promise<Record<string, unknown> | null> {
+): Promise<Record<string, any> | null> {
   const { fields } = opts;
   const params = new URLSearchParams();
   if (fields) params.set('fields', JSON.stringify(fields));
@@ -128,7 +128,7 @@ export async function erpGetDoc(
   const qs = params.toString();
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}${qs ? '?' + qs : ''}`;
   const body = await erpRequest(url, { headers: buildHeaders() });
-  return (body.data as Record<string, unknown>) || null;
+  return (body.data as Record<string, any>) || null;
 }
 
 /**
@@ -136,15 +136,15 @@ export async function erpGetDoc(
  */
 export async function erpPost(
   doctype: string,
-  payload: Record<string, unknown>
-): Promise<Record<string, unknown>> {
+  payload: Record<string, any>
+): Promise<Record<string, any>> {
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}`;
   const body = await erpRequest(url, {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
   });
-  return (body.data as Record<string, unknown>) || {};
+  return (body.data as Record<string, any>) || {};
 }
 
 /**
@@ -153,15 +153,15 @@ export async function erpPost(
 export async function erpPut(
   doctype: string,
   name: string,
-  payload: Record<string, unknown>
-): Promise<Record<string, unknown>> {
+  payload: Record<string, any>
+): Promise<Record<string, any>> {
   const url = `${ERPNEXT_BASE}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`;
   const body = await erpRequest(url, {
     method: 'PUT',
     headers: buildHeaders(),
     body: JSON.stringify(payload),
   });
-  return (body.data as Record<string, unknown>) || {};
+  return (body.data as Record<string, any>) || {};
 }
 
 /**
@@ -185,7 +185,7 @@ export { createHttpError, ERPNEXT_BASE, ERPNEXT_TOKEN };
  */
 export async function erpCallMethod(
   methodPath: string,
-  payload: Record<string, unknown> = {}
+  payload: Record<string, any> = {}
 ): Promise<unknown> {
   const url = `${ERPNEXT_BASE}/api/method/${encodeURIComponent(methodPath)}`;
   const body = await erpRequest(url, {
@@ -195,6 +195,6 @@ export async function erpCallMethod(
   });
   // Frappe wraps method responses in { message: ... }
   return (
-    (body as Record<string, unknown>).message ?? (body as Record<string, unknown>).data ?? body
+    (body as Record<string, any>).message ?? (body as Record<string, any>).data ?? body
   );
 }
