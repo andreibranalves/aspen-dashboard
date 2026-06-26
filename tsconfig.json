@@ -21,6 +21,6 @@
     },
     "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*", "api/**/*", "scripts/**/*", "tests/unit/**/*"],
-  "exclude": ["node_modules", "public", "dist", "ts-out"]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["api", "node_modules", "public", "dist", "ts-out"]
 }

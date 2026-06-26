@@ -94,7 +94,7 @@ export default [
     languageOptions: {
       parser: tsParser,
       parserOptions: {
-        project: './tsconfig.json',
+        project: ['./tsconfig.json', './api/tsconfig.api.json'],
         tsconfigRootDir: process.cwd(),
       },
     },
