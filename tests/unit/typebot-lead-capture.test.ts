@@ -2,7 +2,11 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { URL } from 'node:url';
 
-import { handler } from '../../api/_functions/typebot-lead-capture.js';
+import { handler as _handler } from '../../api/_functions/typebot-lead-capture.js';
+
+type HandlerResult = { statusCode: number; body: string };
+const handler = _handler as (event: unknown) => Promise<HandlerResult>;
+type FetchCall = { url: string; options: RequestInit };
 
 const ORIGINAL_ENV = {
   TYPEBOT_LEAD_WEBHOOK_TOKEN: process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN,
@@ -10,11 +14,11 @@ const ORIGINAL_ENV = {
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 
-function parseBody(result) {
+function parseBody(result: HandlerResult) {
   return JSON.parse(result.body);
 }
 
-function baseExpectedLead(overrides = {}) {
+function baseExpectedLead(overrides: Record<string, unknown> = {}) {
   return {
     nome: '',
     email: '',
@@ -45,8 +49,13 @@ function buildEvent({
   token = 'secret',
   body = {},
   authHeader = 'authorization',
+}: {
+  method?: string;
+  token?: string;
+  body?: unknown;
+  authHeader?: string;
 } = {}) {
-  const headers = token
+  const headers: Record<string, string> = token
     ? authHeader === 'Authorization'
       ? { Authorization: `Bearer ${token}` }
       : { authorization: `Bearer ${token}` }
@@ -59,12 +68,15 @@ function buildEvent({
   };
 }
 
-function jsonResponse(body, { ok = true, status = 200 } = {}) {
+function jsonResponse(
+  body: unknown,
+  { ok = true, status = 200 }: { ok?: boolean; status?: number } = {},
+) {
   return {
     ok,
     status,
     json: async () => body,
-  };
+  } as Response;
 }
 
 afterEach(() => {
@@ -184,13 +196,13 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
-    const calls = [];
-    globalThis.fetch = async (url, options = {}) => {
-      calls.push({ url, options });
+    const calls: FetchCall[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
       return jsonResponse({
         data: [{ name: 'LEAD-0001', email_id: 'ana@example.com', mobile_no: '5511999999999' }],
       });
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(
       buildEvent({
@@ -231,16 +243,16 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
-    const calls = [];
-    globalThis.fetch = async (url, options = {}) => {
-      calls.push({ url, options });
+    const calls: FetchCall[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
       const method = options.method || 'GET';
       if (method === 'GET') return jsonResponse({ data: [] });
       if (method === 'POST') {
         return jsonResponse({ data: { name: 'LEAD-NEW' } });
       }
       throw new Error(`Unexpected method ${method}`);
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(
       buildEvent({
@@ -270,7 +282,7 @@ describe('typebot-lead-capture handler', () => {
 
     assert.equal(calls.length, 3);
     assert.equal(calls[2].options.method, 'POST');
-    assert.deepEqual(JSON.parse(calls[2].options.body), {
+    assert.deepEqual(JSON.parse(calls[2].options.body as string), {
       lead_name: 'Cliente Novo',
       email_id: 'novo@example.com',
       mobile_no: '5511988887777',
@@ -282,11 +294,11 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
-    const calls = [];
-    globalThis.fetch = async (url, options = {}) => {
-      calls.push({ url, options });
+    const calls: FetchCall[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
       const method = options.method || 'GET';
-      const parsedUrl = new URL(url);
+      const parsedUrl = new URL(url as string);
       if (method === 'GET' && parsedUrl.searchParams.get('filters')) {
         return jsonResponse({ data: [] });
       }
@@ -297,7 +309,7 @@ describe('typebot-lead-capture handler', () => {
         return jsonResponse({ data: { name: 'LEAD-EXIST' } });
       }
       throw new Error(`Unexpected request ${method} ${url}`);
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(
       buildEvent({
@@ -335,7 +347,7 @@ describe('typebot-lead-capture handler', () => {
       ])
     );
     assert.equal(calls[1].options.method, 'PUT');
-    assert.deepEqual(JSON.parse(calls[1].options.body), {
+    assert.deepEqual(JSON.parse(calls[1].options.body as string), {
       lead_name: 'Cliente Existente',
       mobile_no: '5511988887777',
       source: 'Website',
@@ -396,14 +408,14 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
-    const calls = [];
-    globalThis.fetch = async (url, options = {}) => {
-      calls.push({ url, options });
+    const calls: FetchCall[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
       const method = options.method || 'GET';
       if (method === 'GET') return jsonResponse({ data: [] });
       if (method === 'POST') return jsonResponse({ data: { name: 'LEAD-ATTR' } });
       throw new Error(`Unexpected method ${method}`);
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(
       buildEvent({
@@ -430,7 +442,7 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(parseBody(result).action, 'created');
     assert.equal(calls.length, 3);
     assert.equal(calls[2].options.method, 'POST');
-    assert.deepEqual(JSON.parse(calls[2].options.body), {
+    assert.deepEqual(JSON.parse(calls[2].options.body as string), {
       lead_name: 'Cliente Attribution',
       email_id: 'attr@example.com',
       mobile_no: '5511999999999',
@@ -453,11 +465,11 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
-    const calls = [];
-    globalThis.fetch = async (url, options = {}) => {
-      calls.push({ url, options });
+    const calls: FetchCall[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
       const method = options.method || 'GET';
-      const parsedUrl = new URL(url);
+      const parsedUrl = new URL(url as string);
       if (method === 'GET' && parsedUrl.searchParams.get('filters')) {
         const fields = JSON.parse(parsedUrl.searchParams.get('fields') || '[]');
         assert.ok(fields.includes('custom_utm_source'));
@@ -479,7 +491,7 @@ describe('typebot-lead-capture handler', () => {
         return jsonResponse({ data: { name: 'LEAD-OLD' } });
       }
       throw new Error(`Unexpected request ${method} ${url}`);
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(
       buildEvent({
@@ -498,7 +510,7 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(parseBody(result).action, 'updated');
     assert.equal(calls.length, 2);
     assert.equal(calls[1].options.method, 'PUT');
-    assert.deepEqual(JSON.parse(calls[1].options.body), {
+    assert.deepEqual(JSON.parse(calls[1].options.body as string), {
       lead_name: 'Cliente Velho',
       email_id: 'old@example.com',
       source: 'Website',
@@ -511,9 +523,9 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
-    const calls = [];
-    globalThis.fetch = async (url, options = {}) => {
-      calls.push({ url, options });
+    const calls: FetchCall[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
       const method = options.method || 'GET';
       if (method === 'GET') {
         return jsonResponse({
@@ -532,7 +544,7 @@ describe('typebot-lead-capture handler', () => {
         return jsonResponse({ data: { name: 'LEAD-EMPTY' } });
       }
       throw new Error(`Unexpected request ${method} ${url}`);
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(
       buildEvent({
@@ -548,7 +560,7 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(result.statusCode, 200);
     assert.equal(parseBody(result).action, 'updated');
     assert.equal(calls[1].options.method, 'PUT');
-    assert.deepEqual(JSON.parse(calls[1].options.body), {
+    assert.deepEqual(JSON.parse(calls[1].options.body as string), {
       lead_name: 'Cliente Vazio',
       email_id: 'empty@example.com',
       source: 'Website',
@@ -562,10 +574,10 @@ describe('typebot-lead-capture handler', () => {
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
 
     let called = false;
-    globalThis.fetch = async () => {
+    globalThis.fetch = (async () => {
       called = true;
       return jsonResponse({ data: [] });
-    };
+    }) as typeof globalThis.fetch;
 
     const result = await handler(buildEvent({ body: { telefone: '11999999999' } }));
 

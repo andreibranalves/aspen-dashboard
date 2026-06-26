@@ -18,6 +18,8 @@ import {
   parseSampleImages,
   getSelectedFlowId,
   saveSelectedFlowId,
+  type Flow,
+  type Step,
 } from '../../src/lib/whatsappFlows.ts';
 
 // ── DEFAULT_WA_FLOWS ─────────────────────────────────────────────────────────
@@ -181,12 +183,12 @@ describe('flowToSequencePayload()', () => {
     const flow = {
       ...DEFAULT_WA_FLOWS[0],
       steps: [
-        { id: 's1', type: 'text', template: 'Olá' },
-        { id: 's2', type: 'text', template: '   ' },
-        { id: 's3', type: 'text', template: '' },
-        { id: 's4', type: 'product_images' },
+        { id: 's1', type: 'text', template: 'Olá' } as Step,
+        { id: 's2', type: 'text', template: '   ' } as Step,
+        { id: 's3', type: 'text', template: '' } as Step,
+        { id: 's4', type: 'product_images' } as Step,
       ],
-    };
+    } as Flow;
     const payload = flowToSequencePayload(flow);
     assert.equal(payload.steps.length, 2); // s1 + s4 (product_images passa)
     assert.equal(payload.steps[0].template, 'Olá');
@@ -195,8 +197,8 @@ describe('flowToSequencePayload()', () => {
   it('inclui product_images steps mesmo sem template', () => {
     const flow = {
       ...DEFAULT_WA_FLOWS[0],
-      steps: [{ id: 's1', type: 'product_images' }],
-    };
+      steps: [{ id: 's1', type: 'product_images' } as Step],
+    } as Flow;
     const payload = flowToSequencePayload(flow);
     assert.equal(payload.steps.length, 1);
     assert.equal(payload.steps[0].type, 'product_images');
@@ -215,8 +217,8 @@ describe('flowToSequencePayload()', () => {
   it('mantém document source=quotation_pdf como document step (PDF real)', () => {
     const flow = {
       ...DEFAULT_WA_FLOWS[0],
-      steps: [{ id: 's1', type: 'document', source: 'quotation_pdf', caption: 'PDF do orçamento' }],
-    };
+      steps: [{ id: 's1', type: 'document', source: 'quotation_pdf', caption: 'PDF do orçamento' } as Step],
+    } as Flow;
     const payload = flowToSequencePayload(flow);
     assert.equal(payload.steps.length, 1);
     assert.equal(payload.steps[0].type, 'document');
@@ -230,10 +232,10 @@ describe('getFlowSummary()', () => {
   it('conta mensagens de texto com template preenchido', () => {
     const flow = {
       steps: [
-        { type: 'text', template: 'Olá' },
-        { type: 'text', template: 'Como vai?' },
-        { type: 'text', template: '' },
-        { type: 'text', template: '   ' },
+        { type: 'text', template: 'Olá' } as Step,
+        { type: 'text', template: 'Como vai?' } as Step,
+        { type: 'text', template: '' } as Step,
+        { type: 'text', template: '   ' } as Step,
       ],
     };
     assert.equal(getFlowSummary(flow), '2 mensagens');
@@ -241,7 +243,7 @@ describe('getFlowSummary()', () => {
 
   it('inclui "mídia da biblioteca" quando há product_media/product_images', () => {
     const flow = {
-      steps: [{ type: 'text', template: 'Olá' }, { type: 'product_images' }],
+      steps: [{ type: 'text', template: 'Olá' } as Step, { type: 'product_images' } as Step],
     };
     assert.equal(getFlowSummary(flow), '1 mensagem + mídia da biblioteca');
   });
@@ -268,7 +270,7 @@ describe('normalizeFlow()', () => {
   it('normaliza passos', () => {
     const flow = normalizeFlow(
       {
-        steps: [{ type: 'text', template: 'Oi' }],
+        steps: [{ type: 'text', template: 'Oi' } as Step],
       },
       0
     );

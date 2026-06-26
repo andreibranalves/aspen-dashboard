@@ -190,7 +190,7 @@ describe('buildAddressPayload()', () => {
     nomeCliente: 'João Silva',
     email: 'joao@example.com',
     telefone: '21980716785',
-    entityType: 'Customer',
+    entityType: 'Customer' as const,
     entityId: 'CUST-001',
   };
 
@@ -205,8 +205,9 @@ describe('buildAddressPayload()', () => {
     assert.equal(payload.city, 'Rio');
     assert.equal(payload.state, 'RJ');
     assert.equal(payload.country, 'Brazil');
-    assert.equal(payload.links[0].link_doctype, 'Customer');
-    assert.equal(payload.links[0].link_name, 'CUST-001');
+    const links = payload.links as Array<Record<string, unknown>>;
+    assert.equal(links[0].link_doctype, 'Customer');
+    assert.equal(links[0].link_name, 'CUST-001');
   });
 
   it('inclui email e telefone quando fornecidos', () => {

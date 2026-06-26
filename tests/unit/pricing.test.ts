@@ -11,27 +11,33 @@ import { getBracket, getUrgentRate, getRate } from '../../api/_functions/pricing
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-let _originalFetch;
+let _originalFetch: typeof globalThis.fetch;
+
+type MockResponse = {
+  match: (url: string) => boolean;
+  body: unknown;
+  status?: number;
+};
 
 /**
  * Mock globalThis.fetch with an ordered list of responses.
  * Each entry: { match: (urlStr) => boolean, body, status? }
  * First match wins; falls through to 404 if none match.
  */
-function mockFetch(responses) {
+function mockFetch(responses: MockResponse[]) {
   _originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, _opts) => {
-    const urlStr = typeof url === 'string' ? url : url.href;
+    const urlStr = typeof url === 'string' ? url : (url as URL).href;
     for (const entry of responses) {
       if (entry.match(urlStr)) {
         return {
           status: entry.status || 200,
           ok: entry.status ? entry.status < 400 : true,
           json: async () => entry.body,
-        };
+        } as Response;
       }
     }
-    return { status: 404, ok: false, json: async () => ({}) };
+    return { status: 404, ok: false, json: async () => ({}) } as Response;
   };
 }
 
@@ -40,23 +46,23 @@ function restoreFetch() {
 }
 
 /** Helper: match a Pricing Rule list call URL by the SKU-bracket title in the filters */
-function matchPricingRuleList(skuBracket) {
-  return (url) => url.includes('/api/resource/Pricing%20Rule') && url.includes(skuBracket);
+function matchPricingRuleList(skuBracket: string) {
+  return (url: string) => url.includes('/api/resource/Pricing%20Rule') && url.includes(skuBracket);
 }
 
 /** Helper: match a Pricing Rule doc fetch URL by rule name */
-function matchPricingRuleDoc(ruleName) {
-  return (url) => url.includes(`/api/resource/Pricing%20Rule/${ruleName}`);
+function matchPricingRuleDoc(ruleName: string) {
+  return (url: string) => url.includes(`/api/resource/Pricing%20Rule/${ruleName}`);
 }
 
 /** Helper: match an Item Price list call URL by the item_code in the filters */
-function matchItemPriceList(itemCode) {
-  return (url) => url.includes('/api/resource/Item%20Price') && url.includes(itemCode);
+function matchItemPriceList(itemCode: string) {
+  return (url: string) => url.includes('/api/resource/Item%20Price') && url.includes(itemCode);
 }
 
 /** Helper: empty Pricing Rule list response */
-function emptyPR() {
-  return { match: (url) => url.includes('/api/resource/Pricing%20Rule'), body: { data: [] } };
+function emptyPR(): MockResponse {
+  return { match: (url: string) => url.includes('/api/resource/Pricing%20Rule'), body: { data: [] } };
 }
 
 // ── getBracket ───────────────────────────────────────────────────────────────
@@ -128,7 +134,7 @@ describe('getRate()', () => {
       { match: matchPricingRuleDoc('PR-001'), body: { data: { rate: 12.50 } } },
     ]);
 
-    const rate = await getRate('LNC-SED-70', 150);
+    const rate = await getRate('LNC-SED-70', 150, '', '');
     assert.equal(rate, 12.50);
   });
 
@@ -141,7 +147,7 @@ describe('getRate()', () => {
       { match: matchPricingRuleDoc('PR-002'), body: { data: { rate: 10.00 } } },
     ]);
 
-    const rate = await getRate('LNC-SED-70', 150);
+    const rate = await getRate('LNC-SED-70', 150, '', '');
     assert.equal(rate, 10.00);
   });
 
@@ -155,18 +161,18 @@ describe('getRate()', () => {
       { match: matchItemPriceList('LNC-SED-70'), body: { data: [{ price_list_rate: 8.75 }] } },
     ]);
 
-    const rate = await getRate('LNC-SED-70', 50);
+    const rate = await getRate('LNC-SED-70', 50, '', '');
     assert.equal(rate, 8.75);
   });
 
   it('lança erro quando SKU não tem preço em nenhuma fonte', async () => {
     mockFetch([
       emptyPR(),
-      { match: (url) => url.includes('/api/resource/Item%20Price'), body: { data: [] } },
+      { match: (url: string) => url.includes('/api/resource/Item%20Price'), body: { data: [] } },
     ]);
 
     await assert.rejects(
-      () => getRate('SKU-INEXISTENTE', 30),
+      () => getRate('SKU-INEXISTENTE', 30, '', ''),
       { statusCode: 400, message: /não encontrado/ },
     );
   });
@@ -177,7 +183,7 @@ describe('getRate()', () => {
       { match: matchPricingRuleDoc('PR-1000'), body: { data: { rate: 7.00 } } },
     ]);
 
-    const rate = await getRate('TWL-280', 1000);
+    const rate = await getRate('TWL-280', 1000, '', '');
     assert.equal(rate, 7.00);
   });
 
@@ -187,7 +193,7 @@ describe('getRate()', () => {
       { match: matchPricingRuleDoc('PR-30'), body: { data: { rate: 5.50 } } },
     ]);
 
-    const rate = await getRate('LNC-CSD-70', 30);
+    const rate = await getRate('LNC-CSD-70', 30, '', '');
     assert.equal(rate, 5.50);
   });
 });

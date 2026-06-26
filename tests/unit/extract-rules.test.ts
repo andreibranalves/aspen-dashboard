@@ -66,12 +66,12 @@ describe('DEFAULT_RULES — cobertura de produtos', () => {
   });
 
   it('Bonés — < 100 → BNE-TAC-VNL', () => {
-    const boneLine = DEFAULT_RULES.split('\n').find(l => l.includes('Bonés'));
+    const boneLine = DEFAULT_RULES.split('\n').find(l => l.includes('Bonés'))!;
     assert.ok(boneLine.includes('BNE-TAC-VNL'), 'boné abaixo de 100');
   });
 
   it('Bonés — ≥ 100 → BNE-TAC-SUB + BNE-BRI + BNE-PRE', () => {
-    const boneLine = DEFAULT_RULES.split('\n').find(l => l.includes('Bonés'));
+    const boneLine = DEFAULT_RULES.split('\n').find(l => l.includes('Bonés'))!;
     assert.ok(boneLine.includes('BNE-TAC-SUB'), 'boné acima de 100 — SUB');
     assert.ok(boneLine.includes('BNE-BRI'), 'boné acima de 100 — BRI');
     assert.ok(boneLine.includes('BNE-PRE'), 'boné acima de 100 — PRE');
