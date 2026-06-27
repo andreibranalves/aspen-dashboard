@@ -10,6 +10,7 @@ import type {
 // current production diagnostic response while the route is disabled. When the
 // route is enabled, it upserts an ERPNext Lead with email/phone dedup.
 
+import { sendMetaLeadEvent } from './lib/meta-capi.js';
 import { createHttpError, erpGetList, erpPost, erpPut } from './lib/erpnext.js';
 
 const LIVE_DEPS = { erpGetList, erpPost, erpPut };
@@ -76,7 +77,9 @@ function phoneVariants(phone: unknown): string[] {
   return [...variants];
 }
 
-function normalizeSource(_value: unknown) {
+function normalizeSource(value: unknown) {
+  const raw = normalizeText(value);
+  if (raw === 'Meta Ads') return 'Meta Ads';
   return 'Website';
 }
 
@@ -104,6 +107,11 @@ function normalizeLead(payload: Record<string, unknown>) {
     canal: normalizeText(payload.canal) || 'whatsapp',
     produto: normalizeText(payload.produto),
     mensagem_contexto: normalizeText(payload.mensagem_contexto),
+    empresa: normalizeText(payload.empresa),
+    quantidade: normalizeText(payload.quantidade),
+    finalidade: normalizeText(payload.finalidade),
+    prazo: normalizeText(payload.prazo),
+    arte: normalizeText(payload.arte),
     result_id: normalizeNullableText(payload.result_id),
     page_url: normalizeNullableText(payload.page_url),
     utm_source: normalizeNullableText(payload.utm_source),
@@ -144,6 +152,22 @@ function isEmptyValue(value: unknown): boolean {
   return value == null || value === '';
 }
 
+function isBelowMinimumQuantity(quantity: unknown) {
+  return normalizeText(quantity).toLowerCase().includes('menos de 30');
+}
+
+function buildQualificationNotes(lead: Record<string, unknown>) {
+  const lines = [
+    lead.quantidade ? `Quantidade: ${lead.quantidade}` : '',
+    lead.produto ? `Produto: ${lead.produto}` : '',
+    lead.finalidade ? `Finalidade: ${lead.finalidade}` : '',
+    lead.prazo ? `Prazo: ${lead.prazo}` : '',
+    lead.arte ? `Arte: ${lead.arte}` : '',
+    lead.mensagem_contexto ? `Contexto: ${lead.mensagem_contexto}` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
 function buildLeadDocPayload(
   lead: Record<string, unknown>,
   existing: Record<string, unknown> | null = null
@@ -152,6 +176,10 @@ function buildLeadDocPayload(
   if (lead.email) docPayload.email_id = lead.email;
   if (lead.telefone) docPayload.mobile_no = lead.telefone;
   if (lead.origem) docPayload.source = lead.origem;
+  if (lead.empresa) docPayload.company_name = lead.empresa;
+
+  const qualificationNotes = buildQualificationNotes(lead);
+  if (qualificationNotes) docPayload.notes = qualificationNotes;
 
   for (const attr of ATTRIBUTION_FIELDS) {
     const incoming = lead[attr];
@@ -254,6 +282,10 @@ function createHandler(deps = LIVE_DEPS) {
     const dryRun = isDryRun(payload);
     const lead = normalizeLead(payload);
 
+    if (isBelowMinimumQuantity(lead.quantidade)) {
+      return jsonResponse(400, { error: 'minimum_quantity_required' });
+    }
+
     if (!enabled) {
       return jsonResponse(200, {
         success: true,
@@ -269,6 +301,19 @@ function createHandler(deps = LIVE_DEPS) {
 
     try {
       const result = dryRun ? await simulateUpsert(lead, deps) : await upsertLead(lead, deps);
+
+      let metaResult = null;
+      if (!dryRun) {
+        const metaEventId = String(lead.result_id || result.leadId || `typebot-${Date.now()}`);
+        metaResult = await sendMetaLeadEvent({
+          eventId: metaEventId,
+          email: String(lead.email || ''),
+          phone: String(lead.telefone || ''),
+          eventSourceUrl: lead.page_url as string | null,
+          quantity: lead.quantidade as string | null,
+        });
+      }
+
       return jsonResponse(200, {
         success: true,
         enabled,
@@ -278,6 +323,7 @@ function createHandler(deps = LIVE_DEPS) {
         lead,
         existing_lead: result.existingLead,
         activation_required: false,
+        ...(metaResult ? { meta_capi: metaResult } : {}),
       });
     } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;

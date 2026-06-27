@@ -11,6 +11,7 @@ type FetchCall = { url: string; options: RequestInit };
 const ORIGINAL_ENV = {
   TYPEBOT_LEAD_WEBHOOK_TOKEN: process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN,
   TYPEBOT_LEAD_CAPTURE_ENABLED: process.env.TYPEBOT_LEAD_CAPTURE_ENABLED,
+  META_CAPI_ACCESS_TOKEN: process.env.META_CAPI_ACCESS_TOKEN,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -27,6 +28,11 @@ function baseExpectedLead(overrides: Record<string, unknown> = {}) {
     canal: 'whatsapp',
     produto: '',
     mensagem_contexto: '',
+    empresa: '',
+    quantidade: '',
+    finalidade: '',
+    prazo: '',
+    arte: '',
     result_id: null,
     page_url: null,
     utm_source: null,
@@ -90,6 +96,12 @@ afterEach(() => {
     delete process.env.TYPEBOT_LEAD_CAPTURE_ENABLED;
   } else {
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = ORIGINAL_ENV.TYPEBOT_LEAD_CAPTURE_ENABLED;
+  }
+
+  if (ORIGINAL_ENV.META_CAPI_ACCESS_TOKEN === undefined) {
+    delete process.env.META_CAPI_ACCESS_TOKEN;
+  } else {
+    process.env.META_CAPI_ACCESS_TOKEN = ORIGINAL_ENV.META_CAPI_ACCESS_TOKEN;
   }
 
   globalThis.fetch = ORIGINAL_FETCH;
@@ -242,6 +254,7 @@ describe('typebot-lead-capture handler', () => {
   it('cria lead novo quando enabled sem duplicata', async () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
     globalThis.fetch = (async (url, options = {}) => {
@@ -278,6 +291,7 @@ describe('typebot-lead-capture handler', () => {
         email: 'novo@example.com',
         telefone: '5511988887777',
       }),
+      meta_capi: { sent: false, reason: 'missing_token' },
     });
 
     assert.equal(calls.length, 3);
@@ -293,6 +307,7 @@ describe('typebot-lead-capture handler', () => {
   it('atualiza lead existente por telefone quando enabled', async () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
     globalThis.fetch = (async (url, options = {}) => {
@@ -335,6 +350,7 @@ describe('typebot-lead-capture handler', () => {
         telefone: '5511988887777',
         produto: 'lenço',
       }),
+      meta_capi: { sent: false, reason: 'missing_token' },
     });
 
     const phoneLookupUrl = new URL(calls[0].url);
@@ -351,6 +367,7 @@ describe('typebot-lead-capture handler', () => {
       lead_name: 'Cliente Existente',
       mobile_no: '5511988887777',
       source: 'Website',
+      notes: 'Produto: lenço',
     });
   });
 
@@ -407,6 +424,7 @@ describe('typebot-lead-capture handler', () => {
   it('cria lead novo com custom fields de attribution quando presentes', async () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
     globalThis.fetch = (async (url, options = {}) => {
@@ -438,8 +456,10 @@ describe('typebot-lead-capture handler', () => {
       })
     );
 
+    const body = parseBody(result);
     assert.equal(result.statusCode, 200);
-    assert.equal(parseBody(result).action, 'created');
+    assert.equal(body.action, 'created');
+    assert.deepEqual(body.meta_capi, { sent: false, reason: 'missing_token' });
     assert.equal(calls.length, 3);
     assert.equal(calls[2].options.method, 'POST');
     assert.deepEqual(JSON.parse(calls[2].options.body as string), {
@@ -464,6 +484,7 @@ describe('typebot-lead-capture handler', () => {
   it('não sobrescreve attribution já preenchido no lead existente (first-touch)', async () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
     globalThis.fetch = (async (url, options = {}) => {
@@ -506,8 +527,10 @@ describe('typebot-lead-capture handler', () => {
       })
     );
 
+    const body = parseBody(result);
     assert.equal(result.statusCode, 200);
-    assert.equal(parseBody(result).action, 'updated');
+    assert.equal(body.action, 'updated');
+    assert.deepEqual(body.meta_capi, { sent: false, reason: 'missing_token' });
     assert.equal(calls.length, 2);
     assert.equal(calls[1].options.method, 'PUT');
     assert.deepEqual(JSON.parse(calls[1].options.body as string), {
@@ -522,6 +545,7 @@ describe('typebot-lead-capture handler', () => {
   it('preenche attribution em lead existente sem custom fields (first-touch)', async () => {
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
     process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
     globalThis.fetch = (async (url, options = {}) => {
@@ -557,8 +581,10 @@ describe('typebot-lead-capture handler', () => {
       })
     );
 
+    const body = parseBody(result);
     assert.equal(result.statusCode, 200);
-    assert.equal(parseBody(result).action, 'updated');
+    assert.equal(body.action, 'updated');
+    assert.deepEqual(body.meta_capi, { sent: false, reason: 'missing_token' });
     assert.equal(calls[1].options.method, 'PUT');
     assert.deepEqual(JSON.parse(calls[1].options.body as string), {
       lead_name: 'Cliente Vazio',
@@ -584,5 +610,119 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(result.statusCode, 400);
     assert.deepEqual(parseBody(result), { error: 'Nome é obrigatório.' });
     assert.equal(called, false);
+  });
+
+  it('rejects unqualified Typebot submissions below 30 units', async () => {
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      return jsonResponse({ data: [] });
+    }) as typeof globalThis.fetch;
+
+    const result = await handler(
+      buildEvent({
+        body: {
+          nome: 'Teste Sem Qualificação',
+          email: 'teste@example.com',
+          telefone: '11999999999',
+          quantidade: 'Menos de 30 unidades',
+          dry_run: false,
+        },
+      })
+    );
+
+    assert.equal(result.statusCode, 400);
+    assert.deepEqual(parseBody(result), { error: 'minimum_quantity_required' });
+    assert.equal(called, false);
+  });
+
+  it('includes company and qualification context in ERP payload', async () => {
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    delete process.env.META_CAPI_ACCESS_TOKEN;
+
+    const calls: { url: string; options: RequestInit }[] = [];
+    globalThis.fetch = (async (url, options = {}) => {
+      calls.push({ url: url as string, options: options as RequestInit });
+      const method = (options.method || 'GET') as string;
+      if (method === 'GET') return jsonResponse({ data: [] });
+      if (method === 'POST') {
+        return jsonResponse({ data: { name: 'LEAD-QUALIFIED' } });
+      }
+      throw new Error(`Unexpected method ${method}`);
+    }) as typeof globalThis.fetch;
+
+    const result = await handler(
+      buildEvent({
+        body: {
+          nome: 'Empresa Teste Ltda',
+          email: 'contato@empresa.com',
+          telefone: '11988887777',
+          empresa: 'Empresa Teste Ltda',
+          quantidade: '100 unidades',
+          produto: 'Lenços Personalizados',
+          finalidade: 'Brindes Corporativos',
+          prazo: '30 dias',
+          arte: 'Sim',
+          origem: 'Meta Ads',
+          page_url: 'https://aspen.com/produto',
+          result_id: 'r-999',
+          utm_source: 'meta',
+          utm_medium: 'ads',
+        },
+      })
+    );
+
+    assert.equal(result.statusCode, 200);
+
+    const body = parseBody(result);
+    assert.equal(body.action, 'created');
+    assert.equal(body.lead_id, 'LEAD-QUALIFIED');
+    assert.deepEqual(
+      body.lead,
+      baseExpectedLead({
+        nome: 'Empresa Teste Ltda',
+        email: 'contato@empresa.com',
+        telefone: '5511988887777',
+        origem: 'Meta Ads',
+        produto: 'Lenços Personalizados',
+        empresa: 'Empresa Teste Ltda',
+        quantidade: '100 unidades',
+        finalidade: 'Brindes Corporativos',
+        prazo: '30 dias',
+        arte: 'Sim',
+        result_id: 'r-999',
+        page_url: 'https://aspen.com/produto',
+        utm_source: 'meta',
+        utm_medium: 'ads',
+      })
+    );
+
+    // Verify ERP POST has company_name, notes, and correct source
+    assert.ok(calls.length >= 3);
+    const postCall = calls.find((c) => c.options.method === 'POST');
+    assert.ok(postCall, 'Expected a POST call');
+
+    const postBody = JSON.parse(postCall.options.body as string);
+    assert.equal(postBody.lead_name, 'Empresa Teste Ltda');
+    assert.equal(postBody.email_id, 'contato@empresa.com');
+    assert.equal(postBody.mobile_no, '5511988887777');
+    assert.equal(postBody.source, 'Meta Ads');
+    assert.equal(postBody.company_name, 'Empresa Teste Ltda');
+    assert.equal(
+      postBody.notes,
+      'Quantidade: 100 unidades\nProduto: Lenços Personalizados\nFinalidade: Brindes Corporativos\nPrazo: 30 dias\nArte: Sim'
+    );
+    assert.equal(postBody.custom_page_url, 'https://aspen.com/produto');
+    assert.equal(postBody.custom_result_id, 'r-999');
+    assert.equal(postBody.custom_utm_source, 'meta');
+    assert.equal(postBody.custom_utm_medium, 'ads');
+
+    // Verify meta_capi appears in response
+    assert.ok(body.meta_capi !== undefined);
+    assert.deepEqual(body.meta_capi, { sent: false, reason: 'missing_token' });
   });
 });
