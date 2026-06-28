@@ -156,7 +156,7 @@ function isBelowMinimumQuantity(quantity: unknown) {
   return normalizeText(quantity).toLowerCase().includes('menos de 30');
 }
 
-function buildQualificationNotes(lead: Record<string, unknown>) {
+function buildQualificationNotes(lead: Record<string, unknown>): Array<{ note: string }> | undefined {
   const lines = [
     lead.quantidade ? `Quantidade: ${lead.quantidade}` : '',
     lead.produto ? `Produto: ${lead.produto}` : '',
@@ -165,7 +165,8 @@ function buildQualificationNotes(lead: Record<string, unknown>) {
     lead.arte ? `Arte: ${lead.arte}` : '',
     lead.mensagem_contexto ? `Contexto: ${lead.mensagem_contexto}` : '',
   ].filter(Boolean);
-  return lines.join('\n');
+  if (lines.length === 0) return undefined;
+  return [{ note: lines.join('\n') }];
 }
 
 function buildLeadDocPayload(
