@@ -586,13 +586,57 @@ export function resolveWhatsappDisplayName(
   );
 }
 
+function shareLeadIdentity(a: Record<string, any>, b: Record<string, any>): boolean {
+  const aPhone = normalizeComparablePhone(a.telefone);
+  const bPhone = normalizeComparablePhone(b.telefone);
+  if (aPhone && bPhone && aPhone === bPhone) return true;
+
+  const aEmail = normalizeLeadEmail(a.email);
+  const bEmail = normalizeLeadEmail(b.email);
+  if (aEmail && bEmail && aEmail === bEmail) return true;
+
+  const aQuotationId = cleanText(a.quotationId);
+  const bQuotationId = cleanText(b.quotationId);
+  return Boolean(aQuotationId && bQuotationId && aQuotationId === bQuotationId);
+}
+
+function mergeWhatsappLead(
+  existing: Record<string, any>,
+  candidate: Record<string, any>
+): Record<string, any> {
+  const newer =
+    Number(candidate.timestamp || 0) > Number(existing.timestamp || 0) ? candidate : existing;
+  const older = newer === candidate ? existing : candidate;
+  const merged = { ...newer };
+
+  for (const field of ['id', 'remoteJid', 'nome', 'telefone', 'quotationId', 'resumo'] as const) {
+    if (!cleanText(merged[field]) && cleanText(older[field])) merged[field] = older[field];
+  }
+
+  const olderEmail = normalizeLeadEmail(older.email);
+  if (!normalizeLeadEmail(merged.email) && olderEmail) merged.email = olderEmail;
+  merged.timestamp = Math.max(Number(existing.timestamp || 0), Number(candidate.timestamp || 0));
+  merged.hasQuotation = Boolean(merged.quotationId);
+  Object.assign(merged, getWhatsappLeadQuality(merged));
+  merged.texto = formatLeadText(merged);
+  return merged;
+}
+
 export function prioritizeWhatsappLeads(
   leads: Record<string, any>[],
   limit: number = MAX_LEADS
 ): Record<string, any>[] {
   const byNewest = (a: Record<string, any>, b: Record<string, any>) =>
     Number(b.timestamp || 0) - Number(a.timestamp || 0);
-  return [...leads].sort(byNewest).slice(0, limit);
+  const deduped: Record<string, any>[] = [];
+
+  for (const lead of [...leads].sort(byNewest)) {
+    const index = deduped.findIndex((existing) => shareLeadIdentity(existing, lead));
+    if (index === -1) deduped.push(lead);
+    else deduped[index] = mergeWhatsappLead(deduped[index], lead);
+  }
+
+  return deduped.sort(byNewest).slice(0, limit);
 }
 
 export function getWhatsappLeadQuality(lead: Record<string, any>): {

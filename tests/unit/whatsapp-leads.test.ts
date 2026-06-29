@@ -62,6 +62,37 @@ describe('whatsapp-leads helpers', () => {
     );
   });
 
+  it('deduplica conversas pelo mesmo telefone mantendo a mais completa', () => {
+    const leads = [
+      {
+        id: 'lid-sem-email',
+        remoteJid: 'lid-sem-email',
+        nome: 'Almir',
+        telefone: '5516992433731',
+        email: '',
+        quotationId: 'ORC-20261702',
+        timestamp: 1000,
+      },
+      {
+        id: 'phone-com-email',
+        remoteJid: '5516992433731@s.whatsapp.net',
+        nome: 'Almir',
+        telefone: '5516992433731',
+        email: 'aatonello@hotmail.com',
+        quotationId: 'ORC-20261702',
+        timestamp: 900,
+      },
+    ];
+
+    const [lead] = prioritizeWhatsappLeads(leads);
+
+    assert.equal(prioritizeWhatsappLeads(leads).length, 1);
+    assert.equal(lead.telefone, '5516992433731');
+    assert.equal(lead.email, 'aatonello@hotmail.com');
+    assert.equal(lead.quotationId, 'ORC-20261702');
+    assert.equal(lead.timestamp, 1000);
+  });
+
   it('usa o primeiro e-mail quando a conversa contém mais de um', () => {
     assert.equal(
       normalizeLeadEmail('financeiro@difratellirv.com.br e katia.souza@difratellirv.com.br'),
