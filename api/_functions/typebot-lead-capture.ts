@@ -12,8 +12,9 @@ import type {
 
 import { sendMetaLeadEvent } from './lib/meta-capi.js';
 import { createHttpError, erpGetList, erpPost, erpPut } from './lib/erpnext.js';
+import { upsertQuoteLead } from './lib/quote-leads-store.js';
 
-const LIVE_DEPS = { erpGetList, erpPost, erpPut };
+const LIVE_DEPS = { erpGetList, erpPost, erpPut, upsertQuoteLead, sendMetaLeadEvent };
 
 const jsonResponse: JsonResponseFn = (statusCode: number, body: unknown): FunctionResult => {
   return {
@@ -262,7 +263,7 @@ async function upsertLead(lead: Record<string, unknown>, deps: typeof LIVE_DEPS)
   };
 }
 
-function createHandler(deps = LIVE_DEPS) {
+export function createHandler(deps = LIVE_DEPS) {
   return async function typebotLeadCaptureHandler(event: FunctionEvent) {
     if (event.httpMethod !== 'POST') {
       return jsonResponse(405, { error: 'Method Not Allowed' });
@@ -303,10 +304,26 @@ function createHandler(deps = LIVE_DEPS) {
     try {
       const result = dryRun ? await simulateUpsert(lead, deps) : await upsertLead(lead, deps);
 
+      let quoteLead = null;
+      let quoteLeadError = null;
+
+      if (!dryRun) {
+        try {
+          quoteLead = await deps.upsertQuoteLead({
+            ...lead,
+            source: 'typebot',
+            erpLeadId: result.leadId,
+          });
+        } catch (queueErr: any) {
+          console.error('[typebot-lead-capture] quote lead queue failed:', queueErr?.message || queueErr);
+          quoteLeadError = 'Lead salvo no ERP, mas não entrou na fila de orçamento.';
+        }
+      }
+
       let metaResult = null;
       if (!dryRun) {
         const metaEventId = String(lead.result_id || result.leadId || `typebot-${Date.now()}`);
-        metaResult = await sendMetaLeadEvent({
+        metaResult = await deps.sendMetaLeadEvent({
           eventId: metaEventId,
           email: String(lead.email || ''),
           phone: String(lead.telefone || ''),
@@ -324,6 +341,8 @@ function createHandler(deps = LIVE_DEPS) {
         lead,
         existing_lead: result.existingLead,
         activation_required: false,
+        quote_lead: quoteLead ? { id: quoteLead.id, status: quoteLead.status } : null,
+        ...(quoteLeadError ? { quote_lead_error: quoteLeadError } : {}),
         ...(metaResult ? { meta_capi: metaResult } : {}),
       });
     } catch (err: any) {

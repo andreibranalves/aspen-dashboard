@@ -2,7 +2,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { URL } from 'node:url';
 
-import { handler as _handler } from '../../api/_functions/typebot-lead-capture.js';
+import { createHandler, handler as _handler } from '../../api/_functions/typebot-lead-capture.js';
 
 type HandlerResult = { statusCode: number; body: string };
 const handler = _handler as (event: unknown) => Promise<HandlerResult>;
@@ -241,6 +241,7 @@ describe('typebot-lead-capture handler', () => {
         email: 'ana@example.com',
         telefone: '5511999999999',
       }),
+      quote_lead: null,
     });
 
     assert.equal(calls.length, 1);
@@ -292,6 +293,8 @@ describe('typebot-lead-capture handler', () => {
         telefone: '5511988887777',
       }),
       meta_capi: { sent: false, reason: 'missing_token' },
+      quote_lead: null,
+      quote_lead_error: 'Lead salvo no ERP, mas não entrou na fila de orçamento.',
     });
 
     assert.equal(calls.length, 3);
@@ -351,6 +354,8 @@ describe('typebot-lead-capture handler', () => {
         produto: 'lenço',
       }),
       meta_capi: { sent: false, reason: 'missing_token' },
+      quote_lead: null,
+      quote_lead_error: 'Lead salvo no ERP, mas não entrou na fila de orçamento.',
     });
 
     const phoneLookupUrl = new URL(calls[0].url);
@@ -367,7 +372,7 @@ describe('typebot-lead-capture handler', () => {
       lead_name: 'Cliente Existente',
       mobile_no: '5511988887777',
       source: 'Website',
-      notes: 'Produto: lenço',
+      notes: [{ note: 'Produto: lenço' }],
     });
   });
 
@@ -712,9 +717,9 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(postBody.mobile_no, '5511988887777');
     assert.equal(postBody.source, 'Meta Ads');
     assert.equal(postBody.company_name, 'Empresa Teste Ltda');
-    assert.equal(
+    assert.deepEqual(
       postBody.notes,
-      'Quantidade: 100 unidades\nProduto: Lenços Personalizados\nFinalidade: Brindes Corporativos\nPrazo: 30 dias\nArte: Sim'
+      [{ note: 'Quantidade: 100 unidades\nProduto: Lenços Personalizados\nFinalidade: Brindes Corporativos\nPrazo: 30 dias\nArte: Sim' }]
     );
     assert.equal(postBody.custom_page_url, 'https://aspen.com/produto');
     assert.equal(postBody.custom_result_id, 'r-999');
@@ -724,5 +729,115 @@ describe('typebot-lead-capture handler', () => {
     // Verify meta_capi appears in response
     assert.ok(body.meta_capi !== undefined);
     assert.deepEqual(body.meta_capi, { sent: false, reason: 'missing_token' });
+  });
+
+  it('salva lead estruturado na fila quando enabled sem dry_run', async () => {
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+
+    const quoteLeadWrites: Record<string, unknown>[] = [];
+    const h = createHandler({
+      erpGetList: async () => [],
+      erpPost: async () => ({ name: 'CRM-LEAD-0001' }),
+      erpPut: async () => ({}),
+      upsertQuoteLead: async (input: Record<string, unknown>) => {
+        quoteLeadWrites.push(input);
+        return {
+          id: 'quote_lead_1',
+          nome: String(input.nome),
+          email: String(input.email),
+          telefone: String(input.telefone),
+          pedidoTexto: 'Produto: lenço',
+          source: 'typebot',
+          status: 'new',
+          erpLeadId: 'CRM-LEAD-0001',
+          createdAt: '2026-06-29T12:00:00.000Z',
+          updatedAt: '2026-06-29T12:00:00.000Z',
+        };
+      },
+      sendMetaLeadEvent: async () => ({ skipped: true }),
+    });
+
+    const result = await h(
+      buildEvent({
+        body: {
+          nome: 'Viviane Correa',
+          email: 'viviane@example.com',
+          telefone: '(11) 97808-6811',
+          produto: 'lenço',
+        },
+      })
+    );
+    const body = JSON.parse(result.body);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.quote_lead.id, 'quote_lead_1');
+    assert.equal(quoteLeadWrites.length, 1);
+    assert.equal(quoteLeadWrites[0].erpLeadId, 'CRM-LEAD-0001');
+    assert.equal(quoteLeadWrites[0].source, 'typebot');
+  });
+
+  it('não grava fila de orçamento em dry_run', async () => {
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+
+    let writes = 0;
+    const h = createHandler({
+      erpGetList: async () => [],
+      erpPost: async () => ({ name: 'CRM-LEAD-0001' }),
+      erpPut: async () => ({}),
+      upsertQuoteLead: async () => {
+        writes += 1;
+        throw new Error('dry_run should not write');
+      },
+      sendMetaLeadEvent: async () => ({ skipped: true }),
+    });
+
+    const result = await h(
+      buildEvent({
+        body: {
+          dry_run: true,
+          nome: 'Viviane Correa',
+          email: 'viviane@example.com',
+          telefone: '(11) 97808-6811',
+        },
+      })
+    );
+    const body = JSON.parse(result.body);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.quote_lead, null);
+    assert.equal(writes, 0);
+  });
+
+  it('não falha o webhook se a fila de orçamento falhar', async () => {
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+
+    const h = createHandler({
+      erpGetList: async () => [],
+      erpPost: async () => ({ name: 'CRM-LEAD-0001' }),
+      erpPut: async () => ({}),
+      upsertQuoteLead: async () => {
+        throw new Error('KV indisponível');
+      },
+      sendMetaLeadEvent: async () => ({ skipped: true }),
+    });
+
+    const result = await h(
+      buildEvent({
+        body: {
+          nome: 'Viviane Correa',
+          email: 'viviane@example.com',
+          telefone: '(11) 97808-6811',
+        },
+      })
+    );
+    const body = JSON.parse(result.body);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.lead_id, 'CRM-LEAD-0001');
+    assert.equal(body.quote_lead, null);
+    assert.equal(body.quote_lead_error, 'Lead salvo no ERP, mas não entrou na fila de orçamento.');
   });
 });
