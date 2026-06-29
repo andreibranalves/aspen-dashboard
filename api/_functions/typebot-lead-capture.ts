@@ -157,7 +157,9 @@ function isBelowMinimumQuantity(quantity: unknown) {
   return normalizeText(quantity).toLowerCase().includes('menos de 30');
 }
 
-function buildQualificationNotes(lead: Record<string, unknown>): Array<{ note: string }> | undefined {
+function buildQualificationNotes(
+  lead: Record<string, unknown>
+): Array<{ note: string }> | undefined {
   const lines = [
     lead.quantidade ? `Quantidade: ${lead.quantidade}` : '',
     lead.produto ? `Produto: ${lead.produto}` : '',
@@ -315,7 +317,10 @@ export function createHandler(deps = LIVE_DEPS) {
             erpLeadId: result.leadId,
           });
         } catch (queueErr: any) {
-          console.error('[typebot-lead-capture] quote lead queue failed:', queueErr?.message || queueErr);
+          console.error(
+            '[typebot-lead-capture] quote lead queue failed:',
+            queueErr?.message || queueErr
+          );
           quoteLeadError = 'Lead salvo no ERP, mas não entrou na fila de orçamento.';
         }
       }

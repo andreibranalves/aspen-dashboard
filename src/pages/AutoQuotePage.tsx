@@ -48,7 +48,6 @@ interface WaStatus {
 export default function AutoQuotePage() {
   // ── Helpers ──
 
-
   // ── Input state ──
   const [text, setText] = useState<string>('');
   const [extracting, setExtracting] = useState<boolean>(false);
@@ -69,7 +68,9 @@ export default function AutoQuotePage() {
 
   // ── Re-extract state (add items to existing draft) ──
   const [reExtractTextByDraft, setReExtractTextByDraft] = useState<Record<number, string>>({});
-  const [reExtractLoadingByDraft, setReExtractLoadingByDraft] = useState<Record<number, boolean>>({});
+  const [reExtractLoadingByDraft, setReExtractLoadingByDraft] = useState<Record<number, boolean>>(
+    {}
+  );
 
   // ── Extracted hooks ──
   const {
@@ -93,7 +94,9 @@ export default function AutoQuotePage() {
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await apiGet<{ data?: HistoryItem[] }>('/quotations?limit=5&order_by=creation+desc');
+      const res = await apiGet<{ data?: HistoryItem[] }>(
+        '/quotations?limit=5&order_by=creation+desc'
+      );
       if (res.data) setHistory(res.data.slice(0, 5));
     } catch {
       /* non-critical */
@@ -258,7 +261,10 @@ export default function AutoQuotePage() {
               quotationId: String(res.quotation_id),
             });
           } catch (patchErr) {
-            console.warn('[AutoQuotePage] failed to mark quote lead converted:', (patchErr as Error).message);
+            console.warn(
+              '[AutoQuotePage] failed to mark quote lead converted:',
+              (patchErr as Error).message
+            );
           }
           setSelectedQuoteLeadId('');
           loadQuoteLeads();
@@ -721,7 +727,8 @@ export default function AutoQuotePage() {
               ) : (
                 <div className="space-y-1">
                   {quoteLeads.map((lead) => {
-                    const tagLabel = lead.quotationId || (lead.status === 'new' ? 'Novo lead' : 'Lead');
+                    const tagLabel =
+                      lead.quotationId || (lead.status === 'new' ? 'Novo lead' : 'Lead');
                     const tagClass = lead.quotationId
                       ? 'bg-primary/10 text-primary'
                       : 'bg-emerald-500/10 text-success';
@@ -737,7 +744,9 @@ export default function AutoQuotePage() {
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-fg truncate">
-                            {lead.telefone ? `(${lead.telefone.slice(2, 4)}) ${lead.telefone.slice(4, 9)}-${lead.telefone.slice(9)}` : 'Telefone não identificado'}
+                            {lead.telefone
+                              ? `(${lead.telefone.slice(2, 4)}) ${lead.telefone.slice(4, 9)}-${lead.telefone.slice(9)}`
+                              : 'Telefone não identificado'}
                           </p>
                           <p className="text-xs leading-tight text-fg-muted truncate">
                             {displayName}

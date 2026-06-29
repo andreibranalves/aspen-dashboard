@@ -76,7 +76,7 @@ function buildEvent({
 
 function jsonResponse(
   body: unknown,
-  { ok = true, status = 200 }: { ok?: boolean; status?: number } = {},
+  { ok = true, status = 200 }: { ok?: boolean; status?: number } = {}
 ) {
   return {
     ok,
@@ -717,10 +717,11 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(postBody.mobile_no, '5511988887777');
     assert.equal(postBody.source, 'Meta Ads');
     assert.equal(postBody.company_name, 'Empresa Teste Ltda');
-    assert.deepEqual(
-      postBody.notes,
-      [{ note: 'Quantidade: 100 unidades\nProduto: Lenços Personalizados\nFinalidade: Brindes Corporativos\nPrazo: 30 dias\nArte: Sim' }]
-    );
+    assert.deepEqual(postBody.notes, [
+      {
+        note: 'Quantidade: 100 unidades\nProduto: Lenços Personalizados\nFinalidade: Brindes Corporativos\nPrazo: 30 dias\nArte: Sim',
+      },
+    ]);
     assert.equal(postBody.custom_page_url, 'https://aspen.com/produto');
     assert.equal(postBody.custom_result_id, 'r-999');
     assert.equal(postBody.custom_utm_source, 'meta');

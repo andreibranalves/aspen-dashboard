@@ -144,7 +144,10 @@ describe('quote-leads-store', () => {
     ]);
 
     const leads = await listQuoteLeads({ limit: 1 }, deps);
-    assert.deepEqual(leads.map((lead) => lead.id), ['new']);
+    assert.deepEqual(
+      leads.map((lead) => lead.id),
+      ['new']
+    );
   });
 
   it('atualiza status e quotationId', async () => {

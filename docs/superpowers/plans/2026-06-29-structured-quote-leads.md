@@ -135,7 +135,12 @@ describe('quote-leads-store', () => {
 
     assert.equal(
       text,
-      ['Nome: Viviane Correa', 'E-mail: viviane@example.com', 'Telefone: 11978086811', 'Pedido: Produto: lenço\nQuantidade: 100'].join('\n')
+      [
+        'Nome: Viviane Correa',
+        'E-mail: viviane@example.com',
+        'Telefone: 11978086811',
+        'Pedido: Produto: lenço\nQuantidade: 100',
+      ].join('\n')
     );
   });
 
@@ -200,7 +205,10 @@ describe('quote-leads-store', () => {
     ]);
 
     const leads = await listQuoteLeads({ limit: 1 }, deps);
-    assert.deepEqual(leads.map((lead) => lead.id), ['new']);
+    assert.deepEqual(
+      leads.map((lead) => lead.id),
+      ['new']
+    );
   });
 
   it('atualiza status e quotationId', async () => {
@@ -278,7 +286,9 @@ const KV_KEY_QUOTE_LEADS = 'aspen:quote-leads';
 const MAX_STORED_QUOTE_LEADS = 200;
 
 function cleanText(value: unknown): string {
-  return String(value || '').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function cleanMultilineText(value: unknown): string {
@@ -296,7 +306,8 @@ function normalizeEmail(value: unknown): string {
 function normalizePhone(value: unknown): string {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return '';
-  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) return `55${digits}`;
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11))
+    return `55${digits}`;
   return digits;
 }
 
@@ -306,7 +317,9 @@ function localPhone(value: unknown): string {
 }
 
 function buildPedidoTexto(input: Record<string, unknown>): string {
-  const explicit = cleanMultilineText(input.pedidoTexto || input.pedido || input.message || input.mensagem);
+  const explicit = cleanMultilineText(
+    input.pedidoTexto || input.pedido || input.message || input.mensagem
+  );
   if (explicit) return explicit;
   return [
     input.produto ? `Produto: ${cleanText(input.produto)}` : '',
@@ -378,7 +391,14 @@ function identityKey(lead: QuoteLead): string {
 }
 
 function score(lead: QuoteLead): number {
-  return [lead.nome, lead.email, lead.telefone, lead.pedidoTexto, lead.erpLeadId, lead.quotationId].filter(Boolean).length;
+  return [
+    lead.nome,
+    lead.email,
+    lead.telefone,
+    lead.pedidoTexto,
+    lead.erpLeadId,
+    lead.quotationId,
+  ].filter(Boolean).length;
 }
 
 function mergeQuoteLead(existing: QuoteLead, incoming: QuoteLead, now: string): QuoteLead {
@@ -392,7 +412,10 @@ function mergeQuoteLead(existing: QuoteLead, incoming: QuoteLead, now: string): 
     telefone: primary.telefone || secondary.telefone,
     pedidoTexto: primary.pedidoTexto || secondary.pedidoTexto,
     source: primary.source || secondary.source,
-    status: existing.status === 'converted' || incoming.status === 'converted' ? 'converted' : primary.status,
+    status:
+      existing.status === 'converted' || incoming.status === 'converted'
+        ? 'converted'
+        : primary.status,
     erpLeadId: primary.erpLeadId || secondary.erpLeadId || null,
     quotationId: primary.quotationId || secondary.quotationId || null,
     createdAt: existing.createdAt,
@@ -438,7 +461,9 @@ export async function listQuoteLeads(
   deps: QuoteLeadStoreDeps = LIVE_DEPS
 ): Promise<Array<QuoteLead & { texto: string }>> {
   const status = options.status || 'new';
-  const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(Number(options.limit), 50)) : 5;
+  const limit = Number.isFinite(options.limit)
+    ? Math.max(1, Math.min(Number(options.limit), 50))
+    : 5;
   const leads = await deps.readAll();
   return leads
     .filter((lead) => status === 'all' || lead.status === status)
@@ -460,7 +485,8 @@ export async function updateQuoteLead(
   const updated: QuoteLead = {
     ...current,
     status: patch.status ? statusFrom(patch.status) : current.status,
-    quotationId: patch.quotationId === undefined ? current.quotationId : cleanText(patch.quotationId) || null,
+    quotationId:
+      patch.quotationId === undefined ? current.quotationId : cleanText(patch.quotationId) || null,
     updatedAt: deps.now(),
   };
 
@@ -557,7 +583,10 @@ describe('quote-leads handler', () => {
       ])
     );
 
-    const result = await handler({ httpMethod: 'GET', queryStringParameters: { limit: '5' } } as any);
+    const result = await handler({
+      httpMethod: 'GET',
+      queryStringParameters: { limit: '5' },
+    } as any);
     const body = parse(result);
 
     assert.equal(result.statusCode, 200);
@@ -586,7 +615,11 @@ describe('quote-leads handler', () => {
 
     const result = await handler({
       httpMethod: 'PATCH',
-      body: JSON.stringify({ id: 'quote_lead_1', status: 'converted', quotationId: 'ORC-20261777' }),
+      body: JSON.stringify({
+        id: 'quote_lead_1',
+        status: 'converted',
+        quotationId: 'ORC-20261777',
+      }),
     } as any);
     const body = parse(result);
 
@@ -598,7 +631,10 @@ describe('quote-leads handler', () => {
 
   it('retorna 400 para PATCH sem id', async () => {
     const handler = createHandler(createMemoryDeps());
-    const result = await handler({ httpMethod: 'PATCH', body: JSON.stringify({ status: 'converted' }) } as any);
+    const result = await handler({
+      httpMethod: 'PATCH',
+      body: JSON.stringify({ status: 'converted' }),
+    } as any);
     const body = parse(result);
 
     assert.equal(result.statusCode, 400);
@@ -622,7 +658,12 @@ Create `api/_functions/quote-leads.ts`:
 
 ```ts
 // GET/PATCH /api/quote-leads — structured quote lead queue for Auto page
-import type { FunctionEvent, FunctionResult, JsonResponseFn, LegacyHandler } from '../_lib/types.js';
+import type {
+  FunctionEvent,
+  FunctionResult,
+  JsonResponseFn,
+  LegacyHandler,
+} from '../_lib/types.js';
 import { createHttpError } from './lib/erpnext.js';
 import {
   listQuoteLeads,
@@ -689,7 +730,9 @@ export function createHandler(deps?: QuoteLeadStoreDeps): LegacyHandler {
     } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[quote-leads]', err?.logMessage || err?.message || err);
-      return jsonResponse(code, { error: err?.message || 'Erro interno ao buscar leads de orçamento.' });
+      return jsonResponse(code, {
+        error: err?.message || 'Erro interno ao buscar leads de orçamento.',
+      });
     }
   };
 }
@@ -1077,7 +1120,10 @@ if (selectedQuoteLeadId && res.quotation_id) {
       quotationId: res.quotation_id,
     });
   } catch (patchErr) {
-    console.warn('[AutoQuotePage] failed to mark quote lead converted:', (patchErr as Error).message);
+    console.warn(
+      '[AutoQuotePage] failed to mark quote lead converted:',
+      (patchErr as Error).message
+    );
   }
   setSelectedQuoteLeadId('');
   loadQuoteLeads();
@@ -1087,7 +1133,7 @@ if (selectedQuoteLeadId && res.quotation_id) {
 Update the `createSingleQuote` dependency array:
 
 ```ts
-[loadHistory, loadQuoteLeads, selectedQuoteLeadId]
+[loadHistory, loadQuoteLeads, selectedQuoteLeadId];
 ```
 
 - [ ] **Step 6: Update UI rendering**
@@ -1285,7 +1331,7 @@ Expected: PASS.
 If the only failure is the known existing `notes` shape mismatch, update affected expectations in `tests/unit/typebot-lead-capture.test.ts` to expect this shape:
 
 ```ts
-notes: [{ note: 'Produto: lenço' }]
+notes: [{ note: 'Produto: lenço' }];
 ```
 
 Run `npm run test:unit` again and expect PASS.
