@@ -27,6 +27,7 @@ import { handler as productPricingUpdate } from './_functions/product-pricing-up
 import { handler as productActivity } from './_functions/product-activity.js';
 import { handler as productPricing } from './_functions/product-pricing.js';
 import { handler as products } from './_functions/products.js';
+import { handler as quoteLeads } from './_functions/quote-leads.js';
 import { handler as quotations } from './_functions/quotations.js';
 import { handler as salesDashboard } from './_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from './_functions/sales-order-from-quotation.js';
@@ -64,6 +65,7 @@ const ROUTES: Record<string, HandlerFunction> = {
   'product-activity': productActivity,
   'product-pricing': productPricing,
   products,
+  'quote-leads': quoteLeads,
   quotations,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,

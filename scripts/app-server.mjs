@@ -31,6 +31,7 @@ import { handler as productPricingUpdate } from '../api/_functions/product-prici
 import { handler as productActivity } from '../api/_functions/product-activity.js';
 import { handler as productPricing } from '../api/_functions/product-pricing.js';
 import { handler as products } from '../api/_functions/products.js';
+import { handler as quoteLeads } from '../api/_functions/quote-leads.js';
 import { handler as quotations } from '../api/_functions/quotations.js';
 import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
@@ -63,6 +64,7 @@ const ROUTES = {
   'product-activity': productActivity,
   'product-pricing': productPricing,
   products,
+  'quote-leads': quoteLeads,
   quotations,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
