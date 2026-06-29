@@ -10,8 +10,8 @@ import {
   Image as ImageIcon,
   X,
 } from 'lucide-react';
-import { apiPost, apiGet } from '@/lib/api';
-import { capitalize, formatBRL, formatDate, fmtPhone } from '@/lib/formatters';
+import { apiPost, apiGet, apiPatch } from '@/lib/api';
+import { capitalize, formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -28,16 +28,16 @@ interface HistoryItem {
   valor?: string | number;
 }
 
-interface WhatsappLead {
-  id?: string;
-  remoteJid?: string;
-  telefone?: string;
+interface QuoteLead {
+  id: string;
   nome?: string;
   email?: string;
+  telefone?: string;
+  pedidoTexto?: string;
   texto?: string;
-  quotationId?: string;
-  statusLabel?: string;
-  isReady?: boolean;
+  source?: string;
+  status?: 'new' | 'converted' | 'discarded';
+  quotationId?: string | null;
 }
 
 interface WaStatus {
@@ -47,12 +47,7 @@ interface WaStatus {
 
 export default function AutoQuotePage() {
   // ── Helpers ──
-  const fmtWhatsappPhone = (phone: string | undefined) => {
-    const digits = String(phone || '').replace(/\D/g, '');
-    // Strip 55 country code prefix
-    const local = digits.startsWith('55') ? digits.slice(2) : digits;
-    return fmtPhone(local) || phone;
-  };
+
 
   // ── Input state ──
   const [text, setText] = useState<string>('');
@@ -60,10 +55,11 @@ export default function AutoQuotePage() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
-  const [bottomTab, setBottomTab] = useState<'whatsapp' | 'recentes'>('whatsapp');
-  const [whatsappLeads, setWhatsappLeads] = useState<WhatsappLead[]>([]);
-  const [whatsappLoading, setWhatsappLoading] = useState<boolean>(false);
-  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [bottomTab, setBottomTab] = useState<'leads' | 'recentes'>('leads');
+  const [quoteLeads, setQuoteLeads] = useState<QuoteLead[]>([]);
+  const [quoteLeadsLoading, setQuoteLeadsLoading] = useState<boolean>(false);
+  const [quoteLeadsError, setQuoteLeadsError] = useState<string | null>(null);
+  const [selectedQuoteLeadId, setSelectedQuoteLeadId] = useState<string>('');
 
   // ── WhatsApp send state ──
   const [waStatusByDraft, setWaStatusByDraft] = useState<Record<number, WaStatus>>({});
@@ -110,22 +106,22 @@ export default function AutoQuotePage() {
     loadHistory();
   }, [loadHistory]);
 
-  const loadWhatsappLeads = useCallback(async () => {
-    setWhatsappLoading(true);
-    setWhatsappError(null);
+  const loadQuoteLeads = useCallback(async () => {
+    setQuoteLeadsLoading(true);
+    setQuoteLeadsError(null);
     try {
-      const res = await apiGet<{ data?: WhatsappLead[] }>('/whatsapp-leads');
-      setWhatsappLeads(Array.isArray(res.data) ? res.data : []);
+      const res = await apiGet<{ data?: QuoteLead[] }>('/quote-leads?limit=5');
+      setQuoteLeads(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      setWhatsappError((err as Error).message || 'Erro ao buscar conversas do WhatsApp.');
+      setQuoteLeadsError((err as Error).message || 'Erro ao buscar leads de orçamento.');
     } finally {
-      setWhatsappLoading(false);
+      setQuoteLeadsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadWhatsappLeads();
-  }, [loadWhatsappLeads]);
+    loadQuoteLeads();
+  }, [loadQuoteLeads]);
 
   const loadCommunicationFlows = useCallback(async () => {
     try {
@@ -254,6 +250,19 @@ export default function AutoQuotePage() {
           return next;
         });
         loadHistory();
+        if (selectedQuoteLeadId && res.quotation_id) {
+          try {
+            await apiPatch('/quote-leads', {
+              id: selectedQuoteLeadId,
+              status: 'converted',
+              quotationId: String(res.quotation_id),
+            });
+          } catch (patchErr) {
+            console.warn('[AutoQuotePage] failed to mark quote lead converted:', (patchErr as Error).message);
+          }
+          setSelectedQuoteLeadId('');
+          loadQuoteLeads();
+        }
       } catch (err) {
         setDrafts((prev) => {
           const idx = prev.findIndex((d) => d.index === draftIndex);
@@ -268,7 +277,7 @@ export default function AutoQuotePage() {
         });
       }
     },
-    [loadHistory]
+    [loadHistory, loadQuoteLeads, selectedQuoteLeadId]
   );
 
   // ── Load history item: fetch detail and format as text ──
@@ -299,14 +308,15 @@ export default function AutoQuotePage() {
     }
   }, []);
 
-  const useWhatsappLead = useCallback((lead: WhatsappLead) => {
+  const useQuoteLead = useCallback((lead: QuoteLead) => {
+    setSelectedQuoteLeadId(lead.id || '');
     setText(
       lead.texto ||
         [
           lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
           lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
           lead.telefone ? `Telefone: ${lead.telefone}` : 'Telefone:',
-          'Pedido:',
+          lead.pedidoTexto ? `Pedido: ${lead.pedidoTexto}` : 'Pedido:',
         ].join('\n')
     );
     document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -322,6 +332,7 @@ export default function AutoQuotePage() {
     setProductSearch({});
     setWaStatusByDraft({});
     setWaFlowByDraft({});
+    setSelectedQuoteLeadId('');
     try {
       localStorage.removeItem('aspen_drafts');
     } catch {}
@@ -332,6 +343,7 @@ export default function AutoQuotePage() {
     setProductSearch({});
     setWaStatusByDraft({});
     setWaFlowByDraft({});
+    setSelectedQuoteLeadId('');
     try {
       localStorage.removeItem('aspen_drafts');
     } catch {}
@@ -596,22 +608,22 @@ export default function AutoQuotePage() {
             )}
           </div>
 
-          {/* ── Bottom tabs: recent quotations + WhatsApp leads ── */}
+          {/* ── Bottom tabs: recent quotations + quote leads ── */}
           <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[300px] lg:h-[340px]">
             <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
               <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
                 <button
                   type="button"
-                  onClick={() => setBottomTab('whatsapp')}
+                  onClick={() => setBottomTab('leads')}
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                    bottomTab === 'whatsapp'
+                    bottomTab === 'leads'
                       ? 'bg-surface text-fg shadow-sm'
                       : 'text-fg-muted hover:text-fg'
                   )}
                 >
                   <MessageCircle size={13} />
-                  WhatsApp
+                  Leads
                 </button>
                 <button
                   type="button"
@@ -628,14 +640,14 @@ export default function AutoQuotePage() {
                 </button>
               </div>
 
-              {bottomTab === 'whatsapp' && (
+              {bottomTab === 'leads' && (
                 <button
                   type="button"
-                  onClick={loadWhatsappLeads}
-                  disabled={whatsappLoading}
+                  onClick={loadQuoteLeads}
+                  disabled={quoteLeadsLoading}
                   className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-60"
                 >
-                  <RefreshCw size={12} className={whatsappLoading ? 'animate-spin' : ''} />
+                  <RefreshCw size={12} className={quoteLeadsLoading ? 'animate-spin' : ''} />
                   Atualizar
                 </button>
               )}
@@ -683,7 +695,7 @@ export default function AutoQuotePage() {
                     ))}
                   </div>
                 )
-              ) : whatsappLoading ? (
+              ) : quoteLeadsLoading ? (
                 <div className="space-y-1 h-full">
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div
@@ -698,39 +710,34 @@ export default function AutoQuotePage() {
                     </div>
                   ))}
                 </div>
-              ) : whatsappError ? (
+              ) : quoteLeadsError ? (
                 <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-destructive">{whatsappError}</p>
+                  <p className="text-xs text-destructive">{quoteLeadsError}</p>
                 </div>
-              ) : whatsappLeads.length === 0 ? (
+              ) : quoteLeads.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-fg-muted">Nenhuma conversa recente encontrada.</p>
+                  <p className="text-xs text-fg-muted">Nenhum lead de orçamento pendente.</p>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {whatsappLeads.map((lead) => {
-                    const tagLabel =
-                      lead.quotationId ||
-                      lead.statusLabel ||
-                      (lead.isReady ? 'Pronto para gerar' : 'Dados incompletos');
+                  {quoteLeads.map((lead) => {
+                    const tagLabel = lead.quotationId || (lead.status === 'new' ? 'Novo lead' : 'Lead');
                     const tagClass = lead.quotationId
                       ? 'bg-primary/10 text-primary'
-                      : lead.isReady
-                        ? 'bg-emerald-500/10 text-success'
-                        : 'tone-warning-soft';
+                      : 'bg-emerald-500/10 text-success';
                     const displayName = lead.nome || 'Nome não identificado';
                     const displayEmail = lead.email || '';
 
                     return (
                       <button
-                        key={lead.id || lead.remoteJid || lead.telefone}
+                        key={lead.id}
                         type="button"
-                        onClick={() => useWhatsappLead(lead)}
+                        onClick={() => useQuoteLead(lead)}
                         className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors"
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-fg truncate">
-                            {fmtWhatsappPhone(lead.telefone) || 'Telefone não identificado'}
+                            {lead.telefone ? `(${lead.telefone.slice(2, 4)}) ${lead.telefone.slice(4, 9)}-${lead.telefone.slice(9)}` : 'Telefone não identificado'}
                           </p>
                           <p className="text-xs leading-tight text-fg-muted truncate">
                             {displayName}
