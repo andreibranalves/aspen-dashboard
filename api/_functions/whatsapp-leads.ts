@@ -311,12 +311,20 @@ function composeConversationText(
 }
 
 function extractFallback(conversationText: string): Record<string, unknown> {
-  const email = normalizeLeadEmail(conversationText);
-  const nameMatch = conversationText.match(/(?:meu nome é|me chamo|sou a?|cliente:)\s*([^\n,.]+)/i);
+  // Only analyze Cliente lines to avoid picking up attendant names from Aspen's side
+  const clientLines = conversationText
+    .split('\n')
+    .filter((line) => /^Cliente:\s*/i.test(line))
+    .map((line) => line.replace(/^Cliente:\s*/i, ''))
+    .join('\n');
+  const searchText = clientLines || conversationText;
+
+  const email = normalizeLeadEmail(searchText);
+  const nameMatch = searchText.match(/(?:meu nome é|me chamo|sou a?)\s*([^\n,.]+)/i);
   // Try to find a Brazilian phone number pattern in the text: (XX) XXXXX-XXXX or XX XXXXX-XXXX etc
   const phoneMatch =
-    conversationText.match(/(?:telefone|whatsapp|celular|contato|tel)[^\d]*(\d[\d\s().-]{8,})/i) ||
-    conversationText.match(/\(?(\d{2})\)?\s*\d[\d\s.-]{7,}/);
+    searchText.match(/(?:telefone|whatsapp|celular|contato|tel)[^\d]*(\d[\d\s().-]{8,})/i) ||
+    searchText.match(/\(?(\d{2})\)?\s*\d[\d\s.-]{7,}/);
   const telefone = cleanText(phoneMatch?.[1] || '').replace(/\D/g, '');
   return {
     nome: cleanText(nameMatch?.[1] || ''),
@@ -425,13 +433,31 @@ async function findMessages(remoteJid: string): Promise<any[]> {
   return unwrapData(payload).slice(-MAX_MESSAGES_PER_CHAT);
 }
 
+export function isLikelyAttendantName(
+  name: string,
+  normalized: { fromMe: boolean; text: string }[]
+): boolean {
+  if (!name || name.length < 3) return false;
+  const nameLower = name.toLowerCase();
+  const aspenMentions = normalized
+    .filter((m) => m.fromMe)
+    .filter((m) => m.text.toLowerCase().includes(nameLower)).length;
+  const clientMentions = normalized
+    .filter((m) => !m.fromMe)
+    .filter((m) => m.text.toLowerCase().includes(nameLower)).length;
+  // Only flag as attendant name when it appears on Aspen side but never on client side
+  return aspenMentions > 0 && clientMentions === 0;
+}
+
 async function extractLeadWithOpenRouter(
-  conversationText: string
+  conversationText: string,
+  normalized?: { fromMe: boolean; text: string; timestamp: number }[]
 ): Promise<Record<string, unknown>> {
+  const normalizedMessages = normalized || [];
   const fallback = extractFallback(conversationText);
   if (!OPENROUTER_API_KEY || !conversationText.trim()) return fallback;
 
-  const prompt = `Extraia apenas os dados de contato da pessoa nesta conversa de WhatsApp da Aspen Estamparia.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":"","telefone":""}\n\nRegras:\n- Nunca invente dados ausentes.\n- O objetivo é só identificar nome, e-mail e telefone. Não extraia pedido, produto ou quantidade.\n- Se a conversa tiver mais de um e-mail ou telefone, retorne apenas o primeiro citado.\n- Telefone deve ser apenas dígitos com DDD (ex: 11987654321).\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
+  const prompt = `Você é um assistente da Aspen Estamparia. Abaixo está uma conversa de WhatsApp entre um ATENDENTE da Aspen e um CLIENTE.\n\nAs linhas "Aspen:" são mensagens ENVIADAS pelo atendente da Aspen.\nAs linhas "Cliente:" são mensagens RECEBIDAS do cliente.\n\nExtraia APENAS os dados de contato do CLIENTE — NUNCA extraia dados do atendente.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":"","telefone":""}\n\nRegras:\n- Extraia nome, e-mail e telefone APENAS do CLIENTE (lado "Cliente:").\n- IGNORE completamente nomes que apareçam nas mensagens do atendente (lado "Aspen:").\n- NUNCA retorne o nome de um atendente como sendo o cliente, mesmo que ele apareça na conversa.\n- Nunca invente dados ausentes.\n- Se a conversa tiver mais de um e-mail ou telefone, retorne apenas o primeiro citado pelo CLIENTE.\n- Telefone deve ser apenas dígitos com DDD (ex: 11987654321).\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
 
   try {
     const res = await fetchWithTimeout(
@@ -458,8 +484,15 @@ async function extractLeadWithOpenRouter(
         .replace(/^```(?:json)?\s*|\s*```$/g, '')
         .trim()
     );
+    const aiName = cleanText(parsed.nome || '');
+    // Filter out attendant names — if the AI returned a name that only appears
+    // on Aspen's (attendant) side of the conversation, it's a false positive.
+    const nome =
+      aiName && normalizedMessages.length && isLikelyAttendantName(aiName, normalizedMessages)
+        ? ''
+        : aiName || fallback.nome;
     return {
-      nome: cleanText(parsed.nome || fallback.nome),
+      nome: cleanText(nome),
       email: normalizeLeadEmail(parsed.email || fallback.email),
       telefone: cleanText(parsed.telefone || fallback.telefone || '').replace(/\D/g, ''),
     };
@@ -630,7 +663,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         }
       }
 
-      const extracted = await extractLeadWithOpenRouter(conversationText);
+      const extracted = await extractLeadWithOpenRouter(conversationText, normalized);
 
       // Fallback 2: try extracted phone from conversation text (regex + OpenRouter)
       if (!isValidBrazilWhatsappPhone(telefone) && extracted.telefone) {

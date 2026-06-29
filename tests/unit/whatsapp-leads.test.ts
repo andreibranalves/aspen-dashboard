@@ -5,6 +5,7 @@ import {
   findConvertedQuotation,
   formatLeadText,
   getWhatsappLeadQuality,
+  isLikelyAttendantName,
   normalizeLeadEmail,
   normalizeWhatsappPhone,
   prioritizeWhatsappLeads,
@@ -27,23 +28,21 @@ describe('whatsapp-leads helpers', () => {
       quantidade: 100,
     });
 
-    assert.equal(text, [
-      'Nome: João Silva',
-      'E-mail: joao@example.com',
-      'Telefone: 11999999999',
-      'Pedido: canga — 100 un',
-    ].join('\n'));
+    assert.equal(
+      text,
+      [
+        'Nome: João Silva',
+        'E-mail: joao@example.com',
+        'Telefone: 11999999999',
+        'Pedido: canga — 100 un',
+      ].join('\n')
+    );
   });
 
   it('mantém campos vazios quando dados não existem', () => {
     const text = formatLeadText({ nome: '', email: '', telefone: '5511988887777' });
 
-    assert.equal(text, [
-      'Nome:',
-      'E-mail:',
-      'Telefone: 11988887777',
-      'Pedido:',
-    ].join('\n'));
+    assert.equal(text, ['Nome:', 'E-mail:', 'Telefone: 11988887777', 'Pedido:'].join('\n'));
   });
 
   it('retorna as 5 conversas mais recentes, sem priorizar por orçamento', () => {
@@ -57,13 +56,10 @@ describe('whatsapp-leads helpers', () => {
       { id: 'antigo', timestamp: 400, hasQuotation: false },
     ];
 
-    assert.deepEqual(prioritizeWhatsappLeads(leads).map(lead => lead.id), [
-      'sem-email-novo',
-      'orcado-novo',
-      'pronto-meio',
-      'sem-nome',
-      'sem-telefone',
-    ]);
+    assert.deepEqual(
+      prioritizeWhatsappLeads(leads).map((lead) => lead.id),
+      ['sem-email-novo', 'orcado-novo', 'pronto-meio', 'sem-nome', 'sem-telefone']
+    );
   });
 
   it('usa o primeiro e-mail quando a conversa contém mais de um', () => {
@@ -75,26 +71,27 @@ describe('whatsapp-leads helpers', () => {
 
   it('marca qualidade do lead com pronto, orçamento ou campos faltantes', () => {
     assert.deepEqual(
-      getWhatsappLeadQuality({ nome: 'Difratelli Rio Verde Go', email: 'financeiro@difratellirv.com.br', telefone: '556499735283' }),
+      getWhatsappLeadQuality({
+        nome: 'Difratelli Rio Verde Go',
+        email: 'financeiro@difratellirv.com.br',
+        telefone: '556499735283',
+      }),
       { isReady: true, missingFields: [], statusLabel: 'Pronto para gerar' }
     );
     assert.deepEqual(
       getWhatsappLeadQuality({ nome: 'Karine', email: '', telefone: '554288025687' }),
       { isReady: false, missingFields: ['email'], statusLabel: 'Sem e-mail' }
     );
-    assert.deepEqual(
-      getWhatsappLeadQuality({ nome: '', email: '', telefone: '' }),
-      { isReady: false, missingFields: ['nome', 'email', 'telefone'], statusLabel: 'Sem nome, e-mail e telefone' }
-    );
+    assert.deepEqual(getWhatsappLeadQuality({ nome: '', email: '', telefone: '' }), {
+      isReady: false,
+      missingFields: ['nome', 'email', 'telefone'],
+      statusLabel: 'Sem nome, e-mail e telefone',
+    });
   });
 
   it('usa o nome do WhatsApp quando nome inferido pela IA está vazio', () => {
     assert.equal(
-      resolveWhatsappDisplayName(
-        { nome: '' },
-        { pushName: 'Dra Mahiara Liell' },
-        '554799632052'
-      ),
+      resolveWhatsappDisplayName({ nome: '' }, { pushName: 'Dra Mahiara Liell' }, '554799632052'),
       'Dra Mahiara Liell'
     );
   });
@@ -113,9 +110,50 @@ describe('whatsapp-leads helpers', () => {
   });
 
   it('inclui apenas leads com nome, e-mail e telefone real', () => {
-    assert.equal(shouldIncludeWhatsappLead({ nome: 'Dra Mahiara Liell', email: 'dramahiara@gmail.com', telefone: '554799632052' }), true);
-    assert.equal(shouldIncludeWhatsappLead({ nome: 'Dra Mahiara Liell', email: '', telefone: '554799632052' }), false);
-    assert.equal(shouldIncludeWhatsappLead({ nome: '', email: 'dramahiara@gmail.com', telefone: '554799632052' }), false);
-    assert.equal(shouldIncludeWhatsappLead({ nome: 'Kátia', email: 'katia@example.com', telefone: '254881025777751' }), false);
+    assert.equal(
+      shouldIncludeWhatsappLead({
+        nome: 'Dra Mahiara Liell',
+        email: 'dramahiara@gmail.com',
+        telefone: '554799632052',
+      }),
+      true
+    );
+    assert.equal(
+      shouldIncludeWhatsappLead({ nome: 'Dra Mahiara Liell', email: '', telefone: '554799632052' }),
+      false
+    );
+    assert.equal(
+      shouldIncludeWhatsappLead({
+        nome: '',
+        email: 'dramahiara@gmail.com',
+        telefone: '554799632052',
+      }),
+      false
+    );
+    assert.equal(
+      shouldIncludeWhatsappLead({
+        nome: 'Kátia',
+        email: 'katia@example.com',
+        telefone: '254881025777751',
+      }),
+      false
+    );
+  });
+
+  it('identifica nome de atendente que só aparece no lado Aspen da conversa', () => {
+    const normalized = [
+      { fromMe: false, text: 'Olá, gostaria de um orçamento' },
+      { fromMe: true, text: 'Claro! Meu nome é Juliana, vou te ajudar' },
+      { fromMe: false, text: 'Meu nome é Viviane Correa' },
+      { fromMe: true, text: 'Certo Viviane, qual seu email?' },
+      { fromMe: false, text: 'viviane@email.com' },
+    ];
+    // "Juliana" aparece apenas nas mensagens Aspen (fromMe: true) → atendente
+    assert.equal(isLikelyAttendantName('Juliana', normalized), true);
+    // "Viviane" aparece no lado Cliente (fromMe: false) → cliente legítimo
+    assert.equal(isLikelyAttendantName('Viviane', normalized), false);
+    // Nome vazio ou curto demais → ignora
+    assert.equal(isLikelyAttendantName('', normalized), false);
+    assert.equal(isLikelyAttendantName('Jo', normalized), false);
   });
 });
