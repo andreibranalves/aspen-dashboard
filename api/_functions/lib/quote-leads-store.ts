@@ -61,13 +61,24 @@ function localPhone(value: unknown): string {
   return phone.startsWith('55') ? phone.slice(2) : phone;
 }
 
+// ponytail: numeric product codes from Typebot (1-7), map here instead of 14 Typebot blocks
+const PRODUTO_MAP: Record<string, string> = {
+  '1': 'Lenços', '2': 'Cangas', '3': 'Bolsas',
+  '4': 'Toalhas', '5': 'Chapéus', '6': 'Cachecóis', '7': 'Outros',
+};
+
+function resolveProduto(value: unknown): string {
+  const raw = cleanText(value);
+  return PRODUTO_MAP[raw] || raw;
+}
+
 function buildPedidoTexto(input: Record<string, unknown>): string {
   const explicit = cleanMultilineText(
     input.pedidoTexto || input.pedido || input.message || input.mensagem
   );
   if (explicit) return explicit;
   return [
-    input.produto ? `Produto: ${cleanText(input.produto)}` : '',
+    input.produto ? `Produto: ${resolveProduto(input.produto)}` : '',
     input.quantidade ? `Quantidade: ${cleanText(input.quantidade)}` : '',
     input.finalidade ? `Finalidade: ${cleanText(input.finalidade)}` : '',
     input.prazo ? `Prazo: ${cleanText(input.prazo)}` : '',

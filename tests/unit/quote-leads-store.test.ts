@@ -59,6 +59,22 @@ describe('quote-leads-store', () => {
     assert.equal(lead.erpLeadId, 'CRM-LEAD-0001');
   });
 
+  it('resolve códigos numéricos de produto (1-7) para nomes', () => {
+    const lead = normalizeQuoteLeadInput(
+      { nome: 'Teste', produto: '3', quantidade: '200', source: 'typebot' },
+      { now: () => '2026-06-29T12:00:00.000Z', id: () => 'ql_1' }
+    );
+    assert.equal(lead.pedidoTexto, 'Produto: Bolsas\nQuantidade: 200');
+  });
+
+  it('mantém produto textual sem traduzir', () => {
+    const lead = normalizeQuoteLeadInput(
+      { nome: 'Teste', produto: 'lenço personalizado', quantidade: '50', source: 'typebot' },
+      { now: () => '2026-06-29T12:00:00.000Z', id: () => 'ql_2' }
+    );
+    assert.equal(lead.pedidoTexto, 'Produto: lenço personalizado\nQuantidade: 50');
+  });
+
   it('formata texto para preencher o textarea de extração', () => {
     const text = formatQuoteLeadText({
       id: 'quote_lead_1',
