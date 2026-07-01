@@ -333,7 +333,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                     <div
                       key={message.id}
                       className={cn(
-                        'max-w-[80%] rounded-[10px] px-3 py-2 text-sm',
+                        'max-w-[80%] rounded-md px-3 py-2 text-sm',
                         message.direction === 'outbound'
                           ? 'ml-auto bg-primary text-primary-foreground'
                           : 'bg-surface-muted text-fg'
