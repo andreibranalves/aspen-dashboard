@@ -18,6 +18,7 @@ import {
 } from './lib/whatsapp-conversations-store.js';
 import {
   syncWhatsappConversations,
+  syncMessagesForConversation,
   type EvolutionSyncDeps,
 } from './lib/whatsapp-conversations-sync.js';
 
@@ -116,8 +117,7 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
   ): Promise<FunctionResult> {
     try {
       const qs = event.queryStringParameters || {};
-      const body =
-        event.httpMethod !== 'GET' ? parseJsonBody(event.body) : {};
+      const body = event.httpMethod !== 'GET' ? parseJsonBody(event.body) : {};
 
       // ── GET /api/whatsapp-conversations ——
       if (event.httpMethod === 'GET') {
@@ -160,6 +160,15 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
             deps as EvolutionSyncDeps
           );
           return jsonResponse(200, { success: true, data });
+        }
+
+        // Sync messages for a single conversation
+        if (action === 'sync-messages') {
+          const id = String(body.id || '');
+          const conversation = await getWhatsappConversation(id, deps);
+          await syncMessagesForConversation(conversation, 50, deps as EvolutionSyncDeps);
+          const messages = await getWhatsappMessages(id, deps);
+          return jsonResponse(200, { success: true, data: messages });
         }
 
         // Extract quote from conversation messages
@@ -221,7 +230,9 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
           return jsonResponse(201, { success: true, data });
         }
 
-        return jsonResponse(400, { error: 'Ação não reconhecida. Use action: sync, extract-quote, ou create-quote-lead.' });
+        return jsonResponse(400, {
+          error: 'Ação não reconhecida. Use action: sync, extract-quote, ou create-quote-lead.',
+        });
       }
 
       // ── PATCH /api/whatsapp-conversations ——

@@ -83,13 +83,23 @@ export async function syncWhatsappConversations(): Promise<{
   return result.data;
 }
 
+export async function syncMessagesForConversation(
+  conversationId: string
+): Promise<WhatsappMessage[]> {
+  const result = await apiPost<ApiEnvelope<WhatsappMessage[]>>(
+    '/whatsapp-conversations',
+    { action: 'sync-messages', id: conversationId }
+  );
+  return result.data;
+}
+
 export async function extractWhatsappQuote(
   conversationId: string
 ): Promise<WhatsappExtractionResult> {
-  const result = await apiPost<ApiEnvelope<WhatsappExtractionResult>>(
-    '/whatsapp-conversations',
-    { action: 'extract-quote', id: conversationId }
-  );
+  const result = await apiPost<ApiEnvelope<WhatsappExtractionResult>>('/whatsapp-conversations', {
+    action: 'extract-quote',
+    id: conversationId,
+  });
   return result.data;
 }
 
@@ -97,10 +107,11 @@ export async function createWhatsappPreQuote(
   conversationId: string,
   extractedPayload?: Record<string, unknown>
 ): Promise<unknown> {
-  const result = await apiPost<ApiEnvelope<unknown>>(
-    '/whatsapp-conversations',
-    { action: 'create-quote-lead', id: conversationId, extractedPayload }
-  );
+  const result = await apiPost<ApiEnvelope<unknown>>('/whatsapp-conversations', {
+    action: 'create-quote-lead',
+    id: conversationId,
+    extractedPayload,
+  });
   return result.data;
 }
 
@@ -108,9 +119,9 @@ export async function updateWhatsappConversationStatus(
   conversationId: string,
   status: WhatsappConversationStatus
 ): Promise<WhatsappConversation> {
-  const result = await apiPatch<ApiEnvelope<WhatsappConversation>>(
-    '/whatsapp-conversations',
-    { id: conversationId, status }
-  );
+  const result = await apiPatch<ApiEnvelope<WhatsappConversation>>('/whatsapp-conversations', {
+    id: conversationId,
+    status,
+  });
   return result.data;
 }

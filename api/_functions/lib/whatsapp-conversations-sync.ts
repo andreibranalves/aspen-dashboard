@@ -208,3 +208,20 @@ export async function syncWhatsappConversations(
 
   return { conversations, syncedMessages };
 }
+
+export async function syncMessagesForConversation(
+  conversation: WhatsappConversation,
+  messageLimit = 50,
+  deps?: EvolutionSyncDeps
+): Promise<WhatsappConversation> {
+  const limit = Math.max(1, Math.min(Number(messageLimit), 50));
+  const fetchMessages = deps?.fetchMessages || liveFetchMessages;
+
+  const rawMessages = await fetchMessages(conversation.remoteJid, limit);
+  const normalized = rawMessages
+    .map(normalizeEvolutionMessage)
+    .filter(Boolean) as Array<Record<string, unknown>>;
+  await upsertWhatsappMessages(conversation.id, normalized, deps);
+
+  return conversation;
+}

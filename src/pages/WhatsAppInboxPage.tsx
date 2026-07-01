@@ -10,6 +10,7 @@ import {
   extractWhatsappQuote,
   fetchWhatsappConversations,
   fetchWhatsappMessages,
+  syncMessagesForConversation,
   syncWhatsappConversations,
   updateWhatsappConversationStatus,
   type WhatsappConversation,
@@ -91,7 +92,14 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
     setExtraction(null);
     fetchWhatsappMessages(selected.id)
       .then((data) => {
-        if (!cancelled) setMessages(data);
+        if (cancelled) return;
+        setMessages(data);
+        // Auto-sync messages if none found for this conversation
+        if (data.length === 0) {
+          return syncMessagesForConversation(selected.id).then((synced) => {
+            if (!cancelled) setMessages(synced);
+          });
+        }
       })
       .catch((err) => {
         if (!cancelled) setError((err as Error).message || 'Erro ao carregar mensagens.');
@@ -117,6 +125,20 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
       setSaving(false);
     }
   }, [load]);
+
+  const loadMessages = useCallback(async () => {
+    if (!selected) return;
+    setMessagesLoading(true);
+    setError(null);
+    try {
+      const data = await syncMessagesForConversation(selected.id);
+      setMessages(data);
+    } catch (err) {
+      setError((err as Error).message || 'Erro ao carregar mensagens.');
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, [selected]);
 
   const extract = useCallback(async () => {
     if (!selected) return;
@@ -266,7 +288,18 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                 {messagesLoading ? (
                   <div className="text-sm text-fg-muted">Carregando mensagens…</div>
                 ) : messages.length === 0 ? (
-                  <div className="text-sm text-fg-muted">Sem mensagens sincronizadas.</div>
+                  <div className="flex flex-col items-center gap-3 py-8 text-sm text-fg-muted">
+                    <p>Sem mensagens sincronizadas.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadMessages}
+                      disabled={saving}
+                    >
+                      <RefreshCw size={14} className={saving ? 'animate-spin' : ''} />
+                      Carregar mensagens
+                    </Button>
+                  </div>
                 ) : (
                   messages.map((message) => (
                     <div
