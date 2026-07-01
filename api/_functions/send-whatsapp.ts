@@ -542,7 +542,7 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
   return responseBody;
 }
 
-async function sendText(number: string, text: string): Promise<unknown> {
+export async function sendText(number: string, text: string): Promise<unknown> {
   return evolutionPost(`/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
     number,
     text,

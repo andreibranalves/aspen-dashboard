@@ -75,7 +75,7 @@ const KV_KEY_MESSAGES_PREFIX = 'aspen:whatsapp-messages:';
 const MAX_STORED_CONVERSATIONS = 200;
 const MAX_STORED_MESSAGES_PER_CONVERSATION = 100;
 
-function cleanText(value: unknown): string {
+export function cleanText(value: unknown): string {
   return String(value || '')
     .replace(/\s+/g, ' ')
     .trim();

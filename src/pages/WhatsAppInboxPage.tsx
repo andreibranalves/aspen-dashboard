@@ -10,6 +10,7 @@ import {
   extractWhatsappQuote,
   fetchWhatsappConversations,
   fetchWhatsappMessages,
+  sendWhatsappMessage,
   syncMessagesForConversation,
   syncWhatsappConversations,
   updateWhatsappConversationStatus,
@@ -53,6 +54,8 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selected = useMemo(
@@ -153,6 +156,36 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
       setSaving(false);
     }
   }, [selected]);
+
+  const sendMessage = useCallback(async () => {
+    if (!selected || !draft.trim() || sending) return;
+    const text = draft.trim();
+    setDraft('');
+    setSending(true);
+    setError(null);
+    // Optimistic append for snappy UI
+    const optimistic: WhatsappMessage = {
+      id: `temp-${Date.now()}`,
+      conversationId: selected.id,
+      providerMessageId: `temp-${Date.now()}`,
+      direction: 'outbound',
+      type: 'text',
+      body: text,
+      mediaUrl: '',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    try {
+      const stored = await sendWhatsappMessage(selected.id, text);
+      setMessages(stored);
+    } catch (err) {
+      // Roll back optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      setError((err as Error).message || 'Erro ao enviar mensagem.');
+    } finally {
+      setSending(false);
+    }
+  }, [draft, selected, sending]);
 
   const createPreQuote = useCallback(async () => {
     if (!selected) return;
@@ -284,7 +317,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                 <h2 className="text-sm font-semibold text-fg">{selected.displayName}</h2>
                 <p className="text-xs text-fg-muted">{fmtPhone(selected.phone)}</p>
               </div>
-              <div className="max-h-[620px] space-y-3 overflow-y-auto p-4">
+              <div className="max-h-[560px] space-y-3 overflow-y-auto p-4">
                 {messagesLoading ? (
                   <div className="text-sm text-fg-muted">Carregando mensagens…</div>
                 ) : messages.length === 0 ? (
@@ -311,6 +344,23 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                     </div>
                   ))
                 )}
+              </div>
+              <div className="flex items-center gap-2 border-t border-line p-3">
+                <Input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  placeholder="Digite uma mensagem…"
+                  disabled={sending}
+                />
+                <Button onClick={sendMessage} disabled={sending || !draft.trim()}>
+                  Enviar
+                </Button>
               </div>
             </>
           )}

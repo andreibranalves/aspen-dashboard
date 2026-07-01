@@ -212,19 +212,25 @@ export async function syncWhatsappConversations(
   const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
   const chats = await fetchChats(chatLimit);
+  const normalizedChats = chats
+    .map(normalizeEvolutionConversation)
+    .filter(Boolean) as Array<Record<string, unknown>>;
+
+  // Fetch messages in parallel (slow HTTP); store writes stay serial (fast KV).
+  const withMessages = await Promise.all(
+    normalizedChats.map(async (chat) => ({
+      chat,
+      messages: (await fetchMessages(String(chat.remoteJid), messageLimit))
+        .map(normalizeEvolutionMessage)
+        .filter(Boolean) as Array<Record<string, unknown>>,
+    }))
+  );
+
   const conversations: WhatsappConversation[] = [];
   let syncedMessages = 0;
-
-  for (const chat of chats) {
-    const normalized = normalizeEvolutionConversation(chat);
-    if (!normalized) continue;
-
-    const conversation = await upsertWhatsappConversation(normalized, deps);
+  for (const { chat, messages } of withMessages) {
+    const conversation = await upsertWhatsappConversation(chat, deps);
     conversations.push(conversation);
-
-    const messages = (await fetchMessages(conversation.remoteJid, messageLimit))
-      .map(normalizeEvolutionMessage)
-      .filter(Boolean) as Array<Record<string, unknown>>;
     const stored = await upsertWhatsappMessages(conversation.id, messages, deps);
     syncedMessages += stored.length;
   }

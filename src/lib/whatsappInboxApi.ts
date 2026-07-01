@@ -115,6 +115,18 @@ export async function createWhatsappPreQuote(
   return result.data;
 }
 
+export async function sendWhatsappMessage(
+  conversationId: string,
+  text: string
+): Promise<WhatsappMessage[]> {
+  const result = await apiPost<ApiEnvelope<WhatsappMessage[]>>('/whatsapp-conversations', {
+    action: 'send-message',
+    id: conversationId,
+    text,
+  });
+  return result.data;
+}
+
 export async function updateWhatsappConversationStatus(
   conversationId: string,
   status: WhatsappConversationStatus

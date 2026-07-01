@@ -6,13 +6,16 @@ import type {
   LegacyHandler,
 } from '../_lib/types.js';
 import { handler as extractHandler } from './extract.js';
+import { sendText } from './send-whatsapp.js';
 import { createHttpError } from './lib/erpnext.js';
 import { upsertQuoteLead } from './lib/quote-leads-store.js';
 import {
+  cleanText,
   getWhatsappConversation,
   getWhatsappMessages,
   listWhatsappConversations,
   updateWhatsappConversation,
+  upsertWhatsappMessages,
   type WhatsappConversationStatus,
   type WhatsappConversationStoreDeps,
 } from './lib/whatsapp-conversations-store.js';
@@ -63,6 +66,7 @@ function parseLimit(value: unknown): number {
 interface WhatsappActionDeps extends EvolutionSyncDeps, WhatsappConversationStoreDeps {
   extractOrders?: (text: string) => Promise<unknown[]>;
   upsertQuoteLead?: (input: Record<string, unknown>) => Promise<unknown>;
+  sendTextMessage?: (number: string, text: string) => Promise<unknown>;
 }
 
 function buildConversationText(messages: Array<{ direction: string; body: string }>): string {
@@ -230,8 +234,38 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
           return jsonResponse(201, { success: true, data });
         }
 
+        // Send a text message to the customer and record it as outbound
+        if (action === 'send-message') {
+          const id = String(body.id || '');
+          const text = cleanText(body.text);
+          if (!text) {
+            return jsonResponse(400, { error: 'Texto da mensagem é obrigatório.' });
+          }
+          const conversation = await getWhatsappConversation(id, deps);
+          if (!conversation.phone) {
+            return jsonResponse(400, { error: 'Conversa sem telefone para envio.' });
+          }
+          const sender = deps?.sendTextMessage || sendText;
+          await sender(conversation.phone, text);
+          const stored = await upsertWhatsappMessages(
+            id,
+            [
+              {
+                providerMessageId: `out-${Date.now()}`,
+                direction: 'outbound',
+                type: 'text',
+                body: text,
+                timestamp: Date.now(),
+              },
+            ],
+            deps
+          );
+          return jsonResponse(201, { success: true, data: stored });
+        }
+
         return jsonResponse(400, {
-          error: 'Ação não reconhecida. Use action: sync, extract-quote, ou create-quote-lead.',
+          error:
+            'Ação não reconhecida. Use action: sync, sync-messages, send-message, extract-quote, ou create-quote-lead.',
         });
       }
 
