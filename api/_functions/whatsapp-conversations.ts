@@ -1,3 +1,4 @@
+// GET/POST/PATCH /api/whatsapp-conversations — WhatsApp commercial inbox
 import type {
   FunctionEvent,
   FunctionResult,
@@ -34,16 +35,6 @@ function parseJsonBody(body: unknown): Record<string, unknown> {
   } catch {
     throw createHttpError(400, 'JSON inválido.');
   }
-}
-
-function getSubPath(event: FunctionEvent): string[] {
-  const url = (
-    ((event as unknown as Record<string, unknown>).rawUrl as string) ||
-    event.url ||
-    ''
-  ).split('?')[0];
-  const path = url.replace(/^\/api\/whatsapp-conversations\/?/, '');
-  return path.split('/').filter(Boolean).map(decodeURIComponent);
 }
 
 function parseStatus(value: unknown): WhatsappConversationStatus | 'all' {
@@ -124,42 +115,120 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
     event: FunctionEvent
   ): Promise<FunctionResult> {
     try {
-      const parts = getSubPath(event);
+      const qs = event.queryStringParameters || {};
+      const body =
+        event.httpMethod !== 'GET' ? parseJsonBody(event.body) : {};
 
-      if (event.httpMethod === 'GET' && parts.length === 0) {
+      // ── GET /api/whatsapp-conversations ——
+      if (event.httpMethod === 'GET') {
+        // Single conversation by id
+        if (qs.id) {
+          const conversation = await getWhatsappConversation(qs.id, deps);
+          return jsonResponse(200, { success: true, data: conversation });
+        }
+
+        // Messages for a conversation
+        if (qs.messages) {
+          const data = await getWhatsappMessages(qs.messages, deps);
+          return jsonResponse(200, { success: true, data });
+        }
+
+        // List conversations
         const data = await listWhatsappConversations(
           {
-            status: parseStatus(event.queryStringParameters?.status),
-            q: event.queryStringParameters?.q || '',
-            hasQuoteRequest: event.queryStringParameters?.hasQuoteRequest,
-            limit: parseLimit(event.queryStringParameters?.limit),
+            status: parseStatus(qs.status),
+            q: qs.q || '',
+            hasQuoteRequest: qs.hasQuoteRequest,
+            limit: parseLimit(qs.limit),
           },
           deps
         );
         return jsonResponse(200, { success: true, data });
       }
 
-      if (event.httpMethod === 'GET' && parts.length === 2 && parts[1] === 'messages') {
-        const data = await getWhatsappMessages(parts[0], deps);
-        return jsonResponse(200, { success: true, data });
+      // ── POST /api/whatsapp-conversations ——
+      if (event.httpMethod === 'POST') {
+        const action = String(body.action || '');
+
+        // Sync conversations from Evolution
+        if (action === 'sync') {
+          const data = await syncWhatsappConversations(
+            {
+              chatLimit: parseLimit(body.chatLimit || 5),
+              messageLimit: parseLimit(body.messageLimit || 50),
+            },
+            deps as EvolutionSyncDeps
+          );
+          return jsonResponse(200, { success: true, data });
+        }
+
+        // Extract quote from conversation messages
+        if (action === 'extract-quote') {
+          const id = String(body.id || '');
+          const conversation = await getWhatsappConversation(id, deps);
+          const messages = await getWhatsappMessages(id, deps);
+          const text = buildConversationText(messages);
+          const extractOrders = deps?.extractOrders || liveExtractOrders;
+          const orders = await extractOrders(text);
+
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              conversationId: conversation.id,
+              inputMessageIds: messages.map((m) => m.id),
+              extractedPayload: { orders },
+              confidence: orders.length > 0 ? 0.8 : 0.2,
+              missingFields: orders.length > 0 ? [] : ['pedido'],
+              createdAt: new Date().toISOString(),
+            },
+          });
+        }
+
+        // Create pre-quote lead from conversation
+        if (action === 'create-quote-lead') {
+          const id = String(body.id || '');
+          const conversation = await getWhatsappConversation(id, deps);
+          const messages = await getWhatsappMessages(id, deps);
+          const pedidoTexto = buildConversationText(messages);
+          const leadInput = {
+            nome: conversation.displayName,
+            telefone: conversation.phone,
+            pedidoTexto,
+            source: 'whatsapp',
+            sourceDetail: conversation.remoteJid,
+            externalId: conversation.id,
+            status: missingFieldsForPreQuote({
+              nome: conversation.displayName,
+              telefone: conversation.phone,
+              pedidoTexto,
+            }).length
+              ? 'incomplete'
+              : 'ready',
+            raw: {
+              conversationId: conversation.id,
+              extractedPayload: body.extractedPayload || null,
+            },
+          };
+
+          const createLead = deps?.upsertQuoteLead || upsertQuoteLead;
+          const data = await createLead(leadInput);
+          await updateWhatsappConversation(
+            conversation.id,
+            { status: 'quote_lead_created', linkedLeadId: (data as { id?: string }).id || null },
+            deps
+          );
+
+          return jsonResponse(201, { success: true, data });
+        }
+
+        return jsonResponse(400, { error: 'Ação não reconhecida. Use action: sync, extract-quote, ou create-quote-lead.' });
       }
 
-      if (event.httpMethod === 'POST' && parts.length === 1 && parts[0] === 'sync') {
-        const body = parseJsonBody(event.body);
-        const data = await syncWhatsappConversations(
-          {
-            chatLimit: parseLimit(body.chatLimit || 5),
-            messageLimit: parseLimit(body.messageLimit || 50),
-          },
-          deps as EvolutionSyncDeps
-        );
-        return jsonResponse(200, { success: true, data });
-      }
-
-      if (event.httpMethod === 'PATCH' && parts.length === 1) {
-        const body = parseJsonBody(event.body);
+      // ── PATCH /api/whatsapp-conversations ——
+      if (event.httpMethod === 'PATCH') {
+        const id = String(body.id || '');
         const data = await updateWhatsappConversation(
-          parts[0],
+          id,
           {
             status: parseStatus(body.status) as WhatsappConversationStatus,
             linkedLeadId: body.linkedLeadId == null ? null : String(body.linkedLeadId),
@@ -172,62 +241,7 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
         return jsonResponse(200, { success: true, data });
       }
 
-      if (event.httpMethod === 'POST' && parts.length === 2 && parts[1] === 'extract-quote') {
-        const conversation = await getWhatsappConversation(parts[0], deps);
-        const messages = await getWhatsappMessages(parts[0], deps);
-        const text = buildConversationText(messages);
-        const extractOrders = deps?.extractOrders || liveExtractOrders;
-        const orders = await extractOrders(text);
-
-        const data = {
-          conversationId: conversation.id,
-          inputMessageIds: messages.map((message) => message.id),
-          extractedPayload: { orders },
-          confidence: orders.length > 0 ? 0.8 : 0.2,
-          missingFields: orders.length > 0 ? [] : ['pedido'],
-          createdAt: new Date().toISOString(),
-        };
-
-        return jsonResponse(200, { success: true, data });
-      }
-
-      if (event.httpMethod === 'POST' && parts.length === 2 && parts[1] === 'create-quote-lead') {
-        const conversation = await getWhatsappConversation(parts[0], deps);
-        const messages = await getWhatsappMessages(parts[0], deps);
-        const body = parseJsonBody(event.body);
-        const pedidoTexto = buildConversationText(messages);
-        const leadInput = {
-          nome: conversation.displayName,
-          telefone: conversation.phone,
-          pedidoTexto,
-          source: 'whatsapp',
-          sourceDetail: conversation.remoteJid,
-          externalId: conversation.id,
-          status: missingFieldsForPreQuote({
-            nome: conversation.displayName,
-            telefone: conversation.phone,
-            pedidoTexto,
-          }).length
-            ? 'incomplete'
-            : 'ready',
-          raw: {
-            conversationId: conversation.id,
-            extractedPayload: body.extractedPayload || null,
-          },
-        };
-
-        const createLead = deps?.upsertQuoteLead || upsertQuoteLead;
-        const data = await createLead(leadInput);
-        await updateWhatsappConversation(
-          conversation.id,
-          { status: 'quote_lead_created', linkedLeadId: (data as { id?: string }).id || null },
-          deps
-        );
-
-        return jsonResponse(201, { success: true, data });
-      }
-
-      return jsonResponse(404, { error: 'Endpoint não encontrado.' });
+      return jsonResponse(405, { error: 'Método não permitido.' });
     } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[whatsapp-conversations]', err?.logMessage || err?.message || err);

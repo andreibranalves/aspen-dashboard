@@ -8,7 +8,11 @@ import type {
 } from '../../api/_functions/lib/whatsapp-conversations-store.js';
 
 function parse(result: any): any {
-  return JSON.parse(result.body || '{}');
+  try {
+    return JSON.parse(result.body || '{}');
+  } catch {
+    return {};
+  }
 }
 
 function makeDeps(): WhatsappConversationStoreDeps & {
@@ -48,13 +52,15 @@ function makeDeps(): WhatsappConversationStoreDeps & {
   };
 }
 
+const API = '/api/whatsapp-conversations';
+
 describe('whatsapp-conversations handler', () => {
-  it('syncs conversations with POST /sync', async () => {
+  it('syncs conversations with POST action=sync', async () => {
     const handler = createHandler(makeDeps());
     const result = await handler({
       httpMethod: 'POST',
-      url: '/api/whatsapp-conversations/sync',
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -69,15 +75,15 @@ describe('whatsapp-conversations handler', () => {
     const handler = createHandler(deps);
     await handler({
       httpMethod: 'POST',
-      url: '/api/whatsapp-conversations/sync',
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
 
     const result = await handler({
       httpMethod: 'GET',
-      url: '/api/whatsapp-conversations',
+      url: API,
       queryStringParameters: { limit: '50' },
       headers: {},
     } as any);
@@ -86,13 +92,13 @@ describe('whatsapp-conversations handler', () => {
     assert.equal(parse(result).data[0].displayName, 'Maria');
   });
 
-  it('returns messages for a conversation', async () => {
+  it('returns messages via query param ?messages=id', async () => {
     const deps = makeDeps();
     const handler = createHandler(deps);
     const syncResult = await handler({
       httpMethod: 'POST',
-      url: '/api/whatsapp-conversations/sync',
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -100,8 +106,8 @@ describe('whatsapp-conversations handler', () => {
 
     const result = await handler({
       httpMethod: 'GET',
-      url: `/api/whatsapp-conversations/${id}/messages`,
-      queryStringParameters: {},
+      url: API,
+      queryStringParameters: { messages: id },
       headers: {},
     } as any);
 
@@ -109,13 +115,13 @@ describe('whatsapp-conversations handler', () => {
     assert.equal(parse(result).data[0].body, 'Quero orçamento');
   });
 
-  it('patches conversation status', async () => {
+  it('patches conversation via body id + status', async () => {
     const deps = makeDeps();
     const handler = createHandler(deps);
     const syncResult = await handler({
       httpMethod: 'POST',
-      url: '/api/whatsapp-conversations/sync',
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -123,8 +129,8 @@ describe('whatsapp-conversations handler', () => {
 
     const result = await handler({
       httpMethod: 'PATCH',
-      url: `/api/whatsapp-conversations/${id}`,
-      body: JSON.stringify({ status: 'waiting_customer' }),
+      url: API,
+      body: JSON.stringify({ id, status: 'waiting_customer' }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -133,12 +139,12 @@ describe('whatsapp-conversations handler', () => {
     assert.equal(parse(result).data.status, 'waiting_customer');
   });
 
-  it('returns safe Portuguese errors', async () => {
+  it('returns safe Portuguese 404 for missing conversation', async () => {
     const handler = createHandler(makeDeps());
     const result = await handler({
       httpMethod: 'GET',
-      url: '/api/whatsapp-conversations/missing/messages',
-      queryStringParameters: {},
+      url: API,
+      queryStringParameters: { id: 'missing' },
       headers: {},
     } as any);
 
@@ -146,7 +152,7 @@ describe('whatsapp-conversations handler', () => {
     assert.match(parse(result).error, /Conversa do WhatsApp não encontrada/);
   });
 
-  it('extracts quote payload from recent messages', async () => {
+  it('extracts quote payload via POST action=extract-quote', async () => {
     const deps = makeDeps();
     const handler = createHandler({
       ...deps,
@@ -158,8 +164,8 @@ describe('whatsapp-conversations handler', () => {
     } as any);
     const syncResult = await handler({
       httpMethod: 'POST',
-      url: '/api/whatsapp-conversations/sync',
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -167,8 +173,8 @@ describe('whatsapp-conversations handler', () => {
 
     const result = await handler({
       httpMethod: 'POST',
-      url: `/api/whatsapp-conversations/${id}/extract-quote`,
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'extract-quote', id }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -179,7 +185,7 @@ describe('whatsapp-conversations handler', () => {
     ]);
   });
 
-  it('creates whatsapp pre-quote from conversation messages', async () => {
+  it('creates whatsapp pre-quote via POST action=create-quote-lead', async () => {
     const deps = makeDeps();
     const handler = createHandler({
       ...deps,
@@ -196,8 +202,8 @@ describe('whatsapp-conversations handler', () => {
     } as any);
     const syncResult = await handler({
       httpMethod: 'POST',
-      url: '/api/whatsapp-conversations/sync',
-      body: '{}',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
@@ -205,8 +211,12 @@ describe('whatsapp-conversations handler', () => {
 
     const result = await handler({
       httpMethod: 'POST',
-      url: `/api/whatsapp-conversations/${id}/create-quote-lead`,
-      body: JSON.stringify({ extractedPayload: { produto: 'Canga', quantidade: 100 } }),
+      url: API,
+      body: JSON.stringify({
+        action: 'create-quote-lead',
+        id,
+        extractedPayload: { produto: 'Canga', quantidade: 100 },
+      }),
       queryStringParameters: {},
       headers: {},
     } as any);

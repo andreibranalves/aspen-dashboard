@@ -68,7 +68,7 @@ export async function fetchWhatsappConversations(params: {
 
 export async function fetchWhatsappMessages(conversationId: string): Promise<WhatsappMessage[]> {
   const result = await apiGet<ApiEnvelope<WhatsappMessage[]>>(
-    `/whatsapp-conversations/${encodeURIComponent(conversationId)}/messages`
+    `/whatsapp-conversations?messages=${encodeURIComponent(conversationId)}`
   );
   return result.data;
 }
@@ -79,7 +79,7 @@ export async function syncWhatsappConversations(): Promise<{
 }> {
   const result = await apiPost<
     ApiEnvelope<{ conversations: WhatsappConversation[]; syncedMessages: number }>
-  >('/whatsapp-conversations/sync', { chatLimit: 5, messageLimit: 50 });
+  >('/whatsapp-conversations', { action: 'sync', chatLimit: 5, messageLimit: 50 });
   return result.data;
 }
 
@@ -87,8 +87,8 @@ export async function extractWhatsappQuote(
   conversationId: string
 ): Promise<WhatsappExtractionResult> {
   const result = await apiPost<ApiEnvelope<WhatsappExtractionResult>>(
-    `/whatsapp-conversations/${encodeURIComponent(conversationId)}/extract-quote`,
-    {}
+    '/whatsapp-conversations',
+    { action: 'extract-quote', id: conversationId }
   );
   return result.data;
 }
@@ -98,8 +98,8 @@ export async function createWhatsappPreQuote(
   extractedPayload?: Record<string, unknown>
 ): Promise<unknown> {
   const result = await apiPost<ApiEnvelope<unknown>>(
-    `/whatsapp-conversations/${encodeURIComponent(conversationId)}/create-quote-lead`,
-    { extractedPayload }
+    '/whatsapp-conversations',
+    { action: 'create-quote-lead', id: conversationId, extractedPayload }
   );
   return result.data;
 }
@@ -109,8 +109,8 @@ export async function updateWhatsappConversationStatus(
   status: WhatsappConversationStatus
 ): Promise<WhatsappConversation> {
   const result = await apiPatch<ApiEnvelope<WhatsappConversation>>(
-    `/whatsapp-conversations/${encodeURIComponent(conversationId)}`,
-    { status }
+    '/whatsapp-conversations',
+    { id: conversationId, status }
   );
   return result.data;
 }
