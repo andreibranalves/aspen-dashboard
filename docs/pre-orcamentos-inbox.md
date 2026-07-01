@@ -6,7 +6,7 @@ A Inbox de Pré-orçamentos centraliza pedidos antes da criação do orçamento 
 
 - `typebot`: webhook `/api/typebot-lead-capture`.
 - `site_form`: formulário do `aspen-site` via `/api/quote` e POST autenticado para `/api/quote-leads`.
-- `whatsapp`: reservado para fallback futuro.
+- `whatsapp`: conversas sincronizadas pela Inbox Comercial em `#/whatsapp-inbox`.
 - `manual`: reservado para criação manual futura.
 
 ## Status
@@ -54,3 +54,18 @@ Evite manter o keyword trigger nativo da Evolution ativo ao mesmo tempo para o m
 3. Enviar um formulário real do site e verificar item `site_form` na inbox.
 4. Enviar um WhatsApp real com `[ref:token]` e verificar item `typebot` com attribution.
 5. Gerar um orçamento pela inbox e confirmar status `converted` com `quotationId`.
+
+## WhatsApp Inbox
+
+A Inbox Comercial de WhatsApp fica em `#/whatsapp-inbox`.
+
+Fluxo recomendado:
+
+1. Clique em `Sincronizar` para buscar conversas recentes da Evolution API.
+2. Abra uma conversa e confira o painel comercial.
+3. Clique em `Extrair orçamento` quando a conversa tiver pedido em texto livre.
+4. Revise o payload extraído.
+5. Clique em `Criar pré-orçamento` para enviar a conversa para `#/pre-orcamentos`.
+6. Continue o fluxo existente para revisar e gerar o orçamento.
+
+O MVP não substitui o WhatsApp Web e não responde mensagens pelo dashboard.
