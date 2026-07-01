@@ -115,9 +115,7 @@ function resolveProduto(value: unknown): string {
 }
 
 function buildPedidoTexto(input: Record<string, unknown>): string {
-  const explicit = cleanMultilineText(
-    input.pedidoTexto || input.pedido || input.msg
-  );
+  const explicit = cleanMultilineText(input.pedidoTexto || input.pedido || input.msg);
   if (explicit) return explicit;
 
   return [
@@ -386,9 +384,7 @@ export async function updateQuoteLead(
     ...current,
     ...editableInput,
     id: current.id,
-    status: patch.status
-      ? statusFrom(patch.status, missing)
-      : statusFrom(current.status, missing),
+    status: patch.status ? statusFrom(patch.status, missing) : statusFrom(current.status, missing),
     quotationId:
       patch.quotationId === undefined ? current.quotationId : cleanText(patch.quotationId) || null,
     createdAt: current.createdAt,

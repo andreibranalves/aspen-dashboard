@@ -190,7 +190,9 @@ describe('quote-leads handler', () => {
   });
 
   it('edita campos do lead via PATCH', async () => {
-    const handler = createHandler(createQuoteLeadMemoryDeps([makeQuoteLead({ id: 'quote_lead_1' })]));
+    const handler = createHandler(
+      createQuoteLeadMemoryDeps([makeQuoteLead({ id: 'quote_lead_1' })])
+    );
 
     const result = await handler({
       httpMethod: 'PATCH',

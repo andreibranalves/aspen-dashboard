@@ -82,20 +82,9 @@ Criar uma página principal no dashboard para funcionar como **Inbox de Pré-or�
 Evoluir `QuoteLead` para um registro mais genérico, mantendo compatibilidade:
 
 ```ts
-type PreQuoteStatus =
-  | 'new'
-  | 'incomplete'
-  | 'ready'
-  | 'reviewing'
-  | 'converted'
-  | 'discarded';
+type PreQuoteStatus = 'new' | 'incomplete' | 'ready' | 'reviewing' | 'converted' | 'discarded';
 
-type PreQuoteSource =
-  | 'typebot'
-  | 'site_form'
-  | 'whatsapp'
-  | 'manual'
-  | 'sanity_import';
+type PreQuoteSource = 'typebot' | 'site_form' | 'whatsapp' | 'manual' | 'sanity_import';
 
 interface PreQuoteLead {
   id: string;
