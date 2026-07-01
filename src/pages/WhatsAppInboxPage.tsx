@@ -272,7 +272,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               Nenhuma conversa encontrada.
             </div>
           ) : (
-            <div className="max-h-[680px] overflow-y-auto p-2">
+            <div className="max-h-[680px] overflow-y-auto p-2 flex flex-col gap-2">
               {conversations.map((conversation) => (
                 <button
                   key={conversation.id}
