@@ -9,6 +9,7 @@ import {
   upsertQuoteLead,
   type QuoteLead,
 } from '../../api/_functions/lib/quote-leads-store.js';
+import { createQuoteLeadMemoryDeps, makeQuoteLead } from './pre-quote-fixtures.ts';
 
 function createMemoryDeps(seed: QuoteLead[] = []) {
   let records = [...seed];
@@ -55,7 +56,7 @@ describe('quote-leads-store', () => {
       'Produto: lenço\nQuantidade: 100\nContexto: Cliente pediu orçamento pelo WhatsApp'
     );
     assert.equal(lead.source, 'typebot');
-    assert.equal(lead.status, 'new');
+    assert.equal(lead.status, 'ready');
     assert.equal(lead.erpLeadId, 'CRM-LEAD-0001');
   });
 
@@ -190,5 +191,128 @@ describe('quote-leads-store', () => {
     assert.equal(updated.status, 'converted');
     assert.equal(updated.quotationId, 'ORC-20261777');
     assert.equal(updated.updatedAt, '2026-06-29T12:00:00.000Z');
+  });
+
+  it('normaliza formulário do site com attribution e status ready', () => {
+    const lead = normalizeQuoteLeadInput(
+      {
+        source: 'site_form',
+        externalId: 'sanity-quote-1',
+        nome: '  Ana Empresa ',
+        email: ' ANA@EXAMPLE.COM ',
+        whatsapp: '(21) 99999-0000',
+        produto: 'Cangas',
+        quantidade: '150',
+        prazo: '20 dias',
+        mensagem: 'Quero orçamento para evento corporativo',
+        page_url: 'https://aspenestamparia.com/contato?gclid=abc',
+        utm_source: 'google',
+        utm_medium: 'cpc',
+        utm_campaign: 'verao',
+        gclid: 'abc',
+        source_cta: 'quote-form',
+      },
+      { now: () => '2026-07-01T12:00:00.000Z', id: () => 'quote_lead_site_1' }
+    );
+
+    assert.equal(lead.id, 'quote_lead_site_1');
+    assert.equal(lead.source, 'site_form');
+    assert.equal(lead.externalId, 'sanity-quote-1');
+    assert.equal(lead.nome, 'Ana Empresa');
+    assert.equal(lead.email, 'ana@example.com');
+    assert.equal(lead.telefone, '5521999990000');
+    assert.equal(lead.produto, 'Cangas');
+    assert.equal(lead.quantidade, '150');
+    assert.equal(lead.prazo, '20 dias');
+    assert.equal(lead.status, 'ready');
+    assert.deepEqual(lead.attribution, {
+      page_url: 'https://aspenestamparia.com/contato?gclid=abc',
+      utm_source: 'google',
+      utm_medium: 'cpc',
+      utm_campaign: 'verao',
+      utm_content: null,
+      utm_term: null,
+      gclid: 'abc',
+      gbraid: null,
+      wbraid: null,
+      fbclid: null,
+      source_cta: 'quote-form',
+      result_id: null,
+    });
+    assert.equal(
+      lead.pedidoTexto,
+      'Produto: Cangas\nQuantidade: 150\nPrazo: 20 dias\nContexto: Quero orçamento para evento corporativo'
+    );
+  });
+
+  it('classifica como incomplete quando faltam dados de contato ou pedido', () => {
+    const lead = normalizeQuoteLeadInput(
+      { source: 'whatsapp', telefone: '21999990000' },
+      { now: () => '2026-07-01T12:00:00.000Z', id: () => 'quote_lead_incomplete' }
+    );
+
+    assert.equal(lead.status, 'incomplete');
+    assert.deepEqual(lead.missingFields, ['nome', 'pedido']);
+  });
+
+  it('deduplica formulário e Typebot por telefone preservando attribution first-touch', async () => {
+    const deps = createQuoteLeadMemoryDeps();
+
+    await upsertQuoteLead(
+      {
+        source: 'site_form',
+        nome: 'Ana',
+        email: 'ana@example.com',
+        whatsapp: '21999990000',
+        produto: 'Cangas',
+        gclid: 'first-gclid',
+        utm_source: 'google',
+      },
+      deps
+    );
+
+    const merged = await upsertQuoteLead(
+      {
+        source: 'typebot',
+        nome: 'Ana Empresa',
+        telefone: '5521999990000',
+        quantidade: '150',
+        gclid: 'second-gclid',
+        utm_source: 'meta',
+      },
+      deps
+    );
+
+    assert.equal(merged.id, 'quote_lead_1');
+    assert.equal(merged.nome, 'Ana Empresa');
+    assert.equal(merged.quantidade, '150');
+    assert.equal(merged.attribution?.gclid, 'first-gclid');
+    assert.equal(merged.attribution?.utm_source, 'google');
+    assert.equal((await listQuoteLeads({ status: 'all' }, deps)).length, 1);
+  });
+
+  it('filtra listagem por source e status', async () => {
+    const deps = createQuoteLeadMemoryDeps([
+      makeQuoteLead({ id: 'typebot-ready', source: 'typebot', status: 'ready' }),
+      makeQuoteLead({
+        id: 'site-ready',
+        source: 'site_form',
+        status: 'ready',
+        telefone: '5521888887777',
+      }),
+      makeQuoteLead({
+        id: 'site-converted',
+        source: 'site_form',
+        status: 'converted',
+        telefone: '5521777776666',
+      }),
+    ]);
+
+    const leads = await listQuoteLeads({ status: 'ready', source: 'site_form', limit: 10 }, deps);
+
+    assert.deepEqual(
+      leads.map((lead) => lead.id),
+      ['site-ready']
+    );
   });
 });
