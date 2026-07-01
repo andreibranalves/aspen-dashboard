@@ -218,9 +218,9 @@ export async function syncMessagesForConversation(
   const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
   const rawMessages = await fetchMessages(conversation.remoteJid, limit);
-  const normalized = rawMessages
-    .map(normalizeEvolutionMessage)
-    .filter(Boolean) as Array<Record<string, unknown>>;
+  const normalized = rawMessages.map(normalizeEvolutionMessage).filter(Boolean) as Array<
+    Record<string, unknown>
+  >;
   await upsertWhatsappMessages(conversation.id, normalized, deps);
 
   return conversation;

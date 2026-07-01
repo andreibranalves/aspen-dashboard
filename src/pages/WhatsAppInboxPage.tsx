@@ -290,12 +290,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                 ) : messages.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-sm text-fg-muted">
                     <p>Sem mensagens sincronizadas.</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={loadMessages}
-                      disabled={saving}
-                    >
+                    <Button variant="outline" size="sm" onClick={loadMessages} disabled={saving}>
                       <RefreshCw size={14} className={saving ? 'animate-spin' : ''} />
                       Carregar mensagens
                     </Button>

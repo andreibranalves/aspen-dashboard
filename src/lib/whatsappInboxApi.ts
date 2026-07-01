@@ -86,10 +86,10 @@ export async function syncWhatsappConversations(): Promise<{
 export async function syncMessagesForConversation(
   conversationId: string
 ): Promise<WhatsappMessage[]> {
-  const result = await apiPost<ApiEnvelope<WhatsappMessage[]>>(
-    '/whatsapp-conversations',
-    { action: 'sync-messages', id: conversationId }
-  );
+  const result = await apiPost<ApiEnvelope<WhatsappMessage[]>>('/whatsapp-conversations', {
+    action: 'sync-messages',
+    id: conversationId,
+  });
   return result.data;
 }
 
