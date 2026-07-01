@@ -32,11 +32,11 @@ Use this JSON body:
 
 ## Dashboard behavior
 
-- The Typebot webhook keeps creating/updating the ERPNext Lead.
-- When enabled and not `dry_run`, the webhook also upserts a quote lead in KV.
-- The Auto page reads `GET /api/quote-leads?limit=5`.
-- Clicking a lead fills the extraction textarea with `Nome`, `E-mail`, `Telefone`, and `Pedido`.
-- After quotation creation succeeds, the Auto page marks that quote lead as `converted`.
+- Typebot continues to create/update ERPNext Lead.
+- Enabled, non-dry-run Typebot submissions upsert `typebot` pre-quotes in KV.
+- Site quote forms can upsert `site_form` pre-quotes through authenticated `POST /api/quote-leads`.
+- The inbox at `#/pre-orcamentos` is the primary review queue.
+- After quotation creation succeeds, the queue record is marked `converted`.
 
 ## Environment variables
 
