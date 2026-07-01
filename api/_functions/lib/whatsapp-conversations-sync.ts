@@ -237,9 +237,9 @@ export async function syncWhatsappConversations(
   const chats = await fetchChats(chatLimit);
   // ponytail: Evolution ignores the `limit` body param and returns every chat,
   // so we slice in-memory. Sorting by recent first keeps the most relevant.
-  const normalizedChats = (chats
-    .map(normalizeEvolutionConversation)
-    .filter(Boolean) as Array<Record<string, unknown>>)
+  const normalizedChats = (
+    chats.map(normalizeEvolutionConversation).filter(Boolean) as Array<Record<string, unknown>>
+  )
     .sort((a, b) => chatSortValue(b) - chatSortValue(a))
     .slice(0, chatLimit);
 
