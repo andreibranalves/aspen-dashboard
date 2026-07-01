@@ -22,6 +22,7 @@ const LeadDetailPage = lazy(() => import('@/pages/LeadDetailPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const ManualOrcamentoPage = lazy(() => import('@/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/pages/ComunicacaoPage'));
+const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
 function renderPage(route: string, navigate: (hash: string) => void) {
   // Login page — full screen, no layout
@@ -106,6 +107,9 @@ function renderPage(route: string, navigate: (hash: string) => void) {
       break;
     case '/comunicacao':
       page = <ComunicacaoPage />;
+      break;
+    case '/whatsapp-inbox':
+      page = <WhatsAppInboxPage navigate={navigate} />;
       break;
     default:
       page = <AutoQuotePage />;

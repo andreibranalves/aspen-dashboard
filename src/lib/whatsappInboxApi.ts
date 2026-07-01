@@ -1,0 +1,116 @@
+import { apiGet, apiPatch, apiPost } from '@/lib/api';
+
+export type WhatsappConversationStatus =
+  | 'new'
+  | 'needs_quote'
+  | 'incomplete'
+  | 'quote_lead_created'
+  | 'quotation_created'
+  | 'waiting_customer'
+  | 'closed'
+  | 'ignored';
+
+export interface WhatsappConversation {
+  id: string;
+  remoteJid: string;
+  phone: string;
+  displayName: string;
+  lastMessageAt: string;
+  lastMessagePreview: string;
+  linkedLeadId?: string | null;
+  linkedDealId?: string | null;
+  linkedQuotationId?: string | null;
+  status: WhatsappConversationStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsappMessage {
+  id: string;
+  conversationId: string;
+  providerMessageId: string;
+  direction: 'inbound' | 'outbound';
+  type: 'text' | 'image' | 'document' | 'audio' | 'unknown';
+  body: string;
+  mediaUrl: string;
+  timestamp: string;
+}
+
+export interface WhatsappExtractionResult {
+  conversationId: string;
+  inputMessageIds: string[];
+  extractedPayload: { orders?: unknown[]; [key: string]: unknown };
+  confidence: number;
+  missingFields: string[];
+  createdAt: string;
+}
+
+interface ApiEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
+export async function fetchWhatsappConversations(params: {
+  status?: WhatsappConversationStatus | 'all';
+  q?: string;
+  limit?: number;
+}): Promise<WhatsappConversation[]> {
+  const search = new URLSearchParams();
+  if (params.status) search.set('status', params.status);
+  if (params.q) search.set('q', params.q);
+  if (params.limit) search.set('limit', String(params.limit));
+  const suffix = search.toString() ? `?${search.toString()}` : '';
+  const result = await apiGet<ApiEnvelope<WhatsappConversation[]>>(
+    `/whatsapp-conversations${suffix}`
+  );
+  return result.data;
+}
+
+export async function fetchWhatsappMessages(conversationId: string): Promise<WhatsappMessage[]> {
+  const result = await apiGet<ApiEnvelope<WhatsappMessage[]>>(
+    `/whatsapp-conversations/${encodeURIComponent(conversationId)}/messages`
+  );
+  return result.data;
+}
+
+export async function syncWhatsappConversations(): Promise<{
+  conversations: WhatsappConversation[];
+  syncedMessages: number;
+}> {
+  const result = await apiPost<
+    ApiEnvelope<{ conversations: WhatsappConversation[]; syncedMessages: number }>
+  >('/whatsapp-conversations/sync', { chatLimit: 5, messageLimit: 50 });
+  return result.data;
+}
+
+export async function extractWhatsappQuote(
+  conversationId: string
+): Promise<WhatsappExtractionResult> {
+  const result = await apiPost<ApiEnvelope<WhatsappExtractionResult>>(
+    `/whatsapp-conversations/${encodeURIComponent(conversationId)}/extract-quote`,
+    {}
+  );
+  return result.data;
+}
+
+export async function createWhatsappPreQuote(
+  conversationId: string,
+  extractedPayload?: Record<string, unknown>
+): Promise<unknown> {
+  const result = await apiPost<ApiEnvelope<unknown>>(
+    `/whatsapp-conversations/${encodeURIComponent(conversationId)}/create-quote-lead`,
+    { extractedPayload }
+  );
+  return result.data;
+}
+
+export async function updateWhatsappConversationStatus(
+  conversationId: string,
+  status: WhatsappConversationStatus
+): Promise<WhatsappConversation> {
+  const result = await apiPatch<ApiEnvelope<WhatsappConversation>>(
+    `/whatsapp-conversations/${encodeURIComponent(conversationId)}`,
+    { status }
+  );
+  return result.data;
+}

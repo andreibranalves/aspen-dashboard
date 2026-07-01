@@ -33,6 +33,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { hash: '/auto', label: 'Auto', icon: Sparkles },
       { hash: '/pre-orcamentos', label: 'Pré-orçamentos', icon: FileText },
+      { hash: '/whatsapp-inbox', label: 'WhatsApp', icon: MessageCircle },
       { hash: '/dashboard', label: 'Dashboard', icon: BarChart3 },
       { hash: '/sales-orders', label: 'Pedidos', icon: ShoppingCart },
       { hash: '/crm', label: 'CRM', icon: Columns3 },
