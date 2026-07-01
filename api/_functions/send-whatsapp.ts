@@ -13,9 +13,10 @@ import {
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
+// ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
+const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
+const EVOLUTION_API_KEY = (process.env.EVOLUTION_API_KEY || '').trim();
+const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || '').trim();
 const DEFAULT_TEMPLATE =
   '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
 const DEFAULT_SEQUENCE_STEPS: SequenceStep[] = [
@@ -114,7 +115,9 @@ function publicBaseUrl(event: { headers?: Record<string, string | string[] | und
   const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host);
   const protocol = isLocalHost
     ? 'http'
-    : String(event.headers?.['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    : String(event.headers?.['x-forwarded-proto'] || 'https')
+        .split(',')[0]
+        .trim();
   return `${protocol}://${host}`;
 }
 
@@ -384,10 +387,7 @@ async function resolveContactFromQuotation(quotationId: string): Promise<{
     remarksContact.nome,
     quotation.party_name as string | undefined
   );
-  let email = firstNonEmpty(
-    quotation.contact_email as string | undefined,
-    remarksContact.email
-  );
+  let email = firstNonEmpty(quotation.contact_email as string | undefined, remarksContact.email);
   let telefone = firstNonEmpty(
     quotation.contact_mobile as string | undefined,
     quotation.contact_phone as string | undefined,
@@ -436,7 +436,9 @@ async function resolveContactFromQuotation(quotationId: string): Promise<{
         contact?.mobile_no as string | undefined,
         contact?.phone as string | undefined,
         (
-          contact?.phone_nos as Array<{ is_primary_mobile_no?: boolean; phone?: string }> | undefined
+          contact?.phone_nos as
+            | Array<{ is_primary_mobile_no?: boolean; phone?: string }>
+            | undefined
         )?.find((p) => p.is_primary_mobile_no)?.phone,
         (contact?.phone_nos as Array<{ phone?: string }> | undefined)?.[0]?.phone
       );
@@ -695,10 +697,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           telefone: string;
         });
 
-    const nome = firstNonEmpty(
-      payload.nome as string | undefined,
-      resolved.nome
-    );
+    const nome = firstNonEmpty(payload.nome as string | undefined, resolved.nome);
     const rawPhone = firstNonEmpty(
       payload.telefone as string | undefined,
       payload.phone as string | undefined,
@@ -716,7 +715,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       quotationId ? `${baseUrl}/api/view?q=${encodeURIComponent(quotationId)}` : ''
     );
 
-    const sequence = (payload.whatsapp_sequence as Record<string, unknown> | undefined) ||
+    const sequence =
+      (payload.whatsapp_sequence as Record<string, unknown> | undefined) ||
       (payload.sequence as Record<string, unknown> | undefined) ||
       null;
     const items = (payload.items ||
@@ -728,7 +728,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     const productSummary = firstNonEmpty(
       payload.produto_resumo as string | undefined,
       payload.product_summary as string | undefined,
-      (sequence?.product_summary as string | undefined),
+      sequence?.product_summary as string | undefined,
       productSummaryFromCategories(categories)
     );
     const context: TemplateContext = {
@@ -751,13 +751,15 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     if (sequence) {
       const delayMinMs = toPositiveInt(
-        (sequence as Record<string, unknown>)?.delay_min_ms ?? (sequence as Record<string, unknown>)?.delayMinMs,
+        (sequence as Record<string, unknown>)?.delay_min_ms ??
+          (sequence as Record<string, unknown>)?.delayMinMs,
         5000,
         0,
         30000
       );
       const delayMaxMs = toPositiveInt(
-        (sequence as Record<string, unknown>)?.delay_max_ms ?? (sequence as Record<string, unknown>)?.delayMaxMs,
+        (sequence as Record<string, unknown>)?.delay_max_ms ??
+          (sequence as Record<string, unknown>)?.delayMaxMs,
         Math.max(delayMinMs, 8000),
         delayMinMs,
         45000
@@ -777,10 +779,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           const response = await sendStep(number, steps[i]);
           evolution.push(response);
         }
-        await markDealAsSent(
-          (payload.deal_id as string) || resolved.dealId,
-          quotationId
-        );
+        await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       }
 
       const dealId = (payload.deal_id as string) || resolved.dealId || null;
@@ -810,21 +809,14 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       firstNonEmpty(
         payload.mensagem as string | undefined,
         payload.message as string | undefined
-      ) ||
-      renderTemplate(
-        payload.template as string,
-        context
-      );
+      ) || renderTemplate(payload.template as string, context);
     if (!text.trim()) {
       throw createHttpError(400, 'Mensagem vazia.');
     }
 
     const evolution = dryRun ? null : await sendText(number, text);
     if (!dryRun) {
-      await markDealAsSent(
-        (payload.deal_id as string) || resolved.dealId,
-        quotationId
-      );
+      await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       await dispatchN8n(
         {
           quotationId,

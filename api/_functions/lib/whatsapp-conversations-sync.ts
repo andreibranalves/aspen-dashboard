@@ -6,9 +6,10 @@ import {
   type WhatsappConversationStoreDeps,
 } from './whatsapp-conversations-store.js';
 
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
+// ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL → fetch failed)
+const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
+const EVOLUTION_API_KEY = (process.env.EVOLUTION_API_KEY || '').trim();
+const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || '').trim();
 
 export interface EvolutionSyncDeps extends WhatsappConversationStoreDeps {
   fetchChats?: (limit: number) => Promise<Array<Record<string, unknown>>>;
@@ -166,14 +167,28 @@ async function evolutionRequest(path: string, body?: Record<string, unknown>): P
     throw createHttpError(500, 'Integração WhatsApp não configurada.');
   }
 
-  const res = await fetch(`${EVOLUTION_BASE_URL}${path}`, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: EVOLUTION_API_KEY,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  let res: Response;
+  try {
+    res = await fetch(`${EVOLUTION_BASE_URL}${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    throw createHttpError(
+      502,
+      'Falha ao conectar com o WhatsApp. Verifique a instância da Evolution API.',
+      `[whatsapp-conversations] fetch failed: ${(err as Error).message}`
+    );
+  }
+  clearTimeout(timer);
 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
@@ -212,9 +227,9 @@ export async function syncWhatsappConversations(
   const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
   const chats = await fetchChats(chatLimit);
-  const normalizedChats = chats
-    .map(normalizeEvolutionConversation)
-    .filter(Boolean) as Array<Record<string, unknown>>;
+  const normalizedChats = chats.map(normalizeEvolutionConversation).filter(Boolean) as Array<
+    Record<string, unknown>
+  >;
 
   // Fetch messages in parallel (slow HTTP); store writes stay serial (fast KV).
   const withMessages = await Promise.all(

@@ -3,9 +3,10 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 
 import { erpGetList, createHttpError } from './lib/erpnext.js';
 
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
+// ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
+const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
+const EVOLUTION_API_KEY = (process.env.EVOLUTION_API_KEY || '').trim();
+const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || '').trim();
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
