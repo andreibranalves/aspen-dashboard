@@ -95,6 +95,34 @@ function readMessageType(message: Record<string, unknown>): string {
   return 'unknown';
 }
 
+export function unwrapEvolutionCollection(payload: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(payload)) return payload as Array<Record<string, unknown>>;
+
+  const value = payload as Record<string, unknown> | null;
+  const candidates = [
+    value?.data,
+    value?.messages,
+    value?.chats,
+    value?.result,
+    value?.response,
+    (value?.data as Record<string, unknown> | undefined)?.messages,
+    (value?.data as Record<string, unknown> | undefined)?.chats,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate as Array<Record<string, unknown>>;
+    if (
+      candidate &&
+      typeof candidate === 'object' &&
+      Array.isArray((candidate as Record<string, unknown>).records)
+    ) {
+      return (candidate as { records: Array<Record<string, unknown>> }).records;
+    }
+  }
+
+  return [];
+}
+
 export function normalizeEvolutionConversation(
   chat: Record<string, unknown>
 ): Record<string, unknown> | null {
@@ -160,7 +188,7 @@ async function evolutionRequest(path: string, body?: Record<string, unknown>): P
 
 async function liveFetchChats(limit: number): Promise<Array<Record<string, unknown>>> {
   const data = await evolutionRequest(`/chat/findChats/${EVOLUTION_INSTANCE}`, { limit });
-  return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+  return unwrapEvolutionCollection(data);
 }
 
 async function liveFetchMessages(
@@ -171,12 +199,7 @@ async function liveFetchMessages(
     where: { key: { remoteJid } },
     limit,
   });
-  const records = Array.isArray(data)
-    ? data
-    : Array.isArray((data as Record<string, unknown> | null)?.messages)
-      ? ((data as Record<string, unknown>).messages as unknown[])
-      : [];
-  return records as Array<Record<string, unknown>>;
+  return unwrapEvolutionCollection(data);
 }
 
 export async function syncWhatsappConversations(

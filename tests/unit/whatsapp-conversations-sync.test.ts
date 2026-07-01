@@ -5,6 +5,7 @@ import {
   normalizeEvolutionConversation,
   normalizeEvolutionMessage,
   syncWhatsappConversations,
+  unwrapEvolutionCollection,
   type EvolutionSyncDeps,
 } from '../../api/_functions/lib/whatsapp-conversations-sync.js';
 import type {
@@ -69,6 +70,19 @@ describe('whatsapp-conversations-sync', () => {
     assert.equal(inbound!.direction, 'inbound');
     assert.equal(inbound!.body, 'Oi');
     assert.equal(outbound!.direction, 'outbound');
+  });
+
+  it('unwraps Evolution collections from nested payload shapes', () => {
+    assert.equal(
+      unwrapEvolutionCollection({ messages: { records: [{ key: { id: 'm1' } }] } }).length,
+      1
+    );
+    assert.equal(
+      unwrapEvolutionCollection({ data: { messages: { records: [{ key: { id: 'm2' } }] } } })
+        .length,
+      1
+    );
+    assert.equal(unwrapEvolutionCollection({ response: [{ key: { id: 'm3' } }] }).length, 1);
   });
 
   it('syncs chats and messages through injected fetcher', async () => {
