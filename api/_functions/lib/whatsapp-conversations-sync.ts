@@ -217,6 +217,14 @@ async function liveFetchMessages(
   return unwrapEvolutionCollection(data);
 }
 
+function chatSortValue(chat: Record<string, unknown>): number {
+  const ts = chat.lastMessageAt ?? chat.updatedAt ?? chat.messageTimestamp ?? chat.t ?? 0;
+  const numeric = Number(ts);
+  if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(String(ts));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export async function syncWhatsappConversations(
   options: WhatsappSyncOptions = {},
   deps?: EvolutionSyncDeps
@@ -227,9 +235,13 @@ export async function syncWhatsappConversations(
   const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
   const chats = await fetchChats(chatLimit);
-  const normalizedChats = chats.map(normalizeEvolutionConversation).filter(Boolean) as Array<
-    Record<string, unknown>
-  >;
+  // ponytail: Evolution ignores the `limit` body param and returns every chat,
+  // so we slice in-memory. Sorting by recent first keeps the most relevant.
+  const normalizedChats = (chats
+    .map(normalizeEvolutionConversation)
+    .filter(Boolean) as Array<Record<string, unknown>>)
+    .sort((a, b) => chatSortValue(b) - chatSortValue(a))
+    .slice(0, chatLimit);
 
   // Fetch messages in parallel (slow HTTP); store writes stay serial (fast KV).
   const withMessages = await Promise.all(
