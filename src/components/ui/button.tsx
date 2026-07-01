@@ -11,20 +11,13 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
  * SUCCESS: success pill
  */
 const variants = {
-  default:
-    'bg-primary text-white hover:bg-primary/90 active:scale-[0.97]',
-  destructive:
-    'bg-destructive text-on-solid hover:bg-destructive/90 active:scale-[0.97]',
-  outline:
-    'border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97]',
-  secondary:
-    'bg-surface text-fg hover:bg-surface-muted active:scale-[0.97]',
-  ghost:
-    'text-fg hover:bg-primary/5',
-  link:
-    'text-primary underline-offset-4 hover:underline',
-  success:
-    'bg-success text-on-solid hover:bg-success/90 active:scale-[0.97]',
+  default: 'bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97]',
+  destructive: 'bg-destructive text-on-solid hover:bg-destructive/90 active:scale-[0.97]',
+  outline: 'border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97]',
+  secondary: 'bg-surface text-fg hover:bg-surface-muted active:scale-[0.97]',
+  ghost: 'text-fg hover:bg-primary/5',
+  link: 'text-primary underline-offset-4 hover:underline',
+  success: 'bg-success text-on-solid hover:bg-success/90 active:scale-[0.97]',
 } as const;
 
 const sizes = {
@@ -45,15 +38,8 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    {
-      className,
-      variant = 'default',
-      size = 'default',
-      asChild: _asChild,
-      children,
-      ...props
-    },
-    ref,
+    { className, variant = 'default', size = 'default', asChild: _asChild, children, ...props },
+    ref
   ) => {
     const Comp = 'button' as const;
     return (
@@ -65,7 +51,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
           variants[variant],
           sizes[size],
-          className,
+          className
         )}
         ref={ref}
         {...props}
@@ -73,7 +59,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {children}
       </Comp>
     );
-  },
+  }
 );
 Button.displayName = 'Button';
 
