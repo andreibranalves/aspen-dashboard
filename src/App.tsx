@@ -9,6 +9,7 @@ import LoginPage from '@/pages/LoginPage';
 
 // Lazy pages — carregadas sob demanda ao navegar
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const PreQuotesPage = lazy(() => import('@/pages/PreQuotesPage'));
 const QuotationsPage = lazy(() => import('@/pages/QuotationsPage'));
 const QuotationDetailPage = lazy(() => import('@/pages/QuotationDetailPage'));
 const SalesOrdersPage = lazy(() => import('@/pages/SalesOrdersPage'));
@@ -75,6 +76,9 @@ function renderPage(route: string, navigate: (hash: string) => void) {
   switch (route) {
     case '/dashboard':
       page = <DashboardPage navigate={navigate} />;
+      break;
+    case '/pre-orcamentos':
+      page = <PreQuotesPage navigate={navigate} />;
       break;
     case '/quotations':
       page = <QuotationsPage navigate={navigate} />;
