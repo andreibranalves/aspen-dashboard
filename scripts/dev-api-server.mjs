@@ -27,6 +27,7 @@ import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
+import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
 import { handler as whatsappLeads } from '../api/_functions/whatsapp-leads.js';
 import { handler as communicationFlowPreview } from '../api/_functions/communication-flow-preview.js';
 import { handler as communicationSendEvents } from '../api/_functions/communication-send-events.js';
@@ -57,6 +58,7 @@ const ROUTES = {
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
   'typebot-lead-capture': typebotLeadCapture,
+  'whatsapp-conversations': whatsappConversations,
   'whatsapp-leads': whatsappLeads,
   'communication-flow-preview': communicationFlowPreview,
   'communication-send-events': communicationSendEvents,
