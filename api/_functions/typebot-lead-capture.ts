@@ -314,6 +314,7 @@ export function createHandler(deps = LIVE_DEPS) {
           quoteLead = await deps.upsertQuoteLead({
             ...lead,
             source: 'typebot',
+            sourceDetail: lead.canal || 'whatsapp',
             erpLeadId: result.leadId,
           });
         } catch (queueErr: any) {

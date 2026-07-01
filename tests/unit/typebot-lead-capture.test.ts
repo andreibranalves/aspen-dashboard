@@ -841,4 +841,91 @@ describe('typebot-lead-capture handler', () => {
     assert.equal(body.quote_lead, null);
     assert.equal(body.quote_lead_error, 'Lead salvo no ERP, mas não entrou na fila de orçamento.');
   });
+
+  it('salva lead estruturado com attribution na fila de pré-orçamentos', async () => {
+    process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
+    process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
+
+    const quoteLeadWrites: Record<string, unknown>[] = [];
+    const h = createHandler({
+      erpGetList: async () => [],
+      erpPost: async () => ({ name: 'CRM-LEAD-ATTR' }),
+      erpPut: async () => ({}),
+      upsertQuoteLead: async (input: Record<string, unknown>) => {
+        quoteLeadWrites.push(input);
+        return {
+          id: 'quote_lead_attr',
+          nome: String(input.nome),
+          email: String(input.email),
+          telefone: String(input.telefone),
+          pedidoTexto: 'Produto: Bolsas',
+          source: 'typebot',
+          status: 'ready',
+          erpLeadId: 'CRM-LEAD-ATTR',
+          createdAt: '2026-07-01T12:00:00.000Z',
+          updatedAt: '2026-07-01T12:00:00.000Z',
+        };
+      },
+      sendMetaLeadEvent: async () => ({ skipped: true }),
+    });
+
+    const result = await h(
+      buildEvent({
+        body: {
+          nome: 'Cliente Typebot',
+          email: 'cliente@example.com',
+          telefone: '(21) 99999-0000',
+          empresa: 'Empresa Cliente',
+          produto: 'Bolsas',
+          quantidade: '120',
+          finalidade: 'Evento',
+          prazo: '20 dias',
+          arte: 'Sim',
+          page_url: 'https://aspenestamparia.com/orcamento?utm_source=meta',
+          utm_source: 'meta',
+          utm_medium: 'paid_social',
+          utm_campaign: 'meta_lead_qualificado_b2b',
+          gclid: 'gclid-typebot',
+          fbclid: 'fbclid-typebot',
+          source_cta: 'meta-orcamento-corporativo',
+          result_id: 'typebot-session-1',
+        },
+      })
+    );
+
+    const body = JSON.parse(result.body);
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.quote_lead.id, 'quote_lead_attr');
+    assert.equal(quoteLeadWrites.length, 1);
+    assert.deepEqual(quoteLeadWrites[0], {
+      nome: 'Cliente Typebot',
+      email: 'cliente@example.com',
+      telefone: '5521999990000',
+      origem: 'Website',
+      canal: 'whatsapp',
+      produto: 'Bolsas',
+      mensagem_contexto: '',
+      empresa: 'Empresa Cliente',
+      quantidade: '120',
+      finalidade: 'Evento',
+      prazo: '20 dias',
+      arte: 'Sim',
+      result_id: 'typebot-session-1',
+      page_url: 'https://aspenestamparia.com/orcamento?utm_source=meta',
+      utm_source: 'meta',
+      utm_campaign: 'meta_lead_qualificado_b2b',
+      utm_medium: 'paid_social',
+      utm_content: null,
+      utm_term: null,
+      campaign: null,
+      gclid: 'gclid-typebot',
+      gbraid: null,
+      wbraid: null,
+      fbclid: 'fbclid-typebot',
+      source_cta: 'meta-orcamento-corporativo',
+      source: 'typebot',
+      sourceDetail: 'whatsapp',
+      erpLeadId: 'CRM-LEAD-ATTR',
+    });
+  });
 });
