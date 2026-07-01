@@ -87,11 +87,19 @@ async function liveExtractOrders(text: string): Promise<unknown[]> {
   const code = result.statusCode || 500;
   if (code >= 400) {
     let errorBody: Record<string, unknown> = {};
-    try { errorBody = JSON.parse(result.body || '{}'); } catch { /* ignore */ }
+    try {
+      errorBody = JSON.parse(result.body || '{}');
+    } catch {
+      /* ignore */
+    }
     throw createHttpError(code, String(errorBody.error || 'Erro ao extrair orçamento.'));
   }
   let resBody: Record<string, unknown> = {};
-  try { resBody = JSON.parse(result.body || '{}'); } catch { /* ignore */ }
+  try {
+    resBody = JSON.parse(result.body || '{}');
+  } catch {
+    /* ignore */
+  }
   return Array.isArray(resBody.orders) ? resBody.orders : [];
 }
 
@@ -107,9 +115,7 @@ function missingFieldsForPreQuote(input: {
   return missing;
 }
 
-export function createHandler(
-  deps?: WhatsappActionDeps
-): LegacyHandler {
+export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
   return async function whatsappConversationsHandler(
     event: FunctionEvent
   ): Promise<FunctionResult> {

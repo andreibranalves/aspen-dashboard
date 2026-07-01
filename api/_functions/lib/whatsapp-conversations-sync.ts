@@ -90,7 +90,8 @@ function readMessageType(message: Record<string, unknown>): string {
   if (nested.imageMessage) return 'image';
   if (nested.documentMessage) return 'document';
   if (nested.audioMessage) return 'audio';
-  if (nested.conversation || nested.extendedTextMessage || message.text || message.body) return 'text';
+  if (nested.conversation || nested.extendedTextMessage || message.text || message.body)
+    return 'text';
   return 'unknown';
 }
 
