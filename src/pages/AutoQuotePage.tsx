@@ -147,6 +147,22 @@ export default function AutoQuotePage() {
     loadCommunicationFlows();
   }, [loadCommunicationFlows]);
 
+  // ── Pre-quote handoff from inbox ──
+  useEffect(() => {
+    try {
+      const prequoteText = window.sessionStorage.getItem('aspen_prequote_text');
+      const prequoteId = window.sessionStorage.getItem('aspen_prequote_id');
+      if (!prequoteText && !prequoteId) return;
+      if (prequoteText) setText(prequoteText);
+      if (prequoteId) setSelectedQuoteLeadId(prequoteId);
+      window.sessionStorage.removeItem('aspen_prequote_text');
+      window.sessionStorage.removeItem('aspen_prequote_id');
+      document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      // sessionStorage unavailable — ignore
+    }
+  }, []);
+
   // ── Remove main padding so panels fill viewport edge-to-edge ──
   useEffect(() => {
     const main = document.querySelector('main');
