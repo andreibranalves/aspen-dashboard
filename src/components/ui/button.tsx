@@ -12,7 +12,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
  */
 const variants = {
   default:
-    'bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97]',
+    'bg-primary text-white hover:bg-primary/90 active:scale-[0.97]',
   destructive:
     'bg-destructive text-on-solid hover:bg-destructive/90 active:scale-[0.97]',
   outline:
