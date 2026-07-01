@@ -9,6 +9,7 @@ import { createHttpError } from './lib/erpnext.js';
 import {
   listQuoteLeads,
   updateQuoteLead,
+  upsertQuoteLead,
   type QuoteLeadStoreDeps,
   type QuoteLeadStatus,
 } from './lib/quote-leads-store.js';
@@ -35,7 +36,30 @@ function parseLimit(value: unknown): number {
 }
 
 function parseStatus(value: unknown): QuoteLeadStatus | 'all' {
-  return value === 'converted' || value === 'discarded' || value === 'all' ? value : 'new';
+  return value === 'converted' ||
+    value === 'discarded' ||
+    value === 'reviewing' ||
+    value === 'ready' ||
+    value === 'incomplete' ||
+    value === 'all'
+    ? value
+    : 'new';
+}
+
+function getBearerToken(headers: Record<string, string | undefined> = {}): string {
+  const raw = headers.authorization || headers.Authorization || '';
+  const match = /^Bearer\s+(.+)$/i.exec(raw);
+  return match?.[1]?.trim() || '';
+}
+
+function isIngestAuthorized(headers: Record<string, string | undefined> = {}): boolean {
+  const expected = String(process.env.QUOTE_LEADS_INGEST_TOKEN || '').trim();
+  return !!expected && getBearerToken(headers) === expected;
+}
+
+function parseSource(value: unknown): string {
+  const source = String(value || 'all').trim();
+  return source || 'all';
 }
 
 export function createHandler(deps?: QuoteLeadStoreDeps): LegacyHandler {
@@ -45,11 +69,22 @@ export function createHandler(deps?: QuoteLeadStoreDeps): LegacyHandler {
         const data = await listQuoteLeads(
           {
             status: parseStatus(event.queryStringParameters?.status),
+            source: parseSource(event.queryStringParameters?.source),
+            q: event.queryStringParameters?.q || '',
             limit: parseLimit(event.queryStringParameters?.limit),
           },
           deps
         );
         return jsonResponse(200, { success: true, data });
+      }
+
+      if (event.httpMethod === 'POST') {
+        if (!isIngestAuthorized(event.headers as Record<string, string | undefined>)) {
+          return jsonResponse(401, { error: 'Não autorizado.' });
+        }
+        const body = parseJsonBody(event.body);
+        const data = await upsertQuoteLead(body, deps);
+        return jsonResponse(201, { success: true, data });
       }
 
       if (event.httpMethod === 'PATCH') {
@@ -59,6 +94,7 @@ export function createHandler(deps?: QuoteLeadStoreDeps): LegacyHandler {
         const data = await updateQuoteLead(
           id,
           {
+            ...body,
             status: parseStatus(body.status) as QuoteLeadStatus,
             quotationId: body.quotationId == null ? null : String(body.quotationId),
           },
