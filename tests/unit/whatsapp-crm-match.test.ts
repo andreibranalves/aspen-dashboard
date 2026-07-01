@@ -113,9 +113,10 @@ describe('whatsapp-crm-match', () => {
   it('uses name fallback when phone has no match', async () => {
     const deps = makeDeps();
     let callCount = 0;
-    deps.listLeads = async () => {
+    deps.listLeads = async (filters) => {
       callCount++;
-      if (callCount === 1) return []; // phone query returns nothing
+      // phone queries (2 variants) return nothing
+      if (callCount <= 2) return [];
       // name query
       return [
         { name: 'LEAD-002', lead_name: 'Maria Silva', first_name: 'Maria', email_id: null, mobile_no: '5511888888888' },
@@ -220,5 +221,80 @@ describe('whatsapp-crm-match', () => {
     const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
 
     assert.equal(match, null);
+  });
+
+  // ── Email matching ─────────────────────────────────────────────────────
+
+  it('matches by email extracted from inbound messages', async () => {
+    const deps = makeDeps();
+    deps._setLeads([
+      { name: 'LEAD-EMAIL', lead_name: 'Carlos Lima', first_name: 'Carlos', email_id: 'carlos@test.com', mobile_no: null },
+    ]);
+    deps._setDocs('Lead', 'LEAD-EMAIL', { name: 'LEAD-EMAIL', first_name: 'Carlos', email_id: 'carlos@test.com', mobile_no: null });
+
+    const conv = makeConversation({ phone: '5511000000000', displayName: 'Desconhecido' });
+    deps._seedConversation(conv);
+    deps.readMessages = async () => [
+      { id: 'm1', conversationId: 'wa_1', providerMessageId: 'p1', direction: 'inbound', type: 'text' as const, body: 'Olá, meu email é carlos@test.com', mediaUrl: '', timestamp: '2026-07-01T11:00:00.000Z' },
+    ];
+
+    const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+
+    assert.equal(match?.id, 'LEAD-EMAIL');
+    assert.equal(match?.matchSource, 'email');
+    assert.equal(match?.email, 'carlos@test.com');
+  });
+
+  it('ignores emails from outbound messages', async () => {
+    const deps = makeDeps();
+    deps._setLeads([
+      { name: 'LEAD-OUT', lead_name: 'Test', first_name: 'Test', email_id: 'test@test.com', mobile_no: null },
+    ]);
+
+    const conv = makeConversation({ phone: '5511000000000', displayName: 'A B C' });
+    deps._seedConversation(conv);
+    deps.readMessages = async () => [
+      { id: 'm1', conversationId: 'wa_1', providerMessageId: 'p1', direction: 'outbound', type: 'text' as const, body: 'Envie para test@test.com', mediaUrl: '', timestamp: '2026-07-01T11:00:00.000Z' },
+    ];
+
+    const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+
+    assert.equal(match, null);
+  });
+
+  // ── Phone prefix robustness ────────────────────────────────────────────
+
+  it('matches when ERP stores phone with 55 prefix and conversation has local number', async () => {
+    const deps = makeDeps();
+    deps._setLeads([
+      { name: 'LEAD-55', lead_name: 'Rita Santos', first_name: 'Rita', email_id: null, mobile_no: '5511988887777' },
+    ]);
+    deps._setDocs('Lead', 'LEAD-55', { name: 'LEAD-55', first_name: 'Rita', email_id: null, mobile_no: '5511988887777' });
+
+    // Conversation phone has no 55 prefix
+    const conv = makeConversation({ phone: '11988887777', displayName: 'Rita Santos' });
+    deps._seedConversation(conv);
+
+    const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+
+    assert.equal(match?.id, 'LEAD-55');
+    assert.equal(match?.matchSource, 'phone');
+  });
+
+  it('matches when ERP stores phone without 55 prefix and conversation has full number', async () => {
+    const deps = makeDeps();
+    deps._setLeads([
+      { name: 'LEAD-NO55', lead_name: 'João Neto', first_name: 'João', email_id: null, mobile_no: '11988887777' },
+    ]);
+    deps._setDocs('Lead', 'LEAD-NO55', { name: 'LEAD-NO55', first_name: 'João', email_id: null, mobile_no: '11988887777' });
+
+    // Conversation phone has 55 prefix
+    const conv = makeConversation({ phone: '5511988887777', displayName: 'João Neto' });
+    deps._seedConversation(conv);
+
+    const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+
+    assert.equal(match?.id, 'LEAD-NO55');
+    assert.equal(match?.matchSource, 'phone');
   });
 });

@@ -38,8 +38,43 @@ function normalizePhoneComparison(phone: unknown): string {
   return digits;
 }
 
+function normalizeEmailComparison(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
 function normalizeNameComparison(name: unknown): string {
   return cleanText(name).toLowerCase();
+}
+
+function extractEmailsFromMessages(messages: Array<{ body: string; direction: string }>): string[] {
+  const emailRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const found = new Set<string>();
+  for (const msg of messages) {
+    if (msg.direction !== 'inbound') continue;
+    const matches = msg.body.match(emailRe);
+    if (matches) {
+      for (const m of matches) {
+        found.add(normalizeEmailComparison(m));
+      }
+    }
+  }
+  return [...found];
+}
+
+function normalizePhoneVariants(phone: unknown): string[] {
+  const digits = onlyDigits(phone);
+  if (!digits) return [];
+  const variants = new Set<string>();
+  variants.add(digits);
+  // With 55 prefix (full international)
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+    variants.add(`55${digits}`);
+  }
+  // Without 55 prefix (local)
+  if (digits.startsWith('55') && digits.length >= 12) {
+    variants.add(digits.slice(2));
+  }
+  return [...variants];
 }
 
 // ── Match logic ────────────────────────────────────────────────────────────
@@ -67,30 +102,46 @@ async function findCandidates(
   deps: ResolveCrmMatchDeps
 ): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
+  const seenIds = new Set<string>();
 
-  const phoneDigits = normalizePhoneComparison(conversation.phone);
+  const addUnique = (c: Candidate) => {
+    if (!seenIds.has(c.id)) {
+      seenIds.add(c.id);
+      candidates.push(c);
+    }
+  };
 
-  // 1. Try by phone on Leads
+  // 1. Try by phone on Leads — query both with and without 55 prefix
+  const phoneVariants = normalizePhoneVariants(conversation.phone);
+  const phoneDigits = phoneVariants[0] || '';
   if (phoneDigits) {
-    const leads = await deps.listLeads([['mobile_no', 'like', `%${conversation.phone}%`]]);
-    for (const row of leads) {
-      if (normalizePhoneComparison(row.mobile_no) === phoneDigits) {
-        candidates.push(mapLead(row));
+    for (const variant of phoneVariants) {
+      const leads = await deps.listLeads([['mobile_no', 'like', `%${variant}%`]]);
+      for (const row of leads) {
+        if (normalizePhoneComparison(row.mobile_no) === normalizePhoneComparison(phoneDigits)) {
+          addUnique(mapLead(row));
+        }
       }
     }
   }
 
-  // 2. Name-based fallback — conservative: requires at least 2 words
+  // 2. Try by email extracted from conversation messages
+  const messages = await deps.readMessages(conversation.id);
+  const emails = extractEmailsFromMessages(messages);
+  for (const email of emails) {
+    const leads = await deps.listLeads([['email_id', '=', email]]);
+    for (const row of leads) {
+      addUnique(mapLead(row));
+    }
+  }
+
+  // 3. Name-based fallback — conservative: requires at least 2 words
   const nameCandidate = normalizeNameComparison(conversation.displayName);
   const nameParts = nameCandidate.split(/\s+/).filter(Boolean);
   if (nameParts.length >= 2 && nameParts.join('').length >= 5) {
     const leads = await deps.listLeads([['lead_name', '=', cleanText(conversation.displayName)]]);
     for (const row of leads) {
-      const candidate = mapLead(row);
-      // Avoid duplicates
-      if (!candidates.some((c) => c.id === candidate.id)) {
-        candidates.push(candidate);
-      }
+      addUnique(mapLead(row));
     }
   }
 
@@ -158,34 +209,30 @@ export async function resolveWhatsappCrmMatch(input: {
     );
   }
 
-  // 2. Need phone or name to attempt a match
-  const hasPhone = !!normalizePhoneComparison(conversation.phone);
-  const nameParts = normalizeNameComparison(conversation.displayName).split(/\s+/).filter(Boolean);
-  const hasName = nameParts.length >= 2 && nameParts.join('').length >= 5;
-
-  if (!hasPhone && !hasName) {
-    return null;
-  }
-
-  // 3. Find candidates
+  // 2. Find candidates (phone, email from messages, then name fallback)
   const candidates = await findCandidates(conversation, deps);
 
   if (candidates.length === 0) {
     return null;
   }
 
-  // 4. Pick the best candidate and determine match source
+  // 3. Pick the best candidate and determine match source
   const best = candidates[0];
   let matchSource: WhatsappCrmMatch['matchSource'] = 'name';
 
-  if (hasPhone) {
-    const phoneDigits = normalizePhoneComparison(conversation.phone);
-    if (normalizePhoneComparison(best.telefone) === phoneDigits) {
-      matchSource = 'phone';
+  const phoneDigits = normalizePhoneComparison(conversation.phone);
+  if (phoneDigits && normalizePhoneComparison(best.telefone) === phoneDigits) {
+    matchSource = 'phone';
+  } else if (best.email) {
+    // Check if the best candidate's email was found in conversation messages
+    const messages = await deps.readMessages(conversation.id);
+    const emails = extractEmailsFromMessages(messages);
+    if (emails.includes(normalizeEmailComparison(best.email))) {
+      matchSource = 'email';
     }
   }
 
-  // 5. Persist the link on the conversation
+  // 4. Persist the link on the conversation
   await updateWhatsappConversation(
     conversation.id,
     {
