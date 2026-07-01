@@ -62,4 +62,67 @@ test.describe('WhatsApp Inbox Page', () => {
       timeout: 5000,
     });
   });
+
+  test('shows CRM match card when conversation has linked lead', async ({ page }) => {
+    // Mock all whatsapp-conversations API calls
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const url = new URL(route.request().url());
+      // Detail endpoint (id param)
+      if (url.searchParams.has('id')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: 'wa_1',
+              phone: '5511999999999',
+              displayName: 'Maria',
+              status: 'new',
+              crmMatch: {
+                id: 'LEAD-001',
+                tipo: 'lead',
+                nome: 'Maria Silva',
+                telefone: '5511999999999',
+                email: 'maria@example.com',
+                matchSource: 'phone',
+              },
+            },
+          },
+        });
+        return;
+      }
+      // Messages endpoint
+      if (url.searchParams.has('messages')) {
+        await route.fulfill({ json: { success: true, data: [] } });
+        return;
+      }
+      // List endpoint (default)
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              id: 'wa_1',
+              remoteJid: '5511999999999@s.whatsapp.net',
+              phone: '5511999999999',
+              displayName: 'Maria',
+              lastMessageAt: '2026-07-01T12:00:00.000Z',
+              lastMessagePreview: 'Quero orçamento',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-01T12:00:00.000Z',
+              updatedAt: '2026-07-01T12:00:00.000Z',
+            },
+          ],
+        },
+      });
+    });
+
+    await page.goto('/#/whatsapp-inbox');
+
+    // CRM match card should be visible
+    await expect(page.getByText('Cadastro encontrado')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Maria Silva')).toBeVisible();
+    await expect(page.getByText('maria@example.com')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Abrir lead/ })).toBeVisible();
+  });
 });

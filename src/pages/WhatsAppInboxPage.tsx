@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Bot, MessageCircle, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, Bot, ExternalLink, MessageCircle, RefreshCw, Search, User } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,12 +9,14 @@ import {
   createWhatsappPreQuote,
   extractWhatsappQuote,
   fetchWhatsappConversations,
+  fetchWhatsappConversation,
   fetchWhatsappMessages,
   sendWhatsappMessage,
   syncMessagesForConversation,
   syncWhatsappConversations,
   updateWhatsappConversationStatus,
   type WhatsappConversation,
+  type WhatsappConversationDetail,
   type WhatsappConversationStatus,
   type WhatsappExtractionResult,
   type WhatsappMessage,
@@ -57,6 +59,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [crmDetail, setCrmDetail] = useState<WhatsappConversationDetail | null>(null);
 
   const selected = useMemo(
     () => conversations.find((item) => item.id === selectedId) || conversations[0] || null,
@@ -93,6 +96,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
     let cancelled = false;
     setMessagesLoading(true);
     setExtraction(null);
+    setCrmDetail(null);
     fetchWhatsappMessages(selected.id)
       .then((data) => {
         if (cancelled) return;
@@ -110,6 +114,12 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
       .finally(() => {
         if (!cancelled) setMessagesLoading(false);
       });
+    // Fetch CRM match (non-critical)
+    fetchWhatsappConversation(selected.id)
+      .then((detail) => {
+        if (!cancelled) setCrmDetail(detail);
+      })
+      .catch(() => {});
 
     return () => {
       cancelled = true;
@@ -393,6 +403,45 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               >
                 Criar pré-orçamento
               </Button>
+
+              {crmDetail?.crmMatch && (
+                <div className="rounded-lg border border-line p-3">
+                  <div className="mb-2 flex items-center gap-2">
+                    <User size={14} className="text-fg-muted" />
+                    <p className="text-xs font-semibold uppercase text-fg-muted">Cadastro encontrado</p>
+                  </div>
+                  <div className="space-y-1 text-xs text-fg">
+                    <p className="font-medium">{crmDetail.crmMatch.nome || '—'}</p>
+                    <p>{crmDetail.crmMatch.tipo === 'lead' ? 'Lead' : 'Cliente'}</p>
+                    {crmDetail.crmMatch.telefone && (
+                      <p className="text-fg-muted">{fmtPhone(crmDetail.crmMatch.telefone)}</p>
+                    )}
+                    {crmDetail.crmMatch.email && (
+                      <p className="text-fg-muted">{crmDetail.crmMatch.email}</p>
+                    )}
+                    <span className="inline-block rounded-full bg-surface-muted px-2 py-0.5 text-[10px] text-fg-muted">
+                      {crmDetail.crmMatch.matchSource === 'phone'
+                        ? 'Telefone'
+                        : crmDetail.crmMatch.matchSource === 'email'
+                        ? 'Email'
+                        : 'Nome'}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full"
+                    onClick={() =>
+                      navigate?.(
+                        `/leads/${crmDetail.crmMatch!.tipo}/${encodeURIComponent(crmDetail.crmMatch!.id)}`
+                      )
+                    }
+                  >
+                    <ExternalLink size={14} />
+                    Abrir lead
+                  </Button>
+                </div>
+              )}
 
               {extraction && (
                 <div className="rounded-lg border border-line p-3">

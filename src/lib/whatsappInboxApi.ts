@@ -45,6 +45,19 @@ export interface WhatsappExtractionResult {
   createdAt: string;
 }
 
+export interface WhatsappCrmMatch {
+  id: string;
+  tipo: 'lead' | 'cliente';
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  matchSource: 'phone' | 'email' | 'name';
+}
+
+export interface WhatsappConversationDetail extends WhatsappConversation {
+  crmMatch?: WhatsappCrmMatch | null;
+}
+
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -135,5 +148,14 @@ export async function updateWhatsappConversationStatus(
     id: conversationId,
     status,
   });
+  return result.data;
+}
+
+export async function fetchWhatsappConversation(
+  id: string
+): Promise<WhatsappConversationDetail> {
+  const result = await apiGet<ApiEnvelope<WhatsappConversationDetail>>(
+    `/whatsapp-conversations?id=${encodeURIComponent(id)}`
+  );
   return result.data;
 }
