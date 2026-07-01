@@ -25,6 +25,9 @@ export interface WhatsappConversation {
   linkedLeadId?: string | null;
   linkedDealId?: string | null;
   linkedQuotationId?: string | null;
+  linkedCrmEntityId?: string | null;
+  linkedCrmEntityType?: 'lead' | 'cliente' | null;
+  linkedCrmMatchSource?: 'phone' | 'email' | 'name' | null;
   status: WhatsappConversationStatus;
   createdAt: string;
   updatedAt: string;
@@ -189,6 +192,9 @@ export function normalizeWhatsappConversationInput(
     linkedLeadId: cleanText(input.linkedLeadId) || null,
     linkedDealId: cleanText(input.linkedDealId) || null,
     linkedQuotationId: cleanText(input.linkedQuotationId) || null,
+    linkedCrmEntityId: cleanText(input.linkedCrmEntityId) || null,
+    linkedCrmEntityType: (cleanText(input.linkedCrmEntityType) || null) as 'lead' | 'cliente' | null,
+    linkedCrmMatchSource: (cleanText(input.linkedCrmMatchSource) || null) as 'phone' | 'email' | 'name' | null,
     status: parseStatus(input.status),
     createdAt: normalizeIso(input.createdAt, now),
     updatedAt: normalizeIso(input.updatedAt, now),
@@ -246,6 +252,9 @@ export async function upsertWhatsappConversation(
       linkedLeadId: normalized.linkedLeadId || current.linkedLeadId || null,
       linkedDealId: normalized.linkedDealId || current.linkedDealId || null,
       linkedQuotationId: normalized.linkedQuotationId || current.linkedQuotationId || null,
+      linkedCrmEntityId: normalized.linkedCrmEntityId || current.linkedCrmEntityId || null,
+      linkedCrmEntityType: normalized.linkedCrmEntityType || current.linkedCrmEntityType || null,
+      linkedCrmMatchSource: normalized.linkedCrmMatchSource || current.linkedCrmMatchSource || null,
       updatedAt: deps.now(),
     };
   } else {
@@ -335,6 +344,12 @@ export async function updateWhatsappConversation(
       patch.linkedQuotationId === undefined
         ? next[index].linkedQuotationId
         : patch.linkedQuotationId,
+    linkedCrmEntityId:
+      patch.linkedCrmEntityId === undefined ? next[index].linkedCrmEntityId : patch.linkedCrmEntityId,
+    linkedCrmEntityType:
+      patch.linkedCrmEntityType === undefined ? next[index].linkedCrmEntityType : patch.linkedCrmEntityType,
+    linkedCrmMatchSource:
+      patch.linkedCrmMatchSource === undefined ? next[index].linkedCrmMatchSource : patch.linkedCrmMatchSource,
     updatedAt: deps.now(),
   };
   await deps.writeConversations(next);

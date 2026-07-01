@@ -19,6 +19,7 @@ import {
   type WhatsappConversationStatus,
   type WhatsappConversationStoreDeps,
 } from './lib/whatsapp-conversations-store.js';
+import { resolveWhatsappCrmMatch, type ResolveCrmMatchDeps } from './lib/whatsapp-crm-match.js';
 import {
   syncWhatsappConversations,
   syncMessagesForConversation,
@@ -63,7 +64,7 @@ function parseLimit(value: unknown): number {
   return Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 50;
 }
 
-interface WhatsappActionDeps extends EvolutionSyncDeps, WhatsappConversationStoreDeps {
+interface WhatsappActionDeps extends EvolutionSyncDeps, WhatsappConversationStoreDeps, ResolveCrmMatchDeps {
   extractOrders?: (text: string) => Promise<unknown[]>;
   upsertQuoteLead?: (input: Record<string, unknown>) => Promise<unknown>;
   sendTextMessage?: (number: string, text: string) => Promise<unknown>;
@@ -128,7 +129,15 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
         // Single conversation by id
         if (qs.id) {
           const conversation = await getWhatsappConversation(qs.id, deps);
-          return jsonResponse(200, { success: true, data: conversation });
+          let crmMatch = null;
+          if (deps) {
+            try {
+              crmMatch = await resolveWhatsappCrmMatch({ conversation, deps });
+            } catch (matchErr) {
+              console.error('[whatsapp-conversations] CRM match failed:', (matchErr as Error)?.message || matchErr);
+            }
+          }
+          return jsonResponse(200, { success: true, data: { ...conversation, crmMatch } });
         }
 
         // Messages for a conversation

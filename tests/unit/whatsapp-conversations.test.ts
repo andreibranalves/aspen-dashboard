@@ -34,6 +34,16 @@ function makeDeps(): WhatsappConversationStoreDeps & {
     writeMessages: async (conversationId, value) => {
       messages.set(conversationId, value);
     },
+    listLeads: async () => [
+      {
+        name: 'LEAD-100',
+        lead_name: 'Maria',
+        first_name: 'Maria',
+        email_id: null,
+        mobile_no: '5511999999999',
+      },
+    ],
+    getDoc: async () => null,
     fetchChats: async () => [
       {
         remoteJid: '5511999999999@s.whatsapp.net',
@@ -150,6 +160,53 @@ describe('whatsapp-conversations handler', () => {
 
     assert.equal(result.statusCode, 404);
     assert.match(parse(result).error, /Conversa do WhatsApp não encontrada/);
+  });
+
+  it('returns crmMatch when fetching a single conversation by id', async () => {
+    const deps = makeDeps();
+    const handler = createHandler(deps);
+    const syncResult = await handler({
+      httpMethod: 'POST',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
+      queryStringParameters: {},
+      headers: {},
+    } as any);
+    const id = parse(syncResult).data.conversations[0].id;
+
+    const result = await handler({
+      httpMethod: 'GET',
+      url: API,
+      queryStringParameters: { id },
+      headers: {},
+    } as any);
+
+    assert.equal(result.statusCode, 200);
+    assert.ok(parse(result).data.crmMatch !== undefined);
+  });
+
+  it('returns null crmMatch when no CRM match is found', async () => {
+    const deps = makeDeps();
+    deps.listLeads = async () => []; // no leads exist
+    const handler = createHandler(deps);
+    const syncResult = await handler({
+      httpMethod: 'POST',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
+      queryStringParameters: {},
+      headers: {},
+    } as any);
+    const id = parse(syncResult).data.conversations[0].id;
+
+    const result = await handler({
+      httpMethod: 'GET',
+      url: API,
+      queryStringParameters: { id },
+      headers: {},
+    } as any);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(parse(result).data.crmMatch, null);
   });
 
   it('extracts quote payload via POST action=extract-quote', async () => {
