@@ -181,12 +181,12 @@ async function liveFetchMessages(
 
 export async function syncWhatsappConversations(
   options: WhatsappSyncOptions = {},
-  deps: EvolutionSyncDeps
+  deps?: EvolutionSyncDeps
 ): Promise<{ conversations: WhatsappConversation[]; syncedMessages: number }> {
   const chatLimit = Math.max(1, Math.min(Number(options.chatLimit || 5), 20));
   const messageLimit = Math.max(1, Math.min(Number(options.messageLimit || 50), 50));
-  const fetchChats = deps.fetchChats || liveFetchChats;
-  const fetchMessages = deps.fetchMessages || liveFetchMessages;
+  const fetchChats = deps?.fetchChats || liveFetchChats;
+  const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
   const chats = await fetchChats(chatLimit);
   const conversations: WhatsappConversation[] = [];

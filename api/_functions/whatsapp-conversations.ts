@@ -37,7 +37,11 @@ function parseJsonBody(body: unknown): Record<string, unknown> {
 }
 
 function getSubPath(event: FunctionEvent): string[] {
-  const url = ((event as unknown as Record<string, unknown>).rawUrl as string || event.url || '').split('?')[0];
+  const url = (
+    ((event as unknown as Record<string, unknown>).rawUrl as string) ||
+    event.url ||
+    ''
+  ).split('?')[0];
   const path = url.replace(/^\/api\/whatsapp-conversations\/?/, '');
   return path.split('/').filter(Boolean).map(decodeURIComponent);
 }
