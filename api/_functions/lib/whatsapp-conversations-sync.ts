@@ -293,7 +293,7 @@ export async function syncMessagesForConversation(
   // Re-resolve identity with fresh messages
   const identity = resolveWhatsappIdentity({
     source: 'stored',
-    chat: { remoteJid: conversation.remoteJid, pushName: conversation.displayLabel },
+    chat: { remoteJid: conversation.remoteJid, displayName: conversation.displayName },
     messages: rawMessages,
     storedConversation: conversation as unknown as Record<string, unknown>,
   });
