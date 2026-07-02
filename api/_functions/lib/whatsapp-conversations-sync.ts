@@ -1,7 +1,6 @@
 import { createHttpError } from './erpnext.js';
+import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
 import {
-  normalizeWhatsappPhone,
-  normalizeWhatsappPhoneFromRemoteJid,
   upsertWhatsappConversation,
   upsertWhatsappMessages,
   type WhatsappConversation,
@@ -27,60 +26,6 @@ function cleanText(value: unknown): string {
   return String(value || '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function readRemoteJid(chat: Record<string, unknown>): string {
-  return cleanText(chat.remoteJid || chat.id || chat.jid || chat.key);
-}
-
-function readMessagePhoneCandidates(message: Record<string, unknown>): unknown[] {
-  const key = (message.key || {}) as Record<string, unknown>;
-  const nested = (message.message || {}) as Record<string, unknown>;
-  const contextInfo = (nested.extendedTextMessage || {}) as Record<string, unknown>;
-
-  return [
-    message.phone,
-    message.senderPn,
-    message.participant,
-    message.sender,
-    message.from,
-    key.participant,
-    key.remoteJid,
-    contextInfo.participant,
-  ];
-}
-
-function firstNormalizedPhone(candidates: unknown[]): string {
-  for (const candidate of candidates) {
-    const normalized = normalizeWhatsappPhone(candidate);
-    if (normalized) return normalized;
-  }
-  return '';
-}
-
-function resolveConversationPhone(
-  chat: Record<string, unknown>,
-  messages: Array<Record<string, unknown>> = []
-): string {
-  const last = (chat.lastMessage || {}) as Record<string, unknown>;
-  const lastKey = (last.key || {}) as Record<string, unknown>;
-
-  const fromChat = firstNormalizedPhone([
-    chat.phone,
-    chat.senderPn,
-    chat.participant,
-    chat.sender,
-    chat.from,
-    last.senderPn,
-    last.participant,
-    lastKey.participant,
-  ]);
-  if (fromChat) return fromChat;
-
-  const fromMessages = firstNormalizedPhone(messages.flatMap(readMessagePhoneCandidates));
-  if (fromMessages) return fromMessages;
-
-  return normalizeWhatsappPhoneFromRemoteJid(readRemoteJid(chat));
 }
 
 function isGroupChat(chat: Record<string, unknown>): boolean {
@@ -175,14 +120,20 @@ export function normalizeEvolutionConversation(
 ): Record<string, unknown> | null {
   if (isGroupChat(chat)) return null;
 
-  const remoteJid = readRemoteJid(chat);
-  const phone = resolveConversationPhone(chat);
-  if (!remoteJid && !phone) return null;
+  const identity = resolveWhatsappIdentity({ chat });
+
+  if (!identity.providerConversationId && !identity.canonicalPhone) return null;
 
   return {
-    remoteJid,
-    phone,
-    displayName: cleanText(chat.pushName || chat.name || chat.notify || phone),
+    remoteJid: identity.providerConversationId,
+    phone: identity.canonicalPhone,
+    displayName: identity.displayLabel,
+    providerConversationId: identity.providerConversationId,
+    canonicalPhone: identity.canonicalPhone,
+    displayLabel: identity.displayLabel,
+    identityStatus: identity.identityStatus,
+    identitySource: identity.identitySource,
+    identityConfidence: identity.identityConfidence,
     lastMessageAt: chat.updatedAt || chat.messageTimestamp || chat.t || Date.now(),
     lastMessagePreview: readLastMessageText(chat),
   };
@@ -291,12 +242,18 @@ export async function syncWhatsappConversations(
   // Fetch messages in parallel (slow HTTP); store writes stay serial (fast KV).
   const withMessages = await Promise.all(
     rankedChats.map(async (chat) => {
-      const remoteJid = readRemoteJid(chat);
+      const remoteJid = cleanText(chat.remoteJid || chat.id || chat.jid || '') || '';
       const rawMessages = remoteJid ? await fetchMessages(remoteJid, messageLimit) : [];
-      const normalizedChat = normalizeEvolutionConversation({
-        ...chat,
-        phone: resolveConversationPhone(chat, rawMessages),
-      });
+      const normalizedChat = normalizeEvolutionConversation(chat);
+      // Enrich with messages for better identity
+      if (normalizedChat && rawMessages.length > 0) {
+        const enriched = resolveWhatsappIdentity({ chat, messages: rawMessages });
+        normalizedChat.canonicalPhone = enriched.canonicalPhone;
+        normalizedChat.phone = enriched.canonicalPhone; // compat
+        normalizedChat.identityStatus = enriched.identityStatus;
+        normalizedChat.identitySource = enriched.identitySource;
+        normalizedChat.identityConfidence = enriched.identityConfidence;
+      }
       return {
         chat: normalizedChat,
         messages: rawMessages.map(normalizeEvolutionMessage).filter(Boolean) as Array<
@@ -333,13 +290,30 @@ export async function syncMessagesForConversation(
   >;
   await upsertWhatsappMessages(conversation.id, normalized, deps);
 
-  const resolvedPhone =
-    firstNormalizedPhone(rawMessages.flatMap(readMessagePhoneCandidates)) ||
-    normalizeWhatsappPhoneFromRemoteJid(conversation.remoteJid) ||
-    normalizeWhatsappPhone(conversation.phone);
+  // Re-resolve identity with fresh messages
+  const identity = resolveWhatsappIdentity({
+    chat: { remoteJid: conversation.remoteJid, pushName: conversation.displayLabel },
+    messages: rawMessages,
+    storedConversation: conversation as unknown as Record<string, unknown>,
+  });
 
-  if (resolvedPhone && resolvedPhone !== conversation.phone) {
-    return upsertWhatsappConversation({ ...conversation, phone: resolvedPhone }, deps);
+  if (
+    identity.canonicalPhone !== conversation.canonicalPhone ||
+    identity.identityStatus !== conversation.identityStatus
+  ) {
+    return upsertWhatsappConversation(
+      {
+        ...conversation,
+        canonicalPhone: identity.canonicalPhone,
+        phone: identity.canonicalPhone,
+        displayLabel: identity.displayLabel,
+        displayName: identity.displayLabel,
+        identityStatus: identity.identityStatus,
+        identitySource: identity.identitySource,
+        identityConfidence: identity.identityConfidence,
+      },
+      deps
+    );
   }
 
   return conversation;

@@ -159,9 +159,15 @@ describe('whatsapp-conversations-sync', () => {
 
     const conversation: WhatsappConversation = {
       id: 'wa_1',
+      providerConversationId: '5511999999999@s.whatsapp.net',
       remoteJid: '5511999999999@s.whatsapp.net',
+      canonicalPhone: '5511999999999',
       phone: '5511999999999',
+      displayLabel: 'Maria Cliente',
       displayName: 'Maria Cliente',
+      identityStatus: 'verified',
+      identitySource: 'chat.phone',
+      identityConfidence: 'high',
       source: 'evolution',
       status: 'new',
       lastMessageAt: '2026-07-01T12:00:00.000Z',
@@ -180,9 +186,15 @@ describe('whatsapp-conversations-sync', () => {
     const storeDeps = makeStoreDeps();
     const conversation: WhatsappConversation = {
       id: 'wa_1',
+      providerConversationId: '183792384719283741@lid',
       remoteJid: '183792384719283741@lid',
+      canonicalPhone: '',
       phone: '',
+      displayLabel: 'Cliente LID',
       displayName: 'Cliente LID',
+      identityStatus: 'unresolved',
+      identitySource: null,
+      identityConfidence: null,
       source: 'evolution',
       status: 'new',
       lastMessageAt: '2026-07-01T12:00:00.000Z',
@@ -211,5 +223,70 @@ describe('whatsapp-conversations-sync', () => {
 
     const storedConversations = await storeDeps.readConversations();
     assert.equal(storedConversations[0].phone, '554896241095');
+  });
+
+  it('populates identity fields via resolver during sync', async () => {
+    const storeDeps = makeStoreDeps();
+    const syncDeps = {
+      ...storeDeps,
+      fetchChats: async () => [
+        {
+          remoteJid: '5521981858541@s.whatsapp.net',
+          phone: '5521981858541',
+          pushName: 'Maria',
+          updatedAt: 1782916800,
+          lastMessage: { text: 'Oi' },
+        },
+      ],
+      fetchMessages: async () => [],
+    };
+
+    const result = await syncWhatsappConversations({ chatLimit: 1, messageLimit: 10 }, syncDeps);
+    const conv = result.conversations[0];
+
+    assert.equal(conv.providerConversationId, '5521981858541@s.whatsapp.net');
+    assert.equal(conv.canonicalPhone, '5521981858541');
+    assert.equal(conv.displayLabel, 'Maria');
+    assert.equal(conv.identityStatus, 'verified');
+    assert.equal(conv.identityConfidence, 'high');
+  });
+
+  it('backfills canonicalPhone via resolver after message sync', async () => {
+    const storeDeps = makeStoreDeps();
+    const conversation: WhatsappConversation = {
+      id: 'wa_1',
+      providerConversationId: '183792384719283741@lid',
+      remoteJid: '183792384719283741@lid',
+      canonicalPhone: '',
+      phone: '',
+      displayLabel: 'Cliente',
+      displayName: 'Cliente',
+      identityStatus: 'unresolved' as const,
+      identitySource: null,
+      identityConfidence: null,
+      source: 'evolution' as const,
+      status: 'new' as const,
+      lastMessageAt: '2026-07-01T12:00:00.000Z',
+      lastMessagePreview: 'Mensagem 1',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-01T12:00:00.000Z',
+    };
+    await storeDeps.writeConversations([conversation]);
+
+    const syncDeps = {
+      ...storeDeps,
+      fetchMessages: async () => [
+        {
+          key: { id: 'm1', fromMe: false, participant: '5521981858541@s.whatsapp.net' },
+          messageTimestamp: 1782916800,
+          message: { conversation: 'Mensagem 1' },
+        },
+      ],
+    };
+
+    const updated = await syncMessagesForConversation(conversation as any, 100, syncDeps);
+    assert.equal(updated.canonicalPhone, '5521981858541');
+    assert.equal(updated.identityStatus, 'verified');
+    assert.equal(updated.identityConfidence, 'high');
   });
 });
