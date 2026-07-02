@@ -17,7 +17,7 @@ export function normalizePhoneDigits(phone: unknown, maxDigits = 15): string {
     .slice(0, maxDigits);
 }
 
-/** Formats Brazilian phone: (XX) XXXXX-XXXX or (55) XX XXXXX-XXXX for E.164 DDI */
+/** Formats Brazilian phone in local style: (XX) XXXXX-XXXX or (XX) XXXX-XXXX. */
 export function fmtPhone(phone: unknown): string {
   const digits = normalizePhoneDigits(phone);
   if (!digits) return '';
@@ -25,13 +25,15 @@ export function fmtPhone(phone: unknown): string {
   // Guard: 14+ digits without 55 prefix is not a Brazilian phone (likely a LID)
   if (digits.length >= 14 && !digits.startsWith('55')) return '';
 
-  // International with 55 prefix — longer than standard 11-digit BR numbers
-  if (digits.startsWith('55') && digits.length >= 13) {
+  // Canonical Brazilian numbers may arrive with country code 55. Drop it for local display.
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    return fmtPhone(digits.slice(2));
+  }
+
+  // International with 55 prefix but unexpected length — preserve explicit prefix.
+  if (digits.startsWith('55') && digits.length >= 14) {
     const ddd = digits.slice(2, 4);
     const rest = digits.slice(4);
-    if (rest.length === 9) {
-      return `(55) ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
-    }
     return `(55) ${ddd} ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
   }
 

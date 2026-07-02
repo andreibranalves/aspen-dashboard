@@ -477,4 +477,78 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByText('Telefone não identificado').first()).toBeVisible();
     await expect(page.getByText('(55) 21 98185-8541')).toHaveCount(0);
   });
+
+  test('uses visual fallback for phone-only conversations without showing raw canonical phone', async ({
+    page,
+  }) => {
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const requestUrl = route.request().url();
+
+      if (requestUrl.includes('/api/whatsapp-conversations?id=')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: 'wa_phone_only',
+              remoteJid: '557788152565@s.whatsapp.net',
+              providerConversationId: '557788152565@s.whatsapp.net',
+              canonicalPhone: '557788152565',
+              phone: '557788152565',
+              displayLabel: '557788152565',
+              displayName: '557788152565',
+              identityStatus: 'derived',
+              identitySource: 'providerConversationId',
+              identityConfidence: 'medium',
+              lastMessageAt: '2026-07-02T12:00:00.000Z',
+              lastMessagePreview: 'Perfeito! 🙂 Seu contato foi registrado.',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-02T12:00:00.000Z',
+              updatedAt: '2026-07-02T12:00:00.000Z',
+              crmMatch: null,
+            },
+          },
+        });
+        return;
+      }
+
+      if (requestUrl.includes('messages=')) {
+        await route.fulfill({ json: { success: true, data: [] } });
+        return;
+      }
+
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              id: 'wa_phone_only',
+              remoteJid: '557788152565@s.whatsapp.net',
+              providerConversationId: '557788152565@s.whatsapp.net',
+              canonicalPhone: '557788152565',
+              phone: '557788152565',
+              displayLabel: '557788152565',
+              displayName: '557788152565',
+              identityStatus: 'derived',
+              identitySource: 'providerConversationId',
+              identityConfidence: 'medium',
+              lastMessageAt: '2026-07-02T12:00:00.000Z',
+              lastMessagePreview: 'Perfeito! 🙂 Seu contato foi registrado.',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-02T12:00:00.000Z',
+              updatedAt: '2026-07-02T12:00:00.000Z',
+            },
+          ],
+        },
+      });
+    });
+
+    await page.goto('/#/whatsapp-inbox');
+
+    await expect(page.getByText('Contato sem nome').first()).toBeVisible();
+    await expect(page.getByText('(77) 8815-2565').first()).toBeVisible();
+    await expect(page.getByText('557788152565')).toHaveCount(0);
+    await expect(page.getByText('(55) 77881-52565')).toHaveCount(0);
+  });
 });

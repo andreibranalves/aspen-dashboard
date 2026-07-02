@@ -50,6 +50,23 @@ function statusLabel(status: WhatsappConversationStatus): string {
   return 'Nova';
 }
 
+function conversationTitle(
+  conversation: Pick<WhatsappConversation, 'displayLabel' | 'displayName' | 'canonicalPhone'>
+): string {
+  const candidates = [conversation.displayLabel, conversation.displayName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const canonicalDigits = String(conversation.canonicalPhone || '').replace(/\D/g, '');
+
+  for (const candidate of candidates) {
+    const candidateDigits = candidate.replace(/\D/g, '');
+    if (canonicalDigits && candidateDigits === canonicalDigits) continue;
+    return candidate;
+  }
+
+  return 'Contato sem nome';
+}
+
 interface WhatsAppInboxPageProps {
   navigate?: (path: string) => void;
 }
@@ -305,9 +322,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-fg">
-                        {conversation.displayLabel ||
-                          conversation.displayName ||
-                          'Contato sem nome'}
+                        {conversationTitle(conversation)}
                       </p>
                       <p className="truncate text-xs text-fg-muted">
                         {fmtPhone(conversation.canonicalPhone) || 'Telefone não identificado'}
@@ -335,9 +350,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
           ) : (
             <>
               <div className="border-b border-line px-4 py-3">
-                <h2 className="text-sm font-semibold text-fg">
-                  {selected.displayLabel || selected.displayName || 'Contato sem nome'}
-                </h2>
+                <h2 className="text-sm font-semibold text-fg">{conversationTitle(selected)}</h2>
                 <p className="text-xs text-fg-muted">
                   {fmtPhone(selected.canonicalPhone) || 'Telefone não identificado'}
                 </p>

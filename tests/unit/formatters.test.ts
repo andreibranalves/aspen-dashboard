@@ -17,6 +17,14 @@ describe('fmtPhone', () => {
     assert.equal(fmtPhone('11999998888'), '(11) 99999-8888');
   });
 
+  it('formats canonical brazilian mobile with 55 prefix without showing the prefix', () => {
+    assert.equal(fmtPhone('5511999998888'), '(11) 99999-8888');
+  });
+
+  it('formats canonical brazilian landline with 55 prefix without treating 55 as DDD', () => {
+    assert.equal(fmtPhone('557788152565'), '(77) 8815-2565');
+  });
+
   it('returns empty for empty input', () => {
     assert.equal(fmtPhone(''), '');
   });
