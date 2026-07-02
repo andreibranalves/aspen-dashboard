@@ -168,6 +168,9 @@ function shouldKeepStored(
   freshConfidence: IdentityConfidence | null,
   stored: Record<string, unknown> | null
 ): boolean {
+  // NOTE: This limitation means that if a conversation was backfilled with identity
+  // data before this fix, it will persist that data until a fresh provider-sourced
+  // sync re-resolves the identity. /sync-messages will not overwrite this data.
   if (!stored) return false;
   const storedPhone = cleanText(stored.canonicalPhone);
   const storedConfidence = cleanText(stored.identityConfidence) as IdentityConfidence | '';

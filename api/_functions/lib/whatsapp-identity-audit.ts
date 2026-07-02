@@ -1,12 +1,8 @@
 import {
   normalizeWhatsappPhone,
   normalizeWhatsappPhoneFromRemoteJid,
+  type WhatsappConversationStoreDeps,
 } from './whatsapp-conversations-store.js';
-
-export interface WhatsappConversationStoreDeps {
-  readConversations: () => Promise<any[]>;
-  readMessages: (conversationId: string) => Promise<any[]>;
-}
 
 export interface WhatsappIdentityAuditRow {
   id: string;

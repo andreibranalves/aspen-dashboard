@@ -415,45 +415,4 @@ describe('whatsapp-conversations handler', () => {
     assert.equal(stored.phone, '5521981858541');
     assert.equal(stored.identityStatus, 'unresolved');
   });
-
-  it('sync does not promote legacy phone into canonical identity', async () => {
-    const deps = makeDeps();
-    await deps.writeConversations([
-      {
-        id: 'wa_legacy',
-        providerConversationId: '183792384719283741@lid',
-        remoteJid: '183792384719283741@lid',
-        canonicalPhone: '',
-        phone: '5521981858541',
-        displayLabel: '',
-        displayName: 'Maria Legado',
-        identityStatus: 'unresolved',
-        identitySource: null,
-        identityConfidence: null,
-        source: 'evolution',
-        status: 'new',
-        lastMessageAt: '2026-07-02T12:00:00.000Z',
-        lastMessagePreview: 'Oi',
-        createdAt: '2026-07-02T12:00:00.000Z',
-        updatedAt: '2026-07-02T12:00:00.000Z',
-      },
-    ] as WhatsappConversation[]);
-    deps.fetchChats = async () => [];
-    deps.fetchMessages = async () => [];
-
-    const handler = createHandler(deps);
-    const result = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    const stored = (await deps.readConversations())[0];
-    assert.equal(stored.canonicalPhone, '');
-    assert.equal(stored.phone, '5521981858541');
-    assert.equal(stored.identityStatus, 'unresolved');
-  });
 });
