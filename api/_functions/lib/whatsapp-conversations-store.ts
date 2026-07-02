@@ -18,11 +18,11 @@ export type WhatsappMessageType = 'text' | 'image' | 'document' | 'audio' | 'unk
 export interface WhatsappConversation {
   id: string;
   providerConversationId: string;
-  remoteJid: string;               // compat alias
-  canonicalPhone: string;          // business identity
-  phone: string;                   // compat alias
-  displayLabel: string;            // visual label
-  displayName: string;             // compat alias
+  remoteJid: string; // compat alias
+  canonicalPhone: string; // business identity
+  phone: string; // compat alias
+  displayLabel: string; // visual label
+  displayName: string; // compat alias
   identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
   identitySource: string | null;
   identityConfidence: 'high' | 'medium' | 'low' | null;
@@ -203,11 +203,11 @@ export function normalizeWhatsappConversationInput(
   return {
     id: cleanText(input.id) || deps.id(),
     providerConversationId: identity.providerConversationId,
-    remoteJid: identity.providerConversationId,              // compat
+    remoteJid: identity.providerConversationId, // compat
     canonicalPhone: identity.canonicalPhone,
-    phone: identity.canonicalPhone,                          // compat
+    phone: identity.canonicalPhone, // compat
     displayLabel: identity.displayLabel,
-    displayName: identity.displayLabel,                      // compat
+    displayName: identity.displayLabel, // compat
     identityStatus: identity.identityStatus,
     identitySource: identity.identitySource,
     identityConfidence: identity.identityConfidence,
@@ -285,9 +285,10 @@ export async function upsertWhatsappConversation(
       linkedDealId: normalized.linkedDealId || current.linkedDealId || null,
       canonicalPhone: normalized.canonicalPhone || current.canonicalPhone || '',
       displayLabel: normalized.displayLabel || current.displayLabel || '',
-      identityStatus: normalized.identityStatus !== 'unresolved'
-        ? normalized.identityStatus
-        : current.identityStatus || 'unresolved',
+      identityStatus:
+        normalized.identityStatus !== 'unresolved'
+          ? normalized.identityStatus
+          : current.identityStatus || 'unresolved',
       identitySource: normalized.identitySource || current.identitySource || null,
       identityConfidence: normalized.identityConfidence || current.identityConfidence || null,
       phone: normalized.phone || current.phone || '',
@@ -341,8 +342,8 @@ export async function listWhatsappConversations(
     .filter((item) => !hasQuoteRequest || item.status === 'needs_quote')
     .filter((item) => {
       if (!q) return true;
-      return [item.displayLabel, item.canonicalPhone, item.phone, item.lastMessagePreview].some((value) =>
-        value.toLowerCase().includes(q)
+      return [item.displayLabel, item.canonicalPhone, item.phone, item.lastMessagePreview].some(
+        (value) => value.toLowerCase().includes(q)
       );
     })
     .sort((a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt))
@@ -399,18 +400,17 @@ export async function updateWhatsappConversation(
         : patch.linkedCrmMatchSource,
     canonicalPhone:
       patch.canonicalPhone === undefined ? next[index].canonicalPhone : patch.canonicalPhone,
-    displayLabel:
-      patch.displayLabel === undefined ? next[index].displayLabel : patch.displayLabel,
+    displayLabel: patch.displayLabel === undefined ? next[index].displayLabel : patch.displayLabel,
     identityStatus:
       patch.identityStatus === undefined ? next[index].identityStatus : patch.identityStatus,
     identitySource:
       patch.identitySource === undefined ? next[index].identitySource : patch.identitySource,
     identityConfidence:
-      patch.identityConfidence === undefined ? next[index].identityConfidence : patch.identityConfidence,
-    phone:
-      patch.phone === undefined ? next[index].phone : patch.phone,
-    displayName:
-      patch.displayName === undefined ? next[index].displayName : patch.displayName,
+      patch.identityConfidence === undefined
+        ? next[index].identityConfidence
+        : patch.identityConfidence,
+    phone: patch.phone === undefined ? next[index].phone : patch.phone,
+    displayName: patch.displayName === undefined ? next[index].displayName : patch.displayName,
     updatedAt: deps.now(),
   };
   await deps.writeConversations(next);

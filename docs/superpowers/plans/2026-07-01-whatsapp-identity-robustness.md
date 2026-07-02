@@ -263,7 +263,8 @@ function readHighConfidenceSources(
 
   // chat.participant
   const chatParticipant = normalizeWhatsappPhone(chat.participant);
-  if (chatParticipant) results.push({ phone: chatParticipant, source: 'chat.participant', confidence: 'high' });
+  if (chatParticipant)
+    results.push({ phone: chatParticipant, source: 'chat.participant', confidence: 'high' });
 
   // chat.from
   const chatFrom = normalizeWhatsappPhone(chat.from);
@@ -408,7 +409,14 @@ export function resolveWhatsappIdentity(input: {
 
   const fresh = bestSource(highSources, mediumSource, null);
 
-  if (shouldKeepStored(fresh.canonicalPhone, fresh.identityStatus, fresh.identityConfidence, storedConversation)) {
+  if (
+    shouldKeepStored(
+      fresh.canonicalPhone,
+      fresh.identityStatus,
+      fresh.identityConfidence,
+      storedConversation
+    )
+  ) {
     const stored = storedConversation!;
     return {
       providerConversationId,
@@ -475,102 +483,102 @@ git commit -m "feat: add central whatsapp identity resolver"
 Extend `tests/unit/whatsapp-conversations-store.test.ts` — add these tests after existing ones:
 
 ```ts
-  it('populates canonicalPhone and providerConversationId during normalization', () => {
-    const deps = makeDeps();
-    const conversation = normalizeWhatsappConversationInput(
-      {
-        remoteJid: '5521981858541@s.whatsapp.net',
-        phone: '5521981858541',
-        displayName: 'Maria',
-      },
-      deps
-    );
+it('populates canonicalPhone and providerConversationId during normalization', () => {
+  const deps = makeDeps();
+  const conversation = normalizeWhatsappConversationInput(
+    {
+      remoteJid: '5521981858541@s.whatsapp.net',
+      phone: '5521981858541',
+      displayName: 'Maria',
+    },
+    deps
+  );
 
-    assert.equal(conversation.providerConversationId, '5521981858541@s.whatsapp.net');
-    assert.equal(conversation.canonicalPhone, '5521981858541');
-    assert.equal(conversation.phone, '5521981858541'); // compat
-    assert.equal(conversation.displayLabel, 'Maria');
-    assert.equal(conversation.displayName, 'Maria'); // compat
-    assert.equal(conversation.identityStatus, 'verified');
-    assert.equal(conversation.identityConfidence, 'high');
-  });
+  assert.equal(conversation.providerConversationId, '5521981858541@s.whatsapp.net');
+  assert.equal(conversation.canonicalPhone, '5521981858541');
+  assert.equal(conversation.phone, '5521981858541'); // compat
+  assert.equal(conversation.displayLabel, 'Maria');
+  assert.equal(conversation.displayName, 'Maria'); // compat
+  assert.equal(conversation.identityStatus, 'verified');
+  assert.equal(conversation.identityConfidence, 'high');
+});
 
-  it('preserves old remoteJid and phone for backward compatibility', () => {
-    const deps = makeDeps();
-    const conversation = normalizeWhatsappConversationInput(
-      {
-        remoteJid: '183792384719283741@lid',
-        senderPn: '5521981858541',
-        pushName: 'Maria',
-      },
-      deps
-    );
+it('preserves old remoteJid and phone for backward compatibility', () => {
+  const deps = makeDeps();
+  const conversation = normalizeWhatsappConversationInput(
+    {
+      remoteJid: '183792384719283741@lid',
+      senderPn: '5521981858541',
+      pushName: 'Maria',
+    },
+    deps
+  );
 
-    assert.equal(conversation.remoteJid, '183792384719283741@lid'); // compat stays
-    assert.equal(conversation.providerConversationId, '183792384719283741@lid');
-    assert.equal(conversation.canonicalPhone, '5521981858541');
-    assert.equal(conversation.phone, '5521981858541'); // compat populated
-    assert.equal(conversation.displayName, 'Maria'); // compat populated
-    assert.equal(conversation.displayLabel, 'Maria');
-  });
+  assert.equal(conversation.remoteJid, '183792384719283741@lid'); // compat stays
+  assert.equal(conversation.providerConversationId, '183792384719283741@lid');
+  assert.equal(conversation.canonicalPhone, '5521981858541');
+  assert.equal(conversation.phone, '5521981858541'); // compat populated
+  assert.equal(conversation.displayName, 'Maria'); // compat populated
+  assert.equal(conversation.displayLabel, 'Maria');
+});
 
-  it('sets identityStatus unresolved when no phone can be derived', () => {
-    const deps = makeDeps();
-    const conversation = normalizeWhatsappConversationInput(
-      {
-        remoteJid: '183792384719283741@lid',
-        displayName: 'Cliente LID',
-      },
-      deps
-    );
+it('sets identityStatus unresolved when no phone can be derived', () => {
+  const deps = makeDeps();
+  const conversation = normalizeWhatsappConversationInput(
+    {
+      remoteJid: '183792384719283741@lid',
+      displayName: 'Cliente LID',
+    },
+    deps
+  );
 
-    assert.equal(conversation.canonicalPhone, '');
-    assert.equal(conversation.phone, ''); // compat
-    assert.equal(conversation.identityStatus, 'unresolved');
-    assert.equal(conversation.identityConfidence, null);
-  });
+  assert.equal(conversation.canonicalPhone, '');
+  assert.equal(conversation.phone, ''); // compat
+  assert.equal(conversation.identityStatus, 'unresolved');
+  assert.equal(conversation.identityConfidence, null);
+});
 
-  it('preserves canonicalPhone on upsert when new payload has weaker evidence', async () => {
-    const deps = makeDeps();
+it('preserves canonicalPhone on upsert when new payload has weaker evidence', async () => {
+  const deps = makeDeps();
 
-    const first = await upsertWhatsappConversation(
-      {
-        remoteJid: '183792384719283741@lid',
-        senderPn: '5521981858541',
-        displayName: 'Maria',
-        lastMessagePreview: 'primeira',
-        lastMessageAt: '2026-07-01T10:00:00.000Z',
-      },
-      deps
-    );
-    assert.equal(first.canonicalPhone, '5521981858541');
-    assert.equal(first.identityConfidence, 'high');
+  const first = await upsertWhatsappConversation(
+    {
+      remoteJid: '183792384719283741@lid',
+      senderPn: '5521981858541',
+      displayName: 'Maria',
+      lastMessagePreview: 'primeira',
+      lastMessageAt: '2026-07-01T10:00:00.000Z',
+    },
+    deps
+  );
+  assert.equal(first.canonicalPhone, '5521981858541');
+  assert.equal(first.identityConfidence, 'high');
 
-    const second = await upsertWhatsappConversation(
-      {
-        remoteJid: '183792384719283741@lid',
-        displayName: 'Maria Atualizada',
-        lastMessagePreview: 'segunda',
-        lastMessageAt: '2026-07-01T11:00:00.000Z',
-      },
-      deps
-    );
+  const second = await upsertWhatsappConversation(
+    {
+      remoteJid: '183792384719283741@lid',
+      displayName: 'Maria Atualizada',
+      lastMessagePreview: 'segunda',
+      lastMessageAt: '2026-07-01T11:00:00.000Z',
+    },
+    deps
+  );
 
-    assert.equal(second.canonicalPhone, '5521981858541'); // preserved
-    assert.equal(second.identityConfidence, 'high'); // preserved
-    assert.equal(second.displayLabel, 'Maria Atualizada'); // updated
-  });
+  assert.equal(second.canonicalPhone, '5521981858541'); // preserved
+  assert.equal(second.identityConfidence, 'high'); // preserved
+  assert.equal(second.displayLabel, 'Maria Atualizada'); // updated
+});
 
-  it('filters conversations by canonicalPhone in search', async () => {
-    const deps = makeDeps();
-    await upsertWhatsappConversation(
-      { remoteJid: 'a@s.whatsapp.net', phone: '5521981858541', displayName: 'Maria' },
-      deps
-    );
+it('filters conversations by canonicalPhone in search', async () => {
+  const deps = makeDeps();
+  await upsertWhatsappConversation(
+    { remoteJid: 'a@s.whatsapp.net', phone: '5521981858541', displayName: 'Maria' },
+    deps
+  );
 
-    const results = await listWhatsappConversations({ q: '5521981858541' }, deps);
-    assert.equal(results.length, 1);
-  });
+  const results = await listWhatsappConversations({ q: '5521981858541' }, deps);
+  assert.equal(results.length, 1);
+});
 ```
 
 - [ ] **Step 2: Run store tests to verify they fail**
@@ -587,14 +595,14 @@ In `api/_functions/lib/whatsapp-conversations-store.ts`:
 ```ts
 export interface WhatsappConversation {
   id: string;
-  providerConversationId: string;       // NEW
-  remoteJid: string;                     // compat alias
-  canonicalPhone: string;                // NEW — business identity
-  phone: string;                         // compat alias
-  displayLabel: string;                  // NEW — visual label
-  displayName: string;                   // compat alias
+  providerConversationId: string; // NEW
+  remoteJid: string; // compat alias
+  canonicalPhone: string; // NEW — business identity
+  phone: string; // compat alias
+  displayLabel: string; // NEW — visual label
+  displayName: string; // compat alias
   identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict'; // NEW
-  identitySource: string | null;         // NEW
+  identitySource: string | null; // NEW
   identityConfidence: 'high' | 'medium' | 'low' | null; // NEW
   lastMessageAt: string;
   lastMessagePreview: string;
@@ -632,11 +640,11 @@ export function normalizeWhatsappConversationInput(
   return {
     id: cleanText(input.id) || deps.id(),
     providerConversationId: identity.providerConversationId,
-    remoteJid: identity.providerConversationId,          // compat
+    remoteJid: identity.providerConversationId, // compat
     canonicalPhone: identity.canonicalPhone,
-    phone: identity.canonicalPhone,                      // compat
+    phone: identity.canonicalPhone, // compat
     displayLabel: identity.displayLabel,
-    displayName: identity.displayLabel,                  // compat
+    displayName: identity.displayLabel, // compat
     identityStatus: identity.identityStatus,
     identitySource: identity.identitySource,
     identityConfidence: identity.identityConfidence,
@@ -742,70 +750,70 @@ git commit -m "feat: add canonical identity fields to whatsapp conversation stor
 Extend `tests/unit/whatsapp-conversations-sync.test.ts` — add after existing tests:
 
 ```ts
-  it('populates identity fields via resolver during sync', async () => {
-    const storeDeps = makeStoreDeps();
-    const syncDeps = {
-      ...storeDeps,
-      fetchChats: async () => [
-        {
-          remoteJid: '5521981858541@s.whatsapp.net',
-          phone: '5521981858541',
-          pushName: 'Maria',
-          updatedAt: 1782916800,
-          lastMessage: { text: 'Oi' },
-        },
-      ],
-      fetchMessages: async () => [],
-    };
+it('populates identity fields via resolver during sync', async () => {
+  const storeDeps = makeStoreDeps();
+  const syncDeps = {
+    ...storeDeps,
+    fetchChats: async () => [
+      {
+        remoteJid: '5521981858541@s.whatsapp.net',
+        phone: '5521981858541',
+        pushName: 'Maria',
+        updatedAt: 1782916800,
+        lastMessage: { text: 'Oi' },
+      },
+    ],
+    fetchMessages: async () => [],
+  };
 
-    const result = await syncWhatsappConversations({ chatLimit: 1, messageLimit: 10 }, syncDeps);
-    const conv = result.conversations[0];
+  const result = await syncWhatsappConversations({ chatLimit: 1, messageLimit: 10 }, syncDeps);
+  const conv = result.conversations[0];
 
-    assert.equal(conv.providerConversationId, '5521981858541@s.whatsapp.net');
-    assert.equal(conv.canonicalPhone, '5521981858541');
-    assert.equal(conv.displayLabel, 'Maria');
-    assert.equal(conv.identityStatus, 'verified');
-    assert.equal(conv.identityConfidence, 'high');
-  });
+  assert.equal(conv.providerConversationId, '5521981858541@s.whatsapp.net');
+  assert.equal(conv.canonicalPhone, '5521981858541');
+  assert.equal(conv.displayLabel, 'Maria');
+  assert.equal(conv.identityStatus, 'verified');
+  assert.equal(conv.identityConfidence, 'high');
+});
 
-  it('backsills canonicalPhone via resolver after message sync', async () => {
-    const storeDeps = makeStoreDeps();
-    const conversation = {
-      id: 'wa_1',
-      providerConversationId: '183792384719283741@lid',
-      remoteJid: '183792384719283741@lid',
-      canonicalPhone: '',
-      phone: '',
-      displayLabel: 'Cliente',
-      displayName: 'Cliente',
-      identityStatus: 'unresolved' as const,
-      identitySource: null,
-      identityConfidence: null,
-      source: 'evolution' as const,
-      status: 'new' as const,
-      lastMessageAt: '2026-07-01T12:00:00.000Z',
-      lastMessagePreview: 'Mensagem 1',
-      createdAt: '2026-07-01T12:00:00.000Z',
-      updatedAt: '2026-07-01T12:00:00.000Z',
-    };
-    await storeDeps.writeConversations([conversation]);
+it('backsills canonicalPhone via resolver after message sync', async () => {
+  const storeDeps = makeStoreDeps();
+  const conversation = {
+    id: 'wa_1',
+    providerConversationId: '183792384719283741@lid',
+    remoteJid: '183792384719283741@lid',
+    canonicalPhone: '',
+    phone: '',
+    displayLabel: 'Cliente',
+    displayName: 'Cliente',
+    identityStatus: 'unresolved' as const,
+    identitySource: null,
+    identityConfidence: null,
+    source: 'evolution' as const,
+    status: 'new' as const,
+    lastMessageAt: '2026-07-01T12:00:00.000Z',
+    lastMessagePreview: 'Mensagem 1',
+    createdAt: '2026-07-01T12:00:00.000Z',
+    updatedAt: '2026-07-01T12:00:00.000Z',
+  };
+  await storeDeps.writeConversations([conversation]);
 
-    const syncDeps = {
-      ...storeDeps,
-      fetchMessages: async () => [
-        {
-          key: { id: 'm1', fromMe: false, participant: '5521981858541@s.whatsapp.net' },
-          messageTimestamp: 1782916800,
-          message: { conversation: 'Mensagem 1' },
-        },
-      ],
-    };
+  const syncDeps = {
+    ...storeDeps,
+    fetchMessages: async () => [
+      {
+        key: { id: 'm1', fromMe: false, participant: '5521981858541@s.whatsapp.net' },
+        messageTimestamp: 1782916800,
+        message: { conversation: 'Mensagem 1' },
+      },
+    ],
+  };
 
-    const updated = await syncMessagesForConversation(conversation as any, 100, syncDeps);
-    assert.equal(updated.canonicalPhone, '5521981858541');
-    assert.equal(updated.identityStatus, 'verified');
-    assert.equal(updated.identityConfidence, 'high');
-  });
+  const updated = await syncMessagesForConversation(conversation as any, 100, syncDeps);
+  assert.equal(updated.canonicalPhone, '5521981858541');
+  assert.equal(updated.identityStatus, 'verified');
+  assert.equal(updated.identityConfidence, 'high');
+});
 ```
 
 - [ ] **Step 2: Run sync tests to verify they fail**
@@ -920,9 +928,9 @@ export async function syncMessagesForConversation(
       {
         ...conversation,
         canonicalPhone: identity.canonicalPhone,
-        phone: identity.canonicalPhone,             // compat
+        phone: identity.canonicalPhone, // compat
         displayLabel: identity.displayLabel,
-        displayName: identity.displayLabel,          // compat
+        displayName: identity.displayLabel, // compat
         identityStatus: identity.identityStatus,
         identitySource: identity.identitySource,
         identityConfidence: identity.identityConfidence,
@@ -968,106 +976,106 @@ git commit -m "refactor: delegate whatsapp identity to central resolver in sync"
 Extend `tests/unit/whatsapp-conversations.test.ts` — add after existing tests:
 
 ```ts
-  it('blocks pre-quote creation when identityStatus is unresolved', async () => {
-    const deps = makeActionDeps();
-    deps.readConversations = async () => [
-      {
-        id: 'wa_1',
-        providerConversationId: '183792384719283741@lid',
-        remoteJid: '183792384719283741@lid',
-        canonicalPhone: '',
-        phone: '',
-        displayLabel: 'Cliente LID',
-        displayName: 'Cliente LID',
-        identityStatus: 'unresolved',
-        identitySource: null,
-        identityConfidence: null,
-        source: 'evolution',
-        status: 'new',
-        lastMessageAt: '2026-07-01T12:00:00.000Z',
-        lastMessagePreview: 'Oi',
-        createdAt: '2026-07-01T12:00:00.000Z',
-        updatedAt: '2026-07-01T12:00:00.000Z',
-      },
-    ];
-    deps.readMessages = async () => [
-      {
-        id: 'msg1',
-        conversationId: 'wa_1',
-        providerMessageId: 'm1',
-        direction: 'inbound',
-        type: 'text',
-        body: 'Quero um orçamento',
-        mediaUrl: '',
-        timestamp: '2026-07-01T12:00:00.000Z',
-      },
-    ];
+it('blocks pre-quote creation when identityStatus is unresolved', async () => {
+  const deps = makeActionDeps();
+  deps.readConversations = async () => [
+    {
+      id: 'wa_1',
+      providerConversationId: '183792384719283741@lid',
+      remoteJid: '183792384719283741@lid',
+      canonicalPhone: '',
+      phone: '',
+      displayLabel: 'Cliente LID',
+      displayName: 'Cliente LID',
+      identityStatus: 'unresolved',
+      identitySource: null,
+      identityConfidence: null,
+      source: 'evolution',
+      status: 'new',
+      lastMessageAt: '2026-07-01T12:00:00.000Z',
+      lastMessagePreview: 'Oi',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-01T12:00:00.000Z',
+    },
+  ];
+  deps.readMessages = async () => [
+    {
+      id: 'msg1',
+      conversationId: 'wa_1',
+      providerMessageId: 'm1',
+      direction: 'inbound',
+      type: 'text',
+      body: 'Quero um orçamento',
+      mediaUrl: '',
+      timestamp: '2026-07-01T12:00:00.000Z',
+    },
+  ];
 
-    const handler = createHandler(deps);
-    const result = await handler({
-      httpMethod: 'POST',
-      body: JSON.stringify({ action: 'create-quote-lead', id: 'wa_1' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
+  const handler = createHandler(deps);
+  const result = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ action: 'create-quote-lead', id: 'wa_1' }),
+    queryStringParameters: {},
+    headers: {},
+  } as any);
 
-    assert.equal(result.statusCode, 400);
-    const body = JSON.parse(result.body);
-    assert.ok(body.error?.includes('telefone') || body.error?.includes('identidade'));
-  });
+  assert.equal(result.statusCode, 400);
+  const body = JSON.parse(result.body);
+  assert.ok(body.error?.includes('telefone') || body.error?.includes('identidade'));
+});
 
-  it('uses canonicalPhone and displayLabel in pre-quote creation', async () => {
-    const deps = makeActionDeps();
-    let leadInput: any = null;
-    deps.upsertQuoteLead = async (input) => {
-      leadInput = input;
-      return { id: 'QL-001' };
-    };
-    deps.readConversations = async () => [
-      {
-        id: 'wa_1',
-        providerConversationId: '5521981858541@s.whatsapp.net',
-        remoteJid: '5521981858541@s.whatsapp.net',
-        canonicalPhone: '5521981858541',
-        phone: '5521981858541',
-        displayLabel: 'Maria Souza',
-        displayName: 'Maria Souza',
-        identityStatus: 'verified',
-        identitySource: 'chat.phone',
-        identityConfidence: 'high',
-        source: 'evolution',
-        status: 'new',
-        lastMessageAt: '2026-07-01T12:00:00.000Z',
-        lastMessagePreview: 'Oi',
-        createdAt: '2026-07-01T12:00:00.000Z',
-        updatedAt: '2026-07-01T12:00:00.000Z',
-      },
-    ];
-    deps.readMessages = async () => [
-      {
-        id: 'msg1',
-        conversationId: 'wa_1',
-        providerMessageId: 'm1',
-        direction: 'inbound',
-        type: 'text',
-        body: 'Orçamento',
-        mediaUrl: '',
-        timestamp: '2026-07-01T12:00:00.000Z',
-      },
-    ];
+it('uses canonicalPhone and displayLabel in pre-quote creation', async () => {
+  const deps = makeActionDeps();
+  let leadInput: any = null;
+  deps.upsertQuoteLead = async (input) => {
+    leadInput = input;
+    return { id: 'QL-001' };
+  };
+  deps.readConversations = async () => [
+    {
+      id: 'wa_1',
+      providerConversationId: '5521981858541@s.whatsapp.net',
+      remoteJid: '5521981858541@s.whatsapp.net',
+      canonicalPhone: '5521981858541',
+      phone: '5521981858541',
+      displayLabel: 'Maria Souza',
+      displayName: 'Maria Souza',
+      identityStatus: 'verified',
+      identitySource: 'chat.phone',
+      identityConfidence: 'high',
+      source: 'evolution',
+      status: 'new',
+      lastMessageAt: '2026-07-01T12:00:00.000Z',
+      lastMessagePreview: 'Oi',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-01T12:00:00.000Z',
+    },
+  ];
+  deps.readMessages = async () => [
+    {
+      id: 'msg1',
+      conversationId: 'wa_1',
+      providerMessageId: 'm1',
+      direction: 'inbound',
+      type: 'text',
+      body: 'Orçamento',
+      mediaUrl: '',
+      timestamp: '2026-07-01T12:00:00.000Z',
+    },
+  ];
 
-    const handler = createHandler(deps);
-    const result = await handler({
-      httpMethod: 'POST',
-      body: JSON.stringify({ action: 'create-quote-lead', id: 'wa_1' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
+  const handler = createHandler(deps);
+  const result = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({ action: 'create-quote-lead', id: 'wa_1' }),
+    queryStringParameters: {},
+    headers: {},
+  } as any);
 
-    assert.equal(result.statusCode, 201);
-    assert.equal(leadInput.nome, 'Maria Souza');
-    assert.equal(leadInput.telefone, '5521981858541');
-  });
+  assert.equal(result.statusCode, 201);
+  assert.equal(leadInput.nome, 'Maria Souza');
+  assert.equal(leadInput.telefone, '5521981858541');
+});
 ```
 
 - [ ] **Step 2: Run handler tests to verify fail**
@@ -1161,38 +1169,38 @@ git commit -m "refactor: use canonicalPhone and displayLabel in whatsapp handler
 Extend `tests/unit/whatsapp-crm-match.test.ts` — add after existing tests:
 
 ```ts
-  it('uses canonicalPhone for phone matching', async () => {
-    const deps = makeFakeDeps();
-    deps.listLeads = async () => [
-      { name: 'LEAD-001', first_name: 'Maria', mobile_no: '5521981858541', email_id: null },
-    ];
+it('uses canonicalPhone for phone matching', async () => {
+  const deps = makeFakeDeps();
+  deps.listLeads = async () => [
+    { name: 'LEAD-001', first_name: 'Maria', mobile_no: '5521981858541', email_id: null },
+  ];
 
-    const conv = makeConversation({
-      canonicalPhone: '5521981858541',
-      phone: '',
-      displayLabel: 'Maria',
-    } as any);
+  const conv = makeConversation({
+    canonicalPhone: '5521981858541',
+    phone: '',
+    displayLabel: 'Maria',
+  } as any);
 
-    const result = await resolveWhatsappCrmMatch({ conversation: conv, deps });
-    assert.equal(result?.id, 'LEAD-001');
-    assert.equal(result?.matchSource, 'phone');
-  });
+  const result = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+  assert.equal(result?.id, 'LEAD-001');
+  assert.equal(result?.matchSource, 'phone');
+});
 
-  it('blocks CRM match when identityStatus is unresolved', async () => {
-    const deps = makeFakeDeps();
-    deps.listLeads = async () => [
-      { name: 'LEAD-001', first_name: 'Maria', mobile_no: '5521981858541', email_id: null },
-    ];
+it('blocks CRM match when identityStatus is unresolved', async () => {
+  const deps = makeFakeDeps();
+  deps.listLeads = async () => [
+    { name: 'LEAD-001', first_name: 'Maria', mobile_no: '5521981858541', email_id: null },
+  ];
 
-    const conv = makeConversation({
-      canonicalPhone: '5521981858541',
-      identityStatus: 'unresolved',
-      identityConfidence: null,
-    } as any);
+  const conv = makeConversation({
+    canonicalPhone: '5521981858541',
+    identityStatus: 'unresolved',
+    identityConfidence: null,
+  } as any);
 
-    const result = await resolveWhatsappCrmMatch({ conversation: conv, deps });
-    assert.equal(result, null);
-  });
+  const result = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+  assert.equal(result, null);
+});
 ```
 
 - [ ] **Step 2: Run CRM match tests to verify fail**
@@ -1213,13 +1221,10 @@ Replace all `conversation.phone` with `conversation.canonicalPhone`.
 At the top of `resolveWhatsappCrmMatch`, after the saved-link check:
 
 ```ts
-  // If identity is too weak, don't auto-match
-  if (
-    conversation.identityStatus === 'unresolved' ||
-    conversation.identityStatus === 'conflict'
-  ) {
-    return null;
-  }
+// If identity is too weak, don't auto-match
+if (conversation.identityStatus === 'unresolved' || conversation.identityStatus === 'conflict') {
+  return null;
+}
 ```
 
 - [ ] **Step 4: Run CRM match tests to verify pass**
@@ -1253,19 +1258,19 @@ git commit -m "refactor: use canonicalPhone in crm match, respect identityStatus
 Extend `tests/unit/formatters.test.ts` — add after existing tests:
 
 ```ts
-  it('formats complete E164 phone without truncating DDI', () => {
-    assert.equal(fmtPhone('5521981858541'), '(55) 21 98185-8541');
-    assert.equal(fmtPhone('55219999102299'), '(55) 21 99991-0229');
-  });
+it('formats complete E164 phone without truncating DDI', () => {
+  assert.equal(fmtPhone('5521981858541'), '(55) 21 98185-8541');
+  assert.equal(fmtPhone('55219999102299'), '(55) 21 99991-0229');
+});
 
-  it('still formats local 11-digit numbers correctly', () => {
-    assert.equal(fmtPhone('11999998888'), '(11) 99999-8888');
-    assert.equal(fmtPhone('21981858541'), '(21) 98185-8541');
-  });
+it('still formats local 11-digit numbers correctly', () => {
+  assert.equal(fmtPhone('11999998888'), '(11) 99999-8888');
+  assert.equal(fmtPhone('21981858541'), '(21) 98185-8541');
+});
 
-  it('formats 10-digit local numbers', () => {
-    assert.equal(fmtPhone('1199998888'), '(11) 9999-8888');
-  });
+it('formats 10-digit local numbers', () => {
+  assert.equal(fmtPhone('1199998888'), '(11) 9999-8888');
+});
 ```
 
 - [ ] **Step 2: Run formatter tests to verify fail**
@@ -1279,7 +1284,9 @@ In `src/lib/formatters.ts`:
 
 ```ts
 export function normalizePhoneDigits(phone: unknown, maxDigits = 15): string {
-  return String(phone ?? '').replace(/\D/g, '').slice(0, maxDigits);
+  return String(phone ?? '')
+    .replace(/\D/g, '')
+    .slice(0, maxDigits);
 }
 
 /** Formats Brazilian phone to (XX) XXXXX-XXXX or (55) XX XXXXX-XXXX for DDI */
@@ -1344,65 +1351,65 @@ git commit -m "fix: support full E164 numbers in phone formatter"
 Extend `tests/whatsapp-inbox.spec.js` — add before the last test:
 
 ```js
-  test('shows displayLabel on top and canonicalPhone on bottom, never remoteJid', async ({
-    page,
-  }) => {
-    let listingFulfilled = false;
-    await page.route('**/api/whatsapp-conversations?status=all**', async (route) => {
-      await route.fulfill({
-        json: {
-          success: true,
-          data: [
-            {
-              id: 'wa_1',
-              providerConversationId: '183792384719283741@lid',
-              remoteJid: '183792384719283741@lid',
-              canonicalPhone: '5521981858541',
-              displayLabel: 'Maria Souza',
-              displayName: 'Maria Souza',
-              identityStatus: 'verified',
-              identityConfidence: 'high',
-              status: 'new',
-              lastMessageAt: '2026-07-01T12:00:00.000Z',
-              lastMessagePreview: 'Oi',
-              createdAt: '2026-07-01T12:00:00.000Z',
-              updatedAt: '2026-07-01T12:00:00.000Z',
-            },
-            {
-              id: 'wa_2',
-              providerConversationId: '123456789012345@lid',
-              remoteJid: '123456789012345@lid',
-              canonicalPhone: '',
-              displayLabel: 'Contato sem nome',
-              displayName: 'Contato sem nome',
-              identityStatus: 'unresolved',
-              identityConfidence: null,
-              status: 'new',
-              lastMessageAt: '2026-07-01T12:00:00.000Z',
-              lastMessagePreview: 'Olá',
-              createdAt: '2026-07-01T12:00:00.000Z',
-              updatedAt: '2026-07-01T12:00:00.000Z',
-            },
-          ],
-        },
-      });
-      listingFulfilled = true;
+test('shows displayLabel on top and canonicalPhone on bottom, never remoteJid', async ({
+  page,
+}) => {
+  let listingFulfilled = false;
+  await page.route('**/api/whatsapp-conversations?status=all**', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        data: [
+          {
+            id: 'wa_1',
+            providerConversationId: '183792384719283741@lid',
+            remoteJid: '183792384719283741@lid',
+            canonicalPhone: '5521981858541',
+            displayLabel: 'Maria Souza',
+            displayName: 'Maria Souza',
+            identityStatus: 'verified',
+            identityConfidence: 'high',
+            status: 'new',
+            lastMessageAt: '2026-07-01T12:00:00.000Z',
+            lastMessagePreview: 'Oi',
+            createdAt: '2026-07-01T12:00:00.000Z',
+            updatedAt: '2026-07-01T12:00:00.000Z',
+          },
+          {
+            id: 'wa_2',
+            providerConversationId: '123456789012345@lid',
+            remoteJid: '123456789012345@lid',
+            canonicalPhone: '',
+            displayLabel: 'Contato sem nome',
+            displayName: 'Contato sem nome',
+            identityStatus: 'unresolved',
+            identityConfidence: null,
+            status: 'new',
+            lastMessageAt: '2026-07-01T12:00:00.000Z',
+            lastMessagePreview: 'Olá',
+            createdAt: '2026-07-01T12:00:00.000Z',
+            updatedAt: '2026-07-01T12:00:00.000Z',
+          },
+        ],
+      },
     });
-
-    await page.goto('/#/whatsapp-inbox');
-    await page.waitForURL('**/#/whatsapp-inbox');
-
-    // First conversation: name on top, formatted canonical phone on bottom
-    await expect(page.locator('button').filter({ hasText: 'Maria Souza' })).toBeVisible();
-    await expect(page.locator('button').filter({ hasText: '(55) 21 98185-8541' })).toBeVisible();
-
-    // Second conversation: should show "Telefone não identificado", NOT the lid id
-    await expect(page.locator('button').filter({ hasText: 'Contato sem nome' })).toBeVisible();
-    await expect(page.getByText('Telefone não identificado')).toBeVisible();
-    // remoteJid / lid should NEVER appear as phone
-    const lidText = page.getByText('123456789012345@lid');
-    await expect(lidText).toHaveCount(0);
+    listingFulfilled = true;
   });
+
+  await page.goto('/#/whatsapp-inbox');
+  await page.waitForURL('**/#/whatsapp-inbox');
+
+  // First conversation: name on top, formatted canonical phone on bottom
+  await expect(page.locator('button').filter({ hasText: 'Maria Souza' })).toBeVisible();
+  await expect(page.locator('button').filter({ hasText: '(55) 21 98185-8541' })).toBeVisible();
+
+  // Second conversation: should show "Telefone não identificado", NOT the lid id
+  await expect(page.locator('button').filter({ hasText: 'Contato sem nome' })).toBeVisible();
+  await expect(page.getByText('Telefone não identificado')).toBeVisible();
+  // remoteJid / lid should NEVER appear as phone
+  const lidText = page.getByText('123456789012345@lid');
+  await expect(lidText).toHaveCount(0);
+});
 ```
 
 - [ ] **Step 2: Update frontend API types**
@@ -1412,14 +1419,14 @@ In `src/lib/whatsappInboxApi.ts`, add to `WhatsappConversation`:
 ```ts
 export interface WhatsappConversation {
   id: string;
-  providerConversationId: string;       // NEW
+  providerConversationId: string; // NEW
   remoteJid: string;
-  canonicalPhone: string;                // NEW
+  canonicalPhone: string; // NEW
   phone: string;
-  displayLabel: string;                  // NEW
+  displayLabel: string; // NEW
   displayName: string;
   identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict'; // NEW
-  identitySource?: string | null;        // NEW
+  identitySource?: string | null; // NEW
   identityConfidence?: 'high' | 'medium' | 'low' | null; // NEW
   lastMessageAt: string;
   lastMessagePreview: string;
@@ -1646,9 +1653,15 @@ Create `api/_functions/lib/whatsapp-identity-backfill.ts`:
 // Reprocesses stored WhatsApp conversations to populate canonical identity fields.
 
 import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
-import type { WhatsappConversation, WhatsappConversationStoreDeps } from './whatsapp-conversations-store.js';
+import type {
+  WhatsappConversation,
+  WhatsappConversationStoreDeps,
+} from './whatsapp-conversations-store.js';
 
-interface BackfillDeps extends Pick<WhatsappConversationStoreDeps, 'readConversations' | 'writeConversations' | 'readMessages' | 'now'> {}
+interface BackfillDeps extends Pick<
+  WhatsappConversationStoreDeps,
+  'readConversations' | 'writeConversations' | 'readMessages' | 'now'
+> {}
 
 interface BackfillResult {
   total: number;
@@ -1660,7 +1673,13 @@ interface BackfillResult {
 
 export async function backfillWhatsappIdentities(deps: BackfillDeps): Promise<BackfillResult> {
   const conversations = await deps.readConversations();
-  const result: BackfillResult = { total: conversations.length, fixed: 0, unchanged: 0, conflict: 0, unresolved: 0 };
+  const result: BackfillResult = {
+    total: conversations.length,
+    fixed: 0,
+    unchanged: 0,
+    conflict: 0,
+    unresolved: 0,
+  };
 
   const updated: WhatsappConversation[] = [];
   for (const conv of conversations) {
@@ -1688,7 +1707,7 @@ export async function backfillWhatsappIdentities(deps: BackfillDeps): Promise<Ba
       ...conv,
       providerConversationId: identity.providerConversationId || conv.remoteJid,
       canonicalPhone,
-      phone: canonicalPhone || conv.phone || '',   // compat
+      phone: canonicalPhone || conv.phone || '', // compat
       displayLabel: identity.displayLabel || conv.displayName || '',
       displayName: identity.displayLabel || conv.displayName || '', // compat
       identityStatus: status,

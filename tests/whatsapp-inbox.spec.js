@@ -63,6 +63,12 @@ test.describe('WhatsApp Inbox Page', () => {
               remoteJid: '5511999999999@s.whatsapp.net',
               phone: '5511999999999',
               displayName: 'Maria',
+              providerConversationId: '5511999999999@s.whatsapp.net',
+              canonicalPhone: '5511999999999',
+              displayLabel: 'Maria',
+              identityStatus: 'verified',
+              identitySource: 'chat.phone',
+              identityConfidence: 'high',
               lastMessageAt: '2026-07-01T12:00:00.000Z',
               lastMessagePreview: 'Quero orçamento',
               source: 'evolution',
@@ -106,6 +112,12 @@ test.describe('WhatsApp Inbox Page', () => {
               remoteJid: '5511999999999@s.whatsapp.net',
               phone: '5511999999999',
               displayName: 'Maria',
+              providerConversationId: '5511999999999@s.whatsapp.net',
+              canonicalPhone: '5511999999999',
+              displayLabel: 'Maria',
+              identityStatus: 'verified',
+              identitySource: 'chat.phone',
+              identityConfidence: 'high',
               lastMessageAt: '2026-07-01T12:00:00.000Z',
               lastMessagePreview: 'Quero orçamento',
               source: 'evolution',
@@ -143,6 +155,12 @@ test.describe('WhatsApp Inbox Page', () => {
               id: 'wa_1',
               phone: '5511999999999',
               displayName: 'Maria',
+              providerConversationId: '5511999999999@s.whatsapp.net',
+              canonicalPhone: '5511999999999',
+              displayLabel: 'Maria',
+              identityStatus: 'verified',
+              identitySource: 'chat.phone',
+              identityConfidence: 'high',
               status: 'new',
               crmMatch: {
                 id: 'LEAD-001',
@@ -172,6 +190,12 @@ test.describe('WhatsApp Inbox Page', () => {
               remoteJid: '5511999999999@s.whatsapp.net',
               phone: '5511999999999',
               displayName: 'Maria',
+              providerConversationId: '5511999999999@s.whatsapp.net',
+              canonicalPhone: '5511999999999',
+              displayLabel: 'Maria',
+              identityStatus: 'verified',
+              identitySource: 'chat.phone',
+              identityConfidence: 'high',
               lastMessageAt: '2026-07-01T12:00:00.000Z',
               lastMessagePreview: 'Quero orçamento',
               source: 'evolution',
@@ -193,7 +217,9 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByRole('button', { name: /Abrir lead/ })).toBeVisible();
   });
 
-  test('refreshes the selected conversation even when stored messages already exist', async ({ page }) => {
+  test('refreshes the selected conversation even when stored messages already exist', async ({
+    page,
+  }) => {
     await page.route('**/api/whatsapp-conversations**', async (route) => {
       const req = route.request();
       const requestUrl = req.url();
@@ -241,6 +267,12 @@ test.describe('WhatsApp Inbox Page', () => {
               remoteJid: '5511999999999@s.whatsapp.net',
               phone: '5511999999999',
               displayName: 'Maria',
+              providerConversationId: '5511999999999@s.whatsapp.net',
+              canonicalPhone: '5511999999999',
+              displayLabel: 'Maria',
+              identityStatus: 'verified',
+              identitySource: 'chat.phone',
+              identityConfidence: 'high',
               status: 'new',
               createdAt: '2026-07-01T12:00:00.000Z',
               updatedAt: '2026-07-01T12:00:00.000Z',
@@ -281,6 +313,12 @@ test.describe('WhatsApp Inbox Page', () => {
               remoteJid: '5511999999999@s.whatsapp.net',
               phone: '5511999999999',
               displayName: 'Maria',
+              providerConversationId: '5511999999999@s.whatsapp.net',
+              canonicalPhone: '5511999999999',
+              displayLabel: 'Maria',
+              identityStatus: 'verified',
+              identitySource: 'chat.phone',
+              identityConfidence: 'high',
               lastMessageAt: '2026-07-01T12:00:00.000Z',
               lastMessagePreview: 'Mensagem antiga',
               source: 'evolution',

@@ -11,14 +11,27 @@ export function formatBRL(value: string | number | null | undefined): string {
   return `${num < 0 ? '-' : ''}R$ ${intFormatted},${dec}`;
 }
 
-export function normalizePhoneDigits(phone: unknown, maxDigits = 11): string {
-  return String(phone ?? '').replace(/\D/g, '').slice(0, maxDigits);
+export function normalizePhoneDigits(phone: unknown, maxDigits = 15): string {
+  return String(phone ?? '')
+    .replace(/\D/g, '')
+    .slice(0, maxDigits);
 }
 
-/** (99) 99999-9999 */
+/** Formats Brazilian phone: (XX) XXXXX-XXXX or (55) XX XXXXX-XXXX for E.164 DDI */
 export function fmtPhone(phone: unknown): string {
   const digits = normalizePhoneDigits(phone);
   if (!digits) return '';
+
+  // International with 55 prefix — longer than standard 11-digit BR numbers
+  if (digits.startsWith('55') && digits.length >= 13) {
+    const ddd = digits.slice(2, 4);
+    const rest = digits.slice(4);
+    if (rest.length === 9) {
+      return `(55) ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    }
+    return `(55) ${ddd} ${rest.slice(0, rest.length - 4)}-${rest.slice(-4)}`;
+  }
+
   if (digits.length <= 2) return `(${digits}`;
   if (digits.length <= 6) {
     return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;

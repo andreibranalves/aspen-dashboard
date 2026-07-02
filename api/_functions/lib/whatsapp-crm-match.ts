@@ -4,7 +4,11 @@
 // Matching order: phone → email → name (conservative).
 // Persists the chosen link on the conversation record for reuse.
 
-import { cleanText, type WhatsappConversation, type WhatsappConversationStoreDeps } from './whatsapp-conversations-store.js';
+import {
+  cleanText,
+  type WhatsappConversation,
+  type WhatsappConversationStoreDeps,
+} from './whatsapp-conversations-store.js';
 import { updateWhatsappConversation } from './whatsapp-conversations-store.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -39,7 +43,9 @@ function normalizePhoneComparison(phone: unknown): string {
 }
 
 function normalizeEmailComparison(value: unknown): string {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .trim()
+    .toLowerCase();
 }
 
 function normalizeNameComparison(name: unknown): string {
@@ -112,7 +118,7 @@ async function findCandidates(
   };
 
   // 1. Try by phone on Leads — query both with and without 55 prefix
-  const phoneVariants = normalizePhoneVariants(conversation.phone);
+  const phoneVariants = normalizePhoneVariants(conversation.canonicalPhone);
   const phoneDigits = phoneVariants[0] || '';
   if (phoneDigits) {
     for (const variant of phoneVariants) {
@@ -161,9 +167,10 @@ async function validateSavedLink(
   try {
     const doc = await deps.getDoc(erpDoctype, entityId);
     if (!doc) return null;
-    const nome = entityType === 'lead'
-      ? String(doc.first_name || doc.lead_name || doc.customer_name || '')
-      : String(doc.customer_name || '');
+    const nome =
+      entityType === 'lead'
+        ? String(doc.first_name || doc.lead_name || doc.customer_name || '')
+        : String(doc.customer_name || '');
     return {
       id: String(doc.name || entityId),
       tipo: entityType,
@@ -198,7 +205,8 @@ export async function resolveWhatsappCrmMatch(input: {
         nome: valid.nome,
         telefone: valid.telefone,
         email: valid.email,
-        matchSource: (conversation.linkedCrmMatchSource as WhatsappCrmMatch['matchSource']) || 'phone',
+        matchSource:
+          (conversation.linkedCrmMatchSource as WhatsappCrmMatch['matchSource']) || 'phone',
       };
     }
     // Link invalid — clear it and fall through to fresh resolution
@@ -209,7 +217,12 @@ export async function resolveWhatsappCrmMatch(input: {
     );
   }
 
-  // 2. Find candidates (phone, email from messages, then name fallback)
+  // 2. If identity is too weak, don't auto-match
+  if (conversation.identityStatus === 'unresolved' || conversation.identityStatus === 'conflict') {
+    return null;
+  }
+
+  // 3. Find candidates (phone, email from messages, then name fallback)
   const candidates = await findCandidates(conversation, deps);
 
   if (candidates.length === 0) {
@@ -220,7 +233,7 @@ export async function resolveWhatsappCrmMatch(input: {
   const best = candidates[0];
   let matchSource: WhatsappCrmMatch['matchSource'] = 'name';
 
-  const phoneDigits = normalizePhoneComparison(conversation.phone);
+  const phoneDigits = normalizePhoneComparison(conversation.canonicalPhone);
   if (phoneDigits && normalizePhoneComparison(best.telefone) === phoneDigits) {
     matchSource = 'phone';
   } else if (best.email) {

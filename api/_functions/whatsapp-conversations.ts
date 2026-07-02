@@ -65,7 +65,8 @@ function parseLimit(value: unknown): number {
   return Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 50;
 }
 
-interface WhatsappActionDeps extends EvolutionSyncDeps, WhatsappConversationStoreDeps, ResolveCrmMatchDeps {
+interface WhatsappActionDeps
+  extends EvolutionSyncDeps, WhatsappConversationStoreDeps, ResolveCrmMatchDeps {
   extractOrders?: (text: string) => Promise<unknown[]>;
   upsertQuoteLead?: (input: Record<string, unknown>) => Promise<unknown>;
   sendTextMessage?: (number: string, text: string) => Promise<unknown>;
@@ -234,18 +235,29 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
         if (action === 'create-quote-lead') {
           const id = String(body.id || '');
           const conversation = await getWhatsappConversation(id, deps);
+
+          // Block pre-quote creation when identity is not confirmed
+          if (
+            conversation.identityStatus === 'unresolved' ||
+            conversation.identityStatus === 'conflict'
+          ) {
+            return jsonResponse(400, {
+              error: 'Não é possível criar pré-orçamento com identidade do contato não confirmada.',
+            });
+          }
+
           const messages = await getWhatsappMessages(id, deps);
           const pedidoTexto = buildConversationText(messages);
           const leadInput = {
-            nome: conversation.displayName,
-            telefone: conversation.phone,
+            nome: conversation.displayLabel,
+            telefone: conversation.canonicalPhone,
             pedidoTexto,
             source: 'whatsapp',
             sourceDetail: conversation.remoteJid,
             externalId: conversation.id,
             status: missingFieldsForPreQuote({
-              nome: conversation.displayName,
-              telefone: conversation.phone,
+              nome: conversation.displayLabel,
+              telefone: conversation.canonicalPhone,
               pedidoTexto,
             }).length
               ? 'incomplete'
@@ -275,11 +287,17 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
             return jsonResponse(400, { error: 'Texto da mensagem é obrigatório.' });
           }
           const conversation = await getWhatsappConversation(id, deps);
-          if (!conversation.phone) {
+          if (!conversation.canonicalPhone && conversation.identityStatus !== 'unresolved') {
+            return jsonResponse(400, { error: 'Conversa sem telefone para envio.' });
+          }
+
+          // Use canonicalPhone for sending, fall back to provider resolution
+          const targetPhone = conversation.canonicalPhone || conversation.phone;
+          if (!targetPhone) {
             return jsonResponse(400, { error: 'Conversa sem telefone para envio.' });
           }
           const sender = deps?.sendTextMessage || sendText;
-          await sender(conversation.phone, text);
+          await sender(targetPhone, text);
           const stored = await upsertWhatsappMessages(
             id,
             [

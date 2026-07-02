@@ -47,11 +47,19 @@ function makeDeps(): WhatsappConversationStoreDeps & {
 }
 
 function makeConversation(overrides: Partial<WhatsappConversation> = {}): WhatsappConversation {
+  const basePhone =
+    (overrides.phone as string) || (overrides.canonicalPhone as string) || '5511999999999';
   return {
     id: 'wa_1',
+    providerConversationId: '5511999999999@s.whatsapp.net',
     remoteJid: '5511999999999@s.whatsapp.net',
-    phone: '5511999999999',
+    canonicalPhone: basePhone,
+    phone: basePhone,
+    displayLabel: 'Maria Silva',
     displayName: 'Maria Silva',
+    identityStatus: 'verified',
+    identitySource: 'chat.phone',
+    identityConfidence: 'high',
     lastMessageAt: '2026-07-01T12:00:00.000Z',
     lastMessagePreview: 'Quero orçamento',
     source: 'evolution',
@@ -68,9 +76,20 @@ describe('whatsapp-crm-match', () => {
   it('prefers exact phone match over name fallback', async () => {
     const deps = makeDeps();
     deps._setLeads([
-      { name: 'LEAD-001', lead_name: 'Maria Silva', first_name: 'Maria', email_id: 'maria@example.com', mobile_no: '5511999999999' },
+      {
+        name: 'LEAD-001',
+        lead_name: 'Maria Silva',
+        first_name: 'Maria',
+        email_id: 'maria@example.com',
+        mobile_no: '5511999999999',
+      },
     ]);
-    deps._setDocs('Lead', 'LEAD-001', { name: 'LEAD-001', first_name: 'Maria', email_id: 'maria@example.com', mobile_no: '5511999999999' });
+    deps._setDocs('Lead', 'LEAD-001', {
+      name: 'LEAD-001',
+      first_name: 'Maria',
+      email_id: 'maria@example.com',
+      mobile_no: '5511999999999',
+    });
 
     const conv = makeConversation();
     deps._seedConversation(conv);
@@ -119,7 +138,13 @@ describe('whatsapp-crm-match', () => {
       if (callCount <= 2) return [];
       // name query
       return [
-        { name: 'LEAD-002', lead_name: 'Maria Silva', first_name: 'Maria', email_id: null, mobile_no: '5511888888888' },
+        {
+          name: 'LEAD-002',
+          lead_name: 'Maria Silva',
+          first_name: 'Maria',
+          email_id: null,
+          mobile_no: '5511888888888',
+        },
       ];
     };
 
@@ -159,7 +184,13 @@ describe('whatsapp-crm-match', () => {
     const deps = makeDeps();
     deps.getDoc = async () => null;
     deps._setLeads([
-      { name: 'LEAD-004', lead_name: 'Ana Costa', first_name: 'Ana', email_id: null, mobile_no: '5511966666666' },
+      {
+        name: 'LEAD-004',
+        lead_name: 'Ana Costa',
+        first_name: 'Ana',
+        email_id: null,
+        mobile_no: '5511966666666',
+      },
     ]);
 
     const conv = makeConversation({
@@ -182,7 +213,13 @@ describe('whatsapp-crm-match', () => {
   it('persists CRM link fields after resolving match', async () => {
     const deps = makeDeps();
     deps._setLeads([
-      { name: 'LEAD-005', lead_name: 'Pedro Alves', first_name: 'Pedro', email_id: null, mobile_no: '5511955555555' },
+      {
+        name: 'LEAD-005',
+        lead_name: 'Pedro Alves',
+        first_name: 'Pedro',
+        email_id: null,
+        mobile_no: '5511955555555',
+      },
     ]);
 
     const conv = makeConversation({
@@ -228,14 +265,34 @@ describe('whatsapp-crm-match', () => {
   it('matches by email extracted from inbound messages', async () => {
     const deps = makeDeps();
     deps._setLeads([
-      { name: 'LEAD-EMAIL', lead_name: 'Carlos Lima', first_name: 'Carlos', email_id: 'carlos@test.com', mobile_no: null },
+      {
+        name: 'LEAD-EMAIL',
+        lead_name: 'Carlos Lima',
+        first_name: 'Carlos',
+        email_id: 'carlos@test.com',
+        mobile_no: null,
+      },
     ]);
-    deps._setDocs('Lead', 'LEAD-EMAIL', { name: 'LEAD-EMAIL', first_name: 'Carlos', email_id: 'carlos@test.com', mobile_no: null });
+    deps._setDocs('Lead', 'LEAD-EMAIL', {
+      name: 'LEAD-EMAIL',
+      first_name: 'Carlos',
+      email_id: 'carlos@test.com',
+      mobile_no: null,
+    });
 
     const conv = makeConversation({ phone: '5511000000000', displayName: 'Desconhecido' });
     deps._seedConversation(conv);
     deps.readMessages = async () => [
-      { id: 'm1', conversationId: 'wa_1', providerMessageId: 'p1', direction: 'inbound', type: 'text' as const, body: 'Olá, meu email é carlos@test.com', mediaUrl: '', timestamp: '2026-07-01T11:00:00.000Z' },
+      {
+        id: 'm1',
+        conversationId: 'wa_1',
+        providerMessageId: 'p1',
+        direction: 'inbound',
+        type: 'text' as const,
+        body: 'Olá, meu email é carlos@test.com',
+        mediaUrl: '',
+        timestamp: '2026-07-01T11:00:00.000Z',
+      },
     ];
 
     const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
@@ -248,13 +305,28 @@ describe('whatsapp-crm-match', () => {
   it('ignores emails from outbound messages', async () => {
     const deps = makeDeps();
     deps._setLeads([
-      { name: 'LEAD-OUT', lead_name: 'Test', first_name: 'Test', email_id: 'test@test.com', mobile_no: null },
+      {
+        name: 'LEAD-OUT',
+        lead_name: 'Test',
+        first_name: 'Test',
+        email_id: 'test@test.com',
+        mobile_no: null,
+      },
     ]);
 
     const conv = makeConversation({ phone: '5511000000000', displayName: 'A B C' });
     deps._seedConversation(conv);
     deps.readMessages = async () => [
-      { id: 'm1', conversationId: 'wa_1', providerMessageId: 'p1', direction: 'outbound', type: 'text' as const, body: 'Envie para test@test.com', mediaUrl: '', timestamp: '2026-07-01T11:00:00.000Z' },
+      {
+        id: 'm1',
+        conversationId: 'wa_1',
+        providerMessageId: 'p1',
+        direction: 'outbound',
+        type: 'text' as const,
+        body: 'Envie para test@test.com',
+        mediaUrl: '',
+        timestamp: '2026-07-01T11:00:00.000Z',
+      },
     ];
 
     const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
@@ -267,9 +339,20 @@ describe('whatsapp-crm-match', () => {
   it('matches when ERP stores phone with 55 prefix and conversation has local number', async () => {
     const deps = makeDeps();
     deps._setLeads([
-      { name: 'LEAD-55', lead_name: 'Rita Santos', first_name: 'Rita', email_id: null, mobile_no: '5511988887777' },
+      {
+        name: 'LEAD-55',
+        lead_name: 'Rita Santos',
+        first_name: 'Rita',
+        email_id: null,
+        mobile_no: '5511988887777',
+      },
     ]);
-    deps._setDocs('Lead', 'LEAD-55', { name: 'LEAD-55', first_name: 'Rita', email_id: null, mobile_no: '5511988887777' });
+    deps._setDocs('Lead', 'LEAD-55', {
+      name: 'LEAD-55',
+      first_name: 'Rita',
+      email_id: null,
+      mobile_no: '5511988887777',
+    });
 
     // Conversation phone has no 55 prefix
     const conv = makeConversation({ phone: '11988887777', displayName: 'Rita Santos' });
@@ -284,9 +367,20 @@ describe('whatsapp-crm-match', () => {
   it('matches when ERP stores phone without 55 prefix and conversation has full number', async () => {
     const deps = makeDeps();
     deps._setLeads([
-      { name: 'LEAD-NO55', lead_name: 'João Neto', first_name: 'João', email_id: null, mobile_no: '11988887777' },
+      {
+        name: 'LEAD-NO55',
+        lead_name: 'João Neto',
+        first_name: 'João',
+        email_id: null,
+        mobile_no: '11988887777',
+      },
     ]);
-    deps._setDocs('Lead', 'LEAD-NO55', { name: 'LEAD-NO55', first_name: 'João', email_id: null, mobile_no: '11988887777' });
+    deps._setDocs('Lead', 'LEAD-NO55', {
+      name: 'LEAD-NO55',
+      first_name: 'João',
+      email_id: null,
+      mobile_no: '11988887777',
+    });
 
     // Conversation phone has 55 prefix
     const conv = makeConversation({ phone: '5511988887777', displayName: 'João Neto' });

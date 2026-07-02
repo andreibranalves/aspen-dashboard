@@ -12,9 +12,15 @@ export type WhatsappConversationStatus =
 
 export interface WhatsappConversation {
   id: string;
+  providerConversationId: string;
   remoteJid: string;
+  canonicalPhone: string;
   phone: string;
+  displayLabel: string;
   displayName: string;
+  identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
+  identitySource?: string | null;
+  identityConfidence?: 'high' | 'medium' | 'low' | null;
   lastMessageAt: string;
   lastMessagePreview: string;
   linkedLeadId?: string | null;
@@ -151,9 +157,7 @@ export async function updateWhatsappConversationStatus(
   return result.data;
 }
 
-export async function fetchWhatsappConversation(
-  id: string
-): Promise<WhatsappConversationDetail> {
+export async function fetchWhatsappConversation(id: string): Promise<WhatsappConversationDetail> {
   const result = await apiGet<ApiEnvelope<WhatsappConversationDetail>>(
     `/whatsapp-conversations?id=${encodeURIComponent(id)}`
   );

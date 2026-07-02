@@ -1,0 +1,82 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { backfillWhatsappIdentities } from '../../api/_functions/lib/whatsapp-identity-backfill.js';
+
+describe('whatsapp-identity-backfill', () => {
+  it('reprocesses conversations and fills canonicalPhone from stored phone', async () => {
+    let written: any[] = [];
+    const deps = {
+      readConversations: async () => [
+        {
+          id: 'wa_1',
+          providerConversationId: '',
+          remoteJid: '5521981858541@s.whatsapp.net',
+          canonicalPhone: '',
+          phone: '5521981858541',
+          displayLabel: '',
+          displayName: 'Maria',
+          identityStatus: 'unresolved' as const,
+          identitySource: null,
+          identityConfidence: null,
+          source: 'evolution' as const,
+          status: 'new' as const,
+          lastMessageAt: '2026-07-01T12:00:00.000Z',
+          lastMessagePreview: '',
+          createdAt: '2026-07-01T12:00:00.000Z',
+          updatedAt: '2026-07-01T12:00:00.000Z',
+        },
+      ] as any[],
+      writeConversations: async (convs: any[]) => {
+        written = convs;
+      },
+      readMessages: async () => [],
+      now: () => '2026-07-01T12:00:00.000Z',
+    };
+
+    const result = await backfillWhatsappIdentities(deps);
+    assert.equal(result.total, 1);
+    assert.equal(result.fixed, 1);
+    assert.equal(result.unresolved, 0);
+    assert.equal(written[0].canonicalPhone, '5521981858541');
+    assert.equal(written[0].displayLabel, 'Maria');
+    assert.equal(written[0].identityStatus, 'derived');
+    assert.equal(written[0].identityConfidence, 'medium');
+  });
+
+  it('marks conversations as unresolved when no identity can be derived', async () => {
+    let written: any[] = [];
+    const deps = {
+      readConversations: async () => [
+        {
+          id: 'wa_2',
+          providerConversationId: '',
+          remoteJid: '183792384719283741@lid',
+          canonicalPhone: '',
+          phone: '',
+          displayLabel: '',
+          displayName: '',
+          identityStatus: 'unresolved' as const,
+          identitySource: null,
+          identityConfidence: null,
+          source: 'evolution' as const,
+          status: 'new' as const,
+          lastMessageAt: '2026-07-01T12:00:00.000Z',
+          lastMessagePreview: '',
+          createdAt: '2026-07-01T12:00:00.000Z',
+          updatedAt: '2026-07-01T12:00:00.000Z',
+        },
+      ] as any[],
+      writeConversations: async (convs: any[]) => {
+        written = convs;
+      },
+      readMessages: async () => [],
+      now: () => '2026-07-01T12:00:00.000Z',
+    };
+
+    const result = await backfillWhatsappIdentities(deps);
+    assert.equal(result.unresolved, 0);
+    assert.equal(result.unchanged, 1);
+    assert.equal(written[0].canonicalPhone, '');
+    assert.equal(written[0].identityStatus, 'unresolved');
+  });
+});
