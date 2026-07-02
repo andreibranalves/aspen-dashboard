@@ -54,6 +54,21 @@ describe('whatsapp-conversations-store', () => {
     assert.equal(conversation.source, 'evolution');
   });
 
+  it('does not derive phone from lid-like remoteJid without explicit phone', () => {
+    const deps = makeDeps();
+    const conversation = normalizeWhatsappConversationInput(
+      {
+        remoteJid: '183792384719283741@lid',
+        displayName: 'Cliente LID',
+      },
+      deps
+    );
+
+    assert.equal(conversation.remoteJid, '183792384719283741@lid');
+    assert.equal(conversation.phone, '');
+    assert.equal(conversation.displayName, 'Cliente LID');
+  });
+
   it('normalizes message input and preserves provider id', () => {
     const deps = makeDeps();
     const message = normalizeWhatsappMessageInput(
@@ -102,6 +117,34 @@ describe('whatsapp-conversations-store', () => {
     assert.equal(second.displayName, 'João Silva');
     assert.equal(second.lastMessagePreview, 'segunda');
     assert.equal((await listWhatsappConversations({}, deps)).length, 1);
+  });
+
+  it('preserves a saved phone when a later sync only brings a lid-like remoteJid', async () => {
+    const deps = makeDeps();
+
+    const first = await upsertWhatsappConversation(
+      {
+        remoteJid: '183792384719283741@lid',
+        phone: '554896241095',
+        displayName: 'Cliente',
+        lastMessagePreview: 'primeira',
+        lastMessageAt: '2026-07-01T10:00:00.000Z',
+      },
+      deps
+    );
+    const second = await upsertWhatsappConversation(
+      {
+        remoteJid: '183792384719283741@lid',
+        displayName: 'Cliente Atualizado',
+        lastMessagePreview: 'segunda',
+        lastMessageAt: '2026-07-01T11:00:00.000Z',
+      },
+      deps
+    );
+
+    assert.equal(first.id, second.id);
+    assert.equal(second.phone, '554896241095');
+    assert.equal(second.displayName, 'Cliente Atualizado');
   });
 
   it('deduplicates messages by providerMessageId', async () => {

@@ -1,5 +1,7 @@
 import { createHttpError } from './erpnext.js';
 import {
+  normalizeWhatsappPhone,
+  normalizeWhatsappPhoneFromRemoteJid,
   upsertWhatsappConversation,
   upsertWhatsappMessages,
   type WhatsappConversation,
@@ -27,14 +29,58 @@ function cleanText(value: unknown): string {
     .trim();
 }
 
-function normalizePhone(value: unknown): string {
-  const raw = String(value || '').split('@')[0];
-  let digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
-    digits = `55${digits}`;
+function readRemoteJid(chat: Record<string, unknown>): string {
+  return cleanText(chat.remoteJid || chat.id || chat.jid || chat.key);
+}
+
+function readMessagePhoneCandidates(message: Record<string, unknown>): unknown[] {
+  const key = (message.key || {}) as Record<string, unknown>;
+  const nested = (message.message || {}) as Record<string, unknown>;
+  const contextInfo = (nested.extendedTextMessage || {}) as Record<string, unknown>;
+
+  return [
+    message.phone,
+    message.senderPn,
+    message.participant,
+    message.sender,
+    message.from,
+    key.participant,
+    key.remoteJid,
+    contextInfo.participant,
+  ];
+}
+
+function firstNormalizedPhone(candidates: unknown[]): string {
+  for (const candidate of candidates) {
+    const normalized = normalizeWhatsappPhone(candidate);
+    if (normalized) return normalized;
   }
-  return digits;
+  return '';
+}
+
+function resolveConversationPhone(
+  chat: Record<string, unknown>,
+  messages: Array<Record<string, unknown>> = []
+): string {
+  const last = (chat.lastMessage || {}) as Record<string, unknown>;
+  const lastKey = (last.key || {}) as Record<string, unknown>;
+
+  const fromChat = firstNormalizedPhone([
+    chat.phone,
+    chat.senderPn,
+    chat.participant,
+    chat.sender,
+    chat.from,
+    last.senderPn,
+    last.participant,
+    lastKey.participant,
+  ]);
+  if (fromChat) return fromChat;
+
+  const fromMessages = firstNormalizedPhone(messages.flatMap(readMessagePhoneCandidates));
+  if (fromMessages) return fromMessages;
+
+  return normalizeWhatsappPhoneFromRemoteJid(readRemoteJid(chat));
 }
 
 function isGroupChat(chat: Record<string, unknown>): boolean {
@@ -129,8 +175,8 @@ export function normalizeEvolutionConversation(
 ): Record<string, unknown> | null {
   if (isGroupChat(chat)) return null;
 
-  const remoteJid = cleanText(chat.remoteJid || chat.id || chat.jid || chat.key);
-  const phone = normalizePhone(chat.phone || chat.senderPn || remoteJid);
+  const remoteJid = readRemoteJid(chat);
+  const phone = resolveConversationPhone(chat);
   if (!remoteJid && !phone) return null;
 
   return {
@@ -237,25 +283,33 @@ export async function syncWhatsappConversations(
   const chats = await fetchChats(chatLimit);
   // ponytail: Evolution ignores the `limit` body param and returns every chat,
   // so we slice in-memory. Sorting by recent first keeps the most relevant.
-  const normalizedChats = (
-    chats.map(normalizeEvolutionConversation).filter(Boolean) as Array<Record<string, unknown>>
-  )
+  const rankedChats = chats
+    .filter((chat) => !isGroupChat(chat))
     .sort((a, b) => chatSortValue(b) - chatSortValue(a))
     .slice(0, chatLimit);
 
   // Fetch messages in parallel (slow HTTP); store writes stay serial (fast KV).
   const withMessages = await Promise.all(
-    normalizedChats.map(async (chat) => ({
-      chat,
-      messages: (await fetchMessages(String(chat.remoteJid), messageLimit))
-        .map(normalizeEvolutionMessage)
-        .filter(Boolean) as Array<Record<string, unknown>>,
-    }))
+    rankedChats.map(async (chat) => {
+      const remoteJid = readRemoteJid(chat);
+      const rawMessages = remoteJid ? await fetchMessages(remoteJid, messageLimit) : [];
+      const normalizedChat = normalizeEvolutionConversation({
+        ...chat,
+        phone: resolveConversationPhone(chat, rawMessages),
+      });
+      return {
+        chat: normalizedChat,
+        messages: rawMessages.map(normalizeEvolutionMessage).filter(Boolean) as Array<
+          Record<string, unknown>
+        >,
+      };
+    })
   );
 
   const conversations: WhatsappConversation[] = [];
   let syncedMessages = 0;
   for (const { chat, messages } of withMessages) {
+    if (!chat) continue;
     const conversation = await upsertWhatsappConversation(chat, deps);
     conversations.push(conversation);
     const stored = await upsertWhatsappMessages(conversation.id, messages, deps);
@@ -278,6 +332,15 @@ export async function syncMessagesForConversation(
     Record<string, unknown>
   >;
   await upsertWhatsappMessages(conversation.id, normalized, deps);
+
+  const resolvedPhone =
+    firstNormalizedPhone(rawMessages.flatMap(readMessagePhoneCandidates)) ||
+    normalizeWhatsappPhoneFromRemoteJid(conversation.remoteJid) ||
+    normalizeWhatsappPhone(conversation.phone);
+
+  if (resolvedPhone && resolvedPhone !== conversation.phone) {
+    return upsertWhatsappConversation({ ...conversation, phone: resolvedPhone }, deps);
+  }
 
   return conversation;
 }

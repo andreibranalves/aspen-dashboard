@@ -48,6 +48,32 @@ describe('whatsapp-conversations-sync', () => {
     assert.equal(normalized!.lastMessagePreview, 'Quero 100 cangas');
   });
 
+  it('prefers explicit sender phone over lid-like remoteJid', () => {
+    const normalized = normalizeEvolutionConversation({
+      remoteJid: '183792384719283741@lid',
+      senderPn: '554896241095',
+      pushName: 'Cliente LID',
+      updatedAt: 1782916800,
+      lastMessage: { text: 'Oi' },
+    });
+
+    assert.equal(normalized!.remoteJid, '183792384719283741@lid');
+    assert.equal(normalized!.phone, '554896241095');
+    assert.equal(normalized!.displayName, 'Cliente LID');
+  });
+
+  it('does not derive phone from a lid-like remoteJid when no explicit phone exists', () => {
+    const normalized = normalizeEvolutionConversation({
+      remoteJid: '183792384719283741@lid',
+      pushName: 'Cliente LID',
+      updatedAt: 1782916800,
+      lastMessage: { text: 'Oi' },
+    });
+
+    assert.equal(normalized!.remoteJid, '183792384719283741@lid');
+    assert.equal(normalized!.phone, '');
+  });
+
   it('marks group chats as skipped by returning null', () => {
     assert.equal(
       normalizeEvolutionConversation({ remoteJid: '1203630@g.us', subject: 'Grupo' }),
@@ -148,5 +174,42 @@ describe('whatsapp-conversations-sync', () => {
 
     assert.equal(requestedLimit, 100);
     assert.equal((await storeDeps.readMessages(conversation.id)).length, 1);
+  });
+
+  it('backfills the real phone when refreshing a conversation stored with lid-like remoteJid', async () => {
+    const storeDeps = makeStoreDeps();
+    const conversation: WhatsappConversation = {
+      id: 'wa_1',
+      remoteJid: '183792384719283741@lid',
+      phone: '',
+      displayName: 'Cliente LID',
+      source: 'evolution',
+      status: 'new',
+      lastMessageAt: '2026-07-01T12:00:00.000Z',
+      lastMessagePreview: 'Mensagem 1',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-01T12:00:00.000Z',
+    };
+    await storeDeps.writeConversations([conversation]);
+
+    const syncDeps: EvolutionSyncDeps = {
+      ...storeDeps,
+      fetchMessages: async () => [
+        {
+          key: {
+            id: 'm1',
+            fromMe: false,
+            participant: '554896241095@s.whatsapp.net',
+          },
+          messageTimestamp: 1782916800,
+          message: { conversation: 'Mensagem 1' },
+        },
+      ],
+    };
+
+    await syncMessagesForConversation(conversation, 100, syncDeps);
+
+    const storedConversations = await storeDeps.readConversations();
+    assert.equal(storedConversations[0].phone, '554896241095');
   });
 });

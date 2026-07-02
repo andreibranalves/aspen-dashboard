@@ -84,15 +84,29 @@ export function cleanText(value: unknown): string {
     .trim();
 }
 
-function normalizePhone(value: unknown): string {
-  const raw = String(value || '');
+const PHONE_JID_RE = /^\d+@(s\.whatsapp\.net|c\.us)$/i;
+
+export function normalizeWhatsappPhone(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  if (raw.includes('@') && !PHONE_JID_RE.test(raw)) {
+    return '';
+  }
+
   const beforeAt = raw.split('@')[0];
   let digits = beforeAt.replace(/\D/g, '');
-  if (!digits) return '';
+  if (!digits || digits.length < 10 || digits.length > 15) return '';
   if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
     digits = `55${digits}`;
   }
   return digits;
+}
+
+export function normalizeWhatsappPhoneFromRemoteJid(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!PHONE_JID_RE.test(raw)) return '';
+  return normalizeWhatsappPhone(raw);
 }
 
 function normalizeIso(value: unknown, fallback: string): string {
@@ -178,7 +192,10 @@ export function normalizeWhatsappConversationInput(
 ): WhatsappConversation {
   const now = deps.now();
   const remoteJid = cleanText(input.remoteJid || input.id || input.jid);
-  const phone = normalizePhone(input.phone || input.telefone || remoteJid);
+  const phone =
+    normalizeWhatsappPhone(
+      input.phone || input.telefone || input.senderPn || input.participant || input.from
+    ) || normalizeWhatsappPhoneFromRemoteJid(remoteJid);
   const displayName = cleanText(input.displayName || input.name || input.nome || phone);
 
   return {
@@ -251,6 +268,7 @@ export async function upsertWhatsappConversation(
       status: normalized.status === 'new' ? current.status : normalized.status,
       linkedLeadId: normalized.linkedLeadId || current.linkedLeadId || null,
       linkedDealId: normalized.linkedDealId || current.linkedDealId || null,
+      phone: normalized.phone || current.phone || '',
       linkedQuotationId: normalized.linkedQuotationId || current.linkedQuotationId || null,
       linkedCrmEntityId: normalized.linkedCrmEntityId || current.linkedCrmEntityId || null,
       linkedCrmEntityType: normalized.linkedCrmEntityType || current.linkedCrmEntityType || null,
