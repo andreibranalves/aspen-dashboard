@@ -21,9 +21,7 @@ export interface BackfillResult {
   unresolved: number;
 }
 
-export async function backfillWhatsappIdentities(
-  deps: BackfillDeps
-): Promise<BackfillResult> {
+export async function backfillWhatsappIdentities(deps: BackfillDeps): Promise<BackfillResult> {
   const conversations = await deps.readConversations();
   const result: BackfillResult = {
     total: conversations.length,
@@ -36,16 +34,28 @@ export async function backfillWhatsappIdentities(
   const updated: WhatsappConversation[] = [];
   for (const conv of conversations) {
     const messages = await deps.readMessages(conv.id);
+    const legacyPhone = conv.canonicalPhone || conv.phone || '';
+    const legacyName = conv.displayLabel || conv.displayName || '';
     const identity = resolveWhatsappIdentity({
-      chat: { remoteJid: conv.remoteJid, pushName: conv.displayName || conv.displayLabel },
+      chat: {
+        remoteJid: conv.providerConversationId || conv.remoteJid,
+        phone: legacyPhone,
+        pushName: legacyName,
+        displayName: legacyName,
+      },
       messages: messages.map((m) => (m.raw || m) as Record<string, unknown>),
       storedConversation: conv as unknown as Record<string, unknown>,
     });
 
-    const canonicalPhone = identity.canonicalPhone || conv.phone || '';
+    const canonicalPhone = identity.canonicalPhone || legacyPhone;
+    const displayLabel = identity.displayLabel || legacyName || 'Contato sem nome';
     const status = identity.identityStatus;
 
-    if (canonicalPhone !== conv.canonicalPhone || conv.identityStatus !== status) {
+    if (
+      canonicalPhone !== conv.canonicalPhone ||
+      displayLabel !== conv.displayLabel ||
+      conv.identityStatus !== status
+    ) {
       if (status === 'verified' || status === 'derived') result.fixed++;
       else if (status === 'conflict') result.conflict++;
       else result.unresolved++;
@@ -55,11 +65,13 @@ export async function backfillWhatsappIdentities(
 
     updated.push({
       ...conv,
-      providerConversationId: identity.providerConversationId || conv.remoteJid,
+      providerConversationId:
+        identity.providerConversationId || conv.providerConversationId || conv.remoteJid,
+      remoteJid: identity.providerConversationId || conv.remoteJid,
       canonicalPhone,
-      phone: canonicalPhone || conv.phone || '',
-      displayLabel: identity.displayLabel || conv.displayName || '',
-      displayName: identity.displayLabel || conv.displayName || '',
+      phone: canonicalPhone,
+      displayLabel,
+      displayName: displayLabel,
       identityStatus: status,
       identitySource: identity.identitySource,
       identityConfidence: identity.identityConfidence,
@@ -68,6 +80,5 @@ export async function backfillWhatsappIdentities(
   }
 
   await deps.writeConversations(updated);
-  console.log('[whatsapp-backfill]', JSON.stringify(result));
   return result;
 }

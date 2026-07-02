@@ -26,6 +26,7 @@ import {
   syncMessagesForConversation,
   type EvolutionSyncDeps,
 } from './lib/whatsapp-conversations-sync.js';
+import { backfillWhatsappIdentities } from './lib/whatsapp-identity-backfill.js';
 
 const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   statusCode,
@@ -197,6 +198,7 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
             },
             deps as EvolutionSyncDeps
           );
+          await backfillWhatsappIdentities((deps || LIVE_DEPS) as WhatsappConversationStoreDeps);
           return jsonResponse(200, { success: true, data });
         }
 
