@@ -336,6 +336,19 @@ export async function upsertWhatsappMessages(
   return next;
 }
 
+/** Sanitiza canonicalPhone/phone de conversas legadas com identidade não resolvida e provider @lid. */
+function sanitizeConversationPhone(item: WhatsappConversation): WhatsappConversation {
+  if (
+    item.identityStatus === 'unresolved' &&
+    item.providerConversationId.includes('@lid') &&
+    item.canonicalPhone &&
+    !item.canonicalPhone.startsWith('55')
+  ) {
+    return { ...item, canonicalPhone: '', phone: '' };
+  }
+  return item;
+}
+
 export async function listWhatsappConversations(
   filters: WhatsappConversationFilters = {},
   deps: WhatsappConversationStoreDeps = LIVE_DEPS
@@ -355,6 +368,7 @@ export async function listWhatsappConversations(
       );
     })
     .sort((a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt))
+    .map(sanitizeConversationPhone)
     .slice(0, limit);
 }
 

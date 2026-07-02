@@ -368,4 +368,56 @@ describe('whatsapp-conversations-store', () => {
     const [conversation] = await deps.readConversations();
     assert.ok(conversation.canonicalPhone);
   });
+
+  it('strips canonicalPhone from lid conversations with unresolved identity on list', async () => {
+    const deps = makeDeps();
+    // Insere conversas legadas com dados sujos diretamente no store
+    await deps.writeConversations([
+      {
+        id: 'wa_legacy_01',
+        providerConversationId: '265639532982352@lid',
+        remoteJid: '265639532982352@lid',
+        canonicalPhone: '265639532982352',
+        phone: '265639532982352',
+        displayLabel: 'Contato sem nome',
+        displayName: 'Contato sem nome',
+        identityStatus: 'unresolved',
+        identitySource: null,
+        identityConfidence: null,
+        source: 'evolution',
+        status: 'new',
+        lastMessageAt: '2026-07-02T12:00:00.000Z',
+        lastMessagePreview: 'oi',
+        createdAt: '2026-07-02T12:00:00.000Z',
+        updatedAt: '2026-07-02T12:00:00.000Z',
+      },
+      {
+        id: 'wa_good_01',
+        providerConversationId: '5521981858541@s.whatsapp.net',
+        remoteJid: '5521981858541@s.whatsapp.net',
+        canonicalPhone: '5521981858541',
+        phone: '5521981858541',
+        displayLabel: 'Maria',
+        displayName: 'Maria',
+        identityStatus: 'verified',
+        identitySource: 'chat.phone',
+        identityConfidence: 'high',
+        source: 'evolution',
+        status: 'new',
+        lastMessageAt: '2026-07-02T12:00:00.000Z',
+        lastMessagePreview: 'oi',
+        createdAt: '2026-07-02T12:00:00.000Z',
+        updatedAt: '2026-07-02T12:00:00.000Z',
+      },
+    ]);
+
+    const result = await listWhatsappConversations({}, deps);
+    assert.equal(result.length, 2);
+    const legacy = result.find((c) => c.id === 'wa_legacy_01')!;
+    const good = result.find((c) => c.id === 'wa_good_01')!;
+    assert.equal(legacy.canonicalPhone, '');
+    assert.equal(legacy.phone, '');
+    assert.equal(good.canonicalPhone, '5521981858541');
+    assert.equal(good.phone, '5521981858541');
+  });
 });
