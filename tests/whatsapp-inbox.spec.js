@@ -410,7 +410,7 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByText('(55) 21 98185-8541')).toHaveCount(0);
   });
 
-  test('falls back to legacy displayName and phone for old conversations', async ({ page }) => {
+  test('shows static fallback for old conversations without canonical phone', async ({ page }) => {
     await page.route('**/api/whatsapp-conversations**', async (route) => {
       const requestUrl = route.request().url();
 
@@ -474,6 +474,7 @@ test.describe('WhatsApp Inbox Page', () => {
     await page.goto('/#/whatsapp-inbox');
 
     await expect(page.getByText('Maria Legado').first()).toBeVisible();
-    await expect(page.getByText('(55) 21 98185-8541').first()).toBeVisible();
+    await expect(page.getByText('Telefone não identificado').first()).toBeVisible();
+    await expect(page.getByText('(55) 21 98185-8541')).toHaveCount(0);
   });
 });

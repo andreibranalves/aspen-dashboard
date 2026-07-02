@@ -374,7 +374,7 @@ describe('whatsapp-conversations handler', () => {
     assert.equal(parse(result).data.id, 'quote_lead_1');
   });
 
-  it('backfills legacy conversations when running sync', async () => {
+  it('does not backfill legacy conversations when running sync', async () => {
     const deps = makeDeps();
     await deps.writeConversations([
       {

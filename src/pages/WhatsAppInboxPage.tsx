@@ -305,7 +305,9 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-fg">
-                        {conversation.displayLabel || conversation.displayName || 'Contato sem nome'}
+                        {conversation.displayLabel ||
+                          conversation.displayName ||
+                          'Contato sem nome'}
                       </p>
                       <p className="truncate text-xs text-fg-muted">
                         {fmtPhone(conversation.canonicalPhone) || 'Telefone não identificado'}
@@ -333,7 +335,9 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
           ) : (
             <>
               <div className="border-b border-line px-4 py-3">
-                <h2 className="text-sm font-semibold text-fg">{selected.displayLabel || selected.displayName}</h2>
+                <h2 className="text-sm font-semibold text-fg">
+                  {selected.displayLabel || selected.displayName || 'Contato sem nome'}
+                </h2>
                 <p className="text-xs text-fg-muted">
                   {fmtPhone(selected.canonicalPhone) || 'Telefone não identificado'}
                 </p>

@@ -27,7 +27,6 @@ import {
   type EvolutionSyncDeps,
 } from './lib/whatsapp-conversations-sync.js';
 
-
 const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   statusCode,
   headers: { 'Content-Type': 'application/json' },
