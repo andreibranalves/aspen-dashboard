@@ -155,7 +155,9 @@ function bestSource(
 }
 
 function resolveDisplayLabel(chat: Record<string, unknown>, canonicalPhone: string): string {
-  const name = cleanText(chat.pushName || chat.name || chat.notify);
+  // Support multiple name field conventions: pushName (Evolution),
+  // displayName/nome (normalized store), name (generic)
+  const name = cleanText(chat.pushName || chat.displayName || chat.name || chat.nome || chat.notify);
   if (name) return name;
   if (canonicalPhone) return canonicalPhone;
   return 'Contato sem nome';

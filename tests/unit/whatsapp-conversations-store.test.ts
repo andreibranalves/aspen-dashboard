@@ -200,4 +200,101 @@ describe('whatsapp-conversations-store', () => {
       /Conversa do WhatsApp não encontrada/
     );
   });
+
+  it('populates canonicalPhone and providerConversationId during normalization', () => {
+    const deps = makeDeps();
+    const conversation = normalizeWhatsappConversationInput(
+      {
+        remoteJid: '5521981858541@s.whatsapp.net',
+        phone: '5521981858541',
+        displayName: 'Maria',
+      },
+      deps
+    );
+
+    assert.equal(conversation.providerConversationId, '5521981858541@s.whatsapp.net');
+    assert.equal(conversation.canonicalPhone, '5521981858541');
+    assert.equal(conversation.phone, '5521981858541'); // compat
+    assert.equal(conversation.displayLabel, 'Maria');
+    assert.equal(conversation.displayName, 'Maria'); // compat
+    assert.equal(conversation.identityStatus, 'verified');
+    assert.equal(conversation.identityConfidence, 'high');
+  });
+
+  it('preserves old remoteJid and phone for backward compatibility', () => {
+    const deps = makeDeps();
+    const conversation = normalizeWhatsappConversationInput(
+      {
+        remoteJid: '183792384719283741@lid',
+        senderPn: '5521981858541',
+        displayName: 'Maria',
+      },
+      deps
+    );
+
+    assert.equal(conversation.remoteJid, '183792384719283741@lid'); // compat stays
+    assert.equal(conversation.providerConversationId, '183792384719283741@lid');
+    assert.equal(conversation.canonicalPhone, '5521981858541');
+    assert.equal(conversation.phone, '5521981858541'); // compat populated
+    assert.equal(conversation.displayName, 'Maria'); // compat populated
+    assert.equal(conversation.displayLabel, 'Maria');
+  });
+
+  it('sets identityStatus unresolved when no phone can be derived', () => {
+    const deps = makeDeps();
+    const conversation = normalizeWhatsappConversationInput(
+      {
+        remoteJid: '183792384719283741@lid',
+        displayName: 'Cliente LID',
+      },
+      deps
+    );
+
+    assert.equal(conversation.canonicalPhone, '');
+    assert.equal(conversation.phone, ''); // compat
+    assert.equal(conversation.identityStatus, 'unresolved');
+    assert.equal(conversation.identityConfidence, null);
+  });
+
+  it('preserves canonicalPhone on upsert when new payload has weaker evidence', async () => {
+    const deps = makeDeps();
+
+    const first = await upsertWhatsappConversation(
+      {
+        remoteJid: '183792384719283741@lid',
+        senderPn: '5521981858541',
+        displayName: 'Maria',
+        lastMessagePreview: 'primeira',
+        lastMessageAt: '2026-07-01T10:00:00.000Z',
+      },
+      deps
+    );
+    assert.equal(first.canonicalPhone, '5521981858541');
+    assert.equal(first.identityConfidence, 'high');
+
+    const second = await upsertWhatsappConversation(
+      {
+        remoteJid: '183792384719283741@lid',
+        displayName: 'Maria Atualizada',
+        lastMessagePreview: 'segunda',
+        lastMessageAt: '2026-07-01T11:00:00.000Z',
+      },
+      deps
+    );
+
+    assert.equal(second.canonicalPhone, '5521981858541'); // preserved
+    assert.equal(second.identityConfidence, 'high'); // preserved
+    assert.equal(second.displayLabel, 'Maria Atualizada'); // updated
+  });
+
+  it('filters conversations by canonicalPhone in search', async () => {
+    const deps = makeDeps();
+    await upsertWhatsappConversation(
+      { remoteJid: 'a@s.whatsapp.net', phone: '5521981858541', displayName: 'Maria' },
+      deps
+    );
+
+    const results = await listWhatsappConversations({ q: '5521981858541' }, deps);
+    assert.equal(results.length, 1);
+  });
 });

@@ -1,5 +1,6 @@
 import { kv } from '@vercel/kv';
 import { createHttpError } from './erpnext.js';
+import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
 
 export type WhatsappConversationStatus =
   | 'new'
@@ -16,9 +17,15 @@ export type WhatsappMessageType = 'text' | 'image' | 'document' | 'audio' | 'unk
 
 export interface WhatsappConversation {
   id: string;
-  remoteJid: string;
-  phone: string;
-  displayName: string;
+  providerConversationId: string;
+  remoteJid: string;               // compat alias
+  canonicalPhone: string;          // business identity
+  phone: string;                   // compat alias
+  displayLabel: string;            // visual label
+  displayName: string;             // compat alias
+  identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
+  identitySource: string | null;
+  identityConfidence: 'high' | 'medium' | 'low' | null;
   lastMessageAt: string;
   lastMessagePreview: string;
   source: 'evolution';
@@ -191,18 +198,19 @@ export function normalizeWhatsappConversationInput(
   deps: Pick<WhatsappConversationStoreDeps, 'now' | 'id'> = LIVE_DEPS
 ): WhatsappConversation {
   const now = deps.now();
-  const remoteJid = cleanText(input.remoteJid || input.id || input.jid);
-  const phone =
-    normalizeWhatsappPhone(
-      input.phone || input.telefone || input.senderPn || input.participant || input.from
-    ) || normalizeWhatsappPhoneFromRemoteJid(remoteJid);
-  const displayName = cleanText(input.displayName || input.name || input.nome || phone);
+  const identity = resolveWhatsappIdentity({ chat: input });
 
   return {
     id: cleanText(input.id) || deps.id(),
-    remoteJid,
-    phone,
-    displayName,
+    providerConversationId: identity.providerConversationId,
+    remoteJid: identity.providerConversationId,              // compat
+    canonicalPhone: identity.canonicalPhone,
+    phone: identity.canonicalPhone,                          // compat
+    displayLabel: identity.displayLabel,
+    displayName: identity.displayLabel,                      // compat
+    identityStatus: identity.identityStatus,
+    identitySource: identity.identitySource,
+    identityConfidence: identity.identityConfidence,
     lastMessageAt: normalizeIso(input.lastMessageAt || input.timestamp, now),
     lastMessagePreview: cleanText(input.lastMessagePreview || input.preview || ''),
     source: 'evolution',
@@ -210,8 +218,15 @@ export function normalizeWhatsappConversationInput(
     linkedDealId: cleanText(input.linkedDealId) || null,
     linkedQuotationId: cleanText(input.linkedQuotationId) || null,
     linkedCrmEntityId: cleanText(input.linkedCrmEntityId) || null,
-    linkedCrmEntityType: (cleanText(input.linkedCrmEntityType) || null) as 'lead' | 'cliente' | null,
-    linkedCrmMatchSource: (cleanText(input.linkedCrmMatchSource) || null) as 'phone' | 'email' | 'name' | null,
+    linkedCrmEntityType: (cleanText(input.linkedCrmEntityType) || null) as
+      | 'lead'
+      | 'cliente'
+      | null,
+    linkedCrmMatchSource: (cleanText(input.linkedCrmMatchSource) || null) as
+      | 'phone'
+      | 'email'
+      | 'name'
+      | null,
     status: parseStatus(input.status),
     createdAt: normalizeIso(input.createdAt, now),
     updatedAt: normalizeIso(input.updatedAt, now),
@@ -268,7 +283,15 @@ export async function upsertWhatsappConversation(
       status: normalized.status === 'new' ? current.status : normalized.status,
       linkedLeadId: normalized.linkedLeadId || current.linkedLeadId || null,
       linkedDealId: normalized.linkedDealId || current.linkedDealId || null,
+      canonicalPhone: normalized.canonicalPhone || current.canonicalPhone || '',
+      displayLabel: normalized.displayLabel || current.displayLabel || '',
+      identityStatus: normalized.identityStatus !== 'unresolved'
+        ? normalized.identityStatus
+        : current.identityStatus || 'unresolved',
+      identitySource: normalized.identitySource || current.identitySource || null,
+      identityConfidence: normalized.identityConfidence || current.identityConfidence || null,
       phone: normalized.phone || current.phone || '',
+      displayName: normalized.displayName || current.displayName || '',
       linkedQuotationId: normalized.linkedQuotationId || current.linkedQuotationId || null,
       linkedCrmEntityId: normalized.linkedCrmEntityId || current.linkedCrmEntityId || null,
       linkedCrmEntityType: normalized.linkedCrmEntityType || current.linkedCrmEntityType || null,
@@ -318,7 +341,7 @@ export async function listWhatsappConversations(
     .filter((item) => !hasQuoteRequest || item.status === 'needs_quote')
     .filter((item) => {
       if (!q) return true;
-      return [item.displayName, item.phone, item.lastMessagePreview].some((value) =>
+      return [item.displayLabel, item.canonicalPhone, item.phone, item.lastMessagePreview].some((value) =>
         value.toLowerCase().includes(q)
       );
     })
@@ -363,11 +386,31 @@ export async function updateWhatsappConversation(
         ? next[index].linkedQuotationId
         : patch.linkedQuotationId,
     linkedCrmEntityId:
-      patch.linkedCrmEntityId === undefined ? next[index].linkedCrmEntityId : patch.linkedCrmEntityId,
+      patch.linkedCrmEntityId === undefined
+        ? next[index].linkedCrmEntityId
+        : patch.linkedCrmEntityId,
     linkedCrmEntityType:
-      patch.linkedCrmEntityType === undefined ? next[index].linkedCrmEntityType : patch.linkedCrmEntityType,
+      patch.linkedCrmEntityType === undefined
+        ? next[index].linkedCrmEntityType
+        : patch.linkedCrmEntityType,
     linkedCrmMatchSource:
-      patch.linkedCrmMatchSource === undefined ? next[index].linkedCrmMatchSource : patch.linkedCrmMatchSource,
+      patch.linkedCrmMatchSource === undefined
+        ? next[index].linkedCrmMatchSource
+        : patch.linkedCrmMatchSource,
+    canonicalPhone:
+      patch.canonicalPhone === undefined ? next[index].canonicalPhone : patch.canonicalPhone,
+    displayLabel:
+      patch.displayLabel === undefined ? next[index].displayLabel : patch.displayLabel,
+    identityStatus:
+      patch.identityStatus === undefined ? next[index].identityStatus : patch.identityStatus,
+    identitySource:
+      patch.identitySource === undefined ? next[index].identitySource : patch.identitySource,
+    identityConfidence:
+      patch.identityConfidence === undefined ? next[index].identityConfidence : patch.identityConfidence,
+    phone:
+      patch.phone === undefined ? next[index].phone : patch.phone,
+    displayName:
+      patch.displayName === undefined ? next[index].displayName : patch.displayName,
     updatedAt: deps.now(),
   };
   await deps.writeConversations(next);
