@@ -22,6 +22,9 @@ export function fmtPhone(phone: unknown): string {
   const digits = normalizePhoneDigits(phone);
   if (!digits) return '';
 
+  // Guard: 14+ digits without 55 prefix is not a Brazilian phone (likely a LID)
+  if (digits.length >= 14 && !digits.startsWith('55')) return '';
+
   // International with 55 prefix — longer than standard 11-digit BR numbers
   if (digits.startsWith('55') && digits.length >= 13) {
     const ddd = digits.slice(2, 4);
