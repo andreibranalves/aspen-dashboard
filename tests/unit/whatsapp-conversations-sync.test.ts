@@ -289,4 +289,35 @@ describe('whatsapp-conversations-sync', () => {
     assert.equal(updated.identityStatus, 'verified');
     assert.equal(updated.identityConfidence, 'high');
   });
+
+  it('keeps unresolved legacy conversation unresolved when refresh has no trusted phone source', async () => {
+    const storeDeps = makeStoreDeps();
+    const conversation: WhatsappConversation = {
+      id: 'wa_1',
+      providerConversationId: '183792384719283741@lid',
+      remoteJid: '183792384719283741@lid',
+      canonicalPhone: '',
+      phone: '5521981858541',
+      displayLabel: '',
+      displayName: 'Maria Legado',
+      identityStatus: 'unresolved',
+      identitySource: null,
+      identityConfidence: null,
+      source: 'evolution',
+      status: 'new',
+      lastMessageAt: '2026-07-02T12:00:00.000Z',
+      lastMessagePreview: 'Oi',
+      createdAt: '2026-07-02T12:00:00.000Z',
+      updatedAt: '2026-07-02T12:00:00.000Z',
+    };
+    await storeDeps.writeConversations([conversation]);
+
+    const updated = await syncMessagesForConversation(conversation as any, 100, {
+      ...storeDeps,
+      fetchMessages: async () => [],
+    });
+
+    assert.equal(updated.canonicalPhone, '');
+    assert.equal(updated.identityStatus, 'unresolved');
+  });
 });

@@ -43,30 +43,28 @@ function readRemoteJid(chat: Record<string, unknown>): string {
 
 function readHighConfidenceSources(
   chat: Record<string, unknown>,
-  messages: Array<Record<string, unknown>>
+  messages: Array<Record<string, unknown>>,
+  allowChatFields: boolean
 ): SourceResult[] {
   const results: SourceResult[] = [];
 
-  // chat.phone
-  const chatPhone = normalizeWhatsappPhone(chat.phone);
-  if (chatPhone) results.push({ phone: chatPhone, source: 'chat.phone', confidence: 'high' });
+  if (allowChatFields) {
+    const chatPhone = normalizeWhatsappPhone(chat.phone);
+    if (chatPhone) results.push({ phone: chatPhone, source: 'chat.phone', confidence: 'high' });
 
-  // chat.senderPn
-  const senderPn = normalizeWhatsappPhone(chat.senderPn);
-  if (senderPn) results.push({ phone: senderPn, source: 'chat.senderPn', confidence: 'high' });
+    const senderPn = normalizeWhatsappPhone(chat.senderPn);
+    if (senderPn) results.push({ phone: senderPn, source: 'chat.senderPn', confidence: 'high' });
 
-  // chat.participant
-  const chatParticipant = normalizeWhatsappPhone(chat.participant);
-  if (chatParticipant)
-    results.push({ phone: chatParticipant, source: 'chat.participant', confidence: 'high' });
+    const participant = normalizeWhatsappPhone(chat.participant);
+    if (participant)
+      results.push({ phone: participant, source: 'chat.participant', confidence: 'high' });
 
-  // chat.from
-  const chatFrom = normalizeWhatsappPhone(chat.from);
-  if (chatFrom) results.push({ phone: chatFrom, source: 'chat.from', confidence: 'high' });
+    const chatFrom = normalizeWhatsappPhone(chat.from);
+    if (chatFrom) results.push({ phone: chatFrom, source: 'chat.from', confidence: 'high' });
 
-  // chat.sender
-  const chatSender = normalizeWhatsappPhone(chat.sender);
-  if (chatSender) results.push({ phone: chatSender, source: 'chat.sender', confidence: 'high' });
+    const chatSender = normalizeWhatsappPhone(chat.sender);
+    if (chatSender) results.push({ phone: chatSender, source: 'chat.sender', confidence: 'high' });
+  }
 
   // message.key.participant (inbound only)
   for (const msg of messages) {
@@ -186,14 +184,21 @@ function shouldKeepStored(
 }
 
 export function resolveWhatsappIdentity(input: {
+  source?: 'provider' | 'stored';
   chat: Record<string, unknown>;
   messages?: Array<Record<string, unknown>>;
   storedConversation?: Record<string, unknown> | null;
 }): ResolvedWhatsappIdentity {
   const { chat, messages = [], storedConversation = null } = input;
+  const source = input.source || 'provider';
+
   const providerConversationId = readRemoteJid(chat);
 
-  const highSources = readHighConfidenceSources(chat, messages);
+  const highSources = readHighConfidenceSources(
+    chat,
+    messages,
+    source === 'provider'
+  );
   const mediumSource = readMediumConfidenceSource(chat);
 
   const fresh = bestSource(highSources, mediumSource);

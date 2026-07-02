@@ -198,7 +198,7 @@ export function normalizeWhatsappConversationInput(
   deps: Pick<WhatsappConversationStoreDeps, 'now' | 'id'> = LIVE_DEPS
 ): WhatsappConversation {
   const now = deps.now();
-  const identity = resolveWhatsappIdentity({ chat: input });
+  const identity = resolveWhatsappIdentity({ source: 'provider', chat: input });
 
   return {
     id: cleanText(input.id) || deps.id(),

@@ -129,4 +129,34 @@ describe('whatsapp-identity-resolver', () => {
     });
     assert.equal(result.canonicalPhone, '');
   });
+
+  it('ignores stored legacy phone when source is stored', () => {
+    const result = resolveWhatsappIdentity({
+      source: 'stored',
+      chat: {
+        remoteJid: '183792384719283741@lid',
+        phone: '5521981858541',
+        displayName: 'Maria Legado',
+      },
+    });
+
+    assert.equal(result.canonicalPhone, '');
+    assert.equal(result.identityStatus, 'unresolved');
+  });
+
+  it('accepts participant phone for stored conversations', () => {
+    const result = resolveWhatsappIdentity({
+      source: 'stored',
+      chat: { remoteJid: '183792384719283741@lid', displayName: 'Maria Legado' },
+      messages: [
+        {
+          key: { participant: '5521981858541@s.whatsapp.net', fromMe: false },
+        },
+      ],
+    });
+
+    assert.equal(result.canonicalPhone, '5521981858541');
+    assert.equal(result.identityStatus, 'verified');
+    assert.equal(result.identitySource, 'message.key.participant');
+  });
 });

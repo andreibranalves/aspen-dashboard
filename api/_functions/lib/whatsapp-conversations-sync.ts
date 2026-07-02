@@ -120,7 +120,7 @@ export function normalizeEvolutionConversation(
 ): Record<string, unknown> | null {
   if (isGroupChat(chat)) return null;
 
-  const identity = resolveWhatsappIdentity({ chat });
+  const identity = resolveWhatsappIdentity({ source: 'provider', chat });
 
   if (!identity.providerConversationId && !identity.canonicalPhone) return null;
 
@@ -247,7 +247,7 @@ export async function syncWhatsappConversations(
       const normalizedChat = normalizeEvolutionConversation(chat);
       // Enrich with messages for better identity
       if (normalizedChat && rawMessages.length > 0) {
-        const enriched = resolveWhatsappIdentity({ chat, messages: rawMessages });
+        const enriched = resolveWhatsappIdentity({ source: 'provider', chat, messages: rawMessages });
         normalizedChat.canonicalPhone = enriched.canonicalPhone;
         normalizedChat.phone = enriched.canonicalPhone; // compat
         normalizedChat.identityStatus = enriched.identityStatus;
@@ -292,6 +292,7 @@ export async function syncMessagesForConversation(
 
   // Re-resolve identity with fresh messages
   const identity = resolveWhatsappIdentity({
+    source: 'stored',
     chat: { remoteJid: conversation.remoteJid, pushName: conversation.displayLabel },
     messages: rawMessages,
     storedConversation: conversation as unknown as Record<string, unknown>,
