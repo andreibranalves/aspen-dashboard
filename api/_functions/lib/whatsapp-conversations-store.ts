@@ -12,6 +12,20 @@ export type WhatsappConversationStatus =
   | 'closed'
   | 'ignored';
 
+export interface WhatsappAttachment {
+  id: string;
+  kind: 'image' | 'document' | 'audio';
+  mimeType: string;
+  fileName: string;
+  mediaUrl: string;
+  caption: string;
+  origin: 'provider' | 'internal_generated';
+  documentRole: 'quotation_pdf' | 'generic_document' | null;
+  quotationId: string | null;
+  leadId: string | null;
+  customerId: string | null;
+}
+
 export type WhatsappMessageDirection = 'inbound' | 'outbound';
 export type WhatsappMessageType = 'text' | 'image' | 'document' | 'audio' | 'unknown';
 
@@ -48,6 +62,7 @@ export interface WhatsappMessage {
   type: WhatsappMessageType;
   body: string;
   mediaUrl: string;
+  attachments?: WhatsappAttachment[];
   timestamp: string;
   raw?: Record<string, unknown>;
 }
@@ -244,6 +259,31 @@ export function normalizeWhatsappMessageInput(
     ? (input.type as WhatsappMessageType)
     : 'unknown';
 
+  const mediaUrl = cleanText(input.mediaUrl || input.url || '');
+  let attachments = Array.isArray(input.attachments)
+    ? (input.attachments as WhatsappAttachment[])
+    : [];
+
+  if (attachments.length === 0 && mediaUrl) {
+    attachments = [
+      {
+        id: deps.id(),
+        kind: type !== 'text' && type !== 'unknown' ? type : 'image', // Best guess
+        mimeType: '', // Unknown for legacy
+        fileName: '', // Unknown for legacy
+        mediaUrl: mediaUrl,
+        caption: cleanText(input.body || input.text || input.caption || ''),
+        origin: 'provider',
+        documentRole: null,
+        quotationId: null,
+        leadId: null,
+        customerId: null,
+      },
+    ];
+  } else {
+    // console.log('DEBUG: NOT ENTERING SHIM. length:', attachments.length, 'mediaUrl:', mediaUrl);
+  }
+
   return {
     id: cleanText(input.id) || deps.id(),
     conversationId: cleanText(input.conversationId),
@@ -252,7 +292,8 @@ export function normalizeWhatsappMessageInput(
     direction,
     type,
     body: cleanText(input.body || input.text || input.caption || ''),
-    mediaUrl: cleanText(input.mediaUrl || input.url || ''),
+    mediaUrl,
+    attachments: attachments.length > 0 ? attachments : undefined,
     timestamp: normalizeIso(input.timestamp || input.messageTimestamp, now),
     raw:
       input.raw && typeof input.raw === 'object'
@@ -267,10 +308,7 @@ export async function upsertWhatsappConversation(
 ): Promise<WhatsappConversation> {
   const normalized = normalizeWhatsappConversationInput(input, deps);
   const conversations = await deps.readConversations();
-  const index = conversations.findIndex(
-    (item) =>
-      item.remoteJid === normalized.remoteJid || (!!item.phone && item.phone === normalized.phone)
-  );
+  const index = conversations.findIndex((item) => item.remoteJid === normalized.remoteJid);
 
   const next = [...conversations];
   if (index >= 0) {

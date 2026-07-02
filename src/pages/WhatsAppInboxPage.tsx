@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
+import { WhatsAppAttachmentCard } from '@/components/ui/whatsapp-attachment-card';
 import { Input } from '@/components/ui/input';
 import { fmtPhone, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -85,6 +86,12 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [crmDetail, setCrmDetail] = useState<WhatsappConversationDetail | null>(null);
+
+  const quotationAttachments = useMemo(() => {
+    return messages
+      .flatMap((m) => m.attachments || [])
+      .filter((a) => a.documentRole === 'quotation_pdf');
+  }, [messages]);
 
   const selected = useMemo(
     () => conversations.find((item) => item.id === selectedId) || conversations[0] || null,
@@ -377,7 +384,16 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                           : 'bg-surface-muted text-fg'
                       )}
                     >
-                      <p>{message.body || `[${message.type}]`}</p>
+                      {message.body && <p className="mb-2 whitespace-pre-wrap">{message.body}</p>}
+                      {message.attachments && message.attachments.length > 0 ? (
+                        <div className="space-y-2">
+                          {message.attachments.map((attachment) => (
+                            <WhatsAppAttachmentCard key={attachment.id} attachment={attachment} />
+                          ))}
+                        </div>
+                      ) : !message.body ? (
+                        <p>[{message.type}]</p>
+                      ) : null}
                       <p className="mt-1 text-[10px] opacity-70">{formatDate(message.timestamp)}</p>
                     </div>
                   ))
@@ -436,6 +452,21 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               >
                 Criar pré-orçamento
               </Button>
+
+              {quotationAttachments.length > 0 && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase text-primary">
+                    Orçamentos enviados
+                  </p>
+                  {quotationAttachments.map((a) => (
+                    <div key={a.id} className="text-xs text-fg">
+                      <p>ID: {a.quotationId || '—'}</p>
+                      <p>Lead: {a.leadId || '—'}</p>
+                      <p>Cliente: {a.customerId || '—'}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {crmDetail?.crmMatch && (
                 <div className="rounded-lg border border-line p-3">

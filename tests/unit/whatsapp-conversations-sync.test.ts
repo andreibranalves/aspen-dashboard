@@ -99,6 +99,32 @@ describe('whatsapp-conversations-sync', () => {
     assert.equal(outbound!.direction, 'outbound');
   });
 
+  it('normalizes image message with attachments', () => {
+    const raw = {
+      key: { id: 'm1', fromMe: false },
+      messageTimestamp: 1782916800,
+      message: {
+        imageMessage: {
+          url: 'http://example.com/image.jpg',
+          mimetype: 'image/jpeg',
+          caption: 'My image',
+          fileName: 'image.jpg',
+        },
+      },
+    };
+
+    const normalized = normalizeEvolutionMessage(raw);
+
+    assert.ok(normalized);
+    assert.equal(normalized!.type, 'image');
+    assert.equal(normalized!.body, 'My image');
+    assert.ok(Array.isArray((normalized as any).attachments));
+    assert.equal((normalized as any).attachments.length, 1);
+    assert.equal((normalized as any).attachments[0].kind, 'image');
+    assert.equal((normalized as any).attachments[0].mediaUrl, 'http://example.com/image.jpg');
+    assert.equal((normalized as any).attachments[0].caption, 'My image');
+  });
+
   it('unwraps Evolution collections from nested payload shapes', () => {
     assert.equal(
       unwrapEvolutionCollection({ messages: { records: [{ key: { id: 'm1' } }] } }).length,

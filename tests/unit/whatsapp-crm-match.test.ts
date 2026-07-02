@@ -205,12 +205,12 @@ describe('whatsapp-crm-match', () => {
     const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
 
     assert.equal(match?.id, 'LEAD-004');
+    // Ensure the conversation itself was NOT updated by the match resolution
     const convs = deps._getConversations();
-    assert.equal(convs[0].linkedCrmEntityId, 'LEAD-004');
-    assert.equal(convs[0].linkedCrmEntityType, 'lead');
+    assert.equal(convs[0].linkedCrmEntityId, 'LEAD-DELETED');
   });
 
-  it('persists CRM link fields after resolving match', async () => {
+  it('does NOT persist CRM link fields after resolving match', async () => {
     const deps = makeDeps();
     deps._setLeads([
       {
@@ -228,12 +228,12 @@ describe('whatsapp-crm-match', () => {
     });
     deps._seedConversation(conv);
 
-    await resolveWhatsappCrmMatch({ conversation: conv, deps });
+    const match = await resolveWhatsappCrmMatch({ conversation: conv, deps });
+    assert.equal(match?.id, 'LEAD-005');
 
     const convs = deps._getConversations();
-    assert.equal(convs[0].linkedCrmEntityId, 'LEAD-005');
-    assert.equal(convs[0].linkedCrmEntityType, 'lead');
-    assert.equal(convs[0].linkedCrmMatchSource, 'phone');
+    assert.equal(convs[0].linkedCrmEntityId, undefined);
+    assert.equal(convs[0].linkedCrmEntityType, undefined);
   });
 
   it('skips name fallback for single-word names', async () => {

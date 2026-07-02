@@ -12,6 +12,11 @@ import {
 } from './lib/erpnext.js';
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
+import {
+  LIVE_DEPS,
+  upsertWhatsappMessages,
+  WhatsappAttachment,
+} from './lib/whatsapp-conversations-store.js';
 
 // ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
 const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
@@ -776,8 +781,50 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       if (!dryRun) {
         for (let i = 0; i < steps.length; i++) {
           if (i > 0) await wait(randomDelay(delayMinMs, delayMaxMs));
-          const response = await sendStep(number, steps[i]);
+          const step = steps[i];
+          const response = await sendStep(number, step);
           evolution.push(response);
+
+          // Persist outbound quotation PDF message
+          if (step.type === 'document' && step.media && step.media.startsWith('__pdf__:')) {
+            try {
+              const conversations = await LIVE_DEPS.readConversations();
+              const conversation = conversations.find((c) => c.providerConversationId === number);
+
+              if (conversation) {
+                const quotation = resolved.quotation as Record<string, unknown>;
+                const leadId = (quotation.lead as string | undefined) || null;
+                const customerId = (quotation.customer as string | undefined) || null;
+
+                const attachment: WhatsappAttachment = {
+                  id: LIVE_DEPS.id(),
+                  kind: 'document',
+                  mimeType: step.mimetype || 'application/pdf',
+                  fileName: step.fileName || `${quotationId}.pdf`,
+                  mediaUrl: context.link, // PDF URL
+                  caption: step.caption || '',
+                  origin: 'internal_generated',
+                  documentRole: 'quotation_pdf',
+                  quotationId: quotationId,
+                  leadId,
+                  customerId,
+                };
+
+                await upsertWhatsappMessages(conversation.id, [
+                  {
+                    direction: 'outbound',
+                    type: 'document',
+                    body: step.caption || '',
+                    attachments: [attachment],
+                    timestamp: new Date().toISOString(),
+                    // Attach the response info if useful
+                  },
+                ]);
+              }
+            } catch (err) {
+              console.error('[send-whatsapp] persistence failed:', (err as Error).message);
+            }
+          }
         }
         await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       }

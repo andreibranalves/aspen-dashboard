@@ -11,8 +11,9 @@ O sistema alvo deve tratar a conversa como uma entidade de canal independente de
 - Um operador abre a inbox.
 - A conversa existe mesmo sem telefone confiável.
 - A thread mostra texto e também cards simples para imagem/documento/áudio.
-- Quando o Aspen envia um orçamento em PDF, a própria mensagem outbound já fica registrada com metadado explícito de negócio (`quotationId`, `leadId`/`customerId`, `documentRole=quotation_pdf`).
+- Quando o Aspen envia um orçamento em PDF, a própria mensagem outbound já fica registrada com metadado explícito de negócio (`quotationId`, `leadId`, `customerId`, `documentRole=quotation_pdf`), preenchendo `leadId`/`customerId` apenas quando conhecidos com segurança no send path.
 - O painel comercial consegue mostrar “esta conversa já teve o orçamento ORC-... enviado” sem parsing frágil do nome do arquivo.
+- Abrir a inbox não cria nem limpa vínculos comerciais silenciosamente.
 - Telefone continua sendo atributo opcional e nunca merge key da conversa.
 
 ## Tech Stack
@@ -121,7 +122,7 @@ export interface WhatsappMessage {
 ### Conventions
 
 - `providerConversationId` é a identidade externa da conversa; `canonicalPhone` nunca é chave primária nem merge key.
-- `null` é preferido a string vazia para metadado de negócio ausente quando o dado é semântico (`quotationId`, `customerId`, `documentRole`).
+- `null` é preferido a string vazia para metadado de negócio ausente quando o dado é semântico (`quotationId`, `leadId`, `customerId`, `documentRole`).
 - Evitar “engines” genéricas de reconciliação; preferir regras explícitas e escopo limitado.
 - Não inferir telefone de anexos.
 - Não criar camada de viewer/preview pesado para anexos se um card simples resolve a operação.
@@ -165,6 +166,7 @@ Must have:
 
 - unit/integration test que prova que o envio de PDF gera mensagem outbound persistida na thread
 - assertion de que a mensagem outbound persiste `quotationId` e `documentRole=quotation_pdf`
+- assertion de que `leadId`/`customerId` ficam preenchidos apenas quando conhecidos com segurança
 - UI test mostrando card de orçamento em conversa que já teve envio Aspen
 
 ### Coverage expectation
@@ -195,7 +197,7 @@ Não há meta percentual formal nova. A regra é: toda mudança estrutural nova 
 - Nunca sobrescrever telefone automaticamente por causa de PDF/nome de arquivo.
 - Nunca tratar parsing de filename como fonte primária de verdade quando o sistema poderia persistir metadado explícito no send path.
 - Nunca criar um “scoring engine” genérico para documentos nesta refatoração.
-- Nunca ocultar side effects comerciais em um simples GET da inbox.
+- Nunca ocultar side effects comerciais em um simples GET da inbox. GET deve ser estritamente read-only.
 
 ## Success Criteria
 
@@ -212,7 +214,7 @@ A refatoração será considerada concluída quando estas condições forem verd
 3. **Outbound quotation persistence**
    - Ao enviar um orçamento PDF pelo Aspen, o sistema persiste na thread uma mensagem outbound com attachment do tipo documento.
    - Essa mensagem registra explicitamente `quotationId` e `documentRole=quotation_pdf`.
-   - Se existir `leadId` ou `customerId` conhecido no momento do envio, ele é persistido junto à mensagem/anexo.
+   - Se `leadId` ou `customerId` forem conhecidos com segurança no momento do envio, eles são persistidos separadamente junto à mensagem/anexo; caso contrário, ficam `null` sem inferência posterior.
 
 4. **UI behavior**
    - A inbox mostra cards simples para documentos/imagens/áudio.
@@ -226,7 +228,7 @@ A refatoração será considerada concluída quando estas condições forem verd
 
 6. **Complexity reduction**
    - Nenhuma engine genérica de score/reconciliação é introduzida.
-   - O GET da inbox não cria side effects novos de vínculo comercial.
+   - O GET da inbox é estritamente read-only e não cria, corrige nem limpa vínculo comercial implicitamente.
    - A nova modelagem substitui heurística frágil em vez de empilhar mais heurística.
 
 ## Proposed Data Model Direction
@@ -311,8 +313,12 @@ Because the current system is KV/array-backed, and a nested attachment object re
 
 None blocking for the spec.
 
+Resolved for this refactor:
+
+- GET/read flows are strictly read-only; CRM matching on reads is suggestion-only.
+- Quotation PDF send-time metadata persists `quotationId` always and `leadId`/`customerId` separately only when known with confidence.
+
 If later required, these are follow-up design topics, not blockers for this refactor:
 
 - multi-instance WhatsApp identity keying
-- whether CRM matching should become explicit/manual instead of side-effectful on read
 - whether expiring media URLs need a proxy layer

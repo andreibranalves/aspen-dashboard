@@ -89,6 +89,25 @@ describe('whatsapp-conversations-store', () => {
     assert.equal(message.body, 'Olá, queria orçamento');
   });
 
+  it('normalizes legacy message with mediaUrl to include attachment', () => {
+    const deps = makeDeps();
+    const message = normalizeWhatsappMessageInput(
+      {
+        providerMessageId: 'm1',
+        type: 'image',
+        mediaUrl: 'http://example.com/image.jpg',
+        body: 'Look at this!',
+      },
+      deps
+    );
+
+    assert.equal(message.mediaUrl, 'http://example.com/image.jpg');
+    assert.ok(message.attachments, 'attachments should be defined');
+    assert.equal(message.attachments!.length, 1);
+    assert.equal(message.attachments![0].mediaUrl, 'http://example.com/image.jpg');
+    assert.equal(message.attachments![0].caption, 'Look at this!');
+  });
+
   it('upserts conversations by remoteJid and keeps newest preview', async () => {
     const deps = makeDeps();
 
@@ -419,5 +438,32 @@ describe('whatsapp-conversations-store', () => {
     assert.equal(legacy.phone, '');
     assert.equal(good.canonicalPhone, '5521981858541');
     assert.equal(good.phone, '5521981858541');
+  });
+
+  it('does NOT merge conversations by phone number', async () => {
+    const deps = makeDeps();
+
+    // Conversation 1
+    await upsertWhatsappConversation(
+      {
+        remoteJid: '1@lid',
+        phone: '5511111111111',
+        displayName: 'User 1',
+      },
+      deps
+    );
+
+    // Conversation 2 with DIFFERENT remoteJid, same phone
+    await upsertWhatsappConversation(
+      {
+        remoteJid: '2@lid',
+        phone: '5511111111111',
+        displayName: 'User 2',
+      },
+      deps
+    );
+
+    const conversations = await deps.readConversations();
+    assert.equal(conversations.length, 2);
   });
 });

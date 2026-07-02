@@ -9,7 +9,6 @@ import {
   type WhatsappConversation,
   type WhatsappConversationStoreDeps,
 } from './whatsapp-conversations-store.js';
-import { updateWhatsappConversation } from './whatsapp-conversations-store.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -209,12 +208,7 @@ export async function resolveWhatsappCrmMatch(input: {
           (conversation.linkedCrmMatchSource as WhatsappCrmMatch['matchSource']) || 'phone',
       };
     }
-    // Link invalid — clear it and fall through to fresh resolution
-    await updateWhatsappConversation(
-      conversation.id,
-      { linkedCrmEntityId: null, linkedCrmEntityType: null, linkedCrmMatchSource: null },
-      deps
-    );
+    // Link invalid - just fall through to fresh resolution, do not clear link on GET
   }
 
   // 2. If identity is too weak, don't auto-match
@@ -245,17 +239,7 @@ export async function resolveWhatsappCrmMatch(input: {
     }
   }
 
-  // 4. Persist the link on the conversation
-  await updateWhatsappConversation(
-    conversation.id,
-    {
-      linkedCrmEntityId: best.id,
-      linkedCrmEntityType: best.tipo,
-      linkedCrmMatchSource: matchSource,
-    },
-    deps
-  );
-
+  // 4. Return the match (do not persist automatically on read)
   return {
     id: best.id,
     tipo: best.tipo,

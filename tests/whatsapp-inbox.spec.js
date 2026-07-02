@@ -551,4 +551,133 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByText('557788152565')).toHaveCount(0);
     await expect(page.getByText('(55) 77881-52565')).toHaveCount(0);
   });
+
+  test('renders attachment cards for images, documents, and quotation PDFs', async ({ page }) => {
+    // Mock for attachments
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const req = route.request();
+      const url = req.url();
+      const method = req.method();
+
+      if (method === 'POST') {
+        const body = req.postDataJSON();
+        if (body.action === 'sync-messages') {
+          await route.fulfill({
+            json: {
+              success: true,
+              data: [
+                {
+                  id: 'm_img',
+                  conversationId: 'wa_1',
+                  providerMessageId: 'm_img',
+                  direction: 'inbound',
+                  type: 'image',
+                  body: 'Veja a imagem',
+                  mediaUrl: 'http://example.com/img.jpg',
+                  timestamp: '2026-07-01T12:00:00.000Z',
+                  attachments: [
+                    {
+                      id: 'att_1',
+                      kind: 'image',
+                      mimeType: 'image/jpeg',
+                      fileName: 'foto.jpg',
+                      mediaUrl: 'http://example.com/img.jpg',
+                      caption: 'Foto',
+                      origin: 'provider',
+                      documentRole: null,
+                      quotationId: null,
+                      leadId: null,
+                      customerId: null,
+                    },
+                  ],
+                },
+                {
+                  id: 'm_pdf',
+                  conversationId: 'wa_1',
+                  providerMessageId: 'm_pdf',
+                  direction: 'inbound',
+                  type: 'document',
+                  body: 'Aqui está',
+                  mediaUrl: 'http://example.com/doc.pdf',
+                  timestamp: '2026-07-01T12:01:00.000Z',
+                  attachments: [
+                    {
+                      id: 'att_2',
+                      kind: 'document',
+                      mimeType: 'application/pdf',
+                      fileName: 'orcamento.pdf',
+                      mediaUrl: 'http://example.com/doc.pdf',
+                      caption: 'Orçamento',
+                      origin: 'internal_generated',
+                      documentRole: 'quotation_pdf',
+                      quotationId: 'q1',
+                      leadId: null,
+                      customerId: null,
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+          return;
+        }
+      }
+
+      if (url.includes('messages=')) {
+        await route.fulfill({
+          json: { success: true, data: [] }, // Initially empty if it fetches stored first
+        });
+        return;
+      }
+
+      // List mock
+      if (req.method() === 'GET' && !req.url().includes('?id=')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: 'wa_1',
+                remoteJid: '123@s.whatsapp.net',
+                phone: '123',
+                displayName: 'Maria',
+                providerConversationId: '123@s.whatsapp.net',
+                canonicalPhone: '123',
+                displayLabel: 'Maria',
+                identityStatus: 'verified',
+                status: 'new',
+                createdAt: '2026-07-01T12:00:00.000Z',
+                updatedAt: '2026-07-01T12:00:00.000Z',
+              },
+            ],
+          },
+        });
+        return;
+      }
+
+      // Detail mock
+      if (req.url().includes('?id=')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: 'wa_1',
+              status: 'new',
+              canonicalPhone: '123',
+            },
+          },
+        });
+        return;
+      }
+    });
+
+    await page.goto('/#/whatsapp-inbox');
+
+    // Verify Image card
+    await expect(page.getByText('foto.jpg', { exact: true })).toBeVisible();
+    await expect(page.getByText('Foto', { exact: true })).toBeVisible();
+
+    // Verify Quotation PDF card (distinguishable)
+    await expect(page.getByText('Orçamento PDF', { exact: true })).toBeVisible();
+  });
 });

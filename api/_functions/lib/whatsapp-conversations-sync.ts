@@ -139,6 +139,58 @@ export function normalizeEvolutionConversation(
   };
 }
 
+function getAttachmentFromMessage(message: Record<string, unknown>, type: string): any | null {
+  const nested = (message.message || {}) as Record<string, unknown>;
+
+  if (type === 'image' && nested.imageMessage) {
+    const im = nested.imageMessage as Record<string, unknown>;
+    return {
+      kind: 'image',
+      mimeType: im.mimetype || 'image/jpeg',
+      fileName: im.fileName || null,
+      mediaUrl: im.url || null,
+      caption: readMessageBody(message),
+      origin: 'provider',
+      documentRole: null,
+      quotationId: null,
+      leadId: null,
+      customerId: null,
+    };
+  }
+  if (type === 'document' && nested.documentMessage) {
+    const dm = nested.documentMessage as Record<string, unknown>;
+    return {
+      kind: 'document',
+      mimeType: dm.mimetype || 'application/octet-stream',
+      fileName: dm.fileName || 'document',
+      mediaUrl: dm.url || null,
+      caption: readMessageBody(message),
+      origin: 'provider',
+      documentRole: null,
+      quotationId: null,
+      leadId: null,
+      customerId: null,
+    };
+  }
+  if (type === 'audio' && nested.audioMessage) {
+    const am = nested.audioMessage as Record<string, unknown>;
+    return {
+      kind: 'audio',
+      mimeType: am.mimetype || 'audio/ogg',
+      fileName: am.fileName || 'audio',
+      mediaUrl: am.url || null,
+      caption: readMessageBody(message),
+      origin: 'provider',
+      documentRole: null,
+      quotationId: null,
+      leadId: null,
+      customerId: null,
+    };
+  }
+
+  return null;
+}
+
 export function normalizeEvolutionMessage(
   message: Record<string, unknown>
 ): Record<string, unknown> | null {
@@ -148,12 +200,19 @@ export function normalizeEvolutionMessage(
   const type = readMessageType(message);
   if (!providerMessageId && !body) return null;
 
+  const attachments = [];
+  const attachment = getAttachmentFromMessage(message, type);
+  if (attachment) {
+    attachments.push(attachment);
+  }
+
   return {
     providerMessageId: providerMessageId || `${message.messageTimestamp || Date.now()}-${body}`,
     direction: key.fromMe === true || message.fromMe === true ? 'outbound' : 'inbound',
     type,
     body,
     mediaUrl: cleanText(message.mediaUrl || message.url),
+    attachments,
     timestamp: message.messageTimestamp || message.timestamp || Date.now(),
     raw: message,
   };
@@ -247,7 +306,11 @@ export async function syncWhatsappConversations(
       const normalizedChat = normalizeEvolutionConversation(chat);
       // Enrich with messages for better identity
       if (normalizedChat && rawMessages.length > 0) {
-        const enriched = resolveWhatsappIdentity({ source: 'provider', chat, messages: rawMessages });
+        const enriched = resolveWhatsappIdentity({
+          source: 'provider',
+          chat,
+          messages: rawMessages,
+        });
         normalizedChat.canonicalPhone = enriched.canonicalPhone;
         normalizedChat.phone = enriched.canonicalPhone; // compat
         normalizedChat.identityStatus = enriched.identityStatus;

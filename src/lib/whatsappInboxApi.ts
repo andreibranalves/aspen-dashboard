@@ -1,5 +1,19 @@
 import { apiGet, apiPatch, apiPost } from '@/lib/api';
 
+export interface WhatsappAttachment {
+  id: string;
+  kind: 'image' | 'document' | 'audio';
+  mimeType: string;
+  fileName: string;
+  mediaUrl: string;
+  caption: string;
+  origin: 'provider' | 'internal_generated';
+  documentRole: 'quotation_pdf' | 'generic_document' | null;
+  quotationId: string | null;
+  leadId: string | null;
+  customerId: string | null;
+}
+
 export type WhatsappConversationStatus =
   | 'new'
   | 'needs_quote'
@@ -39,6 +53,7 @@ export interface WhatsappMessage {
   type: 'text' | 'image' | 'document' | 'audio' | 'unknown';
   body: string;
   mediaUrl: string;
+  attachments?: WhatsappAttachment[];
   timestamp: string;
 }
 
