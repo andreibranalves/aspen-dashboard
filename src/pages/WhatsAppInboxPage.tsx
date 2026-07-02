@@ -308,7 +308,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                         {conversation.displayLabel || conversation.displayName || 'Contato sem nome'}
                       </p>
                       <p className="truncate text-xs text-fg-muted">
-                        {fmtPhone(conversation.canonicalPhone || conversation.phone) || 'Telefone não identificado'}
+                        {fmtPhone(conversation.canonicalPhone) || 'Telefone não identificado'}
                       </p>
                     </div>
                     <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] text-fg-muted">
@@ -335,7 +335,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               <div className="border-b border-line px-4 py-3">
                 <h2 className="text-sm font-semibold text-fg">{selected.displayLabel || selected.displayName}</h2>
                 <p className="text-xs text-fg-muted">
-                  {fmtPhone(selected.canonicalPhone || selected.phone) || 'Telefone não identificado'}
+                  {fmtPhone(selected.canonicalPhone) || 'Telefone não identificado'}
                 </p>
               </div>
               <div className="max-h-[560px] space-y-3 overflow-y-auto p-4">
@@ -392,7 +392,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
           {selected ? (
             <div className="mt-4 space-y-4 text-sm">
               <div className="rounded-lg bg-surface-muted p-3 text-fg-muted">
-                <p>Telefone: {fmtPhone(selected.canonicalPhone || selected.phone) || 'Não identificado'}</p>
+                <p>Telefone: {fmtPhone(selected.canonicalPhone) || 'Não identificado'}</p>
                 <p>Status: {statusLabel(selected.status)}</p>
                 <p>Atualizado: {formatDate(selected.updatedAt)}</p>
                 <p>Orçamento: {selected.linkedQuotationId || 'Nenhum vínculo'}</p>

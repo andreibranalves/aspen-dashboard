@@ -337,6 +337,79 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByText('Mensagem nova')).toBeVisible({ timeout: 10000 });
   });
 
+  test('shows legacy name but never legacy phone when canonical identity is unresolved', async ({
+    page,
+  }) => {
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const requestUrl = route.request().url();
+
+      if (requestUrl.includes('/api/whatsapp-conversations?id=')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: 'wa_legacy',
+              remoteJid: '183792384719283741@lid',
+              providerConversationId: '183792384719283741@lid',
+              canonicalPhone: '',
+              phone: '5521981858541',
+              displayLabel: '',
+              displayName: 'Maria Legado',
+              identityStatus: 'unresolved',
+              identitySource: null,
+              identityConfidence: null,
+              lastMessageAt: '2026-07-02T12:00:00.000Z',
+              lastMessagePreview: 'Oi',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-02T12:00:00.000Z',
+              updatedAt: '2026-07-02T12:00:00.000Z',
+              crmMatch: null,
+            },
+          },
+        });
+        return;
+      }
+
+      if (requestUrl.includes('messages=')) {
+        await route.fulfill({ json: { success: true, data: [] } });
+        return;
+      }
+
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              id: 'wa_legacy',
+              remoteJid: '183792384719283741@lid',
+              providerConversationId: '183792384719283741@lid',
+              canonicalPhone: '',
+              phone: '5521981858541',
+              displayLabel: '',
+              displayName: 'Maria Legado',
+              identityStatus: 'unresolved',
+              identitySource: null,
+              identityConfidence: null,
+              lastMessageAt: '2026-07-02T12:00:00.000Z',
+              lastMessagePreview: 'Oi',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-02T12:00:00.000Z',
+              updatedAt: '2026-07-02T12:00:00.000Z',
+            },
+          ],
+        },
+      });
+    });
+
+    await page.goto('/#/whatsapp-inbox');
+
+    await expect(page.getByText('Maria Legado').first()).toBeVisible();
+    await expect(page.getByText('Telefone não identificado').first()).toBeVisible();
+    await expect(page.getByText('(55) 21 98185-8541')).toHaveCount(0);
+  });
+
   test('falls back to legacy displayName and phone for old conversations', async ({ page }) => {
     await page.route('**/api/whatsapp-conversations**', async (route) => {
       const requestUrl = route.request().url();
