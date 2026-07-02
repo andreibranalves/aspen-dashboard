@@ -51,6 +51,73 @@ test.describe('WhatsApp Inbox Page', () => {
   });
 
   test('commercial panel shows action buttons for selected conversation', async ({ page }) => {
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const url = new URL(route.request().url());
+
+      if (url.searchParams.has('id')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: 'wa_1',
+              remoteJid: '5511999999999@s.whatsapp.net',
+              phone: '5511999999999',
+              displayName: 'Maria',
+              lastMessageAt: '2026-07-01T12:00:00.000Z',
+              lastMessagePreview: 'Quero orçamento',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-01T12:00:00.000Z',
+              updatedAt: '2026-07-01T12:00:00.000Z',
+              crmMatch: null,
+            },
+          },
+        });
+        return;
+      }
+
+      if (url.searchParams.has('messages')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: 'm1',
+                conversationId: 'wa_1',
+                providerMessageId: 'm1',
+                direction: 'inbound',
+                type: 'text',
+                body: 'Quero orçamento',
+                mediaUrl: '',
+                timestamp: '2026-07-01T12:00:00.000Z',
+              },
+            ],
+          },
+        });
+        return;
+      }
+
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              id: 'wa_1',
+              remoteJid: '5511999999999@s.whatsapp.net',
+              phone: '5511999999999',
+              displayName: 'Maria',
+              lastMessageAt: '2026-07-01T12:00:00.000Z',
+              lastMessagePreview: 'Quero orçamento',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-01T12:00:00.000Z',
+              updatedAt: '2026-07-01T12:00:00.000Z',
+            },
+          ],
+        },
+      });
+    });
+
     await page.goto('/#/whatsapp-inbox');
     await page.waitForSelector('button:has-text("Sincronizar")', { timeout: 10000 });
 
