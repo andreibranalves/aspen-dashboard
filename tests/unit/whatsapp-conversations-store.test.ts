@@ -297,4 +297,75 @@ describe('whatsapp-conversations-store', () => {
     const results = await listWhatsappConversations({ q: '5521981858541' }, deps);
     assert.equal(results.length, 1);
   });
+
+  it('clears canonicalPhone and phone when fresh identity is unresolved for a lid', async () => {
+    const deps = makeDeps();
+    // Simula estado legado: @lid com canonicalPhone falso, identityStatus derived
+    await deps.writeConversations([
+      {
+        id: 'wa_legacy_lid',
+        providerConversationId: '265639532982352@lid',
+        remoteJid: '265639532982352@lid',
+        canonicalPhone: '265639532982352',
+        phone: '265639532982352',
+        displayLabel: 'Contato sem nome',
+        displayName: 'Contato sem nome',
+        identityStatus: 'derived',
+        identitySource: 'providerConversationId',
+        identityConfidence: 'medium',
+        lastMessageAt: '2026-07-02T12:00:00.000Z',
+        lastMessagePreview: 'oi',
+        source: 'evolution',
+        status: 'new',
+        createdAt: '2026-07-02T12:00:00.000Z',
+        updatedAt: '2026-07-02T12:00:00.000Z',
+      },
+    ]);
+
+    // Upsert com nova resolução diz "unresolved"
+    await upsertWhatsappConversation(
+      {
+        remoteJid: '265639532982352@lid',
+        phone: '',
+        displayName: 'Contato sem nome',
+        providerConversationId: '265639532982352@lid',
+        canonicalPhone: '',
+        displayLabel: 'Contato sem nome',
+        identityStatus: 'unresolved',
+        identitySource: null,
+        identityConfidence: null,
+        lastMessageAt: Date.now(),
+        lastMessagePreview: 'oi',
+      },
+      deps
+    );
+    const [conversation] = await deps.readConversations();
+    assert.equal(conversation.canonicalPhone, '');
+    assert.equal(conversation.phone, '');
+  });
+
+  it('keeps valid canonicalPhone when fresh identity is not unresolved', async () => {
+    const deps = makeDeps();
+    await upsertWhatsappConversation(
+      {
+        remoteJid: '5521981858541@s.whatsapp.net',
+        phone: '5521981858541',
+        displayName: 'Maria',
+      },
+      deps
+    );
+
+    // Atualiza com status change apenas (sem identity)
+    await upsertWhatsappConversation(
+      {
+        remoteJid: '5521981858541@s.whatsapp.net',
+        phone: '',
+        displayName: 'Maria',
+        status: 'closed',
+      },
+      deps
+    );
+    const [conversation] = await deps.readConversations();
+    assert.ok(conversation.canonicalPhone);
+  });
 });

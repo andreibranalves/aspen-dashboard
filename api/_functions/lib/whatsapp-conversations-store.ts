@@ -283,7 +283,11 @@ export async function upsertWhatsappConversation(
       status: normalized.status === 'new' ? current.status : normalized.status,
       linkedLeadId: normalized.linkedLeadId || current.linkedLeadId || null,
       linkedDealId: normalized.linkedDealId || current.linkedDealId || null,
-      canonicalPhone: normalized.canonicalPhone || current.canonicalPhone || '',
+      canonicalPhone:
+        normalized.canonicalPhone ||
+        (normalized.identityStatus === 'unresolved' && current.identityStatus !== 'verified'
+          ? ''
+          : current.canonicalPhone || ''),
       displayLabel: normalized.displayLabel || current.displayLabel || '',
       identityStatus:
         normalized.identityStatus !== 'unresolved'
@@ -291,7 +295,11 @@ export async function upsertWhatsappConversation(
           : current.identityStatus || 'unresolved',
       identitySource: normalized.identitySource || current.identitySource || null,
       identityConfidence: normalized.identityConfidence || current.identityConfidence || null,
-      phone: normalized.phone || current.phone || '',
+      phone:
+        normalized.phone ||
+        (normalized.identityStatus === 'unresolved' && current.identityStatus !== 'verified'
+          ? ''
+          : current.phone || ''),
       displayName: normalized.displayName || current.displayName || '',
       linkedQuotationId: normalized.linkedQuotationId || current.linkedQuotationId || null,
       linkedCrmEntityId: normalized.linkedCrmEntityId || current.linkedCrmEntityId || null,
