@@ -92,7 +92,7 @@ export async function syncWhatsappConversations(): Promise<{
 }> {
   const result = await apiPost<
     ApiEnvelope<{ conversations: WhatsappConversation[]; syncedMessages: number }>
-  >('/whatsapp-conversations', { action: 'sync', chatLimit: 5, messageLimit: 50 });
+  >('/whatsapp-conversations', { action: 'sync', chatLimit: 5, messageLimit: 100 });
   return result.data;
 }
 

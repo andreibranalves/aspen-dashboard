@@ -230,7 +230,7 @@ export async function syncWhatsappConversations(
   deps?: EvolutionSyncDeps
 ): Promise<{ conversations: WhatsappConversation[]; syncedMessages: number }> {
   const chatLimit = Math.max(1, Math.min(Number(options.chatLimit || 5), 20));
-  const messageLimit = Math.max(1, Math.min(Number(options.messageLimit || 50), 50));
+  const messageLimit = Math.max(1, Math.min(Number(options.messageLimit || 100), 100));
   const fetchChats = deps?.fetchChats || liveFetchChats;
   const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
@@ -267,10 +267,10 @@ export async function syncWhatsappConversations(
 
 export async function syncMessagesForConversation(
   conversation: WhatsappConversation,
-  messageLimit = 50,
+  messageLimit = 100,
   deps?: EvolutionSyncDeps
 ): Promise<WhatsappConversation> {
-  const limit = Math.max(1, Math.min(Number(messageLimit), 50));
+  const limit = Math.max(1, Math.min(Number(messageLimit), 100));
   const fetchMessages = deps?.fetchMessages || liveFetchMessages;
 
   const rawMessages = await fetchMessages(conversation.remoteJid, limit);

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeEvolutionConversation,
   normalizeEvolutionMessage,
+  syncMessagesForConversation,
   syncWhatsappConversations,
   unwrapEvolutionCollection,
   type EvolutionSyncDeps,
@@ -111,5 +112,41 @@ describe('whatsapp-conversations-sync', () => {
     assert.equal(result.conversations.length, 1);
     assert.equal(result.syncedMessages, 1);
     assert.equal((await storeDeps.readMessages(result.conversations[0].id)).length, 1);
+  });
+
+  it('allows syncing up to 100 messages for a selected conversation', async () => {
+    const storeDeps = makeStoreDeps();
+    let requestedLimit = 0;
+    const syncDeps: EvolutionSyncDeps = {
+      ...storeDeps,
+      fetchMessages: async (_remoteJid, limit) => {
+        requestedLimit = limit;
+        return [
+          {
+            key: { id: 'm1', fromMe: false },
+            messageTimestamp: 1782916800,
+            message: { conversation: 'Mensagem 1' },
+          },
+        ];
+      },
+    };
+
+    const conversation: WhatsappConversation = {
+      id: 'wa_1',
+      remoteJid: '5511999999999@s.whatsapp.net',
+      phone: '5511999999999',
+      displayName: 'Maria Cliente',
+      source: 'evolution',
+      status: 'new',
+      lastMessageAt: '2026-07-01T12:00:00.000Z',
+      lastMessagePreview: 'Mensagem 1',
+      createdAt: '2026-07-01T12:00:00.000Z',
+      updatedAt: '2026-07-01T12:00:00.000Z',
+    };
+
+    await syncMessagesForConversation(conversation, 100, syncDeps);
+
+    assert.equal(requestedLimit, 100);
+    assert.equal((await storeDeps.readMessages(conversation.id)).length, 1);
   });
 });

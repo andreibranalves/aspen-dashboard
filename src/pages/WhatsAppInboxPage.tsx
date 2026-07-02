@@ -101,12 +101,13 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
       .then((data) => {
         if (cancelled) return;
         setMessages(data);
-        // Auto-sync messages if none found for this conversation
-        if (data.length === 0) {
-          return syncMessagesForConversation(selected.id).then((synced) => {
+        return syncMessagesForConversation(selected.id)
+          .then((synced) => {
             if (!cancelled) setMessages(synced);
+          })
+          .catch(() => {
+            // Keep stored messages visible if live sync fails.
           });
-        }
       })
       .catch((err) => {
         if (!cancelled) setError((err as Error).message || 'Erro ao carregar mensagens.');

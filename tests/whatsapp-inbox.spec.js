@@ -52,9 +52,9 @@ test.describe('WhatsApp Inbox Page', () => {
 
   test('commercial panel shows action buttons for selected conversation', async ({ page }) => {
     await page.route('**/api/whatsapp-conversations**', async (route) => {
-      const url = new URL(route.request().url());
+      const requestUrl = route.request().url();
 
-      if (url.searchParams.has('id')) {
+      if (requestUrl.includes('/api/whatsapp-conversations?id=')) {
         await route.fulfill({
           json: {
             success: true,
@@ -76,7 +76,7 @@ test.describe('WhatsApp Inbox Page', () => {
         return;
       }
 
-      if (url.searchParams.has('messages')) {
+      if (requestUrl.includes('messages=')) {
         await route.fulfill({
           json: {
             success: true,
@@ -133,9 +133,9 @@ test.describe('WhatsApp Inbox Page', () => {
   test('shows CRM match card when conversation has linked lead', async ({ page }) => {
     // Mock all whatsapp-conversations API calls
     await page.route('**/api/whatsapp-conversations**', async (route) => {
-      const url = new URL(route.request().url());
+      const requestUrl = route.request().url();
       // Detail endpoint (id param)
-      if (url.searchParams.has('id')) {
+      if (requestUrl.includes('/api/whatsapp-conversations?id=')) {
         await route.fulfill({
           json: {
             success: true,
@@ -158,7 +158,7 @@ test.describe('WhatsApp Inbox Page', () => {
         return;
       }
       // Messages endpoint
-      if (url.searchParams.has('messages')) {
+      if (requestUrl.includes('messages=')) {
         await route.fulfill({ json: { success: true, data: [] } });
         return;
       }
@@ -191,5 +191,111 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByText('Maria Silva')).toBeVisible();
     await expect(page.getByText('maria@example.com')).toBeVisible();
     await expect(page.getByRole('button', { name: /Abrir lead/ })).toBeVisible();
+  });
+
+  test('refreshes the selected conversation even when stored messages already exist', async ({ page }) => {
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const req = route.request();
+      const requestUrl = req.url();
+
+      if (req.method() === 'POST') {
+        const body = req.postDataJSON();
+        if (body.action === 'sync-messages') {
+          await route.fulfill({
+            json: {
+              success: true,
+              data: [
+                {
+                  id: 'm1',
+                  conversationId: 'wa_1',
+                  providerMessageId: 'm1',
+                  direction: 'inbound',
+                  type: 'text',
+                  body: 'Mensagem antiga',
+                  mediaUrl: '',
+                  timestamp: '2026-07-01T12:00:00.000Z',
+                },
+                {
+                  id: 'm2',
+                  conversationId: 'wa_1',
+                  providerMessageId: 'm2',
+                  direction: 'inbound',
+                  type: 'text',
+                  body: 'Mensagem nova',
+                  mediaUrl: '',
+                  timestamp: '2026-07-01T12:05:00.000Z',
+                },
+              ],
+            },
+          });
+          return;
+        }
+      }
+
+      if (requestUrl.includes('/api/whatsapp-conversations?id=')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: 'wa_1',
+              remoteJid: '5511999999999@s.whatsapp.net',
+              phone: '5511999999999',
+              displayName: 'Maria',
+              status: 'new',
+              createdAt: '2026-07-01T12:00:00.000Z',
+              updatedAt: '2026-07-01T12:00:00.000Z',
+              crmMatch: null,
+            },
+          },
+        });
+        return;
+      }
+
+      if (requestUrl.includes('messages=')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: 'm1',
+                conversationId: 'wa_1',
+                providerMessageId: 'm1',
+                direction: 'inbound',
+                type: 'text',
+                body: 'Mensagem antiga',
+                mediaUrl: '',
+                timestamp: '2026-07-01T12:00:00.000Z',
+              },
+            ],
+          },
+        });
+        return;
+      }
+
+      await route.fulfill({
+        json: {
+          success: true,
+          data: [
+            {
+              id: 'wa_1',
+              remoteJid: '5511999999999@s.whatsapp.net',
+              phone: '5511999999999',
+              displayName: 'Maria',
+              lastMessageAt: '2026-07-01T12:00:00.000Z',
+              lastMessagePreview: 'Mensagem antiga',
+              source: 'evolution',
+              status: 'new',
+              createdAt: '2026-07-01T12:00:00.000Z',
+              updatedAt: '2026-07-01T12:00:00.000Z',
+            },
+          ],
+        },
+      });
+    });
+
+    await page.goto('/#/whatsapp-inbox');
+
+    await expect(page.getByText('Mensagem antiga').nth(1)).toBeVisible();
+    await expect(page.getByText('Mensagem nova')).toBeVisible({ timeout: 10000 });
   });
 });

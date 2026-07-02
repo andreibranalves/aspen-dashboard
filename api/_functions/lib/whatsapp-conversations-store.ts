@@ -163,7 +163,7 @@ async function liveWriteMessages(
   );
 }
 
-const LIVE_DEPS: WhatsappConversationStoreDeps = {
+export const LIVE_DEPS: WhatsappConversationStoreDeps = {
   readConversations: liveReadConversations,
   writeConversations: liveWriteConversations,
   readMessages: liveReadMessages,

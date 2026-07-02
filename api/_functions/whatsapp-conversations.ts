@@ -7,9 +7,10 @@ import type {
 } from '../_lib/types.js';
 import { handler as extractHandler } from './extract.js';
 import { sendText } from './send-whatsapp.js';
-import { createHttpError } from './lib/erpnext.js';
+import { createHttpError, erpGetDoc, erpGetList } from './lib/erpnext.js';
 import { upsertQuoteLead } from './lib/quote-leads-store.js';
 import {
+  LIVE_DEPS,
   cleanText,
   getWhatsappConversation,
   getWhatsappMessages,
@@ -116,6 +117,25 @@ function missingFieldsForPreQuote(input: {
   return missing;
 }
 
+async function liveListLeads(
+  filters: Array<Array<string | number>>
+): Promise<Array<Record<string, unknown>>> {
+  return erpGetList('Lead', {
+    fields: ['name', 'lead_name', 'first_name', 'email_id', 'mobile_no'],
+    filters,
+    limit: 50,
+  });
+}
+
+function buildCrmDeps(deps?: Partial<WhatsappActionDeps>): ResolveCrmMatchDeps {
+  return {
+    ...LIVE_DEPS,
+    ...(deps || {}),
+    listLeads: deps?.listLeads || liveListLeads,
+    getDoc: deps?.getDoc || erpGetDoc,
+  };
+}
+
 export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
   return async function whatsappConversationsHandler(
     event: FunctionEvent
@@ -130,12 +150,16 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
         if (qs.id) {
           const conversation = await getWhatsappConversation(qs.id, deps);
           let crmMatch = null;
-          if (deps) {
-            try {
-              crmMatch = await resolveWhatsappCrmMatch({ conversation, deps });
-            } catch (matchErr) {
-              console.error('[whatsapp-conversations] CRM match failed:', (matchErr as Error)?.message || matchErr);
-            }
+          try {
+            crmMatch = await resolveWhatsappCrmMatch({
+              conversation,
+              deps: buildCrmDeps(deps),
+            });
+          } catch (matchErr) {
+            console.error(
+              '[whatsapp-conversations] CRM match failed:',
+              (matchErr as Error)?.message || matchErr
+            );
           }
           return jsonResponse(200, { success: true, data: { ...conversation, crmMatch } });
         }
@@ -168,7 +192,7 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
           const data = await syncWhatsappConversations(
             {
               chatLimit: parseLimit(body.chatLimit || 5),
-              messageLimit: parseLimit(body.messageLimit || 50),
+              messageLimit: parseLimit(body.messageLimit || 100),
             },
             deps as EvolutionSyncDeps
           );
@@ -179,7 +203,7 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
         if (action === 'sync-messages') {
           const id = String(body.id || '');
           const conversation = await getWhatsappConversation(id, deps);
-          await syncMessagesForConversation(conversation, 50, deps as EvolutionSyncDeps);
+          await syncMessagesForConversation(conversation, 100, deps as EvolutionSyncDeps);
           const messages = await getWhatsappMessages(id, deps);
           return jsonResponse(200, { success: true, data: messages });
         }

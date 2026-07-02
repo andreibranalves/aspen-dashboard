@@ -16,6 +16,8 @@ function parse(result: any): any {
 }
 
 function makeDeps(): WhatsappConversationStoreDeps & {
+  listLeads: any;
+  getDoc: any;
   fetchChats: any;
   fetchMessages: any;
 } {
@@ -207,6 +209,95 @@ describe('whatsapp-conversations handler', () => {
 
     assert.equal(result.statusCode, 200);
     assert.equal(parse(result).data.crmMatch, null);
+  });
+
+  it('returns crmMatch even when CRM helpers are omitted from injected deps', async () => {
+    const deps = makeDeps();
+    const { listLeads: _listLeads, getDoc: _getDoc, ...depsWithoutCrm } = deps as any;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/resource/Lead?')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                name: 'LEAD-100',
+                lead_name: 'Maria',
+                first_name: 'Maria',
+                email_id: null,
+                mobile_no: '5511999999999',
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+
+    try {
+      const handler = createHandler(depsWithoutCrm);
+      const syncResult = await handler({
+        httpMethod: 'POST',
+        url: API,
+        body: JSON.stringify({ action: 'sync' }),
+        queryStringParameters: {},
+        headers: {},
+      } as any);
+      const id = parse(syncResult).data.conversations[0].id;
+
+      const result = await handler({
+        httpMethod: 'GET',
+        url: API,
+        queryStringParameters: { id },
+        headers: {},
+      } as any);
+
+      assert.equal(result.statusCode, 200);
+      assert.equal(parse(result).data.crmMatch?.id, 'LEAD-100');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('syncs 100 messages when refreshing a single conversation', async () => {
+    const deps = makeDeps();
+    let requestedLimit = 0;
+    deps.fetchMessages = async (_remoteJid: string, limit: number) => {
+      requestedLimit = limit;
+      return [
+        {
+          key: { id: 'm1', fromMe: false },
+          messageTimestamp: 1782916800,
+          message: { conversation: 'Quero orçamento' },
+        },
+      ];
+    };
+
+    const handler = createHandler(deps);
+    const syncResult = await handler({
+      httpMethod: 'POST',
+      url: API,
+      body: JSON.stringify({ action: 'sync' }),
+      queryStringParameters: {},
+      headers: {},
+    } as any);
+    const id = parse(syncResult).data.conversations[0].id;
+
+    const result = await handler({
+      httpMethod: 'POST',
+      url: API,
+      body: JSON.stringify({ action: 'sync-messages', id }),
+      queryStringParameters: {},
+      headers: {},
+    } as any);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(requestedLimit, 100);
   });
 
   it('extracts quote payload via POST action=extract-quote', async () => {
