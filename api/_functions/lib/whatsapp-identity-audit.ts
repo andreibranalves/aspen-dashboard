@@ -60,7 +60,9 @@ export async function auditWhatsappIdentities(
 
     const messages = await deps.readMessages(conv.id);
     const participant = messages
-      .map((message) => normalizeWhatsappPhone(message.raw?.key?.participant))
+      .map((message) =>
+        normalizeWhatsappPhone((message.raw as any)?.key?.participant)
+      )
       .find(Boolean);
     if (participant) {
       counts.verifiedMessageParticipant++;
