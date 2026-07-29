@@ -789,7 +789,7 @@ export default function AutoQuotePage() {
         </div>
 
         {/* ── RIGHT PANEL (50%) ── */}
-        <div className="w-full lg:w-1/2 min-w-0 bg-page px-4 md:px-6 pt-4 md:pt-5 pb-0">
+        <div className="w-full lg:w-1/2 min-w-0 bg-page px-4 md:px-6 pt-4 md:pt-5 pb-6 overflow-y-auto">
           {activeDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-muted mb-4">
