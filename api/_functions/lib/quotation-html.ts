@@ -111,7 +111,7 @@ export async function renderQuotationHtml(
   // Core print CSS (shared)
   injections.push(`
 <style>
-  .print-toolbar, .page-head, .navbar, .container > .row:first-child,
+  .print-toolbar, .action-banner, .page-head, .navbar, .container > .row:first-child,
   body > nav, body > header, body > .toolbar,
   [data-page-route], .frappe-toolbar, #toolbar-area,
   .print-preview-header, .web-header,
@@ -145,26 +145,6 @@ export async function renderQuotationHtml(
 </style>
 <button id="print-btn" onclick="window.print()">Imprimir / Salvar PDF</button>`);
   }
-
-  // "Get PDF" toolbar removal script
-  injections.push(`
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('a').forEach(function(a) {
-    if (a.textContent.trim() === 'Get PDF') {
-      var parent = a.parentElement;
-      while (parent && parent !== document.body) {
-        var style = window.getComputedStyle(parent);
-        if (parent.children.length <= 3 && (parent.tagName === 'DIV' || parent.tagName === 'P')) {
-          parent.style.display = 'none';
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
-  });
-});
-</script>`);
 
   html = html.replace('</head>', `${injections.join('\n')}</head>`);
 
