@@ -197,11 +197,7 @@ export function resolveWhatsappIdentity(input: {
 
   const providerConversationId = readRemoteJid(chat);
 
-  const highSources = readHighConfidenceSources(
-    chat,
-    messages,
-    source === 'provider'
-  );
+  const highSources = readHighConfidenceSources(chat, messages, source === 'provider');
   const mediumSource = readMediumConfidenceSource(chat);
 
   const fresh = bestSource(highSources, mediumSource);

@@ -96,7 +96,9 @@ export interface WhatsappCrmMatch {
 
 export async function resolveWhatsappCrmMatch(input: {
   conversation: WhatsappConversation;
-  deps: WhatsappConversationStoreDeps & { /* ERP readers */ };
+  deps: WhatsappConversationStoreDeps & {
+    /* ERP readers */
+  };
 }): Promise<WhatsappCrmMatch | null>;
 ```
 
@@ -212,7 +214,9 @@ export async function fetchWhatsappConversation(id: string): Promise<WhatsappCon
 - [ ] **Step 3: Fetch the enriched conversation in the page and render the card**
 
 ```tsx
-const [selectedConversation, setSelectedConversation] = useState<WhatsappConversationDetail | null>(null);
+const [selectedConversation, setSelectedConversation] = useState<WhatsappConversationDetail | null>(
+  null
+);
 
 useEffect(() => {
   if (!selectedId) {

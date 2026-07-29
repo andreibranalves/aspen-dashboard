@@ -1,0 +1,19 @@
+# graphify corpus exclusions — complements .gitignore
+
+# Subagent artifacts (session dumps, not project code)
+.pi-subagents/
+
+# Playwright MCP recordings (browser snapshots, not project code)
+.playwright-mcp/
+
+# Pi config (tool config, not project code)
+.pi/
+
+# Build artifacts tracked for convenience but not source
+api/[...path].js
+
+# Generated HTML (not source)
+public/index.html
+
+# graphify own output
+graphify-out/

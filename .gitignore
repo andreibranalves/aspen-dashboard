@@ -46,3 +46,9 @@ public/assets/
 .opencode/
 .vercel
 .env*.local
+
+# Graphify generated analysis artifacts
+graphify-out/
+
+# Subagent session artifacts
+.pi-subagents/
