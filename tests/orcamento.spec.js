@@ -348,3 +348,31 @@ test.describe('Leads — Página single e visualização rápida', () => {
     ).toBeVisible();
   });
 });
+
+test.describe('Orçamento manual — clientes unificados', () => {
+  test('usa a resposta core_mode para mostrar Cliente e não oferece escolha de Lead', async ({ page }) => {
+    await page.route('**/api/leads-clients**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [{ id: 'CLIENT-001', nome: 'Cliente Core', email: 'core@example.com', telefone: '5511999990000', tipo: 'cliente' }],
+          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+          core_mode: true,
+          source: 'postgres',
+        }),
+      });
+    });
+    await page.route('**/api/products**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    });
+
+    await page.goto('/#/manual');
+    await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
+    await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Core');
+    await expect(page.getByText('Cliente Core', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Cliente', { exact: true }).last()).toBeVisible();
+    await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Origem da venda *', { exact: true })).toBeVisible();
+  });
+});

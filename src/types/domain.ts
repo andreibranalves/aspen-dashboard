@@ -12,7 +12,15 @@ export interface Product {
   unidade?: string;
   stock_uom?: string;
   preco_minimo?: number | string;
+  pricing_available?: boolean;
   categoria?: string;
+  marca?: string | null;
+  ativo?: boolean;
+  imagem?: string | null;
+  criado_em?: string | null;
+  atualizado_em?: string | null;
+  arquivado_em?: string | null;
+  modificado_em?: string | null;
 }
 
 export interface ProductsApiResponse {
@@ -20,7 +28,11 @@ export interface ProductsApiResponse {
   pagination?: {
     total_pages?: number;
     total?: number;
+    page?: number;
+    limit?: number;
   };
+  core_mode?: boolean;
+  source?: 'postgres' | 'frappe' | string;
 }
 
 export interface DraftItem {

@@ -18,8 +18,11 @@ import {
   Search,
   Check,
   Trash2,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
-import { apiGet, apiPut, apiPost, apiDelete } from '@/lib/api';
+import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from '@/lib/api';
+import { clearProductCache } from '@/lib/productCache';
 import { formatBRL, formatDate } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +36,7 @@ interface Produto {
   nome: string;
   descricao: string | null;
   categoria: string;
+  marca: string | null;
   unidade: string;
   ativo: boolean;
   imagem: string | null;
@@ -47,6 +51,18 @@ interface Preco {
 interface ProductDetail {
   produto: Produto;
   precos: Preco[];
+  pricing_available?: boolean;
+  core_mode?: boolean;
+  source?: string;
+}
+
+interface ProductsModeResponse {
+  core_mode?: unknown;
+}
+
+interface ResolvedProductMode {
+  sku: string;
+  core: boolean;
 }
 
 interface Atividade {
@@ -69,6 +85,7 @@ interface EditedProduct {
   nome: string;
   descricao: string;
   categoria: string;
+  marca: string;
   unidade: string;
   ativo: boolean;
   rates: Rates;
@@ -81,6 +98,7 @@ function buildEmptyProduct(): ProductDetail {
       nome: '',
       descricao: '',
       categoria: '',
+      marca: '',
       unidade: 'Und',
       ativo: true,
       imagem: null,
@@ -106,6 +124,7 @@ function buildEditedState(produto?: Produto | null, precos: Preco[] = []): Edite
     nome: produto?.nome || '',
     descricao: produto?.descricao || '',
     categoria: produto?.categoria || '',
+    marca: produto?.marca || '',
     unidade: produto?.unidade || 'Und',
     ativo: produto?.ativo ?? true,
     rates,
@@ -161,7 +180,13 @@ interface SelectFieldProps {
   className?: string;
 }
 
-function SelectField({ value, onChange, children, disabled = false, className = '' }: SelectFieldProps) {
+function SelectField({
+  value,
+  onChange,
+  children,
+  disabled = false,
+  className = '',
+}: SelectFieldProps) {
   return (
     <select
       value={value || ''}
@@ -191,13 +216,26 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const [deleting, setDeleting] = useState<boolean>(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
+  const [resolvedProductMode, setResolvedProductMode] = useState<ResolvedProductMode | null>(null);
+  const [activityRefresh, setActivityRefresh] = useState(0);
   const setTopBarActions = useSetTopBarActions();
+
+  const modeForCurrentSku =
+    resolvedProductMode?.sku === decodedSku ? resolvedProductMode.core : null;
+  const coreMode = modeForCurrentSku === true;
+  const legacyMode = modeForCurrentSku === false;
 
   const fetchProduct = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       if (isNewProduct) {
+        const modeResult = await apiGet<ProductsModeResponse>('/products?limit=1');
+        if (typeof modeResult?.core_mode !== 'boolean') {
+          throw new Error('MODO_INDISPONIVEL');
+        }
+
+        setResolvedProductMode({ sku: decodedSku, core: modeResult.core_mode });
         const emptyProduct = buildEmptyProduct();
         setProduct(emptyProduct);
         setAtividades([]);
@@ -206,13 +244,19 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         return;
       }
 
-      const result = await apiGet<ProductDetail>(`/product-detail?sku=${encodeURIComponent(decodedSku)}`);
+      const result = await apiGet<ProductDetail>(
+        `/product-detail?sku=${encodeURIComponent(decodedSku)}`
+      );
       setProduct(result);
+      setResolvedProductMode({ sku: decodedSku, core: result.core_mode === true });
+      if (result.core_mode === true) setAtividades([]);
       setEditing(false);
       setEdited({});
     } catch (err) {
       const apiErr = err as { status?: number; message?: string };
-      if (apiErr.status === 404) setError('not_found');
+      if (isNewProduct)
+        setError('Não foi possível identificar o modo do catálogo. Tente novamente.');
+      else if (apiErr.status === 404) setError('not_found');
       else setError(apiErr.message || 'Erro ao carregar produto.');
     } finally {
       setLoading(false);
@@ -220,7 +264,10 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   }, [decodedSku, isNewProduct]);
 
   const fetchAtividades = useCallback(async () => {
-    if (isNewProduct) return;
+    if (isNewProduct || !legacyMode) {
+      setAtividades([]);
+      return;
+    }
     try {
       const result = await apiGet<{ atividades?: Atividade[] }>(
         `/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=3`
@@ -229,7 +276,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     } catch {
       setAtividades([]);
     }
-  }, [decodedSku, isNewProduct]);
+  }, [decodedSku, isNewProduct, legacyMode]);
 
   useEffect(() => {
     fetchProduct();
@@ -237,7 +284,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
   useEffect(() => {
     fetchAtividades();
-  }, [fetchAtividades]);
+  }, [activityRefresh, fetchAtividades]);
 
   const precosRates = useMemo<Preco[]>(() => {
     return BRACKETS.map((faixa) => {
@@ -274,7 +321,16 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
     try {
       const { produto } = product || {};
-      const { sku: editedSku, nome, descricao, categoria, unidade, ativo, rates = {} } = edited as EditedProduct;
+      const {
+        sku: editedSku,
+        nome,
+        descricao,
+        categoria,
+        marca,
+        unidade,
+        ativo,
+        rates = {},
+      } = edited as EditedProduct;
       const normalizedSku = (editedSku || '').trim();
       const normalizedNome = (nome || '').trim();
 
@@ -295,23 +351,29 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       }).filter((p) => p.rate != null && !Number.isNaN(p.rate));
 
       if (isNewProduct) {
-        await apiPost('/products', {
+        const created = await apiPost<{ core_mode?: boolean }>('/products', {
           sku: normalizedSku,
           nome: normalizedNome,
+          descricao: descricao.trim(),
           categoria: categoria?.trim() || undefined,
+          marca: marca?.trim() || undefined,
           unidade: unidade?.trim() || 'Und',
         });
+        const creatingCore = created.core_mode === true;
+        setResolvedProductMode({ sku: normalizedSku, core: creatingCore });
 
         const extraBody: Record<string, unknown> = {};
         if ((descricao || '').trim()) extraBody.descricao = descricao.trim();
         if (ativo !== true) extraBody.ativo = ativo;
-        if (precos.length > 0) extraBody.precos = precos;
+        if (!creatingCore && (marca || '').trim()) extraBody.marca = marca.trim();
+        if (!creatingCore && precos.length > 0) extraBody.precos = precos;
 
         if (Object.keys(extraBody).length > 0) {
           await apiPut(`/product-update?sku=${encodeURIComponent(normalizedSku)}`, extraBody);
         }
 
         setToast({ type: 'success', message: 'Produto criado com sucesso!' });
+        clearProductCache();
         navigate(`/products/${encodeURIComponent(normalizedSku)}`);
         return;
       }
@@ -320,41 +382,55 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       if (normalizedNome !== (produto?.nome || '')) metadata.nome = normalizedNome;
       if ((descricao || '') !== (produto?.descricao || '')) metadata.descricao = descricao || '';
       if ((categoria || '') !== (produto?.categoria || '')) metadata.categoria = categoria || '';
+      if ((marca || '') !== (produto?.marca || '')) metadata.marca = marca || '';
       if ((unidade || '') !== (produto?.unidade || '')) metadata.unidade = unidade || '';
       if (ativo !== produto?.ativo) metadata.ativo = ativo;
 
       const body: Record<string, unknown> = {};
       if (Object.keys(metadata).length > 0) Object.assign(body, metadata);
-      if (precos.length > 0) body.precos = precos;
+      if (!coreMode && precos.length > 0) body.precos = precos;
 
       if (Object.keys(body).length === 0) {
         setToast({ type: 'error', message: 'Nenhuma alteração para salvar.' });
         return;
       }
 
-      const result = await apiPut<{ success?: boolean }>(`/product-update?sku=${encodeURIComponent(decodedSku)}`, body);
+      const result = await apiPut<{ success?: boolean }>(
+        `/product-update?sku=${encodeURIComponent(decodedSku)}`,
+        body
+      );
       if (!result.success) {
         setToast({ type: 'error', message: 'Erro ao salvar produto.' });
         return;
       }
 
       setToast({ type: 'success', message: 'Produto atualizado com sucesso!' });
+      clearProductCache();
       setEditing(false);
       await fetchProduct();
-      await fetchAtividades();
+      setActivityRefresh((current) => current + 1);
     } catch (err) {
       const apiErr = err as { message?: string };
       setToast({ type: 'error', message: apiErr.message || 'Erro ao salvar produto.' });
     } finally {
       setSaving(false);
     }
-  }, [decodedSku, edited, fetchAtividades, fetchProduct, isNewProduct, navigate, product]);
+  }, [
+    coreMode,
+    decodedSku,
+    edited,
+    fetchAtividades,
+    fetchProduct,
+    isNewProduct,
+    navigate,
+    product,
+  ]);
 
   const deleteProduct = useCallback(async () => {
     if (isNewProduct) return;
     if (
       !window.confirm(
-        `Tem certeza que deseja excluir o produto ${decodedSku}?\n\nEsta ação não pode ser desfeita.`
+        `Tem certeza que deseja ${coreMode && product?.produto.ativo === false ? 'restaurar' : coreMode ? 'arquivar' : 'excluir'} o produto ${decodedSku}?`
       )
     )
       return;
@@ -362,15 +438,21 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     setDeleting(true);
     setToast(null);
     try {
-      await apiDelete(`/products?id=${encodeURIComponent(decodedSku)}`);
-      navigate('/products');
+      if (coreMode && product?.produto.ativo === false) {
+        await apiPatch(`/product-update?sku=${encodeURIComponent(decodedSku)}`, { ativo: true });
+      } else {
+        await apiDelete(`/products?id=${encodeURIComponent(decodedSku)}`);
+      }
+      clearProductCache();
+      if (coreMode) await fetchProduct();
+      else navigate('/products');
     } catch (err) {
       const apiErr = err as { message?: string };
       setToast({ type: 'error', message: apiErr.message || 'Erro ao excluir produto.' });
     } finally {
       setDeleting(false);
     }
-  }, [decodedSku, isNewProduct, navigate]);
+  }, [coreMode, decodedSku, fetchProduct, isNewProduct, navigate, product]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -428,11 +510,33 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             size="sm"
             onClick={deleteProduct}
             disabled={saving || deleting}
-            aria-label="Excluir produto"
+            aria-label={
+              coreMode
+                ? product?.produto.ativo === false
+                  ? 'Restaurar produto'
+                  : 'Arquivar produto'
+                : 'Excluir produto'
+            }
             className="text-destructive border-destructive/20 hover:bg-destructive/10"
           >
-            <Trash2 size={14} />
-            {deleting ? 'Excluindo…' : 'Excluir'}
+            {coreMode ? (
+              product?.produto.ativo === false ? (
+                <ArchiveRestore size={14} />
+              ) : (
+                <Archive size={14} />
+              )
+            ) : (
+              <Trash2 size={14} />
+            )}
+            {deleting
+              ? coreMode
+                ? 'Atualizando…'
+                : 'Excluindo…'
+              : coreMode
+                ? product?.produto.ativo === false
+                  ? 'Restaurar'
+                  : 'Arquivar'
+                : 'Excluir'}
           </Button>
         )}
       </div>
@@ -444,6 +548,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     deleteProduct,
     deleting,
     error,
+    coreMode,
     isNewProduct,
     loading,
     product,
@@ -618,6 +723,20 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
           {editing ? (
             <div>
+              <label className="text-fg-muted text-[11px] uppercase tracking-wide">Marca</label>
+              <Input
+                value={edited.marca || ''}
+                onChange={(e) => setEdited((prev) => ({ ...prev, marca: e.target.value }))}
+                className="mt-1 text-sm"
+                placeholder="Marca"
+              />
+            </div>
+          ) : (
+            <InfoField label="Marca" value={produto.marca || '—'} />
+          )}
+
+          {editing ? (
+            <div>
               <label className="text-fg-muted text-[11px] uppercase tracking-wide">Unidade</label>
               <Input
                 value={edited.unidade || ''}
@@ -637,47 +756,59 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </div>
       </SectionCard>
 
-      <SectionCard
-        title="Preços por faixa"
-        description="As 5 faixas sempre aparecem; sem preço definido mostramos “—”."
-        icon={Tag}
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {BRACKETS.map((faixa) => {
-            const row = precosRates.find((p) => p.faixa === faixa);
-            return (
-              <div key={faixa} className="rounded-xl border border-line bg-surface/50 p-3">
-                <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                  {faixa.toLocaleString('pt-BR')} un.
-                </p>
-                {editing ? (
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    aria-label={`Preço da faixa ${faixa} unidades`}
-                    value={edited.rates?.[faixa] ?? ''}
-                    onChange={(e) =>
-                      setEdited((prev) => ({
-                        ...prev,
-                        rates: { ...prev.rates, [faixa]: e.target.value },
-                      }))
-                    }
-                    className="mt-2 text-sm font-mono"
-                    placeholder="0,00"
-                  />
-                ) : (
-                  <p className="mt-2 text-sm font-medium text-fg font-mono">
-                    {row?.rate != null ? formatBRL(row.rate) : '—'}
+      {coreMode ? (
+        <SectionCard
+          title="Preços por faixa"
+          description="O catálogo principal ainda não possui preços configurados."
+          icon={Tag}
+        >
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
+            Preço indisponível para este produto.
+          </p>
+        </SectionCard>
+      ) : (
+        <SectionCard
+          title="Preços por faixa"
+          description="As 5 faixas sempre aparecem; sem preço definido mostramos “—”."
+          icon={Tag}
+        >
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {BRACKETS.map((faixa) => {
+              const row = precosRates.find((p) => p.faixa === faixa);
+              return (
+                <div key={faixa} className="rounded-xl border border-line bg-surface/50 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
+                    {faixa.toLocaleString('pt-BR')} un.
                   </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </SectionCard>
+                  {editing ? (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      aria-label={`Preço da faixa ${faixa} unidades`}
+                      value={edited.rates?.[faixa] ?? ''}
+                      onChange={(e) =>
+                        setEdited((prev) => ({
+                          ...prev,
+                          rates: { ...prev.rates, [faixa]: e.target.value },
+                        }))
+                      }
+                      className="mt-2 text-sm font-mono"
+                      placeholder="0,00"
+                    />
+                  ) : (
+                    <p className="mt-2 text-sm font-medium text-fg font-mono">
+                      {row?.rate != null ? formatBRL(row.rate) : '—'}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
 
-      {!isNewProduct && (
+      {!isNewProduct && legacyMode && (
         <SectionCard
           title="Atividade recente"
           description={

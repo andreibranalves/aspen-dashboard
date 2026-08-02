@@ -1,48 +1,53 @@
 // ── Login handler ────────────────────────────────────────────────────────────
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import { getAuthConfiguration } from '../_lib/auth.js';
+import { isValidPasswordInput, verifyPassword } from '../_lib/password.js';
+import { createSessionCookie, createSessionToken } from '../_lib/session.js';
 
-const APP_PASSWORD = process.env.APP_PASSWORD;
-const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 dias
+function jsonResponse(statusCode: number, body: Record<string, unknown>): FunctionResult {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
+function authenticationUnavailable(): FunctionResult {
+  return jsonResponse(500, { error: 'Autenticação indisponível. Tente novamente mais tarde.' });
+}
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Método não permitido.' }),
-    };
+    return jsonResponse(405, { error: 'Método não permitido.' });
   }
 
-  let payload;
+  let payload: unknown;
   try {
     payload = JSON.parse(event.body || '{}');
   } catch {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'JSON inválido.' }),
-    };
+    return jsonResponse(400, { error: 'JSON inválido.' });
   }
 
-  if (!APP_PASSWORD) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'APP_PASSWORD não configurada no servidor.' }),
-    };
+  const configuration = getAuthConfiguration();
+  if (!configuration.isValid || !configuration.passwordHash || !configuration.sessionSecret) {
+    console.error('Configuração de autenticação indisponível.');
+    return authenticationUnavailable();
   }
 
-  const { password } = payload;
-  if (!password || password !== APP_PASSWORD) {
-    return {
-      statusCode: 401,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Senha incorreta.' }),
-    };
+  const password =
+    payload !== null && typeof payload === 'object'
+      ? (payload as Record<string, unknown>).password
+      : undefined;
+  if (!isValidPasswordInput(password) || !(await verifyPassword(password, configuration.passwordHash))) {
+    return jsonResponse(401, { error: 'Senha incorreta.' });
   }
 
-  const cookie =
-    `aspen_token=${APP_PASSWORD}; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}; Path=/`;
+  const token = createSessionToken(configuration.sessionSecret);
+  const cookie = token ? createSessionCookie(token) : null;
+  if (!cookie) {
+    console.error('Não foi possível emitir a sessão autenticada.');
+    return authenticationUnavailable();
+  }
 
   return {
     statusCode: 200,

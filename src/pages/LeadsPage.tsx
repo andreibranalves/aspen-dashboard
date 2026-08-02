@@ -8,9 +8,9 @@ import {
   type SetStateAction,
 } from 'react';
 import {
-  Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus,
+  Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus, Archive, ArchiveRestore,
 } from 'lucide-react';
-import { apiGet, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { fmtPhone } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,11 +57,16 @@ interface DataRow {
   nome?: string;
   email?: string;
   telefone?: string;
+  documento?: string | null;
   tipo?: string;
+  arquivado?: boolean;
+  status?: string;
 }
 
 interface LeadsResponse {
   data?: DataRow[];
+  core_mode?: boolean;
+  source?: 'postgres' | 'frappe';
   pagination?: {
     total_pages?: number;
     total?: number;
@@ -72,6 +77,8 @@ interface ClientDetail {
   display_name?: string;
   email?: string;
   telefone?: string;
+  notes?: string | null;
+  observacoes?: string | null;
   origem?: string;
   person_type?: string;
   tax_id?: string;
@@ -99,6 +106,7 @@ interface EditFields {
   nome?: string;
   email?: string;
   telefone?: string;
+  observacoes?: string;
   origem?: string;
   personType?: string;
   taxId?: string;
@@ -201,6 +209,11 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [tipo, setTipo] = useState('');
+  const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
+  // `undefined` is an intentional pending state. Rendering the legacy mode
+  // before the server answers would briefly expose lead-only controls to core
+  // customers on a cold deep link.
+  const [coreMode, setCoreMode] = useState<boolean | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
@@ -210,7 +223,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const setTopBarActions = useSetTopBarActions();
 
-  const fetchData = useCallback(async (searchVal: string, tipoVal: string, pageNum: number, limitVal: number) => {
+  const fetchData = useCallback(async (searchVal: string, tipoVal: string, pageNum: number, limitVal: number, statusVal = status) => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
@@ -218,10 +231,16 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       const params = new URLSearchParams();
       params.set('page', String(pageNum));
       params.set('limit', String(limitVal));
+      params.set('status', statusVal);
       if (searchVal) params.set('search', searchVal);
-      if (tipoVal) params.set('tipo', tipoVal);
+      // The server is authoritative about the rollout mode. Do not send a
+      // legacy-only filter until that mode has been resolved.
+      if (tipoVal && coreMode === false) params.set('tipo', tipoVal);
 
       const result = await apiGet<LeadsResponse>(`/leads-clients?${params.toString()}`);
+      if (typeof result.core_mode === 'boolean') {
+        setCoreMode((previous) => previous === result.core_mode ? previous : result.core_mode);
+      }
       setData(result.data || []);
       setTotalPages(result.pagination?.total_pages || 0);
       setTotalRecords(result.pagination?.total || 0);
@@ -230,18 +249,22 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [coreMode, status]);
 
-  // TopBar actions — Criar Lead button
+  // Keep the TopBar neutral until the authoritative mode response arrives.
   useEffect(() => {
+    if (coreMode === undefined) {
+      setTopBarActions?.(null);
+      return () => setTopBarActions?.(null);
+    }
     setTopBarActions?.(
-      <Button size="sm" onClick={() => navigate?.('/leads/lead/new')}>
+      <Button size="sm" onClick={() => navigate?.(`/leads/${coreMode ? 'cliente' : 'lead'}/new`)}>
         <UserPlus size={16} />
-        Criar Lead
+        {coreMode ? 'Criar cliente' : 'Criar Lead'}
       </Button>
     );
     return () => setTopBarActions?.(null);
-  }, [setTopBarActions, navigate]);
+  }, [setTopBarActions, navigate, coreMode]);
 
   // ── Selection ──
   const toggleSelected = useCallback((id: string) => {
@@ -262,20 +285,89 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
   // ── Delete ──
   const handleDelete = useCallback(async (id: string, tipoRow: string) => {
-    if (!confirm(`Tem certeza que deseja excluir ${tipoRow === 'lead' ? 'o lead' : 'o cliente'} ${id}?\n\nEsta ação não pode ser desfeita.`)) return;
+    const label = coreMode ? 'o cliente' : (tipoRow === 'lead' ? 'o lead' : 'o cliente');
+    if (!confirm(coreMode
+      ? `Arquivar ${label} ${id}? Você poderá restaurá-lo depois.`
+      : `Tem certeza que deseja excluir ${label} ${id}?\n\nEsta ação não pode ser desfeita.`)) return;
     try {
       await apiDelete(`/leads-clients?id=${encodeURIComponent(id)}&tipo=${tipoRow}`);
-      setData(prev => prev.filter(r => r.id !== id));
-      setTotalRecords(prev => prev - 1);
+      setData(prev => coreMode && status === 'all'
+        ? prev.map(r => r.id === id ? { ...r, arquivado: true, status: 'archived' } : r)
+        : prev.filter(r => r.id !== id));
+      if (status !== 'all') setTotalRecords(prev => Math.max(0, prev - 1));
       setSelectedIds(prev => prev.filter(i => i !== id));
     } catch (err) {
       alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
     }
-  }, []);
+  }, [coreMode, status]);
 
-  const handleBulkDelete = useCallback(async () => {
+  const handleRestore = useCallback(async (row: DataRow) => {
+    if (!coreMode) return;
+    try {
+      await apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false });
+      setData(prev => status === 'all'
+        ? prev.map(item => item.id === row.id ? { ...item, arquivado: false, status: 'active' } : item)
+        : prev.filter(item => item.id !== row.id));
+      if (status !== 'all') setTotalRecords(prev => Math.max(0, prev - 1));
+    } catch (err) {
+      alert('Erro ao restaurar: ' + ((err as Error).message || 'Tente novamente.'));
+    }
+  }, [coreMode, status]);
+
+  const handleBulkAction = useCallback(async () => {
     const selected = data.filter(row => selectedIds.includes(row.id));
     if (selected.length === 0) return;
+
+    if (coreMode === true) {
+      const restoring = status === 'archived';
+      const actionable = selected.filter((row) => {
+        const archived = row.arquivado || row.status === 'archived';
+        return restoring ? archived : !archived;
+      });
+
+      if (actionable.length === 0) {
+        setError(restoring
+          ? 'Selecione clientes arquivados para restaurar.'
+          : 'Selecione clientes ativos para arquivar.');
+        return;
+      }
+
+      const action = restoring ? 'restaurar' : 'arquivar';
+      const confirmation = restoring
+        ? `Restaurar ${actionable.length} cliente${actionable.length !== 1 ? 's' : ''}?`
+        : `Arquivar ${actionable.length} cliente${actionable.length !== 1 ? 's' : ''}? Eles poderão ser restaurados depois.`;
+      if (!confirm(confirmation)) return;
+
+      try {
+        if (restoring) {
+          await Promise.all(actionable.map((row) =>
+            apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false })
+          ));
+        } else {
+          // In the core, DELETE is the established archive endpoint. Archived
+          // rows are deliberately excluded above, including in the "Todos" view.
+          await Promise.all(actionable.map((row) =>
+            apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}&tipo=${row.tipo || 'cliente'}`)
+          ));
+        }
+        const nextPage = actionable.length === data.length && page > 1 ? page - 1 : page;
+        setSelectedIds([]);
+        setPage(nextPage);
+        await fetchData(search, tipo, nextPage, limit, status);
+      } catch (err) {
+        console.error('Falha na ação em massa de clientes', {
+          action,
+          clientIds: actionable.map((row) => row.id),
+          error: err,
+        });
+        setSelectedIds([]);
+        await fetchData(search, tipo, page, limit, status);
+        const message = (err as Error).message || 'Tente novamente.';
+        setError(`Não foi possível ${action} os clientes selecionados: ${message}`);
+        alert(`Não foi possível ${action} os clientes selecionados: ${message}`);
+      }
+      return;
+    }
 
     if (!confirm(`Tem certeza que deseja excluir ${selected.length} registro${selected.length !== 1 ? 's' : ''}?\n\nEssa ação não pode ser desfeita.`)) return;
 
@@ -285,11 +377,17 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       ));
       const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
-      await fetchData(search, tipo, nextPage, limit);
+      await fetchData(search, tipo, nextPage, limit, status);
     } catch (err) {
-      alert('Erro ao excluir registros selecionados: ' + ((err as Error).message || 'Tente novamente.'));
+      console.error('Falha ao excluir registros em massa', {
+        clientIds: selected.map((row) => row.id),
+        error: err,
+      });
+      const message = (err as Error).message || 'Tente novamente.';
+      setError(`Não foi possível excluir os registros selecionados: ${message}`);
+      alert(`Não foi possível excluir os registros selecionados: ${message}`);
     }
-  }, [data, selectedIds, page, search, tipo, limit, fetchData]);
+  }, [coreMode, data, selectedIds, page, search, tipo, limit, status, fetchData]);
 
   // ── Drawer state ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -301,7 +399,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [editMode, setEditMode] = useState(false);
   const [editFields, setEditFields] = useState<EditFields>({});
 
-  useEffect(() => { fetchData(search, tipo, page, limit); }, [fetchData, search, tipo, page, limit]);
+  useEffect(() => { fetchData(search, tipo, page, limit, status); }, [fetchData, search, tipo, page, limit, status]);
 
   const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -309,9 +407,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
-      fetchData(val, tipo, 1, limit);
+      fetchData(val, tipo, 1, limit, status);
     }, 350);
-  }, [tipo, limit, fetchData]);
+  }, [tipo, limit, status, fetchData]);
 
   const onTipoClick = useCallback((t: string) => {
     setTipo(t);
@@ -319,19 +417,25 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     fetchData(search, t, 1, limit);
   }, [search, limit, fetchData]);
 
+  const onStatusClick = useCallback((nextStatus: 'active' | 'archived' | 'all') => {
+    setStatus(nextStatus);
+    setPage(1);
+    fetchData(search, tipo, 1, limit, nextStatus);
+  }, [search, tipo, limit, fetchData]);
+
   const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(e.target.value, 10);
     setLimit(newLimit);
     setPage(1);
-    fetchData(search, tipo, 1, newLimit);
-  }, [search, tipo, fetchData]);
+    fetchData(search, tipo, 1, newLimit, status);
+  }, [search, tipo, status, fetchData]);
 
   const navigateToDetail = useCallback((row: DataRow) => {
     if (!row?.id) return;
-    const tipoRoute = row.tipo === 'cliente' ? 'cliente' : 'lead';
+    const tipoRoute = coreMode ? 'cliente' : (row.tipo === 'cliente' ? 'cliente' : 'lead');
     if (navigate) navigate(`/leads/${tipoRoute}/${encodeURIComponent(row.id)}`);
     else window.location.hash = `#/leads/${tipoRoute}/${encodeURIComponent(row.id)}`;
-  }, [navigate]);
+  }, [navigate, coreMode]);
 
   const getPageNumbers = (): number[] => {
     if (totalPages <= 1) return [];
@@ -345,7 +449,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   // ── Drawer handlers ──
 
   const openDrawer = useCallback(async (row: DataRow) => {
-    const doctype = row.tipo === 'lead' ? 'Lead' : 'Customer';
+    const doctype = coreMode ? 'Customer' : (row.tipo === 'lead' ? 'Lead' : 'Customer');
     setSelectedClient({ doctype, name: row.id, tipo: row.tipo || '' });
     setClientDetail(null);
     setClientError(null);
@@ -362,7 +466,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     } finally {
       setClientLoading(false);
     }
-  }, []);
+  }, [coreMode]);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -378,6 +482,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       nome: clientDetail.display_name || '',
       email: clientDetail.email || '',
       telefone: clientDetail.telefone || '',
+      observacoes: clientDetail.notes ?? clientDetail.observacoes ?? '',
       origem: clientDetail.origem || '',
       personType: clientDetail.person_type || '',
       taxId: clientDetail.tax_id || '',
@@ -412,8 +517,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         email: editFields.email?.trim() || null,
         telefone: editFields.telefone?.trim() || null,
       };
+      const coreClient = coreMode && selectedClient.doctype === 'Customer';
       // Origem apenas para Lead
-      if (selectedClient.doctype === 'Lead') {
+      if (!coreClient && selectedClient.doctype === 'Lead') {
         payload.origem = editFields.origem?.trim() || null;
       }
       // Tipo de pessoa + CPF/CNPJ
@@ -421,12 +527,17 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         payload.person_type = editFields.personType;
         payload.tax_id = editFields.taxId?.replace(/\D/g, '') || null;
       }
-      // Campos adicionais
-      payload.empresa = editFields.empresa?.trim() || null;
-      payload.contribuinte = editFields.contribuinte || '0';
-      payload.inscricao_estadual = editFields.inscricaoEstadual?.trim() || null;
-      // Origem (sempre envia, Lead ou Customer)
-      payload.origem = editFields.origem?.trim() || null;
+      if (coreClient) {
+        const notes = editFields.observacoes?.trim() || null;
+        payload.notes = notes;
+        payload.observacoes = notes;
+      } else {
+        // Campos adicionais são mantidos somente no adapter legado.
+        payload.empresa = editFields.empresa?.trim() || null;
+        payload.contribuinte = editFields.contribuinte || '0';
+        payload.inscricao_estadual = editFields.inscricaoEstadual?.trim() || null;
+        payload.origem = editFields.origem?.trim() || null;
+      }
       // Endereço (sempre envia se tiver campos preenchidos)
       if (editFields.endereco) {
         payload.endereco = {
@@ -459,7 +570,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     } finally {
       setClientSaving(false);
     }
-  }, [selectedClient, clientDetail, editFields]);
+  }, [clientDetail, coreMode, editFields, selectedClient]);
 
   // ── Build context actions ──
 
@@ -536,21 +647,34 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
   const TipoBadge = ({ tipo: t }: { tipo?: string }) => (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-      ${t === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'}
+      ${coreMode || t === 'cliente' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'}
     `}>
-      {t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—'}
+      {coreMode ? (t === 'archived' ? 'Arquivado' : 'Cliente') : (t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—')}
     </span>
   );
+
+  const coreClientDetail = coreMode && selectedClient?.doctype === 'Customer';
 
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
       <PageHeader
-        title="Leads"
+        title={coreMode === true ? 'Clientes' : coreMode === false ? 'Leads' : 'Contatos'}
       />
 
-      {/* Tipo chips */}
+      {/* Unified mode filters by lifecycle; the legacy marker keeps the old
+          Lead/Cliente type chips and filtering behavior. */}
       <div className="flex gap-2">
-        {TIPOS.map((t, i) => (
+        {coreMode === true ? (['active', 'archived', 'all'] as const).map((value) => (
+          <button
+            key={value}
+            onClick={() => onStatusClick(value)}
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors
+              ${status === value ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'}
+            `}
+          >
+            {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
+          </button>
+        )) : coreMode === false ? TIPOS.map((t, i) => (
           <button
             key={t}
             onClick={() => onTipoClick(t)}
@@ -560,7 +684,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           >
             {TIPO_DISPLAY[i]}
           </button>
-        ))}
+        )) : null}
       </div>
 
       {/* Search + Page size */}
@@ -568,11 +692,11 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         <div className="relative max-w-md flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input
-            placeholder="Buscar por nome…"
+            placeholder={coreMode === true ? 'Buscar por nome, documento, e-mail ou telefone…' : coreMode === false ? 'Buscar por nome…' : 'Buscar contatos…'}
             value={search}
             onChange={onSearchChange}
             className="pl-9"
-            aria-label="Buscar leads e clientes"
+            aria-label={coreMode === true ? 'Buscar clientes' : coreMode === false ? 'Buscar leads e clientes' : 'Buscar contatos'}
           />
         </div>
         <div className="flex items-center gap-2 text-sm text-fg-muted">
@@ -596,7 +720,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <AlertTriangle size={32} className="text-destructive/60" />
-          <p>Erro ao carregar leads e clientes</p>
+          <p>{coreMode === undefined ? 'Erro ao carregar contatos' : 'Erro ao carregar leads e clientes'}</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => fetchData(search, tipo, page, limit)}>Tentar novamente</Button>
         </div>
@@ -606,7 +730,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <Users size={36} className="text-fg-muted/40" />
-          <p>Nenhum lead ou cliente encontrado</p>
+          <p>{coreMode === true ? 'Nenhum cliente encontrado' : coreMode === false ? 'Nenhum lead ou cliente encontrado' : 'Nenhum contato encontrado'}</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>
       )}
@@ -630,7 +754,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 <TableHead>Nome</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Telefone</TableHead>
-                <TableHead>Tipo</TableHead>
+                <TableHead>{coreMode ? 'Status' : 'Tipo'}</TableHead>
                 <TableHead className="w-[160px] text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -655,7 +779,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   <TableCell className="font-medium">{row.nome || '—'}</TableCell>
                   <TableCell className="text-fg-muted text-sm">{row.email || '—'}</TableCell>
                   <TableCell className="text-fg-muted text-sm">{fmtPhone(row.telefone)}</TableCell>
-                  <TableCell><TipoBadge tipo={row.tipo} /></TableCell>
+                  <TableCell><TipoBadge tipo={coreMode ? row.status : row.tipo} /></TableCell>
                   <TableCell className="text-center">
                     <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
                       <button
@@ -689,12 +813,12 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                         </a>
                       )}
                       <button
-                        onClick={() => handleDelete(row.id, row.tipo || '')}
+                        onClick={() => coreMode && row.arquivado ? handleRestore(row) : handleDelete(row.id, row.tipo || '')}
                         className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
-                        aria-label={`Excluir ${row.nome || row.email}`}
-                        title={`Excluir ${row.nome || row.email}`}
+                        aria-label={coreMode && row.arquivado ? `Restaurar ${row.nome || row.email}` : `${coreMode ? 'Arquivar' : 'Excluir'} ${row.nome || row.email}`}
+                        title={coreMode && row.arquivado ? `Restaurar ${row.nome || row.email}` : `${coreMode ? 'Arquivar' : 'Excluir'} ${row.nome || row.email}`}
                       >
-                        <Trash2 size={18} />
+                        {coreMode && row.arquivado ? <ArchiveRestore size={18} /> : coreMode ? <Archive size={18} /> : <Trash2 size={18} />}
                       </button>
                     </div>
                   </TableCell>
@@ -717,7 +841,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-sm">{row.nome || '—'}</span>
-                <TipoBadge tipo={row.tipo} />
+                <TipoBadge tipo={coreMode ? row.status : row.tipo} />
               </div>
               <div className="text-xs text-fg-muted space-y-0.5">
                 {row.email && <div className="flex items-center gap-1"><Mail size={12} /> {row.email}</div>}
@@ -786,7 +910,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         title={clientDetail?.display_name || 'Carregando…'}
         description={
           selectedClient
-            ? `${selectedClient.doctype} · ${selectedClient.name}`
+            ? `${coreMode ? 'Cliente' : selectedClient.doctype} · ${selectedClient.name}`
             : undefined
         }
         actions={
@@ -855,7 +979,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             <div>
               <h3 className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">Dados gerais</h3>
               <div className="space-y-2 text-sm">
-                {/* L1: Nome (50%) + Empresa (50%) */}
+                {/* L1: Nome (core/legacy) + Empresa (legacy only) */}
                 <div className="flex gap-2">
                   <div style={{ width: '50%' }}>
                     <span className="text-fg-muted text-[10px]">Nome</span>
@@ -870,22 +994,24 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       <p className="mt-0.5 font-medium truncate">{clientDetail.display_name || '—'}</p>
                     )}
                   </div>
-                  <div style={{ width: '50%' }}>
-                    <span className="text-fg-muted text-[10px]">Empresa</span>
-                    {editMode ? (
-                      <Input
-                        value={editFields.empresa || ''}
-                        onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Nome da empresa"
-                      />
-                    ) : (
-                      <p className="mt-0.5 font-medium truncate">{clientDetail.empresa || '—'}</p>
-                    )}
-                  </div>
+                  {!coreClientDetail && (
+                    <div style={{ width: '50%' }}>
+                      <span className="text-fg-muted text-[10px]">Empresa</span>
+                      {editMode ? (
+                        <Input
+                          value={editFields.empresa || ''}
+                          onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))}
+                          className="mt-0.5 h-8 text-xs"
+                          placeholder="Nome da empresa"
+                        />
+                      ) : (
+                        <p className="mt-0.5 font-medium truncate">{clientDetail.empresa || '—'}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* L2: E-mail (50%) + Telefone (25%) + Origem (25%) */}
+                {/* L2: E-mail + Telefone + Origem (legacy only) */}
                 <div className="flex gap-2">
                   <div style={{ width: '50%' }}>
                     <span className="text-fg-muted text-[10px]">E-mail</span>
@@ -913,26 +1039,45 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
                     )}
                   </div>
-                  <div style={{ width: '25%' }}>
-                    <span className="text-fg-muted text-[10px]">Origem</span>
-                    {editMode ? (
-                      <select
-                        value={editFields.origem || ''}
-                        onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                      >
-                        <option value="">Selecione</option>
-                        {LEAD_SOURCES.map(src => (
-                          <option key={src} value={src}>{src}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
-                    )}
-                  </div>
+                  {!coreClientDetail && (
+                    <div style={{ width: '25%' }}>
+                      <span className="text-fg-muted text-[10px]">Origem</span>
+                      {editMode ? (
+                        <select
+                          value={editFields.origem || ''}
+                          onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
+                          className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                        >
+                          <option value="">Selecione</option>
+                          {LEAD_SOURCES.map(src => (
+                            <option key={src} value={src}>{src}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* L3: Tipo de Pessoa (33%) + CNPJ/CPF (33%) + Contribuinte (33%) */}
+                {coreClientDetail && (
+                  <div>
+                    <span className="text-fg-muted text-[10px]">Observações</span>
+                    {editMode ? (
+                      <textarea
+                        aria-label="Observações"
+                        value={editFields.observacoes || ''}
+                        onChange={e => setEditFields(prev => ({ ...prev, observacoes: e.target.value }))}
+                        className="mt-0.5 min-h-20 w-full resize-y rounded-[10px] border border-line bg-surface px-2 py-1.5 text-xs text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                        placeholder="Observações do cliente"
+                      />
+                    ) : (
+                      <p className="mt-0.5 whitespace-pre-wrap font-medium">{(clientDetail.notes ?? clientDetail.observacoes) || '—'}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* L3: Tipo de Pessoa + CPF/CNPJ + Contribuinte (legacy only) */}
                 <div className="flex gap-2">
                   <div style={{ width: '33%' }}>
                     <span className="text-fg-muted text-[10px]">Tipo de Pessoa</span>
@@ -987,42 +1132,45 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                       </p>
                     )}
                   </div>
-                  <div style={{ width: '33%' }}>
-                    <span className="text-fg-muted text-[10px]">Contribuinte</span>
-                    {editMode ? (
-                      <select
-                        value={editFields.contribuinte || '0'}
-                        onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                      >
-                        {CONTRIBUINTE_OPTS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <p className="mt-0.5 font-medium text-xs">
-                        {CONTRIBUINTE_OPTS.find(o => o.value === clientDetail.contribuinte)?.label || '—'}
-                      </p>
-                    )}
-                  </div>
+                  {!coreClientDetail && (
+                    <div style={{ width: '33%' }}>
+                      <span className="text-fg-muted text-[10px]">Contribuinte</span>
+                      {editMode ? (
+                        <select
+                          value={editFields.contribuinte || '0'}
+                          onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
+                          className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                        >
+                          {CONTRIBUINTE_OPTS.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="mt-0.5 font-medium text-xs">
+                          {CONTRIBUINTE_OPTS.find(o => o.value === clientDetail.contribuinte)?.label || '—'}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* L4: Inscrição Estadual (33%) */}
-                <div className="flex gap-2">
-                  <div style={{ width: '33%' }}>
-                    <span className="text-fg-muted text-[10px]">Inscrição Estadual</span>
-                    {editMode ? (
-                      <Input
-                        value={editFields.inscricaoEstadual || ''}
-                        onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="IE"
-                      />
-                    ) : (
-                      <p className="mt-0.5 font-medium">{clientDetail.inscricao_estadual || '—'}</p>
-                    )}
+                {!coreClientDetail && (
+                  <div className="flex gap-2">
+                    <div style={{ width: '33%' }}>
+                      <span className="text-fg-muted text-[10px]">Inscrição Estadual</span>
+                      {editMode ? (
+                        <Input
+                          value={editFields.inscricaoEstadual || ''}
+                          onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))}
+                          className="mt-0.5 h-8 text-xs"
+                          placeholder="IE"
+                        />
+                      ) : (
+                        <p className="mt-0.5 font-medium">{clientDetail.inscricao_estadual || '—'}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -1261,9 +1409,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                 <Button variant="outline" onClick={() => setSelectedIds([])} disabled={selectedCount === 0}>
                   Limpar seleção
                 </Button>
-                <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
-                  <Trash2 size={16} className="mr-2" />
-                  Excluir registros
+                <Button variant="default" onClick={handleBulkAction} disabled={selectedCount === 0}>
+                  {coreMode === true && status === 'archived' ? <ArchiveRestore size={16} className="mr-2" /> : coreMode === true ? <Archive size={16} className="mr-2" /> : <Trash2 size={16} className="mr-2" />}
+                  {coreMode === true && status === 'archived' ? 'Restaurar clientes' : coreMode === true ? 'Arquivar clientes' : 'Excluir registros'}
                 </Button>
               </div>
             </div>

@@ -9,8 +9,13 @@ import { createServer } from 'node:http';
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
 import { handler as crmPruneCandidates } from '../api/_functions/crm-prune-candidates.js';
+import { handler as duplicateQuotation } from '../api/_functions/duplicate-quotation.js';
+import { handler as editDraft } from '../api/_functions/edit-draft.js';
+import { handler as clientDetail } from '../api/_functions/client-detail.js';
 import { handler as extract } from '../api/_functions/extract.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
+import { handler as login } from '../api/_functions/login.js';
+import { handler as logout } from '../api/_functions/logout.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
 import { handler as productDetail } from '../api/_functions/product-detail.js';
@@ -26,22 +31,30 @@ import { handler as salesOrderFromQuotation } from '../api/_functions/sales-orde
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
+import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
+import { handler as whatsappFlows } from '../api/_functions/whatsapp-flows.js';
 import { handler as whatsappLeads } from '../api/_functions/whatsapp-leads.js';
 import { handler as communicationFlowPreview } from '../api/_functions/communication-flow-preview.js';
 import { handler as communicationSendEvents } from '../api/_functions/communication-send-events.js';
 import { handler as communicationFlows } from '../api/_functions/communication-flows.js';
 import { handler as communicationMedia } from '../api/_functions/communication-media.js';
 import { handler as communicationMediaUpload } from '../api/_functions/communication-media-upload.js';
+import { handler as pdf } from '../api/_functions/pdf.js';
 import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
+  'client-detail': clientDetail,
   'crm-deals': crmDeals,
   'crm-prune-candidates': crmPruneCandidates,
   'crm-update-deal': crmUpdateDeal,
+  'duplicate-quotation': duplicateQuotation,
+  'edit-draft': editDraft,
   extract,
   'leads-clients': leadsClients,
+  login,
+  logout,
   orcamento,
   'pricing-lookup': pricingLookup,
   'product-detail': productDetail,
@@ -57,8 +70,11 @@ const ROUTES = {
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
+  pdf,
+  settings,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
+  'whatsapp-flows': whatsappFlows,
   'whatsapp-leads': whatsappLeads,
   'communication-flow-preview': communicationFlowPreview,
   'communication-send-events': communicationSendEvents,
@@ -69,6 +85,10 @@ const ROUTES = {
 };
 
 const PORT = 8888;
+
+// Intentional non-production auth bypass: this local harness invokes handlers
+// directly for development. The self-hosted production server uses the shared
+// isAuthenticated guard instead of duplicating auth logic here.
 
 function parseBody(req) {
   return new Promise((resolve) => {
@@ -120,9 +140,11 @@ const server = createServer(async (req, res) => {
     };
 
     const result = await handler(event);
-    res.writeHead(result.statusCode || 200, {
-      'Content-Type': result.headers?.['Content-Type'] || 'application/json',
-    });
+    const responseHeaders = { ...(result.headers || {}) };
+    if (!Object.keys(responseHeaders).some((name) => name.toLowerCase() === 'content-type')) {
+      responseHeaders['Content-Type'] = 'application/json';
+    }
+    res.writeHead(result.statusCode || 200, responseHeaders);
     res.end(result.body || '');
   } catch (err) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;

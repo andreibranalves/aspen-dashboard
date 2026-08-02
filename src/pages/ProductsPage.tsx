@@ -5,10 +5,13 @@ import {
   Tag,
   Trash2,
   PlusCircle,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
-import { apiGet, apiDelete } from '@/lib/api';
+import { apiGet, apiDelete, apiPatch } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
+import { clearProductCache } from '@/lib/productCache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SkeletonTable from '@/components/SkeletonTable';
@@ -43,12 +46,14 @@ export default function ProductsPage() {
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sort, setSort] = useState<string>('modified desc');
+  const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
+  const [coreMode, setCoreMode] = useState<boolean>(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [, navigate] = useHashRoute();
   const setTopBarActions = useSetTopBarActions();
 
-  const fetchData = useCallback(async (searchVal: string, pageNum: number, limitVal: number, sortVal: string) => {
+  const fetchData = useCallback(async (searchVal: string, pageNum: number, limitVal: number, sortVal: string, statusVal = status) => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
@@ -58,8 +63,10 @@ export default function ProductsPage() {
       params.set('limit', String(limitVal));
       if (searchVal) params.set('search', searchVal);
       if (sortVal) params.set('order_by', sortVal);
+      params.set('status', statusVal);
 
       const result = await apiGet<ProductsApiResponse>(`/products?${params.toString()}`);
+      setCoreMode(result.core_mode === true);
       setData(result.data || []);
       setTotalPages(result.pagination?.total_pages || 0);
       setTotalRecords(result.pagination?.total || 0);
@@ -68,7 +75,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [status]);
 
   // TopBar actions — Criar Produto
   useEffect(() => {
@@ -81,7 +88,7 @@ export default function ProductsPage() {
     return () => setTopBarActions?.(null);
   }, [setTopBarActions, navigate]);
 
-  useEffect(() => { fetchData(search, page, limit, sort); }, [fetchData, search, page, limit, sort]);
+  useEffect(() => { fetchData(search, page, limit, sort, status); }, [fetchData, search, page, limit, sort, status]);
 
   const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -89,16 +96,16 @@ export default function ProductsPage() {
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
-      fetchData(val, 1, limit, sort);
+      fetchData(val, 1, limit, sort, status);
     }, 350);
-  }, [limit, sort, fetchData]);
+  }, [limit, sort, status, fetchData]);
 
   const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(e.target.value, 10);
     setLimit(newLimit);
     setPage(1);
-    fetchData(search, 1, newLimit, sort);
-  }, [search, sort, fetchData]);
+    fetchData(search, 1, newLimit, sort, status);
+  }, [search, sort, status, fetchData]);
 
   const getPageNumbers = (): number[] => {
     if (totalPages <= 1) return [];
@@ -132,33 +139,39 @@ export default function ProductsPage() {
 
   // ── Delete ──
 
-  const handleDelete = useCallback(async (sku: string) => {
-    if (!confirm(`Tem certeza que deseja excluir o produto ${sku}?\n\nEsta ação não pode ser desfeita.`)) return;
+  const handleDelete = useCallback(async (sku: string, archived: boolean) => {
+    const action = coreMode ? (archived ? 'restaurar' : 'arquivar') : 'excluir';
+    if (!confirm(`Tem certeza que deseja ${action} o produto ${sku}?`)) return;
     try {
-      await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
-      setData((prev) => prev.filter((r) => r.sku !== sku));
-      setTotalRecords((prev) => prev - 1);
-      setSelectedIds((prev) => prev.filter((id) => id !== sku));
+      if (coreMode && archived) {
+        await apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true });
+      } else {
+        await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
+      }
+      clearProductCache();
+      await fetchData(search, page, limit, sort, status);
     } catch (err) {
-      alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
+      alert(`Erro ao ${action}: ` + ((err as Error).message || 'Tente novamente.'));
     }
-  }, []);
+  }, [coreMode, fetchData, limit, page, search, sort, status]);
 
   const handleBulkDelete = useCallback(async () => {
     const selected = data.filter((row) => selectedIds.includes(row.sku || row.item_code || ''));
-    if (selected.length === 0) return;
+    if (selected.length === 0 || (coreMode && status === 'archived')) return;
 
-    if (!confirm(`Tem certeza que deseja excluir ${selected.length} produto${selected.length !== 1 ? 's' : ''}?\n\nEssa ação não pode ser desfeita.`)) return;
+    const action = coreMode ? 'arquivar' : 'excluir';
+    if (!confirm(`Tem certeza que deseja ${action} ${selected.length} produto${selected.length !== 1 ? 's' : ''}?`)) return;
 
     try {
       await Promise.all(selected.map((row) => apiDelete(`/products?id=${encodeURIComponent(row.sku || row.item_code || '')}`)));
+      clearProductCache();
       const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
-      await fetchData(search, nextPage, limit, sort);
+      await fetchData(search, nextPage, limit, sort, status);
     } catch (err) {
       alert('Erro ao excluir produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'));
     }
-  }, [data, selectedIds, page, search, limit, sort, fetchData]);
+  }, [coreMode, data, selectedIds, page, search, limit, sort, status, fetchData]);
 
   const selectedCount = selectedIds.length;
 
@@ -190,6 +203,20 @@ export default function ProductsPage() {
             ))}
           </select>
         </div>
+        {coreMode && (
+          <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1 text-xs">
+            {(['active', 'archived', 'all'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => { setStatus(value); setPage(1); }}
+                className={`rounded-full px-3 py-1.5 transition-colors ${status === value ? 'bg-primary text-white' : 'text-fg-muted hover:text-fg'}`}
+              >
+                {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Sorting */}
@@ -282,16 +309,16 @@ export default function ProductsPage() {
                       <TableCell className="font-mono text-sm pl-6">{sku}</TableCell>
                       <TableCell className="text-fg-muted text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
                       <TableCell className="text-center font-medium pl-4">
-                        {p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
+                        {!coreMode && p.pricing_available !== false && p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => handleDelete(sku)}
+                          onClick={() => handleDelete(sku, p.ativo === false)}
                           className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
-                          aria-label={`Excluir produto ${sku}`}
-                          title={`Excluir ${sku}`}
+                          aria-label={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} produto ${sku}`}
+                          title={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} ${sku}`}
                         >
-                          <Trash2 size={18} />
+                          {coreMode ? (p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />) : <Trash2 size={18} />}
                         </button>
                       </TableCell>
                     </TableRow>
@@ -335,7 +362,7 @@ export default function ProductsPage() {
                           <span className="font-mono text-primary">{sku}</span>
                           {' · '}
                           {p.unidade || p.stock_uom || 'und'}
-                          {p.preco_minimo != null && (
+                          {!coreMode && p.pricing_available !== false && p.preco_minimo != null && (
                             <>
                               {' · '}
                               <span className="font-medium text-fg">{formatBRL(p.preco_minimo)}</span>
@@ -345,12 +372,12 @@ export default function ProductsPage() {
                       </div>
                     </button>
                     <button
-                      onClick={() => handleDelete(sku)}
+                      onClick={() => handleDelete(sku, p.ativo === false)}
                       className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors shrink-0"
-                      aria-label={`Excluir produto ${sku}`}
-                      title={`Excluir ${sku}`}
+                      aria-label={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} produto ${sku}`}
+                      title={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} ${sku}`}
                     >
-                      <Trash2 size={18} />
+                      {coreMode ? (p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />) : <Trash2 size={18} />}
                     </button>
                   </div>
                 </div>
@@ -399,8 +426,8 @@ export default function ProductsPage() {
                   Limpar seleção
                 </Button>
                 <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
-                  <Trash2 size={16} className="mr-2" />
-                  Excluir produtos
+                  {coreMode ? <Archive size={16} className="mr-2" /> : <Trash2 size={16} className="mr-2" />}
+                  {coreMode ? 'Arquivar produtos' : 'Excluir produtos'}
                 </Button>
               </div>
             </div>

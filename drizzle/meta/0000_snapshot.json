@@ -1,0 +1,98 @@
+{
+  "id": "7d6cb8f1-bc05-42fa-8c21-9a37df520f5b",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.app_settings": {
+      "name": "app_settings",
+      "schema": "",
+      "columns": {
+        "singleton_id": {
+          "name": "singleton_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "validade_dias": {
+          "name": "validade_dias",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 15
+        },
+        "pagamento": {
+          "name": "pagamento",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "entrega": {
+          "name": "entrega",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "frete_padrao": {
+          "name": "frete_padrao",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0.00'"
+        },
+        "observacoes": {
+          "name": "observacoes",
+          "type": "varchar(4000)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "template_padrao": {
+          "name": "template_padrao",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'padrao'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "app_settings_singleton_id_check": {
+          "name": "app_settings_singleton_id_check",
+          "value": "\"app_settings\".\"singleton_id\" = 1"
+        },
+        "app_settings_validade_dias_check": {
+          "name": "app_settings_validade_dias_check",
+          "value": "\"app_settings\".\"validade_dias\" BETWEEN 1 AND 365"
+        },
+        "app_settings_frete_padrao_check": {
+          "name": "app_settings_frete_padrao_check",
+          "value": "\"app_settings\".\"frete_padrao\" >= 0"
+        },
+        "app_settings_template_padrao_not_blank_check": {
+          "name": "app_settings_template_padrao_not_blank_check",
+          "value": "char_length(btrim(\"app_settings\".\"template_padrao\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

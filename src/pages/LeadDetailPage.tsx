@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
   type ChangeEventHandler,
   type Dispatch,
@@ -21,7 +22,7 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { apiGet, apiPut, apiPost } from '@/lib/api';
+import { apiGet, apiPut, apiPatch, apiPost, apiDelete } from '@/lib/api';
 import type { LeadCreateResponse } from '@/types/erpnext';
 import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
 import { buildCrmDealErpUrl, buildQuotationErpUrl } from '@/lib/erpLinks';
@@ -75,6 +76,8 @@ interface LeadDetail {
   empresa: string;
   email: string;
   telefone: string;
+  notes?: string | null;
+  observacoes?: string | null;
   origem: string;
   person_type: string;
   tax_id: string;
@@ -87,12 +90,18 @@ interface LeadDetail {
   erp_url: string | null;
   creation?: string;
   modified?: string;
+  core_mode?: boolean;
+  source?: 'postgres' | 'frappe';
+  arquivado?: boolean;
+  status?: 'active' | 'archived';
+  archived_at?: string | null;
 }
 
 interface EditFields {
   nome: string;
   email: string;
   telefone: string;
+  observacoes: string;
   origem: string;
   personType: string;
   taxId: string;
@@ -135,7 +144,7 @@ function isValidEmail(value: unknown): boolean {
 
 function isValidPhone(value: unknown): boolean {
   const d = String(value || '').replace(/\D/g, '');
-  return d.length >= 10 && d.length <= 11;
+  return d.length >= 10 && d.length <= 15;
 }
 
 function getDoctype(tipo: string): string {
@@ -146,12 +155,12 @@ function getTipoFromDoctype(doctype: string): string {
   return doctype === 'Customer' ? 'cliente' : 'lead';
 }
 
-function tipoLabel(doctype: string): string {
-  return doctype === 'Customer' ? 'Cliente' : 'Lead';
+function tipoLabel(doctype: string, coreMode = false): string {
+  return coreMode || doctype === 'Customer' ? 'Cliente' : 'Lead';
 }
 
-function getInitials(name: unknown): string {
-  return String(name || 'Lead')
+function getInitials(name: unknown, coreMode = false): string {
+  return String(name || (coreMode ? 'Cliente' : 'Lead'))
     .trim()
     .split(/\s+/)
     .slice(0, 2)
@@ -176,6 +185,7 @@ function buildEditFields(detail: LeadDetail): EditFields {
     nome: detail.display_name || '',
     email: detail.email || '',
     telefone: detail.telefone || '',
+    observacoes: detail.notes ?? detail.observacoes ?? '',
     origem: detail.origem || '',
     personType: detail.person_type || '',
     taxId: detail.tax_id || '',
@@ -202,6 +212,8 @@ function buildEmptyLeadDetail(doctype = 'Lead'): LeadDetail {
     empresa: '',
     email: '',
     telefone: '',
+    notes: null,
+    observacoes: null,
     origem: '',
     person_type: '',
     tax_id: '',
@@ -242,15 +254,16 @@ async function lookupCep(
 
 interface TipoBadgeProps {
   doctype: string;
+  coreMode?: boolean;
 }
 
-function TipoBadge({ doctype }: TipoBadgeProps) {
-  const isLead = doctype !== 'Customer';
+function TipoBadge({ doctype, coreMode = false }: TipoBadgeProps) {
+  const isLead = !coreMode && doctype !== 'Customer';
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
       isLead ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'
     }`}>
-      {tipoLabel(doctype)}
+      {tipoLabel(doctype, coreMode)}
     </span>
   );
 }
@@ -334,6 +347,8 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
   const decodedId = decodeURIComponent(id || '');
   const doctype = getDoctype(tipo);
   const isNewLead = decodedId === 'new';
+  const [coreMode, setCoreMode] = useState<boolean>(false);
+  const isClientUi = coreMode || doctype === 'Customer';
   const [detail, setDetail] = useState<LeadDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | 'not_found' | null>(null);
@@ -342,6 +357,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
     nome: '',
     email: '',
     telefone: '',
+    observacoes: '',
     origem: '',
     personType: '',
     taxId: '',
@@ -353,6 +369,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
   const [saving, setSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const setTopBarActions = useSetTopBarActions();
+  const loadedRouteRef = useRef<string | null>(null);
 
   const loadDetail = useCallback(async () => {
     if (!decodedId) return;
@@ -360,7 +377,12 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
     setError(null);
     try {
       if (isNewLead) {
-        const empty = buildEmptyLeadDetail(doctype);
+        const mode = await apiGet<{ core_mode?: boolean }>('/leads-clients?status=active&limit=1');
+        if (typeof mode.core_mode !== 'boolean') {
+          throw new Error('Não foi possível confirmar o modo de clientes. Tente novamente.');
+        }
+        setCoreMode(mode.core_mode);
+        const empty = buildEmptyLeadDetail(mode.core_mode ? 'Customer' : doctype);
         setDetail(empty);
         setEditFields(buildEditFields(empty));
         setEditMode(true);
@@ -369,12 +391,16 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
       }
 
       const result = await apiGet<LeadDetail>(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(decodedId)}`);
+      if (typeof result.core_mode === 'boolean') {
+        setCoreMode(result.core_mode);
+      }
       setDetail(result);
       setEditMode(false);
       setEditFields({
         nome: '',
         email: '',
         telefone: '',
+        observacoes: '',
         origem: '',
         personType: '',
         taxId: '',
@@ -386,13 +412,18 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
     } catch (err) {
       const apiErr = err as { status?: number; message?: string };
       if (apiErr.status === 404) setError('not_found');
-      else setError(apiErr.message || 'Erro ao carregar lead.');
+      else setError(apiErr.message || 'Erro ao carregar cadastro.');
     } finally {
       setLoading(false);
     }
   }, [decodedId, doctype, isNewLead]);
 
-  useEffect(() => { loadDetail(); }, [loadDetail]);
+  useEffect(() => {
+    const routeKey = `${doctype}:${decodedId}`;
+    if (!decodedId || loadedRouteRef.current === routeKey) return;
+    loadedRouteRef.current = routeKey;
+    void loadDetail();
+  }, [decodedId, doctype, loadDetail]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -416,6 +447,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
       nome: '',
       email: '',
       telefone: '',
+      observacoes: '',
       origem: '',
       personType: '',
       taxId: '',
@@ -436,11 +468,18 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
         nome: editFields.nome?.trim() || null,
         email: editFields.email?.trim() || null,
         telefone: editFields.telefone?.trim() || null,
-        empresa: editFields.empresa?.trim() || null,
-        contribuinte: editFields.contribuinte || '0',
-        inscricao_estadual: editFields.inscricaoEstadual?.trim() || null,
-        origem: editFields.origem?.trim() || null,
       };
+      if (!coreMode) {
+        payload.empresa = editFields.empresa?.trim() || null;
+        payload.contribuinte = editFields.contribuinte || '0';
+        payload.inscricao_estadual = editFields.inscricaoEstadual?.trim() || null;
+        payload.origem = editFields.origem?.trim() || null;
+      }
+      if (coreMode) {
+        const notes = editFields.observacoes?.trim() || null;
+        payload.notes = notes;
+        payload.observacoes = notes;
+      }
 
       if (editFields.personType) {
         payload.person_type = editFields.personType;
@@ -482,7 +521,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
         });
         const createdId = String(created.created || created.name || created.id || '');
         if (!createdId) {
-          setToast({ type: 'error', message: 'Lead criado, mas não foi possível abrir o cadastro.' });
+          setToast({ type: 'error', message: `${isClientUi ? 'Cliente' : 'Lead'} criado, mas não foi possível abrir o cadastro.` });
           navigate('/leads');
           return;
         }
@@ -502,7 +541,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
           );
         }
 
-        setToast({ type: 'success', message: 'Lead criado com sucesso.' });
+        setToast({ type: 'success', message: `${isClientUi ? 'Cliente' : 'Lead'} criado com sucesso.` });
         navigate(`/leads/${getTipoFromDoctype(doctype)}/${encodeURIComponent(createdId)}`);
         return;
       }
@@ -517,6 +556,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
         nome: '',
         email: '',
         telefone: '',
+        observacoes: '',
         origem: '',
         personType: '',
         taxId: '',
@@ -532,7 +572,27 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
     } finally {
       setSaving(false);
     }
-  }, [decodedId, detail, doctype, editFields, isNewLead, navigate]);
+  }, [coreMode, decodedId, detail, doctype, editFields, isClientUi, isNewLead, navigate]);
+
+  const toggleArchive = useCallback(async () => {
+    if (!coreMode || !detail || isNewLead) return;
+    const archived = detail.arquivado === true || detail.status === 'archived';
+    try {
+      const updated = archived
+        ? await apiPatch<LeadDetail>(`/client-detail?name=${encodeURIComponent(decodedId)}`, { arquivado: false })
+        : await apiDelete<LeadDetail>(`/leads-clients?id=${encodeURIComponent(decodedId)}`);
+      // DELETE returns a list row; refresh the detail to keep compatibility
+      // fields and timestamps in one shape.
+      if (archived) setDetail(updated);
+      else {
+        const refreshed = await apiGet<LeadDetail>(`/client-detail?name=${encodeURIComponent(decodedId)}`);
+        setDetail(refreshed);
+      }
+      setToast({ type: 'success', message: archived ? 'Cliente restaurado.' : 'Cliente arquivado.' });
+    } catch (err) {
+      setToast({ type: 'error', message: (err as { message?: string }).message || 'Não foi possível alterar o status.' });
+    }
+  }, [coreMode, decodedId, detail, isNewLead]);
 
   useEffect(() => {
     if (!setTopBarActions) return undefined;
@@ -548,7 +608,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
           <>
             <Button variant="default" size="sm" onClick={saveEdit} disabled={saving}>
               <Save size={16} />
-              {saving ? (isNewLead ? 'Criando…' : 'Salvando…') : (isNewLead ? 'Criar Lead' : 'Salvar')}
+              {saving ? (isNewLead ? 'Criando…' : 'Salvando…') : (isNewLead ? (isClientUi ? 'Criar cliente' : 'Criar Lead') : 'Salvar')}
             </Button>
             <Button variant="outline" size="sm" onClick={cancelEdit} disabled={saving}>
               <X size={16} />
@@ -561,11 +621,16 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
             Editar cadastro
           </Button>
         )}
+        {coreMode && !isNewLead && (
+          <Button variant="outline" size="sm" onClick={toggleArchive} disabled={saving}>
+            {detail?.arquivado || detail?.status === 'archived' ? 'Restaurar cliente' : 'Arquivar cliente'}
+          </Button>
+        )}
       </div>
     );
 
     return () => setTopBarActions(null);
-  }, [cancelEdit, detail, editMode, error, isNewLead, loading, saveEdit, saving, setTopBarActions, startEdit]);
+  }, [cancelEdit, coreMode, detail, editMode, error, isClientUi, isNewLead, loading, saveEdit, saving, setTopBarActions, startEdit, toggleArchive]);
 
   if (loading) return <SkeletonDetail />;
 
@@ -574,7 +639,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
       <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
         <UserRound size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Registro não encontrado</p>
-        <p className="text-sm">Não encontramos {tipoLabel(doctype).toLowerCase()} &quot;{decodedId}&quot;.</p>
+        <p className="text-sm">Não encontramos {tipoLabel(doctype, coreMode).toLowerCase()} &quot;{decodedId}&quot;.</p>
       </div>
     );
   }
@@ -639,24 +704,22 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
       )}
 
       {isNewLead && (
-        <PageHeader
-          title="Novo Lead"
-        />
+        <PageHeader title={isClientUi ? 'Novo cliente' : 'Novo Lead'} />
       )}
 
       <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4 min-w-0">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-xl font-semibold text-primary">
-              {getInitials(detail.display_name)}
+              {getInitials(detail.display_name, isClientUi)}
             </div>
             <div className="min-w-0 space-y-3">
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-xl font-semibold text-fg truncate">{detail.display_name || 'Sem nome'}</h2>
-                  <TipoBadge doctype={detail.doctype || doctype} />
+                  <TipoBadge doctype={detail.doctype || doctype} coreMode={coreMode} />
                 </div>
-                <p className="text-sm text-fg-muted">{detail.empresa || 'Empresa não informada'}</p>
+                {!coreMode && <p className="text-sm text-fg-muted">{detail.empresa || 'Empresa não informada'}</p>}
               </div>
               <QualityBadges badges={isNewLead ? [] : qualityBadges(detail)} />
               {!isNewLead && <ContextActions actions={actions} />}
@@ -668,18 +731,20 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         <div className="xl:col-span-8 space-y-5">
-          <SectionCard title="Dados gerais" description="Contato, origem e identificação comercial." icon={UserRound}>
+          <SectionCard title="Dados gerais" description={coreMode ? 'Contato e identificação comercial.' : 'Contato, origem e identificação comercial.'} icon={UserRound}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <InfoField label="Nome">
                 {editMode ? (
-                  <Input value={editFields.nome || ''} onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))} className="mt-1 text-sm" placeholder="Nome do lead" />
+                  <Input value={editFields.nome || ''} onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))} className="mt-1 text-sm" placeholder={isClientUi ? 'Nome do cliente' : 'Nome do lead'} />
                 ) : <p className="mt-1 text-sm font-medium text-fg">{detail.display_name || '—'}</p>}
               </InfoField>
-              <InfoField label="Empresa">
-                {editMode ? (
-                  <Input value={editFields.empresa || ''} onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))} className="mt-1 text-sm" placeholder="Nome da empresa" />
-                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.empresa || '—'}</p>}
-              </InfoField>
+              {!coreMode && (
+                <InfoField label="Empresa">
+                  {editMode ? (
+                    <Input value={editFields.empresa || ''} onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))} className="mt-1 text-sm" placeholder="Nome da empresa" />
+                  ) : <p className="mt-1 text-sm font-medium text-fg">{detail.empresa || '—'}</p>}
+                </InfoField>
+              )}
               <InfoField label="E-mail">
                 {editMode ? (
                   <Input value={editFields.email || ''} onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))} className={inputClass(Boolean(editFields.email && !isValidEmail(editFields.email)))} placeholder="email@exemplo.com" />
@@ -690,14 +755,31 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
                   <Input value={editFields.telefone || ''} onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))} className={inputClass(Boolean(editFields.telefone && !isValidPhone(editFields.telefone)))} placeholder="(99) 99999-9999" />
                 ) : <p className="mt-1 text-sm font-medium text-fg">{fmtPhone(detail.telefone) || '—'}</p>}
               </InfoField>
-              <InfoField label="Origem">
-                {editMode && (detail.doctype || doctype) === 'Lead' ? (
-                  <SelectBox value={editFields.origem || ''} onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}>
-                    <option value="">Selecione</option>
-                    {LEAD_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
-                  </SelectBox>
-                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.origem || '—'}</p>}
-              </InfoField>
+              {coreMode && (
+                <InfoField label="Observações" className="md:col-span-2">
+                  {editMode ? (
+                    <textarea
+                      aria-label="Observações"
+                      value={editFields.observacoes || ''}
+                      onChange={e => setEditFields(prev => ({ ...prev, observacoes: e.target.value }))}
+                      className="mt-1 min-h-24 w-full resize-y rounded-[10px] border border-line bg-surface px-3 py-2 text-sm text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                      placeholder="Registre preferências, contexto ou próximos passos."
+                    />
+                  ) : (
+                    <p className="mt-1 whitespace-pre-wrap text-sm font-medium text-fg">{(detail.notes ?? detail.observacoes) || '—'}</p>
+                  )}
+                </InfoField>
+              )}
+              {!coreMode && (
+                <InfoField label="Origem">
+                  {editMode && (detail.doctype || doctype) === 'Lead' ? (
+                    <SelectBox value={editFields.origem || ''} onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}>
+                      <option value="">Selecione</option>
+                      {LEAD_SOURCES.map(src => <option key={src} value={src}>{src}</option>)}
+                    </SelectBox>
+                  ) : <p className="mt-1 text-sm font-medium text-fg">{detail.origem || '—'}</p>}
+                </InfoField>
+              )}
               {!isNewLead && (
                 <InfoField label="Criado / modificado">
                   <p className="mt-1 text-sm font-medium text-fg">
@@ -711,7 +793,7 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
             </div>
           </SectionCard>
 
-          <SectionCard title="Fiscal" description="Tipo de pessoa, documento e inscrição estadual." icon={FileText}>
+          <SectionCard title="Fiscal" description={coreMode ? 'Tipo de pessoa e documento.' : 'Tipo de pessoa, documento e inscrição estadual.'} icon={FileText}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <InfoField label="Tipo de pessoa">
                 {editMode ? (
@@ -737,18 +819,22 @@ export default function LeadDetailPage({ tipo, id, navigate }: LeadDetailPagePro
                   />
                 ) : <p className="mt-1 text-sm font-medium text-fg">{formatTaxId(detail.tax_id, detail.person_type) || '—'}</p>}
               </InfoField>
-              <InfoField label="Contribuinte">
-                {editMode ? (
-                  <SelectBox value={editFields.contribuinte || '0'} onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}>
-                    {CONTRIBUINTE_OPTS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                  </SelectBox>
-                ) : <p className="mt-1 text-sm font-medium text-fg">{CONTRIBUINTE_OPTS.find(o => o.value === detail.contribuinte)?.label || '—'}</p>}
-              </InfoField>
-              <InfoField label="Inscrição estadual">
-                {editMode ? (
-                  <Input value={editFields.inscricaoEstadual || ''} onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))} className="mt-1 text-sm" placeholder="IE" />
-                ) : <p className="mt-1 text-sm font-medium text-fg">{detail.inscricao_estadual || '—'}</p>}
-              </InfoField>
+              {!coreMode && (
+                <InfoField label="Contribuinte">
+                  {editMode ? (
+                    <SelectBox value={editFields.contribuinte || '0'} onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}>
+                      {CONTRIBUINTE_OPTS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    </SelectBox>
+                  ) : <p className="mt-1 text-sm font-medium text-fg">{CONTRIBUINTE_OPTS.find(o => o.value === detail.contribuinte)?.label || '—'}</p>}
+                </InfoField>
+              )}
+              {!coreMode && (
+                <InfoField label="Inscrição estadual">
+                  {editMode ? (
+                    <Input value={editFields.inscricaoEstadual || ''} onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))} className="mt-1 text-sm" placeholder="IE" />
+                  ) : <p className="mt-1 text-sm font-medium text-fg">{detail.inscricao_estadual || '—'}</p>}
+                </InfoField>
+              )}
             </div>
           </SectionCard>
 

@@ -25,7 +25,10 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
-import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
+import {
+  isCoreUnpricedProduct,
+  searchProducts as cachedSearchProducts,
+} from '@/lib/productCache';
 import type { Product } from '@/types/domain';
 import type { OrcamentoResponse } from '@/types/erpnext';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
@@ -81,6 +84,8 @@ interface PricingLookupResponse {
 
 interface LeadsClientsResponse {
   data?: Client[];
+  core_mode?: boolean;
+  source?: 'postgres' | 'frappe';
 }
 
 function toNumber(value: string | number, fallback = 0): number {
@@ -99,6 +104,7 @@ export default function ManualOrcamentoPage() {
   const [clientResults, setClientResults] = useState<Client[]>([]);
   const [clientSearching, setClientSearching] = useState<boolean>(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [clientCoreMode, setClientCoreMode] = useState<boolean>(false);
   const [newClient, setNewClient] = useState<NewClient>({ nome: '', email: '', telefone: '' });
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -136,7 +142,11 @@ export default function ManualOrcamentoPage() {
       urgent: urgentValue,
     });
     const priced = res.items?.[0];
-    return priced?.rate != null ? Number(priced.rate) : 0;
+    const rate = priced?.rate == null ? Number.NaN : Number(priced.rate);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error('Preço indisponível para este produto.');
+    }
+    return rate;
   }, [urgente]);
 
   const repriceAutoItems = useCallback(async (urgentValue: boolean) => {
@@ -165,14 +175,18 @@ export default function ManualOrcamentoPage() {
     if (!term || term.length < 2) { setClientResults([]); return; }
     setClientSearching(true);
     try {
-      const res = await apiGet<LeadsClientsResponse>(`/leads-clients?search=${encodeURIComponent(term)}&limit=10&tipo=todos`);
+      const tipo = clientCoreMode ? '' : '&tipo=todos';
+      const res = await apiGet<LeadsClientsResponse>(`/leads-clients?search=${encodeURIComponent(term)}&limit=10${tipo}`);
+      if (typeof res.core_mode === 'boolean') {
+        setClientCoreMode(res.core_mode);
+      }
       setClientResults(res.data || []);
     } catch {
       setClientResults([]);
     } finally {
       setClientSearching(false);
     }
-  }, []);
+  }, [clientCoreMode]);
 
   const onClientSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -221,6 +235,9 @@ export default function ManualOrcamentoPage() {
     setError(null);
 
     try {
+      if (isCoreUnpricedProduct(product)) {
+        throw new Error('Preço indisponível para este produto.');
+      }
       const rate = await lookupRate(product.sku, DEFAULT_QTY, urgente);
       setItems(prev => [
         ...prev,
@@ -235,20 +252,10 @@ export default function ManualOrcamentoPage() {
       ]);
       setProductSearch('');
       setProductResults([]);
-    } catch {
-      setItems(prev => [
-        ...prev,
-        {
-          _key: makeItemKey(product.sku),
-          sku: product.sku,
-          nome: product.nome || product.sku,
-          qty: DEFAULT_QTY,
-          rate: 0,
-          _rateManual: false,
-        },
-      ]);
-      setProductSearch('');
-      setProductResults([]);
+    } catch (err) {
+      // An unavailable lookup must not create a zero-rate line. The user can
+      // retry after pricing is configured while the cart remains consistent.
+      setError(err instanceof Error ? err.message : 'Preço indisponível para este produto.');
     } finally {
       setAddingSku(null);
     }
@@ -340,7 +347,7 @@ export default function ManualOrcamentoPage() {
   const handleSubmit = useCallback(async () => {
     const { nome, email, telefone } = getClientInfo();
     if (!nome) { alert('Informe o nome do cliente.'); return; }
-    if (!leadSource) { alert('Selecione a origem do lead antes de criar o orçamento.'); return; }
+    if (!leadSource) { alert(`Selecione a origem ${clientCoreMode ? 'da venda' : 'do lead'} antes de criar o orçamento.`); return; }
     if (!isValidLeadSource(leadSource)) { alert('Origem selecionada não é válida.'); return; }
     if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido. Corrija ou deixe em branco.'); return; }
     if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
@@ -378,7 +385,7 @@ export default function ManualOrcamentoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [getClientInfo, items, urgente, prazo, observacoes, leadSource, cnpj, address]);
+  }, [getClientInfo, items, urgente, prazo, observacoes, leadSource, cnpj, address, clientCoreMode]);
 
   // ── WhatsApp link builder ──
   const buildWaLink = useCallback((telefone: string, nome: string | undefined, quotationId: string | undefined, quotationLink: string): string | null => {
@@ -547,15 +554,15 @@ export default function ManualOrcamentoPage() {
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate">{client.nome || client.id}</p>
                               <p className="text-xs text-fg-muted truncate">
-                                {[client.email, client.telefone ? fmtPhone(client.telefone) : '', client.tipo === 'lead' ? 'Lead' : 'Cliente']
+                                {[client.email, client.telefone ? fmtPhone(client.telefone) : '', clientCoreMode ? 'Cliente' : (client.tipo === 'lead' ? 'Lead' : 'Cliente')]
                                   .filter(Boolean).join(' · ')}
                               </p>
                             </div>
                             <span className={cn(
                               'text-[10px] px-2 py-1 rounded-full shrink-0',
-                              client.tipo === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success',
+                              !clientCoreMode && client.tipo === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success',
                             )}>
-                              {client.tipo === 'lead' ? 'Lead' : 'Cliente'}
+                              {clientCoreMode ? 'Cliente' : (client.tipo === 'lead' ? 'Lead' : 'Cliente')}
                             </span>
                           </button>
                         ))}
@@ -615,9 +622,9 @@ export default function ManualOrcamentoPage() {
                   </div>
                 )}
 
-                {/* ── Origem (obrigatória, sempre visível) ── */}
+                {/* ── Origem (obrigatória para compatibilidade com CRM) ── */}
                 <div className="space-y-1 pt-3 border-t border-line">
-                  <label className="text-xs font-medium text-fg-muted">Origem do lead *</label>
+                  <label className="text-xs font-medium text-fg-muted">{clientCoreMode ? 'Origem da venda *' : 'Origem do lead *'}</label>
                   <select
                     className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
                     value={leadSource}
@@ -781,16 +788,23 @@ export default function ManualOrcamentoPage() {
                           type="button"
                           size="sm"
                           onClick={() => addProduct(product)}
-                          disabled={Boolean(addingSku)}
+                          disabled={Boolean(addingSku) || isCoreUnpricedProduct(product)}
+                          title={isCoreUnpricedProduct(product) ? 'Preço indisponível para este produto.' : undefined}
                           className="w-full sm:w-auto"
                           aria-label={`Adicionar ${product.sku} ao orçamento`}
                         >
-                          {addingSku === product.sku ? (
-                            <Loader2 size={14} className="animate-spin mr-1.5" />
+                          {isCoreUnpricedProduct(product) ? (
+                            'Preço indisponível'
                           ) : (
-                            <Plus size={14} className="mr-1.5" />
+                            <>
+                              {addingSku === product.sku ? (
+                                <Loader2 size={14} className="animate-spin mr-1.5" />
+                              ) : (
+                                <Plus size={14} className="mr-1.5" />
+                              )}
+                              {addingSku === product.sku ? 'Adicionando…' : 'Adicionar'}
+                            </>
                           )}
-                          Adicionar
                         </Button>
                       </div>
                     ))}

@@ -1,5 +1,6 @@
 // ── Logout handler ───────────────────────────────────────────────────────────
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import { clearSessionCookie } from '../_lib/session.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
@@ -10,7 +11,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     };
   }
 
-  const cookie = 'aspen_token=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/';
+  const cookie = clearSessionCookie();
 
   return {
     statusCode: 200,

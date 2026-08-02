@@ -1,0 +1,370 @@
+{
+  "id": "04875d35-bb81-48d7-b7d4-9b5d8e6357ee",
+  "prevId": "22233b28-b72d-4eed-bbc4-69ea2fae5e79",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.app_settings": {
+      "name": "app_settings",
+      "schema": "",
+      "columns": {
+        "singleton_id": {
+          "name": "singleton_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "validade_dias": {
+          "name": "validade_dias",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 15
+        },
+        "pagamento": {
+          "name": "pagamento",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "entrega": {
+          "name": "entrega",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "frete_padrao": {
+          "name": "frete_padrao",
+          "type": "numeric(14, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0.00'"
+        },
+        "observacoes": {
+          "name": "observacoes",
+          "type": "varchar(4000)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "template_padrao": {
+          "name": "template_padrao",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'padrao'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "app_settings_singleton_id_check": {
+          "name": "app_settings_singleton_id_check",
+          "value": "\"app_settings\".\"singleton_id\" = 1"
+        },
+        "app_settings_validade_dias_check": {
+          "name": "app_settings_validade_dias_check",
+          "value": "\"app_settings\".\"validade_dias\" BETWEEN 1 AND 365"
+        },
+        "app_settings_frete_padrao_check": {
+          "name": "app_settings_frete_padrao_check",
+          "value": "\"app_settings\".\"frete_padrao\" >= 0"
+        },
+        "app_settings_template_padrao_not_blank_check": {
+          "name": "app_settings_template_padrao_not_blank_check",
+          "value": "char_length(btrim(\"app_settings\".\"template_padrao\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.clients": {
+      "name": "clients",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "documento": {
+          "name": "documento",
+          "type": "varchar(14)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(254)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "telefone": {
+          "name": "telefone",
+          "type": "varchar(15)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "varchar(4000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "endereco": {
+          "name": "endereco",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "numero": {
+          "name": "numero",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bairro": {
+          "name": "bairro",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "complemento": {
+          "name": "complemento",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "municipio": {
+          "name": "municipio",
+          "type": "varchar(120)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uf": {
+          "name": "uf",
+          "type": "varchar(2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cep": {
+          "name": "cep",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "arquivado": {
+          "name": "arquivado",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "clients_documento_unique": {
+          "name": "clients_documento_unique",
+          "columns": [
+            {
+              "expression": "documento",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"clients\".\"documento\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "clients_active_updated_idx": {
+          "name": "clients_active_updated_idx",
+          "columns": [
+            {
+              "expression": "arquivado",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "clients_nome_not_blank_check": {
+          "name": "clients_nome_not_blank_check",
+          "value": "char_length(btrim(\"clients\".\"nome\")) > 0"
+        },
+        "clients_documento_length_check": {
+          "name": "clients_documento_length_check",
+          "value": "\"clients\".\"documento\" IS NULL OR char_length(\"clients\".\"documento\") IN (11, 14)"
+        },
+        "clients_telefone_digits_check": {
+          "name": "clients_telefone_digits_check",
+          "value": "\"clients\".\"telefone\" IS NULL OR \"clients\".\"telefone\" ~ '^[0-9]{10,15}$'"
+        },
+        "clients_email_lowercase_check": {
+          "name": "clients_email_lowercase_check",
+          "value": "\"clients\".\"email\" IS NULL OR \"clients\".\"email\" = lower(\"clients\".\"email\")"
+        },
+        "clients_uf_uppercase_check": {
+          "name": "clients_uf_uppercase_check",
+          "value": "\"clients\".\"uf\" IS NULL OR \"clients\".\"uf\" = upper(\"clients\".\"uf\")"
+        },
+        "clients_cep_digits_check": {
+          "name": "clients_cep_digits_check",
+          "value": "\"clients\".\"cep\" IS NULL OR \"clients\".\"cep\" ~ '^[0-9]{8}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.products": {
+      "name": "products",
+      "schema": "",
+      "columns": {
+        "sku": {
+          "name": "sku",
+          "type": "varchar(120)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "descricao": {
+          "name": "descricao",
+          "type": "varchar(4000)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "unidade": {
+          "name": "unidade",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Und'"
+        },
+        "categoria": {
+          "name": "categoria",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "marca": {
+          "name": "marca",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ativo": {
+          "name": "ativo",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "criado_em": {
+          "name": "criado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "atualizado_em": {
+          "name": "atualizado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "arquivado_em": {
+          "name": "arquivado_em",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "products_sku_trimmed_check": {
+          "name": "products_sku_trimmed_check",
+          "value": "char_length(btrim(\"products\".\"sku\")) > 0 AND btrim(\"products\".\"sku\") = \"products\".\"sku\""
+        },
+        "products_nome_not_blank_check": {
+          "name": "products_nome_not_blank_check",
+          "value": "char_length(btrim(\"products\".\"nome\")) > 0"
+        },
+        "products_unidade_not_blank_check": {
+          "name": "products_unidade_not_blank_check",
+          "value": "char_length(btrim(\"products\".\"unidade\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

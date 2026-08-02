@@ -61,6 +61,7 @@ export interface SidebarProps {
   onToggle: () => void;
   currentRoute: string;
   onNavigate: (hash: string) => void;
+  clientCoreMode?: boolean;
   darkMode: boolean;
   toggleDarkMode: () => void;
 }
@@ -75,9 +76,18 @@ export default function Sidebar({
   onToggle,
   currentRoute,
   onNavigate,
+  clientCoreMode,
   darkMode,
   toggleDarkMode,
 }: SidebarProps) {
+  const routeSegment = currentRoute.split('/')[2]?.toLowerCase();
+  // A direct customer detail route is safely client-specific. The list itself
+  // remains neutral until the server has authoritatively resolved its mode.
+  const clientLabel = clientCoreMode === true || routeSegment === 'cliente' || routeSegment === 'customer'
+    ? 'Clientes'
+    : clientCoreMode === false
+      ? 'Leads'
+      : 'Contatos';
   return (
     <>
       {/* Overlay mobile */}
@@ -130,30 +140,33 @@ export default function Sidebar({
               )}
               {/* Section divider when collapsed */}
               {collapsed && <div className="mx-3 my-2 border-t border-line" />}
-              {section.items.map(({ hash, label, icon: Icon }) => (
-                <button
-                  key={hash}
-                  onClick={() => onNavigate(hash)}
-                  className={cn(
-                    'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
-                    collapsed && 'justify-center gap-0 px-0',
-                    'hover:bg-primary/5',
-                    currentRoute === hash
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-fg-muted'
-                  )}
-                  title={collapsed ? label : undefined}
-                >
-                  <Icon
-                    size={20}
+              {section.items.map(({ hash, label: originalLabel, icon: Icon }) => {
+                const label = hash === '/leads' ? clientLabel : originalLabel;
+                return (
+                  <button
+                    key={hash}
+                    onClick={() => onNavigate(hash)}
                     className={cn(
-                      'shrink-0',
-                      currentRoute === hash ? 'text-primary' : 'text-fg-muted'
+                      'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
+                      collapsed && 'justify-center gap-0 px-0',
+                      'hover:bg-primary/5',
+                      currentRoute === hash
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-fg-muted'
                     )}
-                  />
-                  {!collapsed && <span className="truncate">{label}</span>}
-                </button>
-              ))}
+                    title={collapsed ? label : undefined}
+                  >
+                    <Icon
+                      size={20}
+                      className={cn(
+                        'shrink-0',
+                        currentRoute === hash ? 'text-primary' : 'text-fg-muted'
+                      )}
+                    />
+                    {!collapsed && <span className="truncate">{label}</span>}
+                  </button>
+                );
+              })}
             </div>
           ))}
         </nav>

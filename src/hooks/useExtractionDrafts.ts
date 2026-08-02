@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiPost } from '@/lib/api';
-import { searchProducts as cachedSearchProducts } from '@/lib/productCache';
+import { isCoreUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/productCache';
 import type {
   Draft,
   DraftEdited,
@@ -67,8 +67,9 @@ export function useExtractionDrafts() {
 
       for (let i = 0; i < res.items.length && i < refs.length; i++) {
         const { di, ii } = refs[i];
-        if (!next[di].edited.items[ii]._rateManual) {
-          next[di].edited.items[ii].rate = res.items[i].rate;
+        const rate = Number(res.items[i].rate);
+        if (!next[di].edited.items[ii]._rateManual && Number.isFinite(rate) && rate > 0) {
+          next[di].edited.items[ii].rate = rate;
           next[di].edited.items[ii].item_name =
             res.items[i].item_name || next[di].edited.items[ii].item_name;
         }
@@ -259,6 +260,7 @@ export function useExtractionDrafts() {
 
   const selectProduct = useCallback(
     async (draftIdx: number, itemIdx: number, product: Product) => {
+      if (isCoreUnpricedProduct(product)) return;
       updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
       updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
       setProductSearch(prev => ({

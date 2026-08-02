@@ -1,130 +1,31 @@
-// ── Imports ─────────────────────────────────────────────────────────────────
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { erpGetDoc, erpPut } from './lib/erpnext.js';
-import { saveProductPricing } from './product-pricing.js';
+import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import { handler as legacyHandler } from './product-update-legacy.js';
+import { handler as coreHandler } from './product-update-core.js';
+import { isProductsCoreEnabled, responseMetadata } from './products-mode.js';
 
-// ── Handler ─────────────────────────────────────────────────────────────────
-
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (event.httpMethod !== 'PUT') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
-
-  const params = event.queryStringParameters || {};
-  const sku = (params.sku || '').trim();
-
-  if (!sku) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'SKU é obrigatório.' }),
-    };
-  }
-
-  let payload;
+function annotate(result: FunctionResult): FunctionResult {
+  if (!result.body) return result;
   try {
-    payload = JSON.parse(event.body || '{}');
+    const payload = JSON.parse(result.body) as unknown;
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return result;
+    return { ...result, body: JSON.stringify({ ...(payload as Record<string, unknown>), ...responseMetadata('legacy') }) };
   } catch {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'JSON inválido.' }),
-    };
-  }
-
-  const { nome, descricao, categoria, unidade, marca, ativo, precos } = payload;
-  const hasMetadata = nome != null || descricao != null || categoria != null || unidade != null || marca != null || ativo != null;
-  const hasPricing = Array.isArray(precos) && precos.length > 0;
-
-  if (!hasMetadata && !hasPricing) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Nenhum campo para atualizar.' }),
-    };
-  }
-
-  try {
-    // Verify item exists
-    let item;
-    try {
-      item = await erpGetDoc('Item', sku);
-    } catch (err: any) {
-      if (err?.logMessage?.includes('404') || err?.message?.includes('404')) {
-        return {
-          statusCode: 404,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: 'Produto não encontrado.' }),
-        };
-      }
-      throw err;
-    }
-
-    if (!item) {
-      return {
-        statusCode: 404,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Produto não encontrado.' }),
-      };
-    }
-
-    let metadataResult = null;
-    let pricingResult = null;
-
-    // ── Update metadata ──
-    if (hasMetadata) {
-      const updateFields: Record<string, unknown> = {};
-      if (nome != null) updateFields.item_name = nome;
-      if (descricao != null) updateFields.description = descricao;
-      if (categoria != null) updateFields.item_group = categoria;
-      if (unidade != null) updateFields.stock_uom = unidade;
-      if (marca != null) updateFields.brand = marca;
-      if (ativo != null) updateFields.disabled = ativo ? 0 : 1;
-
-      try {
-        await erpPut('Item', sku, updateFields);
-        metadataResult = { atualizado: true, campos: Object.keys(updateFields) };
-      } catch (err: any) {
-        console.error('[product-update]', `Erro ao atualizar metadata de ${sku}:`, err?.logMessage || err?.message || err);
-        return {
-          statusCode: err?.statusCode || 500,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: 'Erro ao atualizar dados do produto.' }),
-        };
-      }
-    }
-
-    // ── Update pricing ──
-    if (hasPricing) {
-      try {
-        pricingResult = await saveProductPricing(sku, precos);
-      } catch (err: any) {
-        console.error('[product-update]', `Erro ao atualizar preços de ${sku}:`, err?.logMessage || err?.message || err);
-        return {
-          statusCode: err?.statusCode || 500,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ error: 'Erro ao atualizar preços.' }),
-        };
-      }
-    }
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        sku,
-        metadata: metadataResult,
-        pricing: pricingResult,
-      }),
-    };
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[product-update]', err?.logMessage || err?.message || err);
-    return {
-      statusCode: code,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Erro ao atualizar produto.' }),
-    };
+    return result;
   }
 }
+
+export interface ProductUpdateHandlerDependencies {
+  core?: LegacyHandler;
+  legacy?: LegacyHandler;
+}
+
+export function createHandler(dependencies: ProductUpdateHandlerDependencies = {}): LegacyHandler {
+  const selectedCore = dependencies.core || coreHandler;
+  const selectedLegacy = dependencies.legacy || legacyHandler;
+  return async (event: FunctionEvent): Promise<FunctionResult> => {
+    if (isProductsCoreEnabled()) return selectedCore(event);
+    return annotate(await selectedLegacy(event));
+  };
+}
+
+export const handler = createHandler();

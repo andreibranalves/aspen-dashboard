@@ -1,9 +1,51 @@
 import type { VercelRequestLike } from './types.js';
-
-const APP_PASSWORD = process.env.APP_PASSWORD;
+import { isValidPasswordHash } from './password.js';
+import { isValidSessionSecret, SESSION_COOKIE_NAME, verifySessionToken } from './session.js';
 
 const PUBLIC_ROUTES = new Set(['view', 'typebot-lead-capture']);
 const AUTH_ROUTES = new Set(['login', 'logout']);
+const MAX_COOKIE_HEADER_LENGTH = 8192;
+
+export interface AuthEnvironment {
+  APP_PASSWORD_HASH?: string;
+  APP_SESSION_SECRET?: string;
+  APP_AUTH_BYPASS?: string;
+  NODE_ENV?: string;
+  VERCEL_ENV?: string;
+}
+
+export interface AuthConfiguration {
+  passwordHash: string | undefined;
+  sessionSecret: string | undefined;
+  isValid: boolean;
+}
+
+function isProductionValue(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() === 'production';
+}
+
+export function isProductionEnvironment(environment: AuthEnvironment = process.env): boolean {
+  return isProductionValue(environment.NODE_ENV) || isProductionValue(environment.VERCEL_ENV);
+}
+
+/**
+ * A bypass is deliberately opt-in and is never available when either runtime
+ * marks the deployment as production.
+ */
+export function isDevelopmentAuthBypassEnabled(environment: AuthEnvironment = process.env): boolean {
+  return environment.APP_AUTH_BYPASS === 'true' && !isProductionEnvironment(environment);
+}
+
+export function getAuthConfiguration(environment: AuthEnvironment = process.env): AuthConfiguration {
+  const passwordHash = environment.APP_PASSWORD_HASH;
+  const sessionSecret = environment.APP_SESSION_SECRET;
+
+  return {
+    passwordHash,
+    sessionSecret,
+    isValid: isValidPasswordHash(passwordHash) && isValidSessionSecret(sessionSecret),
+  };
+}
 
 export function getRouteName(req: VercelRequestLike): string {
   const path = req.query?.path;
@@ -20,31 +62,32 @@ export function getRouteName(req: VercelRequestLike): string {
 
 export function parseCookies(cookieHeader: string | undefined): Record<string, string> {
   const map: Record<string, string> = {};
-  if (!cookieHeader) return map;
+  if (!cookieHeader || cookieHeader.length > MAX_COOKIE_HEADER_LENGTH) return map;
   for (const part of cookieHeader.split(';')) {
     const idx = part.indexOf('=');
     if (idx === -1) continue;
     const key = part.slice(0, idx).trim();
     const value = part.slice(idx + 1).trim();
-    if (key) map[key] = value;
+    if (key && map[key] === undefined) map[key] = value;
   }
   return map;
 }
 
-export function isAuthenticated(req: VercelRequestLike): boolean {
-  if (!APP_PASSWORD) return true;
-
+export function isAuthenticated(
+  req: VercelRequestLike,
+  environment: AuthEnvironment = process.env
+): boolean {
   const routeName = getRouteName(req);
   if (PUBLIC_ROUTES.has(routeName) || AUTH_ROUTES.has(routeName)) return true;
 
+  if (isDevelopmentAuthBypassEnabled(environment)) return true;
+
+  const configuration = getAuthConfiguration(environment);
+  if (!configuration.isValid || !configuration.sessionSecret) return false;
+
   const headers = (req.headers || {}) as Record<string, string | string[] | undefined>;
-  const cookieHeader = Array.isArray(headers.cookie)
-    ? headers.cookie[0]
-    : (headers.cookie as string | undefined);
+  const headerValue = headers.cookie ?? headers.Cookie;
+  const cookieHeader = Array.isArray(headerValue) ? headerValue[0] : headerValue;
   const cookies = parseCookies(cookieHeader);
-  if (cookies.aspen_token === APP_PASSWORD) return true;
-
-  if ((headers as Record<string, string>)['x-aspen-key'] === APP_PASSWORD) return true;
-
-  return false;
+  return verifySessionToken(cookies[SESSION_COOKIE_NAME], configuration.sessionSecret);
 }

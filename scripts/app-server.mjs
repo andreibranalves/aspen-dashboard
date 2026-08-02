@@ -9,6 +9,7 @@ import { extname, join, normalize } from 'node:path';
 
 // Load env from .env using dotenv
 import 'dotenv/config';
+import { isAuthenticated } from '../api/_lib/auth.js';
 
 if (!process.env.ERPNEXT_TOKEN) {
   console.error('ERPNEXT_TOKEN não configurado no .env');
@@ -21,8 +22,11 @@ import { handler as crmDeals } from '../api/_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../api/_functions/crm-update-deal.js';
 import { handler as crmPruneCandidates } from '../api/_functions/crm-prune-candidates.js';
 import { handler as duplicateQuotation } from '../api/_functions/duplicate-quotation.js';
+import { handler as editDraft } from '../api/_functions/edit-draft.js';
 import { handler as extract } from '../api/_functions/extract.js';
 import { handler as leadsClients } from '../api/_functions/leads-clients.js';
+import { handler as login } from '../api/_functions/login.js';
+import { handler as logout } from '../api/_functions/logout.js';
 import { handler as orcamento } from '../api/_functions/orcamento.js';
 import { handler as pricingLookup } from '../api/_functions/pricing-lookup.js';
 import { handler as productDetail } from '../api/_functions/product-detail.js';
@@ -38,6 +42,7 @@ import { handler as salesOrderFromQuotation } from '../api/_functions/sales-orde
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
+import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
 import { handler as whatsappFlows } from '../api/_functions/whatsapp-flows.js';
@@ -47,6 +52,7 @@ import { handler as communicationSendEvents } from '../api/_functions/communicat
 import { handler as communicationFlows } from '../api/_functions/communication-flows.js';
 import { handler as communicationMedia } from '../api/_functions/communication-media.js';
 import { handler as communicationMediaUpload } from '../api/_functions/communication-media-upload.js';
+import { handler as pdf } from '../api/_functions/pdf.js';
 import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
@@ -55,9 +61,13 @@ const ROUTES = {
   'crm-prune-candidates': crmPruneCandidates,
   'crm-update-deal': crmUpdateDeal,
   'duplicate-quotation': duplicateQuotation,
+  'edit-draft': editDraft,
   extract,
   'leads-clients': leadsClients,
+  login,
+  logout,
   orcamento,
+  pdf,
   'pricing-lookup': pricingLookup,
   'product-detail': productDetail,
   'product-update': productUpdate,
@@ -72,6 +82,7 @@ const ROUTES = {
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
+  settings,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-flows': whatsappFlows,
@@ -172,6 +183,15 @@ const server = createServer(async (req, res) => {
     const routeName = urlPath.replace(/^\/api\/?/, '').split('/')[0];
     const handler = ROUTES[routeName];
 
+    // This is the self-hosted production API boundary. Authentication stays in
+    // the shared guard so its public login/logout/view classifications and
+    // signed-session checks remain identical to the Vercel catch-all route.
+    if (!isAuthenticated(req)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Não autorizado. Faça login em /api/login.' }));
+      return;
+    }
+
     if (!handler) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Endpoint não encontrado.' }));
@@ -192,9 +212,11 @@ const server = createServer(async (req, res) => {
       };
 
       const result = await handler(event);
-      res.writeHead(result.statusCode || 200, {
-        'Content-Type': result.headers?.['Content-Type'] || 'application/json',
-      });
+      const responseHeaders = { ...(result.headers || {}) };
+      if (!Object.keys(responseHeaders).some((name) => name.toLowerCase() === 'content-type')) {
+        responseHeaders['Content-Type'] = 'application/json';
+      }
+      res.writeHead(result.statusCode || 200, responseHeaders);
       res.end(result.body || '');
     } catch (err) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;

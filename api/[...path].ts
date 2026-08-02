@@ -34,6 +34,7 @@ import { handler as salesOrderFromQuotation } from './_functions/sales-order-fro
 import { handler as salesOrders } from './_functions/sales-orders.js';
 import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from './_functions/send-whatsapp-flow.js';
+import { handler as settings } from './_functions/settings.js';
 import { handler as typebotLeadCapture } from './_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from './_functions/whatsapp-conversations.js';
 import { handler as whatsappFlows } from './_functions/whatsapp-flows.js';
@@ -73,6 +74,7 @@ const ROUTES: Record<string, HandlerFunction> = {
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
+  settings,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-flows': whatsappFlows,

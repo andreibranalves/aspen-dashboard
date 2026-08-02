@@ -1,452 +1,81 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { erpGetDoc, erpGetList, erpPut, erpPost, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
-import { LEAD_SOURCES, normalizeLeadSource, normalizeCnpj } from './lib/client-metadata.js';
+import { handler as legacyHandler } from './client-detail-legacy.js';
+import {
+  buildPatchInput,
+  coreMeta,
+  findRequiredClient,
+  jsonResponse,
+  legacyMeta,
+  mapClientDetail,
+  mergeAddressPatch,
+  normalizeCoreError,
+  parseJsonBody,
+  withMeta,
+} from './client-core.js';
+import { getClientRepository, type ClientRepository } from './client-repository.js';
+import { ClientInputError } from './client-schema.js';
 
-// ── Constants ──
-
-const ALLOWED_DOCTYPES = ['Lead', 'Customer'];
-
-/**
- * Campos permitidos para edição por doctype.
- * Qualquer campo fora desta lista é rejeitado com 400.
- */
-const EDITABLE_FIELDS = {
-  Lead: ['first_name', 'last_name', 'email_id', 'mobile_no', 'utm_source', 'company_name'],
-  Customer: ['customer_name'],
-  // lead_name é computado no ERPNext (derivado de first_name + last_name), não editável diretamente
-  // tax_id e endereço tratados separadamente com regras de segurança
-};
-
-// ── Helpers ──
-
-function buildErpUrl(doctype: string, name: string): string {
-  const route = doctype.toLowerCase().replace(/\s+/g, '-');
-  return `${ERPNEXT_BASE}/app/${route}/${encodeURIComponent(name)}`;
+export interface ClientDetailHandlerDependencies {
+  repository?: ClientRepository;
+  core?: (event: FunctionEvent) => Promise<FunctionResult>;
+  legacy?: (event: FunctionEvent) => Promise<FunctionResult>;
 }
 
-function buildSummaryAddress(addr: Record<string, unknown> | null): Record<string, unknown> | null {
-  if (!addr) return null;
-  // Parse address_line1: "Rua X, 123" → endereco="Rua X", numero="123"
-  const line1 = (addr.address_line1 as string) || '';
-  const lastComma = line1.lastIndexOf(',');
-  const endereco = lastComma > 0 ? line1.substring(0, lastComma).trim() : line1.trim();
-  const numero = lastComma > 0 ? line1.substring(lastComma + 1).trim() : null;
-
-  // Parse address_line2: "Centro - Sala 2" → bairro="Centro", complemento="Sala 2"
-  const line2 = (addr.address_line2 as string) || '';
-  const dash = line2.indexOf(' - ');
-  const bairro = dash > 0 ? line2.substring(0, dash).trim() : (line2.trim() || null);
-  const complemento = dash > 0 ? line2.substring(dash + 3).trim() : null;
-
-  const parts = [line1, line2].filter(Boolean);
-  if (addr.city) parts.push(addr.city + (addr.state ? `/${addr.state}` : ''));
-  const summary = parts.join(', ');
-
-  return {
-    summary: summary || null,
-    complete: !!addr.address_line1 && !!addr.city,
-    endereco: endereco || null,
-    numero: numero || null,
-    bairro: bairro || null,
-    complemento: complemento || null,
-    municipio: addr.city || null,
-    uf: addr.state || null,
-    cep: addr.pincode || null,
-  };
+function logCoreError(operation: string, error: unknown): void {
+  const kind = error instanceof Error ? error.name : typeof error;
+  console.error(`[client-detail] core ${operation} failed (${kind})`);
 }
 
-function computeQualityFlags(doc: Record<string, unknown>, doctype: string, address: Record<string, unknown> | null) {
-  const flags: string[] = [];
-  const phone = doc.mobile_no || doc.phone;
-  const email = doc.email_id || doc.email;
-  if (!phone) flags.push('sem_telefone');
-  if (!email) flags.push('sem_email');
-  if (doctype === 'Lead' && !doc.utm_source && !doc.source) flags.push('sem_origem');
-  if (doctype === 'Customer' && !doc.tax_id) flags.push('sem_cnpj');
-  if (!address || !address.complete) flags.push('endereco_incompleto');
-  return flags;
+function validateOptionalDoctype(event: FunctionEvent): void {
+  const doctype = event.queryStringParameters?.doctype;
+  if (doctype !== undefined && doctype !== 'Customer' && doctype !== 'Lead') {
+    throw new ClientInputError('Doctype inválido. Valores aceitos: Customer, Lead.');
+  }
 }
 
-// ── GET: detalhe de Lead/Customer ──
-
-async function handleGet(doctype: string, name: string): Promise<Record<string, unknown>> {
-  // 1. Fetch documento principal
-  const fields = doctype === 'Lead'
-    ? [
-        'name', 'lead_name', 'first_name', 'email_id', 'mobile_no', 'phone',
-        'company_name', 'utm_source', 'source', 'creation', 'modified', 'notes',
-        'custom_person_type', 'custom_tax_id', 'custom_contribuinte', 'custom_inscricao_estadual',
-      ]
-    : ['name', 'customer_name', 'tax_id', 'customer_type', 'creation', 'modified', 'notes'];
-
-  const doc = await erpGetDoc(doctype, name, { fields });
-  if (!doc) throw createHttpError(404, `${doctype} "${name}" não encontrado.`);
-
-  const email = doctype === 'Lead' ? (doc.email_id || null) : null;
-  const telefone = doc.mobile_no || doc.phone || null;
-  const origem = doctype === 'Lead' ? (doc.utm_source || doc.source || null) : null;
-  const taxId = normalizeCnpj(doctype === 'Lead' ? doc.custom_tax_id : doc.tax_id) || null;
-  // person_type: Lead usa Custom Field; Customer usa customer_type (Company→pj, Individual→pf)
-  const personType = doctype === 'Customer'
-    ? (doc.customer_type === 'Company' ? 'pj' : doc.customer_type === 'Individual' ? 'pf' : null)
-    : (doc.custom_person_type === 'pf' || doc.custom_person_type === 'pj' ? doc.custom_person_type : null);
-  const nome = doctype === 'Lead' ? doc.lead_name : doc.customer_name;
-
-  // Parse de metadados extras somente quando o campo notes é texto JSON.
-  // Em Lead do Frappe CRM, notes é uma child table (array); gravar string nele gera 500 no ERPNext.
-  let notesData: Record<string, unknown> = {};
-  if (typeof doc.notes === 'string' && doc.notes.trim()) {
+/** Unified UUID-backed client detail/update handler. */
+export function createCoreHandler(dependencies: Pick<ClientDetailHandlerDependencies, 'repository'> = {}): (event: FunctionEvent) => Promise<FunctionResult> {
+  const repository = dependencies.repository || getClientRepository();
+  return async function clientDetailCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     try {
-      const parsed: Record<string, unknown> = JSON.parse(doc.notes);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) notesData = parsed;
-    } catch { /* notes não contém JSON estruturado */ }
-  }
-  const empresa = doctype === 'Lead' ? (doc.company_name || notesData.empresa || null) : (notesData.empresa || null);
-  const contribuinte = doctype === 'Lead' ? (doc.custom_contribuinte || notesData.contribuinte || '0') : (notesData.contribuinte || '0');
-  const inscricaoEstadual = doctype === 'Lead'
-    ? (doc.custom_inscricao_estadual || notesData.inscricao_estadual || null)
-    : (notesData.inscricao_estadual || null);
+      validateOptionalDoctype(event);
+      const name = String(event.queryStringParameters?.name || '').trim();
+      if (!name) throw new ClientInputError('Parâmetro name é obrigatório.');
 
-  // 2. Buscar Address vinculado (filtra por address_title,
-  //    já que link_doctype/link_name são campos da child table não pesquisáveis via getList)
-  let address: Record<string, unknown> | null = null;
-  try {
-    const addrs = await erpGetList('Address', {
-      filters: [['address_title', '=', name]],
-      fields: ['name', 'address_line1', 'address_line2', 'city', 'state', 'pincode', 'email_id', 'phone'],
-      limit: 1,
-    });
-    if (addrs.length > 0) {
-      address = buildSummaryAddress(addrs[0]);
+      if (event.httpMethod === 'GET') {
+        const record = await findRequiredClient(repository, name);
+        return jsonResponse(200, mapClientDetail(record));
+      }
+
+      if (event.httpMethod === 'PATCH' || event.httpMethod === 'PUT') {
+        const payload = parseJsonBody(event);
+        const parsed = buildPatchInput(payload);
+        if (parsed.addressPresent) {
+          const current = await findRequiredClient(repository, name);
+          parsed.patch.address = mergeAddressPatch(current.address, parsed.addressValue);
+        }
+        const updated = await repository.update(name, parsed.patch);
+        return jsonResponse(200, { ...mapClientDetail(updated), updated: true, ...coreMeta() });
+      }
+
+      return jsonResponse(405, { error: 'Método não permitido.', ...coreMeta() }, { Allow: 'GET, PATCH, PUT' });
+    } catch (error) {
+      logCoreError(event.httpMethod, error);
+      const normalized = normalizeCoreError(error);
+      return jsonResponse(normalized.statusCode, { ...normalized.body, ...coreMeta() });
     }
-  } catch { /* best-effort */ }
-
-  // 3. Buscar último orçamento (Quotation) por party_name
-  let latestQuotation: Record<string, unknown> | null = null;
-  try {
-    const quotes = await erpGetList('Quotation', {
-      filters: [['party_name', '=', name]],
-      fields: ['name', 'status', 'grand_total', 'transaction_date'],
-      order_by: 'transaction_date desc',
-      limit: 1,
-    });
-    if (quotes.length > 0) {
-      latestQuotation = {
-        name: quotes[0].name,
-        status: quotes[0].status,
-        grand_total: quotes[0].grand_total,
-        date: quotes[0].transaction_date,
-      };
-    }
-  } catch { /* best-effort */ }
-
-  // 4. Buscar CRM Deal vinculado (por lead_name ou email)
-  let deal: Record<string, unknown> | null = null;
-  try {
-    const deals = await erpGetList('CRM Deal', {
-      filters: [['lead_name', '=', nome]],
-      fields: ['name', 'status', 'custom_quotation', 'custom_follow_up_stage', 'next_step'],
-      order_by: 'creation desc',
-      limit: 1,
-    });
-    if (deals.length > 0) {
-      deal = {
-        name: deals[0].name,
-        status: deals[0].status,
-        follow_up_stage: deals[0].custom_follow_up_stage,
-        next_step: deals[0].next_step || null,
-        quotation: deals[0].custom_quotation || null,
-      };
-    }
-  } catch { /* best-effort */ }
-
-  return {
-    success: true,
-    doctype,
-    name,
-    display_name: nome,
-    email,
-    telefone,
-    origem,
-    person_type: personType,
-    tax_id: taxId,
-    empresa,
-    contribuinte,
-    inscricao_estadual: inscricaoEstadual,
-    creation: doc.creation,
-    modified: doc.modified,
-    erp_url: buildErpUrl(doctype, name),
-    address,
-    latest_quotation: latestQuotation,
-    deal,
-    quality_flags: computeQualityFlags({ ...doc, email, mobile_no: telefone }, doctype, address),
   };
 }
 
-// ── PUT: edição segura ──
-
-async function handlePut(doctype: string, name: string, rawBody: string): Promise<Record<string, unknown>> {
-  let payload;
-  try { payload = JSON.parse(rawBody); }
-  catch { throw createHttpError(400, 'JSON inválido.'); }
-
-  if (!payload || typeof payload !== 'object') {
-    throw createHttpError(400, 'Corpo da requisição é obrigatório.');
-  }
-
-  const updates: Record<string, unknown> = {};
-  const allowed = EDITABLE_FIELDS[doctype as keyof typeof EDITABLE_FIELDS] || [];
-
-  // Mapeia nomes amigáveis do frontend para campos do ERPNext
-  // Lead: lead_name é computado (first_name + last_name) — mapeamos nome → first_name
-  const FRONTEND_MAP = {
-    nome: doctype === 'Lead' ? 'first_name' : 'customer_name',
-    email: 'email_id',
-    telefone: 'mobile_no',
-    ...(doctype === 'Lead' ? { empresa: 'company_name' } : {}),
-  };
-  // Aplica mapeamento ao payload original
-  for (const [frontendKey, erpField] of Object.entries(FRONTEND_MAP)) {
-    if (payload[frontendKey] !== undefined && payload[erpField] === undefined) {
-      payload[erpField] = payload[frontendKey];
+export function createHandler(dependencies: ClientDetailHandlerDependencies = {}): (event: FunctionEvent) => Promise<FunctionResult> {
+  const core = dependencies.core || createCoreHandler(dependencies);
+  return async function clientDetailHandler(event: FunctionEvent): Promise<FunctionResult> {
+    if (process.env.CRM_CORE_CLIENTS_ENABLED !== 'true') {
+      const legacy = dependencies.legacy || legacyHandler;
+      return withMeta(await legacy(event), legacyMeta());
     }
-  }
-
-  // 4.1 Campos básicos da allowlist
-  for (const field of allowed) {
-    if (payload[field] !== undefined) {
-      if (payload[field] == null) {
-        updates[field] = null;
-      } else {
-        const val = String(payload[field]).trim();
-        updates[field] = val || null;
-      }
-    }
-  }
-
-  // 4.2 Tipo de pessoa + tax_id (CPF/CNPJ)
-  if (payload.person_type === 'pf' || payload.person_type === 'pj') {
-    const rawTaxId = (payload.tax_id || '').replace(/\D/g, '');
-    // Validar CPF/CNPJ
-    if (rawTaxId) {
-      if (payload.person_type === 'pf' && rawTaxId.length !== 11) {
-        throw createHttpError(400, 'CPF deve ter 11 dígitos.');
-      }
-      if (payload.person_type === 'pj' && rawTaxId.length !== 14) {
-        throw createHttpError(400, 'CNPJ deve ter 14 dígitos.');
-      }
-      if (doctype === 'Lead') {
-        // Lead não tem tax_id nativo; persistimos em Custom Fields próprios do app Aspen.
-        updates.custom_person_type = payload.person_type;
-        updates.custom_tax_id = rawTaxId || null;
-      } else {
-        // Customer usa campos nativos e mantém a regra de não sobrescrever documento fiscal divergente.
-        const current = await erpGetDoc(doctype, name, { fields: ['tax_id'] });
-        const existingTaxId = normalizeCnpj(current?.tax_id || '');
-        if (existingTaxId && rawTaxId && existingTaxId !== rawTaxId) {
-          throw createHttpError(409, 'CPF/CNPJ diverge do cadastro atual. Edite diretamente no ERPNext.');
-        }
-        if (!existingTaxId) {
-          updates.tax_id = rawTaxId;
-        }
-      }
-    } else if (doctype === 'Lead') {
-      updates.custom_person_type = payload.person_type;
-      updates.custom_tax_id = null;
-    }
-    // Customer: atualizar customer_type baseado no person_type
-    if (doctype === 'Customer') {
-      updates.customer_type = payload.person_type === 'pj' ? 'Company' : 'Individual';
-    }
-  }
-
-  // 4.3 Origem (apenas Lead, via utm_source)
-  if (doctype === 'Lead' && payload.origem !== undefined) {
-    const origemVal = normalizeLeadSource(payload.origem);
-    if (origemVal && !(LEAD_SOURCES as readonly string[]).includes(origemVal)) {
-      throw createHttpError(400, `Origem "${origemVal}" não reconhecida. Valores aceitos: ${LEAD_SOURCES.join(', ')}.`);
-    }
-    updates.utm_source = origemVal || null;
-  }
-
-  // 4.4 Endereço: criar ou atualizar Address vinculado
-  if (payload.endereco && typeof payload.endereco === 'object') {
-    const addr = payload.endereco;
-    const endereco = addr.endereco?.trim() || '';
-    const numero = addr.numero?.trim() || '';
-    const bairro = addr.bairro?.trim() || '';
-    const complemento = addr.complemento?.trim() || '';
-    const city = addr.municipio?.trim() || addr.cidade?.trim() || null;
-    const state = addr.uf?.trim()?.toUpperCase() || null;
-    const pincode = addr.cep?.replace(/\D/g, '')?.slice(0, 8) || null;
-
-    // Compõe address_line1: "Endereço, Número"
-    const line1Parts = [endereco];
-    if (numero) line1Parts.push(numero);
-    const addressLine1 = line1Parts.filter(Boolean).join(', ') || null;
-
-    // Compõe address_line2: "Bairro - Complemento"
-    const line2Parts = [bairro];
-    if (complemento) line2Parts.push(complemento);
-    const addressLine2 = line2Parts.filter(Boolean).join(' - ') || null;
-
-    // Só cria/atualiza se tiver pelo menos endereço e município
-    // (ERPNext exige address_line1 e city para criar um Address)
-    if (endereco && city) {
-      const addressPayload: Record<string, unknown> = {
-        address_title: name,
-        address_type: 'Billing',
-        address_line1: addressLine1,
-        city: city || '',
-        country: 'Brazil',
-        links: [{ link_doctype: doctype, link_name: name }],
-      };
-      if (addressLine2) addressPayload.address_line2 = addressLine2;
-      if (state) addressPayload.state = state;
-      if (pincode) addressPayload.pincode = pincode;
-
-      // Verifica se já existe Address vinculado (filtra por address_title,
-      // já que link_doctype/link_name são campos da child table não pesquisáveis via getList)
-      let existingAddrName: string | null = null;
-      try {
-        const addrs = await erpGetList('Address', {
-          filters: [['address_title', '=', name]],
-          fields: ['name'],
-          limit: 1,
-        });
-        if (addrs.length > 0) existingAddrName = addrs[0].name;
-      } catch {
-        // Se falhar a busca, assume que não existe e cria novo
-      }
-
-      if (existingAddrName) {
-        await erpPut('Address', existingAddrName, addressPayload);
-      } else {
-        await erpPost('Address', addressPayload);
-      }
-    }
-  }
-
-  // 4.5 Campos extras fiscais/comerciais
-  const hasNotesFields = payload.empresa !== undefined || payload.contribuinte !== undefined || payload.inscricao_estadual !== undefined;
-  if (hasNotesFields && doctype === 'Lead') {
-    // Lead: persistência escalável em campos estruturados.
-    // Empresa usa campo nativo `company_name`; demais campos usam Custom Fields Aspen.
-    if (payload.empresa !== undefined && payload.company_name === undefined) {
-      updates.company_name = payload.empresa == null ? null : (String(payload.empresa).trim() || null);
-    }
-    if (payload.contribuinte !== undefined) {
-      const contribuinte = String(payload.contribuinte || '0').trim() || '0';
-      if (!['0', '1', '2', '9'].includes(contribuinte)) {
-        throw createHttpError(400, 'Contribuinte deve ser 0, 1, 2 ou 9.');
-      }
-      updates.custom_contribuinte = contribuinte;
-    }
-    if (payload.inscricao_estadual !== undefined) {
-      updates.custom_inscricao_estadual = payload.inscricao_estadual == null
-        ? null
-        : (String(payload.inscricao_estadual).trim() || null);
-    }
-  } else if (hasNotesFields) {
-    // Alguns doctypes expõem `notes` como child table (array) ou nem expõem o campo.
-    // Só gravamos JSON quando `notes` já é um campo textual; caso contrário, ignoramos
-    // esses metadados extras para não quebrar salvamentos básicos (nome/endereço).
-    let currentNotes: Record<string, unknown> = {};
-    let canPersistNotesJson = false;
-    try {
-      const current: Record<string, unknown> | null = await erpGetDoc(doctype, name, { fields: ['notes'] });
-      if (typeof current?.notes === 'string') {
-        canPersistNotesJson = true;
-        if ((current.notes as string).trim()) {
-          const parsed: Record<string, unknown> = JSON.parse(current.notes as string);
-          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-            currentNotes = parsed;
-          }
-        }
-      }
-    } catch {
-      canPersistNotesJson = false;
-    }
-
-    if (canPersistNotesJson) {
-      if (payload.empresa !== undefined) currentNotes.empresa = payload.empresa || null;
-      if (payload.contribuinte !== undefined) currentNotes.contribuinte = payload.contribuinte || '0';
-      if (payload.inscricao_estadual !== undefined) currentNotes.inscricao_estadual = payload.inscricao_estadual || null;
-
-      updates.notes = JSON.stringify(currentNotes);
-    }
-  }
-
-  const hasAddress = payload.endereco && typeof payload.endereco === 'object';
-
-  if (Object.keys(updates).length === 0 && !hasAddress) {
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: true, message: 'Nenhum campo para atualizar.' }),
-    };
-  }
-
-  // Executar update do documento principal (se houver campos)
-  if (Object.keys(updates).length > 0) {
-    await erpPut(doctype, name, updates);
-  }
-
-  // Retornar detalhe atualizado
-  const result = await handleGet(doctype, name);
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...result, updated: true }),
+    return core(event);
   };
 }
 
-// ── Handler principal ──
-
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  const params = event.queryStringParameters || {};
-  const doctype = params.doctype;
-  const name = params.name;
-
-  // Validar parâmetros
-  if (!doctype || !name) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Parâmetros doctype e name são obrigatórios.' }),
-    };
-  }
-
-  if (!ALLOWED_DOCTYPES.includes(doctype)) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: `Doctype inválido. Valores aceitos: ${ALLOWED_DOCTYPES.join(', ')}.` }),
-    };
-  }
-
-  try {
-    if (event.httpMethod === 'GET') {
-      const data = await handleGet(doctype, name);
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      };
-    }
-
-    if (event.httpMethod === 'PUT') {
-      return await handlePut(doctype, name, event.body);
-    }
-
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[client-detail]', err?.logMessage || err?.message || err);
-    return {
-      statusCode: code,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.message || 'Erro interno.' }),
-    };
-  }
-}
+export const handler = createHandler();

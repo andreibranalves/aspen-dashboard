@@ -12,6 +12,7 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { cn } from '@/lib/utils';
 import { useDarkMode } from '@/hooks/useDarkMode';
+import { apiGet } from '@/lib/api';
 
 // ── TopBar actions context ──
 // Pages call useSetTopBarActions(jsx) to set action buttons in the TopBar.
@@ -41,12 +42,23 @@ const PAGE_LABELS: Record<string, string> = {
   '/sales-orders': 'Pedidos',
   '/crm': 'CRM — Kanban',
   '/products': 'Catálogo de Produtos',
-  '/leads': 'Leads / Clientes',
+  '/leads': 'Clientes',
   '/settings': 'Configurações',
   '/whatsapp-inbox': 'WhatsApp',
 };
 
-function getBreadcrumb(route: string): BreadcrumbItem[] {
+function isClientSegment(route: string): boolean {
+  const segment = route.split('/')[2]?.toLowerCase();
+  return segment === 'cliente' || segment === 'customer';
+}
+
+function leadsListLabel(clientCoreMode: boolean | undefined): string {
+  if (clientCoreMode === true) return 'Clientes';
+  if (clientCoreMode === false) return 'Leads / Clientes';
+  return 'Contatos';
+}
+
+function getBreadcrumb(route: string, clientCoreMode?: boolean): BreadcrumbItem[] {
   if (route === '/dashboard') {
     return [{ label: 'Início', hash: null }];
   }
@@ -80,12 +92,14 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     const id = parts.slice(3).join('/');
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Leads / Clientes', hash: '/leads' },
+      { label: clientCoreMode === true || isClientSegment(route) ? 'Clientes' : leadsListLabel(clientCoreMode), hash: '/leads' },
       { label: id, hash: null },
     ];
   }
 
-  const label = PAGE_LABELS[route];
+  const label = route === '/leads'
+    ? leadsListLabel(clientCoreMode)
+    : PAGE_LABELS[route];
   if (label) {
     return [
       { label: 'Início', hash: '/dashboard' },
@@ -110,6 +124,25 @@ export interface LayoutProps {
 export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const { darkMode, toggleDarkMode } = useDarkMode();
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
+  const [clientCoreMode, setClientCoreMode] = useState<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    if (route !== '/leads' && !route.startsWith('/leads/')) return undefined;
+
+    let active = true;
+    setClientCoreMode(undefined);
+    apiGet<{ core_mode?: boolean }>('/leads-clients?limit=1')
+      .then((result) => {
+        if (active && typeof result.core_mode === 'boolean') setClientCoreMode(result.core_mode);
+      })
+      .catch(() => {
+        // The page owns the visible API error. Keep the list shell neutral
+        // while the authoritative server mode remains unresolved.
+      });
+    return () => {
+      active = false;
+    };
+  }, [route]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -128,7 +161,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
     }
   }, [route]);
 
-  const breadcrumbItems = getBreadcrumb(route);
+  const breadcrumbItems = getBreadcrumb(route, clientCoreMode);
 
   return (
     <div className="h-screen flex overflow-hidden bg-page">
@@ -137,6 +170,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         onToggle={toggleSidebar}
         currentRoute={route}
         onNavigate={onNavigate}
+        clientCoreMode={clientCoreMode}
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />

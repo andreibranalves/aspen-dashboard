@@ -18,7 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
-import { searchProducts } from '@/lib/productCache';
+import { isCoreUnpricedProduct, searchProducts } from '@/lib/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -126,6 +126,7 @@ export default function SplitResultCard({
   const handleSelectProduct = useCallback(
     (ii: number, product: Product) => {
       if (!product?.sku) return;
+      if (isCoreUnpricedProduct(product)) return;
       selectProduct(draft.index, ii, product);
       setItemSearchTerms((prev) => ({
         ...prev,
@@ -352,7 +353,14 @@ export default function SplitResultCard({
                                 <button
                                   key={p.sku || p.item_code}
                                   type="button"
-                                  className="w-full text-left px-3 py-2 text-xs hover:bg-surface-muted transition-colors flex items-center gap-2"
+                                  disabled={isCoreUnpricedProduct(p)}
+                                  title={isCoreUnpricedProduct(p) ? 'Preço indisponível para este produto.' : undefined}
+                                  className={cn(
+                                    'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2',
+                                    isCoreUnpricedProduct(p)
+                                      ? 'cursor-not-allowed opacity-50'
+                                      : 'hover:bg-surface-muted'
+                                  )}
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     handleSelectProduct(ii, p);
@@ -362,6 +370,11 @@ export default function SplitResultCard({
                                     {p.sku || p.item_code}
                                   </span>
                                   <span className="truncate">{String(p.nome || p.item_name || '—')}</span>
+                                  {isCoreUnpricedProduct(p) && (
+                                    <span className="ml-auto shrink-0 text-[10px] text-destructive">
+                                      Preço indisponível
+                                    </span>
+                                  )}
                                 </button>
                               ))}
                             </div>
