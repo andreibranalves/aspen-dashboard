@@ -1158,7 +1158,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   const report = makeReport(options.mode);
   const source = options.source;
   let dataset: FrappeDataset;
-  if (Object.prototype.hasOwnProperty.call(options, 'dataset')) {
+  if (options.dataset != null) {
     const candidate: unknown = options.dataset;
     validateFrappeDataset(candidate);
     dataset = candidate;
@@ -1313,8 +1313,13 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   const quotationState = options.mode === 'apply' ? await repository.loadState() : state;
   const clientLineage = new Map<string, string>();
   for (const entry of quotationState.lineage) {
-    if (entry.entityType === 'cliente')
+    if (entry.entityType === 'cliente') {
       clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.localKey);
+      // Also index by name for quotations that only carry customer_name.
+      const clientRecord = quotationState.clients.find((c) => c.id === entry.localKey);
+      if (clientRecord?.nome)
+        clientLineage.set(`name:${clientRecord.nome.toLowerCase()}`, entry.localKey);
+    }
   }
   if (options.mode !== 'apply') {
     // Dry-run has no persisted clients yet. Predict the deterministic client
@@ -1329,6 +1334,10 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       const id = linked || byDocument?.id || stableClientUuid(unit.client.localKey);
       for (const entry of unit.lineage)
         clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, id);
+      // Also index by normalized name so quotations with only customer_name
+      // (the common case in this Frappe dataset) can resolve their client.
+      if (unit.client.nome)
+        clientLineage.set(`name:${unit.client.nome.toLowerCase()}`, id);
     }
   }
   const knownProducts = new Set(quotationState.products.map((product) => product.sku));

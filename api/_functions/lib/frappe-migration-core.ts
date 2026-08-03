@@ -810,6 +810,12 @@ function nameSequence(name: string): number | null {
   const runs = text(name).match(/\d+/g);
   if (!runs) return null;
   const last = runs[runs.length - 1];
+  // Handle names where year and sequence are concatenated (e.g. ORC-20261147).
+  // The last digit run has 8 digits (YYYYNNNN); extract the last 4 as sequence.
+  if (last.length === 8) {
+    const sequence = Number(last.slice(4));
+    return Number.isInteger(sequence) ? sequence : null;
+  }
   const value = Number(last);
   return Number.isInteger(value) ? value : null;
 }

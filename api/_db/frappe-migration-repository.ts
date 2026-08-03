@@ -539,7 +539,7 @@ export function createPostgresFrappeMigrationRepository(
           and(
             eq(frappeImportLineage.sourceDoctype, 'Quotation'),
             eq(frappeImportLineage.entityType, 'orcamento'),
-            eq(frappeImportLineage.localKey, quotations.id)
+            eq(frappeImportLineage.localKey, sql`${quotations.id}::text`)
           )
         )
         .where(eq(issuedDocuments.kind, 'historical_pdf_import'))
