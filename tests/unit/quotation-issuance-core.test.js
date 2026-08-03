@@ -214,6 +214,8 @@ test('an already issued revision is returned without rendering, upload or duplic
 });
 
 test('issuance endpoint gates core mode and returns safe Portuguese errors without provider details', async () => {
+  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
+  delete process.env.CRM_OPERATIONAL_MODE;
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
   const event = { httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: JSON.stringify({ id: 'ORC-20260001' }) };
   try {
@@ -242,6 +244,8 @@ test('issuance endpoint gates core mode and returns safe Portuguese errors witho
   } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
+    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   }
 });
 
@@ -279,6 +283,8 @@ test('Blob retry reuses a valid deterministic orphan instead of overwriting or d
 });
 
 test('authenticated document handler returns verified PDF bytes and rejects integrity mismatch', async () => {
+  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
+  delete process.env.CRM_OPERATIONAL_MODE;
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
   process.env.CRM_CORE_QUOTES_ENABLED = 'true';
   try {
@@ -321,6 +327,8 @@ test('authenticated document handler returns verified PDF bytes and rejects inte
   } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
+    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   }
 });
 

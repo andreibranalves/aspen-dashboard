@@ -194,6 +194,8 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
 });
 
 test('preview is flag-gated, returns HTML headers, and alternate selection does not mutate snapshot', async () => {
+  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
+  delete process.env.CRM_OPERATIONAL_MODE;
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
   const repository = { get: async () => snapshot };
   try {
@@ -215,5 +217,7 @@ test('preview is flag-gated, returns HTML headers, and alternate selection does 
   } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
+    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   }
 });

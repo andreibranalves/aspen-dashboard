@@ -1,5 +1,6 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
 import { erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 import { isProductsCoreEnabled } from './products-mode.js';
 import {
   createCoreHandler as createPricingCoreHandler,
@@ -183,4 +184,10 @@ export function createHandler(dependencies: ProductPricingUpdateHandlerDependenc
   };
 }
 
-export const handler = createHandler();
+async function guardedHandler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'product-pricing-update não está disponível no modo operacional.' }) };
+  }
+  return createHandler()(event);
+}
+export const handler = guardedHandler;

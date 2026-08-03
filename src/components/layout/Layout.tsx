@@ -125,6 +125,19 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
   const { darkMode, toggleDarkMode } = useDarkMode();
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [clientCoreMode, setClientCoreMode] = useState<boolean | undefined>(undefined);
+  const [operationalMode, setOperationalMode] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    apiGet<{ operational_mode?: boolean }>('/settings')
+      .then((result) => {
+        if (active && typeof result.operational_mode === 'boolean') {
+          setOperationalMode(result.operational_mode);
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (route !== '/leads' && !route.startsWith('/leads/')) return undefined;
@@ -171,6 +184,7 @@ export default function Layout({ route, onNavigate, children }: LayoutProps) {
         currentRoute={route}
         onNavigate={onNavigate}
         clientCoreMode={clientCoreMode}
+        operationalMode={operationalMode}
         darkMode={darkMode}
         toggleDarkMode={toggleDarkMode}
       />

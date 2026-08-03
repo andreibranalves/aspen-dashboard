@@ -11,6 +11,7 @@ import { kv } from '@vercel/kv';
 import { erpGetDoc } from './lib/erpnext.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
+import { isOperationalMode } from './operational-mode.js';
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
@@ -208,6 +209,9 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-flow-preview não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Method Not Allowed' });
 
   let payload;

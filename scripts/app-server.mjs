@@ -57,6 +57,7 @@ import { handler as communicationFlows } from '../api/_functions/communication-f
 import { handler as communicationMedia } from '../api/_functions/communication-media.js';
 import { handler as communicationMediaUpload } from '../api/_functions/communication-media-upload.js';
 import { handler as pdf } from '../api/_functions/pdf.js';
+import { handler as operationalStatus } from '../api/_functions/operational-status.js';
 import { handler as view } from '../api/_functions/view.js';
 
 const ROUTES = {
@@ -91,6 +92,7 @@ const ROUTES = {
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
   settings,
+  'operational-status': operationalStatus,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-flows': whatsappFlows,

@@ -4,6 +4,7 @@
  * preserved Frappe implementation.
  */
 export function isProductsCoreEnabled(): boolean {
+  if (process.env.CRM_OPERATIONAL_MODE === 'true') return true;
   return process.env.CRM_CORE_PRODUCTS_ENABLED === 'true';
 }
 export const PRODUCT_CORE_SOURCE = 'postgres' as const;

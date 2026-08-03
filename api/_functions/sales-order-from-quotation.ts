@@ -3,6 +3,7 @@ import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // confirmed Sales Order with dedup protection, auto-submit, and CRM update.
 
 import { erpGetList, erpGetDoc, erpPost, erpCallMethod, createHttpError } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -161,6 +162,9 @@ async function checkDuplicate(
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'sales-order-from-quotation não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

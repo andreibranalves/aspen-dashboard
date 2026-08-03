@@ -8,6 +8,7 @@ import type {
 import { handler as extractHandler } from './extract.js';
 import { sendText } from './send-whatsapp.js';
 import { createHttpError, erpGetDoc, erpGetList } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 import { upsertQuoteLead } from './lib/quote-leads-store.js';
 import {
   LIVE_DEPS,
@@ -348,4 +349,10 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
   };
 }
 
-export const handler: LegacyHandler = createHandler();
+async function guardedHandler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'whatsapp-conversations não está disponível no modo operacional.' }) };
+  }
+  return createHandler()(event);
+}
+export const handler: LegacyHandler = guardedHandler;

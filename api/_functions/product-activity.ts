@@ -1,10 +1,14 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'product-activity não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

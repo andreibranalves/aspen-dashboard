@@ -33,6 +33,8 @@ const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 afterEach(() => {
   if (previousFlag === undefined) delete process.env.CRM_CORE_CLIENTS_ENABLED;
   else process.env.CRM_CORE_CLIENTS_ENABLED = previousFlag;
+  // Always disable operational mode for rollout tests - they test individual flag behavior
+  delete process.env.CRM_OPERATIONAL_MODE;
 });
 
 describe('clients rollout boundary', () => {

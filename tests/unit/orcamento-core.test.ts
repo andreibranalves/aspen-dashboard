@@ -148,6 +148,8 @@ test('legacy boundary promotes displayed rates without mutating the request', as
 });
 
 test('quote rollout uses exact flag and never falls back after a core failure', async () => {
+  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
+  delete process.env.CRM_OPERATIONAL_MODE;
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
   const calls: string[] = [];
   const core = async () => {
@@ -172,5 +174,7 @@ test('quote rollout uses exact flag and never falls back after a core failure', 
   } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
+    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   }
 });

@@ -1,5 +1,6 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { createHttpError, erpGetList, erpPut } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 import {
   getPruneCandidates,
   parseDealIds,
@@ -27,6 +28,9 @@ function parseJsonBody(body: string | undefined | null): unknown {
 }
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'crm-prune-candidates não está disponível no modo operacional.' }) };
+  }
   try {
     if (event.httpMethod === 'GET') {
       const candidates = await getPruneCandidates(deps);

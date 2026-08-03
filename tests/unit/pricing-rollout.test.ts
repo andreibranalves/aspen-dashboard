@@ -50,6 +50,8 @@ describe('core pricing rollout seams', () => {
   afterEach(() => {
     if (previousFlag === undefined) delete process.env.CRM_CORE_PRODUCTS_ENABLED;
     else process.env.CRM_CORE_PRODUCTS_ENABLED = previousFlag;
+    // Always disable operational mode for rollout tests - they test individual flag behavior
+    delete process.env.CRM_OPERATIONAL_MODE;
   });
 
   it('resolves core lookup from the injected PostgreSQL seam with decimal-string rates', async () => {

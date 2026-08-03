@@ -8,6 +8,7 @@ import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 
 import { kv } from '@vercel/kv';
 import { createHttpError } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 
 // ── Default flows (same as frontend DEFAULT_WA_FLOWS) ───────────────────────
 
@@ -140,6 +141,9 @@ async function writeFlows(flows: unknown[], selectedFlowId: string): Promise<voi
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'whatsapp-flows não está disponível no modo operacional.' }) };
+  }
   const method = event.httpMethod || 'GET';
 
   // ── GET: return flows ──

@@ -11,6 +11,7 @@ import type {
 // route is enabled, it upserts an ERPNext Lead with email/phone dedup.
 
 import { sendMetaLeadEvent } from './lib/meta-capi.js';
+import { isOperationalMode } from './operational-mode.js';
 import { createHttpError, erpGetList, erpPost, erpPut } from './lib/erpnext.js';
 import { upsertQuoteLead } from './lib/quote-leads-store.js';
 
@@ -267,6 +268,9 @@ async function upsertLead(lead: Record<string, unknown>, deps: typeof LIVE_DEPS)
 
 export function createHandler(deps = LIVE_DEPS) {
   return async function typebotLeadCaptureHandler(event: FunctionEvent) {
+    if (isOperationalMode()) {
+      return jsonResponse(200, { received: true, mode: 'operational' });
+    }
     if (event.httpMethod !== 'POST') {
       return jsonResponse(405, { error: 'Method Not Allowed' });
     }

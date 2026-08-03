@@ -110,6 +110,8 @@ afterEach(() => {
 
 describe('products rollout boundary', () => {
   it('delegates false/unset to legacy and exact true to core without fallback', async () => {
+    const prevOperational = process.env.CRM_OPERATIONAL_MODE;
+    delete process.env.CRM_OPERATIONAL_MODE;
     let legacyCalls = 0;
     let coreCalls = 0;
     const legacy = async () => {
@@ -131,6 +133,8 @@ describe('products rollout boundary', () => {
     await assert.rejects(() => handler(event('GET')), /core unavailable/);
     assert.equal(coreCalls, 1);
     assert.equal(legacyCalls, 1);
+    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
+    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   });
 });
 

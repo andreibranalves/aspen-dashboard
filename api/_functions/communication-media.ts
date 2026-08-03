@@ -11,6 +11,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 import { kv } from '@vercel/kv';
 import { del as blobDelete } from '@vercel/blob';
 import { createHttpError } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 import {
   KV_KEY_MEDIA_PREFIX,
   PRODUCT_GROUPS,
@@ -126,6 +127,9 @@ function filterItems(items: Record<string, unknown>[], query: Record<string, str
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-media não está disponível no modo operacional.' }) };
+  }
   const method = event.httpMethod || 'GET';
   const id = extractId(event);
 

@@ -1,4 +1,5 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import { isOperationalMode } from './operational-mode.js';
 
 // ── Regras de extração padrão ──
 export const DEFAULT_RULES = `Rule 0 — SKU Explícito: Se o cliente informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
@@ -298,6 +299,9 @@ async function extractWithOpenRouter(
 }
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'extract não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

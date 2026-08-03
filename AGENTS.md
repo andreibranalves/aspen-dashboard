@@ -80,3 +80,17 @@ vercel deploy --prod
 - `publicDir: 'static'` in Vite is configured but `static/` does not exist; assets live in `public/`.
 - `ROUTES` maps are duplicated across `api/[...path].js`, `scripts/dev-api-server.mjs`, and `scripts/app-server.mjs` — keep in sync when adding endpoints.
 - Auth (`api/_lib/auth.js`) and rate-limit (`api/_lib/rate-limit.js`) only run in Vercel production; local dev servers skip both.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the five default canonical labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Domain documentation uses the single-context layout. See `docs/agents/domain.md`.

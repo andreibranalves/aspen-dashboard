@@ -38,16 +38,21 @@ function createMemoryRepository(initial: Settings | null = null): SettingsReposi
 }
 
 describe('settings handler', () => {
+  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
+
   it('returns documented defaults when the singleton row does not exist', async () => {
+    delete process.env.CRM_OPERATIONAL_MODE;
     const handler = createHandler({ repository: createMemoryRepository() });
 
     const result = await handler(event('GET'));
 
     assert.equal(result.statusCode, 200);
-    assert.deepEqual(parse(result), DEFAULT_SETTINGS);
+    const parsed = parse(result);
+    assert.deepEqual({ ...parsed, operational_mode: undefined }, { ...DEFAULT_SETTINGS, operational_mode: undefined });
   });
 
   it('validates, canonicalizes, saves and reloads settings through the repository seam', async () => {
+    delete process.env.CRM_OPERATIONAL_MODE;
     const handler = createHandler({ repository: createMemoryRepository() });
     const payload = {
       validade_dias: 30,
@@ -69,7 +74,12 @@ describe('settings handler', () => {
 
     const reloaded = await handler(event('GET'));
     assert.equal(reloaded.statusCode, 200);
-    assert.deepEqual(parse(reloaded), parse(saved));
+    const reloadedParsed = parse(reloaded);
+    const savedParsed = parse(saved);
+    // GET response includes operational_mode; PUT does not. Compare core fields.
+    const { operational_mode: _rm, ...reloadedCore } = reloadedParsed;
+    const { operational_mode: _sm, ...savedCore } = savedParsed;
+    assert.deepEqual(reloadedCore, savedCore);
   });
 
   it('reports field validation errors in Portuguese without writing invalid data', async () => {
