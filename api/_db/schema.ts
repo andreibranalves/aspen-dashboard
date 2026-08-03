@@ -320,9 +320,11 @@ export const issuedDocuments = pgTable(
     uniqueIndex('issued_documents_revision_unique').on(table.revisionId),
     uniqueIndex('issued_documents_blob_pathname_unique').on(table.blobPathname),
     index('issued_documents_quotation_created_idx').on(table.quotationId, table.createdAt),
-    check('issued_documents_kind_check', sql`${table.kind} = 'quotation_pdf'`),
+    check('issued_documents_kind_check', sql`${table.kind} IN ('quotation_pdf', 'historical_pdf_import')`),
     check('issued_documents_mime_type_check', sql`${table.mimeType} = 'application/pdf'`),
-    check('issued_documents_size_positive_check', sql`${table.sizeBytes} > 0`),
+    // Historical imports record a document placeholder without downloading the
+    // file; size 0 means the real size is still unknown (issue #15).
+    check('issued_documents_size_positive_check', sql`${table.sizeBytes} >= 0`),
     check('issued_documents_checksum_check', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
     check('issued_documents_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
   ],
@@ -357,7 +359,7 @@ export const frappeImportLineage = pgTable(
     index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
     check('frappe_import_lineage_source_doctype_check', sql`char_length(btrim(${table.sourceDoctype})) > 0`),
     check('frappe_import_lineage_source_id_check', sql`char_length(btrim(${table.sourceId})) > 0`),
-    check('frappe_import_lineage_entity_type_check', sql`${table.entityType} IN ('produto', 'faixa', 'cliente')`),
+    check('frappe_import_lineage_entity_type_check', sql`${table.entityType} IN ('produto', 'faixa', 'cliente', 'orcamento')`),
     check('frappe_import_lineage_local_key_check', sql`char_length(btrim(${table.localKey})) > 0`),
     check('frappe_import_lineage_hash_check', sql`${table.canonicalHash} ~ '^[0-9a-f]{64}$'`),
   ],

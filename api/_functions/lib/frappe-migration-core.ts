@@ -33,7 +33,7 @@ export type SourceRecord = Record<string, unknown>;
 export interface FrappeLineageEntry {
   sourceDoctype: string;
   sourceId: string;
-  entityType: 'produto' | 'faixa' | 'cliente';
+  entityType: 'produto' | 'faixa' | 'cliente' | 'orcamento';
   localKey: string;
   canonicalHash: string;
   legacyPayload: SourceRecord;
@@ -93,6 +93,129 @@ export interface ClientUnit {
   conflicts: string[];
 }
 
+export type QuotationStatus = 'rascunho' | 'enviado' | 'aprovado' | 'perdido';
+
+/** One row of the `items` child table of a Frappe Quotation. */
+export interface NormalizedQuotationItem {
+  position: number;
+  sku: string;
+  nome: string;
+  quantidade: string;
+  unidade: string;
+  precoSugerido: string | null;
+  precoAplicado: string | null;
+  totalLinha: string | null;
+  notas: string | null;
+  source: SourceRecord;
+}
+
+export interface QuotationTerms {
+  validadeDias: number;
+  pagamento: string | null;
+  entrega: string | null;
+  frete: string | null;
+  observacoes: string | null;
+}
+
+export interface NormalizedQuotation {
+  sourceDoctype: 'Quotation';
+  sourceId: string;
+  businessNumber: string;
+  year: number;
+  /** `Customer:<id>` or `Lead:<id>` reference used to resolve the local client. */
+  clientRef: string | null;
+  clientId: string | null;
+  status: QuotationStatus;
+  /** Raw legacy status text (e.g. `Submitted`) or empty when only docstatus was available. */
+  statusSource: string;
+  statusKnown: boolean;
+  createdAt: string;
+  modifiedAt: string;
+  items: NormalizedQuotationItem[];
+  terms: QuotationTerms;
+  subtotal: string | null;
+  total: string | null;
+  source: SourceRecord;
+}
+
+export interface IssuedDocumentUnit {
+  id: string;
+  kind: 'historical_pdf_import';
+  blobPathname: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  templateKey: string;
+  templateHash: string;
+}
+
+export interface QuotationItemUnit {
+  id: string;
+  position: number;
+  productSku: string;
+  produtoSku: string;
+  produtoNome: string;
+  produtoDescricao: string;
+  produtoUnidade: string;
+  produtoCategoria: string | null;
+  produtoMarca: string | null;
+  quantidade: string;
+  precoFonte: string;
+  precoMinimoFaixa: string | null;
+  precoSugerido: string;
+  precoAplicado: string;
+  diferencaPreco: string;
+  totalLinha: string;
+  manualRate: boolean;
+  notas: string | null;
+}
+
+export interface QuotationRevisionUnit {
+  id: string;
+  version: number;
+  status: QuotationStatus;
+  validadeDias: number;
+  pagamento: string;
+  entrega: string;
+  fretePadrao: string;
+  frete: string;
+  observacoes: string;
+  prazoProducao: string;
+  templatePadrao: string;
+  templateHash: string;
+  clienteNome: string;
+  clienteDocumento: string | null;
+  clienteEmail: string | null;
+  clienteTelefone: string | null;
+  clienteEndereco: string | null;
+  clienteNumero: string | null;
+  clienteBairro: string | null;
+  clienteComplemento: string | null;
+  clienteMunicipio: string | null;
+  clienteUf: string | null;
+  clienteCep: string | null;
+  clienteNotas: string | null;
+  subtotal: string;
+  total: string;
+  createdAt: Date;
+}
+
+export interface QuotationUnit {
+  id: string;
+  revision: QuotationRevisionUnit;
+  quotation: NormalizedQuotation;
+  items: QuotationItemUnit[];
+  document: IssuedDocumentUnit | null;
+  lineage: FrappeLineageEntry[];
+  sourceHash: string;
+}
+
+export interface QuotationBuildContext {
+  clients: ExistingClient[];
+  products: ExistingProduct[];
+}
+
 export interface ExistingProduct {
   sku: string;
   nome: string;
@@ -149,9 +272,10 @@ export interface ImportReport {
   produtos: EntityReport;
   faixas: EntityReport;
   clientes: EntityReport;
+  orcamentos: EntityReport;
   total: EntityReport;
   /** English/structural aliases make the report convenient for integrations. */
-  entities: { produtos: EntityReport; faixas: EntityReport; clientes: EntityReport };
+  entities: { produtos: EntityReport; faixas: EntityReport; clientes: EntityReport; orcamentos: EntityReport };
 }
 
 export interface FrappeDataset {
@@ -160,6 +284,7 @@ export interface FrappeDataset {
   itemPrices?: SourceRecord[];
   customers?: SourceRecord[];
   leads?: SourceRecord[];
+  quotations?: SourceRecord[];
 }
 
 export interface NormalizedDataset {
@@ -170,7 +295,7 @@ export interface NormalizedDataset {
   clientUnits: ClientUnit[];
 }
 
-const DATASET_ARRAY_FIELDS = ['pricingRules', 'itemPrices', 'customers', 'leads'] as const;
+const DATASET_ARRAY_FIELDS = ['pricingRules', 'itemPrices', 'customers', 'leads', 'quotations'] as const;
 
 /**
  * Validate the runtime boundary before any normalization or persistence. An
@@ -200,6 +325,20 @@ export function validateFrappeDataset(value: unknown): asserts value is FrappeDa
 
 function isRecord(value: unknown): value is SourceRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Deterministic RFC 4122 version-5-layout UUID for one source identity.  The
+ * migration idempotency contract depends on these values: a rerun over the
+ * same source data must reproduce the exact same local identifiers.
+ */
+export function stableId(kind: string, sourceId: string): string {
+  const digest = createHash('sha256').update(`aspen-migration:${kind}:${sourceId}`).digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function text(value: unknown): string {
@@ -452,6 +591,415 @@ export function normalizeFrappeClientRecord(record: SourceRecord, sourceDoctype:
     links,
     source: safeSource(record),
   };
+}
+
+export const HISTORICAL_VALIDITY_DAYS = 15;
+export const HISTORICAL_TEMPLATE_KEY = 'padrao';
+// The current default template content hash (schema default for quote_revisions.template_hash).
+export const HISTORICAL_TEMPLATE_HASH = 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e';
+
+const QUOTATION_STATUS_MAP: Record<string, QuotationStatus> = {
+  draft: 'rascunho',
+  submitted: 'enviado',
+  open: 'enviado',
+  ordered: 'aprovado',
+  completed: 'aprovado',
+  closed: 'aprovado',
+  lost: 'perdido',
+  cancelled: 'perdido',
+  expired: 'perdido',
+};
+
+export interface QuotationStatusInfo {
+  status: QuotationStatus;
+  source: string;
+  known: boolean;
+}
+
+export function mapQuotationStatus(raw: string): QuotationStatusInfo {
+  const source = text(raw);
+  const status = QUOTATION_STATUS_MAP[source.toLowerCase()];
+  return status ? { status, source, known: true } : { status: 'rascunho', source, known: false };
+}
+
+function rawQuotationStatus(record: SourceRecord): string {
+  const explicit = text(first(record, ['status', 'workflow_state']));
+  if (explicit) return explicit;
+  const docstatus = text(first(record, ['docstatus']));
+  if (docstatus === '0') return 'Draft';
+  if (docstatus === '1') return 'Submitted';
+  if (docstatus === '2') return 'Cancelled';
+  return '';
+}
+
+function yearOf(value: string): number | null {
+  const match = /(?:^|\D)(20\d{2})(?:\D|$)/.exec(text(value));
+  if (!match) return null;
+  const year = Number(match[1]);
+  return year >= 2000 && year <= 9999 ? year : null;
+}
+
+/** Last numeric run of the legacy name, e.g. `42` from `QTN-2024-00042`. */
+function nameSequence(name: string): number | null {
+  const runs = text(name).match(/\d+/g);
+  if (!runs) return null;
+  const last = runs[runs.length - 1];
+  const value = Number(last);
+  return Number.isInteger(value) ? value : null;
+}
+
+/**
+ * Map a legacy Quotation name to the local `ORC-YYYYNNNN` business number.
+ * The year comes from the creation date (fallback: the year embedded in the
+ * name); the four-digit sequence is preserved from the name's numeric suffix
+ * so the per-year numbering counter can advance past the highest import.
+ */
+export function deriveBusinessNumber(record: SourceRecord, sourceId: string): { businessNumber: string; year: number } {
+  const creation = text(first(record, ['creation', 'created', 'created_on']));
+  const year = yearOf(creation) ?? yearOf(sourceId);
+  if (!year) throw new Error(`Quotation ${sourceId} sem ano identificável (creation/name).`);
+  const sequence = nameSequence(sourceId);
+  if (sequence === null) throw new Error(`Quotation ${sourceId} sem sequência numérica no nome.`);
+  if (sequence > 9999) throw new Error(`Quotation ${sourceId} com sequência fora do limite anual.`);
+  return { businessNumber: `ORC-${year}${String(sequence).padStart(4, '0')}`, year };
+}
+
+function resolveQuotationClient(record: SourceRecord, clientLineage: Map<string, string>): { clientRef: string | null; clientId: string | null } {
+  const partyType = text(first(record, ['quotation_to', 'party_type'])).toLowerCase();
+  const customer = text(first(record, ['customer', 'customer_id']));
+  const lead = text(first(record, ['lead', 'lead_id']));
+  let clientRef: string | null = null;
+  if (partyType === 'lead' && lead) clientRef = `Lead:${lead}`;
+  else if (customer) clientRef = `Customer:${customer}`;
+  else if (lead) clientRef = `Lead:${lead}`;
+  return { clientRef, clientId: clientRef ? clientLineage.get(clientRef) || null : null };
+}
+
+/**
+ * Client references may embed CPF/CNPJ/e-mail when the ERP uses them as
+ * source names. Reports must never echo them; keep a stable one-way token.
+ */
+function reportClientRef(clientRef: string): string {
+  const separator = clientRef.indexOf(':');
+  const doctype = separator > 0 ? clientRef.slice(0, separator) : clientRef;
+  const id = separator > 0 ? clientRef.slice(separator + 1) : '';
+  if ((doctype !== 'Customer' && doctype !== 'Lead') || !id) return clientRef;
+  return `${doctype}:${canonicalHash(`${doctype}:${id}`).slice(0, 12)}`;
+}
+
+function parseDate(value: string | null): Date | null {
+  if (!text(value)) return null;
+  const date = new Date(text(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function quotationTerms(record: SourceRecord, creation: string): QuotationTerms {
+  let validadeDias = HISTORICAL_VALIDITY_DAYS;
+  const created = parseDate(creation);
+  const validTill = parseDate(text(first(record, ['valid_till', 'expiry', 'validade'])));
+  if (created && validTill && validTill.getTime() > created.getTime()) {
+    const days = Math.round((validTill.getTime() - created.getTime()) / 86_400_000);
+    validadeDias = Math.min(365, Math.max(1, days));
+  }
+  return {
+    validadeDias,
+    pagamento: nullableText(first(record, ['payment_terms_template', 'payment_terms', 'condicao_pagamento'])),
+    entrega: nullableText(first(record, ['delivery_terms', 'condicao_entrega'])),
+    frete: nullableText(first(record, ['shipping_amount', 'frete', 'valor_frete'])),
+    observacoes: nullableText(first(record, ['terms', 'remarks', 'observacoes', 'notes'])),
+  };
+}
+
+export function normalizeQuotationItem(record: SourceRecord, quotationId: string, index: number): NormalizedQuotationItem {
+  const sku = text(first(record, ['item_code', 'sku', 'codigo']));
+  if (!sku) throw new Error(`Item de ${quotationId} sem item_code.`);
+  const positionValue = text(first(record, ['idx', 'position']));
+  const position = positionValue && /^\d+$/.test(positionValue) ? Number(positionValue) : index + 1;
+  return {
+    position,
+    sku,
+    nome: text(first(record, ['item_name', 'nome', 'description'], sku)) || sku,
+    quantidade: text(first(record, ['qty', 'quantidade'])),
+    unidade: text(first(record, ['uom', 'stock_uom', 'unidade'], 'Und')) || 'Und',
+    precoSugerido: text(first(record, ['price_list_rate', 'preco_sugerido'])) || null,
+    precoAplicado: text(first(record, ['rate', 'preco_aplicado'])) || null,
+    totalLinha: text(first(record, ['amount', 'total_linha', 'total'])) || null,
+    notas: nullableText(first(record, ['notes', 'observacoes', 'item_notes'])),
+    source: safeSource(record),
+  };
+}
+
+export function normalizeFrappeQuotation(record: SourceRecord, clientLineage: Map<string, string>): NormalizedQuotation {
+  const sourceId = sourceIdOf(record);
+  if (!sourceId) throw new Error('Quotation sem identificador legado (name).');
+  const { businessNumber, year } = deriveBusinessNumber(record, sourceId);
+  const statusInfo = mapQuotationStatus(rawQuotationStatus(record));
+  const { clientRef, clientId } = resolveQuotationClient(record, clientLineage);
+  const items = childItems(record).map((row, index) => normalizeQuotationItem(row, sourceId, index));
+  return {
+    sourceDoctype: 'Quotation',
+    sourceId,
+    businessNumber,
+    year,
+    clientRef,
+    clientId,
+    status: statusInfo.status,
+    statusSource: statusInfo.source,
+    statusKnown: statusInfo.known,
+    createdAt: text(first(record, ['creation', 'created', 'created_on'])),
+    modifiedAt: text(first(record, ['modified', 'updated', 'updated_on'])),
+    items,
+    terms: quotationTerms(record, text(first(record, ['creation', 'created', 'created_on']))),
+    subtotal: text(first(record, ['net_total', 'subtotal'])) || null,
+    total: text(first(record, ['grand_total', 'total'])) || null,
+    source: safeSource(record),
+  };
+}
+
+function moneyDifference(suggested: string, applied: string): string {
+  const a = decimal(text(suggested));
+  const b = decimal(text(applied));
+  const scale = Math.max(a.scale, b.scale);
+  const left = a.integer * 10n ** BigInt(scale - a.scale);
+  const right = b.integer * 10n ** BigInt(scale - b.scale);
+  const difference = left - right;
+  const sign = difference < 0n ? '-' : '';
+  const absolute = difference < 0n ? -difference : difference;
+  const base = absolute.toString().padStart(scale + 1, '0');
+  if (scale === 0) return `${sign}${base}`;
+  const integer = base.slice(0, -scale) || '0';
+  const fraction = base.slice(-scale).replace(/0+$/, '');
+  return fraction ? `${sign}${integer}.${fraction}` : `${sign}${integer}`;
+}
+
+function validatePositiveDecimal(value: string | null, label: string): string | null {
+  try {
+    const parsed = decimal(text(value || ''));
+    if (parsed.integer <= 0n) return `${label} não positivo (${text(value) || 'vazio'})`;
+    return null;
+  } catch {
+    return `${label} inválido (${text(value) || 'vazio'})`;
+  }
+}
+
+function validateNonNegativeDecimal(value: string | null, label: string): string | null {
+  if (value === null || text(value) === '') return null;
+  try {
+    if (decimal(text(value)).integer < 0n) return `${label} negativo (${text(value)})`;
+    return null;
+  } catch {
+    return `${label} inválido (${text(value)})`;
+  }
+}
+
+interface QuotationClientSnapshot {
+  clienteNome: string;
+  clienteDocumento: string | null;
+  clienteEmail: string | null;
+  clienteTelefone: string | null;
+  clienteEndereco: string | null;
+  clienteNumero: string | null;
+  clienteBairro: string | null;
+  clienteComplemento: string | null;
+  clienteMunicipio: string | null;
+  clienteUf: string | null;
+  clienteCep: string | null;
+  clienteNotas: string | null;
+}
+
+function clientSnapshotOf(client: ExistingClient | undefined, fallbackNome: string): QuotationClientSnapshot {
+  return {
+    clienteNome: client?.nome || fallbackNome,
+    clienteDocumento: client?.documento ?? null,
+    clienteEmail: client?.email ?? null,
+    clienteTelefone: client?.telefone ?? null,
+    clienteEndereco: client?.address?.endereco ?? null,
+    clienteNumero: client?.address?.numero ?? null,
+    clienteBairro: client?.address?.bairro ?? null,
+    clienteComplemento: client?.address?.complemento ?? null,
+    clienteMunicipio: client?.address?.municipio ?? null,
+    clienteUf: client?.address?.uf ?? null,
+    clienteCep: client?.address?.cep ?? null,
+    clienteNotas: client?.notes ?? null,
+  };
+}
+
+function buildIssuedDocumentUnit(quotation: NormalizedQuotation): IssuedDocumentUnit {
+  // The PDF bytes are intentionally not downloaded (issue #15). The checksum
+  // identifies the source record so a later download can verify/refresh it.
+  const checksumSha256 = createHash('sha256').update(canonicalJson(quotation.source)).digest('hex');
+  return {
+    id: stableId('document', quotation.sourceId),
+    kind: 'historical_pdf_import',
+    blobPathname: `historical/${quotation.sourceId}.pdf`,
+    fileName: `${quotation.sourceId}.pdf`,
+    mimeType: 'application/pdf',
+    sizeBytes: 0,
+    checksumSha256,
+    templateKey: HISTORICAL_TEMPLATE_KEY,
+    templateHash: HISTORICAL_TEMPLATE_HASH,
+  };
+}
+
+export interface QuotationBuildResult {
+  quotationUnits: QuotationUnit[];
+  itemUnits: QuotationItemUnit[];
+  issues: ImportDetail[];
+}
+
+/**
+ * Resolve every normalized quotation into a persistable unit.  Units that
+ * cannot be imported (missing client, missing/unknown items, invalid prices)
+ * are reported as blocking divergences and never reach the repository.
+ */
+export function buildQuotationUnits(
+  normalized: NormalizedQuotation[],
+  knownClients: Map<string, string>,
+  context: QuotationBuildContext = { clients: [], products: [] },
+  knownProducts?: Set<string>,
+): QuotationBuildResult {
+  const clientsById = new Map(context.clients.map((client) => [client.id, client]));
+  const productsBySku = new Map(context.products.map((product) => [product.sku, product]));
+  const quotationUnits: QuotationUnit[] = [];
+  const itemUnits: QuotationItemUnit[] = [];
+  const issues: ImportDetail[] = [];
+  const seenBusinessNumbers = new Map<string, string>();
+  const seenSourceIds = new Set<string>();
+  for (const quotation of normalized) {
+    const reportIssue = (mensagem: string): void => {
+      issues.push({ status: 'divergentes', source_doctype: 'Quotation', source_id: quotation.sourceId, local_key: quotation.businessNumber, mensagem });
+    };
+    if (seenSourceIds.has(quotation.sourceId)) {
+      reportIssue('Documento Frappe repetido com dados diferentes.');
+      continue;
+    }
+    seenSourceIds.add(quotation.sourceId);
+    const prior = seenBusinessNumbers.get(quotation.businessNumber);
+    if (prior && prior !== quotation.sourceId) {
+      reportIssue(`Número comercial ${quotation.businessNumber} duplicado no dataset (${prior}).`);
+      continue;
+    }
+    seenBusinessNumbers.set(quotation.businessNumber, quotation.sourceId);
+    if (!quotation.clientId) {
+      reportIssue(`Cliente não localizado na linhagem (${reportClientRef(quotation.clientRef || 'referência ausente')}).`);
+      continue;
+    }
+    if (quotation.clientRef) {
+      const resolved = knownClients.get(quotation.clientRef);
+      if (resolved && resolved !== quotation.clientId) {
+        reportIssue(`Vínculo de cliente ${reportClientRef(quotation.clientRef)} divergente entre normalização e linhagem.`);
+        continue;
+      }
+    }
+    if (quotation.items.length === 0) {
+      reportIssue('Itens ausentes no orçamento legado.');
+      continue;
+    }
+    const problems: string[] = [];
+    if (knownProducts) {
+      for (const item of quotation.items) {
+        if (!knownProducts.has(item.sku)) problems.push(`item ${item.sku} fora do catálogo local`);
+      }
+    }
+    for (const item of quotation.items) {
+      const quantityProblem = validatePositiveDecimal(item.quantidade, `quantidade do item ${item.sku}`);
+      if (quantityProblem) problems.push(quantityProblem);
+      const suggestedProblem = validatePositiveDecimal(item.precoSugerido, `preço sugerido do item ${item.sku}`);
+      if (suggestedProblem) problems.push(suggestedProblem);
+      const appliedProblem = validatePositiveDecimal(item.precoAplicado, `preço aplicado do item ${item.sku}`);
+      if (appliedProblem) problems.push(appliedProblem);
+      const totalProblem = validateNonNegativeDecimal(item.totalLinha, `total da linha do item ${item.sku}`);
+      if (totalProblem) problems.push(totalProblem);
+    }
+    if (problems.length > 0) {
+      reportIssue(problems.join(' '));
+      continue;
+    }
+    const id = stableId('quotation', quotation.sourceId);
+    const revisionId = stableId('revision', `${quotation.sourceId}:v1`);
+    const client = clientsById.get(quotation.clientId);
+    const items = quotation.items.map((item) => {
+      const product = productsBySku.get(item.sku);
+      return {
+        id: stableId('item', `${quotation.sourceId}:item:${item.position}`),
+        position: item.position,
+        productSku: item.sku,
+        produtoSku: item.sku,
+        produtoNome: product?.nome || item.nome,
+        produtoDescricao: product?.descricao || '',
+        produtoUnidade: product?.unidade || item.unidade,
+        produtoCategoria: product?.categoria ?? null,
+        produtoMarca: product?.marca ?? null,
+        quantidade: canonicalDecimal(item.quantidade),
+        precoFonte: 'historico',
+        precoMinimoFaixa: null,
+        precoSugerido: canonicalDecimal(item.precoSugerido as string),
+        precoAplicado: canonicalDecimal(item.precoAplicado as string),
+        diferencaPreco: moneyDifference(item.precoSugerido as string, item.precoAplicado as string),
+        totalLinha: canonicalDecimal(item.totalLinha || '0'),
+        manualRate: false,
+        notas: item.notas,
+      };
+    });
+    const clientSnapshot = clientSnapshotOf(client, 'Cliente sem nome');
+    const revision: QuotationRevisionUnit = {
+      id: revisionId,
+      version: 1,
+      status: quotation.status,
+      validadeDias: quotation.terms.validadeDias,
+      pagamento: quotation.terms.pagamento || '',
+      entrega: quotation.terms.entrega || '',
+      fretePadrao: '0.00',
+      frete: quotation.terms.frete || '0.00',
+      observacoes: quotation.terms.observacoes || '',
+      prazoProducao: '',
+      templatePadrao: HISTORICAL_TEMPLATE_KEY,
+      templateHash: HISTORICAL_TEMPLATE_HASH,
+      ...clientSnapshot,
+      subtotal: canonicalDecimal(quotation.subtotal || '0'),
+      total: canonicalDecimal(quotation.total || '0'),
+      createdAt: parseDate(quotation.createdAt) || new Date(),
+    };
+    const document = quotation.status === 'enviado' || quotation.status === 'aprovado'
+      ? buildIssuedDocumentUnit(quotation)
+      : null;
+    const sourceHash = canonicalHash({
+      entity: 'orcamento',
+      payload: {
+        businessNumber: quotation.businessNumber,
+        clientId: quotation.clientId,
+        status: quotation.status,
+        year: quotation.year,
+        createdAt: quotation.createdAt,
+        terms: quotation.terms,
+        subtotal: quotation.subtotal,
+        total: quotation.total,
+        items: items.map((item) => ({
+          position: item.position,
+          productSku: item.productSku,
+          quantidade: item.quantidade,
+          precoSugerido: item.precoSugerido,
+          precoAplicado: item.precoAplicado,
+          totalLinha: item.totalLinha,
+        })),
+        document: document
+          ? { kind: document.kind, fileName: document.fileName, sizeBytes: document.sizeBytes, checksumSha256: document.checksumSha256 }
+          : null,
+      },
+    });
+    const lineage: FrappeLineageEntry[] = [{
+      sourceDoctype: 'Quotation',
+      sourceId: quotation.sourceId,
+      entityType: 'orcamento',
+      localKey: id,
+      canonicalHash: sourceHash,
+      legacyPayload: quotation.source,
+    }];
+    const unit: QuotationUnit = { id, revision, quotation, items, document, lineage, sourceHash };
+    quotationUnits.push(unit);
+    itemUnits.push(...items);
+  }
+  return { quotationUnits, itemUnits, issues };
 }
 
 export function normalizeFrappeDataset(dataset: FrappeDataset): NormalizedDataset {
@@ -739,8 +1287,9 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
   const produtos = emptyEntityReport();
   const faixas = emptyEntityReport();
   const clientes = emptyEntityReport();
+  const orcamentos = emptyEntityReport();
   const total = emptyEntityReport();
-  return { modo, dry_run: modo === 'dry-run', produtos, faixas, clientes, total, entities: { produtos, faixas, clientes } };
+  return { modo, dry_run: modo === 'dry-run', produtos, faixas, clientes, orcamentos, total, entities: { produtos, faixas, clientes, orcamentos } };
 }
 
 export function addDetail(report: EntityReport, detail: ImportDetail): void {
@@ -749,7 +1298,7 @@ export function addDetail(report: EntityReport, detail: ImportDetail): void {
 }
 
 export function finalizeReport(report: ImportReport): ImportReport {
-  const entities = [report.produtos, report.faixas, report.clientes];
+  const entities = [report.produtos, report.faixas, report.clientes, report.orcamentos];
   for (const entity of entities) {
     entity.detalhes.sort((left, right) => `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(`${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`));
     // This is the planned/read volume, not a commit count; apply failures do
@@ -772,7 +1321,7 @@ function totalValue(report: EntityReport, field: Exclude<ImportStatus, 'lidos' |
 
 export interface DatasetReadSummary {
   dataset: FrappeDataset;
-  lidos: { items: number; pricingRules: number; itemPrices: number; customers: number; leads: number };
+  lidos: { items: number; pricingRules: number; itemPrices: number; customers: number; leads: number; quotations: number };
 }
 
 /**
@@ -796,16 +1345,17 @@ export async function readFrappeDataset(source: FrappeListSource, pageSize = 200
     }
     return rows;
   };
-  const [items, pricingRules, itemPrices, customers, leads] = await Promise.all([
+  const [items, pricingRules, itemPrices, customers, leads, quotations] = await Promise.all([
     read('Item'),
     read('Pricing Rule'),
     read('Item Price'),
     read('Customer'),
     read('Lead'),
+    read('Quotation'),
   ]);
   return {
-    dataset: { items, pricingRules, itemPrices, customers, leads },
-    lidos: { items: items.length, pricingRules: pricingRules.length, itemPrices: itemPrices.length, customers: customers.length, leads: leads.length },
+    dataset: { items, pricingRules, itemPrices, customers, leads, quotations },
+    lidos: { items: items.length, pricingRules: pricingRules.length, itemPrices: itemPrices.length, customers: customers.length, leads: leads.length, quotations: quotations.length },
   };
 }
 

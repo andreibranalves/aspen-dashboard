@@ -2,12 +2,14 @@ import {
   addDetail,
   buildClientUnits,
   buildProductUnits,
+  buildQuotationUnits,
   canonicalHash,
   finalizeReport,
   makeReport,
   normalizeFrappeClientRecord,
   normalizeFrappeItem,
   normalizeFrappePriceDocuments,
+  normalizeFrappeQuotation,
   readFrappeDataset,
   validateFrappeDataset,
   type ClientUnit,
@@ -22,11 +24,14 @@ import {
   type NormalizedClient,
   type NormalizedPriceDocument,
   type NormalizedProduct,
+  type NormalizedQuotation,
   type ProductUnit,
+  type QuotationUnit,
   type SourceRecord,
 } from './lib/frappe-migration-core.js';
 import {
   createPostgresFrappeMigrationRepository,
+  stableClientUuid,
   type FrappeMigrationRepository,
   type FrappeMigrationState,
 } from '../_db/frappe-migration-repository.js';
@@ -194,6 +199,7 @@ function addReadCounts(report: ImportReport, dataset: FrappeDataset): void {
   report.produtos.lidos = dataset.items.length;
   report.faixas.lidos = (dataset.pricingRules || []).length + (dataset.itemPrices || []).length;
   report.clientes.lidos = (dataset.customers || []).length + (dataset.leads || []).length;
+  report.orcamentos.lidos = (dataset.quotations || []).length;
 }
 
 function duplicateSourceIds(records: SourceRecord[], doctype: string): Set<string> {
@@ -391,6 +397,34 @@ function processClientUnit(unit: ClientUnit, state: FrappeMigrationState, report
   return !exact;
 }
 
+function processQuotationUnit(unit: QuotationUnit, state: FrappeMigrationState, report: ImportReport): boolean {
+  const source = unit.quotation;
+  const previous = lineageFor(state, 'Quotation', source.sourceId);
+  if (previous && previous.entityType !== 'orcamento') {
+    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, 'Linhagem existente tem tipo de entidade incompatível.', source.businessNumber);
+    return false;
+  }
+  if (previous && previous.localKey !== unit.id) {
+    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, 'Documento legado ligado a outra entidade.', source.businessNumber);
+    return false;
+  }
+  const existingQuotation = state.quotations.find((quotation) => quotation.businessNumber === source.businessNumber);
+  if (existingQuotation && existingQuotation.id !== unit.id) {
+    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, `Número comercial ${source.businessNumber} já existe para outra entidade local.`, source.businessNumber);
+    return false;
+  }
+  if (!source.statusKnown) {
+    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, `Status legado desconhecido '${source.statusSource}' mapeado para rascunho.`, source.businessNumber);
+  }
+  if (previous && previous.canonicalHash === unit.sourceHash) {
+    add(report.orcamentos, 'ignorados', 'Quotation', source.sourceId, 'Orçamento equivalente já importado.', source.businessNumber);
+    return false;
+  }
+  if (previous) add(report.orcamentos, 'atualizados', 'Quotation', source.sourceId, 'Orçamento atualizado de forma compatível.', source.businessNumber);
+  else add(report.orcamentos, 'criados', 'Quotation', source.sourceId, 'Orçamento novo.', source.businessNumber);
+  return true;
+}
+
 function normalizeSafely(dataset: FrappeDataset, report: ImportReport) {
   const products: NormalizedProduct[] = [];
   for (const record of uniqueSourceRecords(dataset.items || [])) {
@@ -485,6 +519,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     localKey: string;
     pricingSources: Array<{ sourceDoctype: string; sourceId: string; localKey: string }>;
   }> = [];
+  const plannedClientUnits: ClientUnit[] = [];
   for (const unit of normalized.productUnits) {
     const productCheckpoint = checkpoint(report.produtos);
     const pricingCheckpoint = checkpoint(report.faixas);
@@ -506,14 +541,17 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const clientCheckpoint = checkpoint(report.clientes);
     const clientAction = processClientUnit(unit, state, report);
     sealCheckpoint(clientCheckpoint);
-    if (clientAction) writes.push({
-      run: () => repository.applyClientUnit(unit),
-      checkpoints: [clientCheckpoint],
-      sourceDoctype: unit.client.sourceDoctype,
-      sourceId: unit.client.sourceId,
-      localKey: unit.client.localKey,
-      pricingSources: [],
-    });
+    if (clientAction) {
+      writes.push({
+        run: () => repository.applyClientUnit(unit),
+        checkpoints: [clientCheckpoint],
+        sourceDoctype: unit.client.sourceDoctype,
+        sourceId: unit.client.sourceId,
+        localKey: unit.client.localKey,
+        pricingSources: [],
+      });
+      plannedClientUnits.push(unit);
+    }
   }
   if (options.mode === 'apply') {
     // Each callback is deliberately awaited independently. A failed product
@@ -534,6 +572,79 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         }
       }
     }
+  }
+
+  // ── Quotations (after clients so newly imported clients can be resolved) ──
+  const quotationState = options.mode === 'apply' ? await repository.loadState() : state;
+  const clientLineage = new Map<string, string>();
+  for (const entry of quotationState.lineage) {
+    if (entry.entityType === 'cliente') clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.localKey);
+  }
+  if (options.mode !== 'apply') {
+    // Dry-run has no persisted clients yet. Predict the deterministic client
+    // UUIDs that apply would produce so the report matches the apply outcome.
+    for (const unit of plannedClientUnits) {
+      const linked = unit.lineage
+        .map((entry) => lineageFor(quotationState, entry.sourceDoctype, entry.sourceId)?.localKey)
+        .find(Boolean);
+      const byDocument = unit.client.documento
+        ? quotationState.clients.find((client) => client.documento === unit.client.documento)
+        : undefined;
+      const id = linked || byDocument?.id || stableClientUuid(unit.client.localKey);
+      for (const entry of unit.lineage) clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, id);
+    }
+  }
+  const knownProducts = new Set(quotationState.products.map((product) => product.sku));
+  if (options.mode !== 'apply') {
+    for (const unit of normalized.productUnits) knownProducts.add(unit.product.sku);
+  }
+  const normalizedQuotations: NormalizedQuotation[] = [];
+  for (const record of uniqueSourceRecords(dataset.quotations || [])) {
+    try { normalizedQuotations.push(normalizeFrappeQuotation(record, clientLineage)); }
+    catch (error) {
+      add(report.orcamentos, 'erros', 'Quotation', String(record.name || record.id || ''), error instanceof Error ? error.message : 'Orçamento inválido.');
+    }
+  }
+  const builtQuotations = buildQuotationUnits(normalizedQuotations, clientLineage, {
+    clients: quotationState.clients,
+    products: quotationState.products,
+  }, knownProducts);
+  for (const issue of builtQuotations.issues) addDetail(report.orcamentos, issue);
+  for (const unit of builtQuotations.quotationUnits) {
+    const quotationCheckpoint = checkpoint(report.orcamentos);
+    const quotationAction = processQuotationUnit(unit, quotationState, report);
+    sealCheckpoint(quotationCheckpoint);
+    if (quotationAction) writes.push({
+      run: () => repository.applyQuotationUnit(unit),
+      checkpoints: [quotationCheckpoint],
+      sourceDoctype: 'Quotation',
+      sourceId: unit.quotation.sourceId,
+      localKey: unit.quotation.businessNumber,
+      pricingSources: [],
+    });
+  }
+  if (options.mode === 'apply') {
+    for (const write of writes) {
+      if (!write.checkpoints.some((saved) => saved.report === report.orcamentos)) continue;
+      try { await write.run(); }
+      catch {
+        const message = 'Não foi possível salvar o orçamento importado.';
+        for (const saved of write.checkpoints) rollbackCheckpoint(saved);
+        const quotationCheckpoint = write.checkpoints.find((saved) => saved.report === report.orcamentos);
+        if (quotationCheckpoint) add(report.orcamentos, 'erros', write.sourceDoctype, write.sourceId, message, write.localKey);
+      }
+    }
+    // Advance the per-year numbering counter past the highest imported number.
+    const afterState = await repository.loadState();
+    const maxByYear = new Map<number, number>();
+    for (const quotation of afterState.quotations) {
+      const match = /^ORC-(\d{4})(\d{4})$/.exec(quotation.businessNumber);
+      if (!match) continue;
+      const year = Number(match[1]);
+      const sequence = Number(match[2]);
+      maxByYear.set(year, Math.max(maxByYear.get(year) || 0, sequence));
+    }
+    for (const [year, lastNumber] of maxByYear) await repository.advanceQuoteSequence(year, lastNumber);
   }
   return { report: finalizeReport(report) };
 }

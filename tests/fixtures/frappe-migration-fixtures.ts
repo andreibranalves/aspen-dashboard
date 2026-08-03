@@ -55,3 +55,119 @@ export function createFrappeResumeFixture(): FrappeDataset {
     items: [...(base.items || []), { name: 'ITEM-RESUME', item_code: 'RESUME-SKU', item_name: 'Retomada' }],
   };
 }
+
+/**
+ * Sanitized historical Quotation records covering several years, statuses
+ * and clients together with the products/customers they reference.
+ */
+export function createFrappeQuotationFixture(): FrappeDataset {
+  return {
+    items: [
+      { name: 'ITEM-HIST-1', item_code: 'SKU-HIST-1', item_name: 'Produto Histórico 1', description: 'Aço', stock_uom: 'Und' },
+      { name: 'ITEM-HIST-2', item_code: 'SKU-HIST-2', item_name: 'Produto Histórico 2', stock_uom: 'Und' },
+    ],
+    pricingRules: [],
+    itemPrices: [],
+    customers: [
+      { name: 'CUST-HIST', customer_name: 'Cliente Histórico', tax_id: '12345678000190', email_id: 'historico@example.com' },
+    ],
+    leads: [],
+    quotations: [
+      {
+        name: 'QTN-2024-00042',
+        creation: '2024-03-15 10:30:00',
+        modified: '2024-03-16 08:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-HIST',
+        status: 'Submitted',
+        valid_till: '2024-04-14',
+        payment_terms_template: 'PIX à vista',
+        terms: 'Condições históricas',
+        net_total: '120.00',
+        grand_total: '120.00',
+        items: [
+          { idx: 1, item_code: 'SKU-HIST-1', item_name: 'Produto Histórico 1', qty: '10', uom: 'Und', rate: '6.00', price_list_rate: '6.00', amount: '60.00' },
+          { idx: 2, item_code: 'SKU-HIST-2', item_name: 'Produto Histórico 2', qty: '5', uom: 'Und', rate: '12.00', price_list_rate: '12.00', amount: '60.00' },
+        ],
+      },
+      {
+        name: 'QTN-2024-00043',
+        creation: '2024-03-16 14:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-HIST',
+        status: 'Draft',
+        items: [
+          { idx: 1, item_code: 'SKU-HIST-1', item_name: 'Produto Histórico 1', qty: '2', uom: 'Und', rate: '6.00', price_list_rate: '6.00', amount: '12.00' },
+        ],
+      },
+      {
+        name: 'QTN-2025-00007',
+        creation: '2025-01-20 09:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-HIST',
+        status: 'Ordered',
+        items: [
+          { idx: 1, item_code: 'SKU-HIST-2', item_name: 'Produto Histórico 2', qty: '3', uom: 'Und', rate: '12.00', price_list_rate: '12.00', amount: '36.00' },
+        ],
+      },
+    ],
+  };
+}
+
+/** Quotations covering data gaps: unknown status, missing client, no items, unknown SKU, invalid prices. */
+export function createFrappeQuotationEdgeFixture(): FrappeDataset {
+  const base = createFrappeQuotationFixture();
+  return {
+    ...base,
+    items: [...(base.items || []), { name: 'ITEM-EDGE', item_code: 'SKU-EDGE', item_name: 'Produto Borda' }],
+    customers: [...(base.customers || []), { name: 'CUST-EDGE', customer_name: 'Cliente Borda', tax_id: '11122233344' }],
+    quotations: [
+      {
+        name: 'QTN-2024-00010',
+        creation: '2024-02-01 10:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-EDGE',
+        status: 'Whatever',
+        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+      },
+      {
+        name: 'QTN-2024-00011',
+        creation: '2024-02-02 10:00:00',
+        status: 'Draft',
+        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+      },
+      {
+        name: 'QTN-2024-00012',
+        creation: '2024-02-03 10:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-EDGE',
+        status: 'Submitted',
+        items: [],
+      },
+      {
+        name: 'QTN-2024-00013',
+        creation: '2024-02-04 10:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-EDGE',
+        status: 'Submitted',
+        items: [{ idx: 1, item_code: 'SKU-FANTASMA', item_name: 'Fantasma', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+      },
+      {
+        name: 'QTN-2024-00014',
+        creation: '2024-02-05 10:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-EDGE',
+        status: 'Submitted',
+        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '', price_list_rate: '5.00', amount: '0' }],
+      },
+      {
+        name: 'QTN-2024-00015',
+        creation: '2024-02-06 10:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-EDGE',
+        status: 'Lost',
+        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+      },
+    ],
+  };
+}

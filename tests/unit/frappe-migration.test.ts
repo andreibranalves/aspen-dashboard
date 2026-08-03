@@ -3,9 +3,13 @@ import { describe, it } from 'node:test';
 
 import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
 import {
+  buildQuotationUnits,
   canonicalHash,
+  mapQuotationStatus,
+  normalizeFrappeQuotation,
   readFrappeDataset,
   runFrappeMigration,
+  stableId,
   type FrappeDataset,
 } from '../../api/_functions/frappe-migration.js';
 import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
@@ -14,6 +18,8 @@ import {
   createFrappeDuplicateFixture,
   createFrappeIncompleteFixture,
   createFrappeMigrationFixture,
+  createFrappeQuotationEdgeFixture,
+  createFrappeQuotationFixture,
 } from '../fixtures/frappe-migration-fixtures.ts';
 
 describe('migração Frappe CRM', () => {
@@ -285,8 +291,8 @@ describe('migração Frappe CRM', () => {
       assert.equal(result.report.clientes.criados, 2);
       if (mode === 'apply') {
         const lineage = repository.snapshot().lineage.filter((entry) => entry.entityType === 'cliente');
-        assert.equal(lineage.some((entry) => entry.sourceId === customerSourceId && entry.legacyPayload.tax_id === documents[0]), true);
-        assert.equal(lineage.some((entry) => entry.sourceId === leadSourceId && entry.legacyPayload.tax_id === documents[1]), true);
+        assert.equal(lineage.some((entry) => entry.sourceId === customerSourceId && entry.legacyPayload?.tax_id === documents[0]), true);
+        assert.equal(lineage.some((entry) => entry.sourceId === leadSourceId && entry.legacyPayload?.tax_id === documents[1]), true);
       }
     }
   });
@@ -444,5 +450,324 @@ describe('migração Frappe CRM', () => {
     assert.equal(result.report.clientes.divergentes, 0);
     assert.equal(repository.writes.clients, 1);
     assert.equal(repository.snapshot().lineage.filter((entry) => entry.entityType === 'cliente').length, 2);
+  });
+
+  it('mapeia todos os status Frappe e desconhecidos', () => {
+    const expectations: Array<[string, 'rascunho' | 'enviado' | 'aprovado' | 'perdido', boolean]> = [
+      ['Draft', 'rascunho', true],
+      ['Submitted', 'enviado', true],
+      ['Open', 'enviado', true],
+      ['Ordered', 'aprovado', true],
+      ['Completed', 'aprovado', true],
+      ['Closed', 'aprovado', true],
+      ['Lost', 'perdido', true],
+      ['Cancelled', 'perdido', true],
+      ['Expired', 'perdido', true],
+      ['submitted', 'enviado', true],
+      ['Whatever', 'rascunho', false],
+    ];
+    for (const [raw, status, known] of expectations) {
+      assert.deepEqual(mapQuotationStatus(raw), { status, source: raw, known });
+    }
+  });
+
+  it('normaliza orçamentos válidos com numeração, termos, itens e vínculo de cliente', () => {
+    const clientId = '11111111-1111-4111-8111-111111111111';
+    const clientLineage = new Map([['Customer:CUST-HIST', clientId]]);
+    const normalized = normalizeFrappeQuotation({
+      name: 'QTN-2024-00042',
+      creation: '2024-03-15 10:30:00',
+      quotation_to: 'Customer',
+      customer: 'CUST-HIST',
+      status: 'Submitted',
+      valid_till: '2024-04-14',
+      payment_terms_template: 'PIX à vista',
+      terms: 'Condições históricas',
+      net_total: '120.00',
+      grand_total: '120.00',
+      items: [
+        { idx: 1, item_code: 'SKU-HIST-1', item_name: 'Produto Um', qty: '10', uom: 'Und', rate: '6.00', price_list_rate: '6.00', amount: '60.00' },
+        { idx: 2, item_code: 'SKU-HIST-2', item_name: 'Produto Dois', qty: '5', uom: 'Und', rate: '12.00', price_list_rate: '12.00', amount: '60.00' },
+      ],
+    }, clientLineage);
+    assert.equal(normalized.sourceId, 'QTN-2024-00042');
+    assert.equal(normalized.businessNumber, 'ORC-20240042');
+    assert.equal(normalized.year, 2024);
+    assert.equal(normalized.status, 'enviado');
+    assert.equal(normalized.statusKnown, true);
+    assert.equal(normalized.clientId, clientId);
+    assert.equal(normalized.terms.validadeDias, 30);
+    assert.equal(normalized.terms.pagamento, 'PIX à vista');
+    assert.equal(normalized.terms.observacoes, 'Condições históricas');
+    assert.equal(normalized.items.length, 2);
+    assert.equal(normalized.items[0].position, 1);
+    assert.equal(normalized.items[1].position, 2);
+    assert.equal(normalized.items[0].sku, 'SKU-HIST-1');
+    assert.equal(normalized.items[0].quantidade, '10');
+    assert.equal(normalized.subtotal, '120.00');
+    assert.equal(normalized.total, '120.00');
+  });
+
+  it('rejeita orçamentos sem ano ou sem sequência numérica no nome', () => {
+    const clientLineage = new Map();
+    assert.throws(
+      () => normalizeFrappeQuotation({ name: 'QTN-00042', creation: '', status: 'Draft' }, clientLineage),
+      /ano identificável/,
+    );
+    assert.throws(
+      () => normalizeFrappeQuotation({ name: 'ORCAMENTO', creation: '2024-01-01 10:00:00', status: 'Draft' }, clientLineage),
+      /sequência numérica/,
+    );
+    assert.throws(
+      () => normalizeFrappeQuotation({ creation: '2024-01-01 10:00:00', status: 'Draft' }, clientLineage),
+      /sem identificador legado/,
+    );
+  });
+
+  it('constrói unidades de orçamento com UUIDs estáveis, snapshot de cliente/produto e documento histórico', () => {
+    const clientId = '11111111-1111-4111-8111-111111111111';
+    const clientLineage = new Map([['Customer:CUST-HIST', clientId]]);
+    const normalized = normalizeFrappeQuotation({
+      name: 'QTN-2024-00042',
+      creation: '2024-03-15 10:30:00',
+      quotation_to: 'Customer',
+      customer: 'CUST-HIST',
+      status: 'Submitted',
+      net_total: '60.00',
+      grand_total: '60.00',
+      items: [{ idx: 1, item_code: 'SKU-HIST-1', item_name: 'Produto Um', qty: '10', uom: 'Und', rate: '6.00', price_list_rate: '6.00', amount: '60.00' }],
+    }, clientLineage);
+    const result = buildQuotationUnits([normalized], clientLineage, {
+      clients: [{ id: clientId, nome: 'Cliente Histórico', documento: '12345678000190', email: null, telefone: null, notes: null, address: { endereco: 'Rua A', numero: '10', bairro: 'Centro', complemento: null, municipio: 'São Paulo', uf: 'SP', cep: '01000000' } }],
+      products: [{ sku: 'SKU-HIST-1', nome: 'Produto Um', descricao: 'Aço', unidade: 'Und', categoria: 'Estamparia', marca: null, ativo: true, precoBase: null, precos: [] }],
+    }, new Set(['SKU-HIST-1']));
+    assert.equal(result.issues.length, 0);
+    assert.equal(result.quotationUnits.length, 1);
+    assert.equal(result.itemUnits.length, 1);
+    const unit = result.quotationUnits[0];
+    assert.equal(unit.id, stableId('quotation', 'QTN-2024-00042'));
+    assert.equal(unit.revision.id, stableId('revision', 'QTN-2024-00042:v1'));
+    assert.equal(unit.items[0].id, stableId('item', 'QTN-2024-00042:item:1'));
+    assert.equal(unit.revision.version, 1);
+    assert.equal(unit.revision.status, 'enviado');
+    assert.equal(unit.revision.clienteNome, 'Cliente Histórico');
+    assert.equal(unit.revision.clienteDocumento, '12345678000190');
+    assert.equal(unit.revision.clienteMunicipio, 'São Paulo');
+    assert.equal(unit.revision.validadeDias, 15);
+    assert.equal(unit.revision.subtotal, '60');
+    assert.equal(unit.revision.total, '60');
+    assert.equal(unit.items[0].produtoNome, 'Produto Um');
+    assert.equal(unit.items[0].produtoDescricao, 'Aço');
+    assert.equal(unit.items[0].quantidade, '10');
+    assert.equal(unit.items[0].precoSugerido, '6');
+    assert.equal(unit.items[0].precoAplicado, '6');
+    assert.equal(unit.items[0].diferencaPreco, '0');
+    assert.equal(unit.items[0].precoFonte, 'historico');
+    assert.equal(unit.document?.kind, 'historical_pdf_import');
+    assert.equal(unit.document?.blobPathname, 'historical/QTN-2024-00042.pdf');
+    assert.equal(unit.document?.sizeBytes, 0);
+    assert.match(unit.document?.checksumSha256 || '', /^[0-9a-f]{64}$/);
+    assert.equal(unit.lineage[0].entityType, 'orcamento');
+    assert.equal(unit.lineage[0].localKey, unit.id);
+    assert.equal(unit.lineage[0].sourceDoctype, 'Quotation');
+  });
+
+  it('não emite documento histórico para orçamentos em rascunho ou perdidos', () => {
+    const clientId = '11111111-1111-4111-8111-111111111111';
+    const clientLineage = new Map([['Customer:CUST-HIST', clientId]]);
+    const context = {
+      clients: [{ id: clientId, nome: 'Cliente', documento: null, email: null, telefone: null, notes: null, address: null }],
+      products: [{ sku: 'SKU-1', nome: 'Produto', descricao: '', unidade: 'Und', categoria: null, marca: null, ativo: true, precoBase: null, precos: [] }],
+    };
+    for (const status of ['Draft', 'Lost'] as const) {
+      const normalized = normalizeFrappeQuotation({
+        name: status === 'Draft' ? 'QTN-2024-00043' : 'QTN-2024-00015',
+        creation: '2024-02-01 10:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-HIST',
+        status,
+        items: [{ idx: 1, item_code: 'SKU-1', item_name: 'Produto', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+      }, clientLineage);
+      const result = buildQuotationUnits([normalized], clientLineage, context, new Set(['SKU-1']));
+      assert.equal(result.quotationUnits.length, 1);
+      assert.equal(result.quotationUnits[0].document, null);
+    }
+  });
+
+  it('reporta lacunas de orçamentos: cliente ausente, itens vazios, SKU desconhecido e preço inválido', () => {
+    const clientId = '11111111-1111-4111-8111-111111111111';
+    const clientLineage = new Map([['Customer:CUST-HIST', clientId]]);
+    const context = {
+      clients: [{ id: clientId, nome: 'Cliente', documento: null, email: null, telefone: null, notes: null, address: null }],
+      products: [{ sku: 'SKU-1', nome: 'Produto', descricao: '', unidade: 'Und', categoria: null, marca: null, ativo: true, precoBase: null, precos: [] }],
+    };
+    const quotations = [
+      normalizeFrappeQuotation({ name: 'QTN-2024-00011', creation: '2024-02-02 10:00:00', status: 'Draft', items: [{ idx: 1, item_code: 'SKU-1', item_name: 'Produto', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }] }, clientLineage),
+      normalizeFrappeQuotation({ name: 'QTN-2024-00012', creation: '2024-02-03 10:00:00', quotation_to: 'Customer', customer: 'CUST-HIST', status: 'Submitted', items: [] }, clientLineage),
+      normalizeFrappeQuotation({ name: 'QTN-2024-00013', creation: '2024-02-04 10:00:00', quotation_to: 'Customer', customer: 'CUST-HIST', status: 'Submitted', items: [{ idx: 1, item_code: 'SKU-FANTASMA', item_name: 'Fantasma', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }] }, clientLineage),
+      normalizeFrappeQuotation({ name: 'QTN-2024-00014', creation: '2024-02-05 10:00:00', quotation_to: 'Customer', customer: 'CUST-HIST', status: 'Submitted', items: [{ idx: 1, item_code: 'SKU-1', item_name: 'Produto', qty: '1', uom: 'Und', rate: '', price_list_rate: '5.00', amount: '0' }] }, clientLineage),
+    ];
+    const result = buildQuotationUnits(quotations, clientLineage, context, new Set(['SKU-1']));
+    assert.equal(result.quotationUnits.length, 0);
+    assert.equal(result.issues.length, 4);
+    const messages = result.issues.map((issue) => issue.mensagem).join(' ');
+    assert.match(messages, /Cliente não localizado/);
+    assert.match(messages, /Itens ausentes/);
+    assert.match(messages, /SKU-FANTASMA/);
+    assert.match(messages, /preço aplicado/);
+  });
+
+  it('bloqueia número comercial duplicado dentro do mesmo dataset', () => {
+    const clientId = '11111111-1111-4111-8111-111111111111';
+    const clientLineage = new Map([['Customer:CUST-HIST', clientId]]);
+    const context = {
+      clients: [{ id: clientId, nome: 'Cliente', documento: null, email: null, telefone: null, notes: null, address: null }],
+      products: [{ sku: 'SKU-1', nome: 'Produto', descricao: '', unidade: 'Und', categoria: null, marca: null, ativo: true, precoBase: null, precos: [] }],
+    };
+    const item = { idx: 1, item_code: 'SKU-1', item_name: 'Produto', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' };
+    // Distinct source records that both map to ORC-20240042 must not both import.
+    const quotations = [
+      normalizeFrappeQuotation({ name: 'QTN-2024-00042', creation: '2024-03-15 10:30:00', quotation_to: 'Customer', customer: 'CUST-HIST', status: 'Submitted', items: [item] }, clientLineage),
+      normalizeFrappeQuotation({ name: 'QT-2024-00042', creation: '2024-03-15 11:00:00', quotation_to: 'Customer', customer: 'CUST-HIST', status: 'Submitted', items: [item] }, clientLineage),
+      normalizeFrappeQuotation({ name: 'QTN-2024-00042', creation: '2024-03-15 12:00:00', quotation_to: 'Customer', customer: 'CUST-HIST', status: 'Submitted', items: [item] }, clientLineage),
+    ];
+    const result = buildQuotationUnits(quotations, clientLineage, context, new Set(['SKU-1']));
+    assert.equal(result.quotationUnits.length, 1);
+    assert.equal(result.issues.length, 2);
+    const messages = result.issues.map((issue) => issue.mensagem).join(' ');
+    assert.match(messages, /duplicado no dataset/);
+    assert.match(messages, /repetido com dados diferentes/);
+  });
+
+  it('importa orçamentos com dry-run sem persistir e apply idempotente avançando o contador', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset = createFrappeQuotationFixture();
+    const dry = await runFrappeMigration({ mode: 'dry-run', dataset, repository });
+    assert.equal(dry.report.orcamentos.criados, 3);
+    assert.equal(dry.report.orcamentos.divergentes, 0);
+    assert.equal(repository.writes.quotations, 0);
+    assert.equal(repository.snapshot().quotations.length, 0);
+    assert.deepEqual(repository.snapshot().sequences, {});
+
+    const applied = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(applied.report.orcamentos.criados, 3);
+    const snapshot = repository.snapshot();
+    assert.equal(snapshot.quotations.length, 3);
+    assert.deepEqual([...snapshot.quotations].map((row) => row.businessNumber).sort(), ['ORC-20240042', 'ORC-20240043', 'ORC-20250007']);
+    assert.deepEqual([...snapshot.quotations].map((row) => row.status).sort(), ['aprovado', 'enviado', 'rascunho']);
+    assert.deepEqual(snapshot.sequences, { 2024: 43, 2025: 7 });
+    const withDocuments = snapshot.quotations.filter((row) => row.document !== null);
+    assert.equal(withDocuments.length, 2);
+    assert.equal(withDocuments.every((row) => row.document?.kind === 'historical_pdf_import'), true);
+    const revisionRows = snapshot.quotations.map((row) => row.revision);
+    assert.equal(revisionRows.every((revision) => revision?.version === 1), true);
+    assert.equal(snapshot.quotations.reduce((sum, row) => sum + (row.items?.length || 0), 0), 4);
+    assert.equal(repository.writes.quotations, 3);
+
+    const rerun = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(rerun.report.orcamentos.ignorados, 3);
+    assert.equal(repository.snapshot().quotations.length, 3);
+    assert.equal(repository.writes.quotations, 3);
+    assert.deepEqual(repository.snapshot().sequences, { 2024: 43, 2025: 7 });
+    const lineageRows = repository.snapshot().lineage.filter((entry) => entry.entityType === 'orcamento');
+    assert.equal(lineageRows.length, 3);
+  });
+
+  it('avança o contador anual somente após apply e nunca o reduz', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    await repository.advanceQuoteSequence(2024, 43);
+    await repository.advanceQuoteSequence(2024, 7);
+    assert.equal(repository.snapshot().sequences[2024], 43);
+    const dataset = createFrappeQuotationFixture();
+    await runFrappeMigration({ mode: 'dry-run', dataset, repository });
+    assert.deepEqual(repository.snapshot().sequences, { 2024: 43 });
+    await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.deepEqual(repository.snapshot().sequences, { 2024: 43, 2025: 7 });
+  });
+
+  it('relata divergências de lacunas e retoma após falha transacional de orçamento', async () => {
+    const repository = new MemoryFrappeMigrationRepository({ failQuotationKey: 'QTN-2025-00007' });
+    const first = await runFrappeMigration({ mode: 'apply', dataset: createFrappeQuotationFixture(), repository });
+    assert.equal(first.report.orcamentos.criados, 2);
+    assert.equal(first.report.orcamentos.erros, 1);
+    assert.equal(repository.snapshot().quotations.length, 2);
+    assert.equal(first.report.orcamentos.detalhes.some((detail) => detail.status === 'erros' && detail.source_id === 'QTN-2025-00007'), true);
+
+    repository.failQuotationKey = undefined;
+    const retry = await runFrappeMigration({ mode: 'apply', dataset: createFrappeQuotationFixture(), repository });
+    assert.equal(retry.report.orcamentos.criados, 1);
+    assert.equal(retry.report.orcamentos.erros, 0);
+    assert.equal(repository.snapshot().quotations.length, 3);
+    assert.deepEqual(repository.snapshot().sequences, { 2024: 43, 2025: 7 });
+
+    const edge = await runFrappeMigration({ mode: 'dry-run', dataset: createFrappeQuotationEdgeFixture(), repository });
+    const messages = edge.report.orcamentos.detalhes.map((detail) => detail.mensagem).join(' ');
+    assert.match(messages, /Status legado desconhecido/);
+    assert.match(messages, /Cliente não localizado/);
+    assert.match(messages, /Itens ausentes/);
+    assert.match(messages, /SKU-FANTASMA/);
+    assert.match(messages, /preço aplicado/);
+    assert.equal(edge.report.orcamentos.detalhes.some((detail) => detail.status === 'divergentes' && /Status legado desconhecido/.test(detail.mensagem)), true);
+  });
+
+  it('bloqueia remapeamento de linhagem e colisão de número comercial de orçamento', async () => {
+    const clientId = '11111111-1111-4111-8111-111111111111';
+    const dataset = createFrappeQuotationFixture();
+    const corruptRepository = new MemoryFrappeMigrationRepository({ state: {
+      lineage: [{ sourceDoctype: 'Quotation', sourceId: 'QTN-2024-00042', entityType: 'cliente', localKey: 'outra-entidade', canonicalHash: 'f'.repeat(64), legacyPayload: {} }],
+    } });
+    const corruptResult = await runFrappeMigration({ mode: 'apply', dataset, repository: corruptRepository });
+    assert.equal(corruptResult.report.orcamentos.divergentes, 1);
+    assert.equal(corruptRepository.writes.quotations, 2);
+
+    const collisionRepository = new MemoryFrappeMigrationRepository({ state: {
+      clients: [{ id: clientId, nome: 'Cliente', documento: null, email: null, telefone: null, notes: null, address: null }],
+      quotations: [{ id: '00000000-0000-4000-8000-000000000099', businessNumber: 'ORC-20240042', clientId, status: 'rascunho' }],
+    } });
+    const collisionResult = await runFrappeMigration({ mode: 'apply', dataset, repository: collisionRepository });
+    assert.equal(collisionResult.report.orcamentos.divergentes, 1);
+    assert.match(collisionResult.report.orcamentos.detalhes[0].mensagem, /já existe para outra entidade/);
+    assert.equal(collisionRepository.writes.quotations, 2);
+  });
+
+  it('não expõe CPF/CNPJ em mensagens de divergência de orçamento', async () => {
+    const normalized = '12.345.678/0001-90';
+    const digits = '12345678000190';
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({ mode: 'dry-run', repository, dataset: {
+      items: [{ name: 'ITEM-PII-Q', item_code: 'SKU-PII', item_name: 'Produto' }],
+      customers: [],
+      leads: [],
+      quotations: [{
+        name: 'QTN-2024-00099',
+        creation: '2024-05-01 10:00:00',
+        quotation_to: 'Customer',
+        customer: normalized,
+        status: 'Submitted',
+        items: [{ idx: 1, item_code: 'SKU-PII', item_name: 'Produto', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+      }],
+    } });
+    const serialized = JSON.stringify(result);
+    assert.equal(serialized.includes(normalized), false);
+    assert.equal(serialized.includes(digits), false);
+    assert.equal(result.report.orcamentos.divergentes, 1);
+    assert.match(result.report.orcamentos.detalhes[0].mensagem, /Cliente não localizado/);
+  });
+
+  it('lê o doctype Quotation com paginação estável', async () => {
+    const calls: Array<{ doctype: string; order_by: string }> = [];
+    const source = {
+      async list(doctype: string, options: { limit: number; start: number; order_by: string }) {
+        calls.push({ doctype, order_by: options.order_by });
+        const values = doctype === 'Quotation'
+          ? [{ name: 'QTN-2024-00001', creation: '2024-01-01 09:00:00', status: 'Draft', items: [] }]
+          : [];
+        return options.start === 0 ? values : [];
+      },
+    };
+    const result = await readFrappeDataset(source, 2);
+    assert.equal(result.dataset.quotations?.length, 1);
+    assert.equal(result.lidos.quotations, 1);
+    assert.equal(calls.filter((call) => call.doctype === 'Quotation').every((call) => call.order_by === 'creation asc, name asc'), true);
   });
 });

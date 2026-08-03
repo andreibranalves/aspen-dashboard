@@ -11,7 +11,7 @@ import postgres from 'postgres';
 import { createPostgresSettingsRepository } from '../../api/_db/settings-repository.js';
 import { createPostgresProductsRepository, ProductRepositoryError } from '../../api/_db/products-repository.js';
 import { createPostgresClientRepository } from '../../api/_db/client-repository.js';
-import { appSettings, clients, products } from '../../api/_db/schema.js';
+import * as schema from '../../api/_db/schema.js';
 import { createHandler } from '../../api/_functions/settings.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -35,7 +35,7 @@ function parse(result: { body?: string }): any {
   return JSON.parse(result.body || '{}');
 }
 
-test('PostgreSQL settings/products/clients migration and persistence vertical slice', async () => {
+test('PostgreSQL settings/products/clients migration and persistence vertical slice', { skip: !TEST_DATABASE_URL }, async () => {
     assert.ok(TEST_DATABASE_URL, 'TEST_DATABASE_URL é obrigatório; use o container dedicado postgres:16.');
     const client = postgres(TEST_DATABASE_URL, {
       max: 1,
@@ -44,7 +44,7 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
       idle_timeout: 20,
       onnotice: () => {},
     });
-    const db = drizzle(client, { schema: { appSettings, products, clients } });
+    const db = drizzle(client, { schema });
 
     try {
       // TEST_DATABASE_URL is intentionally a dedicated integration database.

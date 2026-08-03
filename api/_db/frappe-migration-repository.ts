@@ -1,9 +1,19 @@
 import { createHash } from 'node:crypto';
 
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
-import { frappeImportLineage, clients, productPricingTiers, products } from './schema.js';
+import {
+  clients,
+  frappeImportLineage,
+  issuedDocuments,
+  productPricingTiers,
+  products,
+  quoteRevisionItems,
+  quoteRevisions,
+  quoteSequences,
+  quotations,
+} from './schema.js';
 import type {
   ClientUnit,
   ExistingClient,
@@ -12,19 +22,101 @@ import type {
   FrappeLineageEntry,
   ProductUnit,
   PricingTierInput,
+  QuotationStatus,
+  QuotationUnit,
   SourceRecord,
 } from '../_functions/lib/frappe-migration-core.js';
+
+export interface ExistingQuotationRevisionItem {
+  id: string;
+  position: number;
+  productSku: string;
+  produtoSku: string;
+  produtoNome: string;
+  produtoDescricao: string;
+  produtoUnidade: string;
+  produtoCategoria: string | null;
+  produtoMarca: string | null;
+  quantidade: string;
+  precoFonte: string;
+  precoMinimoFaixa: string | null;
+  precoSugerido: string;
+  precoAplicado: string;
+  diferencaPreco: string;
+  totalLinha: string;
+  manualRate: boolean;
+  notas: string | null;
+}
+
+export interface ExistingQuotationRevision {
+  id: string;
+  version: number;
+  status: QuotationStatus;
+  validadeDias: number;
+  pagamento: string;
+  entrega: string;
+  fretePadrao: string;
+  frete: string;
+  observacoes: string;
+  prazoProducao: string;
+  templatePadrao: string;
+  templateHash: string;
+  clienteNome: string;
+  clienteDocumento: string | null;
+  clienteEmail: string | null;
+  clienteTelefone: string | null;
+  clienteEndereco: string | null;
+  clienteNumero: string | null;
+  clienteBairro: string | null;
+  clienteComplemento: string | null;
+  clienteMunicipio: string | null;
+  clienteUf: string | null;
+  clienteCep: string | null;
+  clienteNotas: string | null;
+  subtotal: string;
+  total: string;
+  createdAt: Date;
+}
+
+export interface ExistingIssuedDocument {
+  id: string;
+  kind: string;
+  blobPathname: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  templateKey: string;
+  templateHash: string;
+  createdAt: Date;
+}
+
+export interface ExistingQuotation {
+  id: string;
+  businessNumber: string;
+  clientId: string;
+  status: QuotationStatus;
+  createdAt?: Date;
+  revision?: ExistingQuotationRevision;
+  items?: ExistingQuotationRevisionItem[];
+  document?: ExistingIssuedDocument | null;
+}
 
 export interface FrappeMigrationState {
   products: ExistingProduct[];
   clients: ExistingClient[];
+  quotations: ExistingQuotation[];
   lineage: ExistingLineage[];
+  /** Per-year numbering counters (year → last reserved number). */
+  sequences: Record<number, number>;
 }
 
 export interface FrappeMigrationRepository {
   loadState(): Promise<FrappeMigrationState>;
   applyProductUnit(unit: ProductUnit): Promise<void>;
   applyClientUnit(unit: ClientUnit): Promise<void>;
+  applyQuotationUnit(unit: QuotationUnit): Promise<void>;
+  advanceQuoteSequence(year: number, lastNumber: number): Promise<void>;
 }
 
 type DatabaseProvider = () => AppDatabase;
@@ -48,6 +140,12 @@ function stableUuid(key: string): string {
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+/**
+ * Deterministic client UUID (stable across reruns).  Exported so the handler
+ * can predict dry-run client identifiers before any client unit is applied.
+ */
+export const stableClientUuid = stableUuid;
 
 function addressFromRow(row: typeof clients.$inferSelect) {
   const values = [row.endereco, row.numero, row.bairro, row.complemento, row.municipio, row.uf, row.cep];
@@ -74,11 +172,13 @@ export function createPostgresFrappeMigrationRepository(
   return {
     async loadState(): Promise<FrappeMigrationState> {
       const db = getDb();
-      const [productRows, tierRows, clientRows, lineageRows] = await Promise.all([
+      const [productRows, tierRows, clientRows, lineageRows, quotationRows, sequenceRows] = await Promise.all([
         db.select().from(products).orderBy(asc(products.sku)),
         db.select().from(productPricingTiers).orderBy(asc(productPricingTiers.productSku), asc(productPricingTiers.minimumQuantity)),
         db.select().from(clients).orderBy(asc(clients.id)),
         db.select().from(frappeImportLineage).orderBy(asc(frappeImportLineage.sourceDoctype), asc(frappeImportLineage.sourceId)),
+        db.select().from(quotations).orderBy(asc(quotations.businessNumber)),
+        db.select().from(quoteSequences),
       ]);
       const tiersBySku = new Map<string, PricingTierInput[]>();
       for (const tier of tierRows) {
@@ -115,6 +215,14 @@ export function createPostgresFrappeMigrationRepository(
           canonicalHash: row.canonicalHash,
           legacyPayload: sourcePayload(row.legacyPayload),
         })),
+        quotations: quotationRows.map((row) => ({
+          id: row.id,
+          businessNumber: row.businessNumber,
+          clientId: row.clientId,
+          status: row.status as QuotationStatus,
+          createdAt: row.createdAt,
+        })),
+        sequences: Object.fromEntries(sequenceRows.map((row) => [row.year, row.lastNumber])),
       };
     },
 
@@ -209,6 +317,119 @@ export function createPostgresFrappeMigrationRepository(
         }
       });
     },
+
+    async applyQuotationUnit(unit: QuotationUnit): Promise<void> {
+      const db = getDb();
+      await db.transaction(async (tx) => {
+        const clientId = unit.quotation.clientId;
+        if (!clientId) throw new Error('Cliente do orçamento não importado.');
+        const [clientRow] = await tx.select({ id: clients.id }).from(clients).where(eq(clients.id, clientId)).limit(1);
+        if (!clientRow) throw new Error('Cliente do orçamento não importado.');
+        const createdAt = unit.revision.createdAt;
+        await tx.insert(quotations).values({
+          id: unit.id,
+          businessNumber: unit.quotation.businessNumber,
+          clientId,
+          status: unit.quotation.status,
+          createdAt,
+          updatedAt: createdAt,
+        }).onConflictDoUpdate({
+          target: quotations.id,
+          set: {
+            businessNumber: unit.quotation.businessNumber,
+            clientId,
+            status: unit.quotation.status,
+            updatedAt: new Date(),
+          },
+        });
+        const revision = unit.revision;
+        const revisionValues = {
+          quotationId: unit.id,
+          version: revision.version,
+          status: revision.status,
+          validadeDias: revision.validadeDias,
+          pagamento: revision.pagamento,
+          entrega: revision.entrega,
+          fretePadrao: revision.fretePadrao,
+          frete: revision.frete,
+          observacoes: revision.observacoes,
+          prazoProducao: revision.prazoProducao,
+          templatePadrao: revision.templatePadrao,
+          templateHash: revision.templateHash,
+          clienteNome: revision.clienteNome,
+          clienteDocumento: revision.clienteDocumento,
+          clienteEmail: revision.clienteEmail,
+          clienteTelefone: revision.clienteTelefone,
+          clienteEndereco: revision.clienteEndereco,
+          clienteNumero: revision.clienteNumero,
+          clienteBairro: revision.clienteBairro,
+          clienteComplemento: revision.clienteComplemento,
+          clienteMunicipio: revision.clienteMunicipio,
+          clienteUf: revision.clienteUf,
+          clienteCep: revision.clienteCep,
+          clienteNotas: revision.clienteNotas,
+          subtotal: revision.subtotal,
+          total: revision.total,
+          createdAt: revision.createdAt,
+        };
+        await tx.insert(quoteRevisions).values({ id: revision.id, ...revisionValues }).onConflictDoUpdate({
+          target: quoteRevisions.id,
+          set: { ...revisionValues },
+        });
+        await tx.delete(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revision.id));
+        if (unit.items.length > 0) {
+          await tx.insert(quoteRevisionItems).values(unit.items.map((item) => ({
+            id: item.id,
+            revisionId: revision.id,
+            position: item.position,
+            productSku: item.productSku,
+            quantidade: item.quantidade,
+            produtoSku: item.produtoSku,
+            produtoNome: item.produtoNome,
+            produtoDescricao: item.produtoDescricao,
+            produtoUnidade: item.produtoUnidade,
+            produtoCategoria: item.produtoCategoria,
+            produtoMarca: item.produtoMarca,
+            precoFonte: item.precoFonte,
+            precoMinimoFaixa: item.precoMinimoFaixa,
+            precoSugerido: item.precoSugerido,
+            precoAplicado: item.precoAplicado,
+            diferencaPreco: item.diferencaPreco,
+            totalLinha: item.totalLinha,
+            manualRate: item.manualRate,
+          })));
+        }
+        if (unit.document) {
+          const document = unit.document;
+          const documentValues = {
+            quotationId: unit.id,
+            revisionId: revision.id,
+            kind: document.kind,
+            blobPathname: document.blobPathname,
+            fileName: document.fileName,
+            mimeType: document.mimeType,
+            sizeBytes: document.sizeBytes,
+            checksumSha256: document.checksumSha256,
+            templateKey: document.templateKey,
+            templateHash: document.templateHash,
+            createdAt: revision.createdAt,
+          };
+          await tx.insert(issuedDocuments).values({ id: document.id, ...documentValues }).onConflictDoUpdate({
+            target: issuedDocuments.id,
+            set: { ...documentValues },
+          });
+        }
+        await upsertLineage(tx, unit.lineage);
+      });
+    },
+
+    async advanceQuoteSequence(year: number, lastNumber: number): Promise<void> {
+      const db = getDb();
+      await db.insert(quoteSequences).values({ year, lastNumber }).onConflictDoUpdate({
+        target: quoteSequences.year,
+        set: { lastNumber: sql`GREATEST(${quoteSequences.lastNumber}, ${lastNumber})` },
+      });
+    },
   };
 }
 
@@ -247,30 +468,47 @@ export interface MemoryFrappeMigrationRepositoryOptions {
   state?: Partial<FrappeMigrationState>;
   failProductSku?: string;
   failClientKey?: string;
+  failQuotationKey?: string;
+}
+
+function cloneQuotation(value: ExistingQuotation): ExistingQuotation {
+  return {
+    ...value,
+    createdAt: value.createdAt ? new Date(value.createdAt) : undefined,
+    revision: value.revision ? { ...value.revision, createdAt: new Date(value.revision.createdAt) } : undefined,
+    items: value.items?.map((item) => ({ ...item })),
+    document: value.document ? { ...value.document, createdAt: new Date(value.document.createdAt) } : null,
+  };
 }
 
 export class MemoryFrappeMigrationRepository implements FrappeMigrationRepository {
   private state: FrappeMigrationState;
-  readonly writes = { products: 0, clients: 0, lineage: 0 };
-  readonly transactions = { products: 0, clients: 0 };
+  readonly writes = { products: 0, clients: 0, quotations: 0, lineage: 0 };
+  readonly transactions = { products: 0, clients: 0, quotations: 0 };
   failProductSku?: string;
   failClientKey?: string;
+  failQuotationKey?: string;
 
   constructor(options: MemoryFrappeMigrationRepositoryOptions = {}) {
     this.state = {
       products: [...(options.state?.products || [])].map((value) => ({ ...value, precos: [...(value.precos || [])] })),
       clients: [...(options.state?.clients || [])].map((value) => ({ ...value, address: value.address ? { ...value.address } : null })),
+      quotations: (options.state?.quotations || []).map(cloneQuotation),
       lineage: [...(options.state?.lineage || [])].map((value) => ({ ...value, legacyPayload: value.legacyPayload ? { ...value.legacyPayload } : {} })),
+      sequences: { ...(options.state?.sequences || {}) },
     };
     this.failProductSku = options.failProductSku;
     this.failClientKey = options.failClientKey;
+    this.failQuotationKey = options.failQuotationKey;
   }
 
   async loadState(): Promise<FrappeMigrationState> {
     return {
       products: this.state.products.map((value) => ({ ...value, precos: [...(value.precos || [])] })),
       clients: this.state.clients.map((value) => ({ ...value, address: value.address ? { ...value.address } : null })),
+      quotations: this.state.quotations.map(cloneQuotation),
       lineage: this.state.lineage.map((value) => ({ ...value, legacyPayload: value.legacyPayload ? { ...value.legacyPayload } : {} })),
+      sequences: { ...this.state.sequences },
     };
   }
 
@@ -327,6 +565,42 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     this.state = next;
     this.writes.clients += 1;
     this.writes.lineage += unit.lineage.length;
+  }
+
+  async applyQuotationUnit(unit: QuotationUnit): Promise<void> {
+    this.transactions.quotations += 1;
+    if (this.failQuotationKey === unit.quotation.sourceId) throw new Error('Falha transacional de orçamento.');
+    const next = await this.loadState();
+    const clientId = unit.quotation.clientId;
+    if (!clientId || !next.clients.some((value) => value.id === clientId)) throw new Error('Cliente do orçamento não importado.');
+    const quotation: ExistingQuotation = {
+      id: unit.id,
+      businessNumber: unit.quotation.businessNumber,
+      clientId,
+      status: unit.quotation.status,
+      createdAt: unit.revision.createdAt,
+      revision: {
+        ...unit.revision,
+        id: unit.revision.id,
+        createdAt: new Date(unit.revision.createdAt),
+      },
+      items: unit.items.map((item) => ({ ...item })),
+      document: unit.document ? { ...unit.document, createdAt: new Date(unit.revision.createdAt) } : null,
+    };
+    const index = next.quotations.findIndex((value) => value.id === unit.id);
+    if (index >= 0) next.quotations[index] = quotation;
+    else next.quotations.push(quotation);
+    next.lineage = next.lineage.filter((entry) => !unit.lineage.some((line) => entry.sourceDoctype === line.sourceDoctype && entry.sourceId === line.sourceId));
+    next.lineage.push(...unit.lineage);
+    this.state = next;
+    this.writes.quotations += 1;
+    this.writes.lineage += unit.lineage.length;
+  }
+
+  async advanceQuoteSequence(year: number, lastNumber: number): Promise<void> {
+    const next = await this.loadState();
+    next.sequences[year] = Math.max(next.sequences[year] || 0, lastNumber);
+    this.state = next;
   }
 
   snapshot(): FrappeMigrationState {
