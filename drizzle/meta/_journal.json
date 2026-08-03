@@ -43,6 +43,13 @@
       "when": 1785726828892,
       "tag": "0005_puzzling_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785729636888,
+      "tag": "0006_panoramic_firestar",
+      "breakpoints": true
     }
   ]
 }

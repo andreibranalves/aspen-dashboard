@@ -15,7 +15,7 @@ export interface QuotationsCoreDependencies {
   repository: QuoteDraftManagementRepository;
 }
 
-const VALID_STATUSES = new Set(['Draft', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled', 'rascunho']);
+const VALID_STATUSES = new Set(['Draft', 'Issued', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled', 'rascunho', 'emitido']);
 const VALID_ORDER_BY = new Set([
   'creation desc',
   'creation asc',
@@ -113,7 +113,7 @@ export function createCoreHandler(
         }
         const status = (query.status || '').trim();
         if (status && !VALID_STATUSES.has(status)) {
-          throw new QuoteManagementInputError('Status inválido. Valores aceitos: Draft, Open, Replied, Ordered, Lost, Expired, Cancelled.');
+          throw new QuoteManagementInputError('Status inválido. Valores aceitos: Draft, Issued, Open, Replied, Ordered, Lost, Expired, Cancelled.');
         }
         const orderBy = (query.order_by || '').trim().toLowerCase();
         if (orderBy && !VALID_ORDER_BY.has(orderBy)) throw new QuoteManagementInputError('Ordenação inválida.');

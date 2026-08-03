@@ -213,6 +213,31 @@ export interface GenerateQuotationPdfOptions {
   printFormat?: string;
 }
 
+/** Render already-prepared quotation HTML with the same Chromium pipeline used
+ * by the legacy ERPNext PDF endpoint. Core issuance supplies HTML built only
+ * from its immutable revision snapshot. */
+export async function renderQuotationPdfHtml(
+  html: string,
+  opts: Pick<GenerateQuotationPdfOptions, 'timeout'> = {},
+): Promise<Buffer> {
+  const timeout = opts.timeout || 60000;
+  const sysBrowser = findSystemBrowser();
+  if (sysBrowser) {
+    console.log('[quotation-pdf] using system browser:', sysBrowser);
+    return pdfWithSystemBrowser(html, { timeout });
+  }
+
+  console.log('[quotation-pdf] system browser not found, using @sparticuz/chromium');
+  try {
+    return await pdfWithSparticuz(html, { timeout });
+  } catch (err) {
+    throw Object.assign(
+      new Error('Falha ao gerar PDF com @sparticuz/chromium: ' + ((err as Error).message || err)),
+      { statusCode: 500 }
+    );
+  }
+}
+
 /**
  * Generate a PDF Buffer from quotation HTML.
  *
@@ -223,8 +248,6 @@ export async function generateQuotationPdf(
   quotationId: string,
   opts: GenerateQuotationPdfOptions = {}
 ): Promise<{ buffer: Buffer; customerName: string }> {
-  const timeout = opts.timeout || 60000;
-
   // Determine the best print format for this quotation
   const printFormat = await resolvePrintFormat(quotationId, opts.printFormat);
 
@@ -235,23 +258,5 @@ export async function generateQuotationPdf(
     printFormat,
   });
 
-  // ── Strategy 1: system browser (fast path) ──
-  const sysBrowser = findSystemBrowser();
-  if (sysBrowser) {
-    console.log('[quotation-pdf] using system browser:', sysBrowser);
-    const buffer = await pdfWithSystemBrowser(html, { timeout });
-    return { buffer, customerName };
-  }
-
-  // ── Strategy 2: @sparticuz/chromium (serverless fallback) ──
-  console.log('[quotation-pdf] system browser not found, using @sparticuz/chromium');
-  try {
-    const buffer = await pdfWithSparticuz(html, { timeout });
-    return { buffer, customerName };
-  } catch (err) {
-    throw Object.assign(
-      new Error('Falha ao gerar PDF com @sparticuz/chromium: ' + ((err as Error).message || err)),
-      { statusCode: 500 }
-    );
-  }
+  return { buffer: await renderQuotationPdfHtml(html, opts), customerName };
 }

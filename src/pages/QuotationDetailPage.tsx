@@ -23,6 +23,7 @@ import SkeletonDetail from '@/components/SkeletonDetail';
 
 const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
+  Issued: 'Emitido',
   Open: 'Aberto',
   Replied: 'Respondido',
   Ordered: 'Convertido',
@@ -92,6 +93,17 @@ interface QuotationData {
   updatedAt?: string;
   concurrency_token?: string;
   version_token?: string;
+  issued_document?: IssuedQuotationDocumentMetadata | null;
+}
+
+interface IssuedQuotationDocumentMetadata {
+  id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  checksum_sha256: string;
+  issued_at: string;
+  download_url: string;
 }
 
 interface QuotationDetailPageProps {
@@ -157,6 +169,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const draftEditable = data.status === 'Draft' || data.status_canonical === 'rascunho';
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [issuing, setIssuing] = useState(false);
   const [message, setMessage] = useState('');
   const [conflict, setConflict] = useState('');
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
@@ -362,6 +375,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const displayItems = items;
   const displayedTotal = data.total ?? data.valor ?? displayItems.reduce((sum, item) => sum + Number(item.line_total || Number(item.qty) * Number(item.applied_unit_price)), 0);
   const selectedTemplateMetadata = templates.find((template) => template.key === selectedTemplate);
+  const persistedTemplate = data.template_key || data.template_padrao || 'padrao';
+  const templateSelectionUnsaved = selectedTemplate !== persistedTemplate;
   const openPreview = useCallback(() => {
     if (!selectedTemplate) return;
     window.open(
@@ -370,6 +385,33 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       'noopener,noreferrer',
     );
   }, [data.id, selectedTemplate]);
+  const issuePdf = useCallback(async () => {
+    setIssuing(true);
+    setMessage('Renderizando e arquivando o PDF definitivo…');
+    try {
+      const result = await apiPost<{
+        status: string;
+        already_issued: boolean;
+        document: IssuedQuotationDocumentMetadata;
+      }>('/quotation-issue', { id: data.id });
+      setData((current) => ({
+        ...current,
+        status: 'Issued',
+        status_canonical: 'emitido',
+        issued_document: result.document,
+      }));
+      setMessage(result.already_issued ? 'Este PDF já estava emitido.' : 'PDF definitivo emitido e arquivado.');
+      await onReload();
+    } catch (error) {
+      setMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`);
+    } finally {
+      setIssuing(false);
+    }
+  }, [data.id, onReload]);
+  const openIssuedDocument = useCallback(() => {
+    const url = data.issued_document?.download_url;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }, [data.issued_document?.download_url]);
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -438,6 +480,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             {templateError && <span className="text-xs text-destructive">{templateError}</span>}
           </div>
         )}
+        {data.issued_document && (
+          <div className="px-6 py-3 border-b bg-success/10 text-sm text-success" role="status">
+            PDF definitivo arquivado · {data.issued_document.file_name} · {(data.issued_document.size_bytes / 1024).toFixed(1)} KB
+          </div>
+        )}
 
         <div className="px-6 py-4 overflow-x-auto">
           <table className="w-full text-sm">
@@ -464,8 +511,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         <div className="px-6 py-3 border-t text-right font-semibold">Subtotal: {formatBRL(data.subtotal)} · Frete: {formatBRL(data.frete)} · Total: {formatBRL(displayedTotal)}</div>
         <div className="px-6 py-4 border-t flex items-center gap-3">
           {draftEditable && !editing && <Button variant="outline" size="sm" onClick={() => { setMessage(''); setEditing(true); }}><Pencil size={14} /> Editar</Button>}
+          {draftEditable && !editing && <Button variant="success" size="sm" disabled={issuing || templateSelectionUnsaved} onClick={issuePdf}>{issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {issuing ? 'Emitindo PDF…' : 'Emitir PDF definitivo'}</Button>}
           {editing && <><Button variant="success" size="sm" disabled={saving} onClick={save}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}</Button><Button variant="outline" size="sm" disabled={saving} onClick={() => resetEditor()}>Cancelar</Button></>}
-          {message && <span className={`text-xs ${message.startsWith('Erro') ? 'text-destructive' : 'text-fg-muted'}`}>{message}</span>}
+          {data.issued_document && <Button variant="outline" size="sm" onClick={openIssuedDocument}><FileText size={14} /> Abrir PDF emitido</Button>}
+          {draftEditable && !editing && templateSelectionUnsaved && <span className="text-xs text-warning">Salve o modelo selecionado antes de emitir.</span>}
+          {message && <span role="status" aria-live="polite" className={`text-xs ${message.startsWith('Erro') ? 'text-destructive' : 'text-fg-muted'}`}>{message}</span>}
         </div>
       </div>
     </div>

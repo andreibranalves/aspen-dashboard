@@ -28,6 +28,8 @@ describe('auth guard', () => {
     assert.equal(isAuthenticated(protectedRequest(), {}), false);
     assert.equal(isAuthenticated({ url: '/api/quotation-templates' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/quotation-preview?id=ORC-20260001' }, {}), false);
+    assert.equal(isAuthenticated({ url: '/api/quotation-issue' }, {}), false);
+    assert.equal(isAuthenticated({ url: '/api/quotation-document?id=documento' }, {}), false);
   });
 
   it('requires a valid signed cookie and never accepts the removed header fallback', async () => {

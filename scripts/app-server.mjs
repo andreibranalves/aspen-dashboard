@@ -39,6 +39,8 @@ import { handler as quoteLeads } from '../api/_functions/quote-leads.js';
 import { handler as quotations } from '../api/_functions/quotations.js';
 import { handler as quotationTemplates } from '../api/_functions/quotation-templates.js';
 import { handler as quotationPreview } from '../api/_functions/quotation-preview.js';
+import { handler as quotationIssue } from '../api/_functions/quotation-issue.js';
+import { handler as quotationDocument } from '../api/_functions/quotation-document.js';
 import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
@@ -81,6 +83,8 @@ const ROUTES = {
   quotations,
   'quotation-templates': quotationTemplates,
   'quotation-preview': quotationPreview,
+  'quotation-issue': quotationIssue,
+  'quotation-document': quotationDocument,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
@@ -221,7 +225,9 @@ const server = createServer(async (req, res) => {
         responseHeaders['Content-Type'] = 'application/json';
       }
       res.writeHead(result.statusCode || 200, responseHeaders);
-      res.end(result.body || '');
+      res.end(result.isBase64Encoded && typeof result.body === 'string'
+        ? Buffer.from(result.body, 'base64')
+        : result.body || '');
     } catch (err) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error(`[api/${routeName}]`, err.message);

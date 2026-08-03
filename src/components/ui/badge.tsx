@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
  */
 const badgeVariants: Record<string, string> = {
   Draft:     'tone-neutral-soft',
+  Issued:    'tone-success-soft',
   Open:      'tone-primary-soft',
   Replied:   'tone-warning-soft',
   Ordered:   'tone-success-soft',

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { getDatabase, type AppDatabase } from './client.js';
 import {
   clients,
+  issuedDocuments,
   products,
   productPricingTiers,
   quoteRevisionItems,
@@ -166,6 +167,15 @@ export interface QuoteDraftManagementDetail {
   template_padrao: string;
   template_key: string;
   template_hash: string;
+  issued_document: {
+    id: string;
+    file_name: string;
+    mime_type: string;
+    size_bytes: number;
+    checksum_sha256: string;
+    issued_at: string;
+    download_url: string;
+  } | null;
   subtotal: string;
   total: string;
   valor: string;
@@ -367,10 +377,11 @@ function compareMoneyValues(left: unknown, right: unknown): number {
 }
 
 function statusUi(value: string): string {
-  // The core aggregate currently only permits rascunho. Keep this function
-  // explicit so adding later states cannot accidentally leak a database term
-  // into the legacy-compatible UI response.
-  return value === 'rascunho' ? 'Draft' : value || 'Draft';
+  // Keep the canonical Portuguese states behind the legacy-compatible UI
+  // vocabulary consumed by the current React screens.
+  if (value === 'rascunho') return 'Draft';
+  if (value === 'emitido') return 'Issued';
+  return value || 'Draft';
 }
 
 function productPricingRowsBySku(rows: (typeof productPricingTiers.$inferSelect)[]): Map<string, (typeof productPricingTiers.$inferSelect)[]> {
@@ -456,6 +467,11 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
     .from(quoteRevisionItems)
     .where(eq(quoteRevisionItems.revisionId, revision.id))
     .orderBy(asc(quoteRevisionItems.position));
+  const [issuedDocument] = await tx
+    .select()
+    .from(issuedDocuments)
+    .where(eq(issuedDocuments.revisionId, revision.id))
+    .limit(1);
   const skus = [...new Set(itemRows.map((row) => row.productSku))];
   const productRows = skus.length
     ? await tx.select().from(products).where(or(...skus.map((sku) => eq(products.sku, sku))))
@@ -492,6 +508,15 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
+    issued_document: issuedDocument ? {
+      id: issuedDocument.id,
+      file_name: issuedDocument.fileName,
+      mime_type: issuedDocument.mimeType,
+      size_bytes: issuedDocument.sizeBytes,
+      checksum_sha256: issuedDocument.checksumSha256,
+      issued_at: asIso(issuedDocument.createdAt),
+      download_url: `/api/quotation-document?id=${encodeURIComponent(issuedDocument.id)}`,
+    } : null,
     subtotal: formatDbMoney(revision.subtotal),
     total: formatDbMoney(revision.total),
     valor: formatDbMoney(revision.total),
@@ -529,6 +554,7 @@ function asListStatus(value: string | undefined): string | null {
   const normalized = (value || '').trim();
   if (!normalized) return null;
   if (normalized === 'Draft' || normalized.toLowerCase() === 'rascunho') return 'rascunho';
+  if (normalized === 'Issued' || normalized.toLowerCase() === 'emitido') return 'emitido';
   if (normalized === 'All') return null;
   return normalized;
 }
@@ -575,6 +601,7 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
   });
   const statusSummary: Record<string, number> = {
     Draft: 0,
+    Issued: 0,
     Open: 0,
     Replied: 0,
     Ordered: 0,
@@ -584,7 +611,7 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
   };
   for (const row of searchMatches) {
     const state = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
-    const key = state === 'rascunho' ? 'Draft' : state;
+    const key = statusUi(state);
     if (Object.prototype.hasOwnProperty.call(statusSummary, key)) statusSummary[key] += 1;
   }
   const order = safeOrderValue(options.orderBy);

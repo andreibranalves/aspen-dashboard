@@ -41,7 +41,10 @@ export function toFunctionEvent(req: IncomingMessage): FunctionEvent {
 export function sendFunctionResult(res: ServerResponse, result: FunctionResult): void {
   const statusCode = result?.statusCode || 200;
   setHeaders(res, (result?.headers || {}) as Record<string, string>);
-  (res as unknown as VercelResponseLike).status(statusCode).send(result?.body ?? '');
+  const body = result?.isBase64Encoded && typeof result.body === 'string'
+    ? Buffer.from(result.body, 'base64')
+    : result?.body ?? '';
+  (res as unknown as VercelResponseLike).status(statusCode).send(body);
 }
 
 export function wrapFunctionHandler(functionHandler: LegacyHandler) {
