@@ -83,6 +83,8 @@ interface QuotationData {
   observacoes?: string;
   prazo_producao?: string;
   template_padrao?: string;
+  template_key?: string;
+  template_hash?: string;
   subtotal?: string | number;
   total?: string | number;
   valor?: string | number;
@@ -125,6 +127,13 @@ interface CoreQuotationDetailProps {
   onReload: () => Promise<void>;
 }
 
+interface QuotationTemplateMetadata {
+  key: string;
+  name: string;
+  is_default: boolean;
+  hash: string;
+}
+
 function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
   return (items || []).map((item) => ({
     ...item,
@@ -161,6 +170,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const [frete, setFrete] = useState(String(data.frete ?? '0.00'));
   const [observacoes, setObservacoes] = useState(data.observacoes || '');
   const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
+  const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(data.template_key || data.template_padrao || 'padrao');
+  const [templateError, setTemplateError] = useState('');
   const [productTerms, setProductTerms] = useState<Record<string, string>>({});
   const [productResults, setProductResults] = useState<Record<string, Product[]>>({});
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -177,6 +189,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setFrete(String(initialData.frete ?? '0.00'));
     setObservacoes(initialData.observacoes || '');
     setPrazoProducao(initialData.prazo_producao || '');
+    setSelectedTemplate(initialData.template_key || initialData.template_padrao || 'padrao');
     setClientResults([]);
     setClientSearching(false);
     if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -189,6 +202,24 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setEditing(false);
     setConflict('');
   }, [initialData]);
+
+  useEffect(() => {
+    let active = true;
+    apiGet<{ templates?: QuotationTemplateMetadata[]; data?: QuotationTemplateMetadata[] }>('/quotation-templates')
+      .then((result) => {
+        if (!active) return;
+        const available = result.templates || result.data || [];
+        setTemplates(available);
+        const persisted = data.template_key || data.template_padrao || '';
+        if (persisted && available.some((template) => template.key === persisted)) setSelectedTemplate(persisted);
+        else if (available.length > 0) setSelectedTemplate(available.find((template) => template.is_default)?.key || available[0].key);
+        setTemplateError('');
+      })
+      .catch((error) => {
+        if (active) setTemplateError(error instanceof Error ? error.message : 'Não foi possível carregar os templates.');
+      });
+    return () => { active = false; };
+  }, [data.template_key, data.template_padrao]);
 
   const searchClients = useCallback(async (term: string) => {
     if (term.trim().length < 2) {
@@ -272,6 +303,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setFrete(String(authoritative.frete ?? '0.00'));
     setObservacoes(authoritative.observacoes || '');
     setPrazoProducao(authoritative.prazo_producao || '');
+    setSelectedTemplate(authoritative.template_key || authoritative.template_padrao || 'padrao');
     setMessage('');
     setConflict('');
     setEditing(false);
@@ -301,6 +333,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         frete,
         observacoes,
         prazo_producao: prazoProducao,
+        template_key: selectedTemplate,
       });
       if (refreshed && refreshed.id) {
         setData(refreshed);
@@ -319,7 +352,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     } finally {
       setSaving(false);
     }
-  }, [clientId, data, entrega, frete, items, observacoes, pagamento, prazoProducao, resetEditor, validadeDias]);
+  }, [clientId, data, entrega, frete, items, observacoes, pagamento, prazoProducao, resetEditor, selectedTemplate, validadeDias]);
 
   const reloadAfterConflict = useCallback(async () => {
     setConflict('');
@@ -328,6 +361,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
 
   const displayItems = items;
   const displayedTotal = data.total ?? data.valor ?? displayItems.reduce((sum, item) => sum + Number(item.line_total || Number(item.qty) * Number(item.applied_unit_price)), 0);
+  const selectedTemplateMetadata = templates.find((template) => template.key === selectedTemplate);
+  const openPreview = useCallback(() => {
+    if (!selectedTemplate) return;
+    window.open(
+      `/api/quotation-preview?id=${encodeURIComponent(data.id)}&template=${encodeURIComponent(selectedTemplate)}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  }, [data.id, selectedTemplate]);
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -385,6 +427,17 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           <label className="text-sm md:col-span-2"><span className="text-xs text-fg-muted">Prazo de produção</span>{editing ? <Input aria-label="Prazo de produção do orçamento" value={prazoProducao} onChange={(event) => setPrazoProducao(event.target.value)} /> : <p>{prazoProducao || '—'}</p>}</label>
           <label className="text-sm md:col-span-2"><span className="text-xs text-fg-muted">Observações</span>{editing ? <textarea aria-label="Observações do orçamento" className="mt-1 w-full min-h-20 rounded border border-line bg-surface px-3 py-2 text-sm" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} /> : <p className="whitespace-pre-wrap">{observacoes || '—'}</p>}</label>
         </div>
+
+        {(templates.length > 0 || templateError) && (
+          <div className="px-6 py-4 border-b flex flex-wrap items-end gap-3">
+            {templates.length > 0 && <>
+              <label className="text-sm min-w-64"><span className="text-xs text-fg-muted">Modelo do orçamento</span><select aria-label="Modelo do orçamento" className="mt-1 h-9 w-full rounded border border-line bg-surface px-2 text-sm" value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}>{templates.map((template) => <option key={template.key} value={template.key}>{template.name}</option>)}</select></label>
+              {selectedTemplateMetadata && <span className="text-xs text-fg-muted pb-2" title={selectedTemplateMetadata.hash}>Hash: {selectedTemplateMetadata.hash.slice(0, 12)}…</span>}
+              <Button type="button" variant="outline" size="sm" onClick={openPreview}>Visualizar modelo</Button>
+            </>}
+            {templateError && <span className="text-xs text-destructive">{templateError}</span>}
+          </div>
+        )}
 
         <div className="px-6 py-4 overflow-x-auto">
           <table className="w-full text-sm">

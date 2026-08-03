@@ -21,6 +21,7 @@ import {
   resolveProductPrice,
   type PricingResolution,
 } from '../_functions/pricing-core.js';
+import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -163,6 +164,8 @@ export interface QuoteDraftManagementDetail {
   observacoes: string;
   prazo_producao: string;
   template_padrao: string;
+  template_key: string;
+  template_hash: string;
   subtotal: string;
   total: string;
   valor: string;
@@ -197,6 +200,8 @@ export interface QuoteDraftManagementUpdateInput {
   observacoes?: unknown;
   notes?: unknown;
   prazo_producao?: unknown;
+  template_key?: unknown;
+  template_padrao?: unknown;
 }
 
 export interface QuoteDraftManagementRepository {
@@ -302,6 +307,21 @@ function inputText(value: unknown, label: string, maximum: number, fallback = ''
 
 function tokenFor(value: Date | string | null | undefined): string {
   return asIso(value);
+}
+
+function readTemplateSelection(input: Record<string, unknown>): { key: string; hash: string } | undefined {
+  const rawKey = hasOwn(input, 'template_key') ? input.template_key : undefined;
+  const rawLegacy = hasOwn(input, 'template_padrao') ? input.template_padrao : undefined;
+  const values = [rawKey, rawLegacy].filter((value): value is string => value !== undefined) as unknown[];
+  if (values.length === 0) return undefined;
+  if (values.some((value) => typeof value !== 'string' || !value.trim())) {
+    throw new QuoteManagementInputError('Template do orçamento inválido.');
+  }
+  const normalized = values.map((value) => String(value).trim());
+  if (new Set(normalized).size > 1) throw new QuoteManagementInputError('Os templates informados entram em conflito.');
+  const template = getQuotationTemplate(normalized[0]);
+  if (!template) throw new QuoteManagementInputError('Template do orçamento inválido.');
+  return { key: template.key, hash: template.hash };
 }
 
 function mapSnapshot(revision: typeof quoteRevisions.$inferSelect, client: typeof clients.$inferSelect | null): Record<string, unknown> {
@@ -470,6 +490,8 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
     observacoes: revision.observacoes,
     prazo_producao: revision.prazoProducao,
     template_padrao: revision.templatePadrao,
+    template_key: revision.templatePadrao,
+    template_hash: revision.templateHash,
     subtotal: formatDbMoney(revision.subtotal),
     total: formatDbMoney(revision.total),
     valor: formatDbMoney(revision.total),
@@ -758,6 +780,7 @@ export function createPostgresQuoteDraftManagementRepository(
       if (!isRecord(rawInput)) throw new QuoteManagementInputError('Envie os dados do orçamento em um objeto válido.');
       const input = rawInput as Record<string, unknown>;
       const expectedToken = readConcurrencyToken(input);
+      const templateSelection = readTemplateSelection(input);
       const items = normalizeUpdateItems(input.items);
       const selectedClientId = readClientId(input);
       try {
@@ -887,6 +910,9 @@ export function createPostgresQuoteDraftManagementRepository(
               frete: formatMoneyCents(freightCents),
               observacoes,
               prazoProducao,
+              ...(templateSelection
+                ? { templatePadrao: templateSelection.key, templateHash: templateSelection.hash }
+                : {}),
               ...{
                 clienteNome: client.nome,
                 clienteDocumento: client.documento,

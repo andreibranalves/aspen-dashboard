@@ -37,6 +37,8 @@ import { handler as productPricing } from '../api/_functions/product-pricing.js'
 import { handler as products } from '../api/_functions/products.js';
 import { handler as quoteLeads } from '../api/_functions/quote-leads.js';
 import { handler as quotations } from '../api/_functions/quotations.js';
+import { handler as quotationTemplates } from '../api/_functions/quotation-templates.js';
+import { handler as quotationPreview } from '../api/_functions/quotation-preview.js';
 import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
@@ -77,6 +79,8 @@ const ROUTES = {
   products,
   'quote-leads': quoteLeads,
   quotations,
+  'quotation-templates': quotationTemplates,
+  'quotation-preview': quotationPreview,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,

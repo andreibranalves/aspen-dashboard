@@ -219,6 +219,9 @@ export const quoteRevisions = pgTable(
     observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),
     prazoProducao: varchar('prazo_producao', { length: 500 }).notNull().default(''),
     templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
+    templateHash: varchar('template_hash', { length: 64 })
+      .notNull()
+      .default('ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e'),
     clienteNome: varchar('cliente_nome', { length: 200 }).notNull(),
     clienteDocumento: varchar('cliente_documento', { length: 14 }),
     clienteEmail: varchar('cliente_email', { length: 254 }),
@@ -244,6 +247,7 @@ export const quoteRevisions = pgTable(
     check('quote_revisions_frete_check', sql`${table.frete} >= 0`),
     check('quote_revisions_subtotal_check', sql`${table.subtotal} >= 0`),
     check('quote_revisions_total_check', sql`${table.total} >= 0`),
+    check('quote_revisions_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
     check('quote_revisions_status_not_blank_check', sql`char_length(btrim(${table.status})) > 0`),
   ],
 );

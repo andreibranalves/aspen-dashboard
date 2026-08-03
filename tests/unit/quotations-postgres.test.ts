@@ -13,6 +13,12 @@ import {
   createPostgresQuoteDraftManagementRepository,
   QuoteManagementConflictError,
 } from '../../api/_db/quote-draft-management-repository.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
+import {
+  getQuotationTemplate,
+  getQuotationTemplateManifest,
+  renderQuotationTemplate,
+} from '../../api/_functions/lib/quotation-templates.js';
 import { appSettings, clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations } from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
 
@@ -38,6 +44,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
   let previousSettings: typeof appSettings.$inferSelect | undefined;
   try {
     await migrate(db, { migrationsFolder });
+    const templateHashes = new Map(getQuotationTemplateManifest().map((template) => [template.key, template.hash]));
+    const migratedRevisions = await db
+      .select({ templatePadrao: quoteRevisions.templatePadrao, templateHash: quoteRevisions.templateHash })
+      .from(quoteRevisions);
+    for (const migratedRevision of migratedRevisions) {
+      assert.equal(templateHashes.get(migratedRevision.templatePadrao), migratedRevision.templateHash);
+    }
     [previousSettings] = await db.select().from(appSettings).where(eq(appSettings.singletonId, 1));
     await db
       .insert(appSettings)
@@ -63,7 +76,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(draft.entrega, explicitSettings.entrega);
     assert.equal(draft.frete, explicitSettings.fretePadrao);
     assert.equal(draft.observacoes, explicitSettings.observacoes);
-    assert.equal(draft.template_padrao, explicitSettings.templatePadrao);
+    const defaultTemplate = getQuotationTemplateManifest().find((template) => template.is_default)!;
+    assert.equal(draft.template_padrao, defaultTemplate.key);
+    assert.equal(draft.template_key, defaultTemplate.key);
+    assert.equal(draft.template_hash, defaultTemplate.hash);
+    const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
+    assert.equal(createdRevision?.templatePadrao, defaultTemplate.key);
+    assert.equal(createdRevision?.templateHash, defaultTemplate.hash);
     const management = createPostgresQuoteDraftManagementRepository(() => db, { now: () => new Date('2026-07-04T12:01:00.000Z') });
     const before = await management.get(draft.quotation_name);
     assert.ok(before);
@@ -82,6 +101,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       frete: '1.25',
       observacoes: 'Alterado',
       prazo_producao: '5 dias',
+      template_key: 'minimalista',
     });
     assert.equal(updated.validade_dias, 1);
     assert.equal(updated.items[0].suggested_unit_price, '9.00');
@@ -91,6 +111,9 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(updated.total, '301.25');
     assert.equal(updated.client_id, secondClientId);
     assert.equal((updated.cliente_snapshot as { nome?: string }).nome, 'Segundo cliente de gerenciamento');
+    const alternateTemplate = getQuotationTemplate('minimalista')!;
+    assert.equal(updated.template_key, alternateTemplate.key);
+    assert.equal(updated.template_hash, alternateTemplate.hash);
     assert.notEqual(updated.concurrency_token, before.concurrency_token);
     assert.ok(updated.updated_at > laterBefore.updated_at);
 
@@ -135,6 +158,18 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(revision?.clienteNome, 'Segundo cliente de gerenciamento');
     assert.equal(revision?.clienteEmail, 'management-second@example.com');
     assert.equal(item?.precoAplicado, '10.00');
+
+    const snapshotRepository = createQuotationTemplateRepository(() => db);
+    const beforeSnapshot = await snapshotRepository.get(updated.quotation_name);
+    assert.ok(beforeSnapshot);
+    const beforeHtml = renderQuotationTemplate(alternateTemplate, quotationSnapshotViewModel(beforeSnapshot));
+    await db.update(products).set({ nome: 'Produto alterado depois' }).where(eq(products.sku, sku));
+    await db.update(clients).set({ nome: 'Cliente alterado depois' }).where(eq(clients.id, secondClientId));
+    await db.update(appSettings).set({ templatePadrao: 'minimalista' }).where(eq(appSettings.singletonId, 1));
+    const afterSnapshot = await snapshotRepository.get(updated.quotation_name);
+    assert.ok(afterSnapshot);
+    const afterHtml = renderQuotationTemplate(alternateTemplate, quotationSnapshotViewModel(afterSnapshot));
+    assert.equal(afterHtml, beforeHtml);
   } finally {
     const rows = await db.select({ id: quotations.id }).from(quotations).where(inArray(quotations.clientId, [clientId, secondClientId]));
     if (rows.length) await db.delete(quotations).where(inArray(quotations.id, rows.map((row) => row.id)));

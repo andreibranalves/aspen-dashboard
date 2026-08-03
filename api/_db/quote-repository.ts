@@ -35,6 +35,7 @@ import {
   type PricingResolution,
 } from '../_functions/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
+import { resolveQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -182,6 +183,8 @@ export interface QuoteDraftResult {
   observacoes: string;
   prazo_producao: string;
   template_padrao: string;
+  template_key: string;
+  template_hash: string;
   created_at: string;
 }
 
@@ -656,6 +659,7 @@ export function createPostgresQuoteDraftRepository(
           }
 
           const settings = await readSettings(tx);
+          const template = resolveQuotationTemplate(settings.template_padrao);
           const freightCents = requestFreight === undefined
             ? parseNonNegativeMoney(settings.frete_padrao, 'Frete')
             : parseNonNegativeMoney(requestFreight, 'Frete');
@@ -746,7 +750,8 @@ export function createPostgresQuoteDraftRepository(
             frete: formatMoneyCents(freightCents),
             observacoes: observations,
             prazoProducao: deadline,
-            templatePadrao: settings.template_padrao,
+            templatePadrao: template.key,
+            templateHash: template.hash,
             ...clientSnapshotToRow(client),
             subtotal: formatMoneyCents(subtotalCents),
             total: formatMoneyCents(totalCents),
@@ -824,7 +829,9 @@ export function createPostgresQuoteDraftRepository(
             entrega: settings.entrega,
             observacoes: observations,
             prazo_producao: deadline,
-            template_padrao: settings.template_padrao,
+            template_padrao: template.key,
+            template_key: template.key,
+            template_hash: template.hash,
             created_at: createdAt.toISOString(),
           } satisfies QuoteDraftResult;
         });
