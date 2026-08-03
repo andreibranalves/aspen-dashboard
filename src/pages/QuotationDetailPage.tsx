@@ -7,7 +7,7 @@ import {
   type DragEvent,
   type MouseEvent,
 } from 'react';
-import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy } from 'lucide-react';
+import { Pencil, FileText, Trash2, Save, X, Plus, GripVertical, Phone, AlertTriangle, ShoppingCart, Loader2, Copy, Search } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
 import { isCoreUnpricedProduct, searchProducts } from '@/lib/productCache';
 import type { Product } from '@/types/domain';
@@ -35,9 +35,23 @@ interface QuotationItem {
   _key: string;
   item_code: string;
   item_name: string;
-  qty: number;
-  rate: number;
+  qty: number | string;
+  quantidade?: number | string;
+  rate: number | string;
   _rateManual?: boolean;
+  sku?: string;
+  nome?: string;
+  descricao?: string;
+  unidade?: string;
+  suggested_unit_price?: string | number;
+  preco_sugerido?: string | number;
+  applied_unit_price?: string | number;
+  preco_aplicado?: string | number;
+  price_difference?: string | number;
+  diferenca_preco?: string | number;
+  line_total?: string | number;
+  total_linha?: string | number;
+  manual_rate?: boolean;
 }
 
 interface QuotationData {
@@ -48,6 +62,34 @@ interface QuotationData {
   validade?: string;
   sales_order_id?: string;
   items?: QuotationItem[];
+  core_mode?: boolean;
+  source?: string;
+  status_canonical?: string;
+  quotation_id?: string;
+  quotation_uuid?: string;
+  quote_id?: string;
+  revision_id?: string;
+  quote_revision_id?: string;
+  revision?: number;
+  revision_number?: number;
+  client_id?: string;
+  cliente_id?: string;
+  cliente_snapshot?: Record<string, unknown>;
+  validade_dias?: number;
+  pagamento?: string;
+  entrega?: string;
+  frete_padrao?: string | number;
+  frete?: string | number;
+  observacoes?: string;
+  prazo_producao?: string;
+  template_padrao?: string;
+  subtotal?: string | number;
+  total?: string | number;
+  valor?: string | number;
+  updated_at?: string;
+  updatedAt?: string;
+  concurrency_token?: string;
+  version_token?: string;
 }
 
 interface QuotationDetailPageProps {
@@ -57,6 +99,324 @@ interface QuotationDetailPageProps {
 
 function makeItemKey(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+interface CoreClientResult {
+  id: string;
+  nome: string;
+  email?: string | null;
+  telefone?: string | null;
+}
+
+interface CoreQuotationItem extends QuotationItem {
+  sku: string;
+  nome: string;
+  qty: string;
+  suggested_unit_price: string;
+  applied_unit_price: string;
+  price_difference: string;
+  line_total: string;
+  manual_rate: boolean;
+}
+
+interface CoreQuotationDetailProps {
+  data: QuotationData;
+  navigate: (path: string) => void;
+  onReload: () => Promise<void>;
+}
+
+function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
+  return (items || []).map((item) => ({
+    ...item,
+    _key: item._key || makeItemKey(),
+    sku: String(item.sku || item.item_code || ''),
+    item_code: String(item.item_code || item.sku || ''),
+    item_name: String(item.item_name || item.nome || ''),
+    nome: String(item.nome || item.item_name || ''),
+    qty: String(item.qty ?? item.quantidade ?? '0'),
+    suggested_unit_price: String(item.suggested_unit_price ?? item.preco_sugerido ?? '0.00'),
+    applied_unit_price: String(item.applied_unit_price ?? item.preco_aplicado ?? item.rate ?? '0.00'),
+    price_difference: String(item.price_difference ?? item.diferenca_preco ?? '0.00'),
+    line_total: String(item.line_total ?? item.total_linha ?? '0.00'),
+    manual_rate: item.manual_rate === true || item._rateManual === true,
+    rate: String(item.applied_unit_price ?? item.preco_aplicado ?? item.rate ?? '0.00'),
+  }));
+}
+
+function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuotationDetailProps) {
+  const [data, setData] = useState<QuotationData>(initialData);
+  const draftEditable = data.status === 'Draft' || data.status_canonical === 'rascunho';
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [conflict, setConflict] = useState('');
+  const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
+  const [clientId, setClientId] = useState(data.client_id || data.cliente_id || '');
+  const [clientSearch, setClientSearch] = useState(data.cliente || '');
+  const [clientResults, setClientResults] = useState<CoreClientResult[]>([]);
+  const [clientSearching, setClientSearching] = useState(false);
+  const [validadeDias, setValidadeDias] = useState(String(data.validade_dias ?? ''));
+  const [pagamento, setPagamento] = useState(data.pagamento || '');
+  const [entrega, setEntrega] = useState(data.entrega || '');
+  const [frete, setFrete] = useState(String(data.frete ?? '0.00'));
+  const [observacoes, setObservacoes] = useState(data.observacoes || '');
+  const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
+  const [productTerms, setProductTerms] = useState<Record<string, string>>({});
+  const [productResults, setProductResults] = useState<Record<string, Product[]>>({});
+  const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const productTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    setData(initialData);
+    setItems(asCoreItems(initialData.items));
+    setClientId(initialData.client_id || initialData.cliente_id || '');
+    setClientSearch(initialData.cliente || '');
+    setValidadeDias(String(initialData.validade_dias ?? ''));
+    setPagamento(initialData.pagamento || '');
+    setEntrega(initialData.entrega || '');
+    setFrete(String(initialData.frete ?? '0.00'));
+    setObservacoes(initialData.observacoes || '');
+    setPrazoProducao(initialData.prazo_producao || '');
+    setClientResults([]);
+    setClientSearching(false);
+    if (clientTimer.current) clearTimeout(clientTimer.current);
+    clientTimer.current = null;
+    setProductTerms({});
+    setProductResults({});
+    Object.values(productTimers.current).forEach((timer) => clearTimeout(timer));
+    productTimers.current = {};
+    setMessage('');
+    setEditing(false);
+    setConflict('');
+  }, [initialData]);
+
+  const searchClients = useCallback(async (term: string) => {
+    if (term.trim().length < 2) {
+      setClientResults([]);
+      return;
+    }
+    setClientSearching(true);
+    try {
+      const response = await apiGet<{ data?: CoreClientResult[] }>(`/leads-clients?search=${encodeURIComponent(term)}&limit=10`);
+      setClientResults(response.data || []);
+    } catch {
+      setClientResults([]);
+    } finally {
+      setClientSearching(false);
+    }
+  }, []);
+
+  const onClientSearch = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setClientSearch(value);
+    setClientId('');
+    if (clientTimer.current) clearTimeout(clientTimer.current);
+    clientTimer.current = setTimeout(() => searchClients(value), 250);
+  }, [searchClients]);
+
+  const updateItem = useCallback((key: string, patch: Partial<CoreQuotationItem>) => {
+    setItems((previous) => previous.map((item) => item._key === key ? { ...item, ...patch } : item));
+  }, []);
+
+  const searchItemProducts = useCallback(async (key: string, term: string) => {
+    if (term.trim().length < 2) {
+      setProductResults((previous) => ({ ...previous, [key]: [] }));
+      return;
+    }
+    try {
+      const results = await searchProducts(term, 6);
+      setProductResults((previous) => ({ ...previous, [key]: results }));
+    } catch {
+      setProductResults((previous) => ({ ...previous, [key]: [] }));
+    }
+  }, []);
+
+  const onProductTerm = useCallback((key: string, value: string) => {
+    setProductTerms((previous) => ({ ...previous, [key]: value }));
+    updateItem(key, { sku: value, item_code: value, manual_rate: false, applied_unit_price: '', suggested_unit_price: '', price_difference: '', line_total: '' });
+    if (productTimers.current[key]) clearTimeout(productTimers.current[key]);
+    productTimers.current[key] = setTimeout(() => searchItemProducts(key, value), 250);
+  }, [searchItemProducts, updateItem]);
+
+  const selectProduct = useCallback((key: string, product: Product) => {
+    const sku = String(product.sku || product.item_code || '');
+    updateItem(key, { sku, item_code: sku, item_name: product.nome || product.item_name || '', nome: product.nome || product.item_name || '', manual_rate: false, applied_unit_price: '', suggested_unit_price: '', price_difference: '', line_total: '' });
+    setProductTerms((previous) => ({ ...previous, [key]: sku }));
+    setProductResults((previous) => ({ ...previous, [key]: [] }));
+  }, [updateItem]);
+
+  const addItem = useCallback(() => {
+    const key = makeItemKey();
+    setItems((previous) => [...previous, { _key: key, sku: '', item_code: '', item_name: '', nome: '', qty: '1.000', suggested_unit_price: '', applied_unit_price: '', price_difference: '', line_total: '', manual_rate: false, rate: '' }]);
+  }, []);
+
+  const removeItem = useCallback((key: string) => {
+    setItems((previous) => previous.filter((item) => item._key !== key));
+  }, []);
+
+  const resetEditor = useCallback((authoritative: QuotationData = data) => {
+    setItems(asCoreItems(authoritative.items));
+    setClientId(authoritative.client_id || authoritative.cliente_id || '');
+    setClientSearch(authoritative.cliente || '');
+    setClientResults([]);
+    setClientSearching(false);
+    if (clientTimer.current) clearTimeout(clientTimer.current);
+    clientTimer.current = null;
+    setProductTerms({});
+    setProductResults({});
+    Object.values(productTimers.current).forEach((timer) => clearTimeout(timer));
+    productTimers.current = {};
+    setValidadeDias(String(authoritative.validade_dias ?? ''));
+    setPagamento(authoritative.pagamento || '');
+    setEntrega(authoritative.entrega || '');
+    setFrete(String(authoritative.frete ?? '0.00'));
+    setObservacoes(authoritative.observacoes || '');
+    setPrazoProducao(authoritative.prazo_producao || '');
+    setMessage('');
+    setConflict('');
+    setEditing(false);
+  }, [data]);
+
+  const save = useCallback(async () => {
+    if (!data.concurrency_token && !data.version_token && !data.updated_at) {
+      setConflict('Token de concorrência ausente. Recarregue o orçamento antes de editar.');
+      return;
+    }
+    setSaving(true);
+    setMessage('Salvando…');
+    setConflict('');
+    try {
+      const refreshed = await apiPut<QuotationData>(`/quotations?id=${encodeURIComponent(data.id)}`, {
+        concurrency_token: data.concurrency_token || data.version_token || data.updated_at,
+        client_id: clientId,
+        items: items.map((item) => ({
+          item_code: item.sku || item.item_code,
+          qty: item.qty,
+          rate: item.applied_unit_price,
+          manual_rate: item.manual_rate,
+        })),
+        validade_dias: Number(validadeDias),
+        pagamento,
+        entrega,
+        frete,
+        observacoes,
+        prazo_producao: prazoProducao,
+      });
+      if (refreshed && refreshed.id) {
+        setData(refreshed);
+        resetEditor(refreshed);
+      }
+      setMessage('Salvo.');
+      setEditing(false);
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 409) {
+        setConflict((error as Error).message || 'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.');
+        setMessage('');
+      } else {
+        setMessage(`Erro ao salvar: ${(error as Error).message || 'Tente novamente.'}`);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [clientId, data, entrega, frete, items, observacoes, pagamento, prazoProducao, resetEditor, validadeDias]);
+
+  const reloadAfterConflict = useCallback(async () => {
+    setConflict('');
+    await onReload();
+  }, [onReload]);
+
+  const displayItems = items;
+  const displayedTotal = data.total ?? data.valor ?? displayItems.reduce((sum, item) => sum + Number(item.line_total || Number(item.qty) * Number(item.applied_unit_price)), 0);
+
+  return (
+    <div className="space-y-4 max-w-[1060px] mx-auto">
+      <div className="bg-surface rounded-lg border border-line shadow-sm">
+        <div className="px-6 py-4 border-b flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-lg font-semibold">{data.id}</span>
+            <StatusBadge status={data.status} label={STATUS_LABELS[data.status] || data.status} />
+            {data.revision_number && <span className="text-xs text-fg-muted">Revisão {data.revision_number}</span>}
+          </div>
+          <button onClick={() => navigate('/quotations')} className="text-sm text-primary hover:underline">← Voltar</button>
+        </div>
+
+        {!draftEditable && (
+          <div className="px-6 py-3 border-b bg-page text-sm text-fg-muted">Este orçamento não está em rascunho e não pode ser editado.</div>
+        )}
+        {conflict && (
+          <div className="px-6 py-3 border-b bg-destructive/10 text-sm text-destructive flex items-center justify-between gap-3">
+            <span>{conflict}</span>
+            <Button variant="outline" size="sm" onClick={reloadAfterConflict}>Recarregar</Button>
+          </div>
+        )}
+
+        <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <span className="text-xs text-fg-muted">Cliente</span>
+            {editing ? (
+              <>
+                <div className="relative mt-1">
+                  <Search size={14} className="absolute left-2 top-2 text-fg-muted" />
+                  <Input aria-label="Cliente do orçamento" value={clientSearch} onChange={onClientSearch} className="pl-7" placeholder="Buscar cliente…" />
+                  {clientSearching && <Loader2 size={14} className="absolute right-2 top-2 animate-spin text-fg-muted" />}
+                </div>
+                {clientResults.length > 0 && (
+                  <div className="absolute z-40 left-0 right-0 mt-1 bg-surface border border-line rounded shadow-lg max-h-40 overflow-y-auto">
+                    {clientResults.map((client) => (
+                      <button key={client.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10" onMouseDown={(event) => { event.preventDefault(); setClientId(client.id); setClientSearch(client.nome); setClientResults([]); }}>
+                        <span className="font-medium">{client.nome}</span><span className="block text-xs text-fg-muted">{client.email || client.telefone || client.id}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : <p className="font-medium mt-1">{data.cliente || '—'}</p>}
+          </div>
+          <div><span className="text-xs text-fg-muted">Data</span><p>{formatDate(data.data)}</p></div>
+          <div><span className="text-xs text-fg-muted">Validade</span><p>{formatDate(data.validade)} ({data.validade_dias ?? '—'} dias)</p></div>
+        </div>
+
+        <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="text-sm"><span className="text-xs text-fg-muted">Pagamento</span>{editing ? <Input aria-label="Pagamento do orçamento" value={pagamento} onChange={(event) => setPagamento(event.target.value)} /> : <p>{pagamento || '—'}</p>}</label>
+          <label className="text-sm"><span className="text-xs text-fg-muted">Entrega</span>{editing ? <Input aria-label="Entrega do orçamento" value={entrega} onChange={(event) => setEntrega(event.target.value)} /> : <p>{entrega || '—'}</p>}</label>
+          <label className="text-sm"><span className="text-xs text-fg-muted">Validade (dias)</span>{editing ? <Input aria-label="Validade do orçamento" type="number" min="1" max="365" value={validadeDias} onChange={(event) => setValidadeDias(event.target.value)} /> : <p>{data.validade_dias ?? '—'}</p>}</label>
+          <label className="text-sm"><span className="text-xs text-fg-muted">Frete</span>{editing ? <Input aria-label="Frete do orçamento" type="number" min="0" step="0.01" value={frete} onChange={(event) => setFrete(event.target.value)} /> : <p>{formatBRL(data.frete)}</p>}</label>
+          <label className="text-sm md:col-span-2"><span className="text-xs text-fg-muted">Prazo de produção</span>{editing ? <Input aria-label="Prazo de produção do orçamento" value={prazoProducao} onChange={(event) => setPrazoProducao(event.target.value)} /> : <p>{prazoProducao || '—'}</p>}</label>
+          <label className="text-sm md:col-span-2"><span className="text-xs text-fg-muted">Observações</span>{editing ? <textarea aria-label="Observações do orçamento" className="mt-1 w-full min-h-20 rounded border border-line bg-surface px-3 py-2 text-sm" value={observacoes} onChange={(event) => setObservacoes(event.target.value)} /> : <p className="whitespace-pre-wrap">{observacoes || '—'}</p>}</label>
+        </div>
+
+        <div className="px-6 py-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <TableHeader><TableRow><TableHead>SKU</TableHead><TableHead>Produto</TableHead><TableHead className="text-center">Qtd</TableHead><TableHead className="text-right">Sugerido</TableHead><TableHead className="text-right">Aplicado</TableHead><TableHead className="text-right">Diferença</TableHead><TableHead className="text-right">Total</TableHead>{editing && <TableHead />}</TableRow></TableHeader>
+            <TableBody>{displayItems.map((item) => {
+              const results = productResults[item._key] || [];
+              return <TableRow key={item._key}>
+                <TableCell className="relative font-mono">
+                  {editing ? <><Input value={productTerms[item._key] ?? item.sku} onChange={(event) => onProductTerm(item._key, event.target.value)} className="h-8 w-32" />{results.length > 0 && <div className="absolute z-40 left-0 top-9 w-64 bg-surface border border-line rounded shadow-lg">{results.map((product) => <button type="button" key={product.sku} className="block w-full text-left px-2 py-1.5 hover:bg-primary/10" onMouseDown={(event) => { event.preventDefault(); selectProduct(item._key, product); }}><span className="font-mono text-xs">{product.sku}</span> {product.nome}</button>)}</div>}</> : item.sku}
+                </TableCell>
+                <TableCell>{item.nome || item.item_name || item.sku}</TableCell>
+                <TableCell className="text-center">{editing ? <Input className="h-8 w-20 mx-auto" type="number" min="0.001" step="0.001" value={item.qty} onChange={(event) => updateItem(item._key, { qty: event.target.value })} /> : item.qty}</TableCell>
+                <TableCell className="text-right">{formatBRL(item.suggested_unit_price)}</TableCell>
+                <TableCell className="text-right">{editing ? <Input aria-label={`Preço aplicado ${item.sku}`} className="h-8 w-28 ml-auto" type="number" min="0.01" step="0.01" value={item.applied_unit_price} onChange={(event) => updateItem(item._key, { applied_unit_price: event.target.value, manual_rate: true })} /> : formatBRL(item.applied_unit_price)}</TableCell>
+                <TableCell className={`text-right ${Number(item.price_difference) > 0 ? 'text-destructive' : ''}`}>{formatBRL(item.price_difference)}</TableCell>
+                <TableCell className="text-right font-mono">{formatBRL(item.line_total || Number(item.qty) * Number(item.applied_unit_price))}</TableCell>
+                {editing && <TableCell><button type="button" className="text-fg-muted hover:text-destructive" onClick={() => removeItem(item._key)} aria-label="Remover item"><X size={15} /></button></TableCell>}
+              </TableRow>;
+            })}</TableBody>
+          </table>
+          {editing && <Button variant="outline" size="sm" className="mt-3" onClick={addItem}><Plus size={14} /> Item</Button>}
+        </div>
+
+        <div className="px-6 py-3 border-t text-right font-semibold">Subtotal: {formatBRL(data.subtotal)} · Frete: {formatBRL(data.frete)} · Total: {formatBRL(displayedTotal)}</div>
+        <div className="px-6 py-4 border-t flex items-center gap-3">
+          {draftEditable && !editing && <Button variant="outline" size="sm" onClick={() => { setMessage(''); setEditing(true); }}><Pencil size={14} /> Editar</Button>}
+          {editing && <><Button variant="success" size="sm" disabled={saving} onClick={save}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}</Button><Button variant="outline" size="sm" disabled={saving} onClick={() => resetEditor()}>Cancelar</Button></>}
+          {message && <span className={`text-xs ${message.startsWith('Erro') ? 'text-destructive' : 'text-fg-muted'}`}>{message}</span>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function QuotationDetailPage({ id, navigate }: QuotationDetailPageProps) {
@@ -101,7 +461,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
 
   // ── Computed ──
   const items = mode === 'edit' ? editedItems : (data?.items || []);
-  const total = items.reduce((s, item) => s + (item.qty || 0) * (item.rate || 0), 0);
+  const total = items.reduce((s, item) => s + Number(item.qty || 0) * Number(item.rate || 0), 0);
 
   // ── Edit mode helpers (key-based) ──
   const updateItem = useCallback((_key: string, field: keyof QuotationItem, value: unknown) => {
@@ -202,7 +562,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
     setEditedItems(prev => {
       const item = prev.find(it => it._key === _key);
       if (!item) return prev;
-      const qty = item.qty || 1;
+      const qty = Number(item.qty || 1);
       schedulePricingLookup(_key, product.sku, qty);
       return prev;
     });
@@ -347,6 +707,10 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
 
   if (!data) return null;
 
+  if (data.core_mode === true || data.source === 'postgres') {
+    return <CoreQuotationDetail data={data} navigate={navigate} onReload={loadDetail} />;
+  }
+
   const quotationViewUrl = buildQuotationViewUrl(data.id);
   const fullQuotationViewUrl = new URL(quotationViewUrl, window.location.origin).toString();
 
@@ -430,7 +794,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
             </TableHeader>
             <TableBody>
               {items.map((item) => {
-                const amount = (item.qty || 0) * (item.rate || 0);
+                const amount = Number(item.qty || 0) * Number(item.rate || 0);
                 const key = item._key;
 
                 if (mode === 'edit') {

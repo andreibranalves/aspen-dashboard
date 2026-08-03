@@ -5,7 +5,7 @@
 //
 // Follows contracts in .sisyphus/notepads/quotation-ops-dashboard/contracts.md Section 3.
 
-import type { FunctionEvent, FunctionResult, ErpnextListItem } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, ErpnextListItem, LegacyHandler } from '../_lib/types.js';
 import {
   erpGetList,
   erpGetDoc,
@@ -14,6 +14,8 @@ import {
   erpCallMethod,
   createHttpError,
 } from './lib/erpnext.js';
+import { handler as coreHandler } from './quotations-core.js';
+import { isCoreQuotesEnabled } from './orcamento-mode.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -443,7 +445,7 @@ async function handleList(query: Record<string, string | undefined>) {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+async function legacyHandler(event: FunctionEvent): Promise<FunctionResult> {
   const query = event.queryStringParameters || {};
 
   try {
@@ -526,3 +528,22 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     };
   }
 }
+
+export interface QuotationsHandlerDependencies {
+  core?: LegacyHandler;
+  legacy?: LegacyHandler;
+}
+
+/** Feature-flagged boundary. Core failures are returned unchanged and never
+ * fall back to Frappe. Every value other than the exact string `true` keeps
+ * the pre-rollout handler byte-compatible. */
+export function createHandler(dependencies: QuotationsHandlerDependencies = {}): LegacyHandler {
+  const selectedCore = dependencies.core || coreHandler;
+  const selectedLegacy = dependencies.legacy || legacyHandler;
+  return async (event: FunctionEvent): Promise<FunctionResult> => {
+    if (isCoreQuotesEnabled()) return selectedCore(event);
+    return selectedLegacy(event);
+  };
+}
+
+export const handler = createHandler();

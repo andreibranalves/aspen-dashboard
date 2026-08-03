@@ -74,6 +74,8 @@ interface QuotationsApiResponse {
     total?: number;
   };
   status_summary?: Record<string, number>;
+  core_mode?: boolean;
+  source?: string;
 }
 
 interface DuplicateQuotationResponse {
@@ -104,6 +106,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [totalPages, setTotalPages] = useState<number>(0);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
+  const [coreMode, setCoreMode] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
@@ -143,6 +146,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         setTotalPages(result.pagination?.total_pages || 0);
         setTotalRecords(result.pagination?.total || 0);
         setStatusSummary(result.status_summary || {});
+        setCoreMode(result.core_mode === true && result.source === 'postgres');
       } catch (err) {
         console.error('[quotations]', err);
         setError((err as Error).message || 'Erro ao carregar orçamentos.');
@@ -334,7 +338,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   };
 
   const actionButtons = (row: QuotationRow) => {
-    const viewUrl = buildQuotationViewUrl(row.id);
     return (
       <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
         <ActionBtn
@@ -342,18 +345,22 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           label={`Editar orçamento ${row.id}`}
           onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
         />
-        <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`} href={viewUrl} />
-        <ActionBtn
-          icon={Copy}
-          label={`Duplicar orçamento ${row.id}`}
-          onClick={() => handleDuplicate(row.id)}
-        />
-        <ActionBtn
-          icon={Trash2}
-          label={`Excluir orçamento ${row.id}`}
-          onClick={() => handleDelete(row.id)}
-          colorClass="hover:bg-destructive/100/10 hover:text-destructive"
-        />
+        {!coreMode && (
+          <>
+            <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`} href={buildQuotationViewUrl(row.id)} />
+            <ActionBtn
+              icon={Copy}
+              label={`Duplicar orçamento ${row.id}`}
+              onClick={() => handleDuplicate(row.id)}
+            />
+            <ActionBtn
+              icon={Trash2}
+              label={`Excluir orçamento ${row.id}`}
+              onClick={() => handleDelete(row.id)}
+              colorClass="hover:bg-destructive/100/10 hover:text-destructive"
+            />
+          </>
+        )}
       </div>
     );
   };
@@ -534,16 +541,20 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     label={`Editar ${row.id}`}
                     onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                   />
-                  <ActionBtn
-                    icon={FileText}
-                    label={`PDF ${row.id}`}
-                    href={buildQuotationViewUrl(row.id)}
-                  />
-                  <ActionBtn
-                    icon={Copy}
-                    label={`Duplicar ${row.id}`}
-                    onClick={() => handleDuplicate(row.id)}
-                  />
+                  {!coreMode && (
+                    <>
+                      <ActionBtn
+                        icon={FileText}
+                        label={`PDF ${row.id}`}
+                        href={buildQuotationViewUrl(row.id)}
+                      />
+                      <ActionBtn
+                        icon={Copy}
+                        label={`Duplicar ${row.id}`}
+                        onClick={() => handleDuplicate(row.id)}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -637,7 +648,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         </div>
       )}
 
-      <div
+      {!coreMode && <div
         className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
       >
         <div className="mx-auto max-w-[1060px] px-4">
@@ -679,7 +690,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

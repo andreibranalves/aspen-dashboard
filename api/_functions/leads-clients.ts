@@ -91,7 +91,13 @@ export function createCoreHandler(dependencies: Pick<LeadsClientsHandlerDependen
 export function createHandler(dependencies: LeadsClientsHandlerDependencies = {}): (event: FunctionEvent) => Promise<FunctionResult> {
   const core = dependencies.core || createCoreHandler(dependencies);
   return async function leadsClientsHandler(event: FunctionEvent): Promise<FunctionResult> {
-    if (process.env.CRM_CORE_CLIENTS_ENABLED !== 'true') {
+    const clientsCoreEnabled = process.env.CRM_CORE_CLIENTS_ENABLED === 'true';
+    const quotesCoreEnabled = process.env.CRM_CORE_QUOTES_ENABLED === 'true';
+    // Quote management searches clients through this endpoint. During the
+    // quote rollout only GET is promoted; writes remain owned by the clients
+    // flag until that surface is explicitly enabled.
+    const useCore = clientsCoreEnabled || (quotesCoreEnabled && event.httpMethod === 'GET');
+    if (!useCore) {
       const legacy = dependencies.legacy || legacyHandler;
       return withMeta(await legacy(event), legacyMeta());
     }
