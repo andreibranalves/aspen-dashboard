@@ -56,12 +56,36 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+const OPERATIONAL_NAV_SECTIONS: NavSection[] = [
+  {
+    title: 'Operacional',
+    items: [
+      { hash: '/manual', label: 'Novo Orçamento', icon: FileText },
+    ],
+  },
+  {
+    title: 'Cadastros',
+    items: [
+      { hash: '/quotations', label: 'Orçamentos', icon: FileText },
+      { hash: '/products', label: 'Produtos', icon: Package },
+      { hash: '/leads', label: 'Clientes', icon: Users },
+    ],
+  },
+  {
+    title: 'Outros',
+    items: [
+      { hash: '/settings', label: 'Configurações', icon: Settings },
+    ],
+  },
+];
+
 export interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   currentRoute: string;
   onNavigate: (hash: string) => void;
   clientCoreMode?: boolean;
+  operationalMode?: boolean;
   darkMode: boolean;
   toggleDarkMode: () => void;
 }
@@ -77,17 +101,21 @@ export default function Sidebar({
   currentRoute,
   onNavigate,
   clientCoreMode,
+  operationalMode,
   darkMode,
   toggleDarkMode,
 }: SidebarProps) {
   const routeSegment = currentRoute.split('/')[2]?.toLowerCase();
   // A direct customer detail route is safely client-specific. The list itself
   // remains neutral until the server has authoritatively resolved its mode.
-  const clientLabel = clientCoreMode === true || routeSegment === 'cliente' || routeSegment === 'customer'
+  const clientLabel = operationalMode
     ? 'Clientes'
-    : clientCoreMode === false
-      ? 'Leads'
-      : 'Contatos';
+    : clientCoreMode === true || routeSegment === 'cliente' || routeSegment === 'customer'
+      ? 'Clientes'
+      : clientCoreMode === false
+        ? 'Leads'
+        : 'Contatos';
+  const sections = operationalMode ? OPERATIONAL_NAV_SECTIONS : NAV_SECTIONS;
   return (
     <>
       {/* Overlay mobile */}
@@ -130,7 +158,7 @@ export default function Sidebar({
 
         {/* Navigation */}
         <nav className="flex-1 py-2 overflow-y-auto">
-          {NAV_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <div key={section.title} className="mb-2">
               {/* Section header — hidden when collapsed */}
               {!collapsed && (

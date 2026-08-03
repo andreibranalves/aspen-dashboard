@@ -5,6 +5,7 @@ import {
   type Settings,
   type SettingsRepository,
 } from '../_db/settings-repository.js';
+import { isOperationalMode } from './operational-mode.js';
 
 const MAX_PAYMENT_LENGTH = 500;
 const MAX_DELIVERY_LENGTH = 500;
@@ -157,7 +158,8 @@ export function createHandler(
     if (event.httpMethod === 'GET') {
       try {
         const settings = await dependencies.repository.get();
-        return jsonResponse(200, settings || { ...DEFAULT_SETTINGS });
+        const response = settings || { ...DEFAULT_SETTINGS };
+        return jsonResponse(200, { ...response, operational_mode: isOperationalMode() });
       } catch (error) {
         logDatabaseError('load', error);
         return jsonResponse(500, {

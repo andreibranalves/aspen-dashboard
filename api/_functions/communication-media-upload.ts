@@ -14,6 +14,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 
 import { handleUpload } from '@vercel/blob/client';
 import { createHttpError } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 import {
   PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
@@ -32,6 +33,9 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-media-upload não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, { error: 'Método não permitido.' });
   }

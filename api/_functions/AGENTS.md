@@ -42,10 +42,12 @@ api/_functions/
 | Lead/Customer CRUD | `leads-clients.js` / `client-detail.js` |
 | CRM Deal operations | `crm-deals.js` / `crm-update-deal.js` |
 | Product catalog & pricing | `products.js` / `product-detail.js` / `product-pricing.js` |
+| Product core rollout | `products-core.js` / `product-detail-core.js` / `product-update-core.js` (PostgreSQL) and `*-legacy.js` (Frappe) |
 | Product updates | `product-update.js` / `product-pricing-update.js` / `product-activity.js` |
 | Direct price lookup | `pricing-lookup.js` / `pricing.js` |
 | Quotation CRUD / duplicate | `quotations.js` / `duplicate-quotation.js` |
 | Sales orders / dashboard | `sales-orders.js` / `sales-order-from-quotation.js` / `sales-dashboard.js` |
+| Default quotation settings | `settings.js` |
 | Auth cookie handlers | `login.js` / `logout.js` |
 
 ## Conventions
@@ -56,6 +58,11 @@ api/_functions/
 - `view.js` is the only handler that returns `text/html`; all others return JSON.
 - Communication flows/media use Vercel KV (`aspen:communication:*` namespace) and Vercel Blob.
 - Shared schemas live in `api/_lib/media-schema.js`, not inside `_functions`.
+- Products use PostgreSQL only when `CRM_CORE_PRODUCTS_ENABLED === 'true'`; otherwise
+  the boundary delegates to the preserved Frappe handlers. Unified clients use
+  PostgreSQL when `CRM_CORE_CLIENTS_ENABLED === 'true'`; the in-memory repository
+  is a test seam only. Core failures never fall back to Frappe, and core responses
+  expose `core_mode`/`source` metadata.
 
 ## Anti-Patterns / Notes
 

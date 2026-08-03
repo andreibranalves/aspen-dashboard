@@ -1,7 +1,8 @@
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/PageLoader';
+import { apiGet } from '@/lib/api';
 
 // Eager pages — rota padrão e tela de login (críticas, pequenas)
 import AutoQuotePage from '@/pages/AutoQuotePage';
@@ -24,7 +25,20 @@ const ManualOrcamentoPage = lazy(() => import('@/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/pages/ComunicacaoPage'));
 const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
-function renderPage(route: string, navigate: (hash: string) => void) {
+// Routes hidden in operational mode (Frappe-dependent)
+const HIDDEN_ROUTES = new Set([
+  '/dashboard', '/auto', '/pre-orcamentos', '/sales-orders',
+  '/crm', '/comunicacao', '/whatsapp-inbox',
+]);
+
+function renderPage(route: string, navigate: (hash: string) => void, operationalMode: boolean) {
+  // In operational mode, redirect hidden and unknown routes to /manual
+  if (operationalMode) {
+    if (HIDDEN_ROUTES.has(route) || route === '' || route === '/') {
+      navigate('/manual');
+      return <PageLoader />;
+    }
+  }
   // Login page — full screen, no layout
   if (route === '/login') return <LoginPage navigate={navigate} />;
 
@@ -40,12 +54,19 @@ function renderPage(route: string, navigate: (hash: string) => void) {
 
   // Detail page: #/sales-orders/VP-20261143
   if (route.startsWith('/sales-orders/')) {
+    if (operationalMode) { navigate('/manual'); return <PageLoader />; }
     const id = route.split('/sales-orders/')[1];
     return (
       <Suspense fallback={<PageLoader />}>
         <SalesOrderDetailPage id={id} navigate={navigate} />
       </Suspense>
     );
+  }
+
+  // Unknown route in operational mode -> redirect to /manual
+  if (operationalMode && !['/quotations', '/products', '/leads', '/settings', '/manual'].includes(route) && !route.startsWith('/quotations/') && !route.startsWith('/products/') && !route.startsWith('/leads/')) {
+    navigate('/manual');
+    return <PageLoader />;
   }
 
   // Product detail page: #/products/LNC-SED-70
@@ -112,7 +133,7 @@ function renderPage(route: string, navigate: (hash: string) => void) {
       page = <WhatsAppInboxPage navigate={navigate} />;
       break;
     default:
-      page = <AutoQuotePage />;
+      page = operationalMode ? <ManualOrcamentoPage /> : <AutoQuotePage />;
   }
 
   // AutoQuotePage is eager; wrap lazy pages (all switch cases except auto/default)
@@ -125,15 +146,26 @@ function renderPage(route: string, navigate: (hash: string) => void) {
 
 export default function App() {
   const [route, navigate] = useHashRoute();
+  const [operationalMode, setOperationalMode] = useState(false);
 
-  // Login page — full screen, no sidebar
+  useEffect(() => {
+    apiGet<{ operational_mode?: boolean }>('/settings')
+      .then((result) => {
+        if (typeof result.operational_mode === 'boolean') {
+          setOperationalMode(result.operational_mode);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Login page - full screen, no sidebar
   if (route === '/login') {
     return <LoginPage navigate={navigate} />;
   }
 
   return (
     <Layout route={route} onNavigate={navigate}>
-      {renderPage(route, navigate)}
+      {renderPage(route, navigate, operationalMode)}
     </Layout>
   );
 }

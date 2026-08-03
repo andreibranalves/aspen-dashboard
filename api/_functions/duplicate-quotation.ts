@@ -5,8 +5,12 @@ import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // Returns: { success: true, new_id: "ORC-20261369" }
 
 import { erpGetDoc, erpPost, createHttpError } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'duplicate-quotation não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

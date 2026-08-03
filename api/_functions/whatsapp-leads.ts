@@ -2,6 +2,7 @@
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 
 import { erpGetList, createHttpError } from './lib/erpnext.js';
+import { isOperationalMode } from './operational-mode.js';
 
 // ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
 const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
@@ -670,6 +671,9 @@ export function shouldIncludeWhatsappLead(lead: Record<string, any>): boolean {
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'whatsapp-leads não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'GET') {
     return jsonResponse(405, { error: 'Method Not Allowed' });
   }

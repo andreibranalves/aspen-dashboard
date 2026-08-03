@@ -45,6 +45,7 @@ export function legacyMeta(): CoreMeta {
 }
 
 export function isCoreClientsEnabled(): boolean {
+  if (process.env.CRM_OPERATIONAL_MODE === 'true') return true;
   return process.env.CRM_CORE_CLIENTS_ENABLED === 'true';
 }
 

@@ -4,6 +4,7 @@
  * implementation.
  */
 export function isCoreQuotesEnabled(): boolean {
+  if (process.env.CRM_OPERATIONAL_MODE === 'true') return true;
   return process.env.CRM_CORE_QUOTES_ENABLED === 'true';
 }
 export type QuoteResponseMode = 'core' | 'legacy';

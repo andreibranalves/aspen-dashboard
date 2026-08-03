@@ -8,11 +8,36 @@ import {
   RefreshCw,
   Save,
   SlidersHorizontal,
+  Shield,
+  ShieldCheck,
+  XCircle,
 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getSettings, saveSettings, type DashboardSettings } from '@/lib/settingsApi';
+import { apiGet } from '@/lib/api';
+
+interface OperationalStatus {
+  ready: boolean;
+  checks: {
+    database_connected: boolean;
+    migration_complete: boolean;
+    pdfs_archived: boolean;
+    backup_validated: boolean;
+    capacity_ok: boolean;
+    mandatory_settings: boolean;
+  };
+  details: {
+    product_count: number;
+    client_count: number;
+    quotation_count: number;
+    pdf_count: number;
+    settings_missing: string[];
+    last_backup: string | null;
+    blob_token_present: boolean;
+  };
+}
 
 interface SettingsForm {
   validade_dias: string;
@@ -46,6 +71,122 @@ function toForm(settings: DashboardSettings): SettingsForm {
 function formatApiError(error: unknown, fallback: string): string {
   const message = (error as { message?: string })?.message;
   return message || fallback;
+}
+
+function CheckItem({ label, passed }: { label: string; passed: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      {passed ? (
+        <CheckCircle2 size={16} className="shrink-0 text-success" />
+      ) : (
+        <XCircle size={16} className="shrink-0 text-destructive" />
+      )}
+      <span className={passed ? 'text-fg' : 'text-fg-muted'}>{label}</span>
+    </div>
+  );
+}
+
+function OperationalModeSection() {
+  const [operationalMode, setOperationalMode] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<OperationalStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+
+  useEffect(() => {
+    apiGet<{ operational_mode?: boolean }>('/settings')
+      .then((result) => {
+        if (typeof result.operational_mode === 'boolean') {
+          setOperationalMode(result.operational_mode);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadStatus = useCallback(async () => {
+    setLoadingStatus(true);
+    try {
+      const result = await apiGet<OperationalStatus>('/operational-status');
+      setStatus(result);
+    } catch {
+      // Status check failed silently
+    } finally {
+      setLoadingStatus(false);
+    }
+  }, []);
+
+  if (operationalMode === null) return null;
+
+  return (
+    <section className="rounded-xl border border-line bg-surface p-6 space-y-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+          {operationalMode ? (
+            <ShieldCheck size={20} className="text-success" />
+          ) : (
+            <Shield size={20} className="text-primary" />
+          )}
+        </div>
+        <div className="flex-1">
+          <h2 className="text-sm font-semibold text-fg">Modo Operacional</h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            {operationalMode
+              ? 'O modo operacional está ativo. As dependências do Frappe foram desativadas.'
+              : 'Verifique os pré-requisitos antes de ativar o modo operacional.'}
+          </p>
+        </div>
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+            operationalMode
+              ? 'bg-success/10 text-success'
+              : 'bg-surface-muted text-fg-muted'
+          }`}
+        >
+          {operationalMode ? 'Ativo' : 'Inativo'}
+        </span>
+      </div>
+
+      {!operationalMode && (
+        <div className="space-y-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void loadStatus()}
+            disabled={loadingStatus}
+          >
+            {loadingStatus ? <Loader2 className="animate-spin" /> : <RefreshCw size={14} />}
+            {loadingStatus ? 'Verificando...' : 'Verificar pré-requisitos'}
+          </Button>
+
+          {status && (
+            <div className="space-y-3 rounded-lg border border-line bg-surface-muted p-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <CheckItem label="Banco de dados conectado" passed={status.checks.database_connected} />
+                <CheckItem label="Migração concluída" passed={status.checks.migration_complete} />
+                <CheckItem label="PDFs arquivados" passed={status.checks.pdfs_archived} />
+                <CheckItem label="Backup validado" passed={status.checks.backup_validated} />
+                <CheckItem label="Capacidade OK" passed={status.checks.capacity_ok} />
+                <CheckItem label="Configurações obrigatórias" passed={status.checks.mandatory_settings} />
+              </div>
+              <div className="border-t border-line pt-3 text-xs text-fg-muted space-y-1">
+                <p>Produtos: {status.details.product_count} | Clientes: {status.details.client_count} | Orçamentos: {status.details.quotation_count} | PDFs: {status.details.pdf_count}</p>
+                {status.details.last_backup && (
+                  <p>Último backup: {new Date(status.details.last_backup).toLocaleString('pt-BR')}</p>
+                )}
+                {status.details.settings_missing.length > 0 && (
+                  <p className="text-destructive">Configurações faltando: {status.details.settings_missing.join(', ')}</p>
+                )}
+              </div>
+              {status.ready && (
+                <div className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-sm text-fg">
+                  <CheckCircle2 size={18} className="shrink-0 text-success" />
+                  <span>Todos os pré-requisitos atendidos. Ative o modo operacional definindo <code className="font-mono">CRM_OPERATIONAL_MODE=true</code> nas variáveis de ambiente.</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export default function SettingsPage() {
@@ -109,6 +250,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
       <PageHeader title="Configurações" />
+
+      <OperationalModeSection />
 
       <section className="rounded-xl border border-line bg-surface p-6 space-y-5">
         <div className="flex items-start gap-3">

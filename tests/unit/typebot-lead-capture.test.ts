@@ -12,6 +12,7 @@ const ORIGINAL_ENV = {
   TYPEBOT_LEAD_WEBHOOK_TOKEN: process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN,
   TYPEBOT_LEAD_CAPTURE_ENABLED: process.env.TYPEBOT_LEAD_CAPTURE_ENABLED,
   META_CAPI_ACCESS_TOKEN: process.env.META_CAPI_ACCESS_TOKEN,
+  CRM_OPERATIONAL_MODE: process.env.CRM_OPERATIONAL_MODE,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -103,12 +104,17 @@ afterEach(() => {
   } else {
     process.env.META_CAPI_ACCESS_TOKEN = ORIGINAL_ENV.META_CAPI_ACCESS_TOKEN;
   }
+  // Always disable operational mode for typebot tests - this endpoint has
+  // special behavior (200 OK passthrough) in operational mode that would
+  // interfere with the Frappe-dependent test assertions below.
+  delete process.env.CRM_OPERATIONAL_MODE;
 
   globalThis.fetch = ORIGINAL_FETCH;
 });
 
 describe('typebot-lead-capture handler', () => {
   it('retorna 405 para método diferente de POST', async () => {
+    delete process.env.CRM_OPERATIONAL_MODE;
     process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'secret';
 
     const result = await handler(buildEvent({ method: 'GET' }));

@@ -17,6 +17,7 @@ function result(statusCode: number) {
 }
 
 function setFlags(products: string | undefined, quotes: string | undefined): void {
+  delete process.env.CRM_OPERATIONAL_MODE;
   if (products === undefined) delete process.env.CRM_CORE_PRODUCTS_ENABLED;
   else process.env.CRM_CORE_PRODUCTS_ENABLED = products;
   if (quotes === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;

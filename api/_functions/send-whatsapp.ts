@@ -12,6 +12,7 @@ import {
 } from './lib/erpnext.js';
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
+import { isOperationalMode } from './operational-mode.js';
 import {
   LIVE_DEPS,
   upsertWhatsappMessages,
@@ -675,6 +676,9 @@ async function dispatchN8n(payload: Record<string, unknown>, email?: string): Pr
 }
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (isOperationalMode()) {
+    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'send-whatsapp não está disponível no modo operacional.' }) };
+  }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
