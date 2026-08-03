@@ -163,3 +163,129 @@ export const clients = pgTable(
     ),
   ],
 );
+
+/**
+ * Per-year business-number counters for first-party quotation drafts.  The
+ * repository increments `lastNumber` with an atomic upsert while the quote
+ * transaction is open, so a rolled-back draft also rolls back its reservation.
+ */
+export const quoteSequences = pgTable(
+  'quote_sequences',
+  {
+    year: integer('year').primaryKey(),
+    lastNumber: integer('last_number').notNull().default(0),
+  },
+  (table) => [
+    check('quote_sequences_year_check', sql`${table.year} BETWEEN 2000 AND 9999`),
+    check('quote_sequences_last_number_check', sql`${table.lastNumber} >= 0 AND ${table.lastNumber} <= 9999`),
+  ],
+);
+
+/** First-party quotation aggregate.  The business number is the public name;
+ * UUIDs remain stable application-created identifiers for future revisions. */
+export const quotations = pgTable(
+  'quotations',
+  {
+    id: uuid('id').primaryKey(),
+    businessNumber: varchar('business_number', { length: 16 }).notNull(),
+    clientId: uuid('client_id').notNull().references(() => clients.id),
+    status: varchar('status', { length: 32 }).notNull().default('rascunho'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('quotations_business_number_unique').on(table.businessNumber),
+    index('quotations_client_created_idx').on(table.clientId, table.createdAt),
+    check('quotations_business_number_format_check', sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`),
+    check('quotations_status_not_blank_check', sql`char_length(btrim(${table.status})) > 0`),
+  ],
+);
+
+/** Immutable revision header/snapshots.  Revision one is the only revision
+ * created by this rollout; later issues can append versions without mutating
+ * the historical client/settings values stored here. */
+export const quoteRevisions = pgTable(
+  'quote_revisions',
+  {
+    id: uuid('id').primaryKey(),
+    quotationId: uuid('quotation_id').notNull().references(() => quotations.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    status: varchar('status', { length: 32 }).notNull().default('rascunho'),
+    validadeDias: integer('validade_dias').notNull(),
+    pagamento: varchar('pagamento', { length: 500 }).notNull().default(''),
+    entrega: varchar('entrega', { length: 500 }).notNull().default(''),
+    fretePadrao: numeric('frete_padrao', { precision: 20, scale: 2 }).notNull().default('0.00'),
+    frete: numeric('frete', { precision: 20, scale: 2 }).notNull().default('0.00'),
+    observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),
+    prazoProducao: varchar('prazo_producao', { length: 500 }).notNull().default(''),
+    templatePadrao: varchar('template_padrao', { length: 120 }).notNull().default('padrao'),
+    clienteNome: varchar('cliente_nome', { length: 200 }).notNull(),
+    clienteDocumento: varchar('cliente_documento', { length: 14 }),
+    clienteEmail: varchar('cliente_email', { length: 254 }),
+    clienteTelefone: varchar('cliente_telefone', { length: 15 }),
+    clienteEndereco: varchar('cliente_endereco', { length: 255 }),
+    clienteNumero: varchar('cliente_numero', { length: 30 }),
+    clienteBairro: varchar('cliente_bairro', { length: 120 }),
+    clienteComplemento: varchar('cliente_complemento', { length: 120 }),
+    clienteMunicipio: varchar('cliente_municipio', { length: 120 }),
+    clienteUf: varchar('cliente_uf', { length: 2 }),
+    clienteCep: varchar('cliente_cep', { length: 8 }),
+    clienteNotas: varchar('cliente_notas', { length: 4000 }),
+    subtotal: numeric('subtotal', { precision: 20, scale: 2 }).notNull().default('0.00'),
+    total: numeric('total', { precision: 20, scale: 2 }).notNull().default('0.00'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('quote_revisions_quotation_version_unique').on(table.quotationId, table.version),
+    index('quote_revisions_quotation_idx').on(table.quotationId, table.version),
+    check('quote_revisions_version_positive_check', sql`${table.version} > 0`),
+    check('quote_revisions_validade_dias_check', sql`${table.validadeDias} BETWEEN 1 AND 365`),
+    check('quote_revisions_frete_padrao_check', sql`${table.fretePadrao} >= 0`),
+    check('quote_revisions_frete_check', sql`${table.frete} >= 0`),
+    check('quote_revisions_subtotal_check', sql`${table.subtotal} >= 0`),
+    check('quote_revisions_total_check', sql`${table.total} >= 0`),
+    check('quote_revisions_status_not_blank_check', sql`char_length(btrim(${table.status})) > 0`),
+  ],
+);
+
+/** Product and price snapshots for one revision.  The product FK deliberately
+ * uses PostgreSQL's default NO ACTION behavior so history cannot disappear
+ * when a catalog row is archived or deleted in a future migration. */
+export const quoteRevisionItems = pgTable(
+  'quote_revision_items',
+  {
+    id: uuid('id').primaryKey(),
+    revisionId: uuid('revision_id').notNull().references(() => quoteRevisions.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    productSku: varchar('product_sku', { length: 120 }).notNull().references(() => products.sku),
+    quantidade: numeric('quantidade', { precision: 14, scale: 3 }).notNull(),
+    produtoSku: varchar('produto_sku', { length: 120 }).notNull(),
+    produtoNome: varchar('produto_nome', { length: 255 }).notNull(),
+    produtoDescricao: varchar('produto_descricao', { length: 4000 }).notNull().default(''),
+    produtoUnidade: varchar('produto_unidade', { length: 32 }).notNull().default('Und'),
+    produtoCategoria: varchar('produto_categoria', { length: 255 }),
+    produtoMarca: varchar('produto_marca', { length: 255 }),
+    precoFonte: varchar('preco_fonte', { length: 32 }).notNull(),
+    precoMinimoFaixa: numeric('preco_minimo_faixa', { precision: 14, scale: 3 }),
+    precoSugerido: numeric('preco_sugerido', { precision: 20, scale: 2 }).notNull(),
+    precoAplicado: numeric('preco_aplicado', { precision: 20, scale: 2 }).notNull(),
+    diferencaPreco: numeric('diferenca_preco', { precision: 20, scale: 2 }).notNull().default('0.00'),
+    totalLinha: numeric('total_linha', { precision: 20, scale: 2 }).notNull(),
+    manualRate: boolean('manual_rate').notNull().default(false),
+  },
+  (table) => [
+    uniqueIndex('quote_revision_items_revision_position_unique').on(table.revisionId, table.position),
+    index('quote_revision_items_product_idx').on(table.productSku),
+    check('quote_revision_items_position_check', sql`${table.position} >= 0`),
+    check('quote_revision_items_quantity_check', sql`${table.quantidade} > 0`),
+    check('quote_revision_items_prices_check', sql`${table.precoSugerido} > 0 AND ${table.precoAplicado} > 0`),
+    check('quote_revision_items_total_check', sql`${table.totalLinha} >= 0`),
+  ],
+);
+
+// Singular aliases make repository/tests that speak in domain terms concise
+// without changing the SQL table names used by migrations.
+export const quoteSequence = quoteSequences;
+export const quotation = quotations;
+export const quoteRevision = quoteRevisions;
+export const quoteRevisionItem = quoteRevisionItems;

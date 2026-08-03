@@ -371,8 +371,11 @@ export default function ManualOrcamentoPage() {
             item_code: item.sku,
             qty: item.qty,
             rate: item.rate,
-            manual_rate: true,
+            manual_rate: item._rateManual,
           })),
+          ...(clientType === CLIENT_TYPE.EXISTING && selectedClient
+            ? { client_id: selectedClient.id }
+            : {}),
           prazo_producao: prazo || undefined,
           ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
         },
@@ -386,7 +389,7 @@ export default function ManualOrcamentoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [getClientInfo, items, urgente, prazo, observacoes, leadSource, cnpj, address, clientCoreMode]);
+  }, [getClientInfo, items, urgente, prazo, observacoes, leadSource, cnpj, address, clientCoreMode, clientType, selectedClient]);
 
   // ── WhatsApp link builder ──
   const buildWaLink = useCallback((telefone: string, nome: string | undefined, quotationId: string | undefined, quotationLink: string): string | null => {
@@ -427,19 +430,27 @@ export default function ManualOrcamentoPage() {
       {/* ══ Success Result ══ */}
       {result && (
         <div className="bg-success/10 border border-success/30 rounded-xl p-5 space-y-4">
+          {(() => {
+            const coreDraft = result.core_mode === true;
+            const businessNumber = result.quotation_name || result.quotation_id || '';
+            return (
+              <>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-success flex items-center justify-center">
               <Check size={18} className="text-white" />
             </div>
             <div>
-              <p className="font-semibold text-success">Orçamento criado com sucesso</p>
+              <p className="font-semibold text-success">
+                {coreDraft ? 'Rascunho persistido com sucesso' : 'Orçamento criado com sucesso'}
+              </p>
               <p className="text-sm text-success/70">
-                {capitalize(result.cliente)} · {result.quotation_id}
+                {capitalize(result.cliente || '')} · {businessNumber}
+                {coreDraft && result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          {!coreDraft && <div className="flex flex-wrap gap-2">
             {result.quotation_id && (
               <a
                 href={buildQuotationViewUrl(result.quotation_id)}
@@ -465,11 +476,14 @@ export default function ManualOrcamentoPage() {
                 </a>
               ) : null;
             })()}
-          </div>
+          </div>}
 
           <Button variant="outline" size="sm" onClick={resetForm}>
             Novo orçamento
           </Button>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -1089,7 +1103,7 @@ export default function ManualOrcamentoPage() {
                   <span className="text-2xl font-bold tracking-tight">{formatBRL(subtotal)}</span>
                 </div>
                 <p className="text-xs text-fg-muted mt-2">
-                  O valor enviado usa exatamente os preços visíveis na tabela.
+                  Os preços e totais são confirmados pelo servidor no momento da criação.
                 </p>
               </div>
 
@@ -1113,7 +1127,7 @@ export default function ManualOrcamentoPage() {
                   Limpar tudo
                 </Button>
                 <p className="text-xs text-fg-muted text-center">
-                  {canSubmit ? 'Pronto para criar no ERPNext.' : 'Cliente e itens são obrigatórios.'}
+                  {canSubmit ? 'Pronto para criar o orçamento.' : 'Cliente e itens são obrigatórios.'}
                 </p>
               </div>
             </aside>
