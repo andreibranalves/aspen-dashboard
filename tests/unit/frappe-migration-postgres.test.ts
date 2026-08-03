@@ -11,6 +11,7 @@ import postgres from 'postgres';
 import { createPostgresFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import * as schema from '../../api/_db/schema.js';
 import { runFrappeMigration } from '../../api/_functions/frappe-migration.js';
+import { quotationPdfChecksum } from '../../api/_functions/lib/quotation-document-storage.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -237,6 +238,152 @@ test(
     } finally {
       // Only remove the sequence row when this test created it; a higher value
       // from another suite must not be destroyed.
+      await client.unsafe('DELETE FROM quote_sequences WHERE year = $1 AND last_number <= $2', [
+        2024,
+        sequence,
+      ]);
+      await client.unsafe('DELETE FROM frappe_import_lineage WHERE source_id LIKE $1', [
+        `%${suffix}`,
+      ]);
+      await client.unsafe('DELETE FROM quotations WHERE business_number LIKE $1', [
+        `%${expectedBusinessNumber}`,
+      ]);
+      await client.unsafe('DELETE FROM clients WHERE nome LIKE $1', [`%${suffix}`]);
+      await client.unsafe('DELETE FROM products WHERE sku LIKE $1', [`%${suffix}`]);
+      await client.end({ timeout: 5 });
+    }
+  }
+);
+
+test(
+  'PostgreSQL arquivamento histórico substitui o placeholder por um PDF real de forma idempotente',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    const client = postgres(TEST_DATABASE_URL!, {
+      max: 1,
+      prepare: false,
+      connect_timeout: 10,
+      idle_timeout: 20,
+      onnotice: () => undefined,
+    });
+    const db = drizzle(client, { schema });
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const sku = `SKU-ARCH-${suffix}`;
+    const itemId = `ITEM-ARCH-${suffix}`;
+    const customerId = `CUST-ARCH-${suffix}`;
+    const document = String(Math.floor(1e10 + Math.random() * 9e10));
+    const sequence = 2000 + Math.floor(Math.random() * 8000);
+    const quotationId = `QTN-2024-${String(sequence).padStart(5, '0')}`;
+    const expectedBusinessNumber = `ORC-2024${String(sequence).padStart(4, '0')}`;
+    const PDF = Buffer.from(['%PDF-1.7', 'conteudo-arquivado', '%%EOF'].join('\n') + '\n');
+    const blobs = new Map<string, Buffer>();
+    const pipeline = {
+      async fetchHtml(): Promise<string> {
+        return '<html><body>orçamento histórico</body></html>';
+      },
+      async renderPdf(): Promise<Buffer> {
+        return PDF;
+      },
+      blobs: {
+        async list(prefix: string): Promise<string[]> {
+          return [...blobs.keys()].filter((pathname) => pathname.startsWith(prefix));
+        },
+        async put(pathname: string, buffer: Buffer) {
+          blobs.set(pathname, buffer);
+          return {
+            pathname,
+            sizeBytes: buffer.length,
+            checksumSha256: quotationPdfChecksum(buffer),
+          };
+        },
+      },
+    };
+    const dataset = {
+      items: [{ name: itemId, item_code: sku, item_name: 'Produto PG', stock_uom: 'Und' }],
+      pricingRules: [],
+      itemPrices: [],
+      customers: [{ name: customerId, customer_name: 'Cliente PG', tax_id: document }],
+      leads: [],
+      quotations: [
+        {
+          name: quotationId,
+          creation: '2024-06-01 09:00:00',
+          quotation_to: 'Customer',
+          customer: customerId,
+          status: 'Submitted',
+          items: [
+            {
+              idx: 1,
+              item_code: sku,
+              item_name: 'Produto PG',
+              qty: '10',
+              uom: 'Und',
+              rate: '5.00',
+              price_list_rate: '5.00',
+              amount: '50.00',
+            },
+          ],
+        },
+      ],
+    };
+    try {
+      await migrate(db, { migrationsFolder });
+      const repository = createPostgresFrappeMigrationRepository(() => db);
+      const first = await runFrappeMigration({
+        mode: 'apply',
+        dataset,
+        repository,
+        pdfPipeline: pipeline,
+      });
+      assert.equal(first.report.orcamentos.criados, 1);
+      assert.equal(first.report.documentos.lidos, 1);
+      assert.equal(first.report.documentos.atualizados, 1);
+      const documentRows = await db
+        .select()
+        .from(schema.issuedDocuments)
+        .innerJoin(schema.quoteRevisions, eq(schema.quoteRevisions.id, schema.issuedDocuments.revisionId))
+        .innerJoin(schema.quotations, eq(schema.quotations.id, schema.quoteRevisions.quotationId))
+        .where(eq(schema.quotations.businessNumber, expectedBusinessNumber));
+      assert.equal(documentRows.length, 1);
+      const row = documentRows[0].issued_documents;
+      assert.equal(row.kind, 'historical_pdf_import');
+      assert.equal(row.sizeBytes, PDF.length);
+      assert.equal(row.fileName, `${quotationId}.pdf`);
+      assert.equal(row.mimeType, 'application/pdf');
+      assert.equal(row.checksumSha256, quotationPdfChecksum(PDF));
+      assert.equal(
+        row.blobPathname,
+        `quotations-migration/${expectedBusinessNumber}/${quotationId}-${quotationPdfChecksum(PDF)}.pdf`
+      );
+
+      const placeholders = await repository.listIssuedDocumentPdfPlaceholders();
+      assert.equal(placeholders.length, 1);
+      assert.equal(placeholders[0].sourceId, quotationId);
+      assert.equal(placeholders[0].businessNumber, expectedBusinessNumber);
+      assert.equal(placeholders[0].blobPathname, row.blobPathname);
+
+      // Rerun: the deterministic blob already exists with a matching checksum,
+      // so the run reports the document as already archived without touching
+      // the store or the row again.
+      const rerun = await runFrappeMigration({
+        mode: 'apply',
+        dataset,
+        repository,
+        pdfPipeline: pipeline,
+      });
+      assert.equal(rerun.report.orcamentos.ignorados, 1);
+      assert.equal(rerun.report.documentos.ignorados, 1);
+      assert.equal(rerun.report.documentos.atualizados, 0);
+      assert.equal(blobs.size, 1);
+      const afterRows = await db
+        .select()
+        .from(schema.issuedDocuments)
+        .innerJoin(schema.quoteRevisions, eq(schema.quoteRevisions.id, schema.issuedDocuments.revisionId))
+        .innerJoin(schema.quotations, eq(schema.quotations.id, schema.quoteRevisions.quotationId))
+        .where(eq(schema.quotations.businessNumber, expectedBusinessNumber));
+      assert.equal(afterRows.length, 1);
+      assert.equal(afterRows[0].issued_documents.sizeBytes, PDF.length);
+    } finally {
       await client.unsafe('DELETE FROM quote_sequences WHERE year = $1 AND last_number <= $2', [
         2024,
         sequence,

@@ -44,7 +44,9 @@ export function isValidPdfBuffer(buffer: Buffer): boolean {
     && buffer.subarray(Math.max(0, buffer.length - 2048)).includes(Buffer.from('%%EOF'));
 }
 
-function quotationBlobAuth(): { token?: string; storeId?: string } {
+/** Shared Blob auth options read from the environment. Exported so the
+ * migration archival pipeline can list existing blobs with the same store. */
+export function quotationBlobAuth(): { token?: string; storeId?: string } {
   const token = process.env.QUOTATION_BLOB_READ_WRITE_TOKEN?.trim();
   const storeId = process.env.QUOTATION_BLOB_STORE_ID?.trim();
   return {

@@ -111,12 +111,37 @@ export interface FrappeMigrationState {
   sequences: Record<number, number>;
 }
 
+/**
+ * One `issued_documents` placeholder (kind `historical_pdf_import`, size 0)
+ * waiting to be replaced by a real Vercel Blob archival.  `sourceId` is the
+ * Frappe Quotation `name` recovered from the import lineage; it drives the
+ * printview URL and the deterministic blob key.
+ */
+export interface IssuedDocumentPdfPlaceholder {
+  documentId: string;
+  sourceId: string;
+  businessNumber: string;
+  fileName: string;
+  blobPathname: string;
+}
+
 export interface FrappeMigrationRepository {
   loadState(): Promise<FrappeMigrationState>;
   applyProductUnit(unit: ProductUnit): Promise<void>;
   applyClientUnit(unit: ClientUnit): Promise<void>;
   applyQuotationUnit(unit: QuotationUnit): Promise<void>;
   advanceQuoteSequence(year: number, lastNumber: number): Promise<void>;
+  /** List placeholder issued documents awaiting historical PDF archival. */
+  listIssuedDocumentPdfPlaceholders(): Promise<IssuedDocumentPdfPlaceholder[]>;
+  /** Fill the placeholder row with the archived PDF metadata (idempotent). */
+  updateIssuedDocumentPdf(
+    documentId: string,
+    blobPathname: string,
+    fileName: string,
+    mimeType: string,
+    sizeBytes: number,
+    checksumSha256: string
+  ): Promise<void>;
 }
 
 type DatabaseProvider = () => AppDatabase;
@@ -496,6 +521,52 @@ export function createPostgresFrappeMigrationRepository(
           set: { lastNumber: sql`GREATEST(${quoteSequences.lastNumber}, ${lastNumber})` },
         });
     },
+
+    async listIssuedDocumentPdfPlaceholders(): Promise<IssuedDocumentPdfPlaceholder[]> {
+      const db = getDb();
+      const rows = await db
+        .select({
+          documentId: issuedDocuments.id,
+          fileName: issuedDocuments.fileName,
+          blobPathname: issuedDocuments.blobPathname,
+          businessNumber: quotations.businessNumber,
+          sourceId: frappeImportLineage.sourceId,
+        })
+        .from(issuedDocuments)
+        .innerJoin(quotations, eq(quotations.id, issuedDocuments.quotationId))
+        .innerJoin(
+          frappeImportLineage,
+          and(
+            eq(frappeImportLineage.sourceDoctype, 'Quotation'),
+            eq(frappeImportLineage.entityType, 'orcamento'),
+            eq(frappeImportLineage.localKey, quotations.id)
+          )
+        )
+        .where(eq(issuedDocuments.kind, 'historical_pdf_import'))
+        .orderBy(asc(quotations.businessNumber));
+      return rows.map((row) => ({
+        documentId: row.documentId,
+        sourceId: row.sourceId,
+        businessNumber: row.businessNumber,
+        fileName: row.fileName,
+        blobPathname: row.blobPathname,
+      }));
+    },
+
+    async updateIssuedDocumentPdf(
+      documentId: string,
+      blobPathname: string,
+      fileName: string,
+      mimeType: string,
+      sizeBytes: number,
+      checksumSha256: string
+    ): Promise<void> {
+      const db = getDb();
+      await db
+        .update(issuedDocuments)
+        .set({ blobPathname, fileName, mimeType, sizeBytes, checksumSha256 })
+        .where(eq(issuedDocuments.id, documentId));
+    },
   };
 }
 
@@ -556,7 +627,7 @@ function cloneQuotation(value: ExistingQuotation): ExistingQuotation {
 
 export class MemoryFrappeMigrationRepository implements FrappeMigrationRepository {
   private state: FrappeMigrationState;
-  readonly writes = { products: 0, clients: 0, quotations: 0, lineage: 0 };
+  readonly writes = { products: 0, clients: 0, quotations: 0, lineage: 0, documents: 0 };
   readonly transactions = { products: 0, clients: 0, quotations: 0 };
   failProductSku?: string;
   failClientKey?: string;
@@ -731,6 +802,59 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     const next = await this.loadState();
     next.sequences[year] = Math.max(next.sequences[year] || 0, lastNumber);
     this.state = next;
+  }
+
+  async listIssuedDocumentPdfPlaceholders(): Promise<IssuedDocumentPdfPlaceholder[]> {
+    const placeholders: IssuedDocumentPdfPlaceholder[] = [];
+    for (const quotation of this.state.quotations) {
+      const document = quotation.document;
+      if (!document || document.kind !== 'historical_pdf_import') continue;
+      const lineage = this.state.lineage.find(
+        (entry) => entry.sourceDoctype === 'Quotation' && entry.localKey === quotation.id
+      );
+      // Lineage is the ground truth for the source id; the placeholder file
+      // name (`{name}.pdf`) is only a fallback for pre-lineage snapshots.
+      const sourceId =
+        lineage?.sourceId ||
+        (document.fileName.endsWith('.pdf') ? document.fileName.slice(0, -4) : '');
+      placeholders.push({
+        documentId: document.id,
+        sourceId,
+        businessNumber: quotation.businessNumber,
+        fileName: document.fileName,
+        blobPathname: document.blobPathname,
+      });
+    }
+    placeholders.sort((left, right) => left.businessNumber.localeCompare(right.businessNumber));
+    return placeholders;
+  }
+
+  async updateIssuedDocumentPdf(
+    documentId: string,
+    blobPathname: string,
+    fileName: string,
+    mimeType: string,
+    sizeBytes: number,
+    checksumSha256: string
+  ): Promise<void> {
+    const next = await this.loadState();
+    let found = false;
+    for (const quotation of next.quotations) {
+      if (quotation.document?.id !== documentId) continue;
+      quotation.document = {
+        ...quotation.document,
+        blobPathname,
+        fileName,
+        mimeType,
+        sizeBytes,
+        checksumSha256,
+      };
+      found = true;
+      break;
+    }
+    if (!found) throw new Error('Documento emitido não encontrado para atualização.');
+    this.state = next;
+    this.writes.documents += 1;
   }
 
   snapshot(): FrappeMigrationState {

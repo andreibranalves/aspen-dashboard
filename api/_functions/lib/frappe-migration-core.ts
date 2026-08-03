@@ -11,6 +11,8 @@ import {
 } from '../client-schema.js';
 import { normalizeProductPricing, type PricingTierInput } from '../pricing-core.js';
 export type { PricingTierInput } from '../pricing-core.js';
+import { QUOTATION_PDF_MIME_TYPE } from './quotation-document-storage.js';
+import { ERPNEXT_BASE } from './erpnext.js';
 
 /** Values intentionally mirror the report vocabulary used by the CLI. */
 export const IMPORT_STATUSES = [
@@ -270,6 +272,8 @@ export interface ImportReport {
   faixas: EntityReport;
   clientes: EntityReport;
   orcamentos: EntityReport;
+  /** Historical PDF archival: placeholders replaced by real Vercel Blob uploads. */
+  documentos: EntityReport;
   total: EntityReport;
   /** English/structural aliases make the report convenient for integrations. */
   entities: {
@@ -277,6 +281,7 @@ export interface ImportReport {
     faixas: EntityReport;
     clientes: EntityReport;
     orcamentos: EntityReport;
+    documentos: EntityReport;
   };
 }
 
@@ -642,6 +647,122 @@ export const HISTORICAL_TEMPLATE_KEY = 'padrao';
 // The current default template content hash (schema default for quote_revisions.template_hash).
 export const HISTORICAL_TEMPLATE_HASH =
   'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e';
+
+/** Print format requested from Frappe when archiving historical PDFs. */
+export const HISTORICAL_PDF_PRINT_FORMAT = 'padrao';
+/** Root folder of every historical PDF blob key. */
+export const HISTORICAL_PDF_BLOB_PREFIX = 'quotations-migration';
+
+/**
+ * Deterministic printview URL for one Frappe Quotation.  Purely name-based:
+ * `printing_settings` is not a standard Quotation field and must never be
+ * consulted here. The HTML returned by this endpoint is piped through the
+ * Puppeteer pipeline (never ERPNext `download_pdf`), consistent with
+ * `quotation-html.ts` and `quotation-pdf.ts`.
+ */
+export function historicalPdfPrintviewUrl(sourceId: string): string {
+  const name = text(sourceId);
+  if (!name) throw new Error('Quotation sem name; impossível construir a URL do PDF.');
+  return `${ERPNEXT_BASE}/printview?doctype=Quotation&name=${encodeURIComponent(name)}&format=${encodeURIComponent(HISTORICAL_PDF_PRINT_FORMAT)}&no_letterhead=0`;
+}
+
+/**
+ * PDF metadata extracted from a Frappe Quotation record at normalization
+ * time.  `checksumSha256`/`sizeBytes` come from the source record when the
+ * ERP exposes them (integrity hints); the authoritative checksum is always
+ * computed from the downloaded bytes during archival.
+ */
+export interface HistoricalPdfRecord {
+  sourceId: string;
+  businessNumber: string;
+  /** Source identity of the revision: `stableId('revision', revisionSourceId)` is the revision id. */
+  revisionSourceId: string;
+  fileUrl: string;
+  fileName: string | null;
+  mimeType: string;
+  checksumSha256: string | null;
+  sizeBytes: number | null;
+}
+
+/**
+ * Deterministic Vercel Blob key for one historical PDF:
+ * `quotations-migration/{businessNumber}/{sourceId}-{checksum}.pdf`.  The
+ * business number keeps listings human-readable, the source id re-associates
+ * the blob with its Frappe document on reruns, and the checksum detects
+ * content changes between migrations.
+ */
+export function deriveHistoricalPdfBlobPath(
+  businessNumber: string,
+  sourceId: string,
+  checksum: string
+): string {
+  const number = text(businessNumber);
+  const id = text(sourceId);
+  const hash = text(checksum).toLowerCase();
+  if (
+    !number ||
+    number.includes('/') ||
+    !id ||
+    id.includes('/') ||
+    !/^[0-9a-f]{64}$/.test(hash)
+  ) {
+    throw new Error('Não foi possível derivar a chave do PDF histórico.');
+  }
+  return `${HISTORICAL_PDF_BLOB_PREFIX}/${number}/${id}-${hash}.pdf`;
+}
+
+function historicalPdfChecksumOf(record: SourceRecord): string | null {
+  const nested = isRecord(record.pdf_metadata)
+    ? first(record.pdf_metadata, ['checksum_sha256', 'checksum'], null)
+    : null;
+  const value =
+    nullableText(nested) ||
+    nullableText(first(record, ['pdf_checksum_sha256', 'checksum_sha256', 'pdf_checksum'], null));
+  if (!value) return null;
+  const normalized = value.toLowerCase();
+  return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
+}
+
+function historicalPdfSizeOf(record: SourceRecord): number | null {
+  const nested = isRecord(record.pdf_metadata)
+    ? first(record.pdf_metadata, ['size_bytes', 'size'], null)
+    : null;
+  const raw = text(nested) || text(first(record, ['pdf_size_bytes', 'pdf_size', 'size_bytes'], null));
+  if (!raw) return null;
+  const size = Number(raw);
+  return Number.isInteger(size) && size >= 0 ? size : null;
+}
+
+/**
+ * Extract PDF metadata from a Frappe Quotation record.  Returns `null` when
+ * the record has no usable identifier (missing `name`), which makes the
+ * printview URL unconstructable and the PDF unreachable.  A record with a
+ * `name` but no derivable business number throws; callers report it as an
+ * error/divergence without crashing the import.
+ */
+export function normalizeHistoricalPdf(record: SourceRecord): HistoricalPdfRecord | null {
+  const sourceId = sourceIdOf(record);
+  if (!sourceId) return null;
+  let businessNumber: string;
+  try {
+    businessNumber = deriveBusinessNumber(record, sourceId).businessNumber;
+  } catch (error) {
+    throw new Error(
+      `Quotation ${sourceId} sem número comercial derivável para o PDF histórico.`,
+      { cause: error }
+    );
+  }
+  return {
+    sourceId,
+    businessNumber,
+    revisionSourceId: `${sourceId}:v1`,
+    fileUrl: historicalPdfPrintviewUrl(sourceId),
+    fileName: `${sourceId}.pdf`,
+    mimeType: QUOTATION_PDF_MIME_TYPE,
+    checksumSha256: historicalPdfChecksumOf(record),
+    sizeBytes: historicalPdfSizeOf(record),
+  };
+}
 
 const QUOTATION_STATUS_MAP: Record<string, QuotationStatus> = {
   draft: 'rascunho',
@@ -1440,6 +1561,7 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
   const faixas = emptyEntityReport();
   const clientes = emptyEntityReport();
   const orcamentos = emptyEntityReport();
+  const documentos = emptyEntityReport();
   const total = emptyEntityReport();
   return {
     modo,
@@ -1448,8 +1570,9 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
     faixas,
     clientes,
     orcamentos,
+    documentos,
     total,
-    entities: { produtos, faixas, clientes, orcamentos },
+    entities: { produtos, faixas, clientes, orcamentos, documentos },
   };
 }
 
@@ -1459,7 +1582,13 @@ export function addDetail(report: EntityReport, detail: ImportDetail): void {
 }
 
 export function finalizeReport(report: ImportReport): ImportReport {
-  const entities = [report.produtos, report.faixas, report.clientes, report.orcamentos];
+  const entities = [
+    report.produtos,
+    report.faixas,
+    report.clientes,
+    report.orcamentos,
+    report.documentos,
+  ];
   for (const entity of entities) {
     entity.detalhes.sort((left, right) =>
       `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(
