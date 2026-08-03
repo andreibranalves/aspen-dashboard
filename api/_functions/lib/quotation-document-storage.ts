@@ -93,7 +93,7 @@ async function streamBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer>
 
 async function readPrivatePdf(pathname: string, getBlob: typeof get): Promise<StoredQuotationPdf | null> {
   const result = await getBlob(pathname, {
-    access: 'private',
+    access: 'public',
     useCache: true,
     ...quotationBlobAuth(),
   });
@@ -121,7 +121,7 @@ export function createVercelQuotationDocumentStorage(
     async archive(pathname: string, buffer: Buffer): Promise<ArchivedQuotationPdf> {
       try {
         const blob = await blobClient.put(pathname, buffer, {
-          access: 'private',
+          access: 'public',
           addRandomSuffix: false,
           allowOverwrite: false,
           contentType: QUOTATION_PDF_MIME_TYPE,
