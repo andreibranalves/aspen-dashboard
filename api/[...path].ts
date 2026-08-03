@@ -50,10 +50,12 @@ import { handler as communicationMedia } from './_functions/communication-media.
 import { handler as communicationMediaUpload } from './_functions/communication-media-upload.js';
 import { handler as pdf } from './_functions/pdf.js';
 import { handler as view } from './_functions/view.js';
+import { handler as operationalStatus } from './_functions/operational-status.js';
 
 type HandlerFunction = (event: FunctionEvent) => Promise<FunctionResult>;
 
 const ROUTES: Record<string, HandlerFunction> = {
+  'operational-status': operationalStatus,
   'client-detail': clientDetail,
   'crm-deals': crmDeals,
   'crm-prune-candidates': crmPruneCandidates,
