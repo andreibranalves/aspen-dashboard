@@ -81,6 +81,9 @@ export interface QuotationDocumentRepository {
   prepare(id: string): Promise<QuotationEmissionSource | null>;
   complete(input: CompleteQuotationEmissionInput): Promise<IssuedQuotationDocument>;
   find(id: string): Promise<IssuedQuotationDocument | null>;
+  /** Replace the PDF blob and template metadata for an already-issued document.
+   *  Unlike complete, this operates on existing documents without status guards. */
+  reissue(input: CompleteQuotationEmissionInput): Promise<IssuedQuotationDocument>;
 }
 
 export interface QuotationDocumentRepositoryOptions {
@@ -258,6 +261,47 @@ export function createQuotationDocumentRepository(
         if (isKnownError(error)) throw error;
         console.error(`[quotation-document-repository] find failed (${error instanceof Error ? error.name : typeof error})`);
         throw new QuotationDocumentRepositoryError('Não foi possível consultar o documento emitido. Tente novamente.');
+      }
+    },
+
+    async reissue(input: CompleteQuotationEmissionInput): Promise<IssuedQuotationDocument> {
+      try {
+        return await getDb().transaction(async (tx) => {
+          const [existing] = await tx
+            .select()
+            .from(issuedDocuments)
+            .where(eq(issuedDocuments.revisionId, input.revisionId))
+            .for('update')
+            .limit(1);
+          if (!existing) throw new QuotationDocumentNotFoundError('Documento emitido não encontrado.');
+
+          const createdAt = now();
+          const [updated] = await tx
+            .update(issuedDocuments)
+            .set({
+              blobPathname: input.blobPathname,
+              fileName: input.fileName,
+              sizeBytes: input.sizeBytes,
+              checksumSha256: input.checksumSha256,
+              templateKey: input.templateKey,
+              templateHash: input.templateHash,
+              createdAt,
+            })
+            .where(eq(issuedDocuments.id, existing.id))
+            .returning();
+          if (!updated) throw new QuotationDocumentRepositoryError();
+
+          await tx
+            .update(quoteRevisions)
+            .set({ templatePadrao: input.templateKey, templateHash: input.templateHash })
+            .where(eq(quoteRevisions.id, input.revisionId));
+
+          return asDocument(updated);
+        });
+      } catch (error) {
+        if (isKnownError(error)) throw error;
+        console.error(`[quotation-document-repository] reissue failed (${error instanceof Error ? error.name : typeof error})`);
+        throw new QuotationDocumentRepositoryError();
       }
     },
   };

@@ -998,9 +998,7 @@ async function archivePlaceholderPdf(
   const pathname = deriveHistoricalPdfBlobPath(businessNumber, sourceId, checksum);
   let existing: string[];
   try {
-    existing = await pipeline.blobs.list(
-      `quotations-migration/${businessNumber}/${sourceId}-`
-    );
+    existing = await pipeline.blobs.list(`quotations-migration/${businessNumber}/${sourceId}-`);
   } catch (error) {
     console.error(`[frappe-migration] falha ao consultar blobs de ${sourceId}:`, error);
     detail('erros', 'Não foi possível consultar o armazenamento de PDFs.');
@@ -1030,10 +1028,7 @@ async function archivePlaceholderPdf(
     return;
   }
   if (existing.length > 0) {
-    detail(
-      'divergentes',
-      'PDF Frappe mudou desde a última migração; arquivo anterior preservado.'
-    );
+    detail('divergentes', 'PDF Frappe mudou desde a última migração; arquivo anterior preservado.');
     return;
   }
   let archived: { pathname: string; sizeBytes: number; checksumSha256: string };
@@ -1050,10 +1045,7 @@ async function archivePlaceholderPdf(
     archived.sizeBytes !== pdf.length ||
     archived.checksumSha256 !== checksum
   ) {
-    detail(
-      'erros',
-      'PDF arquivado divergente do conteúdo baixado; registro não atualizado.'
-    );
+    detail('erros', 'PDF arquivado divergente do conteúdo baixado; registro não atualizado.');
     return;
   }
   try {
@@ -1100,8 +1092,7 @@ function analyzeHistoricalPdfArchive(
         source_doctype: 'Quotation',
         source_id: unit.quotation.sourceId,
         local_key: unit.quotation.businessNumber,
-        mensagem:
-          error instanceof Error ? error.message : 'PDF histórico não derivável.',
+        mensagem: error instanceof Error ? error.message : 'PDF histórico não derivável.',
       });
       continue;
     }
@@ -1336,8 +1327,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, id);
       // Also index by normalized name so quotations with only customer_name
       // (the common case in this Frappe dataset) can resolve their client.
-      if (unit.client.nome)
-        clientLineage.set(`name:${unit.client.nome.toLowerCase()}`, id);
+      if (unit.client.nome) clientLineage.set(`name:${unit.client.nome.toLowerCase()}`, id);
     }
   }
   const knownProducts = new Set(quotationState.products.map((product) => product.sku));

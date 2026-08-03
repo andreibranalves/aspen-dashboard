@@ -699,13 +699,7 @@ export function deriveHistoricalPdfBlobPath(
   const number = text(businessNumber);
   const id = text(sourceId);
   const hash = text(checksum).toLowerCase();
-  if (
-    !number ||
-    number.includes('/') ||
-    !id ||
-    id.includes('/') ||
-    !/^[0-9a-f]{64}$/.test(hash)
-  ) {
+  if (!number || number.includes('/') || !id || id.includes('/') || !/^[0-9a-f]{64}$/.test(hash)) {
     throw new Error('Não foi possível derivar a chave do PDF histórico.');
   }
   return `${HISTORICAL_PDF_BLOB_PREFIX}/${number}/${id}-${hash}.pdf`;
@@ -727,7 +721,8 @@ function historicalPdfSizeOf(record: SourceRecord): number | null {
   const nested = isRecord(record.pdf_metadata)
     ? first(record.pdf_metadata, ['size_bytes', 'size'], null)
     : null;
-  const raw = text(nested) || text(first(record, ['pdf_size_bytes', 'pdf_size', 'size_bytes'], null));
+  const raw =
+    text(nested) || text(first(record, ['pdf_size_bytes', 'pdf_size', 'size_bytes'], null));
   if (!raw) return null;
   const size = Number(raw);
   return Number.isInteger(size) && size >= 0 ? size : null;
@@ -747,10 +742,9 @@ export function normalizeHistoricalPdf(record: SourceRecord): HistoricalPdfRecor
   try {
     businessNumber = deriveBusinessNumber(record, sourceId).businessNumber;
   } catch (error) {
-    throw new Error(
-      `Quotation ${sourceId} sem número comercial derivável para o PDF histórico.`,
-      { cause: error }
-    );
+    throw new Error(`Quotation ${sourceId} sem número comercial derivável para o PDF histórico.`, {
+      cause: error,
+    });
   }
   return {
     sourceId,

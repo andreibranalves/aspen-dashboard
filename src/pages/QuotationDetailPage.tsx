@@ -428,11 +428,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setIssuing(true);
     setMessage('Renderizando e arquivando o PDF definitivo…');
     try {
+      const payload: Record<string, unknown> = { id: data.id };
+      if (selectedTemplate && selectedTemplate !== persistedTemplate) {
+        payload.template = selectedTemplate;
+      }
       const result = await apiPost<{
         status: string;
         already_issued: boolean;
         document: IssuedQuotationDocumentMetadata;
-      }>('/quotation-issue', { id: data.id });
+      }>('/quotation-issue', payload);
       setData((current) => ({
         ...current,
         status: 'Enviado',
@@ -446,7 +450,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     } finally {
       setIssuing(false);
     }
-  }, [data.id, onReload]);
+  }, [data.id, onReload, selectedTemplate, persistedTemplate]);
 
   const markCommercialStatus = useCallback(async (status: 'aprovado' | 'perdido') => {
     const token = data.concurrency_token || data.version_token || data.updated_at;
@@ -642,6 +646,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           {draftEditable && !editing && <Button variant="success" size="sm" disabled={issuing || templateSelectionUnsaved || lifecycleAction !== null} onClick={issuePdf}>{issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {issuing ? 'Emitindo PDF…' : 'Emitir PDF definitivo'}</Button>}
           {editing && <><Button variant="success" size="sm" disabled={saving} onClick={save}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}</Button><Button variant="outline" size="sm" disabled={saving} onClick={() => resetEditor()}>Cancelar</Button></>}
           {data.issued_document && <Button variant="outline" size="sm" onClick={openIssuedDocument}><FileText size={14} /> Abrir PDF emitido</Button>}
+          {!draftEditable && data.issued_document && templateSelectionUnsaved && <Button variant="success" size="sm" disabled={issuing} onClick={issuePdf}>{issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {issuing ? 'Re-emitindo…' : 'Re-emitir com novo modelo'}</Button>}
           {draftEditable && !editing && templateSelectionUnsaved && <span className="text-xs text-warning">Salve o modelo selecionado antes de emitir.</span>}
           {message && <span role="status" aria-live="polite" className={`text-xs ${message.startsWith('Erro') ? 'text-destructive' : 'text-fg-muted'}`}>{message}</span>}
         </div>

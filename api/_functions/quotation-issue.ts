@@ -52,6 +52,11 @@ export interface QuotationIssueDependencies {
   renderPdf?: (html: string) => Promise<Buffer>;
 }
 
+export interface QuotationIssueOptions {
+  /** When set, overrides the revision's stored template for this issuance. */
+  templateOverride?: string;
+}
+
 export interface QuotationIssueResult {
   document: IssuedQuotationDocument;
   alreadyIssued: boolean;
@@ -111,20 +116,30 @@ function requestedId(event: FunctionEvent): string {
 export async function issueQuotation(
   id: string,
   dependencies: QuotationIssueDependencies = {},
+  options: QuotationIssueOptions = {},
 ): Promise<QuotationIssueResult> {
   const repository = dependencies.repository || createQuotationDocumentRepository();
   const storage = dependencies.storage || createVercelQuotationDocumentStorage();
   const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
   const source = await repository.prepare(id);
   if (!source) throw new QuotationDocumentNotFoundError('Orçamento não encontrado.');
-  if (source.document) return { document: source.document, alreadyIssued: true };
+
+  // No template override and already issued — serve the stored PDF.
+  if (source.document && !options.templateOverride) return { document: source.document, alreadyIssued: true };
 
   const { quotation, revision } = source.snapshot;
-  if (quotation.status !== 'rascunho' || revision.status !== 'rascunho') {
+  const isReissue = !!source.document && !!options.templateOverride;
+
+  if (!isReissue && (quotation.status !== 'rascunho' || revision.status !== 'rascunho')) {
     throw new QuotationDocumentConflictError('Somente revisões em rascunho podem ser emitidas.');
   }
-  const template = getQuotationTemplate(revision.templatePadrao);
-  if (!template || template.hash !== revision.templateHash) {
+
+  const selectedTemplateKey = options.templateOverride || revision.templatePadrao;
+  const template = getQuotationTemplate(selectedTemplateKey);
+  if (!template) throw new QuotationDocumentConflictError('Template do orçamento não encontrado.');
+  // When issuing for the first time, the template hash must match the revision.
+  // When re-issuing with an override, the stored hash is irrelevant.
+  if (!isReissue && template.hash !== revision.templateHash) {
     throw new QuotationDocumentConflictError('O template original desta revisão não está disponível para emissão.');
   }
 
@@ -146,7 +161,8 @@ export async function issueQuotation(
   if (archived.pathname !== pathname || archived.sizeBytes < 1 || !/^[0-9a-f]{64}$/.test(archived.checksumSha256)) {
     throw new QuotationDocumentStorageError();
   }
-  const document = await repository.complete({
+
+  const blobInput = {
     quotationId: quotation.id,
     revisionId: revision.id,
     expectedUpdatedAt: quotation.updatedAt.toISOString(),
@@ -157,7 +173,12 @@ export async function issueQuotation(
     checksumSha256: archived.checksumSha256,
     templateKey: template.key,
     templateHash: template.hash,
-  });
+  };
+
+  const document = isReissue
+    ? await repository.reissue(blobInput)
+    : await repository.complete(blobInput);
+
   return { document, alreadyIssued: false };
 }
 
@@ -181,7 +202,11 @@ export function createQuotationIssueHandler(dependencies: QuotationIssueDependen
     if (!isCoreQuotesEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });
     try {
-      const result = await issueQuotation(requestedId(event), dependencies);
+      const body = parseBody(event);
+      const templateOverride = typeof body.template === 'string' && body.template.trim()
+        ? body.template.trim()
+        : undefined;
+      const result = await issueQuotation(requestedId(event), dependencies, { templateOverride });
       return json(result.alreadyIssued ? 200 : 201, {
         status: 'enviado',
         already_issued: result.alreadyIssued,

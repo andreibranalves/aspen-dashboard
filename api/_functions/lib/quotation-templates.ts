@@ -346,7 +346,8 @@ function validateAstExpression(expression: unknown, templateKey: string): void {
     expression.type === 'BooleanLiteral' ||
     expression.type === 'UndefinedLiteral' ||
     expression.type === 'NullLiteral'
-  ) return;
+  )
+    return;
   throw new Error(`Expressão não permitida no template: ${templateKey}`);
 }
 
@@ -366,7 +367,8 @@ function validateAstNode(node: AstRecord, templateKey: string): void {
       validateAstProgram(node, templateKey);
       return;
     case 'MustacheStatement': {
-      if (node.escaped === false) throw new Error(`Saída sem escape não é permitida no template: ${templateKey}`);
+      if (node.escaped === false)
+        throw new Error(`Saída sem escape não é permitida no template: ${templateKey}`);
       const params = astArray(node.params);
       const hash = node.hash;
       const hasHash = isAstRecord(hash) && astArray(hash.pairs).length > 0;
@@ -406,7 +408,10 @@ function validateAstNode(node: AstRecord, templateKey: string): void {
   }
 }
 
-export function validateQuotationTemplateSource(source: string, templateKey = 'desconhecido'): void {
+export function validateQuotationTemplateSource(
+  source: string,
+  templateKey = 'desconhecido'
+): void {
   const ast = Handlebars.parse(source) as unknown as AstRecord;
   validateAstProgram(ast, templateKey);
 }
@@ -420,19 +425,27 @@ function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]
     }
     if (keys.has(definition.key)) throw new Error(`Chave de template duplicada: ${definition.key}`);
     keys.add(definition.key);
-    if (!definition.name.trim() || !definition.source.trim()) throw new Error(`Template incompleto: ${definition.key}`);
+    if (!definition.name.trim() || !definition.source.trim())
+      throw new Error(`Template incompleto: ${definition.key}`);
     validateQuotationTemplateSource(definition.source, definition.key);
     if (definition.is_default) defaults += 1;
   }
-  if (defaults !== 1) throw new Error(`Manifesto de templates deve ter exatamente um padrão (encontrados ${defaults}).`);
+  if (defaults !== 1)
+    throw new Error(
+      `Manifesto de templates deve ter exatamente um padrão (encontrados ${defaults}).`
+    );
 }
 
 validateDefinitions(DEFINITIONS);
 
-const TEMPLATES: readonly QuotationTemplate[] = Object.freeze(DEFINITIONS.map((definition) => Object.freeze({
-  ...definition,
-  hash: sourceHash(definition.source),
-})));
+const TEMPLATES: readonly QuotationTemplate[] = Object.freeze(
+  DEFINITIONS.map((definition) =>
+    Object.freeze({
+      ...definition,
+      hash: sourceHash(definition.source),
+    })
+  )
+);
 const BY_KEY = new Map(TEMPLATES.map((template) => [template.key, template]));
 const DEFAULT_TEMPLATE = TEMPLATES.find((template) => template.is_default)!;
 
@@ -471,7 +484,10 @@ function formatCurrency(value: unknown): string {
   const absolute = cents < 0n ? -cents : cents;
   const integer = absolute / 100n;
   const decimal = (absolute % 100n).toString().padStart(2, '0');
-  return `${sign}R$ ${integer.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} ,${decimal}`.replace(' ,', ',');
+  return `${sign}R$ ${integer.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.')} ,${decimal}`.replace(
+    ' ,',
+    ','
+  );
 }
 
 function formatDate(value: unknown): string {
@@ -495,7 +511,10 @@ export interface QuotationTemplateViewModel {
   [key: string]: unknown;
 }
 
-export function renderQuotationTemplate(template: QuotationTemplate, viewModel: QuotationTemplateViewModel): string {
+export function renderQuotationTemplate(
+  template: QuotationTemplate,
+  viewModel: QuotationTemplateViewModel
+): string {
   const environment = createEnvironment();
   let compiled: TemplateDelegate;
   try {
@@ -507,7 +526,10 @@ export function renderQuotationTemplate(template: QuotationTemplate, viewModel: 
       strict: true,
     });
   } catch (error) {
-    console.error(`[quotation-templates] compile failed (${template.key})`, error instanceof Error ? error.message : error);
+    console.error(
+      `[quotation-templates] compile failed (${template.key})`,
+      error instanceof Error ? error.message : error
+    );
     throw new Error('Não foi possível preparar o template do orçamento.', { cause: error });
   }
   try {
@@ -517,7 +539,10 @@ export function renderQuotationTemplate(template: QuotationTemplate, viewModel: 
       allowCallsToHelperMissing: false,
     });
   } catch (error) {
-    console.error(`[quotation-templates] render failed (${template.key})`, error instanceof Error ? error.message : error);
+    console.error(
+      `[quotation-templates] render failed (${template.key})`,
+      error instanceof Error ? error.message : error
+    );
     throw new Error('Não foi possível renderizar o orçamento.', { cause: error });
   }
 }

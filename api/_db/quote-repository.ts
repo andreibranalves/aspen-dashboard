@@ -35,7 +35,7 @@ import {
   type PricingResolution,
 } from '../_functions/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
-import { resolveQuotationTemplate } from '../_functions/lib/quotation-templates.js';
+import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -102,6 +102,8 @@ export interface QuoteDraftCreateInput {
   clienteId?: unknown;
   client?: Record<string, unknown> | null;
   cliente?: Record<string, unknown> | null;
+  template_key?: unknown;
+  template?: unknown;
   /** Inline client fields are kept here for callers that pass `extracted` directly. */
   nome?: unknown;
   name?: unknown;
@@ -659,7 +661,14 @@ export function createPostgresQuoteDraftRepository(
           }
 
           const settings = await readSettings(tx);
-          const template = resolveQuotationTemplate(settings.template_padrao);
+          const requestTemplateKey = hasOwn(input as Record<string, unknown>, 'template_key')
+            ? (input as Record<string, unknown>).template_key
+            : undefined;
+          const templateKey = typeof requestTemplateKey === 'string' && requestTemplateKey.trim()
+            ? requestTemplateKey.trim()
+            : settings.template_padrao;
+          const template = getQuotationTemplate(templateKey);
+          if (!template) throw new QuoteDraftInputError('Template do or&ccedil;amento inv&aacute;lido.');
           const freightCents = requestFreight === undefined
             ? parseNonNegativeMoney(settings.frete_padrao, 'Frete')
             : parseNonNegativeMoney(requestFreight, 'Frete');

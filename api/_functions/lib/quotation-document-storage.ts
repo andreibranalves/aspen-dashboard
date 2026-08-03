@@ -39,9 +39,11 @@ export function quotationPdfChecksum(buffer: Buffer): string {
 }
 
 export function isValidPdfBuffer(buffer: Buffer): boolean {
-  return buffer.length > 8
-    && buffer.subarray(0, 5).toString('ascii') === '%PDF-'
-    && buffer.subarray(Math.max(0, buffer.length - 2048)).includes(Buffer.from('%%EOF'));
+  return (
+    buffer.length > 8 &&
+    buffer.subarray(0, 5).toString('ascii') === '%PDF-' &&
+    buffer.subarray(Math.max(0, buffer.length - 2048)).includes(Buffer.from('%%EOF'))
+  );
 }
 
 /** Shared Blob auth options read from the environment. Exported so the
@@ -59,13 +61,25 @@ export function quotationPdfPathname(
   businessNumber: string,
   version: number,
   templateHash: string,
-  sourceHash: string,
+  sourceHash: string
 ): string {
   const quote = String(businessNumber || '').trim();
-  const hash = String(templateHash || '').trim().toLowerCase();
-  const contentHash = String(sourceHash || '').trim().toLowerCase();
-  if (!/^ORC-[0-9]{8}$/.test(quote) || !Number.isInteger(version) || version < 1 || !/^[0-9a-f]{64}$/.test(hash) || !/^[0-9a-f]{64}$/.test(contentHash)) {
-    throw new QuotationDocumentStorageError('Não foi possível determinar a chave do PDF do orçamento.');
+  const hash = String(templateHash || '')
+    .trim()
+    .toLowerCase();
+  const contentHash = String(sourceHash || '')
+    .trim()
+    .toLowerCase();
+  if (
+    !/^ORC-[0-9]{8}$/.test(quote) ||
+    !Number.isInteger(version) ||
+    version < 1 ||
+    !/^[0-9a-f]{64}$/.test(hash) ||
+    !/^[0-9a-f]{64}$/.test(contentHash)
+  ) {
+    throw new QuotationDocumentStorageError(
+      'Não foi possível determinar a chave do PDF do orçamento.'
+    );
   }
   return `quotations/${quote}/revision-${version}-${hash}-${contentHash}.pdf`;
 }
@@ -91,7 +105,10 @@ async function streamBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer>
   return Buffer.from(combined);
 }
 
-async function readPrivatePdf(pathname: string, getBlob: typeof get): Promise<StoredQuotationPdf | null> {
+async function readPrivatePdf(
+  pathname: string,
+  getBlob: typeof get
+): Promise<StoredQuotationPdf | null> {
   const result = await getBlob(pathname, {
     access: 'public',
     useCache: true,
@@ -115,7 +132,7 @@ async function readPrivatePdf(pathname: string, getBlob: typeof get): Promise<St
  * whose checksum may already have been committed by a concurrent request.
  */
 export function createVercelQuotationDocumentStorage(
-  blobClient: QuotationBlobClient = { put, get },
+  blobClient: QuotationBlobClient = { put, get }
 ): QuotationDocumentStorage {
   return {
     async archive(pathname: string, buffer: Buffer): Promise<ArchivedQuotationPdf> {
@@ -127,7 +144,8 @@ export function createVercelQuotationDocumentStorage(
           contentType: QUOTATION_PDF_MIME_TYPE,
           ...quotationBlobAuth(),
         });
-        if (blob.pathname !== pathname) throw new Error('Blob retornou uma chave diferente da solicitada.');
+        if (blob.pathname !== pathname)
+          throw new Error('Blob retornou uma chave diferente da solicitada.');
         return {
           pathname,
           sizeBytes: buffer.length,
@@ -136,14 +154,20 @@ export function createVercelQuotationDocumentStorage(
       } catch (uploadError) {
         try {
           const existing = await readPrivatePdf(pathname, blobClient.get);
-          if (existing && isValidPdfBuffer(existing.buffer) && existing.contentType === QUOTATION_PDF_MIME_TYPE) {
+          if (
+            existing &&
+            isValidPdfBuffer(existing.buffer) &&
+            existing.contentType === QUOTATION_PDF_MIME_TYPE
+          ) {
             return existing;
           }
         } catch {
           // Preserve the original upload failure; a read miss/failure only
           // proves that there is no reusable orphan from an earlier attempt.
         }
-        console.error(`[quotation-document-storage] archive failed (${uploadError instanceof Error ? uploadError.name : typeof uploadError})`);
+        console.error(
+          `[quotation-document-storage] archive failed (${uploadError instanceof Error ? uploadError.name : typeof uploadError})`
+        );
         throw new QuotationDocumentStorageError();
       }
     },
@@ -152,8 +176,12 @@ export function createVercelQuotationDocumentStorage(
       try {
         return await readPrivatePdf(pathname, blobClient.get);
       } catch (error) {
-        console.error(`[quotation-document-storage] read failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuotationDocumentStorageError('Não foi possível baixar o PDF emitido. Tente novamente.');
+        console.error(
+          `[quotation-document-storage] read failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuotationDocumentStorageError(
+          'Não foi possível baixar o PDF emitido. Tente novamente.'
+        );
       }
     },
   };
