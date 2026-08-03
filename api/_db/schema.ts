@@ -63,9 +63,7 @@ export const products = pgTable(
     precoBase: numeric('preco_base', { precision: 14, scale: 2 }),
     ativo: boolean('ativo').notNull().default(true),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
-    atualizadoEm: timestamp('atualizado_em', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
     arquivadoEm: timestamp('arquivado_em', { withTimezone: true }),
   },
   (table) => [
@@ -75,7 +73,10 @@ export const products = pgTable(
     ),
     check('products_nome_not_blank_check', sql`char_length(btrim(${table.nome})) > 0`),
     check('products_unidade_not_blank_check', sql`char_length(btrim(${table.unidade})) > 0`),
-    check('products_preco_base_positive_check', sql`${table.precoBase} IS NULL OR ${table.precoBase} > 0`),
+    check(
+      'products_preco_base_positive_check',
+      sql`${table.precoBase} IS NULL OR ${table.precoBase} > 0`
+    ),
   ]
 );
 
@@ -95,15 +96,19 @@ export const productPricingTiers = pgTable(
     minimumQuantity: numeric('minimum_quantity', { precision: 14, scale: 3 }).notNull(),
     unitPrice: numeric('unit_price', { precision: 14, scale: 2 }).notNull(),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
-    atualizadoEm: timestamp('atualizado_em', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    atualizadoEm: timestamp('atualizado_em', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    primaryKey({ columns: [table.productSku, table.minimumQuantity], name: 'product_pricing_tiers_pkey' }),
-    check('product_pricing_tiers_minimum_quantity_positive_check', sql`${table.minimumQuantity} > 0`),
+    primaryKey({
+      columns: [table.productSku, table.minimumQuantity],
+      name: 'product_pricing_tiers_pkey',
+    }),
+    check(
+      'product_pricing_tiers_minimum_quantity_positive_check',
+      sql`${table.minimumQuantity} > 0`
+    ),
     check('product_pricing_tiers_unit_price_positive_check', sql`${table.unitPrice} > 0`),
-  ],
+  ]
 );
 
 // Singular alias keeps the repository API pleasant while retaining an
@@ -144,25 +149,22 @@ export const clients = pgTable(
     check('clients_nome_not_blank_check', sql`char_length(btrim(${table.nome})) > 0`),
     check(
       'clients_documento_length_check',
-      sql`${table.documento} IS NULL OR char_length(${table.documento}) IN (11, 14)`,
+      sql`${table.documento} IS NULL OR char_length(${table.documento}) IN (11, 14)`
     ),
     check(
       'clients_telefone_digits_check',
-      sql`${table.telefone} IS NULL OR ${table.telefone} ~ '^[0-9]{10,15}$'`,
+      sql`${table.telefone} IS NULL OR ${table.telefone} ~ '^[0-9]{10,15}$'`
     ),
     check(
       'clients_email_lowercase_check',
-      sql`${table.email} IS NULL OR ${table.email} = lower(${table.email})`,
+      sql`${table.email} IS NULL OR ${table.email} = lower(${table.email})`
     ),
     check(
       'clients_uf_uppercase_check',
-      sql`${table.uf} IS NULL OR ${table.uf} = upper(${table.uf})`,
+      sql`${table.uf} IS NULL OR ${table.uf} = upper(${table.uf})`
     ),
-    check(
-      'clients_cep_digits_check',
-      sql`${table.cep} IS NULL OR ${table.cep} ~ '^[0-9]{8}$'`,
-    ),
-  ],
+    check('clients_cep_digits_check', sql`${table.cep} IS NULL OR ${table.cep} ~ '^[0-9]{8}$'`),
+  ]
 );
 
 /**
@@ -178,8 +180,11 @@ export const quoteSequences = pgTable(
   },
   (table) => [
     check('quote_sequences_year_check', sql`${table.year} BETWEEN 2000 AND 9999`),
-    check('quote_sequences_last_number_check', sql`${table.lastNumber} >= 0 AND ${table.lastNumber} <= 9999`),
-  ],
+    check(
+      'quote_sequences_last_number_check',
+      sql`${table.lastNumber} >= 0 AND ${table.lastNumber} <= 9999`
+    ),
+  ]
 );
 
 /** First-party quotation aggregate.  The business number is the public name;
@@ -189,7 +194,9 @@ export const quotations = pgTable(
   {
     id: uuid('id').primaryKey(),
     businessNumber: varchar('business_number', { length: 16 }).notNull(),
-    clientId: uuid('client_id').notNull().references(() => clients.id),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id),
     status: varchar('status', { length: 32 }).notNull().default('rascunho'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -197,12 +204,15 @@ export const quotations = pgTable(
   (table) => [
     uniqueIndex('quotations_business_number_unique').on(table.businessNumber),
     index('quotations_client_created_idx').on(table.clientId, table.createdAt),
-    check('quotations_business_number_format_check', sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`),
+    check(
+      'quotations_business_number_format_check',
+      sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`
+    ),
     check(
       'quotations_status_check',
-      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`,
+      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`
     ),
-  ],
+  ]
 );
 
 /** Immutable revision header/snapshots.  Revision one is the only revision
@@ -212,7 +222,9 @@ export const quoteRevisions = pgTable(
   'quote_revisions',
   {
     id: uuid('id').primaryKey(),
-    quotationId: uuid('quotation_id').notNull().references(() => quotations.id, { onDelete: 'cascade' }),
+    quotationId: uuid('quotation_id')
+      .notNull()
+      .references(() => quotations.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     status: varchar('status', { length: 32 }).notNull().default('rascunho'),
     validadeDias: integer('validade_dias').notNull(),
@@ -257,9 +269,9 @@ export const quoteRevisions = pgTable(
     check('quote_revisions_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
     check(
       'quote_revisions_status_check',
-      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`,
+      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`
     ),
-  ],
+  ]
 );
 
 /** Product and price snapshots for one revision.  The product FK deliberately
@@ -269,9 +281,13 @@ export const quoteRevisionItems = pgTable(
   'quote_revision_items',
   {
     id: uuid('id').primaryKey(),
-    revisionId: uuid('revision_id').notNull().references(() => quoteRevisions.id, { onDelete: 'cascade' }),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
-    productSku: varchar('product_sku', { length: 120 }).notNull().references(() => products.sku),
+    productSku: varchar('product_sku', { length: 120 })
+      .notNull()
+      .references(() => products.sku),
     quantidade: numeric('quantidade', { precision: 14, scale: 3 }).notNull(),
     produtoSku: varchar('produto_sku', { length: 120 }).notNull(),
     produtoNome: varchar('produto_nome', { length: 255 }).notNull(),
@@ -279,22 +295,31 @@ export const quoteRevisionItems = pgTable(
     produtoUnidade: varchar('produto_unidade', { length: 32 }).notNull().default('Und'),
     produtoCategoria: varchar('produto_categoria', { length: 255 }),
     produtoMarca: varchar('produto_marca', { length: 255 }),
+    notas: varchar('notas', { length: 4000 }),
     precoFonte: varchar('preco_fonte', { length: 32 }).notNull(),
     precoMinimoFaixa: numeric('preco_minimo_faixa', { precision: 14, scale: 3 }),
     precoSugerido: numeric('preco_sugerido', { precision: 20, scale: 2 }).notNull(),
     precoAplicado: numeric('preco_aplicado', { precision: 20, scale: 2 }).notNull(),
-    diferencaPreco: numeric('diferenca_preco', { precision: 20, scale: 2 }).notNull().default('0.00'),
+    diferencaPreco: numeric('diferenca_preco', { precision: 20, scale: 2 })
+      .notNull()
+      .default('0.00'),
     totalLinha: numeric('total_linha', { precision: 20, scale: 2 }).notNull(),
     manualRate: boolean('manual_rate').notNull().default(false),
   },
   (table) => [
-    uniqueIndex('quote_revision_items_revision_position_unique').on(table.revisionId, table.position),
+    uniqueIndex('quote_revision_items_revision_position_unique').on(
+      table.revisionId,
+      table.position
+    ),
     index('quote_revision_items_product_idx').on(table.productSku),
     check('quote_revision_items_position_check', sql`${table.position} >= 0`),
     check('quote_revision_items_quantity_check', sql`${table.quantidade} > 0`),
-    check('quote_revision_items_prices_check', sql`${table.precoSugerido} > 0 AND ${table.precoAplicado} > 0`),
+    check(
+      'quote_revision_items_prices_check',
+      sql`${table.precoSugerido} > 0 AND ${table.precoAplicado} > 0`
+    ),
     check('quote_revision_items_total_check', sql`${table.totalLinha} >= 0`),
-  ],
+  ]
 );
 
 /** Definitive private files emitted from one immutable quotation revision.
@@ -304,8 +329,12 @@ export const issuedDocuments = pgTable(
   'issued_documents',
   {
     id: uuid('id').primaryKey(),
-    quotationId: uuid('quotation_id').notNull().references(() => quotations.id, { onDelete: 'cascade' }),
-    revisionId: uuid('revision_id').notNull().references(() => quoteRevisions.id, { onDelete: 'cascade' }),
+    quotationId: uuid('quotation_id')
+      .notNull()
+      .references(() => quotations.id, { onDelete: 'cascade' }),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id, { onDelete: 'cascade' }),
     kind: varchar('kind', { length: 32 }).notNull().default('quotation_pdf'),
     blobPathname: varchar('blob_pathname', { length: 1024 }).notNull(),
     fileName: varchar('file_name', { length: 255 }).notNull(),
@@ -320,14 +349,17 @@ export const issuedDocuments = pgTable(
     uniqueIndex('issued_documents_revision_unique').on(table.revisionId),
     uniqueIndex('issued_documents_blob_pathname_unique').on(table.blobPathname),
     index('issued_documents_quotation_created_idx').on(table.quotationId, table.createdAt),
-    check('issued_documents_kind_check', sql`${table.kind} IN ('quotation_pdf', 'historical_pdf_import')`),
+    check(
+      'issued_documents_kind_check',
+      sql`${table.kind} IN ('quotation_pdf', 'historical_pdf_import')`
+    ),
     check('issued_documents_mime_type_check', sql`${table.mimeType} = 'application/pdf'`),
     // Historical imports record a document placeholder without downloading the
     // file; size 0 means the real size is still unknown (issue #15).
     check('issued_documents_size_positive_check', sql`${table.sizeBytes} >= 0`),
     check('issued_documents_checksum_check', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
     check('issued_documents_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
-  ],
+  ]
 );
 
 /**
@@ -357,12 +389,18 @@ export const frappeImportLineage = pgTable(
     index('frappe_import_lineage_local_key_idx').on(table.localKey),
     index('frappe_import_lineage_entity_local_idx').on(table.entityType, table.localKey),
     index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
-    check('frappe_import_lineage_source_doctype_check', sql`char_length(btrim(${table.sourceDoctype})) > 0`),
+    check(
+      'frappe_import_lineage_source_doctype_check',
+      sql`char_length(btrim(${table.sourceDoctype})) > 0`
+    ),
     check('frappe_import_lineage_source_id_check', sql`char_length(btrim(${table.sourceId})) > 0`),
-    check('frappe_import_lineage_entity_type_check', sql`${table.entityType} IN ('produto', 'faixa', 'cliente', 'orcamento')`),
+    check(
+      'frappe_import_lineage_entity_type_check',
+      sql`${table.entityType} IN ('produto', 'faixa', 'cliente', 'orcamento')`
+    ),
     check('frappe_import_lineage_local_key_check', sql`char_length(btrim(${table.localKey})) > 0`),
     check('frappe_import_lineage_hash_check', sql`${table.canonicalHash} ~ '^[0-9a-f]{64}$'`),
-  ],
+  ]
 );
 
 // Singular aliases make repository/tests that speak in domain terms concise

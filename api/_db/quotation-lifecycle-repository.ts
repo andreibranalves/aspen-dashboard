@@ -285,6 +285,7 @@ export function createPostgresQuotationLifecycleRepository(
               produtoUnidade: item.produtoUnidade,
               produtoCategoria: item.produtoCategoria,
               produtoMarca: item.produtoMarca,
+              notas: item.notas,
               precoFonte: item.precoFonte,
               precoMinimoFaixa: item.precoMinimoFaixa,
               precoSugerido: item.precoSugerido,

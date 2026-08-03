@@ -9,10 +9,7 @@ import {
   normalizeClientPhone,
   type ClientAddress,
 } from '../client-schema.js';
-import {
-  normalizeProductPricing,
-  type PricingTierInput,
-} from '../pricing-core.js';
+import { normalizeProductPricing, type PricingTierInput } from '../pricing-core.js';
 export type { PricingTierInput } from '../pricing-core.js';
 
 /** Values intentionally mirror the report vocabulary used by the CLI. */
@@ -275,7 +272,12 @@ export interface ImportReport {
   orcamentos: EntityReport;
   total: EntityReport;
   /** English/structural aliases make the report convenient for integrations. */
-  entities: { produtos: EntityReport; faixas: EntityReport; clientes: EntityReport; orcamentos: EntityReport };
+  entities: {
+    produtos: EntityReport;
+    faixas: EntityReport;
+    clientes: EntityReport;
+    orcamentos: EntityReport;
+  };
 }
 
 export interface FrappeDataset {
@@ -295,7 +297,13 @@ export interface NormalizedDataset {
   clientUnits: ClientUnit[];
 }
 
-const DATASET_ARRAY_FIELDS = ['pricingRules', 'itemPrices', 'customers', 'leads', 'quotations'] as const;
+const DATASET_ARRAY_FIELDS = [
+  'pricingRules',
+  'itemPrices',
+  'customers',
+  'leads',
+  'quotations',
+] as const;
 
 /**
  * Validate the runtime boundary before any normalization or persistence. An
@@ -305,7 +313,8 @@ const DATASET_ARRAY_FIELDS = ['pricingRules', 'itemPrices', 'customers', 'leads'
  */
 export function validateFrappeDataset(value: unknown): asserts value is FrappeDataset {
   if (!isRecord(value)) throw new Error('Dataset Frappe inválido: informe um objeto.');
-  if (!Array.isArray(value.items)) throw new Error('Dataset Frappe inválido: items deve ser uma lista.');
+  if (!Array.isArray(value.items))
+    throw new Error('Dataset Frappe inválido: items deve ser uma lista.');
   for (const field of DATASET_ARRAY_FIELDS) {
     if (value[field] !== undefined && !Array.isArray(value[field])) {
       throw new Error(`Dataset Frappe inválido: ${field} deve ser uma lista.`);
@@ -413,7 +422,10 @@ interface TitlePriceIdentity {
   minimumQuantity: string;
 }
 
-function titlePriceIdentity(record: SourceRecord, knownSkus: string[] = []): TitlePriceIdentity | null {
+function titlePriceIdentity(
+  record: SourceRecord,
+  knownSkus: string[] = []
+): TitlePriceIdentity | null {
   const title = text(first(record, ['title', 'rule_title']));
   if (!title) return null;
   const exact = knownSkus.filter((sku) => sku === title);
@@ -421,7 +433,10 @@ function titlePriceIdentity(record: SourceRecord, knownSkus: string[] = []): Tit
   const matches = knownSkus
     .filter((sku) => title.startsWith(`${sku}-`))
     .map((sku) => ({ sku, suffix: title.slice(sku.length + 1) }))
-    .filter((candidate) => /^\d+(?:[.,]\d+)?$/.test(candidate.suffix) && Number(candidate.suffix.replace(',', '.')) > 0);
+    .filter(
+      (candidate) =>
+        /^\d+(?:[.,]\d+)?$/.test(candidate.suffix) && Number(candidate.suffix.replace(',', '.')) > 0
+    );
   if (matches.length > 0) {
     const longest = Math.max(...matches.map((candidate) => candidate.sku.length));
     const selected = matches.filter((candidate) => candidate.sku.length === longest);
@@ -432,7 +447,8 @@ function titlePriceIdentity(record: SourceRecord, knownSkus: string[] = []): Tit
   // response. A final numeric suffix is safe only when the prefix is nonempty;
   // callers with known SKUs still get the longest-prefix disambiguation above.
   const generic = /^(.*)-(\d+(?:[.,]\d+)?)$/.exec(title);
-  if (generic && generic[1].trim() && Number(generic[2].replace(',', '.')) > 0) return { sku: generic[1].trim(), minimumQuantity: generic[2].replace(',', '.') };
+  if (generic && generic[1].trim() && Number(generic[2].replace(',', '.')) > 0)
+    return { sku: generic[1].trim(), minimumQuantity: generic[2].replace(',', '.') };
   return { sku: title, minimumQuantity: '1' };
 }
 
@@ -482,7 +498,9 @@ function priceValue(record: SourceRecord): string {
 }
 
 function minimumValue(record: SourceRecord): string {
-  return text(first(record, ['min_qty', 'minimum_quantity', 'minimum_qty', 'qty', 'quantidade_minima'], ''));
+  return text(
+    first(record, ['min_qty', 'minimum_quantity', 'minimum_qty', 'qty', 'quantidade_minima'], '')
+  );
 }
 
 function priceSku(record: SourceRecord): string {
@@ -492,14 +510,20 @@ function priceSku(record: SourceRecord): string {
 export function normalizeFrappePriceDocuments(
   records: SourceRecord[],
   doctype: 'Pricing Rule' | 'Item Price',
-  knownSkus: string[] = [],
+  knownSkus: string[] = []
 ): NormalizedPriceDocument[] {
   const result: NormalizedPriceDocument[] = [];
   for (const record of records) {
     const sourceId = sourceIdOf(record);
     if (!sourceId) throw new Error(`${doctype} sem identificador legado (name).`);
-    if (record.__migration_enrichment_error === true) throw new Error(`${doctype} ${sourceId} não pôde ser enriquecido.`);
-    if (doctype === 'Item Price' && text(record.price_list) && text(record.price_list).toLowerCase() !== 'standard selling') continue;
+    if (record.__migration_enrichment_error === true)
+      throw new Error(`${doctype} ${sourceId} não pôde ser enriquecido.`);
+    if (
+      doctype === 'Item Price' &&
+      text(record.price_list) &&
+      text(record.price_list).toLowerCase() !== 'standard selling'
+    )
+      continue;
     const titleIdentity = doctype === 'Pricing Rule' ? titlePriceIdentity(record, knownSkus) : null;
     const rows = childItems(record);
     const candidates = rows.length ? rows : [record];
@@ -514,9 +538,10 @@ export function normalizeFrappePriceDocuments(
       // filter, so Standard Selling is a global fallback rather than a tiered
       // schedule. Preserve the raw min_qty in `source`, but normalize every
       // effective Item Price row to the base bracket.
-      const effectiveMinimumQuantity = doctype === 'Item Price'
-        ? '1'
-        : explicitMinimumQuantity || titleIdentity?.minimumQuantity || '1';
+      const effectiveMinimumQuantity =
+        doctype === 'Item Price'
+          ? '1'
+          : explicitMinimumQuantity || titleIdentity?.minimumQuantity || '1';
       try {
         if (decimal(unitPrice).integer <= 0n) throw new Error('preço não positivo');
         if (decimal(effectiveMinimumQuantity).integer < 0n) throw new Error('limite negativo');
@@ -551,7 +576,11 @@ function normalizeAddress(record: SourceRecord): ClientAddress | null {
   return normalizeClientAddress(candidate);
 }
 
-function linkedIds(record: SourceRecord, sourceDoctype: 'Customer' | 'Lead', sourceId: string): string[] {
+function linkedIds(
+  record: SourceRecord,
+  sourceDoctype: 'Customer' | 'Lead',
+  sourceId: string
+): string[] {
   const values = [
     // Names are display fields, not identity links. A Customer and a Lead may
     // legitimately share the same name while representing different people;
@@ -565,19 +594,34 @@ function linkedIds(record: SourceRecord, sourceDoctype: 'Customer' | 'Lead', sou
   return [...new Set(links)].sort();
 }
 
-export function normalizeFrappeClientRecord(record: SourceRecord, sourceDoctype: 'Customer' | 'Lead'): NormalizedClient {
+export function normalizeFrappeClientRecord(
+  record: SourceRecord,
+  sourceDoctype: 'Customer' | 'Lead'
+): NormalizedClient {
   const sourceId = sourceIdOf(record);
   if (!sourceId) throw new Error(`${sourceDoctype} sem identificador legado (name).`);
-  const rawName = first(record, sourceDoctype === 'Lead'
-    ? ['lead_name', 'company_name', 'customer_name', 'name']
-    : ['customer_name', 'name', 'nome'], '');
+  const rawName = first(
+    record,
+    sourceDoctype === 'Lead'
+      ? ['lead_name', 'company_name', 'customer_name', 'name']
+      : ['customer_name', 'name', 'nome'],
+    ''
+  );
   const nome = normalizeClientName(rawName);
-  const documento = normalizeClientDocument(first(record, ['tax_id', 'cnpj', 'cpf', 'documento', 'customer_tax_id'], null));
+  const documento = normalizeClientDocument(
+    first(record, ['tax_id', 'cnpj', 'cpf', 'documento', 'customer_tax_id'], null)
+  );
   const email = normalizeClientEmail(first(record, ['email_id', 'email', 'e_mail'], null));
-  const telefone = normalizeClientPhone(first(record, ['mobile_no', 'phone', 'telefone', 'phone_number'], null));
-  const notes = normalizeClientNotes(first(record, ['notes', 'observacoes', 'description', 'remarks'], null));
+  const telefone = normalizeClientPhone(
+    first(record, ['mobile_no', 'phone', 'telefone', 'phone_number'], null)
+  );
+  const notes = normalizeClientNotes(
+    first(record, ['notes', 'observacoes', 'description', 'remarks'], null)
+  );
   const links = linkedIds(record, sourceDoctype, sourceId);
-  const localKey = documento ? `documento:${documento}` : links.find((value) => value.startsWith('link:')) || `frappe:${sourceDoctype}:${sourceId}`;
+  const localKey = documento
+    ? `documento:${documento}`
+    : links.find((value) => value.startsWith('link:')) || `frappe:${sourceDoctype}:${sourceId}`;
   return {
     sourceDoctype,
     sourceId,
@@ -596,7 +640,8 @@ export function normalizeFrappeClientRecord(record: SourceRecord, sourceDoctype:
 export const HISTORICAL_VALIDITY_DAYS = 15;
 export const HISTORICAL_TEMPLATE_KEY = 'padrao';
 // The current default template content hash (schema default for quote_revisions.template_hash).
-export const HISTORICAL_TEMPLATE_HASH = 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e';
+export const HISTORICAL_TEMPLATE_HASH =
+  'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e';
 
 const QUOTATION_STATUS_MAP: Record<string, QuotationStatus> = {
   draft: 'rascunho',
@@ -654,7 +699,10 @@ function nameSequence(name: string): number | null {
  * name); the four-digit sequence is preserved from the name's numeric suffix
  * so the per-year numbering counter can advance past the highest import.
  */
-export function deriveBusinessNumber(record: SourceRecord, sourceId: string): { businessNumber: string; year: number } {
+export function deriveBusinessNumber(
+  record: SourceRecord,
+  sourceId: string
+): { businessNumber: string; year: number } {
   const creation = text(first(record, ['creation', 'created', 'created_on']));
   const year = yearOf(creation) ?? yearOf(sourceId);
   if (!year) throw new Error(`Quotation ${sourceId} sem ano identificável (creation/name).`);
@@ -664,7 +712,10 @@ export function deriveBusinessNumber(record: SourceRecord, sourceId: string): { 
   return { businessNumber: `ORC-${year}${String(sequence).padStart(4, '0')}`, year };
 }
 
-function resolveQuotationClient(record: SourceRecord, clientLineage: Map<string, string>): { clientRef: string | null; clientId: string | null } {
+function resolveQuotationClient(
+  record: SourceRecord,
+  clientLineage: Map<string, string>
+): { clientRef: string | null; clientId: string | null } {
   const partyType = text(first(record, ['quotation_to', 'party_type'])).toLowerCase();
   const customer = text(first(record, ['customer', 'customer_id']));
   const lead = text(first(record, ['lead', 'lead_id']));
@@ -703,14 +754,20 @@ function quotationTerms(record: SourceRecord, creation: string): QuotationTerms 
   }
   return {
     validadeDias,
-    pagamento: nullableText(first(record, ['payment_terms_template', 'payment_terms', 'condicao_pagamento'])),
+    pagamento: nullableText(
+      first(record, ['payment_terms_template', 'payment_terms', 'condicao_pagamento'])
+    ),
     entrega: nullableText(first(record, ['delivery_terms', 'condicao_entrega'])),
     frete: nullableText(first(record, ['shipping_amount', 'frete', 'valor_frete'])),
     observacoes: nullableText(first(record, ['terms', 'remarks', 'observacoes', 'notes'])),
   };
 }
 
-export function normalizeQuotationItem(record: SourceRecord, quotationId: string, index: number): NormalizedQuotationItem {
+export function normalizeQuotationItem(
+  record: SourceRecord,
+  quotationId: string,
+  index: number
+): NormalizedQuotationItem {
   const sku = text(first(record, ['item_code', 'sku', 'codigo']));
   if (!sku) throw new Error(`Item de ${quotationId} sem item_code.`);
   const positionValue = text(first(record, ['idx', 'position']));
@@ -729,13 +786,18 @@ export function normalizeQuotationItem(record: SourceRecord, quotationId: string
   };
 }
 
-export function normalizeFrappeQuotation(record: SourceRecord, clientLineage: Map<string, string>): NormalizedQuotation {
+export function normalizeFrappeQuotation(
+  record: SourceRecord,
+  clientLineage: Map<string, string>
+): NormalizedQuotation {
   const sourceId = sourceIdOf(record);
   if (!sourceId) throw new Error('Quotation sem identificador legado (name).');
   const { businessNumber, year } = deriveBusinessNumber(record, sourceId);
   const statusInfo = mapQuotationStatus(rawQuotationStatus(record));
   const { clientRef, clientId } = resolveQuotationClient(record, clientLineage);
-  const items = childItems(record).map((row, index) => normalizeQuotationItem(row, sourceId, index));
+  const items = childItems(record).map((row, index) =>
+    normalizeQuotationItem(row, sourceId, index)
+  );
   return {
     sourceDoctype: 'Quotation',
     sourceId,
@@ -807,7 +869,10 @@ interface QuotationClientSnapshot {
   clienteNotas: string | null;
 }
 
-function clientSnapshotOf(client: ExistingClient | undefined, fallbackNome: string): QuotationClientSnapshot {
+function clientSnapshotOf(
+  client: ExistingClient | undefined,
+  fallbackNome: string
+): QuotationClientSnapshot {
   return {
     clienteNome: client?.nome || fallbackNome,
     clienteDocumento: client?.documento ?? null,
@@ -856,7 +921,7 @@ export function buildQuotationUnits(
   normalized: NormalizedQuotation[],
   knownClients: Map<string, string>,
   context: QuotationBuildContext = { clients: [], products: [] },
-  knownProducts?: Set<string>,
+  knownProducts?: Set<string>
 ): QuotationBuildResult {
   const clientsById = new Map(context.clients.map((client) => [client.id, client]));
   const productsBySku = new Map(context.products.map((product) => [product.sku, product]));
@@ -867,7 +932,13 @@ export function buildQuotationUnits(
   const seenSourceIds = new Set<string>();
   for (const quotation of normalized) {
     const reportIssue = (mensagem: string): void => {
-      issues.push({ status: 'divergentes', source_doctype: 'Quotation', source_id: quotation.sourceId, local_key: quotation.businessNumber, mensagem });
+      issues.push({
+        status: 'divergentes',
+        source_doctype: 'Quotation',
+        source_id: quotation.sourceId,
+        local_key: quotation.businessNumber,
+        mensagem,
+      });
     };
     if (seenSourceIds.has(quotation.sourceId)) {
       reportIssue('Documento Frappe repetido com dados diferentes.');
@@ -881,15 +952,26 @@ export function buildQuotationUnits(
     }
     seenBusinessNumbers.set(quotation.businessNumber, quotation.sourceId);
     if (!quotation.clientId) {
-      reportIssue(`Cliente não localizado na linhagem (${reportClientRef(quotation.clientRef || 'referência ausente')}).`);
+      reportIssue(
+        `Cliente não localizado na linhagem (${reportClientRef(quotation.clientRef || 'referência ausente')}).`
+      );
       continue;
     }
     if (quotation.clientRef) {
       const resolved = knownClients.get(quotation.clientRef);
       if (resolved && resolved !== quotation.clientId) {
-        reportIssue(`Vínculo de cliente ${reportClientRef(quotation.clientRef)} divergente entre normalização e linhagem.`);
+        reportIssue(
+          `Vínculo de cliente ${reportClientRef(quotation.clientRef)} divergente entre normalização e linhagem.`
+        );
         continue;
       }
+    }
+    const createdAt = parseDate(quotation.createdAt);
+    if (!createdAt) {
+      reportIssue(
+        `Data de criação inválida (${quotation.createdAt ? `"${quotation.createdAt}"` : 'vazia'}).`
+      );
+      continue;
     }
     if (quotation.items.length === 0) {
       reportIssue('Itens ausentes no orçamento legado.');
@@ -902,13 +984,25 @@ export function buildQuotationUnits(
       }
     }
     for (const item of quotation.items) {
-      const quantityProblem = validatePositiveDecimal(item.quantidade, `quantidade do item ${item.sku}`);
+      const quantityProblem = validatePositiveDecimal(
+        item.quantidade,
+        `quantidade do item ${item.sku}`
+      );
       if (quantityProblem) problems.push(quantityProblem);
-      const suggestedProblem = validatePositiveDecimal(item.precoSugerido, `preço sugerido do item ${item.sku}`);
+      const suggestedProblem = validatePositiveDecimal(
+        item.precoSugerido,
+        `preço sugerido do item ${item.sku}`
+      );
       if (suggestedProblem) problems.push(suggestedProblem);
-      const appliedProblem = validatePositiveDecimal(item.precoAplicado, `preço aplicado do item ${item.sku}`);
+      const appliedProblem = validatePositiveDecimal(
+        item.precoAplicado,
+        `preço aplicado do item ${item.sku}`
+      );
       if (appliedProblem) problems.push(appliedProblem);
-      const totalProblem = validateNonNegativeDecimal(item.totalLinha, `total da linha do item ${item.sku}`);
+      const totalProblem = validateNonNegativeDecimal(
+        item.totalLinha,
+        `total da linha do item ${item.sku}`
+      );
       if (totalProblem) problems.push(totalProblem);
     }
     if (problems.length > 0) {
@@ -958,11 +1052,12 @@ export function buildQuotationUnits(
       ...clientSnapshot,
       subtotal: canonicalDecimal(quotation.subtotal || '0'),
       total: canonicalDecimal(quotation.total || '0'),
-      createdAt: parseDate(quotation.createdAt) || new Date(),
+      createdAt,
     };
-    const document = quotation.status === 'enviado' || quotation.status === 'aprovado'
-      ? buildIssuedDocumentUnit(quotation)
-      : null;
+    const document =
+      quotation.status === 'enviado' || quotation.status === 'aprovado'
+        ? buildIssuedDocumentUnit(quotation)
+        : null;
     const sourceHash = canonicalHash({
       entity: 'orcamento',
       payload: {
@@ -983,18 +1078,25 @@ export function buildQuotationUnits(
           totalLinha: item.totalLinha,
         })),
         document: document
-          ? { kind: document.kind, fileName: document.fileName, sizeBytes: document.sizeBytes, checksumSha256: document.checksumSha256 }
+          ? {
+              kind: document.kind,
+              fileName: document.fileName,
+              sizeBytes: document.sizeBytes,
+              checksumSha256: document.checksumSha256,
+            }
           : null,
       },
     });
-    const lineage: FrappeLineageEntry[] = [{
-      sourceDoctype: 'Quotation',
-      sourceId: quotation.sourceId,
-      entityType: 'orcamento',
-      localKey: id,
-      canonicalHash: sourceHash,
-      legacyPayload: quotation.source,
-    }];
+    const lineage: FrappeLineageEntry[] = [
+      {
+        sourceDoctype: 'Quotation',
+        sourceId: quotation.sourceId,
+        entityType: 'orcamento',
+        localKey: id,
+        canonicalHash: sourceHash,
+        legacyPayload: quotation.source,
+      },
+    ];
     const unit: QuotationUnit = { id, revision, quotation, items, document, lineage, sourceHash };
     quotationUnits.push(unit);
     itemUnits.push(...items);
@@ -1042,7 +1144,10 @@ function equalDecimal(left: string, right: string): boolean {
   return a.integer * 10n ** BigInt(b.scale - a.scale) === b.integer;
 }
 
-function normalizePriceList(values: NormalizedPriceDocument[], sku: string): {
+function normalizePriceList(
+  values: NormalizedPriceDocument[],
+  sku: string
+): {
   base: string | null;
   tiers: PricingTierInput[];
   divergent: string[];
@@ -1051,8 +1156,11 @@ function normalizePriceList(values: NormalizedPriceDocument[], sku: string): {
   const byMinimum = new Map<string, NormalizedPriceDocument[]>();
   for (const value of relevant) {
     let normalized: string;
-    try { normalized = canonicalDecimal(text(value.minimumQuantity)); }
-    catch { normalized = text(value.minimumQuantity); }
+    try {
+      normalized = canonicalDecimal(text(value.minimumQuantity));
+    } catch {
+      normalized = text(value.minimumQuantity);
+    }
     const rows = byMinimum.get(normalized) || [];
     rows.push(value);
     byMinimum.set(normalized, rows);
@@ -1063,7 +1171,10 @@ function normalizePriceList(values: NormalizedPriceDocument[], sku: string): {
   for (const [minimum, rows] of byMinimum) {
     const itemPriceRows = rows.filter((row) => row.sourceDoctype === 'Item Price');
     const itemPricePrices = [...new Set(itemPriceRows.map((row) => row.unitPrice))];
-    if (itemPricePrices.length > 1 && !itemPricePrices.every((price) => equalDecimal(price, itemPricePrices[0]))) {
+    if (
+      itemPricePrices.length > 1 &&
+      !itemPricePrices.every((price) => equalDecimal(price, itemPricePrices[0]))
+    ) {
       divergent.push(`SKU ${sku}: Item Prices Standard Selling têm rates ambíguos.`);
       continue;
     }
@@ -1076,7 +1187,10 @@ function normalizePriceList(values: NormalizedPriceDocument[], sku: string): {
       ? rows.filter((row) => row.sourceDoctype === 'Pricing Rule')
       : rows;
     const uniquePrices = [...new Set(preferredRows.map((row) => row.unitPrice))];
-    if (uniquePrices.length > 1 && !uniquePrices.every((price) => equalDecimal(price, uniquePrices[0]))) {
+    if (
+      uniquePrices.length > 1 &&
+      !uniquePrices.every((price) => equalDecimal(price, uniquePrices[0]))
+    ) {
       divergent.push(`SKU ${sku}: preços ambíguos para mínimo ${minimum}.`);
       continue;
     }
@@ -1090,7 +1204,10 @@ function normalizePriceList(values: NormalizedPriceDocument[], sku: string): {
   return { base, tiers, divergent };
 }
 
-export function buildProductUnits(products: NormalizedProduct[], priceDocuments: NormalizedPriceDocument[]): ProductUnit[] {
+export function buildProductUnits(
+  products: NormalizedProduct[],
+  priceDocuments: NormalizedPriceDocument[]
+): ProductUnit[] {
   const all = [...products].sort((left, right) => left.sku.localeCompare(right.sku));
   return all.map((product) => {
     const pricing = normalizePriceList(priceDocuments, product.sku);
@@ -1099,30 +1216,33 @@ export function buildProductUnits(products: NormalizedProduct[], priceDocuments:
     // first boundary. When a flat/base source coexists with higher brackets,
     // preserve the flat rate explicitly as the minimum-1 tier so quantities
     // below that first high bracket do not inherit the high-bracket rate.
-    const pricingInput = base !== null && pricing.tiers.length > 0
-      ? {
-        preco_base: null,
-        precos: [{ minimum_quantity: '1', unit_price: base }, ...pricing.tiers],
-      }
-      : { preco_base: base, precos: pricing.tiers };
+    const pricingInput =
+      base !== null && pricing.tiers.length > 0
+        ? {
+            preco_base: null,
+            precos: [{ minimum_quantity: '1', unit_price: base }, ...pricing.tiers],
+          }
+        : { preco_base: base, precos: pricing.tiers };
     const normalized = normalizeProductPricing(pricingInput);
-    const lineage: FrappeLineageEntry[] = [{
-      sourceDoctype: product.sourceDoctype,
-      sourceId: product.sourceId,
-      entityType: 'produto',
-      localKey: product.sku,
-      canonicalHash: hashFor('produto', {
-        sku: product.sku,
-        nome: product.nome,
-        descricao: product.descricao,
-        unidade: product.unidade,
-        categoria: product.categoria,
-        marca: product.marca,
-        ativo: product.ativo,
-        preco_base: normalized.preco_base,
-      }),
-      legacyPayload: product.source,
-    }];
+    const lineage: FrappeLineageEntry[] = [
+      {
+        sourceDoctype: product.sourceDoctype,
+        sourceId: product.sourceId,
+        entityType: 'produto',
+        localKey: product.sku,
+        canonicalHash: hashFor('produto', {
+          sku: product.sku,
+          nome: product.nome,
+          descricao: product.descricao,
+          unidade: product.unidade,
+          categoria: product.categoria,
+          marca: product.marca,
+          ativo: product.ativo,
+          preco_base: normalized.preco_base,
+        }),
+        legacyPayload: product.source,
+      },
+    ];
     // Keep each source price document in lineage, even when its values are
     // equivalent. This is what allows later reruns to prove all ERP records
     // were read without losing the original payload.
@@ -1142,7 +1262,10 @@ export function buildProductUnits(products: NormalizedProduct[], priceDocuments:
         localKey: product.sku,
         canonicalHash: hashFor('faixa', {
           sku: product.sku,
-          rows: rows.map((entry) => ({ minimum_quantity: entry.minimumQuantity, unit_price: entry.unitPrice })),
+          rows: rows.map((entry) => ({
+            minimum_quantity: entry.minimumQuantity,
+            unit_price: entry.unitPrice,
+          })),
         }),
         legacyPayload: row.source,
       });
@@ -1168,7 +1291,15 @@ function mergeText(values: Array<string | null | undefined>): string | null {
 function mergeAddress(values: Array<ClientAddress | null | undefined>): ClientAddress | null {
   const entries = values.filter((value): value is ClientAddress => Boolean(value));
   if (!entries.length) return null;
-  const fields: Array<keyof ClientAddress> = ['endereco', 'numero', 'bairro', 'complemento', 'municipio', 'uf', 'cep'];
+  const fields: Array<keyof ClientAddress> = [
+    'endereco',
+    'numero',
+    'bairro',
+    'complemento',
+    'municipio',
+    'uf',
+    'cep',
+  ];
   const merged = {} as ClientAddress;
   for (const field of fields) {
     const result = mergeText(entries.map((value) => value[field]));
@@ -1194,9 +1325,9 @@ export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
     const key = client.nome.trim().toLocaleLowerCase('pt-BR');
     nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
   }
-  const ambiguousNames = new Set([...nameCounts]
-    .filter(([, count]) => count > 1)
-    .map(([name]) => name));
+  const ambiguousNames = new Set(
+    [...nameCounts].filter(([, count]) => count > 1).map(([name]) => name)
+  );
   const ambiguousNameOf = (client: NormalizedClient): string | null => {
     if (client.documento || client.links.some((value) => value.startsWith('link:'))) return null;
     const key = client.nome.trim().toLocaleLowerCase('pt-BR');
@@ -1205,10 +1336,13 @@ export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
   const groups: NormalizedClient[][] = [];
   for (const client of clients) {
     const ambiguousName = ambiguousNameOf(client);
-    const group = groups.find((values) => values.some((candidate) => (
-      sameLocalClient(candidate, client)
-      || (ambiguousName !== null && ambiguousNameOf(candidate) === ambiguousName)
-    )));
+    const group = groups.find((values) =>
+      values.some(
+        (candidate) =>
+          sameLocalClient(candidate, client) ||
+          (ambiguousName !== null && ambiguousNameOf(candidate) === ambiguousName)
+      )
+    );
     if (group) group.push(client);
     else groups.push([client]);
   }
@@ -1227,14 +1361,32 @@ export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
         const present = [...new Set(values.map((value) => text(value)).filter(Boolean))];
         if (present.length > 1) conflicts.push(`${label} incompatível entre documentos.`);
       };
-      checkConflict('nome', members.map((member) => member.nome));
-      checkConflict('documento', members.map((member) => member.documento));
-      checkConflict('email', members.map((member) => member.email));
-      checkConflict('telefone', members.map((member) => member.telefone));
-      checkConflict('observações', members.map((member) => member.notes));
-      if (mergedAddress === null && members.some((member) => member.address)) conflicts.push('endereço incompatível entre documentos.');
+      checkConflict(
+        'nome',
+        members.map((member) => member.nome)
+      );
+      checkConflict(
+        'documento',
+        members.map((member) => member.documento)
+      );
+      checkConflict(
+        'email',
+        members.map((member) => member.email)
+      );
+      checkConflict(
+        'telefone',
+        members.map((member) => member.telefone)
+      );
+      checkConflict(
+        'observações',
+        members.map((member) => member.notes)
+      );
+      if (mergedAddress === null && members.some((member) => member.address))
+        conflicts.push('endereço incompatível entre documentos.');
       if (members.length > 1 && members.every((member) => ambiguousNameOf(member) !== null)) {
-        conflicts.push('Identidade ambígua: nome sem documento ou vínculo explícito compartilhado.');
+        conflicts.push(
+          'Identidade ambígua: nome sem documento ou vínculo explícito compartilhado.'
+        );
       }
       const localKey = firstMember.documento
         ? `documento:${firstMember.documento}`
@@ -1289,7 +1441,16 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
   const clientes = emptyEntityReport();
   const orcamentos = emptyEntityReport();
   const total = emptyEntityReport();
-  return { modo, dry_run: modo === 'dry-run', produtos, faixas, clientes, orcamentos, total, entities: { produtos, faixas, clientes, orcamentos } };
+  return {
+    modo,
+    dry_run: modo === 'dry-run',
+    produtos,
+    faixas,
+    clientes,
+    orcamentos,
+    total,
+    entities: { produtos, faixas, clientes, orcamentos },
+  };
 }
 
 export function addDetail(report: EntityReport, detail: ImportDetail): void {
@@ -1300,7 +1461,11 @@ export function addDetail(report: EntityReport, detail: ImportDetail): void {
 export function finalizeReport(report: ImportReport): ImportReport {
   const entities = [report.produtos, report.faixas, report.clientes, report.orcamentos];
   for (const entity of entities) {
-    entity.detalhes.sort((left, right) => `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(`${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`));
+    entity.detalhes.sort((left, right) =>
+      `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(
+        `${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`
+      )
+    );
     // This is the planned/read volume, not a commit count; apply failures do
     // not reduce it because the operator still needs to account for the
     // source document on the next resumable run.
@@ -1308,20 +1473,44 @@ export function finalizeReport(report: ImportReport): ImportReport {
   }
   for (const field of IMPORT_STATUSES) {
     if (field === 'estimativa_volume') continue;
-    totalValue(report.total, field, entities.reduce((sum, entity) => sum + entity[field], 0));
+    totalValue(
+      report.total,
+      field,
+      entities.reduce((sum, entity) => sum + entity[field], 0)
+    );
   }
-  report.total.estimativa_volume = entities.reduce((sum, entity) => sum + entity.estimativa_volume, 0);
-  report.total.detalhes = entities.flatMap((entity) => entity.detalhes).sort((left, right) => `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(`${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`));
+  report.total.estimativa_volume = entities.reduce(
+    (sum, entity) => sum + entity.estimativa_volume,
+    0
+  );
+  report.total.detalhes = entities
+    .flatMap((entity) => entity.detalhes)
+    .sort((left, right) =>
+      `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(
+        `${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`
+      )
+    );
   return report;
 }
 
-function totalValue(report: EntityReport, field: Exclude<ImportStatus, 'lidos' | 'estimativa_volume'> | 'lidos', value: number): void {
+function totalValue(
+  report: EntityReport,
+  field: Exclude<ImportStatus, 'lidos' | 'estimativa_volume'> | 'lidos',
+  value: number
+): void {
   report[field] = value;
 }
 
 export interface DatasetReadSummary {
   dataset: FrappeDataset;
-  lidos: { items: number; pricingRules: number; itemPrices: number; customers: number; leads: number; quotations: number };
+  lidos: {
+    items: number;
+    pricingRules: number;
+    itemPrices: number;
+    customers: number;
+    leads: number;
+    quotations: number;
+  };
 }
 
 /**
@@ -1330,15 +1519,25 @@ export interface DatasetReadSummary {
  * an empty page and always uses a stable order key.
  */
 export interface FrappeListSource {
-  list(doctype: string, options: { limit: number; start: number; order_by: string }): Promise<SourceRecord[]>;
+  list(
+    doctype: string,
+    options: { limit: number; start: number; order_by: string }
+  ): Promise<SourceRecord[]>;
 }
 
-export async function readFrappeDataset(source: FrappeListSource, pageSize = 200): Promise<DatasetReadSummary> {
+export async function readFrappeDataset(
+  source: FrappeListSource,
+  pageSize = 200
+): Promise<DatasetReadSummary> {
   const read = async (doctype: string): Promise<SourceRecord[]> => {
     const rows: SourceRecord[] = [];
     let start = 0;
     while (true) {
-      const page = await source.list(doctype, { limit: pageSize, start, order_by: 'creation asc, name asc' });
+      const page = await source.list(doctype, {
+        limit: pageSize,
+        start,
+        order_by: 'creation asc, name asc',
+      });
       rows.push(...(page as SourceRecord[]));
       if (page.length < pageSize) break;
       start += page.length;
@@ -1355,7 +1554,14 @@ export async function readFrappeDataset(source: FrappeListSource, pageSize = 200
   ]);
   return {
     dataset: { items, pricingRules, itemPrices, customers, leads, quotations },
-    lidos: { items: items.length, pricingRules: pricingRules.length, itemPrices: itemPrices.length, customers: customers.length, leads: leads.length, quotations: quotations.length },
+    lidos: {
+      items: items.length,
+      pricingRules: pricingRules.length,
+      itemPrices: itemPrices.length,
+      customers: customers.length,
+      leads: leads.length,
+      quotations: quotations.length,
+    },
   };
 }
 

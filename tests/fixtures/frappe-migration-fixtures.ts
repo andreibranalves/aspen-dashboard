@@ -4,7 +4,13 @@ import type { FrappeDataset } from '../../api/_functions/frappe-migration.js';
 export function createFrappeMigrationFixture(): FrappeDataset {
   return {
     items: [
-      { name: 'ITEM-001', item_code: 'LNC-SED-70-30', item_name: 'Lancheira', description: 'Aço', stock_uom: 'Und' },
+      {
+        name: 'ITEM-001',
+        item_code: 'LNC-SED-70-30',
+        item_name: 'Lancheira',
+        description: 'Aço',
+        stock_uom: 'Und',
+      },
       { name: 'ITEM-002', item_code: 'ECO-30', item_name: 'Ecobag', stock_uom: 'Und' },
     ],
     pricingRules: [
@@ -18,10 +24,20 @@ export function createFrappeMigrationFixture(): FrappeDataset {
       { name: 'IP-ECO-100', item_code: 'ECO-30', price_list_rate: '3.50' },
     ],
     customers: [
-      { name: 'CUST-001', customer_name: 'Cliente Exemplo', tax_id: '12.345.678/0001-90', email_id: 'cliente@example.com' },
+      {
+        name: 'CUST-001',
+        customer_name: 'Cliente Exemplo',
+        tax_id: '12.345.678/0001-90',
+        email_id: 'cliente@example.com',
+      },
     ],
     leads: [
-      { name: 'LEAD-001', lead_name: 'Cliente Exemplo', tax_id: '12345678000190', mobile_no: '(11) 99999-9999' },
+      {
+        name: 'LEAD-001',
+        lead_name: 'Cliente Exemplo',
+        tax_id: '12345678000190',
+        mobile_no: '(11) 99999-9999',
+      },
     ],
   };
 }
@@ -52,7 +68,10 @@ export function createFrappeResumeFixture(): FrappeDataset {
   const base = createFrappeMigrationFixture();
   return {
     ...base,
-    items: [...(base.items || []), { name: 'ITEM-RESUME', item_code: 'RESUME-SKU', item_name: 'Retomada' }],
+    items: [
+      ...(base.items || []),
+      { name: 'ITEM-RESUME', item_code: 'RESUME-SKU', item_name: 'Retomada' },
+    ],
   };
 }
 
@@ -63,13 +82,29 @@ export function createFrappeResumeFixture(): FrappeDataset {
 export function createFrappeQuotationFixture(): FrappeDataset {
   return {
     items: [
-      { name: 'ITEM-HIST-1', item_code: 'SKU-HIST-1', item_name: 'Produto Histórico 1', description: 'Aço', stock_uom: 'Und' },
-      { name: 'ITEM-HIST-2', item_code: 'SKU-HIST-2', item_name: 'Produto Histórico 2', stock_uom: 'Und' },
+      {
+        name: 'ITEM-HIST-1',
+        item_code: 'SKU-HIST-1',
+        item_name: 'Produto Histórico 1',
+        description: 'Aço',
+        stock_uom: 'Und',
+      },
+      {
+        name: 'ITEM-HIST-2',
+        item_code: 'SKU-HIST-2',
+        item_name: 'Produto Histórico 2',
+        stock_uom: 'Und',
+      },
     ],
     pricingRules: [],
     itemPrices: [],
     customers: [
-      { name: 'CUST-HIST', customer_name: 'Cliente Histórico', tax_id: '12345678000190', email_id: 'historico@example.com' },
+      {
+        name: 'CUST-HIST',
+        customer_name: 'Cliente Histórico',
+        tax_id: '12345678000190',
+        email_id: 'historico@example.com',
+      },
     ],
     leads: [],
     quotations: [
@@ -86,8 +121,27 @@ export function createFrappeQuotationFixture(): FrappeDataset {
         net_total: '120.00',
         grand_total: '120.00',
         items: [
-          { idx: 1, item_code: 'SKU-HIST-1', item_name: 'Produto Histórico 1', qty: '10', uom: 'Und', rate: '6.00', price_list_rate: '6.00', amount: '60.00' },
-          { idx: 2, item_code: 'SKU-HIST-2', item_name: 'Produto Histórico 2', qty: '5', uom: 'Und', rate: '12.00', price_list_rate: '12.00', amount: '60.00' },
+          {
+            idx: 1,
+            item_code: 'SKU-HIST-1',
+            item_name: 'Produto Histórico 1',
+            qty: '10',
+            uom: 'Und',
+            rate: '6.00',
+            price_list_rate: '6.00',
+            amount: '60.00',
+            notes: 'Observação da linha 1',
+          },
+          {
+            idx: 2,
+            item_code: 'SKU-HIST-2',
+            item_name: 'Produto Histórico 2',
+            qty: '5',
+            uom: 'Und',
+            rate: '12.00',
+            price_list_rate: '12.00',
+            amount: '60.00',
+          },
         ],
       },
       {
@@ -97,7 +151,16 @@ export function createFrappeQuotationFixture(): FrappeDataset {
         customer: 'CUST-HIST',
         status: 'Draft',
         items: [
-          { idx: 1, item_code: 'SKU-HIST-1', item_name: 'Produto Histórico 1', qty: '2', uom: 'Und', rate: '6.00', price_list_rate: '6.00', amount: '12.00' },
+          {
+            idx: 1,
+            item_code: 'SKU-HIST-1',
+            item_name: 'Produto Histórico 1',
+            qty: '2',
+            uom: 'Und',
+            rate: '6.00',
+            price_list_rate: '6.00',
+            amount: '12.00',
+          },
         ],
       },
       {
@@ -107,7 +170,16 @@ export function createFrappeQuotationFixture(): FrappeDataset {
         customer: 'CUST-HIST',
         status: 'Ordered',
         items: [
-          { idx: 1, item_code: 'SKU-HIST-2', item_name: 'Produto Histórico 2', qty: '3', uom: 'Und', rate: '12.00', price_list_rate: '12.00', amount: '36.00' },
+          {
+            idx: 1,
+            item_code: 'SKU-HIST-2',
+            item_name: 'Produto Histórico 2',
+            qty: '3',
+            uom: 'Und',
+            rate: '12.00',
+            price_list_rate: '12.00',
+            amount: '36.00',
+          },
         ],
       },
     ],
@@ -119,8 +191,14 @@ export function createFrappeQuotationEdgeFixture(): FrappeDataset {
   const base = createFrappeQuotationFixture();
   return {
     ...base,
-    items: [...(base.items || []), { name: 'ITEM-EDGE', item_code: 'SKU-EDGE', item_name: 'Produto Borda' }],
-    customers: [...(base.customers || []), { name: 'CUST-EDGE', customer_name: 'Cliente Borda', tax_id: '11122233344' }],
+    items: [
+      ...(base.items || []),
+      { name: 'ITEM-EDGE', item_code: 'SKU-EDGE', item_name: 'Produto Borda' },
+    ],
+    customers: [
+      ...(base.customers || []),
+      { name: 'CUST-EDGE', customer_name: 'Cliente Borda', tax_id: '11122233344' },
+    ],
     quotations: [
       {
         name: 'QTN-2024-00010',
@@ -128,13 +206,35 @@ export function createFrappeQuotationEdgeFixture(): FrappeDataset {
         quotation_to: 'Customer',
         customer: 'CUST-EDGE',
         status: 'Whatever',
-        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+        items: [
+          {
+            idx: 1,
+            item_code: 'SKU-EDGE',
+            item_name: 'Produto Borda',
+            qty: '1',
+            uom: 'Und',
+            rate: '5.00',
+            price_list_rate: '5.00',
+            amount: '5.00',
+          },
+        ],
       },
       {
         name: 'QTN-2024-00011',
         creation: '2024-02-02 10:00:00',
         status: 'Draft',
-        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+        items: [
+          {
+            idx: 1,
+            item_code: 'SKU-EDGE',
+            item_name: 'Produto Borda',
+            qty: '1',
+            uom: 'Und',
+            rate: '5.00',
+            price_list_rate: '5.00',
+            amount: '5.00',
+          },
+        ],
       },
       {
         name: 'QTN-2024-00012',
@@ -150,7 +250,18 @@ export function createFrappeQuotationEdgeFixture(): FrappeDataset {
         quotation_to: 'Customer',
         customer: 'CUST-EDGE',
         status: 'Submitted',
-        items: [{ idx: 1, item_code: 'SKU-FANTASMA', item_name: 'Fantasma', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+        items: [
+          {
+            idx: 1,
+            item_code: 'SKU-FANTASMA',
+            item_name: 'Fantasma',
+            qty: '1',
+            uom: 'Und',
+            rate: '5.00',
+            price_list_rate: '5.00',
+            amount: '5.00',
+          },
+        ],
       },
       {
         name: 'QTN-2024-00014',
@@ -158,7 +269,18 @@ export function createFrappeQuotationEdgeFixture(): FrappeDataset {
         quotation_to: 'Customer',
         customer: 'CUST-EDGE',
         status: 'Submitted',
-        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '', price_list_rate: '5.00', amount: '0' }],
+        items: [
+          {
+            idx: 1,
+            item_code: 'SKU-EDGE',
+            item_name: 'Produto Borda',
+            qty: '1',
+            uom: 'Und',
+            rate: '',
+            price_list_rate: '5.00',
+            amount: '0',
+          },
+        ],
       },
       {
         name: 'QTN-2024-00015',
@@ -166,7 +288,18 @@ export function createFrappeQuotationEdgeFixture(): FrappeDataset {
         quotation_to: 'Customer',
         customer: 'CUST-EDGE',
         status: 'Lost',
-        items: [{ idx: 1, item_code: 'SKU-EDGE', item_name: 'Produto Borda', qty: '1', uom: 'Und', rate: '5.00', price_list_rate: '5.00', amount: '5.00' }],
+        items: [
+          {
+            idx: 1,
+            item_code: 'SKU-EDGE',
+            item_name: 'Produto Borda',
+            qty: '1',
+            uom: 'Und',
+            rate: '5.00',
+            price_list_rate: '5.00',
+            amount: '5.00',
+          },
+        ],
       },
     ],
   };

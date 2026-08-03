@@ -9,7 +9,10 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import { createPostgresSettingsRepository } from '../../api/_db/settings-repository.js';
-import { createPostgresProductsRepository, ProductRepositoryError } from '../../api/_db/products-repository.js';
+import {
+  createPostgresProductsRepository,
+  ProductRepositoryError,
+} from '../../api/_db/products-repository.js';
 import { createPostgresClientRepository } from '../../api/_db/client-repository.js';
 import * as schema from '../../api/_db/schema.js';
 import { createHandler } from '../../api/_functions/settings.js';
@@ -35,8 +38,14 @@ function parse(result: { body?: string }): any {
   return JSON.parse(result.body || '{}');
 }
 
-test('PostgreSQL settings/products/clients migration and persistence vertical slice', { skip: !TEST_DATABASE_URL }, async () => {
-    assert.ok(TEST_DATABASE_URL, 'TEST_DATABASE_URL é obrigatório; use o container dedicado postgres:16.');
+test(
+  'PostgreSQL settings/products/clients migration and persistence vertical slice',
+  { skip: !TEST_DATABASE_URL },
+  async () => {
+    assert.ok(
+      TEST_DATABASE_URL,
+      'TEST_DATABASE_URL é obrigatório; use o container dedicado postgres:16.'
+    );
     const client = postgres(TEST_DATABASE_URL, {
       max: 1,
       prepare: false,
@@ -151,7 +160,12 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
         (error: unknown) => error instanceof ProductRepositoryError && error.statusCode === 409
       );
 
-      const active = await productsRepository.list({ status: 'active', search: 'core', page: 1, limit: 10 });
+      const active = await productsRepository.list({
+        status: 'active',
+        search: 'core',
+        page: 1,
+        limit: 10,
+      });
       assert.equal(active.total, 1);
       assert.equal(active.rows[0]?.sku, 'CORE-001');
 
@@ -160,7 +174,10 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
       assert.equal((await productsRepository.list({ status: 'active' })).total, 0);
       assert.equal((await productsRepository.list({ status: 'archived' })).total, 1);
 
-      const restored = await productsRepository.update('CORE-001', { ativo: true, nome: 'Atualizado' });
+      const restored = await productsRepository.update('CORE-001', {
+        ativo: true,
+        nome: 'Atualizado',
+      });
       assert.equal(restored?.ativo, true);
       assert.equal(restored?.nome, 'Atualizado');
       assert.equal((await productsRepository.list({ status: 'active' })).total, 1);
@@ -189,11 +206,18 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
       assert.equal(createdClient.notes, 'Preferência por e-mail');
       assert.equal(createdClient.address?.uf, 'SP');
 
-      const [storedClient] = await client`SELECT id, documento FROM clients WHERE id = ${createdClient.id}::uuid`;
+      const [storedClient] =
+        await client`SELECT id, documento FROM clients WHERE id = ${createdClient.id}::uuid`;
       assert.equal(storedClient.id, createdClient.id);
       assert.equal(storedClient.documento, '12345678901');
 
-      for (const search of ['Maria', '123.456.789-01', 'maria@example.com', '11999990000', '(11) 99999-0000']) {
+      for (const search of [
+        'Maria',
+        '123.456.789-01',
+        'maria@example.com',
+        '11999990000',
+        '(11) 99999-0000',
+      ]) {
         const result = await clientsRepository.list({ search, status: 'all' });
         assert.equal(result.total, 1, `busca literal por ${search}`);
       }
@@ -203,7 +227,7 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
 
       await assert.rejects(
         () => clientsRepository.create({ nome: 'Duplicada', documento: '12345678901' }),
-        (error: unknown) => (error as { statusCode?: number }).statusCode === 409,
+        (error: unknown) => (error as { statusCode?: number }).statusCode === 409
       );
       const withoutDocument = await clientsRepository.create({ nome: 'Sem documento' });
       assert.equal(withoutDocument.documento, null);
@@ -231,36 +255,49 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
       assert.equal(archivedClient.arquivado, true);
       const archivedAgain = await clientsRepository.archive(createdClient.id);
       assert.equal(archivedAgain.archivedAt, archivedClient.archivedAt);
-      assert.equal((await clientsRepository.list({ status: 'active' })).data.some((row) => row.id === createdClient.id), false);
-      assert.equal((await clientsRepository.list({ status: 'archived' })).data.some((row) => row.id === createdClient.id), true);
+      assert.equal(
+        (await clientsRepository.list({ status: 'active' })).data.some(
+          (row) => row.id === createdClient.id
+        ),
+        false
+      );
+      assert.equal(
+        (await clientsRepository.list({ status: 'archived' })).data.some(
+          (row) => row.id === createdClient.id
+        ),
+        true
+      );
       const restoredClient = await clientsRepository.update(createdClient.id, { arquivado: false });
       assert.equal(restoredClient.arquivado, false);
       assert.equal(restoredClient.archivedAt, null);
 
       await assert.rejects(
         () => clientsRepository.update(createdClient.id, { arquivado: 'false' as any }),
-        (error: unknown) => (error as { statusCode?: number }).statusCode === 400,
+        (error: unknown) => (error as { statusCode?: number }).statusCode === 400
       );
       await assert.rejects(
         () => clientsRepository.create({ nome: 'Inválida', email: 'not-an-email' }),
-        (error: unknown) => (error as { statusCode?: number }).statusCode === 400,
+        (error: unknown) => (error as { statusCode?: number }).statusCode === 400
       );
 
       await assert.rejects(
         () => client`INSERT INTO clients (id, nome) VALUES (${randomUUID()}::uuid, ${''})`,
-        /clients_nome_not_blank_check/,
+        /clients_nome_not_blank_check/
       );
       await assert.rejects(
-        () => client`INSERT INTO clients (id, nome, documento) VALUES (${randomUUID()}::uuid, ${'Documento curto'}, ${'123'})`,
-        /clients_documento_length_check/,
+        () =>
+          client`INSERT INTO clients (id, nome, documento) VALUES (${randomUUID()}::uuid, ${'Documento curto'}, ${'123'})`,
+        /clients_documento_length_check/
       );
       await assert.rejects(
-        () => client`INSERT INTO clients (id, nome, email) VALUES (${randomUUID()}::uuid, ${'E-mail maiúsculo'}, ${'UPPER@EXAMPLE.COM'})`,
-        /clients_email_lowercase_check/,
+        () =>
+          client`INSERT INTO clients (id, nome, email) VALUES (${randomUUID()}::uuid, ${'E-mail maiúsculo'}, ${'UPPER@EXAMPLE.COM'})`,
+        /clients_email_lowercase_check/
       );
       await assert.rejects(
-        () => client`INSERT INTO clients (id, nome, uf) VALUES (${randomUUID()}::uuid, ${'UF inválida'}, ${'sp'})`,
-        /clients_uf_uppercase_check/,
+        () =>
+          client`INSERT INTO clients (id, nome, uf) VALUES (${randomUUID()}::uuid, ${'UF inválida'}, ${'sp'})`,
+        /clients_uf_uppercase_check/
       );
 
       const [physicalTable] = await client`
@@ -271,4 +308,5 @@ test('PostgreSQL settings/products/clients migration and persistence vertical sl
     } finally {
       await client.end({ timeout: 5 });
     }
-});
+  }
+);

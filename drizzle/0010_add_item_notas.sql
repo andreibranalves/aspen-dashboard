@@ -1,0 +1,1 @@
+ALTER TABLE "quote_revision_items" ADD COLUMN "notas" varchar(4000);

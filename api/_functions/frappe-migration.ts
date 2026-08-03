@@ -66,16 +66,18 @@ export function createFrappeSource(): FrappeListSource {
       // ERPNext list responses often omit `rate` and child rows even when
       // fields=["*"]. Enrich every rule through the document endpoint before
       // normalization; errors stay inside the shared safe ERP client.
-      return Promise.all(rows.map(async (row) => {
-        const name = String(row.name || '').trim();
-        if (!name) return row;
-        try {
-          const full = await erpGetDoc('Pricing Rule', name, { fields: ['*'] });
-          return full ? { ...row, ...full } : row;
-        } catch {
-          return { ...row, __migration_enrichment_error: true };
-        }
-      }));
+      return Promise.all(
+        rows.map(async (row) => {
+          const name = String(row.name || '').trim();
+          if (!name) return row;
+          try {
+            const full = await erpGetDoc('Pricing Rule', name, { fields: ['*'] });
+            return full ? { ...row, ...full } : row;
+          } catch {
+            return { ...row, __migration_enrichment_error: true };
+          }
+        })
+      );
     },
   };
 }
@@ -142,8 +144,14 @@ function currentClientIdentity(client: ExistingClient): Record<string, unknown> 
   };
 }
 
-function lineageFor(state: FrappeMigrationState, sourceDoctype: string, sourceId: string): ExistingLineage | undefined {
-  return state.lineage.find((entry) => entry.sourceDoctype === sourceDoctype && entry.sourceId === sourceId);
+function lineageFor(
+  state: FrappeMigrationState,
+  sourceDoctype: string,
+  sourceId: string
+): ExistingLineage | undefined {
+  return state.lineage.find(
+    (entry) => entry.sourceDoctype === sourceDoctype && entry.sourceId === sourceId
+  );
 }
 
 function add(
@@ -152,21 +160,27 @@ function add(
   sourceDoctype: string,
   sourceId: string,
   mensagem: string,
-  localKey?: string,
+  localKey?: string
 ): void {
   // Customer/Lead source IDs may themselves be CPF/CNPJ, e-mail, or a
   // person's name. Keep a stable one-way token in the report/CLI while the
   // complete source ID remains available to internal lineage/state writes.
-  const reportSourceId = sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
-    ? `cliente:${canonicalHash(`${sourceDoctype}:${sourceId}`).slice(0, 12)}`
-    : sourceId;
+  const reportSourceId =
+    sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
+      ? `cliente:${canonicalHash(`${sourceDoctype}:${sourceId}`).slice(0, 12)}`
+      : sourceId;
   // Client local keys can be document-derived (CPF/CNPJ). They are useful
   // only inside the migration state/lineage and must never cross the report
   // boundary, including dry-run, apply, and write-failure details.
-  const reportLocalKey = sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
-    ? undefined
-    : localKey;
-  addDetail(report, { status, source_doctype: sourceDoctype, source_id: reportSourceId, local_key: reportLocalKey, mensagem });
+  const reportLocalKey =
+    sourceDoctype === 'Customer' || sourceDoctype === 'Lead' ? undefined : localKey;
+  addDetail(report, {
+    status,
+    source_doctype: sourceDoctype,
+    source_id: reportSourceId,
+    local_key: reportLocalKey,
+    mensagem,
+  });
 }
 
 interface ReportCheckpoint {
@@ -237,7 +251,10 @@ function productSkuCollisions(products: NormalizedProduct[]): Set<string> {
   return new Set([...bySku].filter(([, ids]) => ids.size > 1).map(([sku]) => sku));
 }
 
-function lineageEntriesBySource(entries: FrappeLineageEntry[], type: FrappeLineageEntry['entityType']): FrappeLineageEntry[] {
+function lineageEntriesBySource(
+  entries: FrappeLineageEntry[],
+  type: FrappeLineageEntry['entityType']
+): FrappeLineageEntry[] {
   return entries.filter((entry) => entry.entityType === type);
 }
 
@@ -251,7 +268,10 @@ function importedProductHash(product: NormalizedProduct): string {
   });
 }
 
-function resolveExistingClient(state: FrappeMigrationState, unit: ClientUnit): ExistingClient | undefined {
+function resolveExistingClient(
+  state: FrappeMigrationState,
+  unit: ClientUnit
+): ExistingClient | undefined {
   const byLineage = unit.lineage
     .map((entry) => lineageFor(state, entry.sourceDoctype, entry.sourceId)?.localKey)
     .find(Boolean);
@@ -259,7 +279,8 @@ function resolveExistingClient(state: FrappeMigrationState, unit: ClientUnit): E
     const byId = state.clients.find((client) => client.id === byLineage);
     if (byId) return byId;
   }
-  if (unit.client.documento) return state.clients.find((client) => client.documento === unit.client.documento);
+  if (unit.client.documento)
+    return state.clients.find((client) => client.documento === unit.client.documento);
   return undefined;
 }
 
@@ -270,28 +291,78 @@ function processProductUnit(
   duplicateSkus: Set<string>,
   duplicateSources: Set<string>,
   duplicatePriceSources: Set<string>,
-  multiSkuPriceSources: Set<string>,
+  multiSkuPriceSources: Set<string>
 ): { write: boolean; lineageOnly: boolean } {
   const itemSource = unit.product.sourceId;
   const existing = state.products.find((product) => product.sku === unit.product.sku);
   if (duplicateSkus.has(unit.product.sku)) {
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'SKU associado a mais de um documento Frappe.', unit.product.sku);
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'SKU associado a mais de um documento Frappe.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
   if (duplicateSources.has(recordKey('Item', itemSource))) {
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'Documento Frappe repetido com dados diferentes.', unit.product.sku);
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'Documento Frappe repetido com dados diferentes.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
-  const duplicatedPrice = unit.lineage.find((entry) => entry.entityType === 'faixa' && duplicatePriceSources.has(recordKey(entry.sourceDoctype, entry.sourceId)));
+  const duplicatedPrice = unit.lineage.find(
+    (entry) =>
+      entry.entityType === 'faixa' &&
+      duplicatePriceSources.has(recordKey(entry.sourceDoctype, entry.sourceId))
+  );
   if (duplicatedPrice) {
-    add(report.faixas, 'divergentes', duplicatedPrice.sourceDoctype, duplicatedPrice.sourceId, 'Documento de preço repetido com dados diferentes.', unit.product.sku);
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'Produto não aplicado porque a fonte de preço é ambígua.', unit.product.sku);
+    add(
+      report.faixas,
+      'divergentes',
+      duplicatedPrice.sourceDoctype,
+      duplicatedPrice.sourceId,
+      'Documento de preço repetido com dados diferentes.',
+      unit.product.sku
+    );
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'Produto não aplicado porque a fonte de preço é ambígua.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
-  const multiSkuPrice = unit.lineage.find((entry) => entry.entityType === 'faixa' && multiSkuPriceSources.has(recordKey(entry.sourceDoctype, entry.sourceId)));
+  const multiSkuPrice = unit.lineage.find(
+    (entry) =>
+      entry.entityType === 'faixa' &&
+      multiSkuPriceSources.has(recordKey(entry.sourceDoctype, entry.sourceId))
+  );
   if (multiSkuPrice) {
-    add(report.faixas, 'divergentes', multiSkuPrice.sourceDoctype, multiSkuPrice.sourceId, 'Documento de preço associado a mais de um SKU.', unit.product.sku);
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'Produto não aplicado porque a linhagem de preço é ambígua.', unit.product.sku);
+    add(
+      report.faixas,
+      'divergentes',
+      multiSkuPrice.sourceDoctype,
+      multiSkuPrice.sourceId,
+      'Documento de preço associado a mais de um SKU.',
+      unit.product.sku
+    );
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'Produto não aplicado porque a linhagem de preço é ambígua.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
   if (unit.divergences.length > 0) {
@@ -302,148 +373,436 @@ function processProductUnit(
       divergenceSource?.sourceDoctype || 'Pricing Rule',
       divergenceSource?.sourceId || itemSource,
       unit.divergences.join(' '),
-      unit.product.sku,
+      unit.product.sku
     );
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'Produto não aplicado porque as faixas são ambíguas.', unit.product.sku);
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'Produto não aplicado porque as faixas são ambíguas.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
   const previous = lineageFor(state, 'Item', itemSource);
   if (previous && previous.entityType !== 'produto') {
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'Linhagem existente tem tipo de entidade incompatível.', unit.product.sku);
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'Linhagem existente tem tipo de entidade incompatível.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
   if (previous && previous.localKey !== unit.product.sku) {
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'Identificador legado já está ligado a outro SKU.', unit.product.sku);
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'Identificador legado já está ligado a outro SKU.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
-  if (existing && !previous && (
-    !sameValue(productCurrentIdentity(existing), productIdentity(unit.product)) ||
-    !sameValue(currentPricingIdentity(existing), pricingIdentity(unit))
-  )) {
-    add(report.produtos, 'divergentes', 'Item', itemSource, 'SKU já existe com dados incompatíveis.', unit.product.sku);
+  if (
+    existing &&
+    !previous &&
+    (!sameValue(productCurrentIdentity(existing), productIdentity(unit.product)) ||
+      !sameValue(currentPricingIdentity(existing), pricingIdentity(unit)))
+  ) {
+    add(
+      report.produtos,
+      'divergentes',
+      'Item',
+      itemSource,
+      'SKU já existe com dados incompatíveis.',
+      unit.product.sku
+    );
     return { write: false, lineageOnly: false };
   }
   const productLineage = lineageEntriesBySource(unit.lineage, 'produto');
   for (const entry of productLineage) {
     const old = lineageFor(state, entry.sourceDoctype, entry.sourceId);
     if (old && old.entityType !== 'produto') {
-      add(report.produtos, 'divergentes', entry.sourceDoctype, entry.sourceId, 'Linhagem existente tem tipo de entidade incompatível.', entry.localKey);
+      add(
+        report.produtos,
+        'divergentes',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Linhagem existente tem tipo de entidade incompatível.',
+        entry.localKey
+      );
       return { write: false, lineageOnly: false };
     }
     if (old && old.localKey !== entry.localKey) {
-      add(report.produtos, 'divergentes', entry.sourceDoctype, entry.sourceId, 'Documento legado ligado a outra entidade.', entry.localKey);
+      add(
+        report.produtos,
+        'divergentes',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Documento legado ligado a outra entidade.',
+        entry.localKey
+      );
       return { write: false, lineageOnly: false };
     }
   }
   for (const entry of lineageEntriesBySource(unit.lineage, 'faixa')) {
     const old = lineageFor(state, entry.sourceDoctype, entry.sourceId);
     if (old && old.entityType !== 'faixa') {
-      add(report.faixas, 'divergentes', entry.sourceDoctype, entry.sourceId, 'Linhagem existente tem tipo de entidade incompatível.', entry.localKey);
-      add(report.produtos, 'divergentes', 'Item', itemSource, 'Produto não aplicado porque a linhagem de faixa é incompatível.', unit.product.sku);
+      add(
+        report.faixas,
+        'divergentes',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Linhagem existente tem tipo de entidade incompatível.',
+        entry.localKey
+      );
+      add(
+        report.produtos,
+        'divergentes',
+        'Item',
+        itemSource,
+        'Produto não aplicado porque a linhagem de faixa é incompatível.',
+        unit.product.sku
+      );
       return { write: false, lineageOnly: false };
     }
     if (old && old.localKey !== entry.localKey) {
-      add(report.faixas, 'divergentes', entry.sourceDoctype, entry.sourceId, 'Documento de preço legado ligado a outro SKU.', entry.localKey);
-      add(report.produtos, 'divergentes', 'Item', itemSource, 'Produto não aplicado porque a faixa já está ligada a outro SKU.', unit.product.sku);
+      add(
+        report.faixas,
+        'divergentes',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Documento de preço legado ligado a outro SKU.',
+        entry.localKey
+      );
+      add(
+        report.produtos,
+        'divergentes',
+        'Item',
+        itemSource,
+        'Produto não aplicado porque a faixa já está ligada a outro SKU.',
+        unit.product.sku
+      );
       return { write: false, lineageOnly: false };
     }
   }
-  const productSame = Boolean(existing && sameValue(productCurrentIdentity(existing), productIdentity(unit.product)) && sameValue(currentPricingIdentity(existing), pricingIdentity(unit)));
-  const itemSame = Boolean(previous && previous.canonicalHash === importedProductHash(unit.product));
-  if (productSame && itemSame) add(report.produtos, 'ignorados', 'Item', itemSource, 'Produto equivalente já importado.', unit.product.sku);
-  else if (existing || previous) add(report.produtos, 'atualizados', 'Item', itemSource, 'Produto atualizado de forma compatível.', unit.product.sku);
+  const productSame = Boolean(
+    existing &&
+    sameValue(productCurrentIdentity(existing), productIdentity(unit.product)) &&
+    sameValue(currentPricingIdentity(existing), pricingIdentity(unit))
+  );
+  const itemSame = Boolean(
+    previous && previous.canonicalHash === importedProductHash(unit.product)
+  );
+  if (productSame && itemSame)
+    add(
+      report.produtos,
+      'ignorados',
+      'Item',
+      itemSource,
+      'Produto equivalente já importado.',
+      unit.product.sku
+    );
+  else if (existing || previous)
+    add(
+      report.produtos,
+      'atualizados',
+      'Item',
+      itemSource,
+      'Produto atualizado de forma compatível.',
+      unit.product.sku
+    );
   else add(report.produtos, 'criados', 'Item', itemSource, 'Produto novo.', unit.product.sku);
 
   for (const entry of lineageEntriesBySource(unit.lineage, 'faixa')) {
     const old = lineageFor(state, entry.sourceDoctype, entry.sourceId);
-    if (!old) add(report.faixas, 'criados', entry.sourceDoctype, entry.sourceId, 'Faixa nova.', unit.product.sku);
-    else if (old.canonicalHash === entry.canonicalHash && old.localKey === entry.localKey) add(report.faixas, 'ignorados', entry.sourceDoctype, entry.sourceId, 'Faixa equivalente já importada.', unit.product.sku);
-    else add(report.faixas, 'atualizados', entry.sourceDoctype, entry.sourceId, 'Faixa atualizada de forma compatível.', unit.product.sku);
+    if (!old)
+      add(
+        report.faixas,
+        'criados',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Faixa nova.',
+        unit.product.sku
+      );
+    else if (old.canonicalHash === entry.canonicalHash && old.localKey === entry.localKey)
+      add(
+        report.faixas,
+        'ignorados',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Faixa equivalente já importada.',
+        unit.product.sku
+      );
+    else
+      add(
+        report.faixas,
+        'atualizados',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Faixa atualizada de forma compatível.',
+        unit.product.sku
+      );
   }
-  const hasNewLineage = unit.lineage.some((entry) => !lineageFor(state, entry.sourceDoctype, entry.sourceId));
-  return { write: !productSame || !itemSame || hasNewLineage, lineageOnly: productSame && itemSame && hasNewLineage };
+  const hasNewLineage = unit.lineage.some(
+    (entry) => !lineageFor(state, entry.sourceDoctype, entry.sourceId)
+  );
+  return {
+    write: !productSame || !itemSame || hasNewLineage,
+    lineageOnly: productSame && itemSame && hasNewLineage,
+  };
 }
 
-function processClientUnit(unit: ClientUnit, state: FrappeMigrationState, report: ImportReport): boolean {
+function processClientUnit(
+  unit: ClientUnit,
+  state: FrappeMigrationState,
+  report: ImportReport
+): boolean {
   const source = unit.lineage[0];
   if (unit.conflicts.length) {
-    add(report.clientes, 'divergentes', source.sourceDoctype, source.sourceId, unit.conflicts.join(' '), unit.client.localKey);
+    add(
+      report.clientes,
+      'divergentes',
+      source.sourceDoctype,
+      source.sourceId,
+      unit.conflicts.join(' '),
+      unit.client.localKey
+    );
     return false;
   }
   for (const entry of unit.lineage) {
     const old = lineageFor(state, entry.sourceDoctype, entry.sourceId);
     if (old && old.entityType !== 'cliente') {
-      add(report.clientes, 'divergentes', entry.sourceDoctype, entry.sourceId, 'Linhagem existente tem tipo de entidade incompatível.', unit.client.localKey);
+      add(
+        report.clientes,
+        'divergentes',
+        entry.sourceDoctype,
+        entry.sourceId,
+        'Linhagem existente tem tipo de entidade incompatível.',
+        unit.client.localKey
+      );
       return false;
     }
   }
-  const linkedKeys = [...new Set(unit.lineage
-    .map((entry) => lineageFor(state, entry.sourceDoctype, entry.sourceId)?.localKey)
-    .filter((value): value is string => Boolean(value)))];
+  const linkedKeys = [
+    ...new Set(
+      unit.lineage
+        .map((entry) => lineageFor(state, entry.sourceDoctype, entry.sourceId)?.localKey)
+        .filter((value): value is string => Boolean(value))
+    ),
+  ];
   if (linkedKeys.length > 1) {
-    add(report.clientes, 'divergentes', source.sourceDoctype, source.sourceId, 'Vínculos Customer/Lead apontam para clientes locais diferentes.', unit.client.localKey);
+    add(
+      report.clientes,
+      'divergentes',
+      source.sourceDoctype,
+      source.sourceId,
+      'Vínculos Customer/Lead apontam para clientes locais diferentes.',
+      unit.client.localKey
+    );
     return false;
   }
   const existing = resolveExistingClient(state, unit);
-  const previous = unit.lineage.map((entry) => lineageFor(state, entry.sourceDoctype, entry.sourceId)).find(Boolean);
-  if (existing && !previous && existing.documento === unit.client.documento && !sameValue(currentClientIdentity(existing), clientIdentity(unit.client))) {
-    add(report.clientes, 'divergentes', source.sourceDoctype, source.sourceId, 'Documento já existe com dados incompatíveis.', unit.client.localKey);
+  const previous = unit.lineage
+    .map((entry) => lineageFor(state, entry.sourceDoctype, entry.sourceId))
+    .find(Boolean);
+  if (
+    existing &&
+    !previous &&
+    existing.documento === unit.client.documento &&
+    !sameValue(currentClientIdentity(existing), clientIdentity(unit.client))
+  ) {
+    add(
+      report.clientes,
+      'divergentes',
+      source.sourceDoctype,
+      source.sourceId,
+      'Documento já existe com dados incompatíveis.',
+      unit.client.localKey
+    );
     return false;
   }
-  const exact = Boolean(existing && sameValue(currentClientIdentity(existing), clientIdentity(unit.client)) && unit.lineage.every((entry) => lineageFor(state, entry.sourceDoctype, entry.sourceId)?.canonicalHash === entry.canonicalHash));
-  if (exact) add(report.clientes, 'ignorados', source.sourceDoctype, source.sourceId, 'Cliente equivalente já importado.', unit.client.localKey);
-  else if (existing || previous) add(report.clientes, 'atualizados', source.sourceDoctype, source.sourceId, 'Cliente atualizado de forma compatível.', unit.client.localKey);
-  else add(report.clientes, 'criados', source.sourceDoctype, source.sourceId, 'Cliente novo.', unit.client.localKey);
+  const exact = Boolean(
+    existing &&
+    sameValue(currentClientIdentity(existing), clientIdentity(unit.client)) &&
+    unit.lineage.every(
+      (entry) =>
+        lineageFor(state, entry.sourceDoctype, entry.sourceId)?.canonicalHash ===
+        entry.canonicalHash
+    )
+  );
+  if (exact)
+    add(
+      report.clientes,
+      'ignorados',
+      source.sourceDoctype,
+      source.sourceId,
+      'Cliente equivalente já importado.',
+      unit.client.localKey
+    );
+  else if (existing || previous)
+    add(
+      report.clientes,
+      'atualizados',
+      source.sourceDoctype,
+      source.sourceId,
+      'Cliente atualizado de forma compatível.',
+      unit.client.localKey
+    );
+  else
+    add(
+      report.clientes,
+      'criados',
+      source.sourceDoctype,
+      source.sourceId,
+      'Cliente novo.',
+      unit.client.localKey
+    );
   return !exact;
 }
 
-function processQuotationUnit(unit: QuotationUnit, state: FrappeMigrationState, report: ImportReport): boolean {
+function processQuotationUnit(
+  unit: QuotationUnit,
+  state: FrappeMigrationState,
+  report: ImportReport
+): boolean {
   const source = unit.quotation;
   const previous = lineageFor(state, 'Quotation', source.sourceId);
   if (previous && previous.entityType !== 'orcamento') {
-    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, 'Linhagem existente tem tipo de entidade incompatível.', source.businessNumber);
+    add(
+      report.orcamentos,
+      'divergentes',
+      'Quotation',
+      source.sourceId,
+      'Linhagem existente tem tipo de entidade incompatível.',
+      source.businessNumber
+    );
     return false;
   }
   if (previous && previous.localKey !== unit.id) {
-    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, 'Documento legado ligado a outra entidade.', source.businessNumber);
+    add(
+      report.orcamentos,
+      'divergentes',
+      'Quotation',
+      source.sourceId,
+      'Documento legado ligado a outra entidade.',
+      source.businessNumber
+    );
     return false;
   }
-  const existingQuotation = state.quotations.find((quotation) => quotation.businessNumber === source.businessNumber);
+  const existingQuotation = state.quotations.find(
+    (quotation) => quotation.businessNumber === source.businessNumber
+  );
   if (existingQuotation && existingQuotation.id !== unit.id) {
-    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, `Número comercial ${source.businessNumber} já existe para outra entidade local.`, source.businessNumber);
+    add(
+      report.orcamentos,
+      'divergentes',
+      'Quotation',
+      source.sourceId,
+      `Número comercial ${source.businessNumber} já existe para outra entidade local.`,
+      source.businessNumber
+    );
     return false;
   }
   if (!source.statusKnown) {
-    add(report.orcamentos, 'divergentes', 'Quotation', source.sourceId, `Status legado desconhecido '${source.statusSource}' mapeado para rascunho.`, source.businessNumber);
+    add(
+      report.orcamentos,
+      'divergentes',
+      'Quotation',
+      source.sourceId,
+      `Status legado desconhecido '${source.statusSource}' mapeado para rascunho.`,
+      source.businessNumber
+    );
   }
   if (previous && previous.canonicalHash === unit.sourceHash) {
-    add(report.orcamentos, 'ignorados', 'Quotation', source.sourceId, 'Orçamento equivalente já importado.', source.businessNumber);
+    add(
+      report.orcamentos,
+      'ignorados',
+      'Quotation',
+      source.sourceId,
+      'Orçamento equivalente já importado.',
+      source.businessNumber
+    );
     return false;
   }
-  if (previous) add(report.orcamentos, 'atualizados', 'Quotation', source.sourceId, 'Orçamento atualizado de forma compatível.', source.businessNumber);
-  else add(report.orcamentos, 'criados', 'Quotation', source.sourceId, 'Orçamento novo.', source.businessNumber);
+  if (previous)
+    add(
+      report.orcamentos,
+      'atualizados',
+      'Quotation',
+      source.sourceId,
+      'Orçamento atualizado de forma compatível.',
+      source.businessNumber
+    );
+  else
+    add(
+      report.orcamentos,
+      'criados',
+      'Quotation',
+      source.sourceId,
+      'Orçamento novo.',
+      source.businessNumber
+    );
   return true;
 }
 
 function normalizeSafely(dataset: FrappeDataset, report: ImportReport) {
   const products: NormalizedProduct[] = [];
   for (const record of uniqueSourceRecords(dataset.items || [])) {
-    try { products.push(normalizeFrappeItem(record)); }
-    catch (error) { add(report.produtos, 'erros', 'Item', String(record.name || record.id || ''), error instanceof Error ? error.message : 'Item inválido.'); }
+    try {
+      products.push(normalizeFrappeItem(record));
+    } catch (error) {
+      add(
+        report.produtos,
+        'erros',
+        'Item',
+        String(record.name || record.id || ''),
+        error instanceof Error ? error.message : 'Item inválido.'
+      );
+    }
   }
   const priceDocuments: NormalizedPriceDocument[] = [];
   const knownSkus = products.map((product) => product.sku);
-  for (const [doctype, records] of [['Pricing Rule', dataset.pricingRules || []], ['Item Price', dataset.itemPrices || []]] as const) {
+  for (const [doctype, records] of [
+    ['Pricing Rule', dataset.pricingRules || []],
+    ['Item Price', dataset.itemPrices || []],
+  ] as const) {
     for (const record of uniqueSourceRecords(records)) {
-      try { priceDocuments.push(...normalizeFrappePriceDocuments([record], doctype, knownSkus)); }
-      catch (error) { add(report.faixas, 'erros', doctype, String(record.name || record.id || ''), error instanceof Error ? error.message : 'Faixa inválida.'); }
+      try {
+        priceDocuments.push(...normalizeFrappePriceDocuments([record], doctype, knownSkus));
+      } catch (error) {
+        add(
+          report.faixas,
+          'erros',
+          doctype,
+          String(record.name || record.id || ''),
+          error instanceof Error ? error.message : 'Faixa inválida.'
+        );
+      }
     }
   }
   const clients: NormalizedClient[] = [];
-  for (const [doctype, records] of [['Customer', dataset.customers || []], ['Lead', dataset.leads || []]] as const) {
+  for (const [doctype, records] of [
+    ['Customer', dataset.customers || []],
+    ['Lead', dataset.leads || []],
+  ] as const) {
     for (const record of uniqueSourceRecords(records)) {
-      try { clients.push(normalizeFrappeClientRecord(record, doctype)); }
-      catch (error) { add(report.clientes, 'erros', doctype, String(record.name || record.id || ''), error instanceof Error ? error.message : 'Cliente inválido.'); }
+      try {
+        clients.push(normalizeFrappeClientRecord(record, doctype));
+      } catch (error) {
+        add(
+          report.clientes,
+          'erros',
+          doctype,
+          String(record.name || record.id || ''),
+          error instanceof Error ? error.message : 'Cliente inválido.'
+        );
+      }
     }
   }
   const productUnits: ProductUnit[] = [];
@@ -451,14 +810,28 @@ function normalizeSafely(dataset: FrappeDataset, report: ImportReport) {
     try {
       productUnits.push(...buildProductUnits([product], priceDocuments));
     } catch (error) {
-      add(report.produtos, 'erros', 'Item', product.sourceId, error instanceof Error ? error.message : 'Preço do produto inválido.', product.sku);
+      add(
+        report.produtos,
+        'erros',
+        'Item',
+        product.sourceId,
+        error instanceof Error ? error.message : 'Preço do produto inválido.',
+        product.sku
+      );
     }
   }
-  return { products, priceDocuments, clients, productUnits, clientUnits: buildClientUnits(clients) };
+  return {
+    products,
+    priceDocuments,
+    clients,
+    productUnits,
+    clientUnits: buildClientUnits(clients),
+  };
 }
 
 export async function runFrappeMigration(options: MigrationOptions): Promise<MigrationResult> {
-  if (!options || (options.mode !== 'dry-run' && options.mode !== 'apply')) throw new Error('Informe exatamente --dry-run ou --apply.');
+  if (!options || (options.mode !== 'dry-run' && options.mode !== 'apply'))
+    throw new Error('Informe exatamente --dry-run ou --apply.');
   const report = makeReport(options.mode);
   const source = options.source;
   let dataset: FrappeDataset;
@@ -466,8 +839,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const candidate: unknown = options.dataset;
     validateFrappeDataset(candidate);
     dataset = candidate;
-  }
-  else if (source) dataset = (await readFrappeDataset(source, options.pageSize || 200)).dataset;
+  } else if (source) dataset = (await readFrappeDataset(source, options.pageSize || 200)).dataset;
   else throw new Error('Fonte Frappe não configurada.');
   validateFrappeDataset(dataset);
   const normalized = normalizeSafely(dataset, report);
@@ -487,9 +859,9 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     skus.add(price.sku);
     priceSkus.set(key, skus);
   }
-  const multiSkuPriceSources = new Set([...priceSkus]
-    .filter(([, skus]) => skus.size > 1)
-    .map(([key]) => key));
+  const multiSkuPriceSources = new Set(
+    [...priceSkus].filter(([, skus]) => skus.size > 1).map(([key]) => key)
+  );
   // A price document is only importable when every referenced SKU belongs to
   // an Item in this dataset. Keep orphan rows visible with their source ID and
   // SKU, but never attach them to a product unit or write their lineage. A
@@ -508,7 +880,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       price.sourceDoctype,
       price.sourceId,
       `SKU ${price.sku} não encontrado em Item; documento de preço não importado.`,
-      price.sku,
+      price.sku
     );
   }
   const writes: Array<{
@@ -523,19 +895,32 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   for (const unit of normalized.productUnits) {
     const productCheckpoint = checkpoint(report.produtos);
     const pricingCheckpoint = checkpoint(report.faixas);
-    const action = processProductUnit(unit, state, report, duplicateSkus, duplicateSources, duplicatePriceSources, multiSkuPriceSources);
+    const action = processProductUnit(
+      unit,
+      state,
+      report,
+      duplicateSkus,
+      duplicateSources,
+      duplicatePriceSources,
+      multiSkuPriceSources
+    );
     sealCheckpoint(productCheckpoint);
     sealCheckpoint(pricingCheckpoint);
-    if (action.write) writes.push({
-      run: () => repository.applyProductUnit(unit),
-      checkpoints: [productCheckpoint, pricingCheckpoint],
-      sourceDoctype: 'Item',
-      sourceId: unit.product.sourceId,
-      localKey: unit.product.sku,
-      pricingSources: unit.lineage
-        .filter((entry) => entry.entityType === 'faixa')
-        .map((entry) => ({ sourceDoctype: entry.sourceDoctype, sourceId: entry.sourceId, localKey: entry.localKey })),
-    });
+    if (action.write)
+      writes.push({
+        run: () => repository.applyProductUnit(unit),
+        checkpoints: [productCheckpoint, pricingCheckpoint],
+        sourceDoctype: 'Item',
+        sourceId: unit.product.sourceId,
+        localKey: unit.product.sku,
+        pricingSources: unit.lineage
+          .filter((entry) => entry.entityType === 'faixa')
+          .map((entry) => ({
+            sourceDoctype: entry.sourceDoctype,
+            sourceId: entry.sourceId,
+            localKey: entry.localKey,
+          })),
+      });
   }
   for (const unit of normalized.clientUnits) {
     const clientCheckpoint = checkpoint(report.clientes);
@@ -558,17 +943,44 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     // or client unit is reported and does not roll back already confirmed
     // units, making a rerun safe after operator remediation.
     for (const write of writes) {
-      try { await write.run(); }
-      catch {
+      try {
+        await write.run();
+      } catch {
         const message = 'Não foi possível salvar a unidade importada.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
-        const productCheckpoint = write.checkpoints.find((saved) => saved.report === report.produtos);
-        const clientCheckpoint = write.checkpoints.find((saved) => saved.report === report.clientes);
+        const productCheckpoint = write.checkpoints.find(
+          (saved) => saved.report === report.produtos
+        );
+        const clientCheckpoint = write.checkpoints.find(
+          (saved) => saved.report === report.clientes
+        );
         if (productCheckpoint) {
-          add(report.produtos, 'erros', write.sourceDoctype, write.sourceId, message, write.localKey);
-          for (const price of write.pricingSources) add(report.faixas, 'erros', price.sourceDoctype, price.sourceId, message, price.localKey);
+          add(
+            report.produtos,
+            'erros',
+            write.sourceDoctype,
+            write.sourceId,
+            message,
+            write.localKey
+          );
+          for (const price of write.pricingSources)
+            add(
+              report.faixas,
+              'erros',
+              price.sourceDoctype,
+              price.sourceId,
+              message,
+              price.localKey
+            );
         } else if (clientCheckpoint) {
-          add(report.clientes, 'erros', write.sourceDoctype, write.sourceId, message, write.localKey);
+          add(
+            report.clientes,
+            'erros',
+            write.sourceDoctype,
+            write.sourceId,
+            message,
+            write.localKey
+          );
         }
       }
     }
@@ -578,7 +990,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   const quotationState = options.mode === 'apply' ? await repository.loadState() : state;
   const clientLineage = new Map<string, string>();
   for (const entry of quotationState.lineage) {
-    if (entry.entityType === 'cliente') clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.localKey);
+    if (entry.entityType === 'cliente')
+      clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.localKey);
   }
   if (options.mode !== 'apply') {
     // Dry-run has no persisted clients yet. Predict the deterministic client
@@ -591,7 +1004,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         ? quotationState.clients.find((client) => client.documento === unit.client.documento)
         : undefined;
       const id = linked || byDocument?.id || stableClientUuid(unit.client.localKey);
-      for (const entry of unit.lineage) clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, id);
+      for (const entry of unit.lineage)
+        clientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, id);
     }
   }
   const knownProducts = new Set(quotationState.products.map((product) => product.sku));
@@ -600,38 +1014,62 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   }
   const normalizedQuotations: NormalizedQuotation[] = [];
   for (const record of uniqueSourceRecords(dataset.quotations || [])) {
-    try { normalizedQuotations.push(normalizeFrappeQuotation(record, clientLineage)); }
-    catch (error) {
-      add(report.orcamentos, 'erros', 'Quotation', String(record.name || record.id || ''), error instanceof Error ? error.message : 'Orçamento inválido.');
+    try {
+      normalizedQuotations.push(normalizeFrappeQuotation(record, clientLineage));
+    } catch (error) {
+      add(
+        report.orcamentos,
+        'erros',
+        'Quotation',
+        String(record.name || record.id || ''),
+        error instanceof Error ? error.message : 'Orçamento inválido.'
+      );
     }
   }
-  const builtQuotations = buildQuotationUnits(normalizedQuotations, clientLineage, {
-    clients: quotationState.clients,
-    products: quotationState.products,
-  }, knownProducts);
+  const builtQuotations = buildQuotationUnits(
+    normalizedQuotations,
+    clientLineage,
+    {
+      clients: quotationState.clients,
+      products: quotationState.products,
+    },
+    knownProducts
+  );
   for (const issue of builtQuotations.issues) addDetail(report.orcamentos, issue);
   for (const unit of builtQuotations.quotationUnits) {
     const quotationCheckpoint = checkpoint(report.orcamentos);
     const quotationAction = processQuotationUnit(unit, quotationState, report);
     sealCheckpoint(quotationCheckpoint);
-    if (quotationAction) writes.push({
-      run: () => repository.applyQuotationUnit(unit),
-      checkpoints: [quotationCheckpoint],
-      sourceDoctype: 'Quotation',
-      sourceId: unit.quotation.sourceId,
-      localKey: unit.quotation.businessNumber,
-      pricingSources: [],
-    });
+    if (quotationAction)
+      writes.push({
+        run: () => repository.applyQuotationUnit(unit),
+        checkpoints: [quotationCheckpoint],
+        sourceDoctype: 'Quotation',
+        sourceId: unit.quotation.sourceId,
+        localKey: unit.quotation.businessNumber,
+        pricingSources: [],
+      });
   }
   if (options.mode === 'apply') {
     for (const write of writes) {
       if (!write.checkpoints.some((saved) => saved.report === report.orcamentos)) continue;
-      try { await write.run(); }
-      catch {
+      try {
+        await write.run();
+      } catch {
         const message = 'Não foi possível salvar o orçamento importado.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
-        const quotationCheckpoint = write.checkpoints.find((saved) => saved.report === report.orcamentos);
-        if (quotationCheckpoint) add(report.orcamentos, 'erros', write.sourceDoctype, write.sourceId, message, write.localKey);
+        const quotationCheckpoint = write.checkpoints.find(
+          (saved) => saved.report === report.orcamentos
+        );
+        if (quotationCheckpoint)
+          add(
+            report.orcamentos,
+            'erros',
+            write.sourceDoctype,
+            write.sourceId,
+            message,
+            write.localKey
+          );
       }
     }
     // Advance the per-year numbering counter past the highest imported number.
@@ -644,7 +1082,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       const sequence = Number(match[2]);
       maxByYear.set(year, Math.max(maxByYear.get(year) || 0, sequence));
     }
-    for (const [year, lastNumber] of maxByYear) await repository.advanceQuoteSequence(year, lastNumber);
+    for (const [year, lastNumber] of maxByYear)
+      await repository.advanceQuoteSequence(year, lastNumber);
   }
   return { report: finalizeReport(report) };
 }
