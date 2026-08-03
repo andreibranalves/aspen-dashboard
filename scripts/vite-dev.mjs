@@ -52,17 +52,49 @@ async function main() {
     return;
   }
 
+  // Start API server on port 8888
+  const apiServer = spawn(process.execPath, [appServerScript], {
+    stdio: 'inherit',
+    env: { ...process.env, PORT: '8888' },
+  });
+  apiServer.on('error', (err) => console.error('[vite-dev] API server error:', err.message));
+
   const child = spawn(process.execPath, [viteBin, '--port', String(port)], {
     stdio: 'inherit',
     env: process.env,
   });
 
+  function cleanup() {
+    try {
+      apiServer.kill();
+    } catch {}
+    try {
+      child.kill();
+    } catch {}
+  }
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => {
+    cleanup();
+    process.exit(0);
+  });
+  process.on('SIGTERM', () => {
+    cleanup();
+    process.exit(0);
+  });
+
   child.on('exit', (code, signal) => {
+    cleanup();
     if (signal) {
       process.kill(process.pid, signal);
       return;
     }
     process.exit(code ?? 0);
+  });
+
+  apiServer.on('exit', (code) => {
+    if (code !== 0 && code !== null) {
+      console.error('[vite-dev] API server exited with code', code);
+    }
   });
 }
 
