@@ -63,7 +63,15 @@ async function main() {
     ? new repositoryModule.MemoryFrappeMigrationRepository()
     : undefined;
   const source = dataset ? undefined : migration.createFrappeSource();
-  const result = await migration.runFrappeMigration({ mode, dataset, source, repository });
+  const result = await migration.runFrappeMigration({
+    mode,
+    dataset,
+    source,
+    repository,
+    // Apply replaces the placeholder issued_documents rows with real PDFs
+    // uploaded to Vercel Blob through the production pipeline.
+    pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
+  });
   process.stdout.write(`${JSON.stringify(result.report)}\n`);
 }
 

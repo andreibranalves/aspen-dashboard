@@ -1,15 +1,20 @@
+import { list } from '@vercel/blob';
+
 import {
   addDetail,
   buildClientUnits,
   buildProductUnits,
   buildQuotationUnits,
   canonicalHash,
+  deriveHistoricalPdfBlobPath,
   finalizeReport,
+  historicalPdfPrintviewUrl,
   makeReport,
   normalizeFrappeClientRecord,
   normalizeFrappeItem,
   normalizeFrappePriceDocuments,
   normalizeFrappeQuotation,
+  normalizeHistoricalPdf,
   readFrappeDataset,
   validateFrappeDataset,
   type ClientUnit,
@@ -20,6 +25,7 @@ import {
   type FrappeDataset,
   type FrappeListSource,
   type FrappeLineageEntry,
+  type HistoricalPdfRecord,
   type ImportReport,
   type NormalizedClient,
   type NormalizedPriceDocument,
@@ -34,11 +40,51 @@ import {
   stableClientUuid,
   type FrappeMigrationRepository,
   type FrappeMigrationState,
+  type IssuedDocumentPdfPlaceholder,
 } from '../_db/frappe-migration-repository.js';
-import { erpGetDoc, erpGetList } from './lib/erpnext.js';
+import { erpGetDoc, erpGetList, ERPNEXT_TOKEN } from './lib/erpnext.js';
+import {
+  createVercelQuotationDocumentStorage,
+  isValidPdfBuffer,
+  quotationBlobAuth,
+  quotationPdfChecksum,
+  QUOTATION_PDF_MIME_TYPE,
+} from './lib/quotation-document-storage.js';
+import { renderQuotationPdfHtml } from './lib/quotation-pdf.js';
 
 export type { FrappeDataset, FrappeListSource, FrappeMigrationRepository, FrappeMigrationState };
 export * from './lib/frappe-migration-core.js';
+
+/**
+ * Blob-side seam for historical PDF archival.  Tests inject an in-memory
+ * implementation; production delegates to `@vercel/blob` via
+ * `createDefaultHistoricalPdfPipeline`.
+ */
+export interface HistoricalPdfBlobStore {
+  /** List existing blob pathnames under a prefix (idempotency lookup). */
+  list(prefix: string): Promise<string[]>;
+  /**
+   * Upload one PDF and return what the store actually recorded.  The caller
+   * compares pathname/size/checksum against the downloaded content before
+   * committing the `issued_documents` update.
+   */
+  put(
+    pathname: string,
+    buffer: Buffer,
+    contentType: string
+  ): Promise<{ pathname: string; sizeBytes: number; checksumSha256: string }>;
+}
+
+/**
+ * I/O seams for the historical PDF archival step: Frappe printview fetch,
+ * Puppeteer render and Vercel Blob storage.  Dry-run never touches this
+ * pipeline; apply archives one document at a time through it.
+ */
+export interface HistoricalPdfPipeline {
+  fetchHtml(fileUrl: string): Promise<string>;
+  renderPdf(html: string): Promise<Buffer>;
+  blobs: HistoricalPdfBlobStore;
+}
 
 export interface MigrationOptions {
   mode: 'dry-run' | 'apply';
@@ -46,6 +92,12 @@ export interface MigrationOptions {
   dataset?: FrappeDataset;
   repository?: FrappeMigrationRepository;
   pageSize?: number;
+  /**
+   * Optional archival pipeline.  In apply mode it replaces the historical
+   * PDF placeholders with real Vercel Blob uploads; in dry-run it is ignored
+   * (analysis only, no I/O).  When absent the archival step is skipped.
+   */
+  pdfPipeline?: HistoricalPdfPipeline;
 }
 
 export interface MigrationResult {
@@ -829,6 +881,277 @@ function normalizeSafely(dataset: FrappeDataset, report: ImportReport) {
   };
 }
 
+/** Production pipeline: real Frappe printview fetch, Puppeteer render and
+ * Vercel Blob storage.  The blob store reuses `QuotationDocumentStorage` for
+ * create-only uploads with read-back verification of orphaned blobs. */
+export function createDefaultHistoricalPdfPipeline(): HistoricalPdfPipeline {
+  return {
+    async fetchHtml(fileUrl: string): Promise<string> {
+      const response = await fetch(fileUrl, {
+        headers: ERPNEXT_TOKEN ? { Authorization: `token ${ERPNEXT_TOKEN}` } : {},
+      });
+      if (!response.ok)
+        throw Object.assign(new Error(`Printview retornou HTTP ${response.status}.`), {
+          statusCode: response.status,
+        });
+      return response.text();
+    },
+    renderPdf: renderQuotationPdfHtml,
+    blobs: {
+      async list(prefix: string): Promise<string[]> {
+        const result = await list({ prefix, limit: 1000, ...quotationBlobAuth() });
+        return result.blobs.map((blob) => blob.pathname);
+      },
+      async put(_pathname: string, buffer: Buffer, _contentType: string) {
+        return createVercelQuotationDocumentStorage().archive(_pathname, buffer);
+      },
+    },
+  };
+}
+
+interface ArchiveHistoricalPdfsOptions {
+  repository: FrappeMigrationRepository;
+  report: ImportReport;
+  pipeline: HistoricalPdfPipeline;
+}
+
+/**
+ * Apply-mode archival: replace every placeholder `issued_documents` row with
+ * a real Vercel Blob PDF.  Each document is processed independently so one
+ * failed fetch/render/upload never blocks the others.  Idempotency relies on
+ * the deterministic key: existing blobs are discovered by prefix
+ * (`businessNumber` + `sourceId`) because the key embeds the checksum of the
+ * newly downloaded content.
+ */
+async function archiveHistoricalPdfs({
+  repository,
+  report,
+  pipeline,
+}: ArchiveHistoricalPdfsOptions): Promise<void> {
+  let placeholders: IssuedDocumentPdfPlaceholder[];
+  try {
+    placeholders = await repository.listIssuedDocumentPdfPlaceholders();
+  } catch (error) {
+    console.error('[frappe-migration] falha ao listar PDFs históricos pendentes:', error);
+    addDetail(report.documentos, {
+      status: 'erros',
+      source_doctype: 'issued_documents',
+      source_id: '',
+      local_key: '',
+      mensagem: 'Não foi possível listar os documentos históricos pendentes.',
+    });
+    return;
+  }
+  report.documentos.lidos = placeholders.length;
+  for (const placeholder of placeholders) {
+    await archivePlaceholderPdf(placeholder, repository, report, pipeline);
+  }
+}
+
+async function archivePlaceholderPdf(
+  placeholder: IssuedDocumentPdfPlaceholder,
+  repository: FrappeMigrationRepository,
+  report: ImportReport,
+  pipeline: HistoricalPdfPipeline
+): Promise<void> {
+  const { documentId, sourceId, businessNumber, fileName, blobPathname } = placeholder;
+  const detail = (
+    status: 'atualizados' | 'ignorados' | 'divergentes' | 'erros',
+    mensagem: string
+  ): void => {
+    addDetail(report.documentos, {
+      status,
+      source_doctype: 'Quotation',
+      source_id: sourceId,
+      local_key: businessNumber,
+      mensagem,
+    });
+  };
+  let fileUrl: string;
+  try {
+    fileUrl = historicalPdfPrintviewUrl(sourceId);
+  } catch {
+    detail('divergentes', 'Quotation sem name; impossível construir a URL do PDF.');
+    return;
+  }
+  let html: string;
+  try {
+    html = await pipeline.fetchHtml(fileUrl);
+  } catch (error) {
+    console.error(`[frappe-migration] falha ao baixar printview de ${sourceId}:`, error);
+    detail('erros', 'Não foi possível baixar o HTML do PDF histórico.');
+    return;
+  }
+  let pdf: Buffer;
+  try {
+    pdf = await pipeline.renderPdf(html);
+  } catch (error) {
+    console.error(`[frappe-migration] falha ao renderizar PDF de ${sourceId}:`, error);
+    detail('erros', 'Não foi possível renderizar o PDF histórico.');
+    return;
+  }
+  if (!isValidPdfBuffer(pdf)) {
+    detail('divergentes', 'PDF corrompido ou vazio; arquivo não arquivado.');
+    return;
+  }
+  const checksum = quotationPdfChecksum(pdf);
+  const pathname = deriveHistoricalPdfBlobPath(businessNumber, sourceId, checksum);
+  let existing: string[];
+  try {
+    existing = await pipeline.blobs.list(
+      `quotations-migration/${businessNumber}/${sourceId}-`
+    );
+  } catch (error) {
+    console.error(`[frappe-migration] falha ao consultar blobs de ${sourceId}:`, error);
+    detail('erros', 'Não foi possível consultar o armazenamento de PDFs.');
+    return;
+  }
+  if (existing.includes(pathname)) {
+    // Deterministic key already present: the exact content is archived.
+    if (blobPathname === pathname) {
+      detail('ignorados', 'PDF histórico já arquivado.');
+      return;
+    }
+    // Blob uploaded by an earlier run that crashed before the DB commit:
+    // reuse it and only fix the row.
+    try {
+      await repository.updateIssuedDocumentPdf(
+        documentId,
+        pathname,
+        fileName,
+        QUOTATION_PDF_MIME_TYPE,
+        pdf.length,
+        checksum
+      );
+      detail('atualizados', 'PDF histórico já arquivado; registro atualizado.');
+    } catch {
+      detail('erros', 'Não foi possível atualizar o registro do PDF histórico.');
+    }
+    return;
+  }
+  if (existing.length > 0) {
+    detail(
+      'divergentes',
+      'PDF Frappe mudou desde a última migração; arquivo anterior preservado.'
+    );
+    return;
+  }
+  let archived: { pathname: string; sizeBytes: number; checksumSha256: string };
+  try {
+    archived = await pipeline.blobs.put(pathname, pdf, QUOTATION_PDF_MIME_TYPE);
+  } catch (error) {
+    console.error(`[frappe-migration] falha ao arquivar PDF de ${sourceId}:`, error);
+    detail('erros', 'Não foi possível arquivar o PDF histórico.');
+    return;
+  }
+  // Verify the store recorded exactly what was downloaded before committing.
+  if (
+    archived.pathname !== pathname ||
+    archived.sizeBytes !== pdf.length ||
+    archived.checksumSha256 !== checksum
+  ) {
+    detail(
+      'erros',
+      'PDF arquivado divergente do conteúdo baixado; registro não atualizado.'
+    );
+    return;
+  }
+  try {
+    await repository.updateIssuedDocumentPdf(
+      documentId,
+      pathname,
+      fileName,
+      QUOTATION_PDF_MIME_TYPE,
+      pdf.length,
+      checksum
+    );
+  } catch {
+    detail('erros', 'Não foi possível atualizar o registro do PDF histórico.');
+    return;
+  }
+  detail('atualizados', 'PDF histórico arquivado.');
+}
+
+/**
+ * Dry-run archival analysis: report how many issued documents would be
+ * archived, how many URLs are constructable and which quotations are
+ * unreachable (missing `name`) or lack integrity hints (checksum).  No URL is
+ * fetched and no blob is uploaded — reachability is decided purely at the
+ * normalization stage.  A built quotation unit always has a `name`, so every
+ * found document is constructable; the divergence pass over raw records
+ * covers quotations that can never be normalized into a document.
+ */
+function analyzeHistoricalPdfArchive(
+  dataset: FrappeDataset,
+  quotationUnits: QuotationUnit[],
+  report: ImportReport
+): void {
+  const documentos = report.documentos;
+  let constructable = 0;
+  for (const unit of quotationUnits) {
+    if (!unit.document) continue;
+    documentos.lidos += 1;
+    let record: HistoricalPdfRecord | null;
+    try {
+      record = normalizeHistoricalPdf(unit.quotation.source);
+    } catch (error) {
+      addDetail(documentos, {
+        status: 'erros',
+        source_doctype: 'Quotation',
+        source_id: unit.quotation.sourceId,
+        local_key: unit.quotation.businessNumber,
+        mensagem:
+          error instanceof Error ? error.message : 'PDF histórico não derivável.',
+      });
+      continue;
+    }
+    if (record === null) {
+      addDetail(documentos, {
+        status: 'divergentes',
+        source_doctype: 'Quotation',
+        source_id: unit.quotation.sourceId,
+        local_key: unit.quotation.businessNumber,
+        mensagem: 'Quotation sem name; impossível construir a URL do PDF.',
+      });
+      continue;
+    }
+    constructable += 1;
+    if (!record.checksumSha256) {
+      addDetail(documentos, {
+        status: 'divergentes',
+        source_doctype: 'Quotation',
+        source_id: unit.quotation.sourceId,
+        local_key: unit.quotation.businessNumber,
+        mensagem: 'Checksum ausente no registro legado; integridade não verificável.',
+      });
+    }
+  }
+  for (const record of dataset.quotations || []) {
+    let normalized: HistoricalPdfRecord | null;
+    try {
+      normalized = normalizeHistoricalPdf(record);
+    } catch {
+      // Un-derivable records are already reported as quotation errors; the
+      // PDF concern here is only the missing-name (unreachable) case.
+      continue;
+    }
+    if (normalized === null) {
+      const sourceId = String(record.name || record.id || '');
+      addDetail(documentos, {
+        status: 'divergentes',
+        source_doctype: 'Quotation',
+        source_id: sourceId,
+        local_key: sourceId,
+        mensagem: 'Quotation sem name; impossível construir a URL do PDF.',
+      });
+    }
+  }
+  // Every built document has a constructable URL, so this equals `lidos`;
+  // it is still reported explicitly because the operator needs the number of
+  // PDFs expected to be archived on apply.
+  documentos.estimativa_volume = constructable;
+}
+
 export async function runFrappeMigration(options: MigrationOptions): Promise<MigrationResult> {
   if (!options || (options.mode !== 'dry-run' && options.mode !== 'apply'))
     throw new Error('Informe exatamente --dry-run ou --apply.');
@@ -1084,6 +1407,18 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     }
     for (const [year, lastNumber] of maxByYear)
       await repository.advanceQuoteSequence(year, lastNumber);
+    // Historical PDF archival: replace the size-0 placeholders created above
+    // with real Vercel Blob uploads. Skipped when no pipeline is configured.
+    if (options.pdfPipeline) {
+      await archiveHistoricalPdfs({
+        repository,
+        report,
+        pipeline: options.pdfPipeline,
+      });
+    }
+  } else {
+    // Dry-run archive analysis: counts + divergences only, no fetch/upload.
+    analyzeHistoricalPdfArchive(dataset, builtQuotations.quotationUnits, report);
   }
   return { report: finalizeReport(report) };
 }

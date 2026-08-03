@@ -18,6 +18,8 @@
       "quotation_to": "Customer",
       "customer": "12.345.678/0001-90",
       "status": "Submitted",
+      "pdf_checksum_sha256": "abababababababababababababababababababababababababababababababab",
+      "pdf_size_bytes": 4096,
       "items": [
         {
           "idx": 1,

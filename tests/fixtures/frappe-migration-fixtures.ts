@@ -120,6 +120,9 @@ export function createFrappeQuotationFixture(): FrappeDataset {
         terms: 'Condições históricas',
         net_total: '120.00',
         grand_total: '120.00',
+        // Sanitized integrity hints (not a real PDF checksum).
+        pdf_checksum_sha256: 'abababababababababababababababababababababababababababababababab',
+        pdf_size_bytes: 4096,
         items: [
           {
             idx: 1,
@@ -169,6 +172,9 @@ export function createFrappeQuotationFixture(): FrappeDataset {
         quotation_to: 'Customer',
         customer: 'CUST-HIST',
         status: 'Ordered',
+        // Sanitized integrity hints (not a real PDF checksum).
+        pdf_checksum_sha256: 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',
+        pdf_size_bytes: 8192,
         items: [
           {
             idx: 1,
@@ -179,6 +185,52 @@ export function createFrappeQuotationFixture(): FrappeDataset {
             rate: '12.00',
             price_list_rate: '12.00',
             amount: '36.00',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Same dataset as the quotation fixture but every quotation loses its PDF
+ * integrity hints (checksum/size) — the archival analysis must flag each
+ * found document as a checksum-missing divergence.
+ */
+export function createFrappeQuotationNoPdfMetadataFixture(): FrappeDataset {
+  const base = createFrappeQuotationFixture();
+  return {
+    ...base,
+    quotations: (base.quotations || []).map(({ pdf_checksum_sha256: _c, pdf_size_bytes: _s, ...quotation }) => quotation),
+  };
+}
+
+/**
+ * Quotation fixture plus one extra record with no `name` at all.  The record
+ * cannot be normalized as a quotation (reported as an orçamentos error) and
+ * its PDF URL is unconstructable (reported as a documentos divergence).
+ */
+export function createFrappeQuotationNoNameFixture(): FrappeDataset {
+  const base = createFrappeQuotationFixture();
+  return {
+    ...base,
+    quotations: [
+      ...(base.quotations || []),
+      {
+        creation: '2024-06-01 09:00:00',
+        quotation_to: 'Customer',
+        customer: 'CUST-HIST',
+        status: 'Submitted',
+        items: [
+          {
+            idx: 1,
+            item_code: 'SKU-HIST-1',
+            item_name: 'Produto Histórico 1',
+            qty: '1',
+            uom: 'Und',
+            rate: '6.00',
+            price_list_rate: '6.00',
+            amount: '6.00',
           },
         ],
       },

@@ -5,14 +5,21 @@ import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
 import {
   buildQuotationUnits,
   canonicalHash,
+  deriveHistoricalPdfBlobPath,
   mapQuotationStatus,
   normalizeFrappeQuotation,
+  normalizeHistoricalPdf,
   readFrappeDataset,
   runFrappeMigration,
   stableId,
   type FrappeDataset,
+  type HistoricalPdfPipeline,
 } from '../../api/_functions/frappe-migration.js';
 import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
+import {
+  isValidPdfBuffer,
+  quotationPdfChecksum,
+} from '../../api/_functions/lib/quotation-document-storage.js';
 import { LEGACY_PRICING_FIXTURES } from '../fixtures/legacy-pricing-fixtures.ts';
 import {
   createFrappeDuplicateFixture,
@@ -20,6 +27,8 @@ import {
   createFrappeMigrationFixture,
   createFrappeQuotationEdgeFixture,
   createFrappeQuotationFixture,
+  createFrappeQuotationNoNameFixture,
+  createFrappeQuotationNoPdfMetadataFixture,
 } from '../fixtures/frappe-migration-fixtures.ts';
 
 describe('migração Frappe CRM', () => {
@@ -1551,4 +1560,290 @@ describe('migração Frappe CRM', () => {
       true
     );
   });
+
+  it('deriva chaves determinísticas de blob para PDFs históricos', () => {
+    const checksum = 'ab'.repeat(32);
+    assert.equal(
+      deriveHistoricalPdfBlobPath('ORC-20240042', 'QTN-2024-00042', checksum),
+      `quotations-migration/ORC-20240042/QTN-2024-00042-${checksum}.pdf`
+    );
+    // Edge cases: missing business number / source id, invalid checksum.
+    assert.throws(() => deriveHistoricalPdfBlobPath('', 'QTN-2024-00042', checksum), /chave do PDF/);
+    assert.throws(() => deriveHistoricalPdfBlobPath('ORC-20240042', '', checksum), /chave do PDF/);
+    assert.throws(
+      () => deriveHistoricalPdfBlobPath('ORC-20240042', 'QTN-2024-00042', 'nao-e-hex'),
+      /chave do PDF/
+    );
+    assert.throws(
+      () => deriveHistoricalPdfBlobPath('ORC-20240042', 'QTN-2024-00042', 'a'.repeat(63)),
+      /chave do PDF/
+    );
+  });
+
+  it('normaliza metadados de PDF histórico a partir do registro Frappe', () => {
+    const checksum = 'ab'.repeat(32);
+    const normalized = normalizeHistoricalPdf({
+      name: 'QTN-2024-00042',
+      creation: '2024-03-15 10:30:00',
+      pdf_checksum_sha256: checksum,
+      pdf_size_bytes: 4096,
+    });
+    assert.ok(normalized);
+    assert.equal(normalized.sourceId, 'QTN-2024-00042');
+    assert.equal(normalized.businessNumber, 'ORC-20240042');
+    assert.equal(normalized.revisionSourceId, 'QTN-2024-00042:v1');
+    assert.equal(
+      normalized.fileUrl,
+      'https://aspenestamparia.l.frappe.cloud/printview?doctype=Quotation&name=QTN-2024-00042&format=padrao&no_letterhead=0'
+    );
+    assert.equal(normalized.fileName, 'QTN-2024-00042.pdf');
+    assert.equal(normalized.mimeType, 'application/pdf');
+    assert.equal(normalized.checksumSha256, checksum);
+    assert.equal(normalized.sizeBytes, 4096);
+  });
+
+  it('retorna null para Quotation sem name e marca checksum ausente', () => {
+    assert.equal(normalizeHistoricalPdf({ creation: '2024-01-01 10:00:00' }), null);
+    const withoutChecksum = normalizeHistoricalPdf({
+      name: 'QTN-2024-00042',
+      creation: '2024-01-01 10:00:00',
+    });
+    assert.ok(withoutChecksum);
+    assert.equal(withoutChecksum.checksumSha256, null);
+    assert.equal(withoutChecksum.sizeBytes, null);
+    // Um checksum em formato inválido não é aceito como hint de integridade.
+    const invalidChecksum = normalizeHistoricalPdf({
+      name: 'QTN-2024-00042',
+      creation: '2024-01-01 10:00:00',
+      pdf_checksum_sha256: 'abc',
+    });
+    assert.equal(invalidChecksum?.checksumSha256, null);
+  });
+
+  it('dry-run reporta contagem e volume estimado de PDFs sem buscar ou enviar nada', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const { pipeline, state } = createFakePdfPipeline(() => PDF_A);
+    const result = await runFrappeMigration({
+      mode: 'dry-run',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    assert.equal(result.report.documentos.lidos, 2);
+    assert.equal(result.report.documentos.estimativa_volume, 2);
+    assert.equal(result.report.documentos.divergentes, 0);
+    assert.equal(state.fetchCalls.length, 0);
+    assert.equal(state.listCalls.length, 0);
+    assert.equal(state.putCalls.length, 0);
+  });
+
+  it('reporta checksum ausente no registro legado como divergência no dry-run', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'dry-run',
+      dataset: createFrappeQuotationNoPdfMetadataFixture(),
+      repository,
+    });
+    assert.equal(result.report.documentos.lidos, 2);
+    assert.equal(result.report.documentos.estimativa_volume, 2);
+    assert.equal(result.report.documentos.divergentes, 2);
+    assert.match(
+      result.report.documentos.detalhes[0].mensagem,
+      /Checksum ausente no registro legado/
+    );
+  });
+
+  it('trata Quotation sem name como divergência de PDF sem quebrar a execução', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'dry-run',
+      dataset: createFrappeQuotationNoNameFixture(),
+      repository,
+    });
+    assert.ok(result.report.documentos.divergentes >= 1);
+    assert.ok(
+      result.report.documentos.detalhes.some(
+        (detail) =>
+          detail.status === 'divergentes' && /sem name/.test(detail.mensagem)
+      )
+    );
+  });
+
+  it('aplica arquivamento de PDFs históricos e é idempotente na reexecução', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const { pipeline, state } = createFakePdfPipeline(() => PDF_A);
+    const first = await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    assert.equal(first.report.documentos.lidos, 2);
+    assert.equal(first.report.documentos.atualizados, 2);
+    assert.equal(state.putCalls.length, 2);
+    assert.equal(repository.writes.documents, 2);
+    const document = repository
+      .snapshot()
+      .quotations.find((row) => row.businessNumber === 'ORC-20240042')?.document;
+    assert.ok(document);
+    assert.match(
+      document.blobPathname,
+      /^quotations-migration\/ORC-20240042\/QTN-2024-00042-[0-9a-f]{64}\.pdf$/
+    );
+    assert.equal(document.fileName, 'QTN-2024-00042.pdf');
+    assert.equal(document.mimeType, 'application/pdf');
+    assert.equal(document.sizeBytes, PDF_A.length);
+    assert.equal(document.checksumSha256, quotationPdfChecksum(PDF_A));
+
+    const rerun = await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    assert.equal(rerun.report.documentos.ignorados, 2);
+    assert.equal(state.putCalls.length, 2);
+    assert.equal(repository.writes.documents, 2);
+    assert.equal(repository.snapshot().quotations.length, 3);
+  });
+
+  it('detecta mudança do PDF Frappe entre migrações como divergência', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    let current = PDF_A;
+    const { pipeline, state } = createFakePdfPipeline(() => current);
+    await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    // Frappe passou a servir outro PDF original para o mesmo orçamento.
+    current = PDF_B;
+    const second = await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    assert.equal(second.report.documentos.divergentes, 2);
+    assert.equal(second.report.documentos.atualizados, 0);
+    assert.match(
+      second.report.documentos.detalhes[0].mensagem,
+      /mudou desde a última migração/
+    );
+    assert.equal(state.putCalls.length, 2);
+    assert.equal(repository.writes.documents, 2);
+  });
+
+  it('falha de upload de um documento não bloqueia os demais', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const { pipeline, state } = createFakePdfPipeline(() => PDF_A, {
+      failPutFor: (pathname) => pathname.includes('/QTN-2024-00042-'),
+    });
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    assert.equal(result.report.documentos.erros, 1);
+    assert.equal(result.report.documentos.atualizados, 1);
+    assert.equal(state.putCalls.length, 2);
+    const archived = repository
+      .snapshot()
+      .quotations.filter((row) =>
+        row.document?.blobPathname.startsWith('quotations-migration/')
+      );
+    assert.equal(archived.length, 1);
+    assert.equal(archived[0].businessNumber, 'ORC-20250007');
+  });
+
+  it('PDF corrompido é divergência e nunca é enviado', async () => {
+    const corrupted = Buffer.from('%PDF-1.7\nsem marcador de fim');
+    assert.equal(isValidPdfBuffer(corrupted), false);
+    const repository = new MemoryFrappeMigrationRepository();
+    const { pipeline, state } = createFakePdfPipeline(() => corrupted);
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+      pdfPipeline: pipeline,
+    });
+    assert.equal(result.report.documentos.divergentes, 2);
+    assert.match(result.report.documentos.detalhes[0].mensagem, /corrompido/);
+    assert.equal(state.putCalls.length, 0);
+    assert.equal(repository.writes.documents, 0);
+  });
+
+  it('sem pipeline configurado o arquivamento é omitido no apply', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      dataset: createFrappeQuotationFixture(),
+      repository,
+    });
+    assert.equal(result.report.documentos.lidos, 0);
+    assert.equal(result.report.documentos.detalhes.length, 0);
+    assert.equal(repository.writes.documents, 0);
+  });
 });
+
+// ── Fake archival pipeline helpers ──────────────────────────────────────────
+
+const PDF_A = Buffer.from(['%PDF-1.7', 'conteudo-a', '%%EOF'].join('\n') + '\n');
+const PDF_B = Buffer.from(['%PDF-1.7', 'conteudo-b-mudou', '%%EOF'].join('\n') + '\n');
+
+interface FakePdfPipelineState {
+  fetchCalls: string[];
+  listCalls: string[];
+  putCalls: string[];
+  blobs: Map<string, Buffer>;
+}
+
+interface FakePdfPipelineOptions {
+  failPutFor?: (pathname: string) => boolean;
+}
+
+/** In-memory pipeline: records every I/O call and keeps uploaded blobs so the
+ * same store can be reused across reruns (idempotency). */
+function createFakePdfPipeline(
+  render: (html: string) => Buffer,
+  options: FakePdfPipelineOptions = {}
+): { pipeline: HistoricalPdfPipeline; state: FakePdfPipelineState } {
+  const state: FakePdfPipelineState = {
+    fetchCalls: [],
+    listCalls: [],
+    putCalls: [],
+    blobs: new Map(),
+  };
+  const pipeline: HistoricalPdfPipeline = {
+    async fetchHtml(fileUrl: string): Promise<string> {
+      state.fetchCalls.push(fileUrl);
+      return `<html><body>${fileUrl}</body></html>`;
+    },
+    renderPdf(html: string): Promise<Buffer> {
+      return Promise.resolve(render(html));
+    },
+    blobs: {
+      async list(prefix: string): Promise<string[]> {
+        state.listCalls.push(prefix);
+        return [...state.blobs.keys()].filter((pathname) => pathname.startsWith(prefix));
+      },
+      async put(pathname: string, buffer: Buffer): Promise<{
+        pathname: string;
+        sizeBytes: number;
+        checksumSha256: string;
+      }> {
+        state.putCalls.push(pathname);
+        if (options.failPutFor?.(pathname)) throw new Error('falha no upload');
+        state.blobs.set(pathname, buffer);
+        return {
+          pathname,
+          sizeBytes: buffer.length,
+          checksumSha256: quotationPdfChecksum(buffer),
+        };
+      },
+    },
+  };
+  return { pipeline, state };
+}
