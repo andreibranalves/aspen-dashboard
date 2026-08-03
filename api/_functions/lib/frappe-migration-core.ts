@@ -1,0 +1,813 @@
+import { createHash } from 'node:crypto';
+
+import {
+  normalizeClientAddress,
+  normalizeClientDocument,
+  normalizeClientEmail,
+  normalizeClientName,
+  normalizeClientNotes,
+  normalizeClientPhone,
+  type ClientAddress,
+} from '../client-schema.js';
+import {
+  normalizeProductPricing,
+  type PricingTierInput,
+} from '../pricing-core.js';
+export type { PricingTierInput } from '../pricing-core.js';
+
+/** Values intentionally mirror the report vocabulary used by the CLI. */
+export const IMPORT_STATUSES = [
+  'lidos',
+  'criados',
+  'atualizados',
+  'ignorados',
+  'divergentes',
+  'erros',
+  'estimativa_volume',
+] as const;
+
+export type ImportStatus = (typeof IMPORT_STATUSES)[number];
+
+export type SourceRecord = Record<string, unknown>;
+
+export interface FrappeLineageEntry {
+  sourceDoctype: string;
+  sourceId: string;
+  entityType: 'produto' | 'faixa' | 'cliente';
+  localKey: string;
+  canonicalHash: string;
+  legacyPayload: SourceRecord;
+}
+
+export interface NormalizedProduct {
+  sourceDoctype: 'Item';
+  sourceId: string;
+  sku: string;
+  legacyId: string;
+  nome: string;
+  descricao: string;
+  unidade: string;
+  categoria: string | null;
+  marca: string | null;
+  ativo: boolean;
+  precoBase: string | null;
+  precos: PricingTierInput[];
+  source: SourceRecord;
+}
+
+export interface NormalizedPriceDocument {
+  sourceDoctype: 'Pricing Rule' | 'Item Price';
+  sourceId: string;
+  sku: string;
+  minimumQuantity: string;
+  unitPrice: string;
+  isBase: boolean;
+  source: SourceRecord;
+}
+
+export interface NormalizedClient {
+  sourceDoctype: 'Customer' | 'Lead';
+  sourceId: string;
+  localKey: string;
+  nome: string;
+  documento: string | null;
+  email: string | null;
+  telefone: string | null;
+  notes: string | null;
+  address: ClientAddress | null;
+  links: string[];
+  source: SourceRecord;
+}
+
+export interface ProductUnit {
+  product: NormalizedProduct;
+  pricing: { preco_base: string | null; precos: PricingTierInput[] };
+  lineage: FrappeLineageEntry[];
+  divergences: string[];
+}
+
+export interface ClientUnit {
+  client: NormalizedClient;
+  members: NormalizedClient[];
+  lineage: FrappeLineageEntry[];
+  conflicts: string[];
+}
+
+export interface ExistingProduct {
+  sku: string;
+  nome: string;
+  descricao?: string | null;
+  unidade?: string | null;
+  categoria?: string | null;
+  marca?: string | null;
+  ativo?: boolean;
+  precoBase?: string | null;
+  precos?: PricingTierInput[];
+}
+
+export interface ExistingClient {
+  id: string;
+  nome: string;
+  documento?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  notes?: string | null;
+  address?: ClientAddress | null;
+}
+
+export interface ExistingLineage {
+  sourceDoctype: string;
+  sourceId: string;
+  entityType: string;
+  localKey: string;
+  canonicalHash: string;
+  legacyPayload?: SourceRecord | null;
+}
+
+export interface ImportDetail {
+  status: Exclude<ImportStatus, 'lidos' | 'estimativa_volume'>;
+  source_doctype?: string;
+  source_id?: string;
+  local_key?: string;
+  mensagem: string;
+}
+
+export interface EntityReport {
+  lidos: number;
+  criados: number;
+  atualizados: number;
+  ignorados: number;
+  divergentes: number;
+  erros: number;
+  estimativa_volume: number;
+  detalhes: ImportDetail[];
+}
+
+export interface ImportReport {
+  modo: 'dry-run' | 'apply';
+  dry_run: boolean;
+  produtos: EntityReport;
+  faixas: EntityReport;
+  clientes: EntityReport;
+  total: EntityReport;
+  /** English/structural aliases make the report convenient for integrations. */
+  entities: { produtos: EntityReport; faixas: EntityReport; clientes: EntityReport };
+}
+
+export interface FrappeDataset {
+  items: SourceRecord[];
+  pricingRules?: SourceRecord[];
+  itemPrices?: SourceRecord[];
+  customers?: SourceRecord[];
+  leads?: SourceRecord[];
+}
+
+export interface NormalizedDataset {
+  products: NormalizedProduct[];
+  priceDocuments: NormalizedPriceDocument[];
+  clients: NormalizedClient[];
+  productUnits: ProductUnit[];
+  clientUnits: ClientUnit[];
+}
+
+const DATASET_ARRAY_FIELDS = ['pricingRules', 'itemPrices', 'customers', 'leads'] as const;
+
+/**
+ * Validate the runtime boundary before any normalization or persistence. An
+ * empty ERP dataset is valid only when it explicitly contains `items: []`;
+ * silently treating a malformed fixture/module as an empty import would be
+ * operationally unsafe.
+ */
+export function validateFrappeDataset(value: unknown): asserts value is FrappeDataset {
+  if (!isRecord(value)) throw new Error('Dataset Frappe inválido: informe um objeto.');
+  if (!Array.isArray(value.items)) throw new Error('Dataset Frappe inválido: items deve ser uma lista.');
+  for (const field of DATASET_ARRAY_FIELDS) {
+    if (value[field] !== undefined && !Array.isArray(value[field])) {
+      throw new Error(`Dataset Frappe inválido: ${field} deve ser uma lista.`);
+    }
+  }
+  const fields = ['items', ...DATASET_ARRAY_FIELDS] as const;
+  for (const field of fields) {
+    const rows = value[field];
+    if (!Array.isArray(rows)) continue;
+    for (let index = 0; index < rows.length; index += 1) {
+      if (!isRecord(rows[index])) {
+        throw new Error(`Dataset Frappe inválido: ${field}[${index}] deve ser um registro.`);
+      }
+    }
+  }
+}
+
+function isRecord(value: unknown): value is SourceRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function text(value: unknown): string {
+  return value === null || value === undefined ? '' : String(value).trim();
+}
+
+function nullableText(value: unknown): string | null {
+  const result = text(value);
+  return result || null;
+}
+
+function first(record: SourceRecord, keys: string[], fallback: unknown = ''): unknown {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null && text(value) !== '') return value;
+  }
+  return fallback;
+}
+
+function sourceIdOf(record: SourceRecord): string {
+  return text(first(record, ['name', 'id', 'source_id', 'sourceId']));
+}
+
+function cloneRecord(record: SourceRecord): SourceRecord {
+  // Structured clone is unavailable in older Node versions used by local
+  // scripts; JSON is sufficient for sanitized Frappe payloads and strips
+  // accidental prototype data before hashing/persisting.
+  return JSON.parse(JSON.stringify(record)) as SourceRecord;
+}
+
+function canonicalize(value: unknown): unknown {
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (isRecord(value)) {
+    return Object.keys(value)
+      .sort()
+      .reduce<Record<string, unknown>>((result, key) => {
+        const child = value[key];
+        if (child !== undefined) result[key] = canonicalize(child);
+        return result;
+      }, {});
+  }
+  return value;
+}
+
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
+}
+
+export function canonicalHash(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
+function hashFor(entity: string, value: unknown): string {
+  return canonicalHash({ entity, payload: value });
+}
+
+function safeSource(record: SourceRecord): SourceRecord {
+  return cloneRecord(record);
+}
+
+function itemSku(record: SourceRecord): string {
+  for (const key of ['item_code', 'sku', 'codigo', 'itemCode']) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) return text(record[key]);
+  }
+  return text(record.name);
+}
+
+interface TitlePriceIdentity {
+  sku: string;
+  minimumQuantity: string;
+}
+
+function titlePriceIdentity(record: SourceRecord, knownSkus: string[] = []): TitlePriceIdentity | null {
+  const title = text(first(record, ['title', 'rule_title']));
+  if (!title) return null;
+  const exact = knownSkus.filter((sku) => sku === title);
+  if (exact.length === 1) return { sku: exact[0], minimumQuantity: '1' };
+  const matches = knownSkus
+    .filter((sku) => title.startsWith(`${sku}-`))
+    .map((sku) => ({ sku, suffix: title.slice(sku.length + 1) }))
+    .filter((candidate) => /^\d+(?:[.,]\d+)?$/.test(candidate.suffix) && Number(candidate.suffix.replace(',', '.')) > 0);
+  if (matches.length > 0) {
+    const longest = Math.max(...matches.map((candidate) => candidate.sku.length));
+    const selected = matches.filter((candidate) => candidate.sku.length === longest);
+    if (selected.length !== 1) return null;
+    return { sku: selected[0].sku, minimumQuantity: selected[0].suffix.replace(',', '.') };
+  }
+  // Fixtures and older ERP records may be imported without Items in the same
+  // response. A final numeric suffix is safe only when the prefix is nonempty;
+  // callers with known SKUs still get the longest-prefix disambiguation above.
+  const generic = /^(.*)-(\d+(?:[.,]\d+)?)$/.exec(title);
+  if (generic && generic[1].trim() && Number(generic[2].replace(',', '.')) > 0) return { sku: generic[1].trim(), minimumQuantity: generic[2].replace(',', '.') };
+  return { sku: title, minimumQuantity: '1' };
+}
+
+function parseLegacyBoolean(value: unknown, fallback = true): boolean {
+  if (typeof value === 'boolean') return value;
+  const normalized = text(value).toLowerCase();
+  if (['0', 'false', 'não', 'nao', 'disabled', 'inativo'].includes(normalized)) return false;
+  if (['1', 'true', 'sim', 'ativo', 'enabled'].includes(normalized)) return true;
+  return fallback;
+}
+
+export function normalizeFrappeItem(record: SourceRecord): NormalizedProduct {
+  const sourceId = sourceIdOf(record);
+  const sku = itemSku(record);
+  if (!sourceId) throw new Error('Item sem identificador legado (name).');
+  if (!sku) throw new Error('Item sem SKU (item_code).');
+
+  const nome = text(first(record, ['item_name', 'nome', 'name', 'description'], sku));
+  if (!nome) throw new Error(`Item ${sourceId} sem nome.`);
+  return {
+    sourceDoctype: 'Item',
+    sourceId,
+    sku,
+    legacyId: sourceId,
+    nome,
+    descricao: text(first(record, ['description', 'descricao'], '')),
+    unidade: text(first(record, ['stock_uom', 'uom', 'unidade', 'unit'], 'Und')) || 'Und',
+    categoria: nullableText(first(record, ['item_group', 'categoria', 'category'], null)),
+    marca: nullableText(first(record, ['brand', 'marca'], null)),
+    ativo: !parseLegacyBoolean(first(record, ['disabled', 'inativo'], false), false),
+    // The legacy resolver never reads Item.standard_rate. Keep pricing
+    // exclusively sourced from Pricing Rule/Item Price; an unpriced product
+    // remains unpriced instead of silently changing the quote contract.
+    precoBase: null,
+    precos: [],
+    source: safeSource(record),
+  };
+}
+
+function childItems(record: SourceRecord): SourceRecord[] {
+  const values = first(record, ['items', 'pricing_rules', 'item_prices'], []);
+  return Array.isArray(values) ? values.filter(isRecord) : [];
+}
+
+function priceValue(record: SourceRecord): string {
+  return text(first(record, ['price_list_rate', 'rate', 'unit_price', 'price', 'preco', 'valor']));
+}
+
+function minimumValue(record: SourceRecord): string {
+  return text(first(record, ['min_qty', 'minimum_quantity', 'minimum_qty', 'qty', 'quantidade_minima'], ''));
+}
+
+function priceSku(record: SourceRecord): string {
+  return text(first(record, ['item_code', 'sku', 'itemCode', 'product_sku']));
+}
+
+export function normalizeFrappePriceDocuments(
+  records: SourceRecord[],
+  doctype: 'Pricing Rule' | 'Item Price',
+  knownSkus: string[] = [],
+): NormalizedPriceDocument[] {
+  const result: NormalizedPriceDocument[] = [];
+  for (const record of records) {
+    const sourceId = sourceIdOf(record);
+    if (!sourceId) throw new Error(`${doctype} sem identificador legado (name).`);
+    if (record.__migration_enrichment_error === true) throw new Error(`${doctype} ${sourceId} não pôde ser enriquecido.`);
+    if (doctype === 'Item Price' && text(record.price_list) && text(record.price_list).toLowerCase() !== 'standard selling') continue;
+    const titleIdentity = doctype === 'Pricing Rule' ? titlePriceIdentity(record, knownSkus) : null;
+    const rows = childItems(record);
+    const candidates = rows.length ? rows : [record];
+    for (const child of candidates) {
+      const sku = priceSku(child) || priceSku(record) || titleIdentity?.sku || '';
+      const unitPrice = priceValue(child) || priceValue(record);
+      if (!sku || !unitPrice) {
+        throw new Error(`${doctype} ${sourceId} sem SKU ou preço.`);
+      }
+      const explicitMinimumQuantity = minimumValue(child) || minimumValue(record);
+      // The legacy resolver queries Item Price without a quantity/min_qty
+      // filter, so Standard Selling is a global fallback rather than a tiered
+      // schedule. Preserve the raw min_qty in `source`, but normalize every
+      // effective Item Price row to the base bracket.
+      const effectiveMinimumQuantity = doctype === 'Item Price'
+        ? '1'
+        : explicitMinimumQuantity || titleIdentity?.minimumQuantity || '1';
+      try {
+        if (decimal(unitPrice).integer <= 0n) throw new Error('preço não positivo');
+        if (decimal(effectiveMinimumQuantity).integer < 0n) throw new Error('limite negativo');
+      } catch {
+        throw new Error(`${doctype} ${sourceId} com preço ou limite inválido.`);
+      }
+      result.push({
+        sourceDoctype: doctype,
+        sourceId,
+        sku,
+        minimumQuantity: effectiveMinimumQuantity,
+        unitPrice,
+        isBase: effectiveMinimumQuantity === '0' || effectiveMinimumQuantity === '1',
+        source: safeSource(record),
+      });
+    }
+  }
+  return result;
+}
+
+function normalizeAddress(record: SourceRecord): ClientAddress | null {
+  const candidate = {
+    endereco: first(record, ['address_line1', 'address', 'endereco', 'street'], null),
+    numero: first(record, ['address_line2', 'numero', 'number'], null),
+    bairro: first(record, ['bairro', 'neighborhood', 'district'], null),
+    complemento: first(record, ['complemento', 'complement'], null),
+    municipio: first(record, ['city', 'municipio', 'town'], null),
+    uf: first(record, ['state', 'uf', 'province'], null),
+    cep: first(record, ['pincode', 'cep', 'postal_code'], null),
+  };
+  if (!Object.values(candidate).some((value) => text(value))) return null;
+  return normalizeClientAddress(candidate);
+}
+
+function linkedIds(record: SourceRecord, sourceDoctype: 'Customer' | 'Lead', sourceId: string): string[] {
+  const values = [
+    // Names are display fields, not identity links. A Customer and a Lead may
+    // legitimately share the same name while representing different people;
+    // only Frappe's explicit cross-reference fields are safe to consolidate.
+    first(record, ['customer', 'linked_customer'], null),
+    first(record, ['lead', 'linked_lead'], null),
+  ]
+    .map(text)
+    .filter(Boolean);
+  const links = [`${sourceDoctype}:${sourceId}`, ...values.map((value) => `link:${value}`)];
+  return [...new Set(links)].sort();
+}
+
+export function normalizeFrappeClientRecord(record: SourceRecord, sourceDoctype: 'Customer' | 'Lead'): NormalizedClient {
+  const sourceId = sourceIdOf(record);
+  if (!sourceId) throw new Error(`${sourceDoctype} sem identificador legado (name).`);
+  const rawName = first(record, sourceDoctype === 'Lead'
+    ? ['lead_name', 'company_name', 'customer_name', 'name']
+    : ['customer_name', 'name', 'nome'], '');
+  const nome = normalizeClientName(rawName);
+  const documento = normalizeClientDocument(first(record, ['tax_id', 'cnpj', 'cpf', 'documento', 'customer_tax_id'], null));
+  const email = normalizeClientEmail(first(record, ['email_id', 'email', 'e_mail'], null));
+  const telefone = normalizeClientPhone(first(record, ['mobile_no', 'phone', 'telefone', 'phone_number'], null));
+  const notes = normalizeClientNotes(first(record, ['notes', 'observacoes', 'description', 'remarks'], null));
+  const links = linkedIds(record, sourceDoctype, sourceId);
+  const localKey = documento ? `documento:${documento}` : links.find((value) => value.startsWith('link:')) || `frappe:${sourceDoctype}:${sourceId}`;
+  return {
+    sourceDoctype,
+    sourceId,
+    localKey,
+    nome,
+    documento,
+    email,
+    telefone,
+    notes,
+    address: normalizeAddress(record),
+    links,
+    source: safeSource(record),
+  };
+}
+
+export function normalizeFrappeDataset(dataset: FrappeDataset): NormalizedDataset {
+  const products = (dataset.items || []).map(normalizeFrappeItem);
+  const knownSkus = products.map((product) => product.sku);
+  const priceDocuments = [
+    ...normalizeFrappePriceDocuments(dataset.pricingRules || [], 'Pricing Rule', knownSkus),
+    ...normalizeFrappePriceDocuments(dataset.itemPrices || [], 'Item Price', knownSkus),
+  ];
+  const clients = [
+    ...(dataset.customers || []).map((record) => normalizeFrappeClientRecord(record, 'Customer')),
+    ...(dataset.leads || []).map((record) => normalizeFrappeClientRecord(record, 'Lead')),
+  ];
+  const productUnits = buildProductUnits(products, priceDocuments);
+  const clientUnits = buildClientUnits(clients);
+  return { products, priceDocuments, clients, productUnits, clientUnits };
+}
+
+function decimal(value: string): { integer: bigint; scale: number } {
+  const normalized = text(value).replace(',', '.');
+  if (!/^\d+(?:\.\d+)?$/.test(normalized)) throw new Error(`Número decimal inválido: ${value}`);
+  const [integer, fraction = ''] = normalized.split('.');
+  return { integer: BigInt(`${integer}${fraction}`), scale: fraction.length };
+}
+
+function canonicalDecimal(value: string): string {
+  const parsed = decimal(value);
+  const base = parsed.integer.toString().padStart(parsed.scale + 1, '0');
+  if (parsed.scale === 0) return base;
+  const integer = base.slice(0, -parsed.scale) || '0';
+  const fraction = base.slice(-parsed.scale).replace(/0+$/, '');
+  return fraction ? `${integer}.${fraction}` : integer;
+}
+
+function equalDecimal(left: string, right: string): boolean {
+  const a = decimal(left);
+  const b = decimal(right);
+  if (a.scale === b.scale) return a.integer === b.integer;
+  if (a.scale > b.scale) return a.integer === b.integer * 10n ** BigInt(a.scale - b.scale);
+  return a.integer * 10n ** BigInt(b.scale - a.scale) === b.integer;
+}
+
+function normalizePriceList(values: NormalizedPriceDocument[], sku: string): {
+  base: string | null;
+  tiers: PricingTierInput[];
+  divergent: string[];
+} {
+  const relevant = values.filter((value) => value.sku === sku);
+  const byMinimum = new Map<string, NormalizedPriceDocument[]>();
+  for (const value of relevant) {
+    let normalized: string;
+    try { normalized = canonicalDecimal(text(value.minimumQuantity)); }
+    catch { normalized = text(value.minimumQuantity); }
+    const rows = byMinimum.get(normalized) || [];
+    rows.push(value);
+    byMinimum.set(normalized, rows);
+  }
+  const divergent: string[] = [];
+  const tiers: PricingTierInput[] = [];
+  let base: string | null = null;
+  for (const [minimum, rows] of byMinimum) {
+    const itemPriceRows = rows.filter((row) => row.sourceDoctype === 'Item Price');
+    const itemPricePrices = [...new Set(itemPriceRows.map((row) => row.unitPrice))];
+    if (itemPricePrices.length > 1 && !itemPricePrices.every((price) => equalDecimal(price, itemPricePrices[0]))) {
+      divergent.push(`SKU ${sku}: Item Prices Standard Selling têm rates ambíguos.`);
+      continue;
+    }
+    // Pricing Rule is the contractually preferred source. Item Price only
+    // fills the missing global fallback/base and must not override a rule at
+    // the same minimum. A conflicting set of Item Prices was rejected above,
+    // even when a Pricing Rule shadows the fallback, so no source is chosen
+    // silently.
+    const preferredRows = rows.some((row) => row.sourceDoctype === 'Pricing Rule')
+      ? rows.filter((row) => row.sourceDoctype === 'Pricing Rule')
+      : rows;
+    const uniquePrices = [...new Set(preferredRows.map((row) => row.unitPrice))];
+    if (uniquePrices.length > 1 && !uniquePrices.every((price) => equalDecimal(price, uniquePrices[0]))) {
+      divergent.push(`SKU ${sku}: preços ambíguos para mínimo ${minimum}.`);
+      continue;
+    }
+    const price = uniquePrices[0];
+    if (minimum === '0' || minimum === '1') {
+      if (base !== null && !equalDecimal(base, price)) {
+        divergent.push(`SKU ${sku}: preço base ambíguo.`);
+      } else base = price;
+    } else tiers.push({ minimum_quantity: minimum, unit_price: price });
+  }
+  return { base, tiers, divergent };
+}
+
+export function buildProductUnits(products: NormalizedProduct[], priceDocuments: NormalizedPriceDocument[]): ProductUnit[] {
+  const all = [...products].sort((left, right) => left.sku.localeCompare(right.sku));
+  return all.map((product) => {
+    const pricing = normalizePriceList(priceDocuments, product.sku);
+    const base = product.precoBase || pricing.base;
+    // The shared resolver historically falls back to the first tier below its
+    // first boundary. When a flat/base source coexists with higher brackets,
+    // preserve the flat rate explicitly as the minimum-1 tier so quantities
+    // below that first high bracket do not inherit the high-bracket rate.
+    const pricingInput = base !== null && pricing.tiers.length > 0
+      ? {
+        preco_base: null,
+        precos: [{ minimum_quantity: '1', unit_price: base }, ...pricing.tiers],
+      }
+      : { preco_base: base, precos: pricing.tiers };
+    const normalized = normalizeProductPricing(pricingInput);
+    const lineage: FrappeLineageEntry[] = [{
+      sourceDoctype: product.sourceDoctype,
+      sourceId: product.sourceId,
+      entityType: 'produto',
+      localKey: product.sku,
+      canonicalHash: hashFor('produto', {
+        sku: product.sku,
+        nome: product.nome,
+        descricao: product.descricao,
+        unidade: product.unidade,
+        categoria: product.categoria,
+        marca: product.marca,
+        ativo: product.ativo,
+        preco_base: normalized.preco_base,
+      }),
+      legacyPayload: product.source,
+    }];
+    // Keep each source price document in lineage, even when its values are
+    // equivalent. This is what allows later reruns to prove all ERP records
+    // were read without losing the original payload.
+    const priceRows = priceDocuments.filter((candidate) => candidate.sku === product.sku);
+    const rowsBySource = new Map<string, NormalizedPriceDocument[]>();
+    for (const row of priceRows) {
+      const rows = rowsBySource.get(`${row.sourceDoctype}:${row.sourceId}`) || [];
+      rows.push(row);
+      rowsBySource.set(`${row.sourceDoctype}:${row.sourceId}`, rows);
+    }
+    for (const rows of rowsBySource.values()) {
+      const row = rows[0];
+      lineage.push({
+        sourceDoctype: row.sourceDoctype,
+        sourceId: row.sourceId,
+        entityType: 'faixa',
+        localKey: product.sku,
+        canonicalHash: hashFor('faixa', {
+          sku: product.sku,
+          rows: rows.map((entry) => ({ minimum_quantity: entry.minimumQuantity, unit_price: entry.unitPrice })),
+        }),
+        legacyPayload: row.source,
+      });
+    }
+    const serializableTiers = normalized.precos.map((tier) => ({
+      minimum_quantity: tier.minimum_quantity,
+      unit_price: tier.unit_price,
+    }));
+    return {
+      product: { ...product, precoBase: normalized.preco_base, precos: serializableTiers },
+      pricing: { preco_base: normalized.preco_base, precos: serializableTiers },
+      lineage,
+      divergences: pricing.divergent,
+    };
+  });
+}
+
+function mergeText(values: Array<string | null | undefined>): string | null {
+  const nonEmpty = [...new Set(values.map((value) => text(value)).filter(Boolean))];
+  return nonEmpty.length <= 1 ? nonEmpty[0] || null : null;
+}
+
+function mergeAddress(values: Array<ClientAddress | null | undefined>): ClientAddress | null {
+  const entries = values.filter((value): value is ClientAddress => Boolean(value));
+  if (!entries.length) return null;
+  const fields: Array<keyof ClientAddress> = ['endereco', 'numero', 'bairro', 'complemento', 'municipio', 'uf', 'cep'];
+  const merged = {} as ClientAddress;
+  for (const field of fields) {
+    const result = mergeText(entries.map((value) => value[field]));
+    if (result === null && entries.some((value) => text(value[field]))) return null;
+    merged[field] = result;
+  }
+  return merged;
+}
+
+function sameLocalClient(left: NormalizedClient, right: NormalizedClient): boolean {
+  if (left.localKey === right.localKey) return true;
+  return left.links.some((value) => right.links.includes(value));
+}
+
+export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
+  // Two source records with the same normalized display name but neither a
+  // document nor an explicit cross-reference cannot be safely identified as
+  // one customer. Keep them in one blocked unit so the report is explicit and
+  // the importer cannot silently create duplicate local clients.
+  const nameCounts = new Map<string, number>();
+  for (const client of clients) {
+    if (client.documento || client.links.some((value) => value.startsWith('link:'))) continue;
+    const key = client.nome.trim().toLocaleLowerCase('pt-BR');
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
+  const ambiguousNames = new Set([...nameCounts]
+    .filter(([, count]) => count > 1)
+    .map(([name]) => name));
+  const ambiguousNameOf = (client: NormalizedClient): string | null => {
+    if (client.documento || client.links.some((value) => value.startsWith('link:'))) return null;
+    const key = client.nome.trim().toLocaleLowerCase('pt-BR');
+    return ambiguousNames.has(key) ? key : null;
+  };
+  const groups: NormalizedClient[][] = [];
+  for (const client of clients) {
+    const ambiguousName = ambiguousNameOf(client);
+    const group = groups.find((values) => values.some((candidate) => (
+      sameLocalClient(candidate, client)
+      || (ambiguousName !== null && ambiguousNameOf(candidate) === ambiguousName)
+    )));
+    if (group) group.push(client);
+    else groups.push([client]);
+  }
+  return groups
+    .sort((left, right) => left[0].localKey.localeCompare(right[0].localKey))
+    .map((members) => {
+      const firstMember = members[0];
+      const mergedName = mergeText(members.map((member) => member.nome));
+      const mergedDocument = mergeText(members.map((member) => member.documento));
+      const mergedEmail = mergeText(members.map((member) => member.email));
+      const mergedPhone = mergeText(members.map((member) => member.telefone));
+      const mergedNotes = mergeText(members.map((member) => member.notes));
+      const mergedAddress = mergeAddress(members.map((member) => member.address));
+      const conflicts: string[] = [];
+      const checkConflict = (label: string, values: Array<string | null | undefined>) => {
+        const present = [...new Set(values.map((value) => text(value)).filter(Boolean))];
+        if (present.length > 1) conflicts.push(`${label} incompatível entre documentos.`);
+      };
+      checkConflict('nome', members.map((member) => member.nome));
+      checkConflict('documento', members.map((member) => member.documento));
+      checkConflict('email', members.map((member) => member.email));
+      checkConflict('telefone', members.map((member) => member.telefone));
+      checkConflict('observações', members.map((member) => member.notes));
+      if (mergedAddress === null && members.some((member) => member.address)) conflicts.push('endereço incompatível entre documentos.');
+      if (members.length > 1 && members.every((member) => ambiguousNameOf(member) !== null)) {
+        conflicts.push('Identidade ambígua: nome sem documento ou vínculo explícito compartilhado.');
+      }
+      const localKey = firstMember.documento
+        ? `documento:${firstMember.documento}`
+        : firstMember.localKey;
+      const client: NormalizedClient = {
+        ...firstMember,
+        localKey,
+        nome: mergedName || firstMember.nome,
+        documento: mergedDocument,
+        email: mergedEmail,
+        telefone: mergedPhone,
+        notes: mergedNotes,
+        address: mergedAddress,
+        links: [...new Set(members.flatMap((member) => member.links))].sort(),
+      };
+      const lineage = members.map((member) => ({
+        sourceDoctype: member.sourceDoctype,
+        sourceId: member.sourceId,
+        entityType: 'cliente' as const,
+        localKey,
+        canonicalHash: hashFor('cliente', {
+          nome: member.nome,
+          documento: member.documento,
+          email: member.email,
+          telefone: member.telefone,
+          notes: member.notes,
+          address: member.address,
+          localKey,
+        }),
+        legacyPayload: member.source,
+      }));
+      return { client, members, lineage, conflicts };
+    });
+}
+
+export function emptyEntityReport(): EntityReport {
+  return {
+    lidos: 0,
+    criados: 0,
+    atualizados: 0,
+    ignorados: 0,
+    divergentes: 0,
+    erros: 0,
+    estimativa_volume: 0,
+    detalhes: [],
+  };
+}
+
+export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
+  const produtos = emptyEntityReport();
+  const faixas = emptyEntityReport();
+  const clientes = emptyEntityReport();
+  const total = emptyEntityReport();
+  return { modo, dry_run: modo === 'dry-run', produtos, faixas, clientes, total, entities: { produtos, faixas, clientes } };
+}
+
+export function addDetail(report: EntityReport, detail: ImportDetail): void {
+  report.detalhes.push(detail);
+  report[detail.status] += 1;
+}
+
+export function finalizeReport(report: ImportReport): ImportReport {
+  const entities = [report.produtos, report.faixas, report.clientes];
+  for (const entity of entities) {
+    entity.detalhes.sort((left, right) => `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(`${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`));
+    // This is the planned/read volume, not a commit count; apply failures do
+    // not reduce it because the operator still needs to account for the
+    // source document on the next resumable run.
+    entity.estimativa_volume = entity.lidos;
+  }
+  for (const field of IMPORT_STATUSES) {
+    if (field === 'estimativa_volume') continue;
+    totalValue(report.total, field, entities.reduce((sum, entity) => sum + entity[field], 0));
+  }
+  report.total.estimativa_volume = entities.reduce((sum, entity) => sum + entity.estimativa_volume, 0);
+  report.total.detalhes = entities.flatMap((entity) => entity.detalhes).sort((left, right) => `${left.source_doctype || ''}:${left.source_id || ''}:${left.local_key || ''}`.localeCompare(`${right.source_doctype || ''}:${right.source_id || ''}:${right.local_key || ''}`));
+  return report;
+}
+
+function totalValue(report: EntityReport, field: Exclude<ImportStatus, 'lidos' | 'estimativa_volume'> | 'lidos', value: number): void {
+  report[field] = value;
+}
+
+export interface DatasetReadSummary {
+  dataset: FrappeDataset;
+  lidos: { items: number; pricingRules: number; itemPrices: number; customers: number; leads: number };
+}
+
+/**
+ * Source-independent paginator seam. A source may expose `list` (the
+ * production ERP adapter) or `listPage` (fixtures/tests). Pagination stops on
+ * an empty page and always uses a stable order key.
+ */
+export interface FrappeListSource {
+  list(doctype: string, options: { limit: number; start: number; order_by: string }): Promise<SourceRecord[]>;
+}
+
+export async function readFrappeDataset(source: FrappeListSource, pageSize = 200): Promise<DatasetReadSummary> {
+  const read = async (doctype: string): Promise<SourceRecord[]> => {
+    const rows: SourceRecord[] = [];
+    let start = 0;
+    while (true) {
+      const page = await source.list(doctype, { limit: pageSize, start, order_by: 'creation asc, name asc' });
+      rows.push(...(page as SourceRecord[]));
+      if (page.length < pageSize) break;
+      start += page.length;
+    }
+    return rows;
+  };
+  const [items, pricingRules, itemPrices, customers, leads] = await Promise.all([
+    read('Item'),
+    read('Pricing Rule'),
+    read('Item Price'),
+    read('Customer'),
+    read('Lead'),
+  ]);
+  return {
+    dataset: { items, pricingRules, itemPrices, customers, leads },
+    lidos: { items: items.length, pricingRules: pricingRules.length, itemPrices: itemPrices.length, customers: customers.length, leads: leads.length },
+  };
+}
+
+export const normalizeDataset = normalizeFrappeDataset;
+export const buildUnits = normalizeFrappeDataset;

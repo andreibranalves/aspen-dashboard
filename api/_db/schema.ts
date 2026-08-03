@@ -4,6 +4,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -327,6 +328,41 @@ export const issuedDocuments = pgTable(
   ],
 );
 
+/**
+ * Immutable-ish lineage for records imported from Frappe.  A source document
+ * is unique regardless of the entity it currently maps to, which lets a Lead
+ * and a Customer retain their independent ERP identifiers while sharing one
+ * local client key.  The raw payload is intentionally kept as JSONB for
+ * audit/replay; canonicalHash is the only value used for idempotency checks.
+ */
+export const frappeImportLineage = pgTable(
+  'frappe_import_lineage',
+  {
+    sourceDoctype: varchar('source_doctype', { length: 80 }).notNull(),
+    sourceId: varchar('source_id', { length: 255 }).notNull(),
+    entityType: varchar('entity_type', { length: 32 }).notNull(),
+    localKey: varchar('local_key', { length: 255 }).notNull(),
+    canonicalHash: varchar('canonical_hash', { length: 64 }).notNull(),
+    legacyPayload: jsonb('legacy_payload').$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.sourceDoctype, table.sourceId],
+      name: 'frappe_import_lineage_pkey',
+    }),
+    index('frappe_import_lineage_local_key_idx').on(table.localKey),
+    index('frappe_import_lineage_entity_local_idx').on(table.entityType, table.localKey),
+    index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
+    check('frappe_import_lineage_source_doctype_check', sql`char_length(btrim(${table.sourceDoctype})) > 0`),
+    check('frappe_import_lineage_source_id_check', sql`char_length(btrim(${table.sourceId})) > 0`),
+    check('frappe_import_lineage_entity_type_check', sql`${table.entityType} IN ('produto', 'faixa', 'cliente')`),
+    check('frappe_import_lineage_local_key_check', sql`char_length(btrim(${table.localKey})) > 0`),
+    check('frappe_import_lineage_hash_check', sql`${table.canonicalHash} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
 // Singular aliases make repository/tests that speak in domain terms concise
 // without changing the SQL table names used by migrations.
 export const quoteSequence = quoteSequences;
@@ -334,3 +370,4 @@ export const quotation = quotations;
 export const quoteRevision = quoteRevisions;
 export const quoteRevisionItem = quoteRevisionItems;
 export const issuedDocument = issuedDocuments;
+export const frappeLineage = frappeImportLineage;
