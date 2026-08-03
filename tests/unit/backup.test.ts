@@ -368,7 +368,7 @@ test('validação de restore detecta tabela ausente', { skip: !TEST_DATABASE_URL
   const tempDbName = `restore_test_${Date.now()}`;
 
   try {
-    execSync(`createdb -h ${host} -p ${port} -U user ${tempDbName}`, {
+    execSync(`createdb -h ${host} -p ${port} -U ${user} ${tempDbName}`, {
       env: envVars,
       stdio: 'pipe',
     });
@@ -393,7 +393,7 @@ test('validação de restore detecta tabela ausente', { skip: !TEST_DATABASE_URL
     assert.ok(tableMissing, 'Missing table should cause query to fail');
   } finally {
     try {
-      execSync(`dropdb -h ${host} -p ${port} -U user ${tempDbName}`, {
+      execSync(`dropdb -h ${host} -p ${port} -U ${user} ${tempDbName}`, {
         env: envVars,
         stdio: 'pipe',
       });

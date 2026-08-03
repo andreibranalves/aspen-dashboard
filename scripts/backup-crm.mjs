@@ -282,6 +282,7 @@ function runValidate(dumpFile) {
       user,
       '-d',
       targetDb,
+      ...(!useTempDb ? ['-c', 'SET search_path TO restore_validate;'] : []),
       '-f',
       filepath,
     ].join(' ');
@@ -315,20 +316,20 @@ function runValidate(dumpFile) {
       'frappe_import_lineage',
     ];
 
+    const searchPath = useTempDb ? '' : 'SET search_path TO restore_validate; ';
+
     stdout('\nValidação de integridade:');
     let allPass = true;
     for (const table of tables) {
       try {
         const result = execSync(
-          `psql -h ${host} -p ${port} -U ${user} -d ${targetDb} --no-psqlrc -t -A -c "SELECT count(*) FROM ${table};"`,
+          `psql -h ${host} -p ${port} -U ${user} -d ${targetDb} --no-psqlrc -t -A -c "${searchPath}SELECT count(*) FROM ${table};"`,
           { env: envVars, encoding: 'utf8', stdio: 'pipe' }
         );
         const count = parseInt(result.trim(), 10);
-        const pass = count >= 0;
-        stdout(`  ${table}: ${count} registros ${pass ? '✓' : '✗'}`);
-        if (!pass) allPass = false;
+        stdout(`  ${table}: ${count} registros - tabela acessível ✓`);
       } catch {
-        stdout(`  ${table}: TABELA AUSENTE ✗`);
+        stdout(`  ${table}: tabela ausente ✗`);
         allPass = false;
       }
     }
@@ -356,7 +357,7 @@ function cleanupTarget(targetDb, useTempDb, databaseUrl, tempDbName, createdSche
 
   if (useTempDb) {
     try {
-      execSync(`dropdb -h ${host} -p ${port} -U user ${tempDbName}`, {
+      execSync(`dropdb -h ${host} -p ${port} -U ${user} ${tempDbName}`, {
         env: envVars,
         stdio: 'pipe',
       });
