@@ -12,6 +12,14 @@ export interface Product {
   unidade?: string;
   stock_uom?: string;
   preco_minimo?: number | string;
+  preco_base?: number | string | null;
+  precos?: Array<{
+    minimum_quantity?: number | string;
+    unit_price?: number | string;
+    faixa?: number | string;
+    qty?: number | string;
+    rate?: number | string;
+  }>;
   pricing_available?: boolean;
   categoria?: string;
   marca?: string | null;

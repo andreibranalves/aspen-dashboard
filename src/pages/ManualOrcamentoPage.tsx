@@ -262,7 +262,8 @@ export default function ManualOrcamentoPage() {
   }, [addingSku, lookupRate, urgente]);
 
   const updateItemQty = useCallback(async (_key: string, value: string | number) => {
-    const qty = Math.max(1, toNumber(value, 1));
+    const parsedQty = toNumber(value, 1);
+    const qty = Math.max(0.001, Math.round(parsedQty * 1000) / 1000);
     const current = items.find(item => item._key === _key);
     if (!current) return;
 
@@ -850,7 +851,8 @@ export default function ManualOrcamentoPage() {
                                 <TableCell className="text-right">
                                   <Input
                                     type="number"
-                                    min="1"
+                                    min="0.001"
+                                    step="0.001"
                                     className="h-9 w-24 ml-auto text-right"
                                     value={item.qty}
                                     onChange={e => updateItemQty(item._key, e.target.value)}
@@ -931,7 +933,8 @@ export default function ManualOrcamentoPage() {
                                 <label className="text-xs text-fg-muted mb-1 block">Quantidade</label>
                                 <Input
                                   type="number"
-                                  min="1"
+                                  min="0.001"
+                                  step="0.001"
                                   className="h-9"
                                   value={item.qty}
                                   onChange={e => updateItemQty(item._key, e.target.value)}

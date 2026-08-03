@@ -4,10 +4,16 @@ import {
   ProductRepositoryError,
   type ProductsRepository,
 } from '../_db/products-repository.js';
+import {
+  createPostgresPricingRepository,
+  PricingRepositoryError,
+  type PricingRepository,
+} from '../_db/pricing-repository.js';
 import { responseMetadata } from './products-mode.js';
 
 export interface ProductDetailCoreDependencies {
   repository: ProductsRepository;
+  pricingRepository?: PricingRepository;
 }
 
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
@@ -26,6 +32,7 @@ function logError(error: unknown): void {
 export function createCoreHandler(
   dependencies: ProductDetailCoreDependencies = {
     repository: createPostgresProductsRepository(),
+    pricingRepository: createPostgresPricingRepository(),
   }
 ): LegacyHandler {
   return async function productDetailCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
@@ -36,6 +43,9 @@ export function createCoreHandler(
     try {
       const row = await dependencies.repository.get(sku);
       if (!row) return json(404, { error: 'Produto não encontrado.' });
+      const pricing = dependencies.pricingRepository
+        ? await dependencies.pricingRepository.get(sku)
+        : null;
       return json(200, {
         produto: {
           sku: row.sku,
@@ -49,19 +59,24 @@ export function createCoreHandler(
           criado_em: row.criado_em,
           atualizado_em: row.atualizado_em,
           arquivado_em: row.arquivado_em,
+          preco_base: pricing?.preco_base ?? null,
           // Existing UI uses this compatibility name for the last update.
           modificado_em: row.atualizado_em,
         },
-        precos: [],
-        pricing_available: false,
+        preco_base: pricing?.preco_base ?? null,
+        precos: pricing?.precos ?? [],
+        pricing_available: pricing?.pricing_available === true,
       });
     } catch (error) {
       logError(error);
       if (error instanceof ProductRepositoryError && error.expose) {
         return json(error.statusCode, { error: error.message });
       }
+      if (error instanceof PricingRepositoryError && error.expose) {
+        return json(error.statusCode, { error: error.message });
+      }
       const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
-      if (statusCode === 400 || statusCode === 404 || statusCode === 409) {
+      if (statusCode === 400 || statusCode === 404 || statusCode === 409 || statusCode === 503) {
         return json(statusCode, { error: (error as { message?: string }).message || 'Operação inválida.' });
       }
       return json(500, { error: 'Não foi possível buscar o produto. Tente novamente.' });

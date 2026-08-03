@@ -12,6 +12,8 @@ export interface ProductRecord {
   unidade: string;
   categoria: string | null;
   marca: string | null;
+  /** Optional persisted base price; tiers are exposed by PricingRepository. */
+  preco_base?: string | null;
   ativo: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -25,6 +27,7 @@ export interface ProductCreateInput {
   unidade?: string;
   categoria?: string | null;
   marca?: string | null;
+  preco_base?: string | number | null;
 }
 
 export interface ProductUpdateInput {
@@ -34,6 +37,7 @@ export interface ProductUpdateInput {
   categoria?: string | null;
   marca?: string | null;
   ativo?: boolean;
+  preco_base?: string | number | null;
 }
 
 export interface ProductListOptions {
@@ -82,7 +86,7 @@ function asIso(value: Date | string | null | undefined): string {
   return new Date(0).toISOString();
 }
 
-function toProduct(row: typeof products.$inferSelect): ProductRecord {
+export function toProductRecord(row: typeof products.$inferSelect): ProductRecord {
   return {
     sku: row.sku,
     nome: row.nome,
@@ -90,6 +94,7 @@ function toProduct(row: typeof products.$inferSelect): ProductRecord {
     unidade: row.unidade,
     categoria: row.categoria ?? null,
     marca: row.marca ?? null,
+    preco_base: row.precoBase ?? null,
     ativo: row.ativo,
     criado_em: asIso(row.criadoEm),
     atualizado_em: asIso(row.atualizadoEm),
@@ -107,7 +112,7 @@ function normalizeText(value: string | null | undefined): string | null {
   return normalized || null;
 }
 
-function normalizeCreate(input: ProductCreateInput): ProductCreateInput {
+export function normalizeProductCreateInput(input: ProductCreateInput): ProductCreateInput {
   const sku = normalizeSku(input.sku);
   const nome = String(input.nome || '').trim();
   if (!sku) throw new ProductRepositoryError(400, 'SKU é obrigatório.');
@@ -134,10 +139,10 @@ function normalizeCreate(input: ProductCreateInput): ProductCreateInput {
     throw new ProductRepositoryError(400, 'Marca deve ter no máximo 255 caracteres.');
   }
 
-  return { sku, nome, descricao, unidade, categoria, marca };
+  return { sku, nome, descricao, unidade, categoria, marca, preco_base: input.preco_base };
 }
 
-function normalizePatch(patch: ProductUpdateInput): ProductUpdateInput {
+export function normalizeProductUpdateInput(patch: ProductUpdateInput): ProductUpdateInput {
   const normalized: ProductUpdateInput = {};
   if (patch.nome !== undefined) {
     const nome = String(patch.nome).trim();
@@ -182,6 +187,10 @@ function normalizePatch(patch: ProductUpdateInput): ProductUpdateInput {
     }
     normalized.ativo = patch.ativo;
   }
+  // Pricing writes are normally handled by PricingRepository so tier/base
+  // replacement can be atomic. Keep this field optional for repository users
+  // that only need to update the product row itself.
+  if (patch.preco_base !== undefined) normalized.preco_base = patch.preco_base;
   return normalized;
 }
 
@@ -276,7 +285,7 @@ export function createPostgresProductsRepository(
         .offset((page - 1) * limit);
       const [totalRow] = await db.select({ total: count() }).from(products).where(where);
       return {
-        rows: rows.map(toProduct),
+        rows: rows.map(toProductRecord),
         total: Number(totalRow?.total || 0),
         page,
         limit,
@@ -288,11 +297,11 @@ export function createPostgresProductsRepository(
       if (!normalizedSku) return null;
       const db = getDb();
       const [row] = await db.select().from(products).where(eq(products.sku, normalizedSku)).limit(1);
-      return row ? toProduct(row) : null;
+      return row ? toProductRecord(row) : null;
     },
 
     async create(input: ProductCreateInput): Promise<ProductRecord> {
-      const normalized = normalizeCreate(input);
+      const normalized = normalizeProductCreateInput(input);
       const db = getDb();
       try {
         const [row] = await db
@@ -304,12 +313,13 @@ export function createPostgresProductsRepository(
             unidade: normalized.unidade,
             categoria: normalized.categoria,
             marca: normalized.marca,
+            precoBase: normalized.preco_base == null ? null : String(normalized.preco_base),
             ativo: true,
             arquivadoEm: null,
           })
           .returning();
         if (!row) throw new Error('empty insert result');
-        return toProduct(row);
+        return toProductRecord(row);
       } catch (error) {
         if (isDuplicateProductError(error)) throw new ProductRepositoryError(409, 'SKU já cadastrado.');
         throw new ProductRepositoryError(500, 'Não foi possível criar o produto.', false);
@@ -318,7 +328,7 @@ export function createPostgresProductsRepository(
 
     async update(sku: string, patch: ProductUpdateInput): Promise<ProductRecord | null> {
       const normalizedSku = normalizeSku(sku);
-      const normalized = normalizePatch(patch);
+      const normalized = normalizeProductUpdateInput(patch);
       const keys = Object.keys(normalized) as (keyof ProductUpdateInput)[];
       if (!normalizedSku) return null;
       if (keys.length === 0) return this.get(normalizedSku);
@@ -333,6 +343,7 @@ export function createPostgresProductsRepository(
         if (key === 'unidade') values.unidade = value;
         if (key === 'categoria') values.categoria = value;
         if (key === 'marca') values.marca = value;
+        if (key === 'preco_base') values.precoBase = value == null ? null : String(value);
         if (key === 'ativo') {
           values.ativo = value;
           values.arquivadoEm = value === false ? new Date() : null;
@@ -346,7 +357,7 @@ export function createPostgresProductsRepository(
           .set(values as Partial<typeof products.$inferInsert>)
           .where(eq(products.sku, normalizedSku))
           .returning();
-        return row ? toProduct(row) : null;
+        return row ? toProductRecord(row) : null;
       } catch {
         throw new ProductRepositoryError(500, 'Não foi possível atualizar o produto.', false);
       }

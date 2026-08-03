@@ -6,6 +6,7 @@ import {
   integer,
   numeric,
   pgTable,
+  primaryKey,
   timestamp,
   uniqueIndex,
   uuid,
@@ -56,6 +57,9 @@ export const products = pgTable(
     unidade: varchar('unidade', { length: 32 }).notNull().default('Und'),
     categoria: varchar('categoria', { length: 255 }),
     marca: varchar('marca', { length: 255 }),
+    // Currency is kept as PostgreSQL numeric (and therefore a Drizzle string)
+    // so the pricing resolver never has to trust a binary floating point value.
+    precoBase: numeric('preco_base', { precision: 14, scale: 2 }),
     ativo: boolean('ativo').notNull().default(true),
     criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
     atualizadoEm: timestamp('atualizado_em', { withTimezone: true })
@@ -70,8 +74,40 @@ export const products = pgTable(
     ),
     check('products_nome_not_blank_check', sql`char_length(btrim(${table.nome})) > 0`),
     check('products_unidade_not_blank_check', sql`char_length(btrim(${table.unidade})) > 0`),
+    check('products_preco_base_positive_check', sql`${table.precoBase} IS NULL OR ${table.precoBase} > 0`),
   ]
 );
+
+/**
+ * Dynamic product quantity tiers.  The composite primary key is also the
+ * database invariant that prevents two prices for the same SKU and minimum
+ * quantity.  Quantity uses an explicit three-decimal scale so fractional
+ * quantities round-trip as strings without becoming the source of truth in
+ * JavaScript.
+ */
+export const productPricingTiers = pgTable(
+  'product_pricing_tiers',
+  {
+    productSku: varchar('product_sku', { length: 120 })
+      .notNull()
+      .references(() => products.sku, { onDelete: 'cascade' }),
+    minimumQuantity: numeric('minimum_quantity', { precision: 14, scale: 3 }).notNull(),
+    unitPrice: numeric('unit_price', { precision: 14, scale: 2 }).notNull(),
+    criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+    atualizadoEm: timestamp('atualizado_em', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.productSku, table.minimumQuantity], name: 'product_pricing_tiers_pkey' }),
+    check('product_pricing_tiers_minimum_quantity_positive_check', sql`${table.minimumQuantity} > 0`),
+    check('product_pricing_tiers_unit_price_positive_check', sql`${table.unitPrice} > 0`),
+  ],
+);
+
+// Singular alias keeps the repository API pleasant while retaining an
+// explicit table name in the migration and database catalog.
+export const productPricing = productPricingTiers;
 
 /**
  * Unified first-party client records.  The application owns UUID creation so

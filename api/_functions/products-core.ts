@@ -8,9 +8,21 @@ import {
   type ProductStatus,
 } from '../_db/products-repository.js';
 import { PRODUCT_CORE_SOURCE, responseMetadata } from './products-mode.js';
+import {
+  createPostgresPricingRepository,
+  type PricingRepository,
+  type ProductPricingRecord,
+} from '../_db/pricing-repository.js';
+import { normalizeProductPricing, type PricingTierInput } from './pricing-core.js';
+import {
+  createPostgresProductCatalogRepository,
+  type ProductCatalogRepository,
+} from '../_db/product-catalog-repository.js';
 
 export interface ProductsCoreDependencies {
   repository: ProductsRepository;
+  pricingRepository?: PricingRepository;
+  catalogRepository?: ProductCatalogRepository;
 }
 
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
@@ -46,7 +58,7 @@ function errorResponse(operation: string, error: unknown): FunctionResult {
     return json(error.statusCode, { error: error.message });
   }
   const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
-  if (statusCode === 400 || statusCode === 404 || statusCode === 409) {
+  if (statusCode === 400 || statusCode === 404 || statusCode === 409 || statusCode === 503) {
     return json(statusCode, { error: (error as { message?: string }).message || 'Operação inválida.' });
   }
   return json(500, { error: 'Não foi possível processar o produto. Tente novamente.' });
@@ -55,6 +67,8 @@ function errorResponse(operation: string, error: unknown): FunctionResult {
 export function createCoreHandler(
   dependencies: ProductsCoreDependencies = {
     repository: createPostgresProductsRepository(),
+    pricingRepository: createPostgresPricingRepository(),
+    catalogRepository: createPostgresProductCatalogRepository(),
   }
 ): LegacyHandler {
   return async function productsCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
@@ -76,6 +90,12 @@ export function createCoreHandler(
 
       try {
         const result = await dependencies.repository.list(options);
+        const pricing = dependencies.pricingRepository
+          ? dependencies.pricingRepository.list
+            ? await dependencies.pricingRepository.list(result.rows.map((row) => row.sku))
+            : new Map((await Promise.all(result.rows.map(async (row) => [row.sku, await dependencies.pricingRepository?.get(row.sku)] as const)))
+              .filter((entry): entry is [string, ProductPricingRecord] => Boolean(entry[1])))
+          : new Map<string, ProductPricingRecord>();
         return json(200, {
           data: result.rows.map((row) => ({
             sku: row.sku,
@@ -83,8 +103,9 @@ export function createCoreHandler(
             descricao: row.descricao,
             unidade: row.unidade,
             ativo: row.ativo,
-            preco_minimo: null,
-            pricing_available: false,
+            preco_base: pricing.get(row.sku)?.preco_base ?? null,
+            preco_minimo: pricing.get(row.sku)?.preco_minimo ?? null,
+            pricing_available: pricing.get(row.sku)?.pricing_available === true,
           })),
           pagination: {
             page: result.page,
@@ -123,7 +144,32 @@ export function createCoreHandler(
       };
 
       try {
-        const created = await dependencies.repository.create(input);
+        const hasPricing = Object.prototype.hasOwnProperty.call(payload, 'preco_base') || Object.prototype.hasOwnProperty.call(payload, 'precos');
+        let normalizedPricing = null;
+        const catalogRepository = dependencies.catalogRepository;
+        if (hasPricing) {
+          const rawTiers = payload.precos;
+          if (rawTiers !== undefined && !Array.isArray(rawTiers)) {
+            return json(400, { error: 'Preços deve ser um array.' });
+          }
+          // Validate before inserting the product so an invalid complete
+          // pricing payload cannot leave a partially configured catalog row.
+          normalizedPricing = normalizeProductPricing({
+            preco_base: payload.preco_base === undefined ? null : payload.preco_base as string | number | null,
+            precos: (rawTiers || []) as PricingTierInput[],
+          });
+          if (!catalogRepository) {
+            return json(503, { error: 'O serviço de catálogo não está disponível. Tente novamente.' });
+          }
+        }
+        const combined = hasPricing && catalogRepository
+          ? await catalogRepository.create(input, {
+            preco_base: normalizedPricing?.preco_base ?? null,
+            precos: normalizedPricing?.precos || [],
+          })
+          : null;
+        const created = combined?.product || await dependencies.repository.create(input);
+        const pricing = combined?.pricing || null;
         return json(201, {
           success: true,
           created: created.sku,
@@ -138,7 +184,9 @@ export function createCoreHandler(
             criado_em: created.criado_em,
             atualizado_em: created.atualizado_em,
             arquivado_em: created.arquivado_em,
+            ...(pricing ? { preco_base: pricing.preco_base } : {}),
           },
+          ...(pricing ? { preco_base: pricing.preco_base, precos: pricing.precos, pricing_available: pricing.pricing_available } : {}),
         });
       } catch (error) {
         return errorResponse('create', error);

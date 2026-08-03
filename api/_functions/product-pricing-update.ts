@@ -1,6 +1,21 @@
 // ── Imports ─────────────────────────────────────────────────────────────────
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { erpGetList, erpGetDoc, erpPost, erpPut } from './lib/erpnext.js';
+import { isProductsCoreEnabled } from './products-mode.js';
+import {
+  createCoreHandler as createPricingCoreHandler,
+  type ProductPricingCoreDependencies,
+} from './product-pricing.js';
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+
+// This endpoint keeps its historical PUT seam in legacy mode. Core mode uses
+// the same PostgreSQL complete-set writer as /product-pricing.
+export function createCoreHandler(
+  dependencies?: ProductPricingCoreDependencies,
+): (event: FunctionEvent) => Promise<FunctionResult> {
+  return createPricingCoreHandler(dependencies);
+}
+
+export const coreHandler = createCoreHandler();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -49,7 +64,7 @@ async function upsertBracket(sku: string, faixa: string, rate: number): Promise<
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+export async function legacyHandler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'PUT') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -152,3 +167,20 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     };
   }
 }
+
+export interface ProductPricingUpdateHandlerDependencies {
+  core?: (event: FunctionEvent) => Promise<FunctionResult>;
+  legacy?: (event: FunctionEvent) => Promise<FunctionResult>;
+}
+
+/** Stable rollout seam: exact true selects core and never falls back. */
+export function createHandler(dependencies: ProductPricingUpdateHandlerDependencies = {}): (event: FunctionEvent) => Promise<FunctionResult> {
+  const selectedCore = dependencies.core || coreHandler;
+  const selectedLegacy = dependencies.legacy || legacyHandler;
+  return async (event: FunctionEvent): Promise<FunctionResult> => {
+    if (isProductsCoreEnabled()) return selectedCore(event);
+    return selectedLegacy(event);
+  };
+}
+
+export const handler = createHandler();

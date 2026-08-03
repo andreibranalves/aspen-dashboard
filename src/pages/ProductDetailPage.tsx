@@ -41,16 +41,21 @@ interface Produto {
   ativo: boolean;
   imagem: string | null;
   modificado_em: string | null;
+  preco_base?: string | number | null;
 }
 
 interface Preco {
-  faixa: number;
-  rate: number | null;
+  faixa?: number | string;
+  qty?: number | string;
+  rate?: number | string | null;
+  minimum_quantity?: number | string;
+  unit_price?: number | string | null;
 }
 
 interface ProductDetail {
   produto: Produto;
   precos: Preco[];
+  preco_base?: string | number | null;
   pricing_available?: boolean;
   core_mode?: boolean;
   source?: string;
@@ -89,6 +94,8 @@ interface EditedProduct {
   unidade: string;
   ativo: boolean;
   rates: Rates;
+  precoBase: string;
+  tiers: Array<{ minimum_quantity: string; unit_price: string }>;
 }
 
 function buildEmptyProduct(): ProductDetail {
@@ -105,6 +112,7 @@ function buildEmptyProduct(): ProductDetail {
       modificado_em: null,
     },
     precos: [],
+    preco_base: null,
   };
 }
 
@@ -112,7 +120,7 @@ function buildEmptyRates(): Rates {
   return Object.fromEntries(BRACKETS.map((faixa) => [faixa, '']));
 }
 
-function buildEditedState(produto?: Produto | null, precos: Preco[] = []): EditedProduct {
+function buildEditedState(produto?: Produto | null, precos: Preco[] = [], precoBase?: string | number | null): EditedProduct {
   const rates = buildEmptyRates();
   for (const faixa of BRACKETS) {
     const row = precos.find((p) => Number(p.faixa) === faixa);
@@ -128,6 +136,13 @@ function buildEditedState(produto?: Produto | null, precos: Preco[] = []): Edite
     unidade: produto?.unidade || 'Und',
     ativo: produto?.ativo ?? true,
     rates,
+    precoBase: precoBase == null ? '' : String(precoBase),
+    tiers: precos
+      .map((row) => ({
+        minimum_quantity: String(row.minimum_quantity ?? row.faixa ?? row.qty ?? ''),
+        unit_price: row.unit_price == null ? String(row.rate ?? '') : String(row.unit_price),
+      }))
+      .filter((row) => row.minimum_quantity !== '' || row.unit_price !== ''),
   };
 }
 
@@ -239,7 +254,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         const emptyProduct = buildEmptyProduct();
         setProduct(emptyProduct);
         setAtividades([]);
-        setEdited(buildEditedState(emptyProduct.produto, []));
+        setEdited(buildEditedState(emptyProduct.produto, [], emptyProduct.preco_base));
         setEditing(true);
         return;
       }
@@ -300,8 +315,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   }, [editing, edited.rates, product?.precos]);
 
   const startEditing = useCallback(() => {
-    const { produto, precos = [] } = product || {};
-    setEdited(buildEditedState(produto, precos));
+    const { produto, precos = [], preco_base } = product || {};
+    setEdited(buildEditedState(produto, precos, preco_base ?? produto?.preco_base));
     setEditing(true);
   }, [product]);
 
@@ -330,6 +345,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         unidade,
         ativo,
         rates = {},
+        precoBase = '',
+        tiers = [],
       } = edited as EditedProduct;
       const normalizedSku = (editedSku || '').trim();
       const normalizedNome = (nome || '').trim();
@@ -351,15 +368,25 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       }).filter((p) => p.rate != null && !Number.isNaN(p.rate));
 
       if (isNewProduct) {
-        const created = await apiPost<{ core_mode?: boolean }>('/products', {
+        // The catalog mode is resolved before this form becomes editable, so
+        // core pricing can be committed atomically with product creation.
+        const creatingCore = coreMode;
+        const createPayload: Record<string, unknown> = {
           sku: normalizedSku,
           nome: normalizedNome,
           descricao: descricao.trim(),
           categoria: categoria?.trim() || undefined,
           marca: marca?.trim() || undefined,
           unidade: unidade?.trim() || 'Und',
-        });
-        const creatingCore = created.core_mode === true;
+        };
+        if (creatingCore) {
+          createPayload.preco_base = precoBase.trim() === '' ? null : precoBase.trim();
+          createPayload.precos = tiers.map((tier) => ({
+            minimum_quantity: tier.minimum_quantity,
+            unit_price: tier.unit_price,
+          }));
+        }
+        await apiPost<{ core_mode?: boolean }>('/products', createPayload);
         setResolvedProductMode({ sku: normalizedSku, core: creatingCore });
 
         const extraBody: Record<string, unknown> = {};
@@ -388,7 +415,15 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
       const body: Record<string, unknown> = {};
       if (Object.keys(metadata).length > 0) Object.assign(body, metadata);
-      if (!coreMode && precos.length > 0) body.precos = precos;
+      if (coreMode) {
+        body.preco_base = precoBase.trim() === '' ? null : precoBase.trim();
+        body.precos = tiers.map((tier) => ({
+          minimum_quantity: tier.minimum_quantity,
+          unit_price: tier.unit_price,
+        }));
+      } else if (precos.length > 0) {
+        body.precos = precos;
+      }
 
       if (Object.keys(body).length === 0) {
         setToast({ type: 'error', message: 'Nenhuma alteração para salvar.' });
@@ -758,13 +793,133 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
       {coreMode ? (
         <SectionCard
-          title="Preços por faixa"
-          description="O catálogo principal ainda não possui preços configurados."
+          title="Preços do catálogo"
+          description="Configure um preço base opcional e faixas dinâmicas por quantidade."
           icon={Tag}
         >
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
-            Preço indisponível para este produto.
-          </p>
+          {editing ? (
+            <div className="space-y-4">
+              {(!edited.precoBase || edited.precoBase.trim() === '') && (edited.tiers || []).length === 0 && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  Preço indisponível para este produto.
+                </p>
+              )}
+              <div className="max-w-xs">
+                <label className="text-xs font-medium text-fg-muted">Preço base (opcional)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  aria-label="Preço base"
+                  value={edited.precoBase ?? ''}
+                  onChange={(event) => setEdited((previous) => ({ ...previous, precoBase: event.target.value }))}
+                  className="mt-1 text-sm font-mono"
+                  placeholder="0,00"
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-fg-muted">Faixas de quantidade</p>
+                    <p className="text-xs text-fg-muted">A maior quantidade mínima aplicável define o preço unitário.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label="Adicionar faixa de preço"
+                    onClick={() => setEdited((previous) => ({
+                      ...previous,
+                      tiers: [...(previous.tiers || []), { minimum_quantity: '', unit_price: '' }],
+                    }))}
+                  >
+                    <Tag size={14} className="mr-1" /> Adicionar faixa
+                  </Button>
+                </div>
+                {(edited.tiers || []).length === 0 && (
+                  <p className="rounded-lg border border-dashed border-line px-3 py-3 text-sm text-fg-muted">
+                    Nenhuma faixa configurada. O preço base será usado quando preenchido.
+                  </p>
+                )}
+                <div className="space-y-2">
+                  {(edited.tiers || []).map((tier, index) => (
+                    <div key={`tier-${index}`} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 items-end rounded-lg border border-line p-3">
+                      <label className="text-xs text-fg-muted">
+                        Quantidade mínima
+                        <Input
+                          type="number"
+                          step="0.001"
+                          min="0.001"
+                          aria-label={`Quantidade mínima da faixa ${index + 1}`}
+                          value={tier.minimum_quantity}
+                          onChange={(event) => setEdited((previous) => ({
+                            ...previous,
+                            tiers: (previous.tiers || []).map((row, rowIndex) => rowIndex === index ? { ...row, minimum_quantity: event.target.value } : row),
+                          }))}
+                          className="mt-1 text-sm font-mono"
+                        />
+                      </label>
+                      <label className="text-xs text-fg-muted">
+                        Preço unitário
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          aria-label={`Preço unitário da faixa ${index + 1}`}
+                          value={tier.unit_price}
+                          onChange={(event) => setEdited((previous) => ({
+                            ...previous,
+                            tiers: (previous.tiers || []).map((row, rowIndex) => rowIndex === index ? { ...row, unit_price: event.target.value } : row),
+                          }))}
+                          className="mt-1 text-sm font-mono"
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        aria-label={`Remover faixa ${index + 1}`}
+                        onClick={() => setEdited((previous) => ({
+                          ...previous,
+                          tiers: (previous.tiers || []).filter((_row, rowIndex) => rowIndex !== index),
+                        }))}
+                        className="text-destructive border-destructive/20"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {(product?.preco_base ?? produto.preco_base) != null && String(product?.preco_base ?? produto.preco_base) !== '' ? (
+                <div className="rounded-lg border border-line bg-surface/50 p-3 max-w-xs">
+                  <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">Preço base</p>
+                  <p className="mt-1 text-sm font-medium text-fg font-mono">{formatBRL(product?.preco_base ?? produto.preco_base)}</p>
+                </div>
+              ) : null}
+              {product?.precos && product.precos.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {product.precos.map((tier, index) => {
+                    const quantity = tier.minimum_quantity ?? tier.faixa ?? tier.qty;
+                    const rate = tier.unit_price ?? tier.rate;
+                    return (
+                      <div key={`saved-tier-${index}`} className="rounded-xl border border-line bg-surface/50 p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">A partir de {String(quantity)} un.</p>
+                        <p className="mt-2 text-sm font-medium text-fg font-mono">{rate != null ? formatBRL(rate) : '—'}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (product?.preco_base ?? produto.preco_base) == null ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  Preço indisponível para este produto.
+                </p>
+              ) : null}
+            </div>
+          )}
         </SectionCard>
       ) : (
         <SectionCard

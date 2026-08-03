@@ -5,10 +5,24 @@ import {
   type ProductUpdateInput,
   type ProductsRepository,
 } from '../_db/products-repository.js';
+import {
+  createPostgresPricingRepository,
+  type PricingRepository,
+} from '../_db/pricing-repository.js';
+import {
+  createPostgresProductCatalogRepository,
+  type ProductCatalogRepository,
+} from '../_db/product-catalog-repository.js';
+import {
+  normalizeProductPricing,
+  type PricingTierInput,
+} from './pricing-core.js';
 import { responseMetadata } from './products-mode.js';
 
 export interface ProductUpdateCoreDependencies {
   repository: ProductsRepository;
+  pricingRepository?: PricingRepository;
+  catalogRepository?: ProductCatalogRepository;
 }
 
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
@@ -31,6 +45,8 @@ function logError(error: unknown): void {
 export function createCoreHandler(
   dependencies: ProductUpdateCoreDependencies = {
     repository: createPostgresProductsRepository(),
+    pricingRepository: createPostgresPricingRepository(),
+    catalogRepository: createPostgresProductCatalogRepository(),
   }
 ): LegacyHandler {
   return async function productUpdateCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
@@ -49,12 +65,6 @@ export function createCoreHandler(
     }
     if (!isRecord(payload)) return json(400, { error: 'Envie campos válidos para atualização.' });
 
-    // Pricing remains an ERPNext concern until the explicit pricing cutover.
-    // Reject the key itself, including an empty/null array, so core products
-    // can never silently acquire a zero or fabricated price.
-    if (Object.prototype.hasOwnProperty.call(payload, 'precos')) {
-      return json(409, { error: 'Preços ainda não estão disponíveis para produtos do catálogo principal.' });
-    }
     if (Object.prototype.hasOwnProperty.call(payload, 'sku')) {
       return json(400, { error: 'SKU não pode ser alterado.' });
     }
@@ -66,13 +76,84 @@ export function createCoreHandler(
         (patch as Record<string, unknown>)[key] = payload[key];
       }
     }
-    if (Object.keys(patch).length === 0) {
+    const hasBase = Object.prototype.hasOwnProperty.call(payload, 'preco_base');
+    const hasTiers = Object.prototype.hasOwnProperty.call(payload, 'precos');
+    const hasPricing = hasBase || hasTiers;
+    let pricingInput: { preco_base: string | number | null; precos: PricingTierInput[] } | null = null;
+
+    try {
+      if (hasPricing) {
+      if (!dependencies.pricingRepository) {
+        // Keep the pre-cutover test seam explicit, while production core mode
+        // always supplies the PostgreSQL repository.
+        return json(409, { error: 'Preços não estão disponíveis para este produto.' });
+      }
+      if (hasTiers && !Array.isArray(payload.precos)) {
+        return json(400, { error: 'Preços deve ser um array.' });
+      }
+
+      // Omitted pricing fields preserve their current value; an explicitly
+      // empty tier array is a valid request that removes every tier.
+      let existingPricing = null;
+      if ((!hasBase || !hasTiers) && dependencies.pricingRepository) {
+        existingPricing = await dependencies.pricingRepository.get(sku);
+      }
+      const rawBase = hasBase
+        ? payload.preco_base as string | number | null
+        : existingPricing?.preco_base ?? null;
+      const rawTiers = hasTiers
+        ? payload.precos as PricingTierInput[]
+        : (existingPricing?.precos || []).map((tier) => ({
+          minimum_quantity: tier.minimum_quantity,
+          unit_price: tier.unit_price,
+        }));
+
+      // Validate the complete payload before mutating product metadata or
+      // replacing prices. The repository repeats this validation at its own
+      // boundary for non-HTTP callers.
+      const normalized = normalizeProductPricing({ preco_base: rawBase, precos: rawTiers });
+      pricingInput = {
+        preco_base: normalized.preco_base,
+        precos: normalized.precos.map((tier) => ({
+          minimum_quantity: tier.minimum_quantity,
+          unit_price: tier.unit_price,
+        })),
+      };
+      }
+    } catch (error) {
+      logError(error);
+      const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+      if (statusCode === 400 || statusCode === 404 || statusCode === 409 || statusCode === 503) {
+        return json(statusCode, { error: (error as { message?: string }).message || 'Operação inválida.' });
+      }
+      return json(500, { error: 'Não foi possível validar os preços. Tente novamente.' });
+    }
+
+    if (Object.keys(patch).length === 0 && !hasPricing) {
       return json(400, { error: 'Nenhum campo para atualizar.' });
     }
 
     try {
-      const updated = await dependencies.repository.update(sku, patch);
-      if (!updated) return json(404, { error: 'Produto não encontrado.' });
+      let updated = null;
+      let pricing = null;
+      if (Object.keys(patch).length > 0 && pricingInput) {
+        if (!dependencies.catalogRepository) {
+          return json(503, { error: 'O serviço de catálogo não está disponível. Tente novamente.' });
+        }
+        const combined = await dependencies.catalogRepository.update(sku, patch, pricingInput);
+        if (!combined) return json(404, { error: 'Produto não encontrado.' });
+        updated = combined.product;
+        pricing = combined.pricing;
+      } else if (Object.keys(patch).length > 0) {
+        updated = await dependencies.repository.update(sku, patch);
+        if (!updated) return json(404, { error: 'Produto não encontrado.' });
+      } else {
+        updated = await dependencies.repository.get(sku);
+        if (!updated) return json(404, { error: 'Produto não encontrado.' });
+        if (pricingInput && dependencies.pricingRepository) {
+          pricing = await dependencies.pricingRepository.replace(sku, pricingInput);
+        }
+      }
       return json(200, {
         success: true,
         sku: updated.sku,
@@ -87,7 +168,9 @@ export function createCoreHandler(
           criado_em: updated.criado_em,
           atualizado_em: updated.atualizado_em,
           arquivado_em: updated.arquivado_em,
+          ...(pricing ? { preco_base: pricing.preco_base } : {}),
         },
+        ...(pricing ? { preco_base: pricing.preco_base, precos: pricing.precos, pricing_available: pricing.pricing_available } : {}),
       });
     } catch (error) {
       logError(error);
@@ -95,7 +178,7 @@ export function createCoreHandler(
         return json(error.statusCode, { error: error.message });
       }
       const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
-      if (statusCode === 400 || statusCode === 404 || statusCode === 409) {
+      if (statusCode === 400 || statusCode === 404 || statusCode === 409 || statusCode === 503) {
         return json(statusCode, { error: (error as { message?: string }).message || 'Operação inválida.' });
       }
       return json(500, { error: 'Não foi possível atualizar o produto. Tente novamente.' });

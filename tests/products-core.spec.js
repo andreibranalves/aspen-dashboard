@@ -27,8 +27,9 @@ function detail(row, coreMode) {
       imagem: null,
       modificado_em: row.atualizado_em,
     },
-    precos: [],
-    pricing_available: false,
+    preco_base: row.preco_base ?? null,
+    precos: row.precos || [],
+    pricing_available: row.pricing_available === true,
   };
 }
 
@@ -44,7 +45,7 @@ async function mockProductApi(
   await page.route('**/api/products**', async (route) => {
     const request = route.request();
     const method = request.method();
-    requests.push({ method, url: request.url() });
+    requests.push({ method, url: request.url(), body: method === 'POST' ? request.postDataJSON() : undefined });
 
     if (method === 'GET') {
       const url = new globalThis.URL(request.url());
@@ -94,6 +95,9 @@ async function mockProductApi(
       row.categoria = body.categoria || null;
       row.marca = postIgnoresBrand ? null : body.marca || null;
       row.unidade = body.unidade || 'Und';
+      row.preco_base = body.preco_base ?? null;
+      row.precos = Array.isArray(body.precos) ? body.precos : [];
+      row.pricing_available = Boolean(row.preco_base || row.precos.length > 0);
       rows.push(row);
       await route.fulfill({
         status: 201,
@@ -175,9 +179,10 @@ async function mockProductApi(
       });
       return;
     }
-    const body = request.postDataJSON();
-    updates.push({ sku, body });
-    Object.assign(row, body);
+      const body = request.postDataJSON();
+      updates.push({ sku, body });
+      Object.assign(row, body);
+      if (body.precos) row.pricing_available = Boolean(body.preco_base || body.precos.length > 0);
     if (body.ativo === true) row.arquivado_em = null;
     if (body.ativo === false) row.arquivado_em = '2026-01-02T00:00:00.000Z';
     row.atualizado_em = '2026-01-03T00:00:00.000Z';
@@ -198,6 +203,78 @@ async function mockProductApi(
 }
 
 test.describe('Produtos — catálogo principal', () => {
+  test('cria produto core com preços no POST atômico sem segundo update de pricing', async ({ page }) => {
+    const { requests, updates, rows } = await mockProductApi(page, []);
+    await page.goto('/#/products/new');
+    await page.getByPlaceholder('LNC-SED-70').fill('CORE-ATOMIC');
+    await page.getByPlaceholder('Nome do produto').fill('Produto atômico');
+    await page.getByLabel('Preço base').fill('10.00');
+    await page.getByRole('button', { name: 'Adicionar faixa de preço' }).click();
+    await page.getByLabel('Quantidade mínima da faixa 1').fill('30');
+    await page.getByLabel('Preço unitário da faixa 1').fill('8.50');
+    await page.getByRole('button', { name: 'Criar produto' }).click();
+
+    await expect(page).toHaveURL(/#\/products\/CORE-ATOMIC$/);
+    const post = requests.find((request) => request.method === 'POST');
+    expect(post?.body?.preco_base).toBe('10.00');
+    expect(post?.body?.precos).toEqual([{ minimum_quantity: '30', unit_price: '8.50' }]);
+    expect(updates).toHaveLength(0);
+    expect(rows[0].preco_base).toBe('10.00');
+    expect(rows[0].precos).toEqual([{ minimum_quantity: '30', unit_price: '8.50' }]);
+  });
+
+  test('edita preço base/faixas dinâmicas e resolve limites no orçamento sem mutar cadastro', async ({ page }) => {
+    const priced = product('CORE-PRICED', 'Produto com preço');
+    priced.preco_base = '10.00';
+    priced.precos = [];
+    priced.preco_minimo = '7.25';
+    priced.pricing_available = true;
+    const { updates } = await mockProductApi(page, [priced]);
+
+    await page.goto('/#/products/CORE-PRICED');
+    await expect(page.getByText(/10,00/).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await page.getByLabel('Preço base').fill('11.00');
+    await page.getByRole('button', { name: 'Adicionar faixa de preço' }).click();
+    await page.getByLabel('Quantidade mínima da faixa 1').fill('30');
+    await page.getByLabel('Preço unitário da faixa 1').fill('8.50');
+    await page.getByRole('button', { name: 'Adicionar faixa de preço' }).click();
+    await page.getByLabel('Quantidade mínima da faixa 2').fill('100');
+    await page.getByLabel('Preço unitário da faixa 2').fill('7.25');
+    await page.getByRole('button', { name: 'Salvar produto' }).click();
+    await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
+    const pricingUpdate = updates.at(-1)?.body;
+    expect(pricingUpdate?.preco_base).toBe('11.00');
+    expect(pricingUpdate?.precos).toEqual([
+      { minimum_quantity: '30', unit_price: '8.50' },
+      { minimum_quantity: '100', unit_price: '7.25' },
+    ]);
+
+    await page.route('**/api/pricing-lookup**', async (route) => {
+      const request = route.request();
+      const qty = Number(request.postDataJSON()?.items?.[0]?.qty);
+      const rate = qty >= 100 ? '7.25' : '8.50';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [{ item_code: 'CORE-PRICED', qty, rate }] }),
+      });
+    });
+
+    const updateCountBeforeManual = updates.length;
+    await page.goto('/#/manual');
+    await page.getByPlaceholder('Digite SKU ou nome para adicionar um produto…').fill('CORE-PRICED');
+    await page.getByRole('button', { name: 'Adicionar CORE-PRICED ao orçamento' }).click();
+    const quantity = page.getByLabel('Quantidade de CORE-PRICED').first();
+    const unitPrice = page.getByLabel('Preço unitário de CORE-PRICED').first();
+    await expect(unitPrice).toHaveValue('8.5');
+    await quantity.fill('100');
+    await expect(unitPrice).toHaveValue('7.25');
+    await unitPrice.fill('9.99');
+    await expect(unitPrice).toHaveValue('9.99');
+    expect(updates).toHaveLength(updateCountBeforeManual);
+  });
+
   test('cria, pesquisa, edita, arquiva e restaura produto no PostgreSQL', async ({ page }) => {
     const { rows } = await mockProductApi(page, [product('CORE-SEED', 'Produto inicial')]);
 

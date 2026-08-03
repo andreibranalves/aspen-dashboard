@@ -309,7 +309,7 @@ export default function ProductsPage() {
                       <TableCell className="font-mono text-sm pl-6">{sku}</TableCell>
                       <TableCell className="text-fg-muted text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
                       <TableCell className="text-center font-medium pl-4">
-                        {!coreMode && p.pricing_available !== false && p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
+                        {p.pricing_available && p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -362,7 +362,7 @@ export default function ProductsPage() {
                           <span className="font-mono text-primary">{sku}</span>
                           {' · '}
                           {p.unidade || p.stock_uom || 'und'}
-                          {!coreMode && p.pricing_available !== false && p.preco_minimo != null && (
+                          {p.pricing_available && p.preco_minimo != null && (
                             <>
                               {' · '}
                               <span className="font-medium text-fg">{formatBRL(p.preco_minimo)}</span>
