@@ -21,6 +21,10 @@ const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url
 const PDF = Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF');
 
 test('PostgreSQL issuance commits document/status atomically and retries without duplicates', { skip: !TEST_DATABASE_URL }, async () => {
+  // Keep the app_settings singleton deterministic when Node runs this file
+  // concurrently with the lifecycle PostgreSQL test.
+  const lockClient = postgres(TEST_DATABASE_URL!, { max: 1, prepare: false, connect_timeout: 10, idle_timeout: 20, onnotice: () => undefined });
+  await lockClient`SELECT pg_advisory_lock(hashtext('aspen-quotation-postgres-tests'))`;
   const client = postgres(TEST_DATABASE_URL!, { max: 4, prepare: false, connect_timeout: 10, idle_timeout: 20, onnotice: () => undefined });
   const db = drizzle(client, { schema });
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -28,6 +32,7 @@ test('PostgreSQL issuance commits document/status atomically and retries without
   const clientId = randomUUID();
   let previousSettings: typeof appSettings.$inferSelect | undefined;
   const quotationIds: string[] = [];
+  let bodyError: unknown;
   try {
     await migrate(db, { migrationsFolder });
     [previousSettings] = await db.select().from(appSettings).where(eq(appSettings.singletonId, 1));
@@ -74,8 +79,8 @@ test('PostgreSQL issuance commits document/status atomically and retries without
     assert.equal(firstRows.length, 1);
     const [firstQuote] = await db.select().from(quotations).where(eq(quotations.id, first.quotation_uuid));
     const [firstRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, first.revision_id));
-    assert.equal(firstQuote.status, 'emitido');
-    assert.equal(firstRevision.status, 'emitido');
+    assert.equal(firstQuote.status, 'enviado');
+    assert.equal(firstRevision.status, 'enviado');
 
     const secondSource = await repository.prepare(second.quotation_name);
     assert.ok(secondSource);
@@ -117,22 +122,39 @@ test('PostgreSQL issuance commits document/status atomically and retries without
     assert.equal(retried.revisionId, second.revision_id);
     const secondRowsAfterRetry = await db.select().from(issuedDocuments).where(eq(issuedDocuments.revisionId, second.revision_id));
     assert.equal(secondRowsAfterRetry.length, 1);
+  } catch (error) {
+    bodyError = error;
+    throw error;
   } finally {
-    if (quotationIds.length) await db.delete(quotations).where(inArray(quotations.id, quotationIds));
-    await db.delete(clients).where(eq(clients.id, clientId));
-    await db.delete(products).where(eq(products.sku, sku));
-    if (previousSettings) {
-      await db.update(appSettings).set({
-        validadeDias: previousSettings.validadeDias,
-        pagamento: previousSettings.pagamento,
-        entrega: previousSettings.entrega,
-        fretePadrao: previousSettings.fretePadrao,
-        observacoes: previousSettings.observacoes,
-        templatePadrao: previousSettings.templatePadrao,
-      }).where(eq(appSettings.singletonId, 1));
-    } else {
-      await db.delete(appSettings).where(eq(appSettings.singletonId, 1));
+    let cleanupError: unknown;
+    try {
+      const owned = await db
+        .select({ id: quotations.id })
+        .from(quotations)
+        .where(eq(quotations.clientId, clientId));
+      const ids = [...new Set([...quotationIds, ...owned.map((row) => row.id)])];
+      if (ids.length) await db.delete(quotations).where(inArray(quotations.id, ids));
+      await db.delete(clients).where(eq(clients.id, clientId));
+      await db.delete(products).where(eq(products.sku, sku));
+      if (previousSettings) {
+        await db.update(appSettings).set({
+          validadeDias: previousSettings.validadeDias,
+          pagamento: previousSettings.pagamento,
+          entrega: previousSettings.entrega,
+          fretePadrao: previousSettings.fretePadrao,
+          observacoes: previousSettings.observacoes,
+          templatePadrao: previousSettings.templatePadrao,
+        }).where(eq(appSettings.singletonId, 1));
+      } else {
+        await db.delete(appSettings).where(eq(appSettings.singletonId, 1));
+      }
+    } catch (error) {
+      cleanupError = error;
+      console.error(`[quotation-issuance-test] cleanup failed (${error instanceof Error ? error.message : String(error)})`);
     }
     await client.end({ timeout: 5 });
+    await lockClient`SELECT pg_advisory_unlock(hashtext('aspen-quotation-postgres-tests'))`;
+    await lockClient.end({ timeout: 5 });
+    if (cleanupError && !bodyError) throw cleanupError;
   }
 });

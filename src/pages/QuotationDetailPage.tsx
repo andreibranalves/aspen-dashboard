@@ -22,6 +22,10 @@ import {
 import SkeletonDetail from '@/components/SkeletonDetail';
 
 const STATUS_LABELS: Record<string, string> = {
+  Rascunho: 'Rascunho',
+  Enviado: 'Enviado',
+  Aprovado: 'Aprovado',
+  Perdido: 'Perdido',
   Draft: 'Rascunho',
   Issued: 'Emitido',
   Open: 'Aberto',
@@ -61,6 +65,7 @@ interface QuotationData {
   cliente?: string;
   data?: string;
   validade?: string;
+  validity_date?: string;
   sales_order_id?: string;
   items?: QuotationItem[];
   core_mode?: boolean;
@@ -94,16 +99,49 @@ interface QuotationData {
   concurrency_token?: string;
   version_token?: string;
   issued_document?: IssuedQuotationDocumentMetadata | null;
+  revision_history?: QuotationRevisionHistoryEntry[];
+  derived_expired?: boolean;
+  expiration_derived?: boolean;
+  is_expired?: boolean;
+  expirada?: boolean;
 }
 
 interface IssuedQuotationDocumentMetadata {
   id: string;
+  quotation_id?: string;
+  revision_id?: string;
+  kind?: string;
+  storage_key?: string;
   file_name: string;
   mime_type: string;
   size_bytes: number;
   checksum_sha256: string;
+  template_key?: string;
+  template_hash?: string;
   issued_at: string;
   download_url: string;
+}
+
+interface QuotationRevisionHistoryEntry {
+  id: string;
+  revision_id: string;
+  revision: number;
+  revision_number: number;
+  created_at: string;
+  createdAt: string;
+  validade_dias: number;
+  validity_date: string;
+  validade: string;
+  subtotal: string | number;
+  total: string | number;
+  valor: string | number;
+  status: string;
+  status_canonical: string;
+  derived_expired: boolean;
+  expiration_derived: boolean;
+  is_expired: boolean;
+  expirada: boolean;
+  issued_document: IssuedQuotationDocumentMetadata | null;
 }
 
 interface QuotationDetailPageProps {
@@ -170,6 +208,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);
+  const [lifecycleAction, setLifecycleAction] = useState<'aprovado' | 'perdido' | 'create_revision' | null>(null);
   const [message, setMessage] = useState('');
   const [conflict, setConflict] = useState('');
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
@@ -396,8 +435,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       }>('/quotation-issue', { id: data.id });
       setData((current) => ({
         ...current,
-        status: 'Issued',
-        status_canonical: 'emitido',
+        status: 'Enviado',
+        status_canonical: 'enviado',
         issued_document: result.document,
       }));
       setMessage(result.already_issued ? 'Este PDF já estava emitido.' : 'PDF definitivo emitido e arquivado.');
@@ -408,6 +447,67 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       setIssuing(false);
     }
   }, [data.id, onReload]);
+
+  const markCommercialStatus = useCallback(async (status: 'aprovado' | 'perdido') => {
+    const token = data.concurrency_token || data.version_token || data.updated_at;
+    if (!token) {
+      setConflict('Token de concorrência ausente. Recarregue o orçamento antes de atualizar o estado.');
+      return;
+    }
+    setLifecycleAction(status);
+    setMessage(status === 'aprovado' ? 'Marcando como aprovado…' : 'Marcando como perdido…');
+    setConflict('');
+    try {
+      const refreshed = await apiPost<QuotationData>(`/quotations?id=${encodeURIComponent(data.id)}`, {
+        action: 'set_status',
+        status,
+        concurrency_token: token,
+      });
+      setData(refreshed);
+      setMessage(status === 'aprovado' ? 'Orçamento aprovado.' : 'Orçamento marcado como perdido.');
+    } catch (error) {
+      const responseStatus = (error as { status?: number }).status;
+      if (responseStatus === 409) {
+        setConflict((error as Error).message || 'O orçamento mudou. Recarregue para conferir o estado atual.');
+        setMessage('');
+      } else {
+        setMessage(`Erro ao atualizar o estado: ${(error as Error).message || 'Tente novamente.'}`);
+      }
+    } finally {
+      setLifecycleAction(null);
+    }
+  }, [data.concurrency_token, data.id, data.updated_at, data.version_token]);
+
+  const createRevision = useCallback(async (sourceRevisionId: string) => {
+    const token = data.concurrency_token || data.version_token || data.updated_at;
+    if (!token) {
+      setConflict('Token de concorrência ausente. Recarregue o orçamento antes de criar uma revisão.');
+      return;
+    }
+    setLifecycleAction('create_revision');
+    setMessage('Criando nova revisão…');
+    setConflict('');
+    try {
+      const refreshed = await apiPost<QuotationData>(`/quotations?id=${encodeURIComponent(data.id)}`, {
+        action: 'create_revision',
+        source_revision_id: sourceRevisionId,
+        concurrency_token: token,
+      });
+      setData(refreshed);
+      resetEditor(refreshed);
+      setMessage('Nova revisão criada em rascunho.');
+    } catch (error) {
+      const responseStatus = (error as { status?: number }).status;
+      if (responseStatus === 409) {
+        setConflict((error as Error).message || 'A revisão mudou ou já existe um rascunho. Recarregue para conferir.');
+        setMessage('');
+      } else {
+        setMessage(`Erro ao criar revisão: ${(error as Error).message || 'Tente novamente.'}`);
+      }
+    } finally {
+      setLifecycleAction(null);
+    }
+  }, [data.concurrency_token, data.id, data.updated_at, data.version_token, resetEditor]);
   const openIssuedDocument = useCallback(() => {
     const url = data.issued_document?.download_url;
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
@@ -458,7 +558,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             ) : <p className="font-medium mt-1">{data.cliente || '—'}</p>}
           </div>
           <div><span className="text-xs text-fg-muted">Data</span><p>{formatDate(data.data)}</p></div>
-          <div><span className="text-xs text-fg-muted">Validade</span><p>{formatDate(data.validade)} ({data.validade_dias ?? '—'} dias)</p></div>
+          <div>
+            <span className="text-xs text-fg-muted">Validade</span>
+            <p>{formatDate(data.validade)} ({data.validade_dias ?? '—'} dias)</p>
+            {(data.derived_expired || data.expiration_derived || data.is_expired || data.expirada) && <span className="text-xs text-warning">Validade expirada (indicador derivado)</span>}
+          </div>
         </div>
 
         <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -483,6 +587,30 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         {data.issued_document && (
           <div className="px-6 py-3 border-b bg-success/10 text-sm text-success" role="status">
             PDF definitivo arquivado · {data.issued_document.file_name} · {(data.issued_document.size_bytes / 1024).toFixed(1)} KB
+          </div>
+        )}
+
+        {data.status_canonical === 'enviado' && !editing && (
+          <div className="px-6 py-3 border-b flex flex-wrap items-center gap-2" role="group" aria-label="Estado comercial">
+            <span className="text-xs text-fg-muted mr-1">Estado comercial:</span>
+            <Button
+              variant="success"
+              size="sm"
+              disabled={lifecycleAction !== null}
+              onClick={() => markCommercialStatus('aprovado')}
+            >
+              {lifecycleAction === 'aprovado' && <Loader2 size={14} className="animate-spin" />}
+              Marcar como aprovado
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={lifecycleAction !== null}
+              onClick={() => markCommercialStatus('perdido')}
+            >
+              {lifecycleAction === 'perdido' && <Loader2 size={14} className="animate-spin" />}
+              Marcar como perdido
+            </Button>
           </div>
         )}
 
@@ -511,12 +639,57 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         <div className="px-6 py-3 border-t text-right font-semibold">Subtotal: {formatBRL(data.subtotal)} · Frete: {formatBRL(data.frete)} · Total: {formatBRL(displayedTotal)}</div>
         <div className="px-6 py-4 border-t flex items-center gap-3">
           {draftEditable && !editing && <Button variant="outline" size="sm" onClick={() => { setMessage(''); setEditing(true); }}><Pencil size={14} /> Editar</Button>}
-          {draftEditable && !editing && <Button variant="success" size="sm" disabled={issuing || templateSelectionUnsaved} onClick={issuePdf}>{issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {issuing ? 'Emitindo PDF…' : 'Emitir PDF definitivo'}</Button>}
+          {draftEditable && !editing && <Button variant="success" size="sm" disabled={issuing || templateSelectionUnsaved || lifecycleAction !== null} onClick={issuePdf}>{issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />} {issuing ? 'Emitindo PDF…' : 'Emitir PDF definitivo'}</Button>}
           {editing && <><Button variant="success" size="sm" disabled={saving} onClick={save}><Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}</Button><Button variant="outline" size="sm" disabled={saving} onClick={() => resetEditor()}>Cancelar</Button></>}
           {data.issued_document && <Button variant="outline" size="sm" onClick={openIssuedDocument}><FileText size={14} /> Abrir PDF emitido</Button>}
           {draftEditable && !editing && templateSelectionUnsaved && <span className="text-xs text-warning">Salve o modelo selecionado antes de emitir.</span>}
           {message && <span role="status" aria-live="polite" className={`text-xs ${message.startsWith('Erro') ? 'text-destructive' : 'text-fg-muted'}`}>{message}</span>}
         </div>
+
+        {(data.revision_history || []).length > 0 && (
+          <div className="px-6 py-4 border-t" aria-label="Histórico de revisões">
+            <h2 className="text-sm font-semibold mb-3">Histórico de revisões</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Versão</TableHead>
+                    <TableHead>Criada em</TableHead>
+                    <TableHead>Validade</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>PDF</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(data.revision_history || []).map((entry) => {
+                    const expired = entry.derived_expired || entry.expiration_derived || entry.is_expired || entry.expirada;
+                    const eligible = Boolean(entry.issued_document) && entry.status_canonical !== 'rascunho' && !draftEditable;
+                    return (
+                      <TableRow key={entry.revision_id || entry.id}>
+                        <TableCell className="font-medium">R{entry.revision_number}</TableCell>
+                        <TableCell>{formatDate(entry.created_at || entry.createdAt)}</TableCell>
+                        <TableCell>
+                          {formatDate(entry.validity_date || entry.validade)}
+                          {expired && <span className="block text-xs text-warning">Expirada</span>}
+                        </TableCell>
+                        <TableCell><StatusBadge status={entry.status} label={STATUS_LABELS[entry.status] || entry.status} /></TableCell>
+                        <TableCell className="text-right font-mono">{formatBRL(entry.total || entry.valor)}</TableCell>
+                        <TableCell>
+                          {entry.issued_document ? <button type="button" className="text-primary hover:underline text-xs" onClick={() => window.open(entry.issued_document?.download_url, '_blank', 'noopener,noreferrer')}>Baixar PDF</button> : <span className="text-xs text-fg-muted">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {eligible && <Button variant="outline" size="sm" disabled={lifecycleAction !== null} onClick={() => createRevision(entry.revision_id)}>Nova revisão</Button>}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

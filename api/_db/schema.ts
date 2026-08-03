@@ -197,7 +197,10 @@ export const quotations = pgTable(
     uniqueIndex('quotations_business_number_unique').on(table.businessNumber),
     index('quotations_client_created_idx').on(table.clientId, table.createdAt),
     check('quotations_business_number_format_check', sql`${table.businessNumber} ~ '^ORC-[0-9]{8}$'`),
-    check('quotations_status_not_blank_check', sql`char_length(btrim(${table.status})) > 0`),
+    check(
+      'quotations_status_check',
+      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`,
+    ),
   ],
 );
 
@@ -240,6 +243,9 @@ export const quoteRevisions = pgTable(
   },
   (table) => [
     uniqueIndex('quote_revisions_quotation_version_unique').on(table.quotationId, table.version),
+    uniqueIndex('quote_revisions_one_draft_per_quotation_unique')
+      .on(table.quotationId)
+      .where(sql`${table.status} = 'rascunho'`),
     index('quote_revisions_quotation_idx').on(table.quotationId, table.version),
     check('quote_revisions_version_positive_check', sql`${table.version} > 0`),
     check('quote_revisions_validade_dias_check', sql`${table.validadeDias} BETWEEN 1 AND 365`),
@@ -248,7 +254,10 @@ export const quoteRevisions = pgTable(
     check('quote_revisions_subtotal_check', sql`${table.subtotal} >= 0`),
     check('quote_revisions_total_check', sql`${table.total} >= 0`),
     check('quote_revisions_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
-    check('quote_revisions_status_not_blank_check', sql`char_length(btrim(${table.status})) > 0`),
+    check(
+      'quote_revisions_status_check',
+      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`,
+    ),
   ],
 );
 

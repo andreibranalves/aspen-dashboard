@@ -127,13 +127,13 @@ async function findDocument(db: QuoteDatabase, id: string): Promise<IssuedQuotat
   }
   const [quotation] = await db.select().from(quotations).where(quoteWhere(id)).limit(1);
   if (!quotation) return null;
-  const [revision] = await db
+  const [document] = await db
     .select()
-    .from(quoteRevisions)
-    .where(eq(quoteRevisions.quotationId, quotation.id))
-    .orderBy(desc(quoteRevisions.version))
+    .from(issuedDocuments)
+    .where(eq(issuedDocuments.quotationId, quotation.id))
+    .orderBy(desc(issuedDocuments.createdAt))
     .limit(1);
-  return revision ? findByRevision(db, revision.id) : null;
+  return document ? asDocument(document) : null;
 }
 
 function isKnownError(error: unknown): boolean {
@@ -200,7 +200,9 @@ export function createQuotationDocumentRepository(
 
           const existing = await findByRevision(tx, revision.id);
           if (existing) {
-            if (quotation.status !== 'emitido' || revision.status !== 'emitido') {
+            const aggregateStatus = quotation.status === 'emitido' ? 'enviado' : quotation.status;
+            const revisionStatus = revision.status === 'emitido' ? 'enviado' : revision.status;
+            if (aggregateStatus !== 'enviado' || revisionStatus !== 'enviado') {
               throw new QuotationDocumentConflictError('O documento existente está inconsistente com o estado do orçamento.');
             }
             return existing;
@@ -233,8 +235,11 @@ export function createQuotationDocumentRepository(
           }).returning();
           if (!created) throw new QuotationDocumentRepositoryError();
 
-          await tx.update(quoteRevisions).set({ status: 'emitido' }).where(eq(quoteRevisions.id, revision.id));
-          await tx.update(quotations).set({ status: 'emitido', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
+          // Issuance is the sole rascunho -> enviado transition.  The PDF row
+          // and both lifecycle states are committed in this same transaction;
+          // a retry sees the existing document and never creates a duplicate.
+          await tx.update(quoteRevisions).set({ status: 'enviado' }).where(eq(quoteRevisions.id, revision.id));
+          await tx.update(quotations).set({ status: 'enviado', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
           return asDocument(created);
         });
       } catch (error) {

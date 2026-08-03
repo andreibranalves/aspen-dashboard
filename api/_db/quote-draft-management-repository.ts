@@ -26,7 +26,7 @@ import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
-type QuoteDatabase = AppDatabase | QuoteTransaction;
+export type QuoteDatabase = AppDatabase | QuoteTransaction;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MONEY_MAX_CENTS = 99999999999999999999n;
@@ -77,6 +77,25 @@ export interface QuoteDraftManagementListOptions {
   page?: number;
   limit?: number;
   orderBy?: string;
+}
+
+export type CanonicalQuotationListStatus = 'rascunho' | 'enviado' | 'aprovado' | 'perdido';
+
+/**
+ * Normalize the legacy/UI status vocabulary accepted by the quotations list
+ * endpoint to the canonical lifecycle state stored in PostgreSQL. `null`
+ * means an empty/All filter, while `undefined` identifies an invalid label.
+ */
+export function normalizeQuotationListStatus(value: string | undefined): CanonicalQuotationListStatus | null | undefined {
+  const normalized = (value || '').trim();
+  if (!normalized) return null;
+  const lower = normalized.toLowerCase();
+  if (lower === 'all') return null;
+  if (lower === 'draft' || lower === 'rascunho') return 'rascunho';
+  if (lower === 'issued' || lower === 'open' || lower === 'replied' || lower === 'expired' || lower === 'emitido' || lower === 'enviado') return 'enviado';
+  if (lower === 'ordered' || lower === 'aprovado') return 'aprovado';
+  if (lower === 'lost' || lower === 'cancelled' || lower === 'perdido') return 'perdido';
+  return undefined;
 }
 
 export interface QuoteDraftManagementListRow {
@@ -157,6 +176,7 @@ export interface QuoteDraftManagementDetail {
   cliente_snapshot: Record<string, unknown>;
   data: string;
   validade: string;
+  validity_date: string;
   validade_dias: number;
   pagamento: string;
   entrega: string;
@@ -167,15 +187,26 @@ export interface QuoteDraftManagementDetail {
   template_padrao: string;
   template_key: string;
   template_hash: string;
+  derived_expired: boolean;
+  expiration_derived: boolean;
+  is_expired: boolean;
+  expirada: boolean;
   issued_document: {
     id: string;
+    quotation_id?: string;
+    revision_id?: string;
+    kind?: string;
+    storage_key?: string;
     file_name: string;
     mime_type: string;
     size_bytes: number;
     checksum_sha256: string;
+    template_key?: string;
+    template_hash?: string;
     issued_at: string;
     download_url: string;
   } | null;
+  revision_history: QuoteRevisionHistoryEntry[];
   subtotal: string;
   total: string;
   valor: string;
@@ -188,6 +219,34 @@ export interface QuoteDraftManagementDetail {
   concurrencyToken: string;
   core_mode: true;
   source: 'postgres';
+}
+
+/**
+ * Read-only history metadata.  The row is deliberately made up of snapshot
+ * fields only: live clients/products/settings never participate in history
+ * rendering, and an issued revision can therefore be audited after those
+ * records change.
+ */
+export interface QuoteRevisionHistoryEntry {
+  id: string;
+  revision_id: string;
+  revision: number;
+  revision_number: number;
+  created_at: string;
+  createdAt: string;
+  validade_dias: number;
+  validity_date: string;
+  validade: string;
+  subtotal: string;
+  total: string;
+  valor: string;
+  status: string;
+  status_canonical: string;
+  derived_expired: boolean;
+  expiration_derived: boolean;
+  is_expired: boolean;
+  expirada: boolean;
+  issued_document: QuoteDraftManagementDetail['issued_document'];
 }
 
 export interface QuoteDraftManagementUpdateInput {
@@ -360,6 +419,18 @@ function validUntil(createdAt: Date | string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+function validityDeadline(createdAt: Date | string, days: number): Date {
+  const date = asDate(createdAt);
+  date.setUTCDate(date.getUTCDate() + Math.max(1, days));
+  return date;
+}
+
+function isDerivedExpired(createdAt: Date | string, days: number, now: () => Date): boolean {
+  const candidate = now();
+  const clock = candidate instanceof Date && !Number.isNaN(candidate.getTime()) ? candidate : new Date();
+  return clock.getTime() >= validityDeadline(createdAt, days).getTime();
+}
+
 function validUntilTime(createdAt: Date | string, days: number): number {
   const date = asDate(createdAt);
   date.setUTCDate(date.getUTCDate() + Math.max(1, days));
@@ -377,11 +448,14 @@ function compareMoneyValues(left: unknown, right: unknown): number {
 }
 
 function statusUi(value: string): string {
-  // Keep the canonical Portuguese states behind the legacy-compatible UI
-  // vocabulary consumed by the current React screens.
-  if (value === 'rascunho') return 'Draft';
-  if (value === 'emitido') return 'Issued';
-  return value || 'Draft';
+  // Keep a concise UI vocabulary while exposing the canonical Portuguese
+  // state separately.  The aliases retain compatibility with old list
+  // consumers that still send/expect English labels.
+  if (value === 'rascunho') return 'Rascunho';
+  if (value === 'enviado' || value === 'emitido') return 'Enviado';
+  if (value === 'aprovado') return 'Aprovado';
+  if (value === 'perdido') return 'Perdido';
+  return value || 'Rascunho';
 }
 
 function productPricingRowsBySku(rows: (typeof productPricingTiers.$inferSelect)[]): Map<string, (typeof productPricingTiers.$inferSelect)[]> {
@@ -456,7 +530,74 @@ async function readRevision(tx: QuoteDatabase, quotationId: string) {
   return revision || null;
 }
 
-async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftManagementDetail | null> {
+function documentMetadata(row: typeof issuedDocuments.$inferSelect): QuoteDraftManagementDetail['issued_document'] {
+  return {
+    id: row.id,
+    quotation_id: row.quotationId,
+    revision_id: row.revisionId,
+    kind: row.kind,
+    storage_key: row.blobPathname,
+    file_name: row.fileName,
+    mime_type: row.mimeType,
+    size_bytes: row.sizeBytes,
+    checksum_sha256: row.checksumSha256,
+    template_key: row.templateKey,
+    template_hash: row.templateHash,
+    issued_at: asIso(row.createdAt),
+    download_url: `/api/quotation-document?id=${encodeURIComponent(row.id)}`,
+  };
+}
+
+async function readRevisionHistory(
+  tx: QuoteDatabase,
+  quotationId: string,
+  now: () => Date,
+): Promise<QuoteRevisionHistoryEntry[]> {
+  const revisions = await tx
+    .select()
+    .from(quoteRevisions)
+    .where(eq(quoteRevisions.quotationId, quotationId))
+    .orderBy(desc(quoteRevisions.version));
+  const documents = await tx
+    .select()
+    .from(issuedDocuments)
+    .where(eq(issuedDocuments.quotationId, quotationId));
+  const documentByRevision = new Map(documents.map((row) => [row.revisionId, row]));
+  return revisions.map((revision) => {
+    const validityDate = validUntil(revision.createdAt, revision.validadeDias);
+    const createdAt = asIso(revision.createdAt);
+    const expired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
+    const document = documentByRevision.get(revision.id);
+    const statusCanonical = revision.status === 'emitido' ? 'enviado' : revision.status;
+    return {
+      id: revision.id,
+      revision_id: revision.id,
+      revision: revision.version,
+      revision_number: revision.version,
+      created_at: createdAt,
+      createdAt,
+      validade_dias: revision.validadeDias,
+      validity_date: validityDate,
+      validade: validityDate,
+      subtotal: formatDbMoney(revision.subtotal),
+      total: formatDbMoney(revision.total),
+      valor: formatDbMoney(revision.total),
+      status: statusUi(statusCanonical),
+      status_canonical: statusCanonical,
+      derived_expired: expired,
+      expiration_derived: expired,
+      is_expired: expired,
+      expirada: expired,
+      issued_document: document ? documentMetadata(document) : null,
+    };
+  });
+}
+
+export async function readPostgresQuotationDetail(
+  tx: QuoteDatabase,
+  id: string,
+  now: () => Date = () => new Date(),
+): Promise<QuoteDraftManagementDetail | null> {
   const [quotation] = await tx.select().from(quotations).where(quoteWhere(id)).limit(1);
   if (!quotation) return null;
   const revision = await readRevision(tx, quotation.id);
@@ -479,7 +620,12 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
   const productBySku = new Map(productRows.map((row) => [row.sku, row]));
   const updatedAt = asIso(quotation.updatedAt);
   const snapshot = mapSnapshot(revision, client || null);
-  const canonicalStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
+  const canonicalStatus = (quotation.status === 'rascunho' ? revision.status : quotation.status) === 'emitido'
+    ? 'enviado'
+    : (quotation.status === 'rascunho' ? revision.status : quotation.status);
+  const history = await readRevisionHistory(tx, quotation.id, now);
+  const currentExpired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
+  const currentValidityDate = validUntil(revision.createdAt, revision.validadeDias);
   return {
     id: quotation.businessNumber,
     quotation_id: quotation.businessNumber,
@@ -497,7 +643,12 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
     cliente_id: quotation.clientId,
     cliente_snapshot: snapshot,
     data: asIso(quotation.createdAt).slice(0, 10),
-    validade: validUntil(quotation.createdAt, revision.validadeDias),
+    validade: currentValidityDate,
+    validity_date: currentValidityDate,
+    derived_expired: currentExpired,
+    expiration_derived: currentExpired,
+    is_expired: currentExpired,
+    expirada: currentExpired,
     validade_dias: revision.validadeDias,
     pagamento: revision.pagamento,
     entrega: revision.entrega,
@@ -508,19 +659,12 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
-    issued_document: issuedDocument ? {
-      id: issuedDocument.id,
-      file_name: issuedDocument.fileName,
-      mime_type: issuedDocument.mimeType,
-      size_bytes: issuedDocument.sizeBytes,
-      checksum_sha256: issuedDocument.checksumSha256,
-      issued_at: asIso(issuedDocument.createdAt),
-      download_url: `/api/quotation-document?id=${encodeURIComponent(issuedDocument.id)}`,
-    } : null,
+    issued_document: issuedDocument ? documentMetadata(issuedDocument) : null,
     subtotal: formatDbMoney(revision.subtotal),
     total: formatDbMoney(revision.total),
     valor: formatDbMoney(revision.total),
     items: itemRows.map((row) => itemFromRows(row, productBySku.get(row.productSku) || null)),
+    revision_history: history,
     updated_at: updatedAt,
     updatedAt,
     concurrency_token: tokenFor(quotation.updatedAt),
@@ -531,6 +675,10 @@ async function readDetail(tx: QuoteDatabase, id: string): Promise<QuoteDraftMana
     source: 'postgres',
   };
 }
+
+// Kept as a private-name alias for the existing repository implementation and
+// exported above for the lifecycle repository to reuse inside its transaction.
+const readDetail = readPostgresQuotationDetail;
 
 function safeOrderValue(value: string | undefined): string {
   const allowed = new Set([
@@ -552,10 +700,10 @@ function safeOrderValue(value: string | undefined): string {
 
 function asListStatus(value: string | undefined): string | null {
   const normalized = (value || '').trim();
-  if (!normalized) return null;
-  if (normalized === 'Draft' || normalized.toLowerCase() === 'rascunho') return 'rascunho';
-  if (normalized === 'Issued' || normalized.toLowerCase() === 'emitido') return 'emitido';
-  if (normalized === 'All') return null;
+  const canonical = normalizeQuotationListStatus(normalized);
+  if (canonical !== undefined) return canonical;
+  // Keep direct repository callers deterministic for unknown labels; the HTTP
+  // handler rejects these before reaching the database.
   return normalized;
 }
 
@@ -596,10 +744,17 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
         .some((part) => String(part).toLocaleLowerCase().includes(search));
   });
   const candidates = searchMatches.filter((row) => {
-    const state = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
+    const rawState = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
+    const state = rawState === 'emitido' ? 'enviado' : rawState;
     return !wantedStatus || state === wantedStatus;
   });
   const statusSummary: Record<string, number> = {
+    Rascunho: 0,
+    Enviado: 0,
+    Aprovado: 0,
+    Perdido: 0,
+    // Legacy keys remain present so list consumers compiled against the
+    // previous vocabulary do not crash while migrating to canonical states.
     Draft: 0,
     Issued: 0,
     Open: 0,
@@ -610,9 +765,13 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
     Cancelled: 0,
   };
   for (const row of searchMatches) {
-    const state = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
+    const rawState = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
+    const state = rawState === 'emitido' ? 'enviado' : rawState;
     const key = statusUi(state);
     if (Object.prototype.hasOwnProperty.call(statusSummary, key)) statusSummary[key] += 1;
+    if (key === 'Rascunho') statusSummary.Draft += 1;
+    if (key === 'Enviado') statusSummary.Issued += 1;
+    if (key === 'Perdido') statusSummary.Lost += 1;
   }
   const order = safeOrderValue(options.orderBy);
   const tieBreak = (left: typeof candidates[number], right: typeof candidates[number]): number =>
@@ -636,14 +795,14 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
     }
     if (order === 'valid_till asc') {
       return compareWithTie(
-        validUntilTime(left.quotation.createdAt, left.revision.validadeDias) - validUntilTime(right.quotation.createdAt, right.revision.validadeDias),
+        validUntilTime(left.revision.createdAt, left.revision.validadeDias) - validUntilTime(right.revision.createdAt, right.revision.validadeDias),
         left,
         right,
       );
     }
     if (order === 'valid_till desc') {
       return compareWithTie(
-        validUntilTime(right.quotation.createdAt, right.revision.validadeDias) - validUntilTime(left.quotation.createdAt, left.revision.validadeDias),
+        validUntilTime(right.revision.createdAt, right.revision.validadeDias) - validUntilTime(left.revision.createdAt, left.revision.validadeDias),
         left,
         right,
       );
@@ -668,7 +827,8 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
   const total = candidates.length;
   const rows = candidates.slice((page - 1) * limit, page * limit).map(({ quotation, revision, client, name }) => {
     const updatedAt = asIso(quotation.updatedAt);
-    const canonicalStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
+    const rawStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
+    const canonicalStatus = rawStatus === 'emitido' ? 'enviado' : rawStatus;
     return {
       id: quotation.businessNumber,
       quotation_id: quotation.businessNumber,
@@ -680,7 +840,7 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
       cliente: name,
       cliente_snapshot: mapSnapshot(revision, client),
       data: asIso(quotation.createdAt).slice(0, 10),
-      validade: validUntil(quotation.createdAt, revision.validadeDias),
+      validade: validUntil(revision.createdAt, revision.validadeDias),
       validade_dias: revision.validadeDias,
       subtotal: formatDbMoney(revision.subtotal),
       total: formatDbMoney(revision.total),
@@ -793,7 +953,7 @@ export function createPostgresQuoteDraftManagementRepository(
       const normalized = String(id || '').trim();
       if (!normalized) throw new QuoteManagementInputError('ID do orçamento não informado.');
       try {
-        return await readDetail(getDb(), normalized);
+        return await readDetail(getDb(), normalized, now);
       } catch (error) {
         if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
         console.error(`[quote-draft-management] detail failed (${error instanceof Error ? error.name : typeof error})`);
@@ -983,7 +1143,7 @@ export function createPostgresQuoteDraftManagementRepository(
             .update(quotations)
             .set({ clientId: client.id, status: 'rascunho', updatedAt })
             .where(eq(quotations.id, quotation.id));
-          const refreshed = await readDetail(tx, quotation.businessNumber);
+          const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;
         });

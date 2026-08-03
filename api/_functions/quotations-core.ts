@@ -1,6 +1,7 @@
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
 import {
   createPostgresQuoteDraftManagementRepository,
+  normalizeQuotationListStatus,
   QuoteManagementConflictError,
   QuoteManagementInputError,
   QuoteManagementNotFoundError,
@@ -9,13 +10,19 @@ import {
   type QuoteDraftManagementRepository,
   type QuoteDraftManagementUpdateInput,
 } from '../_db/quote-draft-management-repository.js';
+import {
+  createPostgresQuotationLifecycleRepository,
+  type CreateQuotationRevisionInput,
+  type QuotationLifecycleRepository,
+  type SetQuotationStatusInput,
+} from '../_db/quotation-lifecycle-repository.js';
 import { responseMetadata } from './orcamento-mode.js';
 
 export interface QuotationsCoreDependencies {
   repository: QuoteDraftManagementRepository;
+  lifecycleRepository?: QuotationLifecycleRepository;
 }
 
-const VALID_STATUSES = new Set(['Draft', 'Issued', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled', 'rascunho', 'emitido']);
 const VALID_ORDER_BY = new Set([
   'creation desc',
   'creation asc',
@@ -99,6 +106,15 @@ function repositoryUpdate(repository: QuoteDraftManagementRepository, id: string
   return update(id, input);
 }
 
+function lifecycleRepository(dependencies: QuotationsCoreDependencies): QuotationLifecycleRepository {
+  if (dependencies.lifecycleRepository) return dependencies.lifecycleRepository;
+  const candidate = dependencies.repository as QuoteDraftManagementRepository & Partial<QuotationLifecycleRepository>;
+  if (typeof candidate.setStatus === 'function' && typeof candidate.createRevision === 'function') {
+    return candidate as unknown as QuotationLifecycleRepository;
+  }
+  return createPostgresQuotationLifecycleRepository();
+}
+
 export function createCoreHandler(
   dependencies: QuotationsCoreDependencies = { repository: createPostgresQuoteDraftManagementRepository() },
 ): LegacyHandler {
@@ -112,8 +128,8 @@ export function createCoreHandler(
           return json(200, detail as unknown as Record<string, unknown>);
         }
         const status = (query.status || '').trim();
-        if (status && !VALID_STATUSES.has(status)) {
-          throw new QuoteManagementInputError('Status inválido. Valores aceitos: Draft, Issued, Open, Replied, Ordered, Lost, Expired, Cancelled.');
+        if (status && normalizeQuotationListStatus(status) === undefined) {
+          throw new QuoteManagementInputError('Status inválido. Valores aceitos: Rascunho, Enviado, Aprovado ou Perdido.');
         }
         const orderBy = (query.order_by || '').trim().toLowerCase();
         if (orderBy && !VALID_ORDER_BY.has(orderBy)) throw new QuoteManagementInputError('Ordenação inválida.');
@@ -156,6 +172,29 @@ export function createCoreHandler(
         const payload = parseJsonBody(event);
         const detail = await repositoryUpdate(dependencies.repository, query.id, payload as QuoteDraftManagementUpdateInput);
         return json(200, detail as unknown as Record<string, unknown>);
+      }
+
+      if (event.httpMethod === 'POST') {
+        if (!query.id) throw new QuoteManagementInputError('ID do orçamento não informado.');
+        const payload = parseJsonBody(event);
+        const action = typeof payload.action === 'string' ? payload.action.trim() : '';
+        const lifecycle = lifecycleRepository(dependencies);
+        if (action === 'set_status') {
+          const status = payload.status;
+          if (status !== 'aprovado' && status !== 'perdido') {
+            throw new QuoteManagementInputError('Status inválido. Use "aprovado" ou "perdido".');
+          }
+          const detail = await lifecycle.setStatus(query.id, payload as unknown as SetQuotationStatusInput);
+          return json(200, detail as unknown as Record<string, unknown>);
+        }
+        if (action === 'create_revision') {
+          if (typeof payload.source_revision_id !== 'string' || !payload.source_revision_id.trim()) {
+            throw new QuoteManagementInputError('Revisão de origem obrigatória.');
+          }
+          const detail = await lifecycle.createRevision(query.id, payload as unknown as CreateQuotationRevisionInput);
+          return json(200, detail as unknown as Record<string, unknown>);
+        }
+        throw new QuoteManagementInputError('Ação de orçamento inválida.');
       }
 
       // Core draft management intentionally has no delete/duplicate/ERP actions.

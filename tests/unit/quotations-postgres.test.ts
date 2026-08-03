@@ -71,6 +71,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const draft = await create.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     const createLater = createPostgresQuoteDraftRepository(() => db, { now: () => new Date('2026-07-02T12:00:00.000Z') });
     const laterDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
+    const terminalDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
+    const pendingDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     assert.equal(draft.validade_dias, explicitSettings.validadeDias);
     assert.equal(draft.pagamento, explicitSettings.pagamento);
     assert.equal(draft.entrega, explicitSettings.entrega);
@@ -134,11 +136,34 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       () => management.update(draft.quotation_name, { concurrency_token: before.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
       (error: unknown) => error instanceof QuoteManagementConflictError,
     );
-    await db.update(quotations).set({ status: 'Open' }).where(eq(quotations.id, updated.quotation_uuid));
+    await db.update(quotations).set({ status: 'enviado' }).where(eq(quotations.id, updated.quotation_uuid));
+    await db.update(quoteRevisions).set({ status: 'enviado' }).where(eq(quoteRevisions.id, updated.revision_id));
+    await db.update(quotations).set({ status: 'aprovado' }).where(eq(quotations.id, laterDraft.quotation_uuid));
+    await db.update(quoteRevisions).set({ status: 'aprovado' }).where(eq(quoteRevisions.id, laterDraft.revision_id));
+    await db.update(quotations).set({ status: 'perdido' }).where(eq(quotations.id, terminalDraft.quotation_uuid));
+    await db.update(quoteRevisions).set({ status: 'perdido' }).where(eq(quoteRevisions.id, terminalDraft.revision_id));
     await assert.rejects(
       () => management.update(draft.quotation_name, { concurrency_token: updated.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
       (error: unknown) => error instanceof QuoteManagementConflictError,
     );
+    const assertStatusAliases = async (aliases: string[], quotationId: string, canonical: string) => {
+      for (const alias of aliases) {
+        const listed = await management.list({ status: alias, limit: 200 });
+        const row = listed.rows.find((candidate) => candidate.id === quotationId);
+        assert.ok(row, `status filter ${alias} should include ${quotationId}`);
+        assert.equal(row.status_canonical, canonical, `status filter ${alias} should map to ${canonical}`);
+        assert.ok(listed.total >= 1, `status filter ${alias} should not be empty`);
+      }
+    };
+    await assertStatusAliases(['Draft', 'Rascunho', 'rascunho', ' dRaFt ', ' RASCUNHO '], pendingDraft.quotation_name, 'rascunho');
+    await assertStatusAliases(['Issued', 'Open', 'Replied', 'Expired', 'emitido', 'Enviado', 'enviado', ' oPeN ', ' ENVIADO ', ' iSsUeD '], updated.quotation_name, 'enviado');
+    await assertStatusAliases(['Ordered', 'Aprovado', 'aprovado', ' OrDeReD ', ' APROVADO '], laterDraft.quotation_name, 'aprovado');
+    await assertStatusAliases(['Lost', 'Cancelled', 'Perdido', 'perdido', ' cAnCeLLeD ', ' PERDIDO '], terminalDraft.quotation_name, 'perdido');
+    const statusSummary = (await management.list({ limit: 200 })).statusSummary;
+    assert.ok(statusSummary.Rascunho >= 1);
+    assert.ok(statusSummary.Enviado >= 1);
+    assert.ok(statusSummary.Aprovado >= 1);
+    assert.ok(statusSummary.Perdido >= 1);
     const [product] = await db.select().from(products).where(eq(products.sku, sku));
     const [tier] = await db.select().from(productPricingTiers).where(eq(productPricingTiers.productSku, sku));
     const [settingsAfter] = await db.select().from(appSettings).where(eq(appSettings.singletonId, 1));

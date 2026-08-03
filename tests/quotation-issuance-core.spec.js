@@ -61,8 +61,8 @@ test('core UI emits with progress, becomes read-only and opens the archived PDF'
   await page.route('**/api/quotation-issue**', async (route) => {
     issuedPayload = route.request().postDataJSON();
     await page.waitForTimeout(150);
-    authoritative = detail({ status: 'Issued', status_canonical: 'emitido', issued_document: document });
-    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ status: 'emitido', already_issued: false, document }) });
+    authoritative = detail({ status: 'Enviado', status_canonical: 'enviado', issued_document: document });
+    await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ status: 'enviado', already_issued: false, document }) });
   });
   await page.route('**/api/quotation-document**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/pdf', body: '%PDF-1.7\n%%EOF' });
@@ -74,7 +74,7 @@ test('core UI emits with progress, becomes read-only and opens the archived PDF'
   await emit.click();
   await expect(page.getByRole('button', { name: 'Emitindo PDF…' })).toBeDisabled();
   expect(issuedPayload).toEqual({ id });
-  await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
+  await expect(page.getByText('Enviado', { exact: true })).toBeVisible();
   await expect(page.getByText(/PDF definitivo arquivado/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   const popupPromise = page.waitForEvent('popup');

@@ -183,7 +183,7 @@ export function createQuotationIssueHandler(dependencies: QuotationIssueDependen
     try {
       const result = await issueQuotation(requestedId(event), dependencies);
       return json(result.alreadyIssued ? 200 : 201, {
-        status: 'emitido',
+        status: 'enviado',
         already_issued: result.alreadyIssued,
         document: documentPayload(result.document),
       });

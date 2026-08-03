@@ -103,7 +103,11 @@ function nullable(value: unknown): string {
 /** Convert the immutable database snapshot into the template-facing model. */
 export function quotationSnapshotViewModel(snapshot: QuotationTemplateSnapshot): QuotationTemplateViewModel {
   const { quotation, revision } = snapshot;
-  const validity = validityDate(quotation.createdAt, revision.validadeDias);
+  // Each revision owns its own validity window.  A copied revision can be
+  // created after the quotation aggregate, so deriving this from the
+  // aggregate's original createdAt would silently reuse the first revision's
+  // deadline in newly issued PDFs.
+  const validity = validityDate(revision.createdAt, revision.validadeDias);
   const items = snapshot.items
     .slice()
     .sort((left, right) => left.position - right.position)
