@@ -8,6 +8,7 @@ import {
   QUOTATION_TEMPLATES,
   renderQuotationTemplate,
   validateQuotationHtmlSource,
+  validateQuotationSource,
   validateQuotationTemplateSource,
 } from '../../api/_functions/lib/quotation-templates.js';
 import { quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
@@ -581,8 +582,41 @@ test('external template with same Frappe key cannot bypass display.total', () =>
   // only applies when trustedBuiltinKey is explicitly passed (internal path).
   const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
   assert.ok(frappe, 'frappe template exists');
-  // Call without trustedBuiltinKey (external path) — should reject
+  // Call without trustedBuiltinKey (external path) - should reject
   assert.throws(() => validateQuotationHtmlSource(frappe.source, 'frappe'), /display\.total/);
+});
+
+test('spoofed template object with Frappe key/hash is rejected at render', () => {
+  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
+  assert.ok(frappe, 'frappe template exists');
+  // Construct a forged template that copies key, hash, and source but is NOT the built-in object
+  const spoofed = {
+    key: 'frappe',
+    name: 'Frappe (Original)',
+    is_default: false,
+    source: frappe.source,
+    hash: frappe.hash,
+  };
+  const model = quotationSnapshotViewModel(snapshot);
+  // The spoofed object must NOT receive the display.total exception
+  // because renderQuotationTemplate checks reference identity, not metadata.
+  // The error is wrapped in a generic message, so check the cause chain.
+  try {
+    renderQuotationTemplate(spoofed, model);
+    assert.fail('should have thrown');
+  } catch (error) {
+    assert.ok(error instanceof Error);
+    assert.ok(error.cause instanceof Error);
+    assert.match(error.cause.message, /display\.total/);
+  }
+});
+
+test('trusted built-in Frappe template still renders with missing display.total', () => {
+  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
+  assert.ok(frappe, 'frappe template exists');
+  const model = quotationSnapshotViewModel(snapshot);
+  const html = renderQuotationTemplate(frappe, model);
+  assert.ok(html.length > 100, 'frappe built-in renders substantial HTML');
 });
 
 test('built-in definitions are validated for both AST and HTML policy', () => {
@@ -694,6 +728,18 @@ test('div rejects href attribute', () => {
 });
 
 // ── Round-trip: factory → view-model ──────────────────────────────
+
+test('validateQuotationSource rejects HTML policy violation and AST violation', () => {
+  // HTML policy violation (script tag) is caught by HTML validator first
+  assert.throws(
+    () => validateQuotationSource('<html><body><script>alert(1)</script></body></html>', 'test'),
+    /não permitida/
+  );
+  // AST violation (triple stash) is caught by AST validator
+  assert.throws(() => validateQuotationSource('{{{unsafe}}}', 'unsafe'), /Saída sem escape/);
+  // Combined: valid HTML but unsafe AST
+  assert.throws(() => validateQuotationSource('{{{value}}}', 'test'), /Saída sem escape/);
+});
 
 test('factory snapshot → view-model round-trip produces correct secoes', () => {
   const settings = normalizeQuotationSections(undefined, {

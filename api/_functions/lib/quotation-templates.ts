@@ -416,28 +416,6 @@ export function validateQuotationTemplateSource(
   validateAstProgram(ast, templateKey);
 }
 
-function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]): void {
-  const keys = new Set<string>();
-  let defaults = 0;
-  for (const definition of definitions) {
-    if (!/^[a-z0-9][a-z0-9_-]{0,119}$/.test(definition.key)) {
-      throw new Error(`Chave de template inválida: ${definition.key}`);
-    }
-    if (keys.has(definition.key)) throw new Error(`Chave de template duplicada: ${definition.key}`);
-    keys.add(definition.key);
-    if (!definition.name.trim() || !definition.source.trim())
-      throw new Error(`Template incompleto: ${definition.key}`);
-    validateQuotationTemplateSource(definition.source, definition.key);
-    if (definition.is_default) defaults += 1;
-  }
-  if (defaults !== 1)
-    throw new Error(
-      `Manifesto de templates deve ter exatamente um padrão (encontrados ${defaults}).`
-    );
-}
-
-validateDefinitions(DEFINITIONS);
-
 const TEMPLATES: readonly QuotationTemplate[] = Object.freeze(
   DEFINITIONS.map((definition) =>
     Object.freeze({
@@ -1274,6 +1252,20 @@ function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
   }
 }
 
+/**
+ * Combined validation entry point for persistence callers.
+ * Performs HTML policy validation (tokenizer + attribute/tag allowlists + required fields)
+ * then AST validation (Handlebars helper/expression restrictions).
+ */
+export function validateQuotationSource(
+  source: string,
+  templateKey: string,
+  trustedBuiltinKey?: string
+): void {
+  validateQuotationHtmlSource(source, templateKey, trustedBuiltinKey);
+  validateQuotationTemplateSource(source, templateKey);
+}
+
 export function validateQuotationHtmlSource(
   source: string,
   templateKey = 'desconhecido',
@@ -1301,12 +1293,27 @@ export function validateQuotationHtmlSource(
   }
 }
 
-// Validate built-in definitions against HTML policy (runs once at module load).
-// This ensures the shipped templates are safe even if source strings change.
-// Uses the trusted builtin key path so the Frappe exception applies.
-for (const definition of DEFINITIONS) {
-  validateQuotationHtmlSource(definition.source, definition.key, definition.key);
+function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]): void {
+  const keys = new Set<string>();
+  let defaults = 0;
+  for (const definition of definitions) {
+    if (!/^[a-z0-9][a-z0-9_-]{0,119}$/.test(definition.key)) {
+      throw new Error(`Chave de template inválida: ${definition.key}`);
+    }
+    if (keys.has(definition.key)) throw new Error(`Chave de template duplicada: ${definition.key}`);
+    keys.add(definition.key);
+    if (!definition.name.trim() || !definition.source.trim())
+      throw new Error(`Template incompleto: ${definition.key}`);
+    validateQuotationSource(definition.source, definition.key, definition.key);
+    if (definition.is_default) defaults += 1;
+  }
+  if (defaults !== 1)
+    throw new Error(
+      `Manifesto de templates deve ter exatamente um padrão (encontrados ${defaults}).`
+    );
 }
+
+validateDefinitions(DEFINITIONS);
 
 export function renderQuotationTemplate(
   template: QuotationTemplate,
@@ -1315,13 +1322,10 @@ export function renderQuotationTemplate(
   const environment = createEnvironment();
   let compiled: TemplateDelegate;
   try {
-    // Detect built-in templates: pass trustedBuiltinKey so historical
-    // Frappe display.total exception applies for the exact compiled source.
-    const trustedKey = TEMPLATES.some((t) => t.key === template.key && t.hash === template.hash)
-      ? template.key
-      : undefined;
-    validateQuotationHtmlSource(template.source, template.key, trustedKey);
-    validateQuotationTemplateSource(template.source, template.key);
+    // Only the exact frozen built-in objects qualify for trusted exceptions.
+    // Forged objects with matching key/hash metadata are rejected.
+    const trustedKey = TEMPLATES.some((t) => Object.is(t, template)) ? template.key : undefined;
+    validateQuotationSource(template.source, template.key, trustedKey);
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,
       knownHelpersOnly: true,
