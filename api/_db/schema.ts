@@ -9,10 +9,16 @@ import {
   pgTable,
   primaryKey,
   timestamp,
+  text,
   uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import {
+  DEFAULT_QUOTATION_SECTIONS,
+  type QuotationSectionsSettings,
+  type QuotationSectionsSnapshot,
+} from './quotation-content.js';
 
 /**
  * Global dashboard settings live in one deliberate singleton row. Keeping the
@@ -24,8 +30,12 @@ export const appSettings = pgTable(
   {
     singletonId: integer('singleton_id').primaryKey().default(1),
     validadeDias: integer('validade_dias').notNull().default(15),
-    pagamento: varchar('pagamento', { length: 500 }).notNull().default(''),
+    pagamento: varchar('pagamento', { length: 4000 }).notNull().default(''),
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
+    quotationSections: jsonb('quotation_sections')
+      .$type<QuotationSectionsSettings>()
+      .notNull()
+      .default(DEFAULT_QUOTATION_SECTIONS),
     // Keep currency exact all the way through PostgreSQL. Drizzle's default
     // numeric mode maps this column to a string instead of a JavaScript float.
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
@@ -49,6 +59,43 @@ export const appSettings = pgTable(
  * mutable display fields stay in PostgreSQL. `ativo = false` is an archive,
  * never a physical delete.
  */
+export const quotationTemplates = pgTable(
+  'quotation_templates',
+  {
+    id: uuid('id').primaryKey(),
+    key: varchar('key', { length: 120 }).notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    archived: boolean('archived').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('quotation_templates_key_unique').on(table.key)]
+);
+
+export const quotationTemplateVersions = pgTable(
+  'quotation_template_versions',
+  {
+    id: uuid('id').primaryKey(),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => quotationTemplates.id, { onDelete: 'restrict' }),
+    version: integer('version').notNull(),
+    source: text('source').notNull(),
+    sourceHash: varchar('source_hash', { length: 64 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('quotation_template_versions_template_version_unique').on(
+      table.templateId,
+      table.version
+    ),
+    uniqueIndex('quotation_template_versions_template_hash_unique').on(
+      table.templateId,
+      table.sourceHash
+    ),
+  ]
+);
+
 export const products = pgTable(
   'products',
   {
@@ -228,8 +275,10 @@ export const quoteRevisions = pgTable(
     version: integer('version').notNull(),
     status: varchar('status', { length: 32 }).notNull().default('rascunho'),
     validadeDias: integer('validade_dias').notNull(),
-    pagamento: varchar('pagamento', { length: 500 }).notNull().default(''),
+    pagamento: varchar('pagamento', { length: 4000 }).notNull().default(''),
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
+    templateVersionId: uuid('template_version_id').references(() => quotationTemplateVersions.id),
+    sectionsSnapshot: jsonb('sections_snapshot').$type<QuotationSectionsSnapshot>(),
     fretePadrao: numeric('frete_padrao', { precision: 20, scale: 2 }).notNull().default('0.00'),
     frete: numeric('frete', { precision: 20, scale: 2 }).notNull().default('0.00'),
     observacoes: varchar('observacoes', { length: 4000 }).notNull().default(''),
