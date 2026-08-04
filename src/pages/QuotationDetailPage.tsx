@@ -1068,12 +1068,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
               <FileText size={14} /> Abrir PDF emitido
             </Button>
           )}
-          {!draftEditable && data.issued_document && templateSelectionUnsaved && (
-            <Button variant="success" size="sm" disabled={issuing} onClick={issuePdf}>
-              {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
-              {issuing ? 'Re-emitindo…' : 'Re-emitir com novo modelo'}
-            </Button>
-          )}
           {draftEditable && !editing && templateSelectionUnsaved && (
             <span className="text-xs text-warning">
               Salve o modelo selecionado antes de emitir.
