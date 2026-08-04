@@ -3,6 +3,15 @@
 import { pathToFileURL } from 'node:url';
 import postgres from 'postgres';
 
+function parseQuotationSections(value) {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function fail(error) {
   const message = error instanceof Error ? error.message : '';
   const safeMessage = /^(Versão de template ausente|Revisões incompletas|Verificação pós-commit)/.test(message)
@@ -47,9 +56,7 @@ async function migrate(databaseUrl) {
     const [settings] = await sql`select * from app_settings where singleton_id = 1`;
     if (settings) {
       const sections = migration.legacySettingsSections(settings);
-      const existing = typeof settings.quotation_sections === 'string'
-        ? JSON.parse(settings.quotation_sections)
-        : settings.quotation_sections;
+      const existing = parseQuotationSections(settings.quotation_sections);
       const shouldSeedLegacySections = migration.isEmptyQuotationSections(existing);
       if (shouldSeedLegacySections) {
         await sql`update app_settings set quotation_sections = ${JSON.stringify(sections)}::jsonb where singleton_id = 1`;
@@ -94,4 +101,4 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   else await migrate(process.env.DATABASE_URL).catch(fail);
 }
 
-export { migrate };
+export { migrate, parseQuotationSections };

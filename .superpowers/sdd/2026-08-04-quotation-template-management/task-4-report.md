@@ -55,3 +55,16 @@ No follow-up commit was needed because the worktree now matches `00550ae` exactl
 - `git status --short` - clean.
 - `git diff --stat 00550ae` - empty.
 - `npx prettier --check api/_db/quotation-lifecycle-repository.ts api/_db/quotation-template-migration.ts api/_db/quotation-write-lock.ts api/_db/quote-draft-management-repository.ts scripts/migrate-quotation-templates.mjs` - passed before restoration.
+
+## Fix evidence (round 2)
+
+- `scripts/migrate-quotation-templates.mjs` now parses string-valued `app_settings.quotation_sections` inside a guarded helper; malformed JSON becomes `undefined` instead of aborting the transaction.
+- Parsed primitive strings and invalid object shapes continue through `isEmptyQuotationSections`, whose normalization fallback treats them as invalid/empty and seeds legacy settings.
+- Existing semantic empty-default detection and meaningful valid settings preservation remain unchanged.
+- Added regression coverage for malformed JSON strings, JSON string primitives, and invalid object values.
+- `npm run build:api` - passed.
+- `node --test tests/unit/quotation-template-migration.test.ts` - passed, 6 tests.
+- `npm run type-check` - passed.
+- `npm run lint -- --quiet` - passed.
+- `node --test tests/unit/quotations-postgres.test.ts` - skipped because no database URL is configured.
+- `git diff --check` - passed.

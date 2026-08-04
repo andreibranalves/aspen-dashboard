@@ -7,6 +7,7 @@ import {
   templateSeedPlan,
 } from '../../api/_db/quotation-template-migration.js';
 import { acquireQuotationWriteLock } from '../../api/_db/quotation-write-lock.js';
+import { parseQuotationSections } from '../../scripts/migrate-quotation-templates.mjs';
 
 test('legacy revision receives a frozen sections snapshot', () => {
   const snapshot = snapshotFromLegacyRevision({
@@ -38,6 +39,12 @@ test('empty sections detection is semantic and preserves meaningful settings', (
   assert.equal(isEmptyQuotationSections({
     ...JSON.parse(JSON.stringify({ schema_version: 1, prazo_producao: { enabled: true, title: 'Prazo de produção' }, pagamento: { enabled: true, title: 'Pagamento', body: 'Pix' }, condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' } })),
   }), false);
+});
+
+test('invalid quotation sections values are treated as empty', () => {
+  for (const value of ['not-json', '"invalid-string"', { unknown: true }]) {
+    assert.equal(isEmptyQuotationSections(parseQuotationSections(value)), true);
+  }
 });
 
 test('postgres transaction lock adapter executes a tagged query', async () => {
