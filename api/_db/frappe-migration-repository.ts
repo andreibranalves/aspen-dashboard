@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import {
   clients,
   frappeImportLineage,
@@ -392,6 +393,7 @@ export function createPostgresFrappeMigrationRepository(
     async applyQuotationUnit(unit: QuotationUnit): Promise<void> {
       const db = getDb();
       await db.transaction(async (tx) => {
+        await acquireQuotationWriteLock(tx);
         const clientId = unit.quotation.clientId;
         if (!clientId) throw new Error('Cliente do orçamento não importado.');
         const [clientRow] = await tx

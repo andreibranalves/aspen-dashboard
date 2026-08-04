@@ -12,6 +12,7 @@ import {
   type QuoteDraftManagementDetail,
 } from './quote-draft-management-repository.js';
 import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
+import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -164,6 +165,7 @@ export function createPostgresQuotationLifecycleRepository(
       const token = requiredToken(input);
       try {
         const detail = await getDb().transaction(async (tx) => {
+          await acquireQuotationWriteLock(tx);
           const quotation = await lockedQuotation(tx, id);
           assertToken(quotation, token);
           if (quotation.status !== 'enviado') {
@@ -195,6 +197,7 @@ export function createPostgresQuotationLifecycleRepository(
       const token = requiredToken(input);
       try {
         const detail = await getDb().transaction(async (tx) => {
+          await acquireQuotationWriteLock(tx);
           const quotation = await lockedQuotation(tx, id);
           assertToken(quotation, token);
 

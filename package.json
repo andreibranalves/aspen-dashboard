@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "migrate:frappe-crm": "npm run build:api && node scripts/migrate-frappe-crm.mjs",
+    "migrate:quotation-templates": "npm run build:api && node scripts/migrate-quotation-templates.mjs",
     "migrate:frappe": "npm run migrate:frappe-crm",
     "preview": "vite preview",
     "server": "vercel dev",

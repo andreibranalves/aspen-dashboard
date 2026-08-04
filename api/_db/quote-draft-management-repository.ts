@@ -2,6 +2,7 @@ import { and, asc, desc, eq, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import {
   clients,
   products,
@@ -1059,6 +1060,7 @@ export function createPostgresQuoteDraftManagementRepository(
       try {
         const db = getDb();
         const detail = await db.transaction(async (tx) => {
+          await acquireQuotationWriteLock(tx);
           const quotation = await readLockedQuotation(tx, normalizedId);
           if (!quotation) throw new QuoteManagementNotFoundError();
           const currentToken = tokenFor(quotation.updatedAt);

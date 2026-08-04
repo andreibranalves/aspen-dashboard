@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import {
   appSettings,
   clients,
@@ -635,6 +636,7 @@ export function createPostgresQuoteDraftRepository(
     try {
       const createdAt = ensureDate(now());
       const result = await database.transaction(async (tx) => {
+        await acquireQuotationWriteLock(tx);
         let client: QuoteDraftClientSnapshot;
         if (clientId) {
           const [existing] = await tx
