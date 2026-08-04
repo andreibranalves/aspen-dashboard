@@ -164,7 +164,9 @@ export default function SplitResultCard({
 
   const isDone = draft.status === 'done' && draft.result?.success;
   const resultData = draft.result?.data;
-  const items = isDone ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || [] : draft.edited.items || [];
+  const items = isDone
+    ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || []
+    : draft.edited.items || [];
   const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
   const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
@@ -354,7 +356,11 @@ export default function SplitResultCard({
                                   key={p.sku || p.item_code}
                                   type="button"
                                   disabled={isCoreUnpricedProduct(p)}
-                                  title={isCoreUnpricedProduct(p) ? 'Preço indisponível para este produto.' : undefined}
+                                  title={
+                                    isCoreUnpricedProduct(p)
+                                      ? 'Preço indisponível para este produto.'
+                                      : undefined
+                                  }
                                   className={cn(
                                     'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2',
                                     isCoreUnpricedProduct(p)
@@ -369,7 +375,9 @@ export default function SplitResultCard({
                                   <span className="font-mono text-[10px] text-fg-muted shrink-0">
                                     {p.sku || p.item_code}
                                   </span>
-                                  <span className="truncate">{String(p.nome || p.item_name || '—')}</span>
+                                  <span className="truncate">
+                                    {String(p.nome || p.item_name || '—')}
+                                  </span>
                                   {isCoreUnpricedProduct(p) && (
                                     <span className="ml-auto shrink-0 text-[10px] text-destructive">
                                       Preço indisponível
