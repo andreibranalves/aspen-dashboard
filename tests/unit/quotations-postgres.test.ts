@@ -19,7 +19,7 @@ import {
   getQuotationTemplateManifest,
   renderQuotationTemplate,
 } from '../../api/_functions/lib/quotation-templates.js';
-import { appSettings, clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations } from '../../api/_db/schema.js';
+import { appSettings, clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -123,10 +123,87 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const before = await managementGet(draft.quotation_name);
     assert.ok(before);
     const laterBefore = await managementGet(laterDraft.quotation_name);
+    const [minimalVersion] = await db
+      .select({ id: quotationTemplateVersions.id })
+      .from(quotationTemplateVersions)
+      .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+      .where(eq(quotationTemplates.key, 'minimalista'))
+      .limit(1);
+    assert.ok(minimalVersion);
+    await assert.rejects(
+      () => managementUpdate(draft.quotation_name, {
+        concurrency_token: before.concurrency_token,
+        template_key: defaultTemplate.key,
+        template_version_id: minimalVersion.id,
+        items: [{ item_code: sku, qty: '30.000' }],
+      }),
+      (error: unknown) => error instanceof Error && error.name === 'QuoteManagementInputError',
+    );
+    const [minimalTemplate] = await db
+      .select({ archived: quotationTemplates.archived })
+      .from(quotationTemplates)
+      .where(eq(quotationTemplates.key, 'minimalista'))
+      .limit(1);
+    await db.update(quotationTemplates).set({ archived: true }).where(eq(quotationTemplates.key, 'minimalista'));
+    try {
+      await assert.rejects(
+        () => managementUpdate(draft.quotation_name, {
+          concurrency_token: before.concurrency_token,
+          template_key: 'minimalista',
+          items: [{ item_code: sku, qty: '30.000' }],
+        }),
+        (error: unknown) => error instanceof Error && error.name === 'QuoteManagementInputError',
+      );
+    } finally {
+      await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
+    }
     assert.ok(laterBefore);
     assert.equal(before.frete_padrao, explicitSettings.fretePadrao);
     assert.equal(before.pagamento, explicitSettings.pagamento);
     assert.equal(before.items[0].suggested_unit_price, '9.00');
+    for (const malformedBase of [null, 'invalid', []]) {
+      await assert.rejects(
+        () => managementUpdate(draft.quotation_name, {
+          concurrency_token: before.concurrency_token,
+          secoes: { base: malformedBase },
+          items: [{ item_code: sku, qty: '30.000' }],
+        }),
+        (error: unknown) => error instanceof Error && error.name === 'QuoteManagementInputError',
+      );
+    }
+    const storedBase = JSON.parse(JSON.stringify(laterBefore.secoes));
+    const sectionOverride = await managementUpdate(laterDraft.quotation_name, {
+      concurrency_token: laterBefore.concurrency_token,
+      items: [{ item_code: sku, qty: '30.000' }],
+      secoes: {
+        pagamento: { enabled: true, title: 'Pagamento', body: 'Seção pagamento' },
+        condicoes_gerais: { enabled: true, title: 'Condições', body: 'Seção condição' },
+        prazo_producao: { enabled: false, title: 'Prazo de produção' },
+      },
+    });
+    assert.equal(sectionOverride.pagamento, 'Seção pagamento');
+    assert.equal(sectionOverride.observacoes, 'Seção condição');
+    assert.equal(sectionOverride.entrega, '');
+    assert.equal(sectionOverride.prazo_producao, '');
+    assert.ok(sectionOverride.secoes);
+    assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);
+    assert.deepEqual(sectionOverride.secoes.pagamento.base, storedBase.pagamento.base);
+    assert.equal(sectionOverride.secoes.prazo_producao.current.enabled, false);
+    assert.ok(sectionOverride.secoes);
+    const restored = await managementUpdate(laterDraft.quotation_name, {
+      concurrency_token: sectionOverride.concurrency_token,
+      items: [{ item_code: sku, qty: '30.000' }],
+      secoes: {
+        current: {
+          pagamento: sectionOverride.secoes.pagamento.base,
+          condicoes_gerais: sectionOverride.secoes.condicoes_gerais.base,
+          prazo_producao: sectionOverride.secoes.prazo_producao.base,
+        },
+      },
+    });
+    assert.ok(restored.secoes);
+    assert.deepEqual(restored.secoes.pagamento.current, restored.secoes.pagamento.base);
+    assert.deepEqual(restored.secoes.condicoes_gerais.current, restored.secoes.condicoes_gerais.base);
     const updated = await managementUpdate(draft.quotation_name, {
       concurrency_token: before.concurrency_token,
       client_id: secondClientId,

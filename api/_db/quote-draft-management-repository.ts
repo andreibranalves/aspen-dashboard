@@ -419,12 +419,13 @@ async function readTemplateSelection(
   if (rawVersion === undefined && values.length === 0) {
     if (revision.templateVersionId) {
       const [selected] = await tx
-        .select({ key: quotationTemplates.key, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
+        .select({ key: quotationTemplates.key, archived: quotationTemplates.archived, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
         .from(quotationTemplateVersions)
         .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
         .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
         .limit(1);
-      if (selected) return selected;
+      if (selected && !selected.archived) return selected;
+      if (selected?.archived) throw new QuoteManagementInputError('Template do orçamento inválido ou arquivado.');
     }
     const [resolved] = await tx
       .select({ key: quotationTemplates.key, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
@@ -451,6 +452,17 @@ async function readTemplateSelection(
 
 function copy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function legacySectionsSnapshotForUpdate(
@@ -487,13 +499,13 @@ function sectionSnapshotForUpdate(
   if (!isRecord(supplied)) throw new QuoteManagementInputError('Seções devem ser um objeto.');
   const stored = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
   const candidate = supplied as Record<string, unknown>;
-  if (isRecord(candidate.base)) {
+  if (hasOwn(candidate, 'base')) {
     const expectedBase = {
       prazo_producao: stored.prazo_producao.base,
       pagamento: stored.pagamento.base,
       condicoes_gerais: stored.condicoes_gerais.base,
     };
-    if (JSON.stringify(candidate.base) !== JSON.stringify(expectedBase))
+    if (!isRecord(candidate.base) || canonicalJson(candidate.base) !== canonicalJson(expectedBase))
       throw new QuoteManagementInputError('A base das seções não pode ser alterada.');
   }
   for (const key of ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const) {
@@ -1231,6 +1243,7 @@ export function createPostgresQuoteDraftManagementRepository(
           }
           const templateSelection = await readTemplateSelection(tx, input, revision);
           const sectionsSnapshot = sectionSnapshotForUpdate(input, revision);
+          const hasDedicatedPrazo = hasOwn(input, 'prazo_producao');
           const clientId = selectedClientId || quotation.clientId;
           const [client] = await tx
             .select()
@@ -1360,17 +1373,31 @@ export function createPostgresQuoteDraftManagementRepository(
             input.prazo_producao,
             'Prazo de produção',
             500,
-            revision.prazoProducao
+            sectionsSnapshot && !sectionsSnapshot.prazo_producao.current.enabled
+              ? ''
+              : revision.prazoProducao
           );
+          const revisionSections = sectionsSnapshot || legacySectionsSnapshotForUpdate(revision, {
+            pagamento,
+            entrega,
+            observacoes,
+            prazoProducao,
+          });
+          // Dedicated legacy input wins when both forms are supplied. Otherwise
+          // disabling the section clears its legacy mirror; enabling preserves
+          // the existing duration because the section has no body field.
+          if (sectionsSnapshot) {
+            revisionSections.prazo_producao.current.enabled = hasDedicatedPrazo
+              ? Boolean(prazoProducao)
+              : Boolean(prazoProducao) && sectionsSnapshot.prazo_producao.current.enabled;
+          }
+          const synchronizedPrazoProducao = revisionSections.prazo_producao.current.enabled
+            ? prazoProducao
+            : '';
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
           const revisionMetadata = {
             templateVersionId: templateSelection!.versionId,
-            sectionsSnapshot: sectionsSnapshot || legacySectionsSnapshotForUpdate(revision, {
-              pagamento,
-              entrega,
-              observacoes,
-              prazoProducao,
-            }),
+            sectionsSnapshot: revisionSections,
           };
 
           await tx
@@ -1383,7 +1410,7 @@ export function createPostgresQuoteDraftManagementRepository(
               // are deliberately never accepted from the edit payload.
               frete: formatMoneyCents(freightCents),
               observacoes,
-              prazoProducao,
+              prazoProducao: synchronizedPrazoProducao,
               templatePadrao: templateSelection?.key || revision.templatePadrao,
               templateHash: templateSelection?.hash || revision.templateHash,
               templateVersionId: revisionMetadata.templateVersionId,
