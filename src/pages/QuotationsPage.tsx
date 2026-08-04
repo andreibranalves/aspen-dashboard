@@ -206,24 +206,21 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     fetchData('', '', 1, limit);
   }, []);
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (
-        !confirm(
-          `Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`
-        )
+  const handleDelete = useCallback(async (id: string) => {
+    if (
+      !confirm(
+        `Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`
       )
-        return;
-      try {
-        await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
-        setData((prev) => prev.filter((r) => r.id !== id));
-        setTotalRecords((prev) => prev - 1);
-      } catch (err) {
-        alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
-      }
-    },
-    []
-  );
+    )
+      return;
+    try {
+      await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
+      setData((prev) => prev.filter((r) => r.id !== id));
+      setTotalRecords((prev) => prev - 1);
+    } catch (err) {
+      alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
+    }
+  }, []);
 
   const handleDuplicate = useCallback(
     async (id: string) => {
@@ -276,7 +273,9 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       setPage(nextPage);
       await fetchData(search, status, nextPage, limit);
     } catch (err) {
-      alert('Erro ao excluir propostas selecionadas: ' + ((err as Error).message || 'Tente novamente.'));
+      alert(
+        'Erro ao excluir propostas selecionadas: ' + ((err as Error).message || 'Tente novamente.')
+      );
     }
   }, [data, selectedIds, page, search, status, limit, fetchData]);
 
@@ -353,7 +352,11 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         />
         {!coreMode && (
           <>
-            <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`} href={buildQuotationViewUrl(row.id)} />
+            <ActionBtn
+              icon={FileText}
+              label={`Abrir PDF do orçamento ${row.id}`}
+              href={buildQuotationViewUrl(row.id)}
+            />
             <ActionBtn
               icon={Copy}
               label={`Duplicar orçamento ${row.id}`}
@@ -648,49 +651,53 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         </div>
       )}
 
-      {!coreMode && <div
+      <div
         className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
-      >
-        <div className="mx-auto max-w-[1060px] px-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
-            <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
-              <div className="flex flex-wrap items-center gap-6">
-                <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                    aria-label="Selecionar todos os orçamentos desta página"
-                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
-                  />
-                  <span>
-                    {selectedCount} proposta{selectedCount !== 1 ? 's' : ''} selecionada
-                    {selectedCount !== 1 ? 's' : ''}
-                  </span>
+        >
+          <div className="mx-auto max-w-[1060px] px-4">
+            <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
+              <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
+                <div className="flex flex-wrap items-center gap-6">
+                  <div className="flex items-center gap-2 text-sm font-medium text-fg">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={(e) => toggleSelectAll(e.target.checked)}
+                      aria-label="Selecionar todos os orçamentos desta página"
+                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                    />
+                    <span>
+                      {selectedCount} proposta{selectedCount !== 1 ? 's' : ''} selecionada
+                      {selectedCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-xs text-fg-muted">Valor total selecionado</span>
+                    <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-xs text-fg-muted">Valor total selecionado</span>
-                  <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedIds([])}
+                    disabled={selectedCount === 0}
+                  >
+                    Limpar seleção
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={handleBulkDelete}
+                    disabled={selectedCount === 0}
+                  >
+                    <Trash2 size={16} className="mr-2" />
+                    Excluir propostas
+                  </Button>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedIds([])}
-                  disabled={selectedCount === 0}
-                >
-                  Limpar seleção
-                </Button>
-                <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
-                  <Trash2 size={16} className="mr-2" />
-                  Excluir propostas
-                </Button>
               </div>
             </div>
           </div>
         </div>
-      </div>}
     </div>
   );
 }
