@@ -72,6 +72,57 @@ test.describe('Configurações de orçamento', () => {
     await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
   });
 
+  test('gerencia modelos, preview, versões, padrão e arquivamento', async ({ page }) => {
+    const source = '<html><body>{{ quote.name }} {{ secoes.pagamento.body }} {{ secoes.condicoes_gerais.body }} {{ secoes.prazo_producao.body }}</body></html>';
+    const templates = [
+      { id: 'one', key: 'padrao', name: 'Padrão', archived: false, is_default: true, current_version_id: 'v1', current_version: 1, current_hash: 'hash', usage_count: 2, updated_at: '2026-01-01T00:00:00.000Z' },
+      { id: 'two', key: 'alternativo', name: 'Alternativo', archived: false, is_default: false, current_version_id: 'v2', current_version: 1, current_hash: 'hash2', usage_count: 0, updated_at: '2026-01-01T00:00:00.000Z' },
+    ];
+    let defaultKey = 'padrao';
+    await page.route('**/api/settings?scope=operational**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
+    });
+    await page.route('**/api/settings', async (route) => {
+      if (route.request().method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
+      } else {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
+      }
+    });
+    await page.route('**/api/quotation-templates**', async (route) => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.method() === 'GET' && url.searchParams.has('id')) {
+        const item = templates.find((template) => template.id === url.searchParams.get('id')) || templates[1];
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...item, current_source: source, versions: [{ id: 'v1', version: 1, source_hash: 'hash', created_at: '2026-01-01T00:00:00.000Z' }] } }) });
+      } else if (request.method() === 'GET') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates, default_key: defaultKey }) });
+      } else if (url.pathname.endsWith('/validate')) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ valid: true, warnings: ['A seção prazo_producao não é usada pelo template.'], preview: '<p>preview</p>' }) });
+      } else if (request.method() === 'PUT') {
+        const payload = request.postDataJSON();
+        if (payload.action === 'set_default') defaultKey = 'alternativo';
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload.action === 'archive' ? { archived: true } : { default_key: defaultKey, id: 'v2' }) });
+      } else {
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'two' }) });
+      }
+    });
+
+    await page.goto('/#/settings');
+    await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toBeVisible();
+    await page.getByRole('button', { name: /Alternativo alternativo/ }).click();
+    await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
+    await page.getByRole('button', { name: 'Validar e visualizar preview' }).click();
+    await expect(page.getByTitle('Preview do template')).toBeVisible();
+    await page.getByRole('button', { name: 'Salvar nova versão' }).click();
+    await expect(page.getByText('Template salvo com sucesso.')).toBeVisible();
+    page.on('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Definir como padrão' }).click();
+    await expect(page.getByText('Template padrão alterado.')).toBeVisible();
+    await page.getByRole('button', { name: 'Arquivar' }).click();
+    await expect(page.getByText('Template arquivado.')).toBeVisible();
+  });
+
   test('exibe erro de carregamento e permite tentar novamente', async ({ page }) => {
     let settingsCalls = 0;
     await page.route('**/api/settings?scope=operational**', async (route) => {

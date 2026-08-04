@@ -15,6 +15,8 @@ import {
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { QuotationSectionsEditor } from '@/components/quotation/QuotationSectionsEditor';
+import { QuotationTemplateManager } from '@/components/quotation/QuotationTemplateManager';
 import { getSettings, saveSettings, type DashboardSettings } from '@/lib/settingsApi';
 import { apiGet } from '@/lib/api';
 
@@ -227,15 +229,12 @@ export default function SettingsPage() {
     setSavedMessage(null);
   }
 
-  function updateSection(section: 'pagamento' | 'condicoes_gerais', field: 'title' | 'body', value: string) {
+  function updateSections(secoes: DashboardSettings['secoes']) {
     setForm((current) => ({
       ...current,
-      [section === 'pagamento' ? 'pagamento' : 'observacoes']:
-        field === 'body' ? value : current[section === 'pagamento' ? 'pagamento' : 'observacoes'],
-      secoes: {
-        ...current.secoes,
-        [section]: { ...current.secoes[section], [field]: value },
-      },
+      pagamento: secoes.pagamento.body,
+      observacoes: secoes.condicoes_gerais.body,
+      secoes,
     }));
     setSaveError(null);
     setSavedMessage(null);
@@ -256,11 +255,7 @@ export default function SettingsPage() {
         validade_dias: validadeDias,
         entrega: form.entrega,
         frete_padrao: form.frete_padrao,
-        secoes: {
-          ...form.secoes,
-          pagamento: { ...form.secoes.pagamento, body: form.pagamento },
-          condicoes_gerais: { ...form.secoes.condicoes_gerais, body: form.observacoes },
-        },
+        secoes: form.secoes,
       });
       setForm(toForm(saved));
       setSavedMessage('Configurações salvas com sucesso.');
@@ -276,6 +271,8 @@ export default function SettingsPage() {
       <PageHeader title="Configurações" />
 
       <OperationalModeSection />
+
+      <QuotationTemplateManager />
 
       <section className="rounded-xl border border-line bg-surface p-6 space-y-5">
         <div className="flex items-start gap-3">
@@ -358,43 +355,24 @@ export default function SettingsPage() {
               </label>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-1.5 text-sm text-fg">
-                <span className="font-medium">Condição de pagamento</span>
-                <textarea
-                  value={form.pagamento}
-                  onChange={(event) => updateSection('pagamento', 'body', event.target.value)}
-                  disabled={saving}
-                  maxLength={500}
-                  rows={3}
-                  className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </label>
-
-              <label className="space-y-1.5 text-sm text-fg">
-                <span className="font-medium">Prazo de entrega</span>
-                <textarea
-                  value={form.entrega}
-                  onChange={(event) => updateField('entrega', event.target.value)}
-                  disabled={saving}
-                  maxLength={500}
-                  rows={3}
-                  className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </label>
-            </div>
-
-            <label className="block space-y-1.5 text-sm text-fg">
-              <span className="font-medium">Observações padrão</span>
+            <label className="space-y-1.5 text-sm text-fg">
+              <span className="font-medium">Prazo de entrega</span>
               <textarea
-                value={form.observacoes}
-                onChange={(event) => updateSection('condicoes_gerais', 'body', event.target.value)}
+                value={form.entrega}
+                onChange={(event) => updateField('entrega', event.target.value)}
                 disabled={saving}
-                maxLength={4000}
-                rows={5}
+                maxLength={500}
+                rows={3}
                 className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </label>
+
+            <QuotationSectionsEditor
+              mode="settings"
+              sections={form.secoes}
+              editable={!saving}
+              onChange={updateSections}
+            />
 
             {saveError && (
               <div
