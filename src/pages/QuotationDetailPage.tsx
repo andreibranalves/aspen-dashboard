@@ -1068,9 +1068,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
               <FileText size={14} /> Abrir PDF emitido
             </Button>
           )}
-          {draftEditable && !editing && templateSelectionUnsaved && (
-            <span className="text-xs text-warning">
-              Salve o modelo selecionado antes de emitir.
+          {draftEditable && !editing && (
+            <span className="text-xs text-fg-muted">
+              Altere o modelo acima para visualizar ou emitir com a capa selecionada.
             </span>
           )}
           {message && (
