@@ -109,6 +109,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(overrideDraft.secoes.pagamento.current.body, 'Override');
     assert.equal(overrideDraft.secoes.pagamento.current.enabled, false);
     assert.equal(overrideDraft.secoes.pagamento.current.title, 'Título de pagamento configurado');
+    assert.deepEqual(overrideDraft.secoes.condicoes_gerais.current, explicitSettings.quotationSections.condicoes_gerais);
+    assert.deepEqual(overrideDraft.secoes.prazo_producao.current, explicitSettings.quotationSections.prazo_producao);
     overrideDraft.secoes.pagamento.current.body = 'Mutado';
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));

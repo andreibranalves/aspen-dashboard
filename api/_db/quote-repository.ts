@@ -828,9 +828,10 @@ export function createPostgresQuoteDraftRepository(
             }
             const supplied = (input.secoes || {}) as Record<string, unknown>;
             const mergeSection = (key: 'prazo_producao' | 'pagamento' | 'condicoes_gerais') => {
-              const override = supplied[key];
-              if (!override || typeof override !== 'object' || Array.isArray(override)) return override;
               const base = baseSections[key];
+              const override = supplied[key];
+              if (override === undefined) return { ...base };
+              if (!override || typeof override !== 'object' || Array.isArray(override)) return override;
               return { ...base, ...(override as Record<string, unknown>) };
             };
             const legacyOverride =
