@@ -41,7 +41,8 @@ Run `git diff -- docs/superpowers/plans/2026-08-04-no-pdf-html-only.md scripts/c
 - Manter WhatsApp PDF sem acoplar a emissão de orçamento.
 - Erros de API devem permanecer em português brasileiro e não expor stack trace.
 - O validador HTML deve usar tokenizer/state machine estrito e allowlists explícitas, não apenas regex de rejeição.
-- Os campos essenciais exigidos são `quote_number`, `client.name`, um bloco `{{#each items}}...{{/each}}` e `display.total`.
+- Templates novos e novas versões exigem os campos essenciais `quote_number`, `client.name`, um bloco `{{#each items}}...{{/each}}` e `display.total`.
+- O source Frappe legado migrado pode omitir `display.total` somente quando o hash corresponder exatamente ao source histórico conhecido; essa exceção não vale para novas versões.
 - A migração, criação de orçamento, atualização de rascunho e criação de revisão compartilham o mesmo lock advisory transacional.
 - Preview histórico nunca aceita `template`/`template_key` como override; somente rascunho aceita `template_version_id` para seleção ainda não salva.
 - O endpoint de templates é o único owner de `template_padrao` na UI; salvamento de seções não envia esse campo e o backend preserva o valor atual quando omitido.
@@ -282,6 +283,8 @@ Implement it as a strict tokenizer/state machine that recognizes doctype, start/
 The exhaustive tag allowlist must include only the document/common tags used by the built-ins plus the safe tags listed above, and SVG must be limited to `svg`, `g` and `path`. The exhaustive attribute allowlist must cover the built-ins' `class`, `id`, `style`, `href`, `src`, `rel`, `charset`, `width`, `height`, `viewBox`, `preserveAspectRatio`, `xmlns`, `xmlns:xlink`, `fill`, `stroke`, `d` and `data-name`; reject all other attributes, including `xlink:href`, `foreignObject`, `use`, form actions and unknown `data-*` attributes. Normalize tag/attribute names, character references, control whitespace and protocol casing before URL checks.
 
 For the required fields, parse the Handlebars AST and require these exact paths: `quote_number`, `client.name`, an `each` block whose path is `items`, and `display.total`. Return Portuguese field-specific errors for each missing path. Missing `secoes.prazo_producao`, `secoes.pagamento` or `secoes.condicoes_gerais` remains a preview warning only.
+
+The only exception is the exact historical Frappe source/hash already present in `QUOTATION_TEMPLATES`; identify it by source hash in the static definition, allow its missing `display.total` with a compatibility warning, and do not apply that exception to user-created or subsequently saved Frappe versions.
 
 Call it before `validateQuotationTemplateSource` in `renderQuotationTemplate` and in every persistence validation path.
 
@@ -1577,6 +1580,7 @@ git commit -m "test: cover quotation template versioning and overrides"
 
 - The Oracle report's missing `src/pages/ManualOrcamentoPage.tsx` finding was verified false: the path exists in the current checkout and remains the correct manual creation surface.
 - Historical preview override, shared write locking, strict HTML parsing, default ownership, archived draft selection, invalid-default repair, delivery-mirror preservation and migration-test ownership were incorporated above before implementation.
+- User decision: preserve the exact migrated Frappe source/hash as a historical compatibility exception for missing `display.total`; every new template/version still requires `display.total`.
 
 ## Final verification checklist
 
