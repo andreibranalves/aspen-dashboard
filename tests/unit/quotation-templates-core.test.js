@@ -577,13 +577,17 @@ test('new source missing display.total is rejected', () => {
   assert.throws(() => validateQuotationHtmlSource(newSource, 'new-template'), /display\.total/);
 });
 
-test('external template with same Frappe key cannot bypass display.total', () => {
-  // Even if a user/persisted template has key 'frappe', the exception
-  // only applies when trustedBuiltinKey is explicitly passed (internal path).
+test('public validators cannot grant the Frappe display.total exemption', () => {
   const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
   assert.ok(frappe, 'frappe template exists');
-  // Call without trustedBuiltinKey (external path) - should reject
-  assert.throws(() => validateQuotationHtmlSource(frappe.source, 'frappe'), /display\.total/);
+  assert.throws(
+    () => validateQuotationHtmlSource(frappe.source, 'frappe', 'frappe'),
+    /display\.total/
+  );
+  assert.throws(
+    () => validateQuotationSource(frappe.source, 'frappe', 'frappe'),
+    /display\.total/
+  );
 });
 
 test('spoofed template object with Frappe key/hash is rejected at render', () => {

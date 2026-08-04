@@ -426,6 +426,8 @@ const TEMPLATES: readonly QuotationTemplate[] = Object.freeze(
 );
 const BY_KEY = new Map(TEMPLATES.map((template) => [template.key, template]));
 const DEFAULT_TEMPLATE = TEMPLATES.find((template) => template.is_default)!;
+const FRAPPE_DEFINITION = DEFINITIONS.find((definition) => definition.key === 'frappe')!;
+const FRAPPE_TEMPLATE = TEMPLATES.find((template) => template.key === 'frappe')!;
 
 export const QUOTATION_TEMPLATES = TEMPLATES;
 export const DEFAULT_QUOTATION_TEMPLATE = DEFAULT_TEMPLATE;
@@ -558,7 +560,8 @@ const SVG_ONLY_TAGS = new Set(['g', 'path', 'defs']);
 // Trusted built-in keys that are allowed to omit display.total.
 // Only the exact source strings compiled into DEFINITIONS above qualify.
 // External/persisted templates with the same key or hash do NOT get this exception.
-const TRUSTED_FRAPPE_KEYS = new Set(['frappe']);
+// Private provenance token. Public source validators never receive this value.
+const FRAPPE_PROVENANCE_TOKEN = Symbol('historical-frappe-template');
 
 // Global attribute allowlist (applied to all tags that lack per-tag restrictions)
 // NOTE: href and src are NOT here — they are only allowed on specific tags via TAG_ATTRIBUTE_RESTRICTIONS
@@ -1160,7 +1163,7 @@ type AstWalk = Record<string, unknown> & { type?: string };
 function findRequiredFields(
   source: string,
   templateKey: string,
-  trustedBuiltinKey?: string
+  provenance?: symbol
 ): { missing: string[]; secoesPresent: boolean; missingSections: string[] } {
   const ast = Handlebars.parse(source) as unknown as AstWalk;
   const found = {
@@ -1208,12 +1211,9 @@ function findRequiredFields(
   if (!found.client_name) missing.push('client.name');
   if (!found.each_items) missing.push('#each items');
 
-  // display.total is a hard requirement, except for trusted built-in templates
-  // that are known to lack it (the exact historical Frappe source compiled above).
-  // This exemption is NOT available to external/persisted templates even if they
-  // have the same key or hash — only the trustedBuiltinKey path grants it.
-  const isTrustedBuiltin =
-    trustedBuiltinKey !== undefined && TRUSTED_FRAPPE_KEYS.has(trustedBuiltinKey);
+  // Only the exact historical source, reached through the private internal path,
+  // may omit display.total. Public/persisted validation always requires it.
+  const isTrustedBuiltin = source === FRAPPE_SOURCE && provenance === FRAPPE_PROVENANCE_TOKEN;
   if (!found.display_total && isTrustedBuiltin) {
     // Emit the plan-required compatibility warning
     console.warn(
@@ -1257,19 +1257,27 @@ function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
  * Performs HTML policy validation (tokenizer + attribute/tag allowlists + required fields)
  * then AST validation (Handlebars helper/expression restrictions).
  */
-export function validateQuotationSource(
+export function validateQuotationSource(source: string, templateKey: string): void {
+  validateQuotationSourceInternal(source, templateKey);
+}
+
+export function validateQuotationHtmlSource(source: string, templateKey = 'desconhecido'): void {
+  validateQuotationHtmlSourceInternal(source, templateKey);
+}
+
+function validateQuotationSourceInternal(
   source: string,
   templateKey: string,
-  trustedBuiltinKey?: string
+  provenance?: symbol
 ): void {
-  validateQuotationHtmlSource(source, templateKey, trustedBuiltinKey);
+  validateQuotationHtmlSourceInternal(source, templateKey, provenance);
   validateQuotationTemplateSource(source, templateKey);
 }
 
-export function validateQuotationHtmlSource(
+function validateQuotationHtmlSourceInternal(
   source: string,
   templateKey = 'desconhecido',
-  trustedBuiltinKey?: string
+  provenance?: symbol
 ): void {
   // Reject Handlebars expressions in URL/style contexts on the ORIGINAL source
   // (before stripping, since stripping removes them and bypasses the check)
@@ -1284,7 +1292,7 @@ export function validateQuotationHtmlSource(
   // Required fields check (only for full HTML documents)
   const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
   if (isHtmlDocument) {
-    const { missing } = findRequiredFields(source, templateKey, trustedBuiltinKey);
+    const { missing } = findRequiredFields(source, templateKey, provenance);
     if (missing.length > 0) {
       throw new Error(
         `Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`
@@ -1304,7 +1312,9 @@ function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]
     keys.add(definition.key);
     if (!definition.name.trim() || !definition.source.trim())
       throw new Error(`Template incompleto: ${definition.key}`);
-    validateQuotationSource(definition.source, definition.key, definition.key);
+    const provenance =
+      definition === FRAPPE_DEFINITION ? FRAPPE_PROVENANCE_TOKEN : undefined;
+    validateQuotationSourceInternal(definition.source, definition.key, provenance);
     if (definition.is_default) defaults += 1;
   }
   if (defaults !== 1)
@@ -1324,8 +1334,9 @@ export function renderQuotationTemplate(
   try {
     // Only the exact frozen built-in objects qualify for trusted exceptions.
     // Forged objects with matching key/hash metadata are rejected.
-    const trustedKey = TEMPLATES.some((t) => Object.is(t, template)) ? template.key : undefined;
-    validateQuotationSource(template.source, template.key, trustedKey);
+    const provenance =
+      template === FRAPPE_TEMPLATE ? FRAPPE_PROVENANCE_TOKEN : undefined;
+    validateQuotationSourceInternal(template.source, template.key, provenance);
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,
       knownHelpersOnly: true,
