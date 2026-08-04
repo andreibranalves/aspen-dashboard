@@ -40,6 +40,11 @@ Run `git diff -- docs/superpowers/plans/2026-08-04-no-pdf-html-only.md scripts/c
 - Manter `quotation-preview?format=pdf` para geração sob demanda.
 - Manter WhatsApp PDF sem acoplar a emissão de orçamento.
 - Erros de API devem permanecer em português brasileiro e não expor stack trace.
+- O validador HTML deve usar tokenizer/state machine estrito e allowlists explícitas, não apenas regex de rejeição.
+- Os campos essenciais exigidos são `quote_number`, `client.name`, um bloco `{{#each items}}...{{/each}}` e `display.total`.
+- A migração, criação de orçamento, atualização de rascunho e criação de revisão compartilham o mesmo lock advisory transacional.
+- Preview histórico nunca aceita `template`/`template_key` como override; somente rascunho aceita `template_version_id` para seleção ainda não salva.
+- O endpoint de templates é o único owner de `template_padrao` na UI; salvamento de seções não envia esse campo e o backend preserva o valor atual quando omitido.
 - Cada tarefa termina com teste direcionado, verificação e commit isolado.
 
 ---
@@ -53,6 +58,7 @@ Run `git diff -- docs/superpowers/plans/2026-08-04-no-pdf-html-only.md scripts/c
 - Modificar `api/_db/quotation-template-repository.ts` para carregar a versão imutável e o snapshot da revisão.
 - Criar `api/_db/quotation-template-library-repository.ts` para CRUD de modelos e versões.
 - Criar `api/_db/quotation-template-migration.ts` para funções puras de migração e montagem de snapshots legados.
+- Criar `api/_db/quotation-write-lock.ts` para o lock advisory compartilhado por migração e escritores de revisões.
 
 ### Banco e migração
 
@@ -87,6 +93,7 @@ Run `git diff -- docs/superpowers/plans/2026-08-04-no-pdf-html-only.md scripts/c
 - Criar `tests/unit/quotation-content.test.ts`.
 - Criar `tests/unit/quotation-template-library.test.ts`.
 - Criar `tests/unit/quotation-template-migration.test.ts`.
+- Criar `tests/unit/quotation-schema.test.ts`.
 - Modificar `tests/unit/quotation-templates-core.test.js`.
 - Modificar `tests/unit/settings.test.ts` e `tests/unit/settings-postgres.test.ts`.
 - Modificar `tests/unit/quotations-core.test.ts`, `tests/unit/quotations-postgres.test.ts` e `tests/unit/quotation-lifecycle-postgres.test.ts`.
@@ -143,7 +150,7 @@ test('normaliza três seções e combina campos legados em condições gerais', 
   assert.equal(sections.pagamento.body, '50% na aprovação');
   assert.equal(
     sections.condicoes_gerais.body,
-    'Prazo de entrega:\n3 dias úteis\n\nObservações:\nA arte precisa ser aprovada antes da produção.',
+    'Prazo de entrega:\n3 dias úteis\n\nObservações:\nA arte precisa ser aprovada antes da produção.'
   );
 });
 
@@ -179,10 +186,7 @@ export const QUOTATION_SECTION_SCHEMA_VERSION = 1 as const;
 export const MAX_SECTION_TITLE_LENGTH = 120;
 export const MAX_SECTION_BODY_LENGTH = 4000;
 
-export type QuotationSectionKey =
-  | 'prazo_producao'
-  | 'pagamento'
-  | 'condicoes_gerais';
+export type QuotationSectionKey = 'prazo_producao' | 'pagamento' | 'condicoes_gerais';
 
 export interface QuotationSectionSettings {
   enabled: boolean;
@@ -200,8 +204,14 @@ export interface QuotationSectionsSettings {
 export interface QuotationSectionsSnapshot {
   schema_version: typeof QUOTATION_SECTION_SCHEMA_VERSION;
   prazo_producao: { base: QuotationSectionSettings; current: QuotationSectionSettings };
-  pagamento: { base: QuotationSectionSettings & { body: string }; current: QuotationSectionSettings & { body: string } };
-  condicoes_gerais: { base: QuotationSectionSettings & { body: string }; current: QuotationSectionSettings & { body: string } };
+  pagamento: {
+    base: QuotationSectionSettings & { body: string };
+    current: QuotationSectionSettings & { body: string };
+  };
+  condicoes_gerais: {
+    base: QuotationSectionSettings & { body: string };
+    current: QuotationSectionSettings & { body: string };
+  };
 }
 ```
 
@@ -244,7 +254,7 @@ test('body_html escapes user text and preserves line breaks', () => {
   });
   const html = renderQuotationTemplate(
     { ...DEFAULT_QUOTATION_TEMPLATE, source: '{{secoes.pagamento.body_html}}' },
-    model,
+    model
   );
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;<br>Saldo/);
   assert.doesNotMatch(html, /<script>/);
@@ -252,6 +262,7 @@ test('body_html escapes user text and preserves line breaks', () => {
 ```
 
 Add rejected HTML cases for `<script>`, `onclick`, `javascript:` and `<iframe>`.
+Also test that an HTML document missing each required budget field (number, client, item loop and total) is rejected, while omission of any `secoes.*` placeholder returns a warning only.
 
 - [ ] **Step 5: Implement the policy and view-model support**
 
@@ -260,8 +271,17 @@ Add `validateQuotationHtmlSource(source: string, templateKey?: string): void` in
 It must reject the forbidden tags, event attributes, dangerous URL protocols, CSS `@import`, CSS `expression(` and CSS `url(javascript:...)`.
 
 It must allow the tags and attributes already used by the three built-in templates plus common safe document tags: `article`, `b`, `blockquote`, `caption`, `code`, `col`, `colgroup`, `dd`, `dl`, `dt`, `em`, `footer`, `h3`, `h4`, `h5`, `h6`, `hr`, `img`, `li`, `main`, `nav`, `ol`, `pre`, `small`, `tfoot`, `ul`.
-
+The allowlist is exhaustive: reject unknown tags and attributes, including `meta` attributes other than `charset`, URL-bearing attributes other than `href`/`src`/`link`, all `data-*` attributes except the existing `data-name`, and all SVG active-content features such as `foreignObject`, `use` and `xlink:href`.
+Normalize tag/attribute names, HTML character references, control whitespace and protocol casing before checking URLs; allow only `https:` and `mailto:` where applicable, and only `https:` or `data:image/*` for images.
+Apply the same declaration policy to `<style>` blocks and `style` attributes: reject `@import`, `expression(`, every `url(`, `behavior`, `-moz-binding`, and any event-like property.
+Add mixed-case, encoded-protocol, malformed-markup, unknown-tag/attribute and unsafe-SVG tests.
 The validator must remain dependency-free.
+
+Implement it as a strict tokenizer/state machine that recognizes doctype, start/end tags, quoted attributes, comments and style content, and rejects malformed or unterminated markup before applying policy checks. Do not use a regex-only allowlist.
+
+The exhaustive tag allowlist must include only the document/common tags used by the built-ins plus the safe tags listed above, and SVG must be limited to `svg`, `g` and `path`. The exhaustive attribute allowlist must cover the built-ins' `class`, `id`, `style`, `href`, `src`, `rel`, `charset`, `width`, `height`, `viewBox`, `preserveAspectRatio`, `xmlns`, `xmlns:xlink`, `fill`, `stroke`, `d` and `data-name`; reject all other attributes, including `xlink:href`, `foreignObject`, `use`, form actions and unknown `data-*` attributes. Normalize tag/attribute names, character references, control whitespace and protocol casing before URL checks.
+
+For the required fields, parse the Handlebars AST and require these exact paths: `quote_number`, `client.name`, an `each` block whose path is `items`, and `display.total`. Return Portuguese field-specific errors for each missing path. Missing `secoes.prazo_producao`, `secoes.pagamento` or `secoes.condicoes_gerais` remains a preview warning only.
 
 Call it before `validateQuotationTemplateSource` in `renderQuotationTemplate` and in every persistence validation path.
 
@@ -298,7 +318,7 @@ git commit -m "feat: add quotation section content model"
 - Create: `drizzle/0011_quotation_template_library.sql`
 - Create: `drizzle/meta/0011_snapshot.json`
 - Modify: `drizzle/meta/_journal.json`
-- Test: `tests/unit/quotation-template-migration.test.ts`
+- Test: `tests/unit/quotation-schema.test.ts`
 
 **Interfaces:**
 
@@ -317,7 +337,12 @@ Use the existing Drizzle migration sequence (`drizzle/0010_add_item_notas.sql` i
 Add this assertion to the test:
 
 ```ts
-import { appSettings, quoteRevisions, quotationTemplates, quotationTemplateVersions } from '../../api/_db/schema.js';
+import {
+  appSettings,
+  quoteRevisions,
+  quotationTemplates,
+  quotationTemplateVersions,
+} from '../../api/_db/schema.js';
 
 assert.equal(appSettings.quotationSections.name, 'quotation_sections');
 assert.equal(quoteRevisions.templateVersionId.name, 'template_version_id');
@@ -329,7 +354,7 @@ assert.equal(quotationTemplateVersions.sourceHash.name, 'source_hash');
 Run:
 
 ```bash
-node --test tests/unit/quotation-template-migration.test.ts
+node --test tests/unit/quotation-schema.test.ts
 ```
 
 Expected: FAIL because the schema exports and columns do not exist.
@@ -351,7 +376,7 @@ export const quotationTemplates = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('quotation_templates_key_unique').on(table.key)],
+  (table) => [uniqueIndex('quotation_templates_key_unique').on(table.key)]
 );
 
 export const quotationTemplateVersions = pgTable(
@@ -367,13 +392,21 @@ export const quotationTemplateVersions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('quotation_template_versions_template_version_unique').on(table.templateId, table.version),
-    uniqueIndex('quotation_template_versions_template_hash_unique').on(table.templateId, table.sourceHash),
-  ],
+    uniqueIndex('quotation_template_versions_template_version_unique').on(
+      table.templateId,
+      table.version
+    ),
+    uniqueIndex('quotation_template_versions_template_hash_unique').on(
+      table.templateId,
+      table.sourceHash
+    ),
+  ]
 );
 ```
 
 Add `quotationSections` to `appSettings` as JSONB typed with `QuotationSectionsSettings` and a valid default based on `DEFAULT_QUOTATION_SECTIONS`.
+
+Because both editable section bodies allow up to 4000 characters, widen the legacy `pagamento` columns in `app_settings` and `quote_revisions` from `varchar(500)` to at least `varchar(4000)` in this forward migration, or lower the payment-body limit to 500 everywhere before implementation. Do not truncate a section body when writing compatibility mirrors.
 
 Add these nullable columns to `quoteRevisions`:
 
@@ -406,7 +439,7 @@ Run:
 
 ```bash
 npm run build:api
-node --test tests/unit/quotation-template-migration.test.ts
+node --test tests/unit/quotation-schema.test.ts
 ```
 
 Expected: PASS with zero TypeScript errors and zero test failures.
@@ -414,7 +447,7 @@ Expected: PASS with zero TypeScript errors and zero test failures.
 - [ ] **Step 5: Commit the schema migration**
 
 ```bash
-git add api/_db/schema.ts drizzle/0011_quotation_template_library.sql drizzle/meta
+git add api/_db/schema.ts drizzle/0011_quotation_template_library.sql drizzle/meta tests/unit/quotation-schema.test.ts
 git commit -m "feat: add versioned quotation template schema"
 ```
 
@@ -493,6 +526,8 @@ Normalize names with a 255-character maximum.
 Reject source strings longer than 200000 UTF-8 characters.
 
 Validate source with both `validateQuotationHtmlSource` and `validateQuotationTemplateSource` before insert or update.
+
+`saveVersion` must also render the source with the same deterministic preview fixture used by `validate`, and must persist only after validation and rendering both succeed; a client-supplied validation result is never trusted.
 
 Compute `source_hash` with the existing SHA-256 helper.
 
@@ -587,6 +622,7 @@ git commit -m "feat: add quotation template library API"
 **Files:**
 
 - Create: `api/_db/quotation-template-migration.ts`
+- Create: `api/_db/quotation-write-lock.ts`
 - Create: `scripts/migrate-quotation-templates.mjs`
 - Modify: `package.json`
 - Create: `tests/unit/quotation-template-migration.test.ts`
@@ -658,7 +694,7 @@ Do not use an import of the generated `api/**/*.js` files before `npm run build:
 
 The script must not import or invoke Vercel Blob.
 
-It must be safe to run repeatedly.
+It must be safe to run repeatedly. Use `api/_db/quotation-write-lock.ts` as the single implementation of a transaction-scoped PostgreSQL advisory lock. The migration must acquire it before reading or writing revisions and hold it through the final in-transaction verification; quote creation, draft updates and lifecycle revision creation must acquire the same lock before their transactions write revisions. After commit, acquire the lock in a new read transaction and repeat the missing-row verification before declaring success.
 
 Use `postgres` and the compiled schema or parameterized SQL, matching `scripts/migrate-frappe-crm.mjs` ESM conventions.
 
@@ -673,9 +709,10 @@ The transaction must:
 7. Abort with a Portuguese error listing the key and hash if no matching version exists.
 8. Write `template_version_id` and `sections_snapshot` for every revision.
 9. Verify no revision has a missing version or snapshot before commit.
-10. Leave legacy columns untouched for compatibility.
+10. Validate `app_settings.template_padrao` against the seeded active models; preserve a valid configured key, otherwise set `padrao` and report `default_repaired`.
+11. Leave legacy columns untouched for compatibility.
 
-The script must print a JSON report with counts for models, versions, revisions backfilled and already-complete rows.
+The script must print a JSON report with counts for models, versions, revisions backfilled, already-complete rows, and `default_repaired`.
 
 - [ ] **Step 4: Add the package command and migration instructions**
 
@@ -737,6 +774,7 @@ git commit -m "feat: migrate quotation templates and snapshots"
 - `DashboardSettings` gains `secoes: QuotationSectionsSettings`.
 - GET and PUT continue returning legacy `pagamento`, `entrega`, `observacoes` fields for compatibility.
 - New PUT payload accepts `secoes` and derives legacy mirrors.
+- `template_padrao` remains accepted for legacy callers, but the Settings UI does not send it; the template-library `set_default` action is the sole UI writer of the default key.
 
 - [ ] **Step 1: Add failing settings tests**
 
@@ -775,8 +813,10 @@ When saving, write the validated JSON into `quotationSections`.
 Keep legacy columns populated as follows:
 
 - `pagamento` receives `secoes.pagamento.body`.
-- `entrega` receives the incoming legacy `entrega` when supplied, otherwise an empty string for new section-first clients.
+- `entrega` receives incoming legacy `entrega` when supplied, otherwise preserves the stored mirror; section-first writes must never clear it implicitly.
 - `observacoes` receives `secoes.condicoes_gerais.body`.
+
+When `template_padrao` is omitted, preserve the current database value. This prevents a stale Settings form from overwriting a default changed through the template manager.
 
 This preserves old readers without creating a second source of truth for the new UI.
 
@@ -831,7 +871,7 @@ git commit -m "feat: persist quotation section defaults"
 - `saveQuotationTemplateVersion(id, input)` calls `PUT /quotation-templates?id=...` with `action: 'save_version'`.
 - `archiveQuotationTemplate(id)` calls `PUT /quotation-templates?id=...` with `action: 'archive'`.
 - `setDefaultQuotationTemplate(id)` calls `PUT /quotation-templates?id=...` with `action: 'set_default'`.
-- `QuotationSectionsEditor` exposes `value`, `onChange`, `disabled` and `showReset` props.
+- `QuotationSectionsEditor` has one stable prop contract shared by Settings and draft detail: use an explicit `mode: 'settings' | 'revision'`, `sections`, `editable`, `onChange`, optional `productionDeadline`/`onProductionDeadlineChange`, and optional `onRestore`; do not define incompatible prop shapes in later tasks.
 - `QuotationTemplateManager` owns list/detail/validation/save state and exposes `onTemplatesChanged`.
 
 `QuotationTemplateManager` must not nest a `<form>` inside the existing settings form; use a local `div` with explicit button handlers or split the surrounding settings form before integration.
@@ -907,6 +947,8 @@ Keep the template manager's create/version/preview actions in its own non-nested
 
 Keep global numeric fields and section defaults in the existing settings save request so there are no nested forms or competing writes.
 
+The template manager owns `set_default`; the parent settings save state must not send `template_padrao`. Update the displayed default from the manager response instead of copying a stale settings value back into the save payload.
+
 Load settings and templates independently so a template failure does not erase operational status or numeric settings.
 
 Preserve retry and Portuguese error states.
@@ -922,6 +964,9 @@ Extend `tests/settings.spec.js` to cover:
 - changing the default model.
 - archiving a non-default model.
 - toggling and editing all three global sections.
+- archived/default badges, usage count, destructive-action confirmation and retryable template-load failure.
+- saving a 4000-character payment body without truncating the compatibility mirror.
+- changing the default in the manager, then saving sections/numeric settings, keeps the new default key.
 
 Run:
 
@@ -946,6 +991,7 @@ git commit -m "feat: add quotation template settings UI"
 **Files:**
 
 - Modify: `api/_db/quote-repository.ts`
+- Modify: `api/_db/quotation-write-lock.ts`
 - Modify: `api/_functions/lib/quotation-templates.ts`
 - Modify: `tests/unit/quotations-core.test.ts`
 - Modify: `tests/unit/quotations-postgres.test.ts`
@@ -992,6 +1038,8 @@ Normalize a supplied `secoes` payload and create the revision snapshot.
 
 - [ ] **Step 3: Insert the new revision fields and compatibility mirrors**
 
+Acquire the shared quotation write lock before the transaction writes the revision.
+
 Set these fields in the quote revision insert:
 
 ```ts
@@ -1000,10 +1048,12 @@ sectionsSnapshot: sectionsSnapshot,
 templatePadrao: template.model.key,
 templateHash: template.version.sourceHash,
 pagamento: sectionsSnapshot.pagamento.current.body,
-entrega: '',
+entrega: settings.entrega,
 observacoes: sectionsSnapshot.condicoes_gerais.current.body,
 prazoProducao: deadline,
 ```
+
+If a legacy delivery value is explicitly supplied, use it instead of `settings.entrega`. Never clear the compatibility `entrega` mirror merely because the new section payload was used.
 
 Keep `fretePadrao`, `frete`, validity, client snapshot and item snapshots unchanged.
 
@@ -1035,6 +1085,7 @@ git commit -m "feat: snapshot template content on quote creation"
 
 - Modify: `api/_db/quote-draft-management-repository.ts`
 - Modify: `api/_db/quotation-lifecycle-repository.ts`
+- Modify: `api/_db/quotation-write-lock.ts`
 - Modify: `api/_functions/quotations-core.ts`
 - Modify: `tests/unit/quotation-lifecycle-postgres.test.ts`
 - Modify: `tests/quotation-lifecycle.spec.js`
@@ -1081,6 +1132,8 @@ sections_snapshot?: unknown;
 
 - [ ] **Step 3: Make template selection asynchronous and database-backed**
 
+Acquire the shared quotation write lock before the draft/lifecycle transaction writes a revision.
+
 Replace `readTemplateSelection` with an async helper that receives the transaction.
 
 It must preserve legacy `template_padrao` input support.
@@ -1096,6 +1149,8 @@ If no template field is sent, retain the current revision version.
 - [ ] **Step 4: Update the draft transaction**
 
 Normalize the incoming section snapshot against the current revision snapshot.
+
+The persisted `base` is authoritative and must never be client-editable. If a full snapshot is sent, validate that its `base` exactly matches the stored base and reject a mismatch; alternatively accept only `current` values and reconstruct the snapshot server-side. A restore request copies the stored base into current.
 
 When sections are supplied, use `current` values as the new revision values:
 
@@ -1153,7 +1208,7 @@ git commit -m "feat: support quotation draft content overrides"
 - `readQuotationTemplateSnapshot(db, id)` accepts quotation business number, quotation UUID or revision UUID.
 - Preview defaults to the exact `templateVersionId` stored by the revision.
 - Draft preview may receive `template_version_id` for an unsaved model selection.
-- Non-draft preview rejects a template override that differs from the persisted version.
+- Persisted previews reject legacy `template` and `template_key` overrides entirely; draft previews accept only `template_version_id` and reject a non-draft override with 409.
 
 - [ ] **Step 1: Add failing preview tests**
 
@@ -1178,6 +1233,8 @@ If the input is a revision UUID and no quotation matches directly, find the quot
 For a business number or quotation UUID, load the latest revision as current behavior does.
 
 Join `quotation_template_versions` by `revision.templateVersionId`.
+
+Reject query parameters `template` and `template_key` before selecting a source. For a draft, resolve only `template_version_id`, verify that it belongs to the selected quotation and that its model is active; for any non-draft revision return 409 when an override is supplied.
 
 If a migrated legacy row lacks `templateVersionId`, resolve the static built-in by `templatePadrao` and `templateHash`, log a compatibility warning and return the static source.
 
@@ -1330,7 +1387,7 @@ git commit -m "feat: select quotation template during creation"
 
 - Detail payload contains `secoes`, `template_version_id`, `template_version`, `template_hash` and `concurrency_token`.
 - Save payload contains `template_key`, `secoes`, `prazo_producao` and the existing fields.
-- `QuotationSectionsEditor` receives `editable`, `sections`, `productionDeadline`, `onChange`, `onProductionDeadlineChange` and `onRestore`.
+- `QuotationSectionsEditor` uses the single contract defined in Task 6 (`mode`, `sections`, `editable`, `onChange`, optional production-deadline callbacks and `onRestore`).
 
 - [ ] **Step 1: Add failing detail-page tests**
 
@@ -1368,9 +1425,9 @@ Use `data.status_canonical` to determine editability.
 
 Show the model selector only as editable for rascunho.
 
-Keep the current `Visualizar` action and point it to the selected version for drafts.
+Keep the current `Visualizar` action and point it to `template_version_id` for drafts.
 
-For persisted non-draft previews, omit override query parameters so the backend uses the frozen version.
+For persisted non-draft previews, omit override query parameters so the backend uses the frozen version. Remove all `template=` query construction, including PDF preview links.
 
 - [ ] **Step 4: Update save and reset behavior**
 
@@ -1381,6 +1438,8 @@ After save, replace local state with the authoritative server response.
 `Restaurar padrão` must copy `base` into `current`, not fetch `/settings`.
 
 When a new model is selected, update the selected version ID from the active metadata list.
+
+For an existing draft whose current model is archived, load the full template metadata list for the detail selector and include that archived current model as the selected option; do not offer other archived models as new choices. Saving without changing it must preserve the archived reference and historical rendering.
 
 Keep concurrency conflict handling unchanged.
 
@@ -1485,6 +1544,8 @@ The first command may match validator rejection strings, but it must not find an
 
 Run it against TypeScript/TSX sources only, excluding generated `api/**/*.js` output.
 
+Run the security browser test that loads a validated preview in a sandbox and asserts no script execution, no network request and no unsafe SVG active content.
+
 The second command must show no new PDF-issuance dependency; `@vercel/blob` remains required by communication media and is not removed by this feature.
 
 Generated `api/**/*.js` files must not be staged.
@@ -1498,6 +1559,10 @@ npm run migrate:quotation-templates
 
 The second report must show no duplicate versions and no additional revisions changed.
 
+Add an explicit lifecycle regression test that status transition/emission performs no PDF generation, Blob upload, document-storage call or document URL return; preview `format=pdf` remains the only on-demand PDF path.
+
+Add a concurrency regression test that runs migration/backfill and a revision writer through the shared lock and verifies no committed revision is missing `template_version_id` or `sections_snapshot`.
+
 - [ ] **Step 6: Commit final test updates**
 
 ```bash
@@ -1507,6 +1572,11 @@ git commit -m "test: cover quotation template versioning and overrides"
 ```
 
 ---
+
+## Plan review adjudications
+
+- The Oracle report's missing `src/pages/ManualOrcamentoPage.tsx` finding was verified false: the path exists in the current checkout and remains the correct manual creation surface.
+- Historical preview override, shared write locking, strict HTML parsing, default ownership, archived draft selection, invalid-default repair, delivery-mirror preservation and migration-test ownership were incorporated above before implementation.
 
 ## Final verification checklist
 
