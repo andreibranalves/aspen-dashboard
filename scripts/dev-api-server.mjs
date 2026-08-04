@@ -143,6 +143,7 @@ const server = createServer(async (req, res) => {
         'x-forwarded-proto': 'http',
       },
       rawUrl: req.url,
+      url: req.url,
     };
 
     const result = await handler(event);
