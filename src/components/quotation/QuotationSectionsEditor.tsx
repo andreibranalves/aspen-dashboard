@@ -50,6 +50,7 @@ export function QuotationSectionsEditor({
             <label className="flex items-center gap-2 text-sm font-medium text-fg">
               <input
                 type="checkbox"
+                aria-label={`Exibir seção - ${label}`}
                 checked={section.enabled}
                 onChange={(event) => update(key, 'enabled', event.target.checked)}
                 disabled={!editable}

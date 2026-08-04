@@ -27,8 +27,10 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   const [defaultKey, setDefaultKey] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<QuotationTemplateDetail | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [source, setSource] = useState('');
@@ -38,7 +40,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
 
   const loadTemplates = useCallback(async () => {
     setLoading(true);
-    setLoadError(null);
+    setListError(null);
     try {
       const result = await listQuotationTemplates();
       const available = result.templates || result.data || [];
@@ -46,13 +48,15 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       setDefaultKey(result.default_key || available.find((item) => item.is_default)?.key || '');
       setSelectedId((current) => current || available[0]?.id || null);
     } catch (error) {
-      setLoadError(errorMessage(error, 'Não foi possível carregar os templates.'));
+      setListError(errorMessage(error, 'Não foi possível carregar os templates.'));
     } finally {
       setLoading(false);
     }
   }, []);
 
   const loadDetail = useCallback(async (id: string) => {
+    setDetailLoading(true);
+    setDetailError(null);
     try {
       const result = await getQuotationTemplate(id);
       setDetail(result);
@@ -62,7 +66,10 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
       setValidation(null);
       setMessage(null);
     } catch (error) {
-      setLoadError(errorMessage(error, 'Não foi possível carregar o template.'));
+      setDetail(null);
+      setDetailError(errorMessage(error, 'Não foi possível carregar o template.'));
+    } finally {
+      setDetailLoading(false);
     }
   }, []);
 
@@ -101,8 +108,10 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
     setSaving(true);
     setMessage(null);
     try {
-      if (detail) await saveQuotationTemplateVersion(detail.id, { name, source });
-      else {
+      if (detail) {
+        await saveQuotationTemplateVersion(detail.id, { name, source });
+        await loadDetail(detail.id);
+      } else {
         const created = await createQuotationTemplate({ key, name, source });
         setSelectedId(created.id);
       }
@@ -154,13 +163,13 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
         <p className="mt-1 text-sm text-fg-muted">Gerencie modelos HTML e suas versões.</p>
       </div>
       {loading && !templates.length && <div aria-label="Carregando templates" className="text-sm text-fg-muted">Carregando templates...</div>}
-      {loadError && (
+      {listError && (
         <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
-          <div className="flex-1"><p>{loadError}</p><Button className="mt-3" size="sm" variant="outline" onClick={() => void loadTemplates()}><RefreshCw size={14} /> Recarregar modelos</Button></div>
+          <div className="flex-1"><p>{listError}</p><Button className="mt-3" size="sm" variant="outline" onClick={() => void loadTemplates()}><RefreshCw size={14} /> Recarregar modelos</Button></div>
         </div>
       )}
-      {!loadError && (
+      {!listError && (
         <div className="grid gap-5 lg:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.5fr)]">
           <div className="space-y-2">
             <Button type="button" variant="outline" size="sm" onClick={resetNew}><Plus size={14} /> Novo modelo</Button>
@@ -181,6 +190,14 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
             ))}
           </div>
           <div className="space-y-4">
+            {detailLoading && <div aria-label="Carregando detalhe do template" className="text-sm text-fg-muted">Carregando detalhe...</div>}
+            {detailError && selectedId && (
+              <div role="alert" className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm">
+                <p>{detailError}</p>
+                <Button className="mt-3" size="sm" variant="outline" onClick={() => void loadDetail(selectedId)}><RefreshCw size={14} /> Tentar novamente</Button>
+              </div>
+            )}
+            {!detailLoading && !detailError && <>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Nome</span><Input value={name} onChange={(event) => setName(event.target.value)} disabled={saving} /></label>
               <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Chave imutável</span><Input value={key} onChange={(event) => setKey(event.target.value)} disabled={saving || !!detail} /></label>
@@ -197,6 +214,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
               {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => void archive()} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
             </div>
             {defaultKey && <p className="text-xs text-fg-muted">Modelo padrão: {defaultKey}</p>}
+            </>}
           </div>
         </div>
       )}

@@ -52,7 +52,14 @@ test.describe('Configurações de orçamento', () => {
 
     await page.getByLabel('Validade padrão (dias)').fill('30');
     await page.getByLabel('Frete padrão (R$)').fill('12.5');
-    await page.getByLabel('Condição de pagamento').fill('50% no pedido');
+    await page.getByLabel('Exibir seção - Prazo de produção').uncheck();
+    await page.getByLabel('Título - Prazo de produção').fill('Produção customizada');
+    await page.getByLabel('Exibir seção - Pagamento').uncheck();
+    await page.getByLabel('Título - Pagamento').fill('Condição comercial');
+    const paymentBody = 'P'.repeat(4000);
+    await page.getByLabel('Condição de pagamento').fill(paymentBody);
+    await page.getByLabel('Exibir seção - Condições Gerais').uncheck();
+    await page.getByLabel('Título - Condições Gerais').fill('Notas gerais');
     await page.getByLabel('Prazo de entrega').fill('7 dias úteis');
     await page.getByLabel('Observações padrão').fill('Aprovar arte antes da produção.');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
@@ -64,9 +71,9 @@ test.describe('Configurações de orçamento', () => {
       frete_padrao: '12.5',
       secoes: {
         schema_version: 1,
-        prazo_producao: { enabled: true, title: 'Prazo de produção' },
-        pagamento: { enabled: true, title: 'Pagamento', body: '50% no pedido' },
-        condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Aprovar arte antes da produção.' },
+        prazo_producao: { enabled: false, title: 'Produção customizada' },
+        pagamento: { enabled: false, title: 'Condição comercial', body: paymentBody },
+        condicoes_gerais: { enabled: false, title: 'Notas gerais', body: 'Aprovar arte antes da produção.' },
       },
     });
     await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
@@ -79,6 +86,8 @@ test.describe('Configurações de orçamento', () => {
       { id: 'two', key: 'alternativo', name: 'Alternativo', archived: false, is_default: false, current_version_id: 'v2', current_version: 1, current_hash: 'hash2', usage_count: 0, updated_at: '2026-01-01T00:00:00.000Z' },
     ];
     let defaultKey = 'padrao';
+    let version = 1;
+    let settingsPayload;
     await page.route('**/api/settings?scope=operational**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
     });
@@ -86,6 +95,7 @@ test.describe('Configurações de orçamento', () => {
       if (route.request().method() === 'GET') {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
       } else {
+        settingsPayload = route.request().postDataJSON();
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
       }
     });
@@ -94,7 +104,7 @@ test.describe('Configurações de orçamento', () => {
       const url = new globalThis.URL(request.url());
       if (request.method() === 'GET' && url.searchParams.has('id')) {
         const item = templates.find((template) => template.id === url.searchParams.get('id')) || templates[1];
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...item, current_source: source, versions: [{ id: 'v1', version: 1, source_hash: 'hash', created_at: '2026-01-01T00:00:00.000Z' }] } }) });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { ...item, current_version: version, current_source: source, versions: [{ id: `v${version}`, version, source_hash: 'hash', created_at: '2026-01-01T00:00:00.000Z' }] } }) });
       } else if (request.method() === 'GET') {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates, default_key: defaultKey }) });
       } else if (url.pathname.endsWith('/validate')) {
@@ -102,6 +112,11 @@ test.describe('Configurações de orçamento', () => {
       } else if (request.method() === 'PUT') {
         const payload = request.postDataJSON();
         if (payload.action === 'set_default') defaultKey = 'alternativo';
+        if (payload.action === 'save_version') version += 1;
+        if (payload.action === 'archive') {
+          const archivedTemplate = templates.find((template) => template.id === 'two');
+          if (archivedTemplate) archivedTemplate.archived = true;
+        }
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload.action === 'archive' ? { archived: true } : { default_key: defaultKey, id: 'v2' }) });
       } else {
         await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'two' }) });
@@ -110,17 +125,82 @@ test.describe('Configurações de orçamento', () => {
 
     await page.goto('/#/settings');
     await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Padrão padrao/ })).toContainText('Padrão');
+    await expect(page.getByText('Usado por 2 revisões')).toBeVisible();
     await page.getByRole('button', { name: /Alternativo alternativo/ }).click();
     await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
     await page.getByRole('button', { name: 'Validar e visualizar preview' }).click();
     await expect(page.getByTitle('Preview do template')).toBeVisible();
     await page.getByRole('button', { name: 'Salvar nova versão' }).click();
     await expect(page.getByText('Template salvo com sucesso.')).toBeVisible();
-    page.on('dialog', (dialog) => dialog.accept());
+    await expect(page.getByText('Versão atual: 2')).toBeVisible();
+    const confirmations = [];
+    page.on('dialog', (dialog) => {
+      confirmations.push(dialog.message());
+      void dialog.accept();
+    });
     await page.getByRole('button', { name: 'Definir como padrão' }).click();
     await expect(page.getByText('Template padrão alterado.')).toBeVisible();
+    await page.getByLabel('Condição de pagamento').fill('novo padrão');
+    await page.getByRole('button', { name: 'Salvar configurações' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Configurações salvas com sucesso.' })).toBeVisible();
+    expect(settingsPayload).not.toHaveProperty('template_padrao');
     await page.getByRole('button', { name: 'Arquivar' }).click();
     await expect(page.getByText('Template arquivado.')).toBeVisible();
+    expect(confirmations).toEqual(['Definir este template como padrão?', 'Arquivar este template?']);
+    await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toContainText('Arquivado');
+  });
+
+  test('cria modelo e recupera falha de detalhe com nova requisição', async ({ page }) => {
+    const source = '<html><body>{{ quote.name }}</body></html>';
+    let listCalls = 0;
+    let detailCalls = 0;
+    let created = false;
+    await page.route('**/api/settings**', async (route) => {
+      const response = route.request().method() === 'GET' ? INITIAL_SETTINGS : INITIAL_SETTINGS;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
+    });
+    await page.route('**/api/quotation-templates**', async (route) => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.method() === 'GET' && url.searchParams.has('id')) {
+        detailCalls += 1;
+        if (detailCalls === 1) {
+          await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha temporária.' }) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: 'new', key: 'novo', name: 'Novo', archived: false, is_default: false, current_version_id: 'v1', current_version: 1, current_hash: 'hash', usage_count: 0, updated_at: '', current_source: source, versions: [] } }) });
+        return;
+      }
+      if (request.method() === 'GET') {
+        listCalls += 1;
+        if (listCalls === 1) {
+          await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha temporária.' }) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: created ? [{ id: 'new', key: 'novo', name: 'Novo', archived: false, is_default: false, current_version_id: 'v1', current_version: 1, current_hash: 'hash', usage_count: 0, updated_at: '' }] : [], default_key: '' }) });
+        return;
+      }
+      if (request.method() === 'POST') {
+        created = true;
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'new' }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    });
+
+    await page.goto('/#/settings');
+    await expect(page.getByRole('button', { name: 'Recarregar modelos' })).toBeVisible();
+    await page.getByRole('button', { name: 'Recarregar modelos' }).click();
+    await page.getByRole('button', { name: 'Novo modelo' }).click();
+    await page.getByLabel('Nome').fill('Novo');
+    await page.getByLabel('Chave imutável').fill('novo');
+    await page.getByLabel('Fonte HTML').fill(source);
+    await page.getByRole('button', { name: 'Criar modelo' }).click();
+    await expect(page.getByRole('alert')).toContainText('Falha temporária.');
+    await page.getByRole('button', { name: 'Tentar novamente' }).click();
+    await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
+    expect(detailCalls).toBe(2);
   });
 
   test('exibe erro de carregamento e permite tentar novamente', async ({ page }) => {

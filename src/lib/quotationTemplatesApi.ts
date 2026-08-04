@@ -6,9 +6,9 @@ export interface QuotationTemplateMetadata {
   name: string;
   archived: boolean;
   is_default: boolean;
-  current_version_id: string;
-  current_version: number;
-  current_hash: string;
+  current_version_id: string | null;
+  current_version: number | null;
+  current_hash: string | null;
   usage_count: number;
   updated_at: string;
 }
