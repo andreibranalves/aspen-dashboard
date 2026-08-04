@@ -518,8 +518,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       0
     );
   const selectedTemplateMetadata = templates.find((template) => template.key === selectedTemplate);
-  const persistedTemplate = data.template_key || data.template_padrao || 'padrao';
-  const templateSelectionUnsaved = selectedTemplate !== persistedTemplate;
   const openPreview = useCallback(() => {
     if (!selectedTemplate) return;
     window.open(
@@ -533,7 +531,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setMessage('Renderizando e arquivando o PDF definitivo…');
     try {
       const payload: Record<string, unknown> = { id: data.id };
-      if (selectedTemplate && selectedTemplate !== persistedTemplate) {
+      if (selectedTemplate) {
         payload.template = selectedTemplate;
       }
       const result = await apiPost<{
@@ -558,7 +556,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     } finally {
       setIssuing(false);
     }
-  }, [data.id, onReload, selectedTemplate, persistedTemplate]);
+  }, [data.id, onReload, selectedTemplate]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido') => {
@@ -1046,7 +1044,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             <Button
               variant="success"
               size="sm"
-              disabled={issuing || templateSelectionUnsaved || lifecycleAction !== null}
+              disabled={issuing || lifecycleAction !== null}
               onClick={issuePdf}
             >
               {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
@@ -1067,11 +1065,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             <Button variant="outline" size="sm" onClick={openIssuedDocument}>
               <FileText size={14} /> Abrir PDF emitido
             </Button>
-          )}
-          {draftEditable && !editing && (
-            <span className="text-xs text-fg-muted">
-              Altere o modelo acima para visualizar ou emitir com a capa selecionada.
-            </span>
           )}
           {message && (
             <span
