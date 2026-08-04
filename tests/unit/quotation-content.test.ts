@@ -119,7 +119,10 @@ test('normalização rejeita body em prazo_producao', () => {
 
 test('normalização rejeita body oversized', () => {
   assert.throws(
-    () => normalizeQuotationSections({ pagamento: { enabled: true, title: 'P', body: 'x'.repeat(4001) } }),
+    () =>
+      normalizeQuotationSections({
+        pagamento: { enabled: true, title: 'P', body: 'x'.repeat(4001) },
+      }),
     /excede 4000 caracteres/
   );
 });
@@ -144,8 +147,12 @@ test('legado só é derivado quando chave condicoes_gerais está ausente', () =>
 });
 
 test('DEFAULT_QUOTATION_SECTIONS é congelado', () => {
-  assert.throws(() => { (DEFAULT_QUOTATION_SECTIONS as any).schema_version = 2; }, TypeError);
-  assert.throws(() => { (DEFAULT_QUOTATION_SECTIONS.pagamento as any).title = 'X'; }, TypeError);
+  assert.throws(() => {
+    (DEFAULT_QUOTATION_SECTIONS as any).schema_version = 2;
+  }, TypeError);
+  assert.throws(() => {
+    (DEFAULT_QUOTATION_SECTIONS.pagamento as any).title = 'X';
+  }, TypeError);
 });
 
 test('createQuotationSectionsSnapshot produz forma per-section compatível com repositório', () => {

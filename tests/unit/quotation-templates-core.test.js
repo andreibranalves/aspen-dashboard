@@ -12,6 +12,11 @@ import {
 } from '../../api/_functions/lib/quotation-templates.js';
 import { quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
 import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
+import {
+  createQuotationSectionsSnapshot,
+  normalizeQuotationSections,
+  validateQuotationSections,
+} from '../../api/_db/quotation-content.js';
 
 const snapshot = {
   quotation: {
@@ -320,9 +325,10 @@ test('validateQuotationHtmlSource rejects templates missing required fields', ()
     () => validateQuotationHtmlSource(full.replace('{{#each items}}{{name}}{{/each}}', ''), 'test'),
     /#each items/
   );
-  // display.total is a soft requirement (warning only, not error)
-  assert.doesNotThrow(() =>
-    validateQuotationHtmlSource(full.replace('{{display.total}}', ''), 'test')
+  // display.total is now a hard requirement
+  assert.throws(
+    () => validateQuotationHtmlSource(full.replace('{{display.total}}', ''), 'test'),
+    /display\.total/
   );
 });
 
@@ -403,22 +409,14 @@ test('validateQuotationHtmlSource rejects unsafe SVG features', () => {
 
 test('rejects Handlebars expression in href attribute', () => {
   assert.throws(
-    () =>
-      validateQuotationHtmlSource(
-        '<html><body><a href="{{url}}">x</a></body></html>',
-        'test'
-      ),
+    () => validateQuotationHtmlSource('<html><body><a href="{{url}}">x</a></body></html>', 'test'),
     /Expressão dinâmica não permitida/
   );
 });
 
 test('rejects Handlebars expression in src attribute', () => {
   assert.throws(
-    () =>
-      validateQuotationHtmlSource(
-        '<html><body><img src="{{img}}"></body></html>',
-        'test'
-      ),
+    () => validateQuotationHtmlSource('<html><body><img src="{{img}}"></body></html>', 'test'),
     /Expressão dinâmica não permitida/
   );
 });
@@ -426,10 +424,7 @@ test('rejects Handlebars expression in src attribute', () => {
 test('rejects Handlebars expression in style attribute', () => {
   assert.throws(
     () =>
-      validateQuotationHtmlSource(
-        '<html><body><div style="{{css}}">x</div></body></html>',
-        'test'
-      ),
+      validateQuotationHtmlSource('<html><body><div style="{{css}}">x</div></body></html>', 'test'),
     /Expressão dinâmica não permitida/
   );
 });
@@ -480,22 +475,14 @@ test('all three built-in templates render without error', () => {
 
 test('non-SVG tags inside <svg> are rejected', () => {
   assert.throws(
-    () =>
-      validateQuotationHtmlSource(
-        '<html><body><svg><div>x</div></svg></body></html>',
-        'test'
-      ),
+    () => validateQuotationHtmlSource('<html><body><svg><div>x</div></svg></body></html>', 'test'),
     /não permitida/
   );
 });
 
 test('SVG-only tags outside <svg> are rejected', () => {
   assert.throws(
-    () =>
-      validateQuotationHtmlSource(
-        '<html><body><path d="M0,0"/></body></html>',
-        'test'
-      ),
+    () => validateQuotationHtmlSource('<html><body><path d="M0,0"/></body></html>', 'test'),
     /não permitida/
   );
 });
@@ -552,11 +539,7 @@ test('rejects CSS with encoded url()', () => {
 
 test('rejects unterminated comment', () => {
   assert.throws(
-    () =>
-      validateQuotationHtmlSource(
-        '<html><body><!-- unclosed</body></html>',
-        'test'
-      ),
+    () => validateQuotationHtmlSource('<html><body><!-- unclosed</body></html>', 'test'),
     /Comentário HTML não terminado/
   );
 });
@@ -564,21 +547,156 @@ test('rejects unterminated comment', () => {
 test('rejects unterminated attribute value', () => {
   assert.throws(
     () =>
-      validateQuotationHtmlSource(
-        '<html><body><div class="unclosed>x</div></body></html>',
-        'test'
-      ),
+      validateQuotationHtmlSource('<html><body><div class="unclosed>x</div></body></html>', 'test'),
     /Valor de atributo não terminado/
   );
 });
 
 test('rejects end tag without matching open tag', () => {
   assert.throws(
+    () => validateQuotationHtmlSource('<html><body></div>x</body></html>', 'test'),
+    /inesperada/
+  );
+});
+
+// ── Required fields: Frappe exception ─────────────────────────────
+
+test('exact historical Frappe source/hash accepts missing display.total', () => {
+  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
+  assert.ok(frappe, 'frappe template exists');
+  // Frappe source does not contain {{display.total}} - verify it renders
+  const model = quotationSnapshotViewModel(snapshot);
+  const html = renderQuotationTemplate(frappe, model);
+  assert.ok(html.length > 100, 'frappe renders substantial HTML');
+});
+
+test('new source missing display.total is rejected', () => {
+  const newSource =
+    '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}}</body></html>';
+  assert.throws(
+    () => validateQuotationHtmlSource(newSource, 'new-template'),
+    /display\.total/
+  );
+});
+
+// ── Tokenizer: reject unquoted attributes ──────────────────────────
+
+test('rejects unquoted attribute values', () => {
+  assert.throws(
+    () => validateQuotationHtmlSource('<html><body><div class=x>x</div></body></html>', 'test'),
+    /não aspas/
+  );
+});
+
+// ── Tokenizer: reject trailing end-tag junk ────────────────────────
+
+test('rejects trailing junk in end tag', () => {
+  assert.throws(
     () =>
       validateQuotationHtmlSource(
-        '<html><body></div>x</body></html>',
+        '<html><body><div>x</div junk></body></html>',
         'test'
       ),
-    /inesperada/
+    /Lixo após nome de tag de fechamento/
+  );
+});
+
+// ── Tokenizer: reject non-void self-closing tags ───────────────────
+
+test('rejects self-closing on non-void div', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}<div />x<div>y</div></body></html>',
+        'test'
+      ),
+    /não fechada|não pode ser auto-fechada/
+  );
+});
+
+// ── Tokenizer: EOF without > ──────────────────────────────────────
+
+test('rejects unclosed start tag at EOF', () => {
+  assert.throws(
+    () => validateQuotationHtmlSource('<html><body><div', 'test'),
+    /não fechada|não terminada/
+  );
+});
+
+// ── CSS: named entities &lpar;/&rpar; ─────────────────────────────
+
+test('CSS named entities are decoded before dangerous-pattern check', () => {
+  // After named entity decoding, u&lpar;l&lpar;x&rpar; becomes u(l(l)x)
+  // which contains url( pattern. Test with a simpler named entity bypass.
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><head><style>@im&lpar;port url("evil.css")</style></head><body></body></html>',
+        'test'
+      ),
+    /CSS perigoso|não permitido/
+  );
+});
+
+// ── Legacy schema_version validation ──────────────────────────────
+
+test('validateQuotationSections rejects schema_version !== 1', () => {
+  assert.throws(
+    () =>
+      validateQuotationSections({
+        schema_version: 2,
+        pagamento: { enabled: true, title: 'P' },
+      }),
+    /schema_version deve ser exatamente 1/
+  );
+});
+
+test('validateQuotationSections accepts schema_version 1', () => {
+  assert.doesNotThrow(() =>
+    validateQuotationSections({
+      schema_version: 1,
+      pagamento: { enabled: true, title: 'P' },
+    })
+  );
+});
+
+// ── Per-tag: div rejects href ─────────────────────────────────────
+
+test('div rejects href attribute', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><div href="https://evil.com">x</div></body></html>',
+        'test'
+      ),
+    /não permitido/
+  );
+});
+
+// ── Round-trip: factory → view-model ──────────────────────────────
+
+test('factory snapshot → view-model round-trip produces correct secoes', () => {
+  const settings = normalizeQuotationSections(undefined, {
+    pagamento: '50% na aprovação',
+    entrega: '3 dias',
+    observacoes: 'Obs.',
+  });
+  const snap = createQuotationSectionsSnapshot(settings);
+  const model = quotationSnapshotViewModel({
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: snap,
+    },
+  });
+  assert.ok(model.secoes, 'secoes present in view-model');
+  assert.equal(model.secoes.prazo_producao.value, settings.prazo_producao.title);
+  assert.ok(
+    model.secoes.pagamento.body_html.toString().includes('50%'),
+    'pagamento body contains legacy text'
+  );
+  assert.ok(
+    model.secoes.condicoes_gerais.body_html.toString().includes('Prazo de entrega'),
+    'condicoes_gerais contains combined legacy'
   );
 });

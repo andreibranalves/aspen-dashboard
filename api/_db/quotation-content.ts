@@ -69,7 +69,7 @@ export function toSafeMultilineHtml(value: string): Handlebars.SafeString {
 function validateAndNormalizeSection(
   key: QuotationSectionKey,
   input: unknown,
-  defaults: QuotationSectionSettings & { body?: string },
+  defaults: QuotationSectionSettings & { body?: string }
 ): QuotationSectionSettings & { body?: string } {
   // Missing section: fill from defaults
   if (input === undefined) return deepCopy(defaults);
@@ -81,9 +81,8 @@ function validateAndNormalizeSection(
   const obj = input as Record<string, unknown>;
 
   // Reject unknown keys
-  const allowedKeys = key === 'prazo_producao'
-    ? ['enabled', 'title']
-    : ['enabled', 'title', 'body'];
+  const allowedKeys =
+    key === 'prazo_producao' ? ['enabled', 'title'] : ['enabled', 'title', 'body'];
   for (const k of Object.keys(obj)) {
     if (!allowedKeys.includes(k)) {
       throw new Error(`Campo desconhecido "${k}" na seção "${key}".`);
@@ -129,7 +128,7 @@ function validateAndNormalizeSection(
 
 export function normalizeQuotationSections(
   input: unknown,
-  legacy?: { pagamento?: string; entrega?: string; observacoes?: string },
+  legacy?: { pagamento?: string; entrega?: string; observacoes?: string }
 ): QuotationSectionsSettings {
   // No input: build from defaults + legacy
   if (input === undefined || input === null) {
@@ -138,7 +137,7 @@ export function normalizeQuotationSections(
     if (legacy?.entrega || legacy?.observacoes) {
       result.condicoes_gerais.body = combineLegacyConditions(
         legacy.entrega || '',
-        legacy.observacoes || '',
+        legacy.observacoes || ''
       );
     }
     return result;
@@ -162,20 +161,17 @@ export function normalizeQuotationSections(
   const pagamento = validateAndNormalizeSection(
     'pagamento',
     obj.pagamento,
-    DEFAULT_QUOTATION_SECTIONS.pagamento,
+    DEFAULT_QUOTATION_SECTIONS.pagamento
   );
   const condicoes_gerais = validateAndNormalizeSection(
     'condicoes_gerais',
     obj.condicoes_gerais,
-    DEFAULT_QUOTATION_SECTIONS.condicoes_gerais,
+    DEFAULT_QUOTATION_SECTIONS.condicoes_gerais
   );
 
   // Derive legacy conditions ONLY when condicoes_gerais key is absent
   if (!('condicoes_gerais' in obj) && (legacy?.entrega || legacy?.observacoes)) {
-    condicoes_gerais.body = combineLegacyConditions(
-      legacy.entrega || '',
-      legacy.observacoes || '',
-    );
+    condicoes_gerais.body = combineLegacyConditions(legacy.entrega || '', legacy.observacoes || '');
   }
 
   return {
@@ -183,7 +179,7 @@ export function normalizeQuotationSections(
     prazo_producao: validateAndNormalizeSection(
       'prazo_producao',
       obj.prazo_producao,
-      DEFAULT_QUOTATION_SECTIONS.prazo_producao,
+      DEFAULT_QUOTATION_SECTIONS.prazo_producao
     ),
     pagamento: pagamento as QuotationSectionsSettings['pagamento'],
     condicoes_gerais: condicoes_gerais as QuotationSectionsSettings['condicoes_gerais'],
@@ -191,7 +187,7 @@ export function normalizeQuotationSections(
 }
 
 export function createQuotationSectionsSnapshot(
-  settings: QuotationSectionsSettings,
+  settings: QuotationSectionsSettings
 ): QuotationSectionsSnapshot {
   return {
     schema_version: settings.schema_version,
@@ -222,6 +218,11 @@ export function validateQuotationSections(input: unknown): void {
     if (!knownKeys.has(k)) {
       throw new Error(`Campo desconhecido "${k}" nas seções.`);
     }
+  }
+
+  // Reject schema_version if present and not exactly 1
+  if (obj.schema_version !== undefined && obj.schema_version !== 1) {
+    throw new Error('schema_version deve ser exatamente 1.');
   }
 
   for (const key of SECTION_KEYS) {

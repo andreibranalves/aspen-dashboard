@@ -515,12 +515,58 @@ export interface QuotationTemplateViewModel {
 
 // All allowlists stored lowercase for case-insensitive matching
 const ALLOWED_TAGS = new Set([
-  'a', 'article', 'b', 'blockquote', 'body', 'br', 'caption', 'code', 'col',
-  'colgroup', 'dd', 'defs', 'div', 'dl', 'dt', 'em', 'footer', 'h1', 'h2',
-  'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'img', 'li',
-  'link', 'main', 'meta', 'nav', 'ol', 'p', 'path', 'pre', 'section',
-  'small', 'span', 'strong', 'style', 'svg', 'table', 'tbody', 'td',
-  'tfoot', 'th', 'thead', 'title', 'tr', 'ul',
+  'a',
+  'article',
+  'b',
+  'blockquote',
+  'body',
+  'br',
+  'caption',
+  'code',
+  'col',
+  'colgroup',
+  'dd',
+  'defs',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'head',
+  'header',
+  'hr',
+  'html',
+  'img',
+  'li',
+  'link',
+  'main',
+  'meta',
+  'nav',
+  'ol',
+  'p',
+  'path',
+  'pre',
+  'section',
+  'small',
+  'span',
+  'strong',
+  'style',
+  'svg',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'title',
+  'tr',
+  'ul',
 ]);
 
 // SVG-restricted tag subset (only these allowed inside <svg>)
@@ -529,15 +575,34 @@ const SVG_ALLOWED_TAGS = new Set(['svg', 'g', 'path', 'defs', 'style']);
 // Tags that are ONLY valid inside SVG context
 const SVG_ONLY_TAGS = new Set(['g', 'path', 'defs']);
 
-// Global attribute allowlist (applied to all tags)
+// Exact hash of the historical Frappe source migrated from ERPNext.
+// Only this source may omit display.total; every new template/version must require it.
+const FRAPPE_HISTORICAL_HASH = '5cd938d46c402c47cfeb451266aa321d8ab856104984c62848ad2f97abddd834';
+
+// Global attribute allowlist (applied to all tags that lack per-tag restrictions)
+// NOTE: href and src are NOT here — they are only allowed on specific tags via TAG_ATTRIBUTE_RESTRICTIONS
 const ALLOWED_ATTRIBUTES = new Set([
-  'class', 'id', 'style', 'href', 'src', 'rel', 'charset', 'width', 'height',
-  'viewbox', 'preserveaspectratio', 'xmlns', 'xmlns:xlink', 'fill', 'stroke',
-  'd', 'data-name', 'lang',
+  'class',
+  'id',
+  'style',
+  'rel',
+  'charset',
+  'width',
+  'height',
+  'viewbox',
+  'preserveaspectratio',
+  'xmlns',
+  'xmlns:xlink',
+  'fill',
+  'stroke',
+  'd',
+  'data-name',
+  'lang',
 ]);
 
 // Per-tag attribute restrictions: ONLY these attributes allowed (replaces global check)
 const TAG_ATTRIBUTE_RESTRICTIONS: Record<string, Set<string>> = {
+  a: new Set(['href', 'class', 'id', 'style']),
   meta: new Set(['charset']),
   link: new Set(['href', 'rel']),
   img: new Set(['src', 'width', 'height']),
@@ -545,14 +610,40 @@ const TAG_ATTRIBUTE_RESTRICTIONS: Record<string, Set<string>> = {
 
 // SVG-specific attribute allowlist (replaces global check inside SVG context)
 const SVG_ATTRIBUTES = new Set([
-  'class', 'id', 'style', 'fill', 'stroke', 'd', 'viewbox',
-  'preserveaspectratio', 'xmlns', 'xmlns:xlink', 'width', 'height',
-  'data-name', 'transform', 'opacity', 'clip-path', 'mask',
+  'class',
+  'id',
+  'style',
+  'fill',
+  'stroke',
+  'd',
+  'viewbox',
+  'preserveaspectratio',
+  'xmlns',
+  'xmlns:xlink',
+  'width',
+  'height',
+  'data-name',
+  'transform',
+  'opacity',
+  'clip-path',
+  'mask',
 ]);
 
 const VOID_ELEMENTS = new Set([
-  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link',
-  'meta', 'param', 'source', 'track', 'wbr',
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ]);
 
 const DANGEROUS_CSS_PATTERNS = ['@import', 'expression(', 'url(', 'behavior', '-moz-binding'];
@@ -565,23 +656,264 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+    .replace(/&apos;/g, "'")
+    .replace(/&lpar;/g, '(')
+    .replace(/&rpar;/g, ')')
+    .replace(/&lbrace;/g, '{')
+    .replace(/&rbrace;/g, '}')
+    .replace(/&num;/g, '#')
+    .replace(/&percnt;/g, '%')
+    .replace(/&star;/g, '*')
+    .replace(/&plus;/g, '+')
+    .replace(/&comma;/g, ',')
+    .replace(/&period;/g, '.')
+    .replace(/&sol;/g, '/')
+    .replace(/&colon;/g, ':')
+    .replace(/&semi;/g, ';')
+    .replace(/&lt sign;/g, '<')
+    .replace(/&equals;/g, '=')
+    .replace(/&quest;/g, '?')
+    .replace(/&commat;/g, '@')
+    .replace(/&lsqb;/g, '[')
+    .replace(/&rsqb;/g, ']')
+    .replace(/&Hat;/g, '^')
+    .replace(/&lowbar;/g, '_')
+    .replace(/&grave;/g, '`')
+    .replace(/&lcub;/g, '{')
+    .replace(/&rcub;/g, '}')
+    .replace(/&vert;/g, '|')
+    .replace(/&tilde;/g, '~')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&ensp;/g, ' ')
+    .replace(/&emsp;/g, ' ')
+    .replace(/&thinsp;/g, ' ')
+    .replace(/&ndash;/g, '\u2013')
+    .replace(/&mdash;/g, '\u2014')
+    .replace(/&laquo;/g, '\u00AB')
+    .replace(/&raquo;/g, '\u00BB')
+    .replace(/&copy;/g, '\u00A9')
+    .replace(/&reg;/g, '\u00AE')
+    .replace(/&trade;/g, '\u2122')
+    .replace(/&euro;/g, '\u20AC')
+    .replace(/&pound;/g, '\u00A3')
+    .replace(/&yen;/g, '\u00A5')
+    .replace(/&cent;/g, '\u00A2')
+    .replace(/&curren;/g, '\u00A4')
+    .replace(/&sect;/g, '\u00A7')
+    .replace(/&para;/g, '\u00B6')
+    .replace(/&larr;/g, '\u2190')
+    .replace(/&uarr;/g, '\u2191')
+    .replace(/&rarr;/g, '\u2192')
+    .replace(/&darr;/g, '\u2193')
+    .replace(/&times;/g, '\u00D7')
+    .replace(/&divide;/g, '\u00F7')
+    .replace(/&plusmn;/g, '\u00B1')
+    .replace(/&micro;/g, '\u00B5')
+    .replace(/&para;/g, '\u00B6')
+    .replace(/&middot;/g, '\u00B7')
+    .replace(/&ordf;/g, '\u00AA')
+    .replace(/&ordm;/g, '\u00BA')
+    .replace(/&iquest;/g, '\u00BF')
+    .replace(/&Agrave;/g, '\u00C0')
+    .replace(/&Aacute;/g, '\u00C1')
+    .replace(/&Acirc;/g, '\u00C2')
+    .replace(/&Atilde;/g, '\u00C3')
+    .replace(/&Auml;/g, '\u00C4')
+    .replace(/&Aring;/g, '\u00C5')
+    .replace(/&AElig;/g, '\u00C6')
+    .replace(/&Ccedil;/g, '\u00C7')
+    .replace(/&Egrave;/g, '\u00C8')
+    .replace(/&Eacute;/g, '\u00C9')
+    .replace(/&Ecirc;/g, '\u00CA')
+    .replace(/&Euml;/g, '\u00CB')
+    .replace(/&Igrave;/g, '\u00CC')
+    .replace(/&Iacute;/g, '\u00CD')
+    .replace(/&Icirc;/g, '\u00CE')
+    .replace(/&Iuml;/g, '\u00CF')
+    .replace(/&ETH;/g, '\u00D0')
+    .replace(/&Ntilde;/g, '\u00D1')
+    .replace(/&Ograve;/g, '\u00D2')
+    .replace(/&Oacute;/g, '\u00D3')
+    .replace(/&Ocirc;/g, '\u00D4')
+    .replace(/&Otilde;/g, '\u00D5')
+    .replace(/&Ouml;/g, '\u00D6')
+    .replace(/&Oslash;/g, '\u00D8')
+    .replace(/&Ugrave;/g, '\u00D9')
+    .replace(/&Uacute;/g, '\u00DA')
+    .replace(/&Ucirc;/g, '\u00DB')
+    .replace(/&Uuml;/g, '\u00DC')
+    .replace(/&Yacute;/g, '\u00DD')
+    .replace(/&THORN;/g, '\u00DE')
+    .replace(/&szlig;/g, '\u00DF')
+    .replace(/&agrave;/g, '\u00E0')
+    .replace(/&aacute;/g, '\u00E1')
+    .replace(/&acirc;/g, '\u00E2')
+    .replace(/&atilde;/g, '\u00E3')
+    .replace(/&auml;/g, '\u00E4')
+    .replace(/&aring;/g, '\u00E5')
+    .replace(/&aelig;/g, '\u00E6')
+    .replace(/&ccedil;/g, '\u00E7')
+    .replace(/&egrave;/g, '\u00E8')
+    .replace(/&eacute;/g, '\u00E9')
+    .replace(/&ecirc;/g, '\u00EA')
+    .replace(/&euml;/g, '\u00EB')
+    .replace(/&igrave;/g, '\u00EC')
+    .replace(/&iacute;/g, '\u00ED')
+    .replace(/&icirc;/g, '\u00EE')
+    .replace(/&iuml;/g, '\u00EF')
+    .replace(/&eth;/g, '\u00F0')
+    .replace(/&ntilde;/g, '\u00F1')
+    .replace(/&ograve;/g, '\u00F2')
+    .replace(/&oacute;/g, '\u00F3')
+    .replace(/&ocirc;/g, '\u00F4')
+    .replace(/&otilde;/g, '\u00F5')
+    .replace(/&ouml;/g, '\u00F6')
+    .replace(/&oslash;/g, '\u00F8')
+    .replace(/&ugrave;/g, '\u00F9')
+    .replace(/&uacute;/g, '\u00FA')
+    .replace(/&ucirc;/g, '\u00FB')
+    .replace(/&uuml;/g, '\u00FC')
+    .replace(/&yacute;/g, '\u00FD')
+    .replace(/&thorn;/g, '\u00FE')
+    .replace(/&yuml;/g, '\u00FF')
+    .replace(/&fnof;/g, '\u0192')
+    .replace(/&circ;/g, '\u02C6')
+    .replace(/&tilde;/g, '\u02DC')
+    .replace(/&Alpha;/g, '\u0391')
+    .replace(/&Beta;/g, '\u0392')
+    .replace(/&Gamma;/g, '\u0393')
+    .replace(/&Delta;/g, '\u0394')
+    .replace(/&Epsilon;/g, '\u0395')
+    .replace(/&Zeta;/g, '\u0396')
+    .replace(/&Eta;/g, '\u0397')
+    .replace(/&Theta;/g, '\u0398')
+    .replace(/&Iota;/g, '\u0399')
+    .replace(/&Kappa;/g, '\u039A')
+    .replace(/&Lambda;/g, '\u039B')
+    .replace(/&Mu;/g, '\u039C')
+    .replace(/&Nu;/g, '\u039D')
+    .replace(/&Xi;/g, '\u039E')
+    .replace(/&Omicron;/g, '\u039F')
+    .replace(/&Pi;/g, '\u03A0')
+    .replace(/&Rho;/g, '\u03A1')
+    .replace(/&Sigma;/g, '\u03A3')
+    .replace(/&Tau;/g, '\u03A4')
+    .replace(/&Upsilon;/g, '\u03A5')
+    .replace(/&Phi;/g, '\u03A6')
+    .replace(/&Chi;/g, '\u03A7')
+    .replace(/&Psi;/g, '\u03A8')
+    .replace(/&Omega;/g, '\u03A9')
+    .replace(/&alpha;/g, '\u03B1')
+    .replace(/&beta;/g, '\u03B2')
+    .replace(/&gamma;/g, '\u03B3')
+    .replace(/&delta;/g, '\u03B4')
+    .replace(/&epsilon;/g, '\u03B5')
+    .replace(/&zeta;/g, '\u03B6')
+    .replace(/&eta;/g, '\u03B7')
+    .replace(/&theta;/g, '\u03B8')
+    .replace(/&iota;/g, '\u03B9')
+    .replace(/&kappa;/g, '\u03BA')
+    .replace(/&lambda;/g, '\u03BB')
+    .replace(/&mu;/g, '\u03BC')
+    .replace(/&nu;/g, '\u03BD')
+    .replace(/&xi;/g, '\u03BE')
+    .replace(/&omicron;/g, '\u03BF')
+    .replace(/&pi;/g, '\u03C0')
+    .replace(/&rho;/g, '\u03C1')
+    .replace(/&sigmaf;/g, '\u03C2')
+    .replace(/&sigma;/g, '\u03C3')
+    .replace(/&tau;/g, '\u03C4')
+    .replace(/&upsilon;/g, '\u03C5')
+    .replace(/&phi;/g, '\u03C6')
+    .replace(/&chi;/g, '\u03C7')
+    .replace(/&psi;/g, '\u03C8')
+    .replace(/&omega;/g, '\u03C9')
+    .replace(/&thetasym;/g, '\u03D1')
+    .replace(/&upsih;/g, '\u03D2')
+    .replace(/&piv;/g, '\u03D6')
+    .replace(/&OElig;/g, '\u0152')
+    .replace(/&oelig;/g, '\u0153')
+    .replace(/&Scaron;/g, '\u0160')
+    .replace(/&scaron;/g, '\u0161')
+    .replace(/&Yuml;/g, '\u0178')
+    .replace(/&ligature;/g, '\uFB01')
+    .replace(/&frasl;/g, '\u2044')
+    .replace(/&weierp;/g, '\u2118')
+    .replace(/&image;/g, '\u2111')
+    .replace(/&real;/g, '\u211C')
+    .replace(/&trade;/g, '\u2122')
+    .replace(/&alefsym;/g, '\u2135')
+    .replace(/&larr;/g, '\u2190')
+    .replace(/&uarr;/g, '\u2191')
+    .replace(/&rarr;/g, '\u2192')
+    .replace(/&darr;/g, '\u2193')
+    .replace(/&harr;/g, '\u2194')
+    .replace(/&crarr;/g, '\u21B5')
+    .replace(/&lArr;/g, '\u21D0')
+    .replace(/&uArr;/g, '\u21D1')
+    .replace(/&rArr;/g, '\u21D2')
+    .replace(/&dArr;/g, '\u21D3')
+    .replace(/&hArr;/g, '\u21D4')
+    .replace(/&forall;/g, '\u2200')
+    .replace(/&part;/g, '\u2202')
+    .replace(/&exist;/g, '\u2203')
+    .replace(/&empty;/g, '\u2205')
+    .replace(/&nabla;/g, '\u2207')
+    .replace(/&isin;/g, '\u2208')
+    .replace(/&notin;/g, '\u2209')
+    .replace(/&ni;/g, '\u220B')
+    .replace(/&prod;/g, '\u220F')
+    .replace(/&sum;/g, '\u2211')
+    .replace(/&minus;/g, '\u2212')
+    .replace(/&lowast;/g, '\u2217')
+    .replace(/&radic;/g, '\u221A')
+    .replace(/&prop;/g, '\u221D')
+    .replace(/&infin;/g, '\u221E')
+    .replace(/&ang;/g, '\u2220')
+    .replace(/&and;/g, '\u2227')
+    .replace(/&or;/g, '\u2228')
+    .replace(/&cap;/g, '\u2229')
+    .replace(/&cup;/g, '\u222A')
+    .replace(/&int;/g, '\u222B')
+    .replace(/&there4;/g, '\u2234')
+    .replace(/&sim;/g, '\u223C')
+    .replace(/&cong;/g, '\u2245')
+    .replace(/&asymp;/g, '\u2248')
+    .replace(/&ne;/g, '\u2260')
+    .replace(/&equiv;/g, '\u2261')
+    .replace(/&le;/g, '\u2264')
+    .replace(/&ge;/g, '\u2265')
+    .replace(/&sub;/g, '\u2282')
+    .replace(/&sup;/g, '\u2283')
+    .replace(/&nsub;/g, '\u2284')
+    .replace(/&sube;/g, '\u2286')
+    .replace(/&supe;/g, '\u2287')
+    .replace(/&oplus;/g, '\u2295')
+    .replace(/&otimes;/g, '\u2297')
+    .replace(/&perp;/g, '\u22A5')
+    .replace(/&sdot;/g, '\u22C5')
+    .replace(/&lceil;/g, '\u2308')
+    .replace(/&rceil;/g, '\u2309')
+    .replace(/&lfloor;/g, '\u230A')
+    .replace(/&rfloor;/g, '\u230B')
+    .replace(/&lang;/g, '\u2329')
+    .replace(/&rang;/g, '\u232A')
+    .replace(/&loz;/g, '\u25CA')
+    .replace(/&spades;/g, '\u2660')
+    .replace(/&clubs;/g, '\u2663')
+    .replace(/&hearts;/g, '\u2665')
+    .replace(/&diams;/g, '\u2666');
 }
 
 function normalizeCssForCheck(css: string): string {
-  // Decode HTML entities
-  let s = css
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCharCode(parseInt(dec, 10)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  // Decode HTML entities (comprehensive set)
+  let s = decodeHtmlEntities(css);
   // Normalize control whitespace (tab/newline/carriage-return → space, collapse runs)
   s = s.replace(/[\t\n\r]+/g, ' ').replace(/\s{2,}/g, ' ');
   // Decode CSS escapes: \\HHHHHH → char
-  s = s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  s = s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
   // Remove CSS comments
   s = s.replace(/\/\*[\s\S]*?\*\//g, '');
   return s;
@@ -643,8 +975,11 @@ function tokenizeHtml(source: string): HtmlToken[] {
       let name = '';
       while (i < source.length && /[a-zA-Z0-9]/.test(source[i])) name += source[i++];
       if (!name) throw new Error('Nome de tag de fechamento inválido');
-      while (i < source.length && source[i] !== '>') i++;
-      if (i >= source.length) throw new Error(`Tag de fechamento </${name}> não terminada`);
+      // Reject trailing junk between tag name and >
+      while (i < source.length && /\s/.test(source[i])) i++;
+      if (i >= source.length || source[i] !== '>') {
+        throw new Error(`Lixo após nome de tag de fechamento </${name}>`);
+      }
       tokens.push({ type: 'end-tag', name: name.toLowerCase() });
       i++;
       continue;
@@ -692,15 +1027,8 @@ function tokenizeHtml(source: string): HtmlToken[] {
           attrValue = source.slice(i, end);
           i = end + 1;
         } else {
-          while (
-            i < source.length &&
-            source[i] !== ' ' &&
-            source[i] !== '\t' &&
-            source[i] !== '\n' &&
-            source[i] !== '\r' &&
-            source[i] !== '>'
-          )
-            attrValue += source[i++];
+          // Reject unquoted attribute values
+          throw new Error(`Valor de atributo não aspas na tag <${name}>`);
         }
       }
       attributes.push({ name: attrName.toLowerCase(), value: attrValue });
@@ -744,8 +1072,18 @@ function checkHtmlPolicy(tokens: HtmlToken[], templateKey: string): void {
         throw new Error(`Tag "<${token.name}>" não permitida no template: ${templateKey}`);
       }
 
+      // Reject self-closing on non-void tags (except SVG void elements)
+      if (token.selfClosing && !VOID_ELEMENTS.has(tagLower) && tagLower !== 'path') {
+        throw new Error(`Tag "<${token.name}>" não-void não pode ser auto-fechada: ${templateKey}`);
+      }
+
       // Push non-void, non-self-closing, non-style/script tags
-      if (!token.selfClosing && !VOID_ELEMENTS.has(tagLower) && tagLower !== 'style' && tagLower !== 'script') {
+      if (
+        !token.selfClosing &&
+        !VOID_ELEMENTS.has(tagLower) &&
+        tagLower !== 'style' &&
+        tagLower !== 'script'
+      ) {
         stack.push(tagLower);
       }
 
@@ -753,34 +1091,53 @@ function checkHtmlPolicy(tokens: HtmlToken[], templateKey: string): void {
         const attrLower = attr.name;
 
         // Reject Handlebars expressions in URL/style contexts
-        if ((attrLower === 'href' || attrLower === 'src' || attrLower === 'style') && hasHandlebarsExpression(attr.value)) {
-          throw new Error(`Expressão dinâmica não permitida no atributo "${attrLower}" da tag <${token.name}>: ${templateKey}`);
+        if (
+          (attrLower === 'href' || attrLower === 'src' || attrLower === 'style') &&
+          hasHandlebarsExpression(attr.value)
+        ) {
+          throw new Error(
+            `Expressão dinâmica não permitida no atributo "${attrLower}" da tag <${token.name}>: ${templateKey}`
+          );
         }
 
         // Attribute policy: SVG context uses SVG allowlist,
         // restricted tags use their specific set, all others use global
         if (inSvg) {
           if (!SVG_ATTRIBUTES.has(attrLower)) {
-            throw new Error(`Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`);
+            throw new Error(
+              `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
+            );
           }
         } else {
           const tagRestricted = TAG_ATTRIBUTE_RESTRICTIONS[tagLower];
           if (tagRestricted) {
             if (!tagRestricted.has(attrLower)) {
-              throw new Error(`Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`);
+              throw new Error(
+                `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
+              );
             }
           } else if (!ALLOWED_ATTRIBUTES.has(attrLower)) {
-            throw new Error(`Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`);
+            throw new Error(
+              `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
+            );
           }
         }
 
         // URL protocol checks
         if (attrLower === 'href' || attrLower === 'src') {
           const decoded = decodeHtmlEntities(attr.value).toLowerCase().trim();
-          if (attrLower === 'src' && !decoded.startsWith('https:') && !decoded.startsWith('data:image/')) {
+          if (
+            attrLower === 'src' &&
+            !decoded.startsWith('https:') &&
+            !decoded.startsWith('data:image/')
+          ) {
             throw new Error(`Protocolo não permitido em src: ${decoded}: ${templateKey}`);
           }
-          if (attrLower === 'href' && !decoded.startsWith('https:') && !decoded.startsWith('mailto:')) {
+          if (
+            attrLower === 'href' &&
+            !decoded.startsWith('https:') &&
+            !decoded.startsWith('mailto:')
+          ) {
             throw new Error(`Protocolo não permitido em href: ${decoded}: ${templateKey}`);
           }
         }
@@ -793,7 +1150,6 @@ function checkHtmlPolicy(tokens: HtmlToken[], templateKey: string): void {
 
       // Exit SVG context on self-closing or closing svg
       if (tagLower === 'svg' && token.selfClosing) inSvg = false;
-
     } else if (token.type === 'end-tag') {
       if (token.name === 'svg') inSvg = false;
       if (stack.length === 0 || stack[stack.length - 1] !== token.name) {
@@ -815,7 +1171,11 @@ function stripHandlebars(source: string): string {
 
 type AstWalk = Record<string, unknown> & { type?: string };
 
-function findRequiredFields(source: string, templateKey: string): { missing: string[]; secoesPresent: boolean } {
+function findRequiredFields(
+  source: string,
+  templateKey: string,
+  sourceHash?: string
+): { missing: string[]; secoesPresent: boolean; missingSections: string[] } {
   const ast = Handlebars.parse(source) as unknown as AstWalk;
   const found = {
     quote_number: false,
@@ -823,7 +1183,7 @@ function findRequiredFields(source: string, templateKey: string): { missing: str
     each_items: false,
     display_total: false,
   };
-  let secoesPresent = false;
+  const secoesFound = new Set<string>();
 
   function walk(node: AstWalk): void {
     if (!node || typeof node !== 'object') return;
@@ -832,7 +1192,11 @@ function findRequiredFields(source: string, templateKey: string): { missing: str
       if (n === 'quote_number') found.quote_number = true;
       if (n === 'client.name') found.client_name = true;
       if (n === 'display.total') found.display_total = true;
-      if (n.startsWith('secoes.')) secoesPresent = true;
+      if (n.startsWith('secoes.')) {
+        // Track each exact secoes path: secoes.prazo_producao, secoes.pagamento, secoes.condicoes_gerais
+        const parts = n.split('.');
+        if (parts.length >= 2) secoesFound.add(parts[1]);
+      }
     }
     if (node.type === 'BlockStatement') {
       const p = node.path as AstWalk | undefined;
@@ -854,18 +1218,26 @@ function findRequiredFields(source: string, templateKey: string): { missing: str
   walk(ast);
 
   const missing: string[] = [];
-  const softMissing: string[] = [];
   if (!found.quote_number) missing.push('quote_number');
   if (!found.client_name) missing.push('client.name');
   if (!found.each_items) missing.push('#each items');
-  if (!found.display_total) softMissing.push('display.total');
-  // Warn about soft-missing fields but don't reject
-  if (softMissing.length > 0) {
+
+  // display.total is a hard requirement, except for the exact historical Frappe source
+  const isHistoricalFrappe = sourceHash === FRAPPE_HISTORICAL_HASH;
+  if (!found.display_total && !isHistoricalFrappe) {
+    missing.push('display.total');
+  }
+
+  // Track each missing section placeholder individually
+  const allSections = ['prazo_producao', 'pagamento', 'condicoes_gerais'];
+  const missingSections = allSections.filter((s) => !secoesFound.has(s));
+  for (const s of missingSections) {
     console.warn(
-      `[quotation-templates] Aviso: campo opcional ausente no template ${templateKey}: ${softMissing.join(', ')}`
+      `[quotation-templates] Aviso: seção editável "${s}" não usada no template ${templateKey}`
     );
   }
-  return { missing, secoesPresent };
+
+  return { missing, secoesPresent: secoesFound.size > 0, missingSections };
 }
 
 function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
@@ -898,15 +1270,11 @@ export function validateQuotationHtmlSource(source: string, templateKey = 'desco
   // Required fields check (only for full HTML documents)
   const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
   if (isHtmlDocument) {
-    const { missing, secoesPresent } = findRequiredFields(source, templateKey);
+    const hash = sourceHash(source);
+    const { missing } = findRequiredFields(source, templateKey, hash);
     if (missing.length > 0) {
       throw new Error(
         `Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`
-      );
-    }
-    if (!secoesPresent) {
-      console.warn(
-        `[quotation-templates] Aviso: template "${templateKey}" não usa seções editáveis (secoes.*)`
       );
     }
   }
