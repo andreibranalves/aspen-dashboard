@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from './client.js';
@@ -10,6 +10,8 @@ import {
   quoteRevisionItems,
   quoteRevisions,
   quotations,
+  quotationTemplateVersions,
+  quotationTemplates,
 } from './schema.js';
 import {
   PricingUnavailableError,
@@ -22,8 +24,12 @@ import {
   resolveProductPrice,
   type PricingResolution,
 } from '../_functions/pricing-core.js';
-import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
-import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
+import {
+  combineLegacyConditions,
+  normalizeQuotationSections,
+  type QuotationSectionsSnapshot,
+} from './quotation-content.js';
+import { snapshotFromLegacyRevision } from './quotation-template-migration.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -198,6 +204,10 @@ export interface QuoteDraftManagementDetail {
   template_padrao: string;
   template_key: string;
   template_hash: string;
+  template_version_id: string | null;
+  template_version: number | null;
+  secoes: QuotationSectionsSnapshot | null;
+  sections_snapshot: QuotationSectionsSnapshot | null;
   derived_expired: boolean;
   expiration_derived: boolean;
   is_expired: boolean;
@@ -242,6 +252,9 @@ export interface QuoteRevisionHistoryEntry {
   expiration_derived: boolean;
   is_expired: boolean;
   expirada: boolean;
+  template_key: string | null;
+  template_version: number | null;
+  template_hash: string | null;
 }
 
 export interface QuoteDraftManagementUpdateInput {
@@ -266,6 +279,9 @@ export interface QuoteDraftManagementUpdateInput {
   prazo_producao?: unknown;
   template_key?: unknown;
   template_padrao?: unknown;
+  template_version_id?: unknown;
+  secoes?: unknown;
+  sections_snapshot?: unknown;
 }
 
 export interface QuoteDraftManagementRepository {
@@ -384,24 +400,130 @@ function tokenFor(value: Date | string | null | undefined): string {
   return asIso(value);
 }
 
-function readTemplateSelection(
-  input: Record<string, unknown>
-): { key: string; hash: string } | undefined {
+async function readTemplateSelection(
+  tx: QuoteDatabase,
+  input: Record<string, unknown>,
+  revision: typeof quoteRevisions.$inferSelect
+): Promise<{ key: string; hash: string; versionId: string; version: number } | undefined> {
   const rawKey = hasOwn(input, 'template_key') ? input.template_key : undefined;
   const rawLegacy = hasOwn(input, 'template_padrao') ? input.template_padrao : undefined;
-  const values = [rawKey, rawLegacy].filter(
-    (value): value is string => value !== undefined
-  ) as unknown[];
-  if (values.length === 0) return undefined;
-  if (values.some((value) => typeof value !== 'string' || !value.trim())) {
+  const rawVersion = hasOwn(input, 'template_version_id') ? input.template_version_id : undefined;
+  const values = [rawKey, rawLegacy].filter((value) => value !== undefined);
+  if (values.some((value) => typeof value !== 'string' || !value.trim()))
     throw new QuoteManagementInputError('Template do orçamento inválido.');
-  }
-  const normalized = values.map((value) => String(value).trim());
-  if (new Set(normalized).size > 1)
+  const keys = values.map((value) => String(value).trim());
+  if (new Set(keys).size > 1)
     throw new QuoteManagementInputError('Os templates informados entram em conflito.');
-  const template = getQuotationTemplate(normalized[0]);
-  if (!template) throw new QuoteManagementInputError('Template do orçamento inválido.');
-  return { key: template.key, hash: template.hash };
+  if (rawVersion !== undefined && (typeof rawVersion !== 'string' || !rawVersion.trim() || !isUuid(rawVersion.trim())))
+    throw new QuoteManagementInputError('Versão de template inválida.');
+  if (rawVersion === undefined && values.length === 0) {
+    if (revision.templateVersionId) {
+      const [selected] = await tx
+        .select({ key: quotationTemplates.key, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
+        .from(quotationTemplateVersions)
+        .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+        .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
+        .limit(1);
+      if (selected) return selected;
+    }
+    const [resolved] = await tx
+      .select({ key: quotationTemplates.key, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
+      .from(quotationTemplateVersions)
+      .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+      .where(and(eq(quotationTemplates.key, revision.templatePadrao), eq(quotationTemplateVersions.sourceHash, revision.templateHash)))
+      .limit(1);
+    if (!resolved) throw new QuoteManagementInputError('Versão de template do orçamento não encontrada.');
+    return resolved;
+  }
+  const versionId = typeof rawVersion === 'string' ? rawVersion.trim() : undefined;
+  const [selected] = await tx
+    .select({ key: quotationTemplates.key, archived: quotationTemplates.archived, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
+    .from(quotationTemplateVersions)
+    .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+    .where(versionId ? eq(quotationTemplateVersions.id, versionId) : eq(quotationTemplates.key, keys[0]))
+    .orderBy(desc(quotationTemplateVersions.version))
+    .limit(1);
+  if (!selected || selected.archived) throw new QuoteManagementInputError('Template do orçamento inválido ou arquivado.');
+  if (keys[0] && keys[0] !== selected.key)
+    throw new QuoteManagementInputError('A versão de template não pertence ao template informado.');
+  return { key: selected.key, hash: selected.hash, versionId: selected.versionId, version: selected.version };
+}
+
+function copy<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function legacySectionsSnapshotForUpdate(
+  revision: typeof quoteRevisions.$inferSelect,
+  values: { pagamento: string; entrega: string; observacoes: string; prazoProducao: string }
+): QuotationSectionsSnapshot {
+  const stored = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
+  return {
+    schema_version: stored.schema_version,
+    prazo_producao: {
+      base: copy(stored.prazo_producao.base),
+      current: { ...copy(stored.prazo_producao.current), enabled: Boolean(values.prazoProducao) },
+    },
+    pagamento: {
+      base: copy(stored.pagamento.base),
+      current: { ...copy(stored.pagamento.current), body: values.pagamento },
+    },
+    condicoes_gerais: {
+      base: copy(stored.condicoes_gerais.base),
+      current: {
+        ...copy(stored.condicoes_gerais.current),
+        body: combineLegacyConditions(values.entrega, values.observacoes),
+      },
+    },
+  };
+}
+
+function sectionSnapshotForUpdate(
+  input: Record<string, unknown>,
+  revision: typeof quoteRevisions.$inferSelect
+): QuotationSectionsSnapshot | undefined {
+  const supplied = input.secoes ?? input.sections_snapshot;
+  if (supplied === undefined) return undefined;
+  if (!isRecord(supplied)) throw new QuoteManagementInputError('Seções devem ser um objeto.');
+  const stored = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
+  const candidate = supplied as Record<string, unknown>;
+  if (isRecord(candidate.base)) {
+    const expectedBase = {
+      prazo_producao: stored.prazo_producao.base,
+      pagamento: stored.pagamento.base,
+      condicoes_gerais: stored.condicoes_gerais.base,
+    };
+    if (JSON.stringify(candidate.base) !== JSON.stringify(expectedBase))
+      throw new QuoteManagementInputError('A base das seções não pode ser alterada.');
+  }
+  for (const key of ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const) {
+    const section = candidate[key];
+    if (isRecord(section) && section.base !== undefined && JSON.stringify(section.base) !== JSON.stringify(stored[key].base))
+      throw new QuoteManagementInputError('A base das seções não pode ser alterada.');
+  }
+  const current = isRecord(candidate.current) ? candidate.current : candidate;
+  const sectionValue = (key: 'prazo_producao' | 'pagamento' | 'condicoes_gerais') => {
+    const value = current[key];
+    const suppliedCurrent = isRecord(value) && value.current !== undefined ? value.current : value;
+    if (!isRecord(suppliedCurrent)) return stored[key].current;
+    return { ...stored[key].current, ...suppliedCurrent };
+  };
+  try {
+    const merged = normalizeQuotationSections({
+      schema_version: stored.schema_version,
+      prazo_producao: sectionValue('prazo_producao'),
+      pagamento: sectionValue('pagamento'),
+      condicoes_gerais: sectionValue('condicoes_gerais'),
+    });
+    return {
+      schema_version: stored.schema_version,
+      prazo_producao: { base: copy(stored.prazo_producao.base), current: copy(merged.prazo_producao) },
+      pagamento: { base: copy(stored.pagamento.base), current: copy(merged.pagamento) },
+      condicoes_gerais: { base: copy(stored.condicoes_gerais.base), current: copy(merged.condicoes_gerais) },
+    };
+  } catch (error) {
+    throw new QuoteManagementInputError(error instanceof Error ? error.message : 'Seções inválidas.');
+  }
 }
 
 function mapSnapshot(
@@ -558,6 +680,16 @@ async function readRevisionHistory(
     .from(quoteRevisions)
     .where(eq(quoteRevisions.quotationId, quotationId))
     .orderBy(desc(quoteRevisions.version));
+  const versionIds = revisions
+    .map((revision) => revision.templateVersionId)
+    .filter((id): id is string => Boolean(id));
+  const versionRows = versionIds.length
+    ? await tx
+        .select({ id: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
+        .from(quotationTemplateVersions)
+        .where(inArray(quotationTemplateVersions.id, versionIds))
+    : [];
+  const versionById = new Map(versionRows.map((row) => [row.id, row.version]));
   return revisions.map((revision) => {
     const validityDate = validUntil(revision.createdAt, revision.validadeDias);
     const createdAt = asIso(revision.createdAt);
@@ -582,6 +714,11 @@ async function readRevisionHistory(
       expiration_derived: expired,
       is_expired: expired,
       expirada: expired,
+      template_key: revision.templatePadrao || null,
+      template_version: revision.templateVersionId
+        ? versionById.get(revision.templateVersionId) || null
+        : null,
+      template_hash: revision.templateHash || null,
     };
   });
 }
@@ -622,6 +759,14 @@ export async function readPostgresQuotationDetail(
         ? revision.status
         : quotation.status;
   const history = await readRevisionHistory(tx, quotation.id, now);
+  const [templateVersion] = revision.templateVersionId
+    ? await tx
+        .select({ version: quotationTemplateVersions.version })
+        .from(quotationTemplateVersions)
+        .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
+        .limit(1)
+    : [];
+  const sectionsSnapshot = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
   const currentExpired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
   const currentValidityDate = validUntil(revision.createdAt, revision.validadeDias);
   return {
@@ -657,6 +802,10 @@ export async function readPostgresQuotationDetail(
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
+    template_version_id: revision.templateVersionId || null,
+    template_version: templateVersion?.version || null,
+    secoes: sectionsSnapshot,
+    sections_snapshot: sectionsSnapshot,
     subtotal: formatDbMoney(revision.subtotal),
     total: formatDbMoney(revision.total),
     valor: formatDbMoney(revision.total),
@@ -1055,7 +1204,6 @@ export function createPostgresQuoteDraftManagementRepository(
         throw new QuoteManagementInputError('Envie os dados do orçamento em um objeto válido.');
       const input = rawInput as Record<string, unknown>;
       const expectedToken = readConcurrencyToken(input);
-      const templateSelection = readTemplateSelection(input);
       const items = normalizeUpdateItems(input.items);
       const selectedClientId = readClientId(input);
       try {
@@ -1081,6 +1229,8 @@ export function createPostgresQuoteDraftManagementRepository(
               'A revisão do orçamento não está mais em rascunho.'
             );
           }
+          const templateSelection = await readTemplateSelection(tx, input, revision);
+          const sectionsSnapshot = sectionSnapshotForUpdate(input, revision);
           const clientId = selectedClientId || quotation.clientId;
           const [client] = await tx
             .select()
@@ -1192,14 +1342,20 @@ export function createPostgresQuoteDraftManagementRepository(
           const totalCents = subtotalCents + freightCents;
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
-          const pagamento = inputText(input.pagamento, 'Pagamento', 500, revision.pagamento);
-          const entrega = inputText(input.entrega, 'Entrega', 500, revision.entrega);
-          const observacoes = inputText(
-            firstDefined(input, ['observacoes', 'notes']),
-            'Observações',
-            4000,
-            revision.observacoes
-          );
+          const pagamento = sectionsSnapshot
+            ? sectionsSnapshot.pagamento.current.body
+            : inputText(input.pagamento, 'Pagamento', 500, revision.pagamento);
+          const entrega = sectionsSnapshot
+            ? ''
+            : inputText(input.entrega, 'Entrega', 500, revision.entrega);
+          const observacoes = sectionsSnapshot
+            ? sectionsSnapshot.condicoes_gerais.current.body
+            : inputText(
+                firstDefined(input, ['observacoes', 'notes']),
+                'Observações',
+                4000,
+                revision.observacoes
+              );
           const prazoProducao = inputText(
             input.prazo_producao,
             'Prazo de produção',
@@ -1207,14 +1363,15 @@ export function createPostgresQuoteDraftManagementRepository(
             revision.prazoProducao
           );
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
-          const revisionMetadata = await resolveQuotationRevisionMetadata(tx, {
-            templatePadrao: templateSelection?.key || revision.templatePadrao,
-            templateHash: templateSelection?.hash || revision.templateHash,
-            pagamento,
-            entrega,
-            observacoes,
-            prazoProducao,
-          });
+          const revisionMetadata = {
+            templateVersionId: templateSelection!.versionId,
+            sectionsSnapshot: sectionsSnapshot || legacySectionsSnapshotForUpdate(revision, {
+              pagamento,
+              entrega,
+              observacoes,
+              prazoProducao,
+            }),
+          };
 
           await tx
             .update(quoteRevisions)

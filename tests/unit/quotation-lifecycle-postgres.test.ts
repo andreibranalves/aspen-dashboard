@@ -108,7 +108,7 @@ test(
       const management = createPostgresQuoteDraftManagementRepository(() => db, {
         now: () => new Date('2026-07-02T12:00:00.000Z'),
       });
-      const sent = await management.get(draft.quotation_name);
+      const sent = await management.get!(draft.quotation_name);
       assert.ok(sent);
       assert.equal(sent.status_canonical, 'enviado');
       // issued_document removed (#no-pdf-html-only)
@@ -159,6 +159,8 @@ test(
         .from(quoteRevisionItems)
         .where(eq(quoteRevisionItems.revisionId, created.revision_id));
       assert.equal(copiedRevision?.templateHash, sourceRevision.templateHash);
+      assert.equal(copiedRevision?.templateVersionId, sourceRevision.templateVersionId);
+      assert.deepEqual(copiedRevision?.sectionsSnapshot, sourceRevision.sectionsSnapshot);
       assert.equal(copiedRevision?.total, sourceRevision.total);
       assert.deepEqual(
         copiedItems.map((item) => item.totalLinha),
