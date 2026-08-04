@@ -959,13 +959,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                         <Input
                           className="h-8 w-20 mx-auto"
                           type="number"
-                          min="0.001"
-                          step="0.001"
-                          value={item.qty}
+                          min="1"
+                          step="1"
+                          value={Number(item.qty)}
                           onChange={(event) => updateItem(item._key, { qty: event.target.value })}
                         />
                       ) : (
-                        item.qty
+                        Number(item.qty)
                       )}
                     </TableCell>
                     <TableCell className="text-right">

@@ -403,7 +403,7 @@ export default function SplitResultCard({
                           className="mx-auto h-7 w-16 text-center text-xs"
                         />
                       ) : hasCode ? (
-                        item.qty
+                        Number(item.qty)
                       ) : (
                         '—'
                       )}
