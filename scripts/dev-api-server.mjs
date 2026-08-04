@@ -152,9 +152,11 @@ const server = createServer(async (req, res) => {
       responseHeaders['Content-Type'] = 'application/json';
     }
     res.writeHead(result.statusCode || 200, responseHeaders);
-    res.end(result.isBase64Encoded && typeof result.body === 'string'
-      ? Buffer.from(result.body, 'base64')
-      : result.body || '');
+    res.end(
+      result.isBase64Encoded && typeof result.body === 'string'
+        ? Buffer.from(result.body, 'base64')
+        : result.body || ''
+    );
   } catch (err) {
     const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
     console.error(`[${routeName}]`, err.message);
