@@ -618,58 +618,87 @@ function resolutionSource(resolution: PricingResolution): 'base' | 'tier' {
   return resolution.source === 'tier' ? 'tier' : 'base';
 }
 
-async function readSelectedTemplate(
+interface SelectedTemplate {
+  model: { id: string; key: string; name: string; archived: boolean };
+  version: { id: string; version: number; source: string; sourceHash: string };
+}
+
+export interface TemplateSelectionLookup {
+  byVersion(id: string): Promise<SelectedTemplate | null>;
+  current(selection: string | { id: string }): Promise<SelectedTemplate | null>;
+  hasModel(): Promise<boolean>;
+  seedLegacy(template: { key: string; name: string; source: string; hash: string }): Promise<SelectedTemplate | null>;
+}
+
+export async function readSelectedTemplate(
   tx: QuoteTransaction,
   settings: Settings,
-  input: QuoteDraftCreateInput
-) {
+  input: QuoteDraftCreateInput,
+  injectedLookup?: TemplateSelectionLookup
+): Promise<SelectedTemplate | null> {
+  const lookup = injectedLookup || {
+    byVersion: async (id: string) => {
+      const [row] = await tx
+        .select({
+          modelId: quotationTemplates.id,
+          modelKey: quotationTemplates.key,
+          modelName: quotationTemplates.name,
+          archived: quotationTemplates.archived,
+          versionId: quotationTemplateVersions.id,
+          version: quotationTemplateVersions.version,
+          source: quotationTemplateVersions.source,
+          sourceHash: quotationTemplateVersions.sourceHash,
+        })
+        .from(quotationTemplateVersions)
+        .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+        .where(eq(quotationTemplateVersions.id, id))
+        .limit(1);
+      return row && {
+        model: { id: row.modelId, key: row.modelKey, name: row.modelName, archived: row.archived },
+        version: { id: row.versionId, version: row.version, source: row.source, sourceHash: row.sourceHash },
+      };
+    },
+    current: (selection: string | { id: string }) => readCurrentQuotationTemplateVersion(tx, selection),
+    hasModel: async () => Boolean(
+      (await tx.select({ id: quotationTemplates.id }).from(quotationTemplates).limit(1))[0]
+    ),
+    seedLegacy: async (legacy: { key: string; name: string; source: string; hash: string }) => {
+      const modelId = randomUUID();
+      const versionId = randomUUID();
+      await tx
+        .insert(quotationTemplates)
+        .values({ id: modelId, key: legacy.key, name: legacy.name, archived: false })
+        .onConflictDoNothing({ target: quotationTemplates.key });
+      const [model] = await tx
+        .select()
+        .from(quotationTemplates)
+        .where(eq(quotationTemplates.key, legacy.key))
+        .limit(1);
+      if (!model || model.archived) return null;
+      await tx
+        .insert(quotationTemplateVersions)
+        .values({ id: versionId, templateId: model.id, version: 1, source: legacy.source, sourceHash: legacy.hash })
+        .onConflictDoNothing({ target: [quotationTemplateVersions.templateId, quotationTemplateVersions.version] });
+      return readCurrentQuotationTemplateVersion(tx, { id: model.id });
+    },
+  };
   const versionId = typeof input.template_version_id === 'string' ? input.template_version_id.trim() : '';
   const key = typeof input.template_key === 'string' ? input.template_key.trim() : '';
   if (versionId) {
     if (!isUuid(versionId)) return null;
-    const [row] = await tx
-      .select({
-        modelId: quotationTemplates.id,
-        modelKey: quotationTemplates.key,
-        modelName: quotationTemplates.name,
-        archived: quotationTemplates.archived,
-        versionId: quotationTemplateVersions.id,
-        version: quotationTemplateVersions.version,
-        source: quotationTemplateVersions.source,
-        sourceHash: quotationTemplateVersions.sourceHash,
-      })
-      .from(quotationTemplateVersions)
-      .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
-      .where(eq(quotationTemplateVersions.id, versionId))
-      .limit(1);
-    if (!row || row.archived) return null;
-    return {
-      model: { id: row.modelId, key: row.modelKey, name: row.modelName, archived: row.archived },
-      version: { id: row.versionId, version: row.version, source: row.source, sourceHash: row.sourceHash },
-    };
+    const selected = await lookup.byVersion(versionId);
+    if (!selected || selected.model.archived || (key && key !== selected.model.key)) return null;
+    return selected;
   }
 
-  const selected = await readCurrentQuotationTemplateVersion(tx, key || settings.template_padrao);
+  const selected = await lookup.current(key || settings.template_padrao);
   if (selected && !selected.model.archived) return selected;
-  // Static templates remain a compatibility fallback only when the library is
-  // still empty during the migration window.
+  // Static templates remain a compatibility fallback only while the library
+  // is empty during the migration window. Seed the selected static template so
+  // the revision FK and historical resolver still have persisted identity.
   const legacy = getQuotationTemplate(key || settings.template_padrao);
-  if (legacy && key) {
-    const [anyModel] = await tx.select({ id: quotationTemplates.id }).from(quotationTemplates).limit(1);
-    if (!anyModel) return {
-      model: { id: '', key: legacy.key, name: legacy.name, archived: false },
-      version: { id: '', version: 0, source: legacy.source, sourceHash: legacy.hash },
-    };
-    return null;
-  }
-  const [anyModel] = await tx.select({ id: quotationTemplates.id }).from(quotationTemplates).limit(1);
-  if (anyModel) return null;
-  return legacy
-    ? {
-        model: { id: '', key: legacy.key, name: legacy.name, archived: false },
-        version: { id: '', version: 0, source: legacy.source, sourceHash: legacy.hash },
-      }
-    : null;
+  if (await lookup.hasModel() || !legacy) return null;
+  return lookup.seedLegacy(legacy);
 }
 
 /** PostgreSQL quote-draft writer. Every mutation is intentionally kept in one
@@ -798,6 +827,12 @@ export function createPostgresQuoteDraftRepository(
               throw new Error('Seções devem ser um objeto.');
             }
             const supplied = (input.secoes || {}) as Record<string, unknown>;
+            const mergeSection = (key: 'prazo_producao' | 'pagamento' | 'condicoes_gerais') => {
+              const override = supplied[key];
+              if (!override || typeof override !== 'object' || Array.isArray(override)) return override;
+              const base = baseSections[key];
+              return { ...base, ...(override as Record<string, unknown>) };
+            };
             const legacyOverride =
               input.secoes === undefined && requestObservations !== undefined
                 ? {
@@ -807,9 +842,10 @@ export function createPostgresQuoteDraftRepository(
                 : undefined;
             currentSections = normalizeQuotationSections(
               {
-                ...baseSections,
-                ...supplied,
-                ...(legacyOverride ? { condicoes_gerais: legacyOverride } : {}),
+                schema_version: baseSections.schema_version,
+                prazo_producao: mergeSection('prazo_producao'),
+                pagamento: mergeSection('pagamento'),
+                condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
               },
               {
                 pagamento: baseSections.pagamento.body,

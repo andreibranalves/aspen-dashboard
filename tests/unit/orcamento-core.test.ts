@@ -4,7 +4,11 @@ import { test } from 'node:test';
 import { createHandler } from '../../api/_functions/orcamento.js';
 import { createCoreHandler } from '../../api/_functions/orcamento-core.js';
 import { createLegacyHandler } from '../../api/_functions/orcamento-legacy.js';
-import { QuoteDraftInputError } from '../../api/_db/quote-repository.js';
+import {
+  QuoteDraftInputError,
+  readSelectedTemplate,
+  type TemplateSelectionLookup,
+} from '../../api/_db/quote-repository.js';
 
 function event(body: unknown) {
   return {
@@ -117,6 +121,57 @@ test('quote core validates the envelope and annotates successful drafts', async 
   const receivedItems = received?.items as Array<Record<string, unknown>>;
   assert.equal(receivedItems[0]?.rate, '9.00');
   assert.equal(receivedItems[0]?.manual_rate, false);
+});
+
+const settings = {
+  validade_dias: 15,
+  pagamento: 'Pagamento padrão',
+  entrega: 'Entrega padrão',
+  frete_padrao: '0.00',
+  observacoes: 'Observações padrão',
+  template_padrao: 'padrao',
+  secoes: {} as never,
+};
+
+function selectionLookup(overrides: Partial<TemplateSelectionLookup> = {}) {
+  const templates = new Map([
+    ['padrao', { model: { id: 'model-default', key: 'padrao', name: 'Padrão', archived: false }, version: { id: '11111111-1111-4111-8111-111111111111', version: 1, source: 'default', sourceHash: 'a'.repeat(64) } }],
+    ['minimalista', { model: { id: 'model-min', key: 'minimalista', name: 'Minimalista', archived: false }, version: { id: '22222222-2222-4222-8222-222222222222', version: 1, source: 'minimal', sourceHash: 'b'.repeat(64) } }],
+    ['arquivado', { model: { id: 'model-archived', key: 'arquivado', name: 'Arquivado', archived: true }, version: { id: '33333333-3333-4333-8333-333333333333', version: 1, source: 'archived', sourceHash: 'c'.repeat(64) } }],
+  ]);
+  const versions = new Map([...templates.values()].map((value) => [value.version.id, value]));
+  return {
+    byVersion: async (id: string) => versions.get(id) || null,
+    current: async (selection: string | { id: string }) => typeof selection === 'string' ? templates.get(selection) || null : [...templates.values()].find((value) => value.model.id === selection.id) || null,
+    hasModel: async () => true,
+    seedLegacy: async () => null,
+    ...overrides,
+  } satisfies TemplateSelectionLookup;
+}
+
+test('repository template selection rejects inconsistent, archived and missing choices', async () => {
+  const lookup = selectionLookup();
+  assert.equal((await readSelectedTemplate({} as never, settings, { template_version_id: '22222222-2222-4222-8222-222222222222', template_key: 'padrao' }, lookup)), null);
+  assert.equal((await readSelectedTemplate({} as never, settings, { template_version_id: '33333333-3333-4333-8333-333333333333' }, lookup)), null);
+  assert.equal((await readSelectedTemplate({} as never, settings, { template_key: 'missing' }, lookup)), null);
+  assert.equal((await readSelectedTemplate({} as never, settings, { template_key: 'minimalista' }, lookup))?.version.id, '22222222-2222-4222-8222-222222222222');
+  assert.equal((await readSelectedTemplate({} as never, settings, {}, lookup))?.model.key, 'padrao');
+});
+
+test('repository template selection seeds a valid static migration fallback', async () => {
+  let seeded: string | undefined;
+  const lookup = selectionLookup({
+    current: async () => null,
+    hasModel: async () => false,
+    seedLegacy: async (legacy) => {
+      seeded = legacy.key;
+      return { model: { id: 'seed-model', key: legacy.key, name: legacy.name, archived: false }, version: { id: 'seed-version', version: 1, source: legacy.source, sourceHash: legacy.hash } };
+    },
+  });
+  const selected = await readSelectedTemplate({} as never, settings, {}, lookup);
+  assert.equal(seeded, 'padrao');
+  assert.equal(selected?.version.id, 'seed-version');
+  assert.equal(selected?.version.sourceHash.length, 64);
 });
 
 test('quote core maps invalid template selection to 400', async () => {

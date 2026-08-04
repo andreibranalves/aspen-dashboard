@@ -42,8 +42,8 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     quotationSections: {
       schema_version: 1 as const,
       prazo_producao: { enabled: true, title: 'Prazo de produção' },
-      pagamento: { enabled: true, title: 'Pagamento', body: 'Pagamento da configuração' },
-      condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Observações da configuração' },
+      pagamento: { enabled: false, title: 'Título de pagamento configurado', body: 'Pagamento da configuração' },
+      condicoes_gerais: { enabled: false, title: 'Título de condições configurado', body: 'Observações da configuração' },
     },
     templatePadrao: 'padrao',
   };
@@ -101,12 +101,14 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       client_id: clientId,
       template_key: 'minimalista',
       secoes: {
-        pagamento: { enabled: true, title: 'Pagamento customizado', body: 'Override' },
+        pagamento: { body: 'Override' },
       },
       items: [{ item_code: sku, qty: '30.000' }],
     });
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     assert.equal(overrideDraft.secoes.pagamento.current.body, 'Override');
+    assert.equal(overrideDraft.secoes.pagamento.current.enabled, false);
+    assert.equal(overrideDraft.secoes.pagamento.current.title, 'Título de pagamento configurado');
     overrideDraft.secoes.pagamento.current.body = 'Mutado';
     assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
