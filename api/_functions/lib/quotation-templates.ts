@@ -513,97 +513,46 @@ export interface QuotationTemplateViewModel {
 
 // ── HTML policy tokenizer ──────────────────────────────────────────────
 
+// All allowlists stored lowercase for case-insensitive matching
 const ALLOWED_TAGS = new Set([
-  'a',
-  'article',
-  'b',
-  'blockquote',
-  'body',
-  'br',
-  'caption',
-  'code',
-  'col',
-  'colgroup',
-  'dd',
-  'defs',
-  'div',
-  'dl',
-  'dt',
-  'em',
-  'footer',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'head',
-  'header',
-  'hr',
-  'html',
-  'img',
-  'li',
-  'link',
-  'main',
-  'meta',
-  'nav',
-  'ol',
-  'p',
-  'path',
-  'pre',
-  'section',
-  'small',
-  'span',
-  'strong',
-  'style',
-  'svg',
-  'table',
-  'tbody',
-  'td',
-  'tfoot',
-  'th',
-  'thead',
-  'title',
-  'tr',
-  'ul',
+  'a', 'article', 'b', 'blockquote', 'body', 'br', 'caption', 'code', 'col',
+  'colgroup', 'dd', 'defs', 'div', 'dl', 'dt', 'em', 'footer', 'h1', 'h2',
+  'h3', 'h4', 'h5', 'h6', 'head', 'header', 'hr', 'html', 'img', 'li',
+  'link', 'main', 'meta', 'nav', 'ol', 'p', 'path', 'pre', 'section',
+  'small', 'span', 'strong', 'style', 'svg', 'table', 'tbody', 'td',
+  'tfoot', 'th', 'thead', 'title', 'tr', 'ul',
 ]);
 
+// SVG-restricted tag subset (only these allowed inside <svg>)
+const SVG_ALLOWED_TAGS = new Set(['svg', 'g', 'path', 'defs', 'style']);
+
+// Tags that are ONLY valid inside SVG context
+const SVG_ONLY_TAGS = new Set(['g', 'path', 'defs']);
+
+// Global attribute allowlist (applied to all tags)
 const ALLOWED_ATTRIBUTES = new Set([
-  'class',
-  'id',
-  'style',
-  'href',
-  'src',
-  'rel',
-  'charset',
-  'width',
-  'height',
-  'viewBox',
-  'preserveAspectRatio',
-  'xmlns',
-  'xmlns:xlink',
-  'fill',
-  'stroke',
-  'd',
-  'data-name',
-  'lang',
+  'class', 'id', 'style', 'href', 'src', 'rel', 'charset', 'width', 'height',
+  'viewbox', 'preserveaspectratio', 'xmlns', 'xmlns:xlink', 'fill', 'stroke',
+  'd', 'data-name', 'lang',
+]);
+
+// Per-tag attribute restrictions: ONLY these attributes allowed (replaces global check)
+const TAG_ATTRIBUTE_RESTRICTIONS: Record<string, Set<string>> = {
+  meta: new Set(['charset']),
+  link: new Set(['href', 'rel']),
+  img: new Set(['src', 'width', 'height']),
+};
+
+// SVG-specific attribute allowlist (replaces global check inside SVG context)
+const SVG_ATTRIBUTES = new Set([
+  'class', 'id', 'style', 'fill', 'stroke', 'd', 'viewbox',
+  'preserveaspectratio', 'xmlns', 'xmlns:xlink', 'width', 'height',
+  'data-name', 'transform', 'opacity', 'clip-path', 'mask',
 ]);
 
 const VOID_ELEMENTS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'param',
-  'source',
-  'track',
-  'wbr',
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link',
+  'meta', 'param', 'source', 'track', 'wbr',
 ]);
 
 const DANGEROUS_CSS_PATTERNS = ['@import', 'expression(', 'url(', 'behavior', '-moz-binding'];
@@ -619,8 +568,27 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&apos;/g, "'");
 }
 
+function normalizeCssForCheck(css: string): string {
+  // Decode HTML entities
+  let s = css
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+  // Normalize control whitespace (tab/newline/carriage-return → space, collapse runs)
+  s = s.replace(/[\t\n\r]+/g, ' ').replace(/\s{2,}/g, ' ');
+  // Decode CSS escapes: \\HHHHHH → char
+  s = s.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+  // Remove CSS comments
+  s = s.replace(/\/\*[\s\S]*?\*\//g, '');
+  return s;
+}
+
 function checkCssSafety(css: string, context: string, templateKey: string): void {
-  const lower = css.toLowerCase();
+  const lower = normalizeCssForCheck(css).toLowerCase();
   for (const pattern of DANGEROUS_CSS_PATTERNS) {
     if (lower.includes(pattern)) {
       throw new Error(`CSS perigoso "${pattern}" em ${context}: ${templateKey}`);
@@ -753,48 +721,81 @@ function tokenizeHtml(source: string): HtmlToken[] {
   return tokens;
 }
 
+function hasHandlebarsExpression(value: string): boolean {
+  return /\{\{/.test(value);
+}
+
 function checkHtmlPolicy(tokens: HtmlToken[], templateKey: string): void {
   const stack: string[] = [];
+  let inSvg = false;
   for (const token of tokens) {
     if (token.type === 'start-tag') {
-      if (!ALLOWED_TAGS.has(token.name!)) {
+      const tagLower = token.name!;
+
+      // SVG context tracking
+      if (tagLower === 'svg') inSvg = true;
+
+      // Tag allowlist (SVG context uses restricted set, reject SVG-only tags outside SVG)
+      if (!inSvg && SVG_ONLY_TAGS.has(tagLower)) {
+        throw new Error(`Tag "<${token.name}>" não permitida fora de contexto SVG: ${templateKey}`);
+      }
+      const tagSet = inSvg ? SVG_ALLOWED_TAGS : ALLOWED_TAGS;
+      if (!tagSet.has(tagLower)) {
         throw new Error(`Tag "<${token.name}>" não permitida no template: ${templateKey}`);
       }
-      if (
-        !token.selfClosing &&
-        !VOID_ELEMENTS.has(token.name!) &&
-        token.name !== 'style' &&
-        token.name !== 'script'
-      )
-        stack.push(token.name!);
+
+      // Push non-void, non-self-closing, non-style/script tags
+      if (!token.selfClosing && !VOID_ELEMENTS.has(tagLower) && tagLower !== 'style' && tagLower !== 'script') {
+        stack.push(tagLower);
+      }
+
       for (const attr of token.attributes || []) {
-        if (!ALLOWED_ATTRIBUTES.has(attr.name)) {
-          throw new Error(
-            `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
-          );
+        const attrLower = attr.name;
+
+        // Reject Handlebars expressions in URL/style contexts
+        if ((attrLower === 'href' || attrLower === 'src' || attrLower === 'style') && hasHandlebarsExpression(attr.value)) {
+          throw new Error(`Expressão dinâmica não permitida no atributo "${attrLower}" da tag <${token.name}>: ${templateKey}`);
         }
-        if (attr.name === 'href' || attr.name === 'src') {
+
+        // Attribute policy: SVG context uses SVG allowlist,
+        // restricted tags use their specific set, all others use global
+        if (inSvg) {
+          if (!SVG_ATTRIBUTES.has(attrLower)) {
+            throw new Error(`Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`);
+          }
+        } else {
+          const tagRestricted = TAG_ATTRIBUTE_RESTRICTIONS[tagLower];
+          if (tagRestricted) {
+            if (!tagRestricted.has(attrLower)) {
+              throw new Error(`Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`);
+            }
+          } else if (!ALLOWED_ATTRIBUTES.has(attrLower)) {
+            throw new Error(`Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`);
+          }
+        }
+
+        // URL protocol checks
+        if (attrLower === 'href' || attrLower === 'src') {
           const decoded = decodeHtmlEntities(attr.value).toLowerCase().trim();
-          if (
-            attr.name === 'src' &&
-            !decoded.startsWith('https:') &&
-            !decoded.startsWith('data:image/')
-          ) {
+          if (attrLower === 'src' && !decoded.startsWith('https:') && !decoded.startsWith('data:image/')) {
             throw new Error(`Protocolo não permitido em src: ${decoded}: ${templateKey}`);
           }
-          if (
-            attr.name === 'href' &&
-            !decoded.startsWith('https:') &&
-            !decoded.startsWith('mailto:')
-          ) {
+          if (attrLower === 'href' && !decoded.startsWith('https:') && !decoded.startsWith('mailto:')) {
             throw new Error(`Protocolo não permitido em href: ${decoded}: ${templateKey}`);
           }
         }
-        if (attr.name === 'style') {
+
+        // CSS safety in style attributes
+        if (attrLower === 'style') {
           checkCssSafety(attr.value, `atributo style na tag <${token.name}>`, templateKey);
         }
       }
+
+      // Exit SVG context on self-closing or closing svg
+      if (tagLower === 'svg' && token.selfClosing) inSvg = false;
+
     } else if (token.type === 'end-tag') {
+      if (token.name === 'svg') inSvg = false;
       if (stack.length === 0 || stack[stack.length - 1] !== token.name) {
         throw new Error(`Tag de fechamento </${token.name}> inesperada: ${templateKey}`);
       }
@@ -814,7 +815,7 @@ function stripHandlebars(source: string): string {
 
 type AstWalk = Record<string, unknown> & { type?: string };
 
-function findRequiredFields(source: string): { missing: string[]; secoesPresent: boolean } {
+function findRequiredFields(source: string, templateKey: string): { missing: string[]; secoesPresent: boolean } {
   const ast = Handlebars.parse(source) as unknown as AstWalk;
   const found = {
     quote_number: false,
@@ -853,14 +854,41 @@ function findRequiredFields(source: string): { missing: string[]; secoesPresent:
   walk(ast);
 
   const missing: string[] = [];
+  const softMissing: string[] = [];
   if (!found.quote_number) missing.push('quote_number');
   if (!found.client_name) missing.push('client.name');
   if (!found.each_items) missing.push('#each items');
-  if (!found.display_total) missing.push('display.total');
+  if (!found.display_total) softMissing.push('display.total');
+  // Warn about soft-missing fields but don't reject
+  if (softMissing.length > 0) {
+    console.warn(
+      `[quotation-templates] Aviso: campo opcional ausente no template ${templateKey}: ${softMissing.join(', ')}`
+    );
+  }
   return { missing, secoesPresent };
 }
 
+function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
+  // Check the ORIGINAL source (not stripped) for Handlebars expressions in
+  // href, src, or style attribute values. These would bypass static URL/CSS
+  // policy checks because the expressions are stripped before tokenization.
+  const attrRegex = /<(\w+)[^>]*\b(href|src|style)\s*=\s*["']([^"']*\{\{[^"']*)["']/gi;
+  let match;
+  while ((match = attrRegex.exec(source)) !== null) {
+    const attrValue = match[3];
+    if (/\{\{/.test(attrValue)) {
+      throw new Error(
+        `Expressão dinâmica não permitida no atributo "${match[2]}" da tag <${match[1]}>: ${templateKey}`
+      );
+    }
+  }
+}
+
 export function validateQuotationHtmlSource(source: string, templateKey = 'desconhecido'): void {
+  // Reject Handlebars expressions in URL/style contexts on the ORIGINAL source
+  // (before stripping, since stripping removes them and bypasses the check)
+  checkDynamicUrlStyleBypass(source, templateKey);
+
   const stripped = stripHandlebars(source);
 
   // HTML policy check first (catches dangerous markup before field validation)
@@ -870,7 +898,7 @@ export function validateQuotationHtmlSource(source: string, templateKey = 'desco
   // Required fields check (only for full HTML documents)
   const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
   if (isHtmlDocument) {
-    const { missing, secoesPresent } = findRequiredFields(source);
+    const { missing, secoesPresent } = findRequiredFields(source, templateKey);
     if (missing.length > 0) {
       throw new Error(
         `Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`

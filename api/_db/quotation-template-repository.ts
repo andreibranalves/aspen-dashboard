@@ -249,10 +249,10 @@ export function quotationSnapshotViewModel(
         value: prazoCurrent.enabled ? String(prazoCurrent.title || '') : '',
       },
       pagamento: {
-        body_html: toSafeMultilineHtml(String(pagtoCurrent.body || '')),
+        body_html: pagtoCurrent.enabled ? toSafeMultilineHtml(String(pagtoCurrent.body || '')) : toSafeMultilineHtml(''),
       },
       condicoes_gerais: {
-        body_html: toSafeMultilineHtml(String(condicoesCurrent.body || '')),
+        body_html: condicoesCurrent.enabled ? toSafeMultilineHtml(String(condicoesCurrent.body || '')) : toSafeMultilineHtml(''),
       },
     };
   }

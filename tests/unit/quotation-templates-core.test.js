@@ -320,9 +320,9 @@ test('validateQuotationHtmlSource rejects templates missing required fields', ()
     () => validateQuotationHtmlSource(full.replace('{{#each items}}{{name}}{{/each}}', ''), 'test'),
     /#each items/
   );
-  assert.throws(
-    () => validateQuotationHtmlSource(full.replace('{{display.total}}', ''), 'test'),
-    /display\.total/
+  // display.total is a soft requirement (warning only, not error)
+  assert.doesNotThrow(() =>
+    validateQuotationHtmlSource(full.replace('{{display.total}}', ''), 'test')
   );
 });
 
@@ -396,5 +396,189 @@ test('validateQuotationHtmlSource rejects unsafe SVG features', () => {
         'test'
       ),
     /não permitido/
+  );
+});
+
+// ── Adversarial: dynamic URL/CSS policy bypass ──────────────────────
+
+test('rejects Handlebars expression in href attribute', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><a href="{{url}}">x</a></body></html>',
+        'test'
+      ),
+    /Expressão dinâmica não permitida/
+  );
+});
+
+test('rejects Handlebars expression in src attribute', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><img src="{{img}}"></body></html>',
+        'test'
+      ),
+    /Expressão dinâmica não permitida/
+  );
+});
+
+test('rejects Handlebars expression in style attribute', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><div style="{{css}}">x</div></body></html>',
+        'test'
+      ),
+    /Expressão dinâmica não permitida/
+  );
+});
+
+// ── Adversarial: disabled sections ──────────────────────────────────
+
+test('disabled sections expose no body HTML', () => {
+  const model = quotationSnapshotViewModel({
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        schema_version: 1,
+        prazo_producao: {
+          base: { enabled: true, title: 'Prazo' },
+          current: { enabled: false, title: 'Prazo' },
+        },
+        pagamento: {
+          base: { enabled: true, title: 'Pgto', body: 'X' },
+          current: { enabled: false, title: 'Pgto', body: 'SECRET' },
+        },
+        condicoes_gerais: {
+          base: { enabled: true, title: 'Cond', body: 'Y' },
+          current: { enabled: false, title: 'Cond', body: 'HIDDEN' },
+        },
+      },
+    },
+  });
+  assert.equal(model.secoes.prazo_producao.value, '');
+  assert.equal(model.secoes.pagamento.body_html.toString(), '');
+  assert.equal(model.secoes.condicoes_gerais.body_html.toString(), '');
+});
+
+// ── Adversarial: Frappe rendering ───────────────────────────────────
+
+test('all three built-in templates render without error', () => {
+  const model = quotationSnapshotViewModel(snapshot);
+  for (const key of ['padrao', 'minimalista', 'frappe']) {
+    const tmpl = getQuotationTemplate(key);
+    assert.ok(tmpl, `template ${key} should exist`);
+    const html = renderQuotationTemplate(tmpl, model);
+    assert.ok(html.length > 100, `${key} should produce substantial HTML`);
+    assert.match(html, /Cliente/);
+  }
+});
+
+// ── Adversarial: SVG context ────────────────────────────────────────
+
+test('non-SVG tags inside <svg> are rejected', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><svg><div>x</div></svg></body></html>',
+        'test'
+      ),
+    /não permitida/
+  );
+});
+
+test('SVG-only tags outside <svg> are rejected', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><path d="M0,0"/></body></html>',
+        'test'
+      ),
+    /não permitida/
+  );
+});
+
+// ── Adversarial: per-tag attributes ─────────────────────────────────
+
+test('meta only allows charset, rejects class/style', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><head><meta class="x" charset="utf-8"></head><body></body></html>',
+        'test'
+      ),
+    /não permitido/
+  );
+});
+
+test('link only allows href/rel', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><head><link href="https://x" rel="stylesheet" id="x"></head><body></body></html>',
+        'test'
+      ),
+    /não permitido/
+  );
+});
+
+// ── Adversarial: CSS normalization ──────────────────────────────────
+
+test('rejects CSS with encoded @import', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><head><style>@im/**/port url("evil.css")</style></head><body></body></html>',
+        'test'
+      ),
+    /CSS perigoso/
+  );
+});
+
+test('rejects CSS with encoded url()', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><head><style>background: ur/**/l(x)</style></head><body></body></html>',
+        'test'
+      ),
+    /CSS perigoso/
+  );
+});
+
+// ── Adversarial: malformed markup ───────────────────────────────────
+
+test('rejects unterminated comment', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><!-- unclosed</body></html>',
+        'test'
+      ),
+    /Comentário HTML não terminado/
+  );
+});
+
+test('rejects unterminated attribute value', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><div class="unclosed>x</div></body></html>',
+        'test'
+      ),
+    /Valor de atributo não terminado/
+  );
+});
+
+test('rejects end tag without matching open tag', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body></div>x</body></html>',
+        'test'
+      ),
+    /inesperada/
   );
 });

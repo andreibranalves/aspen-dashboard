@@ -6,6 +6,12 @@ export const MAX_SECTION_BODY_LENGTH = 4000;
 
 export type QuotationSectionKey = 'prazo_producao' | 'pagamento' | 'condicoes_gerais';
 
+const SECTION_KEYS: readonly QuotationSectionKey[] = [
+  'prazo_producao',
+  'pagamento',
+  'condicoes_gerais',
+];
+
 export interface QuotationSectionSettings {
   enabled: boolean;
   title: string;
@@ -32,12 +38,12 @@ export interface QuotationSectionsSnapshot {
   };
 }
 
-export const DEFAULT_QUOTATION_SECTIONS: QuotationSectionsSettings = {
+export const DEFAULT_QUOTATION_SECTIONS: Readonly<QuotationSectionsSettings> = Object.freeze({
   schema_version: 1,
-  prazo_producao: { enabled: true, title: 'Prazo de produção' },
-  pagamento: { enabled: true, title: 'Pagamento', body: '' },
-  condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
-};
+  prazo_producao: Object.freeze({ enabled: true, title: 'Prazo de produção' }),
+  pagamento: Object.freeze({ enabled: true, title: 'Pagamento', body: '' }),
+  condicoes_gerais: Object.freeze({ enabled: true, title: 'Condições Gerais', body: '' }),
+});
 
 function deepCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -52,94 +58,155 @@ export function combineLegacyConditions(entrega: string, observacoes: string): s
 
 export function toSafeMultilineHtml(value: string): Handlebars.SafeString {
   if (!value) return new Handlebars.SafeString('');
-  const lines = value
-    .split('\n')
-    .map((line) =>
-      line
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-    );
+  const lines = value.split('\n').map((line) => Handlebars.Utils.escapeExpression(line));
   return new Handlebars.SafeString(lines.join('<br>'));
 }
 
-function normalizeSection(
+/**
+ * Validate a single section object. Throws on any invalid present value.
+ * Returns the validated section merged with defaults for missing fields.
+ */
+function validateAndNormalizeSection(
+  key: QuotationSectionKey,
   input: unknown,
-  defaults: QuotationSectionSettings
-): QuotationSectionSettings {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return deepCopy(defaults);
-  }
-  const obj = input as Record<string, unknown>;
-  return {
-    enabled: typeof obj.enabled === 'boolean' ? obj.enabled : defaults.enabled,
-    title: typeof obj.title === 'string' && obj.title.trim() ? obj.title : defaults.title,
-    body: typeof obj.body === 'string' ? obj.body : defaults.body,
-  };
-}
+  defaults: QuotationSectionSettings & { body?: string },
+): QuotationSectionSettings & { body?: string } {
+  // Missing section: fill from defaults
+  if (input === undefined) return deepCopy(defaults);
 
-function normalizeSectionWithBody(
-  input: unknown,
-  defaults: QuotationSectionSettings & { body: string }
-): QuotationSectionSettings & { body: string } {
+  // Present but not a plain object: reject
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return deepCopy(defaults);
+    throw new Error(`Seção "${key}" deve ser um objeto.`);
   }
   const obj = input as Record<string, unknown>;
-  return {
-    enabled: typeof obj.enabled === 'boolean' ? obj.enabled : defaults.enabled,
-    title: typeof obj.title === 'string' && obj.title.trim() ? obj.title : defaults.title,
-    body: typeof obj.body === 'string' ? obj.body : defaults.body,
+
+  // Reject unknown keys
+  const allowedKeys = key === 'prazo_producao'
+    ? ['enabled', 'title']
+    : ['enabled', 'title', 'body'];
+  for (const k of Object.keys(obj)) {
+    if (!allowedKeys.includes(k)) {
+      throw new Error(`Campo desconhecido "${k}" na seção "${key}".`);
+    }
+  }
+
+  // enabled must be boolean
+  if (typeof obj.enabled !== 'boolean') {
+    throw new Error(`Campo "enabled" da seção "${key}" deve ser booleano.`);
+  }
+
+  // title must be non-blank string within bounds
+  if (typeof obj.title !== 'string' || !obj.title.trim()) {
+    throw new Error(`Título da seção "${key}" não pode ser vazio.`);
+  }
+  if (obj.title.length > MAX_SECTION_TITLE_LENGTH) {
+    throw new Error(`Título da seção "${key}" excede ${MAX_SECTION_TITLE_LENGTH} caracteres.`);
+  }
+
+  // body: only allowed on pagamento/condicoes_gerais, must be string within bounds
+  if (key === 'prazo_producao') {
+    if (obj.body !== undefined) {
+      throw new Error(`Seção "prazo_producao" não possui campo "body".`);
+    }
+  } else {
+    if (obj.body !== undefined && typeof obj.body !== 'string') {
+      throw new Error(`Campo "body" da seção "${key}" deve ser string.`);
+    }
+    if (typeof obj.body === 'string' && obj.body.length > MAX_SECTION_BODY_LENGTH) {
+      throw new Error(`Corpo da seção "${key}" excede ${MAX_SECTION_BODY_LENGTH} caracteres.`);
+    }
+  }
+
+  const result: Record<string, unknown> = {
+    enabled: obj.enabled,
+    title: obj.title,
   };
+  if (key !== 'prazo_producao') {
+    result.body = typeof obj.body === 'string' ? obj.body : (defaults.body ?? '');
+  }
+  return result as unknown as QuotationSectionSettings & { body?: string };
 }
 
 export function normalizeQuotationSections(
   input: unknown,
-  legacy?: { pagamento?: string; entrega?: string; observacoes?: string }
+  legacy?: { pagamento?: string; entrega?: string; observacoes?: string },
 ): QuotationSectionsSettings {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    const result = deepCopy(DEFAULT_QUOTATION_SECTIONS);
+  // No input: build from defaults + legacy
+  if (input === undefined || input === null) {
+    const result = deepCopy(DEFAULT_QUOTATION_SECTIONS) as QuotationSectionsSettings;
     if (legacy?.pagamento) result.pagamento.body = legacy.pagamento;
     if (legacy?.entrega || legacy?.observacoes) {
       result.condicoes_gerais.body = combineLegacyConditions(
         legacy.entrega || '',
-        legacy.observacoes || ''
+        legacy.observacoes || '',
       );
     }
     return result;
   }
 
+  // Non-object input: reject
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Seções devem ser um objeto.');
+  }
+
   const obj = input as Record<string, unknown>;
 
-  const pagamento = normalizeSectionWithBody(obj.pagamento, DEFAULT_QUOTATION_SECTIONS.pagamento);
-  const condicoes_gerais = normalizeSectionWithBody(
+  // Reject unknown top-level keys
+  const knownKeys = new Set<string>(['schema_version', ...SECTION_KEYS]);
+  for (const k of Object.keys(obj)) {
+    if (!knownKeys.has(k)) {
+      throw new Error(`Campo desconhecido "${k}" nas seções.`);
+    }
+  }
+
+  const pagamento = validateAndNormalizeSection(
+    'pagamento',
+    obj.pagamento,
+    DEFAULT_QUOTATION_SECTIONS.pagamento,
+  );
+  const condicoes_gerais = validateAndNormalizeSection(
+    'condicoes_gerais',
     obj.condicoes_gerais,
-    DEFAULT_QUOTATION_SECTIONS.condicoes_gerais
+    DEFAULT_QUOTATION_SECTIONS.condicoes_gerais,
   );
 
-  // Derive legacy conditions only if condicoes_gerais not in input
-  if (!obj.condicoes_gerais && (legacy?.entrega || legacy?.observacoes)) {
-    condicoes_gerais.body = combineLegacyConditions(legacy.entrega || '', legacy.observacoes || '');
+  // Derive legacy conditions ONLY when condicoes_gerais key is absent
+  if (!('condicoes_gerais' in obj) && (legacy?.entrega || legacy?.observacoes)) {
+    condicoes_gerais.body = combineLegacyConditions(
+      legacy.entrega || '',
+      legacy.observacoes || '',
+    );
   }
 
   return {
     schema_version: QUOTATION_SECTION_SCHEMA_VERSION,
-    prazo_producao: normalizeSection(obj.prazo_producao, DEFAULT_QUOTATION_SECTIONS.prazo_producao),
-    pagamento,
-    condicoes_gerais,
+    prazo_producao: validateAndNormalizeSection(
+      'prazo_producao',
+      obj.prazo_producao,
+      DEFAULT_QUOTATION_SECTIONS.prazo_producao,
+    ),
+    pagamento: pagamento as QuotationSectionsSettings['pagamento'],
+    condicoes_gerais: condicoes_gerais as QuotationSectionsSettings['condicoes_gerais'],
   };
 }
 
-export function createQuotationSectionsSnapshot(settings: QuotationSectionsSettings): {
-  schema_version: typeof QUOTATION_SECTION_SCHEMA_VERSION;
-  base: QuotationSectionsSettings;
-  current: QuotationSectionsSettings;
-} {
+export function createQuotationSectionsSnapshot(
+  settings: QuotationSectionsSettings,
+): QuotationSectionsSnapshot {
   return {
     schema_version: settings.schema_version,
-    base: deepCopy(settings),
-    current: deepCopy(settings),
+    prazo_producao: {
+      base: deepCopy(settings.prazo_producao),
+      current: deepCopy(settings.prazo_producao),
+    },
+    pagamento: {
+      base: deepCopy(settings.pagamento),
+      current: deepCopy(settings.pagamento),
+    },
+    condicoes_gerais: {
+      base: deepCopy(settings.condicoes_gerais),
+      current: deepCopy(settings.condicoes_gerais),
+    },
   };
 }
 
@@ -149,28 +216,19 @@ export function validateQuotationSections(input: unknown): void {
   }
   const obj = input as Record<string, unknown>;
 
-  for (const key of ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const) {
+  // Reject unknown keys
+  const knownKeys = new Set<string>(['schema_version', ...SECTION_KEYS]);
+  for (const k of Object.keys(obj)) {
+    if (!knownKeys.has(k)) {
+      throw new Error(`Campo desconhecido "${k}" nas seções.`);
+    }
+  }
+
+  for (const key of SECTION_KEYS) {
     const section = obj[key];
     if (section !== undefined) {
-      if (!section || typeof section !== 'object' || Array.isArray(section)) {
-        throw new Error(`Seção "${key}" deve ser um objeto.`);
-      }
-      const s = section as Record<string, unknown>;
-      if (typeof s.enabled !== 'boolean') {
-        throw new Error(`Campo "enabled" da seção "${key}" deve ser booleano.`);
-      }
-      if (typeof s.title !== 'string' || !s.title.trim()) {
-        throw new Error(`Título da seção "${key}" não pode ser vazio.`);
-      }
-      if (s.title.length > MAX_SECTION_TITLE_LENGTH) {
-        throw new Error(`Título da seção "${key}" excede ${MAX_SECTION_TITLE_LENGTH} caracteres.`);
-      }
-      if (s.body !== undefined && typeof s.body !== 'string') {
-        throw new Error(`Campo "body" da seção "${key}" deve ser string.`);
-      }
-      if (typeof s.body === 'string' && s.body.length > MAX_SECTION_BODY_LENGTH) {
-        throw new Error(`Corpo da seção "${key}" excede ${MAX_SECTION_BODY_LENGTH} caracteres.`);
-      }
+      // Delegate to the same validation used by normalization
+      validateAndNormalizeSection(key, section, DEFAULT_QUOTATION_SECTIONS[key]);
     }
   }
 }

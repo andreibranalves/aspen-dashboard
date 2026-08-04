@@ -27,8 +27,8 @@ test('normaliza três seções e combina campos legados em condições gerais', 
 
 test('cria base e current independentes', () => {
   const snapshot = createQuotationSectionsSnapshot(DEFAULT_QUOTATION_SECTIONS);
-  snapshot.current.pagamento.title = 'Alterado';
-  assert.equal(snapshot.base.pagamento.title, DEFAULT_QUOTATION_SECTIONS.pagamento.title);
+  snapshot.pagamento.current.title = 'Alterado';
+  assert.equal(snapshot.pagamento.base.title, DEFAULT_QUOTATION_SECTIONS.pagamento.title);
 });
 
 test('combina somente os valores legados existentes', () => {
@@ -92,4 +92,72 @@ test('toSafeMultilineHtml escapa HTML e preserva quebras de linha', () => {
 test('toSafeMultilineHtml retorna string vazia para valor vazio', () => {
   const result = toSafeMultilineHtml('');
   assert.equal(result.toString(), '');
+});
+
+test('toSafeMultilineHtml escapa apóstrofos, crases e iguais via Handlebars.escapeExpression', () => {
+  const result = toSafeMultilineHtml("a='b' c=`d` e=f");
+  const str = result.toString();
+  // Handlebars.escapeExpression uses hex entities for these chars
+  assert.ok(str.includes('&#x27;'), 'should escape apostrophe');
+  assert.ok(str.includes('&#x60;'), 'should escape backtick');
+  assert.ok(str.includes('&#x3D;'), 'should escape equals');
+});
+
+test('normalização rejeita chaves desconhecidas', () => {
+  assert.throws(
+    () => normalizeQuotationSections({ unknown_key: { enabled: true, title: 'X' } }),
+    /Campo desconhecido "unknown_key"/
+  );
+});
+
+test('normalização rejeita body em prazo_producao', () => {
+  assert.throws(
+    () => normalizeQuotationSections({ prazo_producao: { enabled: true, title: 'P', body: 'x' } }),
+    /Campo desconhecido "body" na seção "prazo_producao"/
+  );
+});
+
+test('normalização rejeita body oversized', () => {
+  assert.throws(
+    () => normalizeQuotationSections({ pagamento: { enabled: true, title: 'P', body: 'x'.repeat(4001) } }),
+    /excede 4000 caracteres/
+  );
+});
+
+test('normalização rejeita título oversized', () => {
+  assert.throws(
+    () => normalizeQuotationSections({ pagamento: { enabled: true, title: 'x'.repeat(121) } }),
+    /excede 120 caracteres/
+  );
+});
+
+test('legado só é derivado quando chave condicoes_gerais está ausente', () => {
+  // condicoes_gerais present with valid object: should NOT derive from legacy
+  const sections = normalizeQuotationSections(
+    { condicoes_gerais: { enabled: true, title: 'Custom', body: '' } },
+    legacy
+  );
+  assert.equal(sections.condicoes_gerais.body, '');
+  // condicoes_gerais absent: SHOULD derive from legacy
+  const sections2 = normalizeQuotationSections({}, legacy);
+  assert.ok(sections2.condicoes_gerais.body.includes('Prazo de entrega'));
+});
+
+test('DEFAULT_QUOTATION_SECTIONS é congelado', () => {
+  assert.throws(() => { (DEFAULT_QUOTATION_SECTIONS as any).schema_version = 2; }, TypeError);
+  assert.throws(() => { (DEFAULT_QUOTATION_SECTIONS.pagamento as any).title = 'X'; }, TypeError);
+});
+
+test('createQuotationSectionsSnapshot produz forma per-section compatível com repositório', () => {
+  const snap = createQuotationSectionsSnapshot(DEFAULT_QUOTATION_SECTIONS);
+  // Must have per-section {base, current} shape
+  assert.ok(snap.prazo_producao.base);
+  assert.ok(snap.prazo_producao.current);
+  assert.ok(snap.pagamento.base);
+  assert.ok(snap.pagamento.current);
+  assert.ok(snap.condicoes_gerais.base);
+  assert.ok(snap.condicoes_gerais.current);
+  // Deep independence
+  snap.pagamento.current.body = 'changed';
+  assert.equal(snap.pagamento.base.body, '');
 });
