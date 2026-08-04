@@ -20,6 +20,7 @@ test.describe('Configurações de orçamento', () => {
   test('carrega, edita e salva todos os valores padrão', async ({ page }) => {
     let settings = { ...INITIAL_SETTINGS };
     let receivedPayload;
+    let savedResponse;
 
     await page.route('**/api/settings**', async (route) => {
       if (route.request().method() === 'GET') {
@@ -38,12 +39,15 @@ test.describe('Configurações de orçamento', () => {
       settings = {
         ...settings,
         ...receivedPayload,
+        pagamento: receivedPayload.secoes.pagamento.body,
+        observacoes: receivedPayload.secoes.condicoes_gerais.body,
         frete_padrao: '12.50',
       };
+      savedResponse = settings;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(settings),
+        body: JSON.stringify(savedResponse),
       });
     });
 
@@ -76,6 +80,11 @@ test.describe('Configurações de orçamento', () => {
         condicoes_gerais: { enabled: false, title: 'Notas gerais', body: 'Aprovar arte antes da produção.' },
       },
     });
+    expect(savedResponse).toMatchObject({
+      pagamento: paymentBody,
+      observacoes: 'Aprovar arte antes da produção.',
+      secoes: { pagamento: { body: paymentBody } },
+    });
     await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
   });
 
@@ -88,6 +97,8 @@ test.describe('Configurações de orçamento', () => {
     let defaultKey = 'padrao';
     let version = 1;
     let settingsPayload;
+    /** @type {{ template_padrao?: string } | undefined} */
+    let savedSettings;
     await page.route('**/api/settings?scope=operational**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
     });
@@ -96,7 +107,8 @@ test.describe('Configurações de orçamento', () => {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
       } else {
         settingsPayload = route.request().postDataJSON();
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(INITIAL_SETTINGS) });
+        savedSettings = { ...INITIAL_SETTINGS, ...settingsPayload, template_padrao: defaultKey };
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(savedSettings) });
       }
     });
     await page.route('**/api/quotation-templates**', async (route) => {
@@ -130,6 +142,7 @@ test.describe('Configurações de orçamento', () => {
     await page.getByRole('button', { name: /Alternativo alternativo/ }).click();
     await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
     await page.getByRole('button', { name: 'Validar e visualizar preview' }).click();
+    await expect(page.getByText('Aviso: A seção prazo_producao não é usada pelo template.')).toBeVisible();
     await expect(page.getByTitle('Preview do template')).toBeVisible();
     await page.getByRole('button', { name: 'Salvar nova versão' }).click();
     await expect(page.getByText('Template salvo com sucesso.')).toBeVisible();
@@ -144,6 +157,9 @@ test.describe('Configurações de orçamento', () => {
     await page.getByLabel('Condição de pagamento').fill('novo padrão');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Configurações salvas com sucesso.' })).toBeVisible();
+    await expect(page.getByText('Modelo padrão: alternativo')).toBeVisible();
+    expect(savedSettings).toBeDefined();
+    expect(savedSettings?.template_padrao).toBe('alternativo');
     expect(settingsPayload).not.toHaveProperty('template_padrao');
     await page.getByRole('button', { name: 'Arquivar' }).click();
     await expect(page.getByText('Template arquivado.')).toBeVisible();
