@@ -27,8 +27,12 @@ const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
 // Routes hidden in operational mode (Frappe-dependent)
 const HIDDEN_ROUTES = new Set([
-  '/dashboard', '/pre-orcamentos', '/sales-orders',
-  '/crm', '/comunicacao', '/whatsapp-inbox',
+  '/dashboard',
+  '/pre-orcamentos',
+  '/sales-orders',
+  '/crm',
+  '/comunicacao',
+  '/whatsapp-inbox',
 ]);
 
 function renderPage(route: string, navigate: (hash: string) => void, operationalMode: boolean) {
@@ -54,7 +58,10 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
 
   // Detail page: #/sales-orders/VP-20261143
   if (route.startsWith('/sales-orders/')) {
-    if (operationalMode) { navigate('/manual'); return <PageLoader />; }
+    if (operationalMode) {
+      navigate('/manual');
+      return <PageLoader />;
+    }
     const id = route.split('/sales-orders/')[1];
     return (
       <Suspense fallback={<PageLoader />}>
@@ -64,7 +71,13 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
   }
 
   // Unknown route in operational mode -> redirect to /manual
-  if (operationalMode && !['/quotations', '/products', '/leads', '/settings', '/manual'].includes(route) && !route.startsWith('/quotations/') && !route.startsWith('/products/') && !route.startsWith('/leads/')) {
+  if (
+    operationalMode &&
+    !['/auto', '/quotations', '/products', '/leads', '/settings', '/manual'].includes(route) &&
+    !route.startsWith('/quotations/') &&
+    !route.startsWith('/products/') &&
+    !route.startsWith('/leads/')
+  ) {
     navigate('/manual');
     return <PageLoader />;
   }
