@@ -54,7 +54,10 @@ Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAI
 
 Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
-export function buildSystemPrompt(customRules?: string, existingItems?: Array<{ item_code: string; qty: number }> | null): string {
+export function buildSystemPrompt(
+  customRules?: string,
+  existingItems?: Array<{ item_code: string; qty: number }> | null
+): string {
   const rules = customRules?.trim() || DEFAULT_RULES;
   let mergeInstruction = '';
   if (Array.isArray(existingItems) && existingItems.length > 0) {
@@ -119,7 +122,11 @@ interface HttpError extends Error {
   logMessage: string;
 }
 
-function createHttpError(statusCode: number, publicMessage: string, logMessage?: string): HttpError {
+function createHttpError(
+  statusCode: number,
+  publicMessage: string,
+  logMessage?: string
+): HttpError {
   const error = new Error(publicMessage) as HttpError;
   error.statusCode = statusCode;
   error.logMessage = logMessage || publicMessage;
@@ -188,27 +195,41 @@ interface Order {
 }
 
 function normalizeOrdersPayload(parsed: unknown): Order[] {
-  const orders = Array.isArray(parsed) ? parsed : Array.isArray((parsed as Record<string, unknown>)?.orders) ? (parsed as Record<string, unknown>).orders as Order[] : null;
+  const orders = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as Record<string, unknown>)?.orders)
+      ? ((parsed as Record<string, unknown>).orders as Order[])
+      : null;
 
   if (!orders) {
-    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Payload sem array de pedidos');
+    throw createHttpError(
+      502,
+      'Resposta inválida do provedor de IA.',
+      'Payload sem array de pedidos'
+    );
   }
 
-  const isValid = orders.every(order => (
-    order &&
-    typeof order === 'object' &&
-    !Array.isArray(order) &&
-    Array.isArray(order.items)
-  ));
+  const isValid = orders.every(
+    (order) =>
+      order && typeof order === 'object' && !Array.isArray(order) && Array.isArray(order.items)
+  );
 
   if (!isValid) {
-    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Pedidos sem formato esperado');
+    throw createHttpError(
+      502,
+      'Resposta inválida do provedor de IA.',
+      'Pedidos sem formato esperado'
+    );
   }
 
   return orders;
 }
 
-function buildUserContent(text?: string, imageBase64?: string, imageMimeType?: string): string | Array<Record<string, unknown>> {
+function buildUserContent(
+  text?: string,
+  imageBase64?: string,
+  imageMimeType?: string
+): string | Array<Record<string, unknown>> {
   const promptText = text || 'Extraia os dados do pedido de cotação.';
   if (!imageBase64) return promptText;
 
@@ -224,12 +245,16 @@ function buildUserContent(text?: string, imageBase64?: string, imageMimeType?: s
 }
 
 function extractAssistantText(data: Record<string, unknown>): string {
-  const content = ((data?.choices as Array<Record<string, unknown>>)?.[0]?.message as Record<string, unknown> | undefined)?.content as string | Array<Record<string, unknown>> | undefined;
+  const content = (
+    (data?.choices as Array<Record<string, unknown>>)?.[0]?.message as
+      | Record<string, unknown>
+      | undefined
+  )?.content as string | Array<Record<string, unknown>> | undefined;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
-      .filter(part => part?.type === 'text' && typeof part.text === 'string')
-      .map(part => part.text)
+      .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text)
       .join('');
   }
   return '';
@@ -246,7 +271,11 @@ async function extractWithOpenRouter(
   const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
   if (!OPENROUTER_API_KEY) {
-    throw createHttpError(500, 'Serviço de extração indisponível.', 'OPENROUTER_API_KEY não configurada');
+    throw createHttpError(
+      500,
+      'Serviço de extração indisponível.',
+      'OPENROUTER_API_KEY não configurada'
+    );
   }
 
   validateInput(text, imageBase64, imageMimeType);
@@ -257,7 +286,10 @@ async function extractWithOpenRouter(
     'X-OpenRouter-Title': 'Aspen Orcamento App',
   };
 
-  const referer = process.env.OPENROUTER_SITE_URL?.trim() || process.env.URL?.trim() || process.env.DEPLOY_PRIME_URL?.trim();
+  const referer =
+    process.env.OPENROUTER_SITE_URL?.trim() ||
+    process.env.URL?.trim() ||
+    process.env.DEPLOY_PRIME_URL?.trim();
   if (referer) {
     headers['HTTP-Referer'] = referer;
   }
@@ -281,18 +313,33 @@ async function extractWithOpenRouter(
   const data = parseJsonSafely(responseText) as Record<string, unknown>;
 
   if (!res.ok) {
-    const upstreamMessage = (data?.error as Record<string, unknown> | undefined)?.message as string || responseText || `OpenRouter retornou HTTP ${res.status}`;
-    throw createHttpError(502, 'Falha ao extrair pedido no provedor de IA.', `OpenRouter HTTP ${res.status}: ${upstreamMessage}`);
+    const upstreamMessage =
+      ((data?.error as Record<string, unknown> | undefined)?.message as string) ||
+      responseText ||
+      `OpenRouter retornou HTTP ${res.status}`;
+    throw createHttpError(
+      502,
+      'Falha ao extrair pedido no provedor de IA.',
+      `OpenRouter HTTP ${res.status}: ${upstreamMessage}`
+    );
   }
 
   const raw = extractAssistantText(data as Record<string, unknown>);
   if (!raw) {
-    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'Resposta sem conteúdo textual');
+    throw createHttpError(
+      502,
+      'Resposta inválida do provedor de IA.',
+      'Resposta sem conteúdo textual'
+    );
   }
 
   const parsed = parseJsonSafely(unwrapJsonText(raw));
   if (parsed == null) {
-    throw createHttpError(502, 'Resposta inválida do provedor de IA.', 'JSON inválido retornado pelo provedor');
+    throw createHttpError(
+      502,
+      'Resposta inválida do provedor de IA.',
+      'JSON inválido retornado pelo provedor'
+    );
   }
 
   return normalizeOrdersPayload(parsed);

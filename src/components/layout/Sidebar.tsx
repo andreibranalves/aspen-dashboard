@@ -74,9 +74,7 @@ const OPERATIONAL_NAV_SECTIONS: NavSection[] = [
   },
   {
     title: 'Outros',
-    items: [
-      { hash: '/settings', label: 'Configurações', icon: Settings },
-    ],
+    items: [{ hash: '/settings', label: 'Configurações', icon: Settings }],
   },
 ];
 
