@@ -37,6 +37,7 @@ import {
 } from '../_functions/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
 import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
+import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -808,6 +809,14 @@ export function createPostgresQuoteDraftRepository(
           updatedAt: createdAt,
         });
 
+        const revisionMetadata = await resolveQuotationRevisionMetadata(tx, {
+          templatePadrao: template.key,
+          templateHash: template.hash,
+          pagamento: settings.pagamento,
+          entrega: settings.entrega,
+          observacoes: observations,
+          prazoProducao: deadline,
+        });
         await tx.insert(quoteRevisions).values({
           id: revisionId,
           quotationId,
@@ -822,6 +831,8 @@ export function createPostgresQuoteDraftRepository(
           prazoProducao: deadline,
           templatePadrao: template.key,
           templateHash: template.hash,
+          templateVersionId: revisionMetadata.templateVersionId,
+          sectionsSnapshot: revisionMetadata.sectionsSnapshot,
           ...clientSnapshotToRow(client),
           subtotal: formatMoneyCents(subtotalCents),
           total: formatMoneyCents(totalCents),

@@ -4,7 +4,13 @@ import { pathToFileURL } from 'node:url';
 import postgres from 'postgres';
 
 function fail(error) {
-  process.stderr.write(`${error instanceof Error ? error.message : 'Falha na migração de templates.'}\n`);
+  const message = error instanceof Error ? error.message : '';
+  const safeMessage = /^(Versão de template ausente|Revisões incompletas|Verificação pós-commit)/.test(message)
+    ? message
+    : 'Falha na migração de templates. Consulte os logs operacionais.';
+  const kind = error instanceof Error ? error.name : typeof error;
+  console.error(`[quotation-template-migration] failed (${kind})`);
+  process.stderr.write(`${safeMessage}\n`);
   process.exitCode = 2;
 }
 
@@ -15,7 +21,6 @@ async function migrate(databaseUrl) {
   const run = async (sql) => {
     await acquireQuotationWriteLock(sql);
     const plan = migration.templateSeedPlan();
-    const modelIds = new Map();
     let models = 0;
     let versions = 0;
     for (const item of plan) {
@@ -26,7 +31,6 @@ async function migrate(databaseUrl) {
         on conflict (key) do update set name = excluded.name, archived = false, updated_at = now()
         returning id
       `;
-      modelIds.set(item.key, rows[0].id);
       models += rows.length;
       const versionRows = await sql`
         insert into quotation_template_versions (id, template_id, version, source, source_hash)
@@ -42,21 +46,11 @@ async function migrate(databaseUrl) {
 
     const [settings] = await sql`select * from app_settings where singleton_id = 1`;
     if (settings) {
-      let sections;
-      let shouldSeedLegacySections;
-      try {
-        sections = migration.legacySettingsSections(settings);
-        const existing = typeof settings.quotation_sections === 'string'
-          ? JSON.parse(settings.quotation_sections)
-          : settings.quotation_sections;
-        shouldSeedLegacySections = !existing || typeof existing !== 'object'
-          || Object.keys(existing).length === 0
-          || JSON.stringify(existing) === JSON.stringify(migration.DEFAULT_QUOTATION_SECTIONS);
-        if (!shouldSeedLegacySections) migration.normalizeQuotationSections(existing);
-      } catch {
-        sections = migration.legacySettingsSections(settings);
-        shouldSeedLegacySections = true;
-      }
+      const sections = migration.legacySettingsSections(settings);
+      const existing = typeof settings.quotation_sections === 'string'
+        ? JSON.parse(settings.quotation_sections)
+        : settings.quotation_sections;
+      const shouldSeedLegacySections = migration.isEmptyQuotationSections(existing);
       if (shouldSeedLegacySections) {
         await sql`update app_settings set quotation_sections = ${JSON.stringify(sections)}::jsonb where singleton_id = 1`;
       }
@@ -64,7 +58,6 @@ async function migrate(databaseUrl) {
 
     const revisions = await sql`select id, template_padrao, template_hash, pagamento, entrega, observacoes, prazo_producao, template_version_id, sections_snapshot from quote_revisions`;
     const alreadyComplete = revisions.filter((row) => row.template_version_id && row.sections_snapshot).length;
-    const byKeyHash = new Map(plan.map((item) => [`${item.key}:${item.source_hash}`, item]));
     const versionIds = await sql`select v.id, t.key, v.source_hash from quotation_template_versions v join quotation_templates t on t.id = v.template_id`;
     const versionsByKeyHash = new Map(versionIds.map((row) => [`${row.key}:${row.source_hash}`, row.id]));
     for (const revision of revisions) {
@@ -85,12 +78,11 @@ async function migrate(databaseUrl) {
   };
   try {
     const report = await client.begin(run);
-    const verify = await client.begin(async (sql) => {
+    await client.begin(async (sql) => {
       await acquireQuotationWriteLock(sql);
       const [row] = await sql`select count(*)::int as count from quote_revisions where template_version_id is null or sections_snapshot is null`;
       if (row.count !== 0) throw new Error(`Verificação pós-commit encontrou ${row.count} revisão(ões) incompleta(s).`);
     });
-    void verify;
     process.stdout.write(`${JSON.stringify(report)}\n`);
   } finally {
     await client.end({ timeout: 5 });

@@ -23,6 +23,7 @@ import {
   type PricingResolution,
 } from '../_functions/pricing-core.js';
 import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
+import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -1206,6 +1207,14 @@ export function createPostgresQuoteDraftManagementRepository(
             revision.prazoProducao
           );
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
+          const revisionMetadata = await resolveQuotationRevisionMetadata(tx, {
+            templatePadrao: templateSelection?.key || revision.templatePadrao,
+            templateHash: templateSelection?.hash || revision.templateHash,
+            pagamento,
+            entrega,
+            observacoes,
+            prazoProducao,
+          });
 
           await tx
             .update(quoteRevisions)
@@ -1218,9 +1227,10 @@ export function createPostgresQuoteDraftManagementRepository(
               frete: formatMoneyCents(freightCents),
               observacoes,
               prazoProducao,
-              ...(templateSelection
-                ? { templatePadrao: templateSelection.key, templateHash: templateSelection.hash }
-                : {}),
+              templatePadrao: templateSelection?.key || revision.templatePadrao,
+              templateHash: templateSelection?.hash || revision.templateHash,
+              templateVersionId: revisionMetadata.templateVersionId,
+              sectionsSnapshot: revisionMetadata.sectionsSnapshot,
               ...{
                 clienteNome: client.nome,
                 clienteDocumento: client.documento,

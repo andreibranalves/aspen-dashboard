@@ -4,6 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
+import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 import {
   clients,
   frappeImportLineage,
@@ -423,6 +424,7 @@ export function createPostgresFrappeMigrationRepository(
             },
           });
         const revision = unit.revision;
+        const revisionMetadata = await resolveQuotationRevisionMetadata(tx, revision);
         const revisionValues = {
           quotationId: unit.id,
           version: revision.version,
@@ -436,6 +438,8 @@ export function createPostgresFrappeMigrationRepository(
           prazoProducao: revision.prazoProducao,
           templatePadrao: revision.templatePadrao,
           templateHash: revision.templateHash,
+          templateVersionId: revisionMetadata.templateVersionId,
+          sectionsSnapshot: revisionMetadata.sectionsSnapshot,
           clienteNome: revision.clienteNome,
           clienteDocumento: revision.clienteDocumento,
           clienteEmail: revision.clienteEmail,

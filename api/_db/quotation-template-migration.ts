@@ -15,6 +15,7 @@ export interface LegacyRevision {
   entrega?: unknown;
   observacoes?: unknown;
   prazoProducao?: unknown;
+  prazo_producao?: unknown;
 }
 
 export interface TemplateSeed {
@@ -26,6 +27,25 @@ export interface TemplateSeed {
 }
 
 const text = (value: unknown): string => (value == null ? '' : String(value));
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, canonical(nested)])
+  );
+}
+
+export function isEmptyQuotationSections(value: unknown): boolean {
+  try {
+    return JSON.stringify(canonical(normalizeQuotationSections(value))) ===
+      JSON.stringify(canonical(DEFAULT_QUOTATION_SECTIONS));
+  } catch {
+    return true;
+  }
+}
 
 export function legacySettingsSections(settings: {
   pagamento?: unknown;
@@ -42,8 +62,9 @@ export function legacySettingsSections(settings: {
 export function snapshotFromLegacyRevision(revision: LegacyRevision): QuotationSectionsSnapshot {
   const sections = legacySettingsSections(revision);
   sections.prazo_producao.title = 'Prazo de produção';
-  if (revision.prazoProducao !== undefined) {
-    sections.prazo_producao.enabled = Boolean(text(revision.prazoProducao));
+  const deadline = revision.prazoProducao ?? revision.prazo_producao;
+  if (deadline !== undefined) {
+    sections.prazo_producao.enabled = Boolean(text(deadline));
   }
   return createQuotationSectionsSnapshot(sections);
 }

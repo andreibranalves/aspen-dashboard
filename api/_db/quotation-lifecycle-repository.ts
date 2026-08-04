@@ -13,6 +13,7 @@ import {
 } from './quote-draft-management-repository.js';
 import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
+import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -245,6 +246,8 @@ export function createPostgresQuotationLifecycleRepository(
             prazoProducao: source.prazoProducao,
             templatePadrao: source.templatePadrao,
             templateHash: source.templateHash,
+            templateVersionId: source.templateVersionId || (await resolveQuotationRevisionMetadata(tx, source)).templateVersionId,
+            sectionsSnapshot: revisionSectionsSnapshot(source),
             clienteNome: source.clienteNome,
             clienteDocumento: source.clienteDocumento,
             clienteEmail: source.clienteEmail,
