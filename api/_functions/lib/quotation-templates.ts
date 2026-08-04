@@ -511,6 +511,379 @@ export interface QuotationTemplateViewModel {
   [key: string]: unknown;
 }
 
+// ── HTML policy tokenizer ──────────────────────────────────────────────
+
+const ALLOWED_TAGS = new Set([
+  'a',
+  'article',
+  'b',
+  'blockquote',
+  'body',
+  'br',
+  'caption',
+  'code',
+  'col',
+  'colgroup',
+  'dd',
+  'defs',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'head',
+  'header',
+  'hr',
+  'html',
+  'img',
+  'li',
+  'link',
+  'main',
+  'meta',
+  'nav',
+  'ol',
+  'p',
+  'path',
+  'pre',
+  'section',
+  'small',
+  'span',
+  'strong',
+  'style',
+  'svg',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'title',
+  'tr',
+  'ul',
+]);
+
+const ALLOWED_ATTRIBUTES = new Set([
+  'class',
+  'id',
+  'style',
+  'href',
+  'src',
+  'rel',
+  'charset',
+  'width',
+  'height',
+  'viewBox',
+  'preserveAspectRatio',
+  'xmlns',
+  'xmlns:xlink',
+  'fill',
+  'stroke',
+  'd',
+  'data-name',
+  'lang',
+]);
+
+const VOID_ELEMENTS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
+
+const DANGEROUS_CSS_PATTERNS = ['@import', 'expression(', 'url(', 'behavior', '-moz-binding'];
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function checkCssSafety(css: string, context: string, templateKey: string): void {
+  const lower = css.toLowerCase();
+  for (const pattern of DANGEROUS_CSS_PATTERNS) {
+    if (lower.includes(pattern)) {
+      throw new Error(`CSS perigoso "${pattern}" em ${context}: ${templateKey}`);
+    }
+  }
+  if (/(?:^|[;{ ])on\w+\s*:/.test(lower)) {
+    throw new Error(`Propriedade de evento em CSS não permitida em ${context}: ${templateKey}`);
+  }
+}
+
+type HtmlTokenType = 'doctype' | 'start-tag' | 'end-tag' | 'comment' | 'text' | 'raw-text';
+
+interface HtmlToken {
+  type: HtmlTokenType;
+  name?: string;
+  attributes?: Array<{ name: string; value: string }>;
+  selfClosing?: boolean;
+  content?: string;
+}
+
+function tokenizeHtml(source: string): HtmlToken[] {
+  const tokens: HtmlToken[] = [];
+  let i = 0;
+
+  while (i < source.length) {
+    if (source[i] !== '<') {
+      const end = source.indexOf('<', i);
+      const text = end === -1 ? source.slice(i) : source.slice(i, end);
+      if (text) tokens.push({ type: 'text', content: text });
+      i = end === -1 ? source.length : end;
+      continue;
+    }
+
+    if (source.startsWith('<!--', i)) {
+      const end = source.indexOf('-->', i + 4);
+      if (end === -1) throw new Error('Comentário HTML não terminado');
+      tokens.push({ type: 'comment', content: source.slice(i, end + 3) });
+      i = end + 3;
+      continue;
+    }
+
+    if (source.startsWith('<!', i)) {
+      const end = source.indexOf('>', i);
+      if (end === -1) throw new Error('Declaração HTML não terminada');
+      tokens.push({ type: 'doctype', content: source.slice(i, end + 1) });
+      i = end + 1;
+      continue;
+    }
+
+    if (source[i + 1] === '/') {
+      i += 2;
+      let name = '';
+      while (i < source.length && /[a-zA-Z0-9]/.test(source[i])) name += source[i++];
+      if (!name) throw new Error('Nome de tag de fechamento inválido');
+      while (i < source.length && source[i] !== '>') i++;
+      if (i >= source.length) throw new Error(`Tag de fechamento </${name}> não terminada`);
+      tokens.push({ type: 'end-tag', name: name.toLowerCase() });
+      i++;
+      continue;
+    }
+
+    i++;
+    let name = '';
+    while (i < source.length && /[a-zA-Z0-9]/.test(source[i])) name += source[i++];
+    if (!name) throw new Error('Nome de tag inválido');
+
+    const attributes: Array<{ name: string; value: string }> = [];
+    let selfClosing = false;
+
+    while (i < source.length && source[i] !== '>') {
+      while (i < source.length && /\s/.test(source[i])) i++;
+      if (source[i] === '/') {
+        selfClosing = true;
+        i++;
+        while (i < source.length && /\s/.test(source[i])) i++;
+        if (source[i] === '>') break;
+      }
+      if (source[i] === '>') break;
+      if (i >= source.length) throw new Error(`Tag <${name}> não terminada`);
+
+      let attrName = '';
+      while (i < source.length && /[a-zA-Z0-9_:.-]/.test(source[i])) attrName += source[i++];
+      if (!attrName) throw new Error(`Atributo inválido na tag <${name}>`);
+
+      while (i < source.length && /\s/.test(source[i])) i++;
+
+      let attrValue = '';
+      if (source[i] === '=') {
+        i++;
+        while (i < source.length && /\s/.test(source[i])) i++;
+        if (source[i] === '"') {
+          i++;
+          const end = source.indexOf('"', i);
+          if (end === -1) throw new Error(`Valor de atributo não terminado na tag <${name}>`);
+          attrValue = source.slice(i, end);
+          i = end + 1;
+        } else if (source[i] === "'") {
+          i++;
+          const end = source.indexOf("'", i);
+          if (end === -1) throw new Error(`Valor de atributo não terminado na tag <${name}>`);
+          attrValue = source.slice(i, end);
+          i = end + 1;
+        } else {
+          while (
+            i < source.length &&
+            source[i] !== ' ' &&
+            source[i] !== '\t' &&
+            source[i] !== '\n' &&
+            source[i] !== '\r' &&
+            source[i] !== '>'
+          )
+            attrValue += source[i++];
+        }
+      }
+      attributes.push({ name: attrName.toLowerCase(), value: attrValue });
+    }
+
+    const tagName = name.toLowerCase();
+    tokens.push({ type: 'start-tag', name: tagName, attributes, selfClosing });
+    if (i < source.length && source[i] === '>') i++;
+
+    if ((tagName === 'style' || tagName === 'script') && !selfClosing) {
+      const closeTag = `</${tagName}>`;
+      const closeIdx = source.toLowerCase().indexOf(closeTag, i);
+      if (closeIdx === -1) throw new Error(`Tag <${tagName}> não terminada`);
+      tokens.push({ type: 'raw-text', content: source.slice(i, closeIdx) });
+      i = closeIdx + closeTag.length;
+    }
+  }
+  return tokens;
+}
+
+function checkHtmlPolicy(tokens: HtmlToken[], templateKey: string): void {
+  const stack: string[] = [];
+  for (const token of tokens) {
+    if (token.type === 'start-tag') {
+      if (!ALLOWED_TAGS.has(token.name!)) {
+        throw new Error(`Tag "<${token.name}>" não permitida no template: ${templateKey}`);
+      }
+      if (
+        !token.selfClosing &&
+        !VOID_ELEMENTS.has(token.name!) &&
+        token.name !== 'style' &&
+        token.name !== 'script'
+      )
+        stack.push(token.name!);
+      for (const attr of token.attributes || []) {
+        if (!ALLOWED_ATTRIBUTES.has(attr.name)) {
+          throw new Error(
+            `Atributo "${attr.name}" não permitido na tag <${token.name}>: ${templateKey}`
+          );
+        }
+        if (attr.name === 'href' || attr.name === 'src') {
+          const decoded = decodeHtmlEntities(attr.value).toLowerCase().trim();
+          if (
+            attr.name === 'src' &&
+            !decoded.startsWith('https:') &&
+            !decoded.startsWith('data:image/')
+          ) {
+            throw new Error(`Protocolo não permitido em src: ${decoded}: ${templateKey}`);
+          }
+          if (
+            attr.name === 'href' &&
+            !decoded.startsWith('https:') &&
+            !decoded.startsWith('mailto:')
+          ) {
+            throw new Error(`Protocolo não permitido em href: ${decoded}: ${templateKey}`);
+          }
+        }
+        if (attr.name === 'style') {
+          checkCssSafety(attr.value, `atributo style na tag <${token.name}>`, templateKey);
+        }
+      }
+    } else if (token.type === 'end-tag') {
+      if (stack.length === 0 || stack[stack.length - 1] !== token.name) {
+        throw new Error(`Tag de fechamento </${token.name}> inesperada: ${templateKey}`);
+      }
+      stack.pop();
+    } else if (token.type === 'raw-text') {
+      checkCssSafety(token.content || '', 'bloco <style>', templateKey);
+    }
+  }
+  if (stack.length > 0) {
+    throw new Error(`Tag <${stack[stack.length - 1]}> não fechada: ${templateKey}`);
+  }
+}
+
+function stripHandlebars(source: string): string {
+  return source.replace(/\{\{\{[\s\S]*?\}\}\}/g, '').replace(/\{\{[\s\S]*?\}\}/g, '');
+}
+
+type AstWalk = Record<string, unknown> & { type?: string };
+
+function findRequiredFields(source: string): { missing: string[]; secoesPresent: boolean } {
+  const ast = Handlebars.parse(source) as unknown as AstWalk;
+  const found = {
+    quote_number: false,
+    client_name: false,
+    each_items: false,
+    display_total: false,
+  };
+  let secoesPresent = false;
+
+  function walk(node: AstWalk): void {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'PathExpression' && typeof node.original === 'string') {
+      const n = node.original;
+      if (n === 'quote_number') found.quote_number = true;
+      if (n === 'client.name') found.client_name = true;
+      if (n === 'display.total') found.display_total = true;
+      if (n.startsWith('secoes.')) secoesPresent = true;
+    }
+    if (node.type === 'BlockStatement') {
+      const p = node.path as AstWalk | undefined;
+      if (p?.original === 'each' && Array.isArray(node.params)) {
+        const first = node.params[0] as AstWalk | undefined;
+        if (first?.original === 'items') found.each_items = true;
+      }
+    }
+    if (Array.isArray(node.body)) for (const c of node.body) walk(c as AstWalk);
+    if (node.program) walk(node.program as AstWalk);
+    if (node.inverse) walk(node.inverse as AstWalk);
+    if (Array.isArray(node.params)) for (const p of node.params) walk(p as AstWalk);
+    if (node.path && node.type !== 'PathExpression') walk(node.path as AstWalk);
+    if (node.hash && typeof node.hash === 'object') {
+      const h = node.hash as AstWalk;
+      if (Array.isArray(h.pairs)) for (const pr of h.pairs) walk(pr as AstWalk);
+    }
+  }
+  walk(ast);
+
+  const missing: string[] = [];
+  if (!found.quote_number) missing.push('quote_number');
+  if (!found.client_name) missing.push('client.name');
+  if (!found.each_items) missing.push('#each items');
+  if (!found.display_total) missing.push('display.total');
+  return { missing, secoesPresent };
+}
+
+export function validateQuotationHtmlSource(source: string, templateKey = 'desconhecido'): void {
+  const stripped = stripHandlebars(source);
+
+  // HTML policy check first (catches dangerous markup before field validation)
+  const tokens = tokenizeHtml(stripped);
+  checkHtmlPolicy(tokens, templateKey);
+
+  // Required fields check (only for full HTML documents)
+  const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
+  if (isHtmlDocument) {
+    const { missing, secoesPresent } = findRequiredFields(source);
+    if (missing.length > 0) {
+      throw new Error(
+        `Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`
+      );
+    }
+    if (!secoesPresent) {
+      console.warn(
+        `[quotation-templates] Aviso: template "${templateKey}" não usa seções editáveis (secoes.*)`
+      );
+    }
+  }
+}
+
 export function renderQuotationTemplate(
   template: QuotationTemplate,
   viewModel: QuotationTemplateViewModel
@@ -518,6 +891,7 @@ export function renderQuotationTemplate(
   const environment = createEnvironment();
   let compiled: TemplateDelegate;
   try {
+    validateQuotationHtmlSource(template.source, template.key);
     validateQuotationTemplateSource(template.source, template.key);
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,

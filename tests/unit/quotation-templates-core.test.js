@@ -7,6 +7,7 @@ import {
   getQuotationTemplate,
   QUOTATION_TEMPLATES,
   renderQuotationTemplate,
+  validateQuotationHtmlSource,
   validateQuotationTemplateSource,
 } from '../../api/_functions/lib/quotation-templates.js';
 import { quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
@@ -115,7 +116,9 @@ test('exported template entries are immutable and manifest metadata is detached'
   assert.equal(Object.isFrozen(QUOTATION_TEMPLATES[0]), true);
   const source = QUOTATION_TEMPLATES[0].source;
   const hash = QUOTATION_TEMPLATES[0].hash;
-  assert.throws(() => { QUOTATION_TEMPLATES[0].source = 'alterado'; }, TypeError);
+  assert.throws(() => {
+    QUOTATION_TEMPLATES[0].source = 'alterado';
+  }, TypeError);
   assert.equal(QUOTATION_TEMPLATES[0].source, source);
   assert.equal(QUOTATION_TEMPLATES[0].hash, hash);
   const metadata = getQuotationTemplateManifest();
@@ -157,19 +160,23 @@ test('AST validation rejects unescaped output and every helper surface outside i
   };
   assert.throws(
     () => renderQuotationTemplate(maliciousTemplate, { value: '<script>alert(1)</script>' }),
-    /Não foi possível preparar o template do orçamento/,
+    /Não foi possível preparar o template do orçamento/
   );
 
   const escaped = renderQuotationTemplate(
     { ...maliciousTemplate, key: 'safe', source: '{{value}}' },
-    { value: '<script>alert(1)</script>' },
+    { value: '<script>alert(1)</script>' }
   );
   assert.match(escaped, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(escaped, /<script>alert\(1\)<\/script>/);
 
   const allowedHelpers = renderQuotationTemplate(
-    { ...maliciousTemplate, key: 'allowed', source: '{{#if show}}{{#each items}}{{name}}{{/each}}{{/if}}' },
-    { show: true, items: [{ name: 'ok' }] },
+    {
+      ...maliciousTemplate,
+      key: 'allowed',
+      source: '{{#if show}}{{#each items}}{{name}}{{/each}}{{/if}}',
+    },
+    { show: true, items: [{ name: 'ok' }] }
   );
   assert.equal(allowedHelpers, 'ok');
 });
@@ -180,7 +187,10 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
   assert.equal(model.quote_date, '2026-07-01');
   assert.equal(model.validity_date, '2026-07-16');
   assert.equal(snapshot.quotation.createdAt.getTime(), originalCreatedAt);
-  assert.deepEqual(model.items.map((item) => item.sku), ['SKU-A', 'SKU-B']);
+  assert.deepEqual(
+    model.items.map((item) => item.sku),
+    ['SKU-A', 'SKU-B']
+  );
   const standard = renderQuotationTemplate(DEFAULT_QUOTATION_TEMPLATE, model);
   const alternate = renderQuotationTemplate(getQuotationTemplate('minimalista'), model);
   assert.ok(standard.indexOf('Primeiro') < standard.indexOf('Segundo'));
@@ -200,7 +210,9 @@ test('preview is flag-gated, returns HTML headers, and alternate selection does 
   const repository = { get: async () => snapshot };
   try {
     delete process.env.CRM_CORE_QUOTES_ENABLED;
-    const disabled = await createQuotationPreviewHandler({ repository })(event({ id: 'ORC-20260001' }));
+    const disabled = await createQuotationPreviewHandler({ repository })(
+      event({ id: 'ORC-20260001' })
+    );
     assert.equal(disabled.statusCode, 404);
 
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
@@ -220,4 +232,169 @@ test('preview is flag-gated, returns HTML headers, and alternate selection does 
     if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
     else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   }
+});
+
+test('body_html escapes user text and preserves line breaks', () => {
+  const model = quotationSnapshotViewModel({
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        schema_version: 1,
+        prazo_producao: {
+          base: { enabled: true, title: 'Prazo de produção' },
+          current: { enabled: true, title: 'Prazo de produção' },
+        },
+        pagamento: {
+          base: { enabled: true, title: 'Pagamento', body: 'A' },
+          current: { enabled: true, title: 'Pagamento', body: '<script>alert(1)</script>\nSaldo' },
+        },
+        condicoes_gerais: {
+          base: { enabled: true, title: 'Condições', body: 'C' },
+          current: { enabled: true, title: 'Condições', body: 'C' },
+        },
+      },
+    },
+  });
+  const html = renderQuotationTemplate(
+    { ...DEFAULT_QUOTATION_TEMPLATE, source: '{{secoes.pagamento.body_html}}' },
+    model
+  );
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;<br>Saldo/);
+  assert.doesNotMatch(html, /<script>/);
+});
+
+test('validateQuotationHtmlSource rejects <script> tags', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource('<html><body><script>alert(1)</script></body></html>', 'test'),
+    /não permitida/
+  );
+});
+
+test('validateQuotationHtmlSource rejects onclick attribute', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><div onclick="alert(1)">x</div></body></html>',
+        'test'
+      ),
+    /não permitido/
+  );
+});
+
+test('validateQuotationHtmlSource rejects javascript: protocol', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><a href="javascript:alert(1)">x</a></body></html>',
+        'test'
+      ),
+    /Protocolo não permitido/
+  );
+});
+
+test('validateQuotationHtmlSource rejects <iframe> tag', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><iframe src="evil.com"></iframe></body></html>',
+        'test'
+      ),
+    /não permitida/
+  );
+});
+
+test('validateQuotationHtmlSource rejects templates missing required fields', () => {
+  const full =
+    '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}</body></html>';
+  assert.throws(
+    () => validateQuotationHtmlSource(full.replace('{{quote_number}}', ''), 'test'),
+    /quote_number/
+  );
+  assert.throws(
+    () => validateQuotationHtmlSource(full.replace('{{client.name}}', ''), 'test'),
+    /client\.name/
+  );
+  assert.throws(
+    () => validateQuotationHtmlSource(full.replace('{{#each items}}{{name}}{{/each}}', ''), 'test'),
+    /#each items/
+  );
+  assert.throws(
+    () => validateQuotationHtmlSource(full.replace('{{display.total}}', ''), 'test'),
+    /display\.total/
+  );
+});
+
+test('validateQuotationHtmlSource warns but does not reject missing secoes placeholders', () => {
+  const source =
+    '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}</body></html>';
+  assert.doesNotThrow(() => validateQuotationHtmlSource(source, 'test'));
+});
+
+test('validateQuotationHtmlSource rejects mixed-case forbidden tags', () => {
+  assert.throws(
+    () => validateQuotationHtmlSource('<HTML><BODY><SCRIPT>x</SCRIPT></BODY></HTML>', 'test'),
+    /não permitida/
+  );
+});
+
+test('validateQuotationHtmlSource rejects encoded javascript: protocol', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><a href="java&#115;cript:alert(1)">x</a></body></html>',
+        'test'
+      ),
+    /Protocolo não permitido/
+  );
+});
+
+test('validateQuotationHtmlSource rejects malformed markup', () => {
+  assert.throws(
+    () => validateQuotationHtmlSource('<html><body><div>x</body></html>', 'test'),
+    /não fechada|inesperada/
+  );
+});
+
+test('validateQuotationHtmlSource rejects unknown tags', () => {
+  assert.throws(
+    () => validateQuotationHtmlSource('<html><body><custom>x</custom></body></html>', 'test'),
+    /não permitida/
+  );
+});
+
+test('validateQuotationHtmlSource rejects unknown attributes', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource('<html><body><div data-evil="x">y</div></body></html>', 'test'),
+    /não permitido/
+  );
+});
+
+test('validateQuotationHtmlSource rejects unsafe SVG features', () => {
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><svg><foreignObject>x</foreignObject></svg></body></html>',
+        'test'
+      ),
+    /não permitida/
+  );
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><svg><use href="#icon"/></svg></body></html>',
+        'test'
+      ),
+    /não permitida/
+  );
+  assert.throws(
+    () =>
+      validateQuotationHtmlSource(
+        '<html><body><svg><path xlink:href="#x"/></svg></body></html>',
+        'test'
+      ),
+    /não permitido/
+  );
 });

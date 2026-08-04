@@ -7,6 +7,7 @@ import {
   formatQuotationDate,
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
+import { toSafeMultilineHtml } from './quotation-content.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteDatabase = AppDatabase;
@@ -43,7 +44,7 @@ function quoteWhere(id: string) {
  */
 export async function readQuotationTemplateSnapshot(
   db: QuoteDatabase,
-  id: string,
+  id: string
 ): Promise<QuotationTemplateSnapshot | null> {
   const [quotation] = await db.select().from(quotations).where(quoteWhere(id)).limit(1);
   if (!quotation) return null;
@@ -70,7 +71,9 @@ export function createQuotationTemplateRepository(getDb: DatabaseProvider = getD
       try {
         return await readQuotationTemplateSnapshot(getDb(), normalized);
       } catch (error) {
-        console.error(`[quotation-template-repository] read failed (${error instanceof Error ? error.name : typeof error})`);
+        console.error(
+          `[quotation-template-repository] read failed (${error instanceof Error ? error.name : typeof error})`
+        );
         throw new QuotationTemplateSnapshotRepositoryError();
       }
     },
@@ -101,7 +104,9 @@ function nullable(value: unknown): string {
 }
 
 /** Convert the immutable database snapshot into the template-facing model. */
-export function quotationSnapshotViewModel(snapshot: QuotationTemplateSnapshot): QuotationTemplateViewModel {
+export function quotationSnapshotViewModel(
+  snapshot: QuotationTemplateSnapshot
+): QuotationTemplateViewModel {
   const { quotation, revision } = snapshot;
   // Each revision owns its own validity window.  A copied revision can be
   // created after the quotation aggregate, so deriving this from the
@@ -174,7 +179,9 @@ export function quotationSnapshotViewModel(snapshot: QuotationTemplateSnapshot):
       revision.clienteMunicipio,
       revision.clienteUf,
       revision.clienteCep,
-    ].filter(Boolean).join(', '),
+    ]
+      .filter(Boolean)
+      .join(', '),
     notes: revision.clienteNotas || '',
     notes_snapshot: revision.clienteNotas || '',
     endereco: revision.clienteEndereco || '',
@@ -185,7 +192,7 @@ export function quotationSnapshotViewModel(snapshot: QuotationTemplateSnapshot):
     uf: revision.clienteUf || '',
     cep: revision.clienteCep || '',
   };
-  return {
+  const result: QuotationTemplateViewModel = {
     quote_number: quotation.businessNumber,
     quotation_name: quotation.businessNumber,
     quote_id: quotation.id,
@@ -227,4 +234,28 @@ export function quotationSnapshotViewModel(snapshot: QuotationTemplateSnapshot):
       total: formatQuotationCurrency(total),
     },
   };
+
+  const revisionAny = revision as Record<string, unknown>;
+  const sectionsSnapshot = revisionAny.sectionsSnapshot as Record<string, unknown> | undefined;
+  if (sectionsSnapshot && typeof sectionsSnapshot === 'object') {
+    const prazo = (sectionsSnapshot.prazo_producao || {}) as Record<string, unknown>;
+    const pagto = (sectionsSnapshot.pagamento || {}) as Record<string, unknown>;
+    const condicoes = (sectionsSnapshot.condicoes_gerais || {}) as Record<string, unknown>;
+    const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
+    const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
+    const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
+    result.secoes = {
+      prazo_producao: {
+        value: prazoCurrent.enabled ? String(prazoCurrent.title || '') : '',
+      },
+      pagamento: {
+        body_html: toSafeMultilineHtml(String(pagtoCurrent.body || '')),
+      },
+      condicoes_gerais: {
+        body_html: toSafeMultilineHtml(String(condicoesCurrent.body || '')),
+      },
+    };
+  }
+
+  return result;
 }
