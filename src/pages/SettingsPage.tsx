@@ -99,7 +99,8 @@ function OperationalModeSection() {
   const [loadingStatus, setLoadingStatus] = useState(false);
 
   useEffect(() => {
-    apiGet<{ operational_mode?: boolean }>('/settings')
+    // Distinguish this lightweight status read from the settings form request.
+    apiGet<{ operational_mode?: boolean }>('/settings?scope=operational')
       .then((result) => {
         if (typeof result.operational_mode === 'boolean') {
           setOperationalMode(result.operational_mode);

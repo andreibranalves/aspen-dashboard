@@ -96,6 +96,31 @@ test(
         },
       });
 
+      // Migration-created rows can have the empty JSON default alongside legacy mirrors.
+      await client`
+        INSERT INTO app_settings (
+          singleton_id, validade_dias, pagamento, entrega,
+          quotation_sections, frete_padrao, observacoes, template_padrao
+        ) VALUES (
+          1, 15, ${'Pagamento legado'}, ${'Entrega legada'},
+          ${JSON.stringify({
+            schema_version: 1,
+            prazo_producao: { enabled: true, title: 'Prazo de produção' },
+            pagamento: { enabled: true, title: 'Pagamento', body: '' },
+            condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+          })}::jsonb,
+          ${'0.00'}, ${'Observações legadas'}, ${'padrao'}
+        )
+      `;
+      const migrated = await handler(event('GET'));
+      assert.equal(migrated.statusCode, 200);
+      assert.equal(parse(migrated).pagamento, 'Pagamento legado');
+      assert.equal(parse(migrated).entrega, 'Entrega legada');
+      assert.equal(
+        parse(migrated).observacoes,
+        'Prazo de entrega:\\nEntrega legada\\n\\nObservações:\\nObservações legadas'
+      );
+
       const saved = await handler(
         event('PUT', {
           validade_dias: 45,
@@ -114,7 +139,42 @@ test(
         frete_padrao: '129.90',
         observacoes: 'Enviar prova digital para aprovação.',
         template_padrao: 'comercial-2026',
+        secoes: {
+          schema_version: 1,
+          prazo_producao: { enabled: true, title: 'Prazo de produção' },
+          pagamento: { enabled: true, title: 'Pagamento', body: 'Pix em 30 dias' },
+          condicoes_gerais: {
+            enabled: true,
+            title: 'Condições Gerais',
+            body: 'Prazo de entrega:\\n15 dias úteis\\n\\nObservações:\\nEnviar prova digital para aprovação.',
+          },
+        },
       });
+
+      const [storedSettings] = await client`
+        SELECT quotation_sections, template_padrao, entrega
+        FROM app_settings WHERE singleton_id = 1
+      `;
+      assert.deepEqual(storedSettings.quotation_sections, parse(saved).secoes);
+      assert.equal(storedSettings.template_padrao, 'comercial-2026');
+      assert.equal(storedSettings.entrega, '15 dias úteis');
+
+      const sectionFirst = await handler(
+        event('PUT', {
+          validade_dias: 45,
+          frete_padrao: '130.00',
+          secoes: {
+            schema_version: 1,
+            prazo_producao: { enabled: true, title: 'Prazo de produção' },
+            pagamento: { enabled: true, title: 'Pagamento', body: 'Cartão' },
+            condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Observação nova' },
+          },
+        })
+      );
+      assert.equal(sectionFirst.statusCode, 200);
+      assert.equal(parse(sectionFirst).template_padrao, 'comercial-2026');
+      assert.equal(parse(sectionFirst).entrega, '15 dias úteis');
+      assert.equal(parse(sectionFirst).pagamento, 'Cartão');
 
       const reloaded = await handler(event('GET'));
       assert.equal(reloaded.statusCode, 200);

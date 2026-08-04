@@ -103,6 +103,15 @@ test('toSafeMultilineHtml escapa apóstrofos, crases e iguais via Handlebars.esc
   assert.ok(str.includes('&#x3D;'), 'should escape equals');
 });
 
+test('recupera espelhos legados quando JSON contém apenas o default da migração', () => {
+  const sections = normalizeQuotationSections(DEFAULT_QUOTATION_SECTIONS, legacy);
+  assert.equal(sections.pagamento.body, legacy.pagamento);
+  assert.equal(
+    sections.condicoes_gerais.body,
+    combineLegacyConditions(legacy.entrega, legacy.observacoes)
+  );
+});
+
 test('normalização rejeita chaves desconhecidas', () => {
   assert.throws(
     () => normalizeQuotationSections({ unknown_key: { enabled: true, title: 'X' } }),

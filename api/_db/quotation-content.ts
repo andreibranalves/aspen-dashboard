@@ -174,7 +174,7 @@ export function normalizeQuotationSections(
     condicoes_gerais.body = combineLegacyConditions(legacy.entrega || '', legacy.observacoes || '');
   }
 
-  return {
+  const result: QuotationSectionsSettings = {
     schema_version: QUOTATION_SECTION_SCHEMA_VERSION,
     prazo_producao: validateAndNormalizeSection(
       'prazo_producao',
@@ -184,6 +184,19 @@ export function normalizeQuotationSections(
     pagamento: pagamento as QuotationSectionsSettings['pagamento'],
     condicoes_gerais: condicoes_gerais as QuotationSectionsSettings['condicoes_gerais'],
   };
+
+  // The migration adds this exact JSON as a non-null database default. Treat
+  // it as an empty marker so old mirror columns are not hidden after upgrade.
+  const isEmptySchemaDefault = JSON.stringify(result) === JSON.stringify(DEFAULT_QUOTATION_SECTIONS);
+  if (isEmptySchemaDefault && (legacy?.pagamento || legacy?.entrega || legacy?.observacoes)) {
+    if (legacy.pagamento) result.pagamento.body = legacy.pagamento;
+    result.condicoes_gerais.body = combineLegacyConditions(
+      legacy.entrega || '',
+      legacy.observacoes || ''
+    );
+  }
+
+  return result;
 }
 
 export function createQuotationSectionsSnapshot(

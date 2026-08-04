@@ -141,12 +141,10 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
       const section = /seção "([^"]+)"/i.exec(message)?.[1];
       const field = /campo "([^"]+)"/i.exec(message)?.[1];
       const titleError = /Título da seção "([^"]+)"/i.exec(message);
-      fields[
-        `secoes.${section || titleError?.[1] || 'geral'}${field ? `.${field}` : titleError ? '.title' : ''}`
-      ] = message;
-      if (section) {
-        fields[`secoes.${section}.title`] = message;
-      }
+      const bodyError = /Corpo da seção "([^"]+)"/i.exec(message);
+      const sectionKey = section || titleError?.[1] || bodyError?.[1] || 'geral';
+      const fieldKey = field || (titleError ? 'title' : bodyError ? 'body' : undefined);
+      fields[`secoes.${sectionKey}${fieldKey ? `.${fieldKey}` : ''}`] = message;
       secoes = normalizeQuotationSections(undefined);
     }
   } else {

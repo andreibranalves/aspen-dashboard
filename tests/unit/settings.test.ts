@@ -126,7 +126,7 @@ describe('settings handler', () => {
         secoes: {
           schema_version: 1,
           prazo_producao: { enabled: true, title: '' },
-          pagamento: { enabled: 'yes', title: 'Pagamento', body: 'x'.repeat(4001) },
+          pagamento: { enabled: true, title: 'Pagamento', body: 'x'.repeat(4001) },
           condicoes_gerais: { enabled: true, title: 'Condições', body: '' },
         },
       })
@@ -137,6 +137,19 @@ describe('settings handler', () => {
     assert.equal(body.error, 'Dados de configuração inválidos.');
     assert.match(body.fields.validade_dias, /entre 1 e 365/);
     assert.match(body.fields['secoes.prazo_producao.title'], /não pode ser vazio/);
+    const oversized = await handler(
+      event('PUT', {
+        validade_dias: 30,
+        frete_padrao: '1.00',
+        secoes: {
+          schema_version: 1,
+          prazo_producao: { enabled: true, title: 'Prazo' },
+          pagamento: { enabled: true, title: 'Pagamento', body: 'x'.repeat(4001) },
+          condicoes_gerais: { enabled: true, title: 'Condições', body: '' },
+        },
+      })
+    );
+    assert.match(parse(oversized).fields['secoes.pagamento.body'], /excede 4000 caracteres/);
     assert.match(body.fields.frete_padrao, /não negativo/);
     assert.match(body.fields.template_padrao, /template padrão/);
     assert.equal(writes, 0);

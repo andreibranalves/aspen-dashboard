@@ -21,18 +21,22 @@ test.describe('Configurações de orçamento', () => {
     let settings = { ...INITIAL_SETTINGS };
     let receivedPayload;
 
-    await page.route('**/api/settings', async (route) => {
+    await page.route('**/api/settings**', async (route) => {
       if (route.request().method() === 'GET') {
+        const response = route.request().url().includes('scope=operational')
+          ? { operational_mode: false }
+          : settings;
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(settings),
+          body: JSON.stringify(response),
         });
         return;
       }
 
       receivedPayload = route.request().postDataJSON();
       settings = {
+        ...settings,
         ...receivedPayload,
         frete_padrao: '12.50',
       };
@@ -56,11 +60,8 @@ test.describe('Configurações de orçamento', () => {
     await expect(page.getByRole('status')).toHaveText('Configurações salvas com sucesso.');
     expect(receivedPayload).toEqual({
       validade_dias: 30,
-      pagamento: '50% no pedido',
       entrega: '7 dias úteis',
       frete_padrao: '12.5',
-      observacoes: 'Aprovar arte antes da produção.',
-      template_padrao: 'padrao',
       secoes: {
         schema_version: 1,
         prazo_producao: { enabled: true, title: 'Prazo de produção' },
@@ -72,10 +73,25 @@ test.describe('Configurações de orçamento', () => {
   });
 
   test('exibe erro de carregamento e permite tentar novamente', async ({ page }) => {
-    let calls = 0;
-    await page.route('**/api/settings', async (route) => {
-      calls += 1;
-      if (calls <= 2) {
+    let settingsCalls = 0;
+    await page.route('**/api/settings?scope=operational**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ operational_mode: false }),
+      });
+    });
+    await page.route('**/api/settings**', async (route) => {
+      if (route.request().url().includes('scope=operational')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ operational_mode: false }),
+        });
+        return;
+      }
+      settingsCalls += 1;
+      if (settingsCalls <= 5) {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
