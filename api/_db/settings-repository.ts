@@ -2,6 +2,11 @@ import { eq } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
 import { appSettings } from './schema.js';
+import {
+  DEFAULT_QUOTATION_SECTIONS,
+  normalizeQuotationSections,
+  type QuotationSectionsSettings,
+} from './quotation-content.js';
 
 export interface Settings {
   validade_dias: number;
@@ -10,7 +15,13 @@ export interface Settings {
   frete_padrao: string;
   observacoes: string;
   template_padrao: string;
+  secoes: QuotationSectionsSettings;
 }
+
+export type SettingsInput = Omit<Settings, 'template_padrao' | 'entrega'> & {
+  entrega?: string;
+  template_padrao?: string;
+};
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   validade_dias: 15,
@@ -19,6 +30,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   frete_padrao: '0.00',
   observacoes: '',
   template_padrao: 'padrao',
+  secoes: DEFAULT_QUOTATION_SECTIONS,
 });
 
 /**
@@ -27,19 +39,21 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
  */
 export interface SettingsRepository {
   get(): Promise<Settings | null>;
-  save(settings: Settings): Promise<Settings>;
+  save(settings: SettingsInput): Promise<Settings>;
 }
 
 type DatabaseProvider = () => AppDatabase;
 
 function toSettings(row: typeof appSettings.$inferSelect): Settings {
+  const secoes = normalizeQuotationSections(row.quotationSections, row);
   return {
     validade_dias: row.validadeDias,
-    pagamento: row.pagamento,
+    pagamento: secoes.pagamento.body,
     entrega: row.entrega,
     frete_padrao: row.fretePadrao,
-    observacoes: row.observacoes,
+    observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
+    secoes,
   };
 }
 
@@ -63,28 +77,38 @@ export function createPostgresSettingsRepository(
       return row ? toSettings(row) : null;
     },
 
-    async save(settings: Settings): Promise<Settings> {
+    async save(settings: SettingsInput): Promise<Settings> {
       const db = getDb();
+      const [current] = await db
+        .select()
+        .from(appSettings)
+        .where(eq(appSettings.singletonId, 1))
+        .limit(1);
+      const secoes = settings.secoes;
       const [row] = await db
         .insert(appSettings)
         .values({
           singletonId: 1,
           validadeDias: settings.validade_dias,
-          pagamento: settings.pagamento,
-          entrega: settings.entrega,
+          pagamento: secoes.pagamento.body,
+          entrega: settings.entrega ?? current?.entrega ?? '',
           fretePadrao: settings.frete_padrao,
-          observacoes: settings.observacoes,
-          templatePadrao: settings.template_padrao,
+          observacoes: secoes.condicoes_gerais.body,
+          quotationSections: secoes,
+          templatePadrao: settings.template_padrao ?? current?.templatePadrao ?? 'padrao',
         })
         .onConflictDoUpdate({
           target: appSettings.singletonId,
           set: {
             validadeDias: settings.validade_dias,
-            pagamento: settings.pagamento,
-            entrega: settings.entrega,
+            pagamento: secoes.pagamento.body,
+            entrega: settings.entrega ?? current?.entrega ?? '',
             fretePadrao: settings.frete_padrao,
-            observacoes: settings.observacoes,
-            templatePadrao: settings.template_padrao,
+            observacoes: secoes.condicoes_gerais.body,
+            quotationSections: secoes,
+            ...(settings.template_padrao === undefined
+              ? {}
+              : { templatePadrao: settings.template_padrao }),
           },
         })
         .returning();

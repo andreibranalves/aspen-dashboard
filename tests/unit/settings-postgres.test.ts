@@ -88,6 +88,12 @@ test(
         frete_padrao: '0.00',
         observacoes: '',
         template_padrao: 'padrao',
+        secoes: {
+          schema_version: 1,
+          prazo_producao: { enabled: true, title: 'Prazo de produção' },
+          pagamento: { enabled: true, title: 'Pagamento', body: '' },
+          condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+        },
       });
 
       const saved = await handler(

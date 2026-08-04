@@ -11,6 +11,12 @@ const DEFAULT_SETTINGS: Settings = {
   frete_padrao: '0.00',
   observacoes: '',
   template_padrao: 'padrao',
+  secoes: {
+    schema_version: 1,
+    prazo_producao: { enabled: true, title: 'Prazo de produção' },
+    pagamento: { enabled: true, title: 'Pagamento', body: '' },
+    condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+  },
 };
 
 function event(method: string, body?: unknown) {
@@ -31,14 +37,19 @@ function createMemoryRepository(initial: Settings | null = null): SettingsReposi
   return {
     get: async () => saved,
     save: async (settings) => {
-      saved = settings;
-      return settings;
+      const normalized: Settings = {
+        ...(saved || DEFAULT_SETTINGS),
+        ...settings,
+        entrega: settings.entrega ?? saved?.entrega ?? '',
+        template_padrao: settings.template_padrao ?? saved?.template_padrao ?? 'padrao',
+      };
+      saved = normalized;
+      return normalized;
     },
   };
 }
 
 describe('settings handler', () => {
-  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
 
   it('returns documented defaults when the singleton row does not exist', async () => {
     delete process.env.CRM_OPERATIONAL_MODE;
@@ -61,15 +72,25 @@ describe('settings handler', () => {
       frete_padrao: '00012.5',
       observacoes: 'Confirmar a arte antes da produção.',
       template_padrao: '  corporativo  ',
+      secoes: {
+        schema_version: 1,
+        prazo_producao: { enabled: true, title: 'Produção' },
+        pagamento: { enabled: true, title: 'Pagamento', body: '50% na aprovação' },
+        condicoes_gerais: { enabled: false, title: 'Condições', body: '' },
+      },
     };
 
     const saved = await handler(event('PUT', payload));
 
     assert.equal(saved.statusCode, 200);
     assert.deepEqual(parse(saved), {
-      ...payload,
+      validade_dias: 30,
+      pagamento: '50% na aprovação',
+      entrega: 'Até 10 dias úteis',
       frete_padrao: '12.50',
+      observacoes: '',
       template_padrao: 'corporativo',
+      secoes: payload.secoes,
     });
 
     const reloaded = await handler(event('GET'));
@@ -89,7 +110,7 @@ describe('settings handler', () => {
         get: async () => null,
         save: async (settings) => {
           writes += 1;
-          return settings;
+          return { ...DEFAULT_SETTINGS, ...settings, entrega: settings.entrega ?? '' };
         },
       },
     });
@@ -102,6 +123,12 @@ describe('settings handler', () => {
         frete_padrao: '-1.000',
         observacoes: '',
         template_padrao: '   ',
+        secoes: {
+          schema_version: 1,
+          prazo_producao: { enabled: true, title: '' },
+          pagamento: { enabled: 'yes', title: 'Pagamento', body: 'x'.repeat(4001) },
+          condicoes_gerais: { enabled: true, title: 'Condições', body: '' },
+        },
       })
     );
     const body = parse(result);
@@ -109,7 +136,7 @@ describe('settings handler', () => {
     assert.equal(result.statusCode, 400);
     assert.equal(body.error, 'Dados de configuração inválidos.');
     assert.match(body.fields.validade_dias, /entre 1 e 365/);
-    assert.match(body.fields.pagamento, /texto válido/);
+    assert.match(body.fields['secoes.prazo_producao.title'], /não pode ser vazio/);
     assert.match(body.fields.frete_padrao, /não negativo/);
     assert.match(body.fields.template_padrao, /template padrão/);
     assert.equal(writes, 0);
@@ -121,7 +148,7 @@ describe('settings handler', () => {
         get: async () => {
           throw new Error('postgres://usuario:segredo@host/banco');
         },
-        save: async (settings) => settings,
+        save: async (settings) => ({ ...DEFAULT_SETTINGS, ...settings, entrega: settings.entrega ?? '' }),
       },
     });
 

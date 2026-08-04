@@ -36,6 +36,7 @@ import {
   type PricingResolution,
 } from '../_functions/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
+import { normalizeQuotationSections } from './quotation-content.js';
 import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 
@@ -488,13 +489,15 @@ function safeErrorKind(error: unknown): string {
 async function readSettings(tx: QuoteTransaction): Promise<Settings> {
   const [row] = await tx.select().from(appSettings).where(eq(appSettings.singletonId, 1)).limit(1);
   if (!row) return { ...DEFAULT_SETTINGS };
+  const secoes = normalizeQuotationSections(row.quotationSections, row);
   return {
     validade_dias: row.validadeDias,
-    pagamento: row.pagamento,
+    pagamento: secoes.pagamento.body,
     entrega: row.entrega,
     frete_padrao: row.fretePadrao,
-    observacoes: row.observacoes,
+    observacoes: secoes.condicoes_gerais.body,
     template_padrao: row.templatePadrao,
+    secoes,
   };
 }
 

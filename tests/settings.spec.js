@@ -8,6 +8,12 @@ const INITIAL_SETTINGS = {
   frete_padrao: '0.00',
   observacoes: '',
   template_padrao: 'padrao',
+  secoes: {
+    schema_version: 1,
+    prazo_producao: { enabled: true, title: 'Prazo de produção' },
+    pagamento: { enabled: true, title: 'Pagamento', body: '' },
+    condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+  },
 };
 
 test.describe('Configurações de orçamento', () => {
@@ -45,7 +51,6 @@ test.describe('Configurações de orçamento', () => {
     await page.getByLabel('Condição de pagamento').fill('50% no pedido');
     await page.getByLabel('Prazo de entrega').fill('7 dias úteis');
     await page.getByLabel('Observações padrão').fill('Aprovar arte antes da produção.');
-    await page.getByLabel('Chave do template padrão').fill('varejo');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
 
     await expect(page.getByRole('status')).toHaveText('Configurações salvas com sucesso.');
@@ -55,7 +60,13 @@ test.describe('Configurações de orçamento', () => {
       entrega: '7 dias úteis',
       frete_padrao: '12.5',
       observacoes: 'Aprovar arte antes da produção.',
-      template_padrao: 'varejo',
+      template_padrao: 'padrao',
+      secoes: {
+        schema_version: 1,
+        prazo_producao: { enabled: true, title: 'Prazo de produção' },
+        pagamento: { enabled: true, title: 'Pagamento', body: '50% no pedido' },
+        condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Aprovar arte antes da produção.' },
+      },
     });
     await expect(page.getByLabel('Frete padrão (R$)')).toHaveValue('12.50');
   });
@@ -64,7 +75,7 @@ test.describe('Configurações de orçamento', () => {
     let calls = 0;
     await page.route('**/api/settings', async (route) => {
       calls += 1;
-      if (calls === 1) {
+      if (calls <= 2) {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -75,7 +86,7 @@ test.describe('Configurações de orçamento', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(INITIAL_SETTINGS),
+        body: JSON.stringify({ ...INITIAL_SETTINGS, operational_mode: false }),
       });
     });
 

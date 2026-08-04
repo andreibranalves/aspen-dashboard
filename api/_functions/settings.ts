@@ -3,8 +3,14 @@ import {
   DEFAULT_SETTINGS,
   createPostgresSettingsRepository,
   type Settings,
+  type SettingsInput,
   type SettingsRepository,
 } from '../_db/settings-repository.js';
+import {
+  normalizeQuotationSections,
+  validateQuotationSections,
+  type QuotationSectionsSettings,
+} from '../_db/quotation-content.js';
 import { isOperationalMode } from './operational-mode.js';
 
 const MAX_PAYMENT_LENGTH = 500;
@@ -92,7 +98,7 @@ function validateFreight(value: unknown, fields: Record<string, string>): string
   return `${normalizedInteger}.${fractionalPart.padEnd(2, '0')}`;
 }
 
-export function validateSettingsPayload(payload: unknown): Settings | ValidationFailure {
+export function validateSettingsPayload(payload: unknown): SettingsInput | ValidationFailure {
   if (!isRecord(payload)) {
     return validationFailure({ geral: 'Envie um objeto de configurações válido.' });
   }
@@ -108,19 +114,47 @@ export function validateSettingsPayload(payload: unknown): Settings | Validation
     fields.validade_dias = 'Informe uma validade em dias entre 1 e 365.';
   }
 
-  const pagamento = validateText(payload.pagamento, 'pagamento', MAX_PAYMENT_LENGTH, fields);
-  const entrega = validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
+  const pagamento = payload.pagamento === undefined
+    ? ''
+    : validateText(payload.pagamento, 'pagamento', MAX_PAYMENT_LENGTH, fields);
+  const entrega = payload.entrega === undefined
+    ? undefined
+    : validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
   const fretePadrao = validateFreight(payload.frete_padrao, fields);
-  const observacoes = validateText(payload.observacoes, 'observacoes', MAX_NOTES_LENGTH, fields);
-  const templatePadrao = validateText(
-    payload.template_padrao,
-    'template_padrao',
-    MAX_TEMPLATE_KEY_LENGTH,
-    fields
-  );
-
-  if (templatePadrao !== null && !templatePadrao.trim()) {
+  const observacoes = payload.observacoes === undefined
+    ? ''
+    : validateText(payload.observacoes, 'observacoes', MAX_NOTES_LENGTH, fields);
+  const templatePadrao = payload.template_padrao === undefined
+    ? undefined
+    : validateText(payload.template_padrao, 'template_padrao', MAX_TEMPLATE_KEY_LENGTH, fields);
+  if (templatePadrao !== null && templatePadrao !== undefined && !templatePadrao.trim()) {
     fields.template_padrao = 'Informe a chave do template padrão.';
+  }
+
+  let secoes: QuotationSectionsSettings;
+  if (payload.secoes !== undefined) {
+    try {
+      validateQuotationSections(payload.secoes);
+      secoes = normalizeQuotationSections(payload.secoes);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Informe seções válidas.';
+      const section = /seção "([^"]+)"/i.exec(message)?.[1];
+      const field = /campo "([^"]+)"/i.exec(message)?.[1];
+      const titleError = /Título da seção "([^"]+)"/i.exec(message);
+      fields[
+        `secoes.${section || titleError?.[1] || 'geral'}${field ? `.${field}` : titleError ? '.title' : ''}`
+      ] = message;
+      if (section) {
+        fields[`secoes.${section}.title`] = message;
+      }
+      secoes = normalizeQuotationSections(undefined);
+    }
+  } else {
+    secoes = normalizeQuotationSections(undefined, {
+      pagamento: pagamento ?? '',
+      entrega: entrega ?? '',
+      observacoes: observacoes ?? '',
+    });
   }
 
   if (Object.keys(fields).length > 0) {
@@ -129,15 +163,16 @@ export function validateSettingsPayload(payload: unknown): Settings | Validation
 
   return {
     validade_dias: validadeDias as number,
-    pagamento: pagamento as string,
-    entrega: entrega as string,
+    pagamento: secoes.pagamento.body,
+    ...(typeof entrega === 'string' ? { entrega } : {}),
     frete_padrao: fretePadrao as string,
-    observacoes: observacoes as string,
-    template_padrao: (templatePadrao as string).trim(),
+    observacoes: secoes.condicoes_gerais.body,
+    secoes,
+    ...(typeof templatePadrao === 'string' ? { template_padrao: templatePadrao.trim() } : {}),
   };
 }
 
-function isValidationFailure(result: Settings | ValidationFailure): result is ValidationFailure {
+function isValidationFailure(result: Settings | SettingsInput | ValidationFailure): result is ValidationFailure {
   return 'fields' in result;
 }
 

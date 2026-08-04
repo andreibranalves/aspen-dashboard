@@ -45,8 +45,15 @@ interface SettingsForm {
   entrega: string;
   frete_padrao: string;
   observacoes: string;
-  template_padrao: string;
+  secoes: DashboardSettings['secoes'];
 }
+
+const EMPTY_SECTIONS: DashboardSettings['secoes'] = {
+  schema_version: 1,
+  prazo_producao: { enabled: true, title: 'Prazo de produção' },
+  pagamento: { enabled: true, title: 'Pagamento', body: '' },
+  condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+};
 
 const EMPTY_FORM: SettingsForm = {
   validade_dias: '',
@@ -54,17 +61,17 @@ const EMPTY_FORM: SettingsForm = {
   entrega: '',
   frete_padrao: '0.00',
   observacoes: '',
-  template_padrao: '',
+  secoes: EMPTY_SECTIONS,
 };
 
 function toForm(settings: DashboardSettings): SettingsForm {
   return {
     validade_dias: String(settings.validade_dias),
-    pagamento: settings.pagamento,
+    pagamento: settings.secoes.pagamento.body,
     entrega: settings.entrega,
     frete_padrao: settings.frete_padrao,
-    observacoes: settings.observacoes,
-    template_padrao: settings.template_padrao,
+    observacoes: settings.secoes.condicoes_gerais.body,
+    secoes: settings.secoes,
   };
 }
 
@@ -213,8 +220,22 @@ export default function SettingsPage() {
     void loadSettings();
   }, [loadSettings]);
 
-  function updateField(field: keyof SettingsForm, value: string) {
+  function updateField(field: 'validade_dias' | 'entrega' | 'frete_padrao', value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    setSaveError(null);
+    setSavedMessage(null);
+  }
+
+  function updateSection(section: 'pagamento' | 'condicoes_gerais', field: 'title' | 'body', value: string) {
+    setForm((current) => ({
+      ...current,
+      [section === 'pagamento' ? 'pagamento' : 'observacoes']:
+        field === 'body' ? value : current[section === 'pagamento' ? 'pagamento' : 'observacoes'],
+      secoes: {
+        ...current.secoes,
+        [section]: { ...current.secoes[section], [field]: value },
+      },
+    }));
     setSaveError(null);
     setSavedMessage(null);
   }
@@ -232,11 +253,13 @@ export default function SettingsPage() {
     try {
       const saved = await saveSettings({
         validade_dias: validadeDias,
-        pagamento: form.pagamento,
         entrega: form.entrega,
         frete_padrao: form.frete_padrao,
-        observacoes: form.observacoes,
-        template_padrao: form.template_padrao,
+        secoes: {
+          ...form.secoes,
+          pagamento: { ...form.secoes.pagamento, body: form.pagamento },
+          condicoes_gerais: { ...form.secoes.condicoes_gerais, body: form.observacoes },
+        },
       });
       setForm(toForm(saved));
       setSavedMessage('Configurações salvas com sucesso.');
@@ -339,7 +362,7 @@ export default function SettingsPage() {
                 <span className="font-medium">Condição de pagamento</span>
                 <textarea
                   value={form.pagamento}
-                  onChange={(event) => updateField('pagamento', event.target.value)}
+                  onChange={(event) => updateSection('pagamento', 'body', event.target.value)}
                   disabled={saving}
                   maxLength={500}
                   rows={3}
@@ -364,22 +387,11 @@ export default function SettingsPage() {
               <span className="font-medium">Observações padrão</span>
               <textarea
                 value={form.observacoes}
-                onChange={(event) => updateField('observacoes', event.target.value)}
+                onChange={(event) => updateSection('condicoes_gerais', 'body', event.target.value)}
                 disabled={saving}
                 maxLength={4000}
                 rows={5}
                 className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-            </label>
-
-            <label className="block max-w-md space-y-1.5 text-sm text-fg">
-              <span className="font-medium">Chave do template padrão</span>
-              <Input
-                value={form.template_padrao}
-                onChange={(event) => updateField('template_padrao', event.target.value)}
-                disabled={saving}
-                maxLength={120}
-                required
               />
             </label>
 
