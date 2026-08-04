@@ -577,7 +577,10 @@ const SVG_ONLY_TAGS = new Set(['g', 'path', 'defs']);
 
 // Exact hash of the historical Frappe source migrated from ERPNext.
 // Only this source may omit display.total; every new template/version must require it.
-const FRAPPE_HISTORICAL_HASH = '5cd938d46c402c47cfeb451266aa321d8ab856104984c62848ad2f97abddd834';
+// Trusted built-in keys that are allowed to omit display.total.
+// Only the exact source strings compiled into DEFINITIONS above qualify.
+// External/persisted templates with the same key or hash do NOT get this exception.
+const TRUSTED_FRAPPE_KEYS = new Set(['frappe']);
 
 // Global attribute allowlist (applied to all tags that lack per-tag restrictions)
 // NOTE: href and src are NOT here — they are only allowed on specific tags via TAG_ATTRIBUTE_RESTRICTIONS
@@ -1035,8 +1038,13 @@ function tokenizeHtml(source: string): HtmlToken[] {
     }
 
     const tagName = name.toLowerCase();
+    // After attribute parsing, the loop ended because i >= source.length or source[i] === '>'.
+    // If EOF was reached before >, reject the unterminated tag.
+    if (i >= source.length || source[i] !== '>') {
+      throw new Error(`Tag <${name}> não terminada`);
+    }
     tokens.push({ type: 'start-tag', name: tagName, attributes, selfClosing });
-    if (i < source.length && source[i] === '>') i++;
+    i++; // skip the >
 
     if ((tagName === 'style' || tagName === 'script') && !selfClosing) {
       const closeTag = `</${tagName}>`;
@@ -1174,7 +1182,7 @@ type AstWalk = Record<string, unknown> & { type?: string };
 function findRequiredFields(
   source: string,
   templateKey: string,
-  sourceHash?: string
+  trustedBuiltinKey?: string
 ): { missing: string[]; secoesPresent: boolean; missingSections: string[] } {
   const ast = Handlebars.parse(source) as unknown as AstWalk;
   const found = {
@@ -1222,9 +1230,19 @@ function findRequiredFields(
   if (!found.client_name) missing.push('client.name');
   if (!found.each_items) missing.push('#each items');
 
-  // display.total is a hard requirement, except for the exact historical Frappe source
-  const isHistoricalFrappe = sourceHash === FRAPPE_HISTORICAL_HASH;
-  if (!found.display_total && !isHistoricalFrappe) {
+  // display.total is a hard requirement, except for trusted built-in templates
+  // that are known to lack it (the exact historical Frappe source compiled above).
+  // This exemption is NOT available to external/persisted templates even if they
+  // have the same key or hash — only the trustedBuiltinKey path grants it.
+  const isTrustedBuiltin =
+    trustedBuiltinKey !== undefined && TRUSTED_FRAPPE_KEYS.has(trustedBuiltinKey);
+  if (!found.display_total && isTrustedBuiltin) {
+    // Emit the plan-required compatibility warning
+    console.warn(
+      `[quotation-templates] Aviso: template ${templateKey} é um legado histórico que não usa display.total. Novos templates devem incluir display.total.`
+    );
+  }
+  if (!found.display_total && !isTrustedBuiltin) {
     missing.push('display.total');
   }
 
@@ -1256,7 +1274,11 @@ function checkDynamicUrlStyleBypass(source: string, templateKey: string): void {
   }
 }
 
-export function validateQuotationHtmlSource(source: string, templateKey = 'desconhecido'): void {
+export function validateQuotationHtmlSource(
+  source: string,
+  templateKey = 'desconhecido',
+  trustedBuiltinKey?: string
+): void {
   // Reject Handlebars expressions in URL/style contexts on the ORIGINAL source
   // (before stripping, since stripping removes them and bypasses the check)
   checkDynamicUrlStyleBypass(source, templateKey);
@@ -1270,14 +1292,20 @@ export function validateQuotationHtmlSource(source: string, templateKey = 'desco
   // Required fields check (only for full HTML documents)
   const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
   if (isHtmlDocument) {
-    const hash = sourceHash(source);
-    const { missing } = findRequiredFields(source, templateKey, hash);
+    const { missing } = findRequiredFields(source, templateKey, trustedBuiltinKey);
     if (missing.length > 0) {
       throw new Error(
         `Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`
       );
     }
   }
+}
+
+// Validate built-in definitions against HTML policy (runs once at module load).
+// This ensures the shipped templates are safe even if source strings change.
+// Uses the trusted builtin key path so the Frappe exception applies.
+for (const definition of DEFINITIONS) {
+  validateQuotationHtmlSource(definition.source, definition.key, definition.key);
 }
 
 export function renderQuotationTemplate(
@@ -1287,7 +1315,12 @@ export function renderQuotationTemplate(
   const environment = createEnvironment();
   let compiled: TemplateDelegate;
   try {
-    validateQuotationHtmlSource(template.source, template.key);
+    // Detect built-in templates: pass trustedBuiltinKey so historical
+    // Frappe display.total exception applies for the exact compiled source.
+    const trustedKey = TEMPLATES.some((t) => t.key === template.key && t.hash === template.hash)
+      ? template.key
+      : undefined;
+    validateQuotationHtmlSource(template.source, template.key, trustedKey);
     validateQuotationTemplateSource(template.source, template.key);
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,

@@ -573,9 +573,33 @@ test('exact historical Frappe source/hash accepts missing display.total', () => 
 test('new source missing display.total is rejected', () => {
   const newSource =
     '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}}</body></html>';
+  assert.throws(() => validateQuotationHtmlSource(newSource, 'new-template'), /display\.total/);
+});
+
+test('external template with same Frappe key cannot bypass display.total', () => {
+  // Even if a user/persisted template has key 'frappe', the exception
+  // only applies when trustedBuiltinKey is explicitly passed (internal path).
+  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
+  assert.ok(frappe, 'frappe template exists');
+  // Call without trustedBuiltinKey (external path) — should reject
+  assert.throws(() => validateQuotationHtmlSource(frappe.source, 'frappe'), /display\.total/);
+});
+
+test('built-in definitions are validated for both AST and HTML policy', () => {
+  // All built-in templates should already be validated at module load.
+  // Verify they all render successfully.
+  const model = quotationSnapshotViewModel(snapshot);
+  for (const tmpl of QUOTATION_TEMPLATES) {
+    const html = renderQuotationTemplate(tmpl, model);
+    assert.ok(html.length > 100, `${tmpl.key} renders substantial HTML`);
+  }
+});
+
+test('void tags without > at EOF are rejected', () => {
+  assert.throws(() => validateQuotationHtmlSource('<html><body><br', 'test'), /não terminada/);
   assert.throws(
-    () => validateQuotationHtmlSource(newSource, 'new-template'),
-    /display\.total/
+    () => validateQuotationHtmlSource('<html><body><img src="https://example.test"', 'test'),
+    /não terminada/
   );
 });
 
@@ -592,11 +616,7 @@ test('rejects unquoted attribute values', () => {
 
 test('rejects trailing junk in end tag', () => {
   assert.throws(
-    () =>
-      validateQuotationHtmlSource(
-        '<html><body><div>x</div junk></body></html>',
-        'test'
-      ),
+    () => validateQuotationHtmlSource('<html><body><div>x</div junk></body></html>', 'test'),
     /Lixo após nome de tag de fechamento/
   );
 });
