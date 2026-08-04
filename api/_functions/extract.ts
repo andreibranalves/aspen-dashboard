@@ -1,8 +1,9 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { isOperationalMode } from './operational-mode.js';
 
 // ── Regras de extração padrão ──
-export const DEFAULT_RULES = `Rule 0 — SKU Explícito: Se o cliente informar SKUs explícitos (ex: CNG-SAL-70), use exatamente esses SKUs sem expandir.
+export const DEFAULT_RULES = `Rule 0 — SKU Explícito (TEXTO): Se o cliente informar SKUs explícitos NO CORPO DO TEXTO (ex: alguém digitou "CNG-SAL-70"), use exatamente esses SKUs sem expandir.
+
+Rule 0a — IMAGENS: Ao processar uma IMAGEM (print de tabela, foto de catálogo, screenshot), NUNCA use códigos de produto que aparecem na imagem como item_code. Códigos visíveis em imagens (ex: "LENCO9090", "BRD-123") são códigos internos do sistema de origem (Brindice, etc) e NÃO são SKUs da Aspen. Em vez disso, identifique o TIPO DE PRODUTO pelo nome/descrição visível na imagem e aplique as regras de negócio abaixo para mapear para os SKUs corretos da Aspen.
 
 Rule 1 — Quantidade mínima: Se qtd < 30, usar 30.
 
