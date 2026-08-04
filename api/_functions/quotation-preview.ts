@@ -5,7 +5,7 @@ import {
   QuotationTemplateSnapshotRepositoryError,
 } from '../_db/quotation-template-repository.js';
 import {
-  getQuotationTemplate,
+  quotationTemplateFromVersion,
   renderQuotationTemplate,
   resolveQuotationTemplate,
 } from './lib/quotation-templates.js';
@@ -14,8 +14,20 @@ import { isValidPdfBuffer } from './lib/quotation-document-storage.js';
 import { isCoreQuotesEnabled } from './orcamento-mode.js';
 
 export interface QuotationPreviewDependencies {
-  repository?: ReturnType<typeof createQuotationTemplateRepository>;
+  repository?: {
+    get(
+      id: string,
+      templateVersionId?: string
+    ): ReturnType<ReturnType<typeof createQuotationTemplateRepository>['get']>;
+  };
 }
+
+const HTML_SECURITY_HEADERS = {
+  'Cache-Control': 'no-store',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline' https:; img-src data: https:; font-src data: https:; script-src 'none'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  'Referrer-Policy': 'no-referrer',
+  'X-Content-Type-Options': 'nosniff',
+};
 
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
   return {
@@ -47,18 +59,20 @@ export function createQuotationPreviewHandler(
     const query = event.queryStringParameters || {};
     const id = String(query.id || '').trim();
     if (!id) return json(400, { error: 'ID do orçamento não informado.' });
-    const selectedKey = query.template === undefined ? undefined : String(query.template).trim();
-    const asPdf = query.format === 'pdf';
-    if (selectedKey !== undefined && !getQuotationTemplate(selectedKey)) {
-      return json(400, { error: 'Template de orçamento inválido.' });
+    if (query.template !== undefined || query.template_key !== undefined) {
+      return json(400, { error: 'Sobrescrita de template não permitida.' });
     }
+    const selectedVersionId =
+      query.template_version_id === undefined
+        ? undefined
+        : String(query.template_version_id).trim();
+    const asPdf = query.format === 'pdf';
     try {
-      const snapshot = await repository.get(id);
+      const snapshot = await repository.get(id, selectedVersionId);
       if (!snapshot) return json(404, { error: 'Orçamento não encontrado.' });
-      const template =
-        selectedKey === undefined
-          ? resolveQuotationTemplate(snapshot.revision.templatePadrao)
-          : getQuotationTemplate(selectedKey)!;
+      const template = snapshot.templateVersion
+        ? quotationTemplateFromVersion(snapshot.templateVersion)
+        : resolveQuotationTemplate(snapshot.revision.templatePadrao, snapshot.revision.templateHash);
       const html = renderQuotationTemplate(template, quotationSnapshotViewModel(snapshot));
       if (asPdf) {
         let pdf: Buffer;
@@ -84,6 +98,9 @@ export function createQuotationPreviewHandler(
             'Cache-Control': 'private, no-store',
             'X-Content-Type-Options': 'nosniff',
             'X-Quotation-Template-Key': template.key,
+            'X-Quotation-Template-Version': snapshot.templateVersion
+              ? String(snapshot.templateVersion.version)
+              : 'legacy',
             'X-Quotation-Template-Hash': template.hash,
           },
           body: pdf.toString('base64'),
@@ -94,8 +111,11 @@ export function createQuotationPreviewHandler(
         statusCode: 200,
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
+          ...HTML_SECURITY_HEADERS,
           'X-Quotation-Template-Key': template.key,
+          'X-Quotation-Template-Version': snapshot.templateVersion
+            ? String(snapshot.templateVersion.version)
+            : 'legacy',
           'X-Quotation-Template-Hash': template.hash,
         },
         body: html,

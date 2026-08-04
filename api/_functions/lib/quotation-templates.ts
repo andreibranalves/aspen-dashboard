@@ -441,8 +441,24 @@ export function getQuotationTemplate(key: unknown): QuotationTemplate | null {
   return BY_KEY.get(key.trim()) || null;
 }
 
-export function resolveQuotationTemplate(key: unknown): QuotationTemplate {
-  return getQuotationTemplate(key) || DEFAULT_TEMPLATE;
+export function resolveQuotationTemplate(key: unknown, hash?: unknown): QuotationTemplate {
+  const template = getQuotationTemplate(key);
+  if (template && (hash === undefined || template.hash === String(hash))) return template;
+  return DEFAULT_TEMPLATE;
+}
+
+export function quotationTemplateFromVersion(version: {
+  source: string;
+  sourceHash: string;
+  template?: { key: string; name: string };
+}): QuotationTemplate {
+  return {
+    key: version.template?.key || 'persisted',
+    name: version.template?.name || 'Template persistido',
+    is_default: false,
+    source: version.source,
+    hash: version.sourceHash,
+  };
 }
 
 const HELPER_NAMES = Object.freeze({

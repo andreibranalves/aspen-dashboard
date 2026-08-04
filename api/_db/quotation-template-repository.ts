@@ -1,10 +1,18 @@
 import { asc, desc, eq, or } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
-import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
+import {
+  quotationTemplateVersions,
+  quotationTemplates,
+  quoteRevisionItems,
+  quoteRevisions,
+  quotations,
+} from './schema.js';
 import {
   formatQuotationCurrency,
   formatQuotationDate,
+  resolveQuotationTemplate,
+  type QuotationTemplate,
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { toSafeMultilineHtml } from './quotation-content.js';
@@ -15,10 +23,12 @@ type QuoteDatabase = AppDatabase;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class QuotationTemplateSnapshotRepositoryError extends Error {
-  readonly statusCode = 503;
   readonly expose = false;
 
-  constructor(message = 'Não foi possível consultar o orçamento para visualização.') {
+  constructor(
+    message = 'Não foi possível consultar o orçamento para visualização.',
+    readonly statusCode = 503
+  ) {
     super(message);
     this.name = 'QuotationTemplateSnapshotRepositoryError';
   }
@@ -27,6 +37,12 @@ export class QuotationTemplateSnapshotRepositoryError extends Error {
 export interface QuotationTemplateSnapshot {
   quotation: typeof quotations.$inferSelect;
   revision: typeof quoteRevisions.$inferSelect;
+  templateVersion:
+    | (typeof quotationTemplateVersions.$inferSelect & {
+        template?: typeof quotationTemplates.$inferSelect;
+      })
+    | null;
+  sectionsSnapshot: typeof quoteRevisions.$inferSelect.sectionsSnapshot;
   items: (typeof quoteRevisionItems.$inferSelect)[];
 }
 
@@ -44,32 +60,93 @@ function quoteWhere(id: string) {
  */
 export async function readQuotationTemplateSnapshot(
   db: QuoteDatabase,
-  id: string
+  id: string,
+  templateVersionId?: string
 ): Promise<QuotationTemplateSnapshot | null> {
-  const [quotation] = await db.select().from(quotations).where(quoteWhere(id)).limit(1);
+  let [quotation] = await db.select().from(quotations).where(quoteWhere(id)).limit(1);
+  let targetRevisionId: string | undefined;
+  if (!quotation && UUID_PATTERN.test(id)) {
+    const [revision] = await db
+      .select()
+      .from(quoteRevisions)
+      .where(eq(quoteRevisions.id, id))
+      .limit(1);
+    if (revision) {
+      targetRevisionId = revision.id;
+      [quotation] = await db
+        .select()
+        .from(quotations)
+        .where(eq(quotations.id, revision.quotationId))
+        .limit(1);
+    }
+  }
   if (!quotation) return null;
   const [revision] = await db
     .select()
     .from(quoteRevisions)
-    .where(eq(quoteRevisions.quotationId, quotation.id))
+    .where(
+      targetRevisionId
+        ? eq(quoteRevisions.id, targetRevisionId)
+        : eq(quoteRevisions.quotationId, quotation.id)
+    )
     .orderBy(desc(quoteRevisions.version))
     .limit(1);
   if (!revision) return null;
+
+  let templateVersion = revision.templateVersionId
+    ? (
+        await db
+          .select({ version: quotationTemplateVersions, model: quotationTemplates })
+          .from(quotationTemplateVersions)
+          .innerJoin(quotationTemplates, eq(quotationTemplates.id, quotationTemplateVersions.templateId))
+          .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
+          .limit(1)
+      ).map(({ version, model }) => ({ ...version, template: model }))[0] || null
+    : null;
+  if (templateVersionId !== undefined) {
+    if (revision.status !== 'rascunho') {
+      throw new QuotationTemplateSnapshotRepositoryError(
+        'A versão do template só pode ser alterada em rascunhos.',
+        409
+      );
+    }
+    const [selected] = await db
+      .select({ version: quotationTemplateVersions, model: quotationTemplates })
+      .from(quotationTemplateVersions)
+      .innerJoin(quotationTemplates, eq(quotationTemplates.id, quotationTemplateVersions.templateId))
+      .where(eq(quotationTemplateVersions.id, templateVersionId))
+      .limit(1);
+    if (!selected || selected.model.archived) {
+      throw new QuotationTemplateSnapshotRepositoryError('Template do orçamento inválido.', 400);
+    }
+    templateVersion = { ...selected.version, template: selected.model };
+  }
+  if (!templateVersion && !revision.templateVersionId) {
+    console.warn(
+      `[quotation-template-repository] legacy revision ${revision.id} uses static template compatibility fallback`
+    );
+  }
   const items = await db
     .select()
     .from(quoteRevisionItems)
     .where(eq(quoteRevisionItems.revisionId, revision.id))
     .orderBy(asc(quoteRevisionItems.position));
-  return { quotation, revision, items };
+  return {
+    quotation,
+    revision,
+    templateVersion,
+    sectionsSnapshot: revision.sectionsSnapshot,
+    items,
+  };
 }
 
 export function createQuotationTemplateRepository(getDb: DatabaseProvider = getDatabase) {
   return {
-    async get(id: string): Promise<QuotationTemplateSnapshot | null> {
+    async get(id: string, templateVersionId?: string): Promise<QuotationTemplateSnapshot | null> {
       const normalized = String(id || '').trim();
       if (!normalized) return null;
       try {
-        return await readQuotationTemplateSnapshot(getDb(), normalized);
+        return await readQuotationTemplateSnapshot(getDb(), normalized, templateVersionId);
       } catch (error) {
         console.error(
           `[quotation-template-repository] read failed (${error instanceof Error ? error.name : typeof error})`
@@ -235,8 +312,9 @@ export function quotationSnapshotViewModel(
     },
   };
 
-  const revisionAny = revision as Record<string, unknown>;
-  const sectionsSnapshot = revisionAny.sectionsSnapshot as Record<string, unknown> | undefined;
+  const sectionsSnapshot = (snapshot.sectionsSnapshot || revision.sectionsSnapshot) as unknown as
+    | Record<string, unknown>
+    | undefined;
   if (sectionsSnapshot && typeof sectionsSnapshot === 'object') {
     const prazo = (sectionsSnapshot.prazo_producao || {}) as Record<string, unknown>;
     const pagto = (sectionsSnapshot.pagamento || {}) as Record<string, unknown>;
@@ -246,7 +324,7 @@ export function quotationSnapshotViewModel(
     const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
     result.secoes = {
       prazo_producao: {
-        value: prazoCurrent.enabled ? String(prazoCurrent.title || '') : '',
+        value: prazoCurrent.enabled ? nullable(revision.prazoProducao) : '',
       },
       pagamento: {
         body_html: pagtoCurrent.enabled

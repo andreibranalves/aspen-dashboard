@@ -210,7 +210,7 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
   assert.notEqual(standard, alternate);
 });
 
-test('preview is flag-gated, returns HTML headers, and alternate selection does not mutate snapshot', async () => {
+test('preview is flag-gated, returns secure headers, and rejects legacy overrides', async () => {
   const prevOperational = process.env.CRM_OPERATIONAL_MODE;
   delete process.env.CRM_OPERATIONAL_MODE;
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
@@ -224,14 +224,17 @@ test('preview is flag-gated, returns HTML headers, and alternate selection does 
 
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
     const handler = createQuotationPreviewHandler({ repository });
-    const preview = await handler(event({ id: 'ORC-20260001', template: 'minimalista' }));
+    const preview = await handler(event({ id: 'ORC-20260001' }));
     assert.equal(preview.statusCode, 200);
     assert.equal(preview.headers['Content-Type'], 'text/html; charset=utf-8');
     assert.equal(preview.headers['Cache-Control'], 'no-store');
-    assert.equal(preview.headers['X-Quotation-Template-Key'], 'minimalista');
+    assert.match(preview.headers['Content-Security-Policy'], /default-src 'none'/);
+    assert.equal(preview.headers['Referrer-Policy'], 'no-referrer');
+    assert.equal(preview.headers['X-Quotation-Template-Key'], 'padrao');
+    assert.equal(preview.headers['X-Quotation-Template-Version'], 'legacy');
     assert.match(preview.headers['X-Quotation-Template-Hash'], /^[0-9a-f]{64}$/);
     assert.equal(snapshot.revision.templatePadrao, 'padrao');
-    const invalid = await handler(event({ id: 'ORC-20260001', template: 'unknown' }));
+    const invalid = await handler(event({ id: 'ORC-20260001', template: 'minimalista' }));
     assert.equal(invalid.statusCode, 400);
   } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
@@ -772,7 +775,7 @@ test('factory snapshot → view-model round-trip produces correct secoes', () =>
     },
   });
   assert.ok(model.secoes, 'secoes present in view-model');
-  assert.equal(model.secoes.prazo_producao.value, settings.prazo_producao.title);
+  assert.equal(model.secoes.prazo_producao.value, snapshot.revision.prazoProducao);
   assert.ok(
     model.secoes.pagamento.body_html.toString().includes('50%'),
     'pagamento body contains legacy text'
