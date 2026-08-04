@@ -345,6 +345,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           label={`Editar orçamento ${row.id}`}
           onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
         />
+        <ActionBtn
+          icon={Trash2}
+          label={`Excluir orçamento ${row.id}`}
+          onClick={() => handleDelete(row.id)}
+          colorClass="hover:bg-destructive/10 hover:text-destructive"
+        />
         {!coreMode && (
           <>
             <ActionBtn icon={FileText} label={`Abrir PDF do orçamento ${row.id}`} href={buildQuotationViewUrl(row.id)} />
@@ -352,12 +358,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               icon={Copy}
               label={`Duplicar orçamento ${row.id}`}
               onClick={() => handleDuplicate(row.id)}
-            />
-            <ActionBtn
-              icon={Trash2}
-              label={`Excluir orçamento ${row.id}`}
-              onClick={() => handleDelete(row.id)}
-              colorClass="hover:bg-destructive/100/10 hover:text-destructive"
             />
           </>
         )}
