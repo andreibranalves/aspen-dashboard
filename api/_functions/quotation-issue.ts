@@ -8,13 +8,8 @@ import {
   type IssuedQuotationDocument,
   type QuotationDocumentRepository,
 } from '../_db/quotation-document-repository.js';
-import {
-  quotationSnapshotViewModel,
-} from '../_db/quotation-template-repository.js';
-import {
-  getQuotationTemplate,
-  renderQuotationTemplate,
-} from './lib/quotation-templates.js';
+import { quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
+import { getQuotationTemplate, renderQuotationTemplate } from './lib/quotation-templates.js';
 import { renderQuotationPdfHtml } from './lib/quotation-pdf.js';
 import {
   createVercelQuotationDocumentStorage,
@@ -116,7 +111,7 @@ function requestedId(event: FunctionEvent): string {
 export async function issueQuotation(
   id: string,
   dependencies: QuotationIssueDependencies = {},
-  options: QuotationIssueOptions = {},
+  options: QuotationIssueOptions = {}
 ): Promise<QuotationIssueResult> {
   const repository = dependencies.repository || createQuotationDocumentRepository();
   const storage = dependencies.storage || createVercelQuotationDocumentStorage();
@@ -125,7 +120,8 @@ export async function issueQuotation(
   if (!source) throw new QuotationDocumentNotFoundError('Orçamento não encontrado.');
 
   // No template override and already issued — serve the stored PDF.
-  if (source.document && !options.templateOverride) return { document: source.document, alreadyIssued: true };
+  if (source.document && !options.templateOverride)
+    return { document: source.document, alreadyIssued: true };
 
   const { quotation, revision } = source.snapshot;
   const isReissue = !!source.document && !!options.templateOverride;
@@ -140,7 +136,9 @@ export async function issueQuotation(
   // When issuing for the first time, the template hash must match the revision.
   // When re-issuing with an override, the stored hash is irrelevant.
   if (!isReissue && template.hash !== revision.templateHash) {
-    throw new QuotationDocumentConflictError('O template original desta revisão não está disponível para emissão.');
+    throw new QuotationDocumentConflictError(
+      'O template original desta revisão não está disponível para emissão.'
+    );
   }
 
   const html = renderQuotationTemplate(template, quotationSnapshotViewModel(source.snapshot));
@@ -149,16 +147,27 @@ export async function issueQuotation(
   try {
     pdf = await renderPdf(html);
   } catch (error) {
-    console.error(`[quotation-issue] render failed (${error instanceof Error ? error.name : typeof error})`);
+    console.error(
+      `[quotation-issue] render failed (${error instanceof Error ? error.name : typeof error})`
+    );
     throw new QuotationPdfRenderError();
   }
   if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) {
     throw new QuotationPdfRenderError('O gerador retornou um PDF inválido. Tente novamente.');
   }
 
-  const pathname = quotationPdfPathname(quotation.businessNumber, revision.version, template.hash, sourceHash);
+  const pathname = quotationPdfPathname(
+    quotation.businessNumber,
+    revision.version,
+    template.hash,
+    sourceHash
+  );
   const archived = await storage.archive(pathname, pdf);
-  if (archived.pathname !== pathname || archived.sizeBytes < 1 || !/^[0-9a-f]{64}$/.test(archived.checksumSha256)) {
+  if (
+    archived.pathname !== pathname ||
+    archived.sizeBytes < 1 ||
+    !/^[0-9a-f]{64}$/.test(archived.checksumSha256)
+  ) {
     throw new QuotationDocumentStorageError();
   }
 
@@ -184,12 +193,12 @@ export async function issueQuotation(
 
 function safeError(error: unknown): FunctionResult {
   if (
-    error instanceof QuotationDocumentConflictError
-    || error instanceof QuotationDocumentNotFoundError
-    || error instanceof QuotationDocumentRepositoryError
-    || error instanceof QuotationDocumentStorageError
-    || error instanceof QuotationPdfRenderError
-    || error instanceof QuotationIssueInputError
+    error instanceof QuotationDocumentConflictError ||
+    error instanceof QuotationDocumentNotFoundError ||
+    error instanceof QuotationDocumentRepositoryError ||
+    error instanceof QuotationDocumentStorageError ||
+    error instanceof QuotationPdfRenderError ||
+    error instanceof QuotationIssueInputError
   ) {
     return json(error.statusCode, { error: error.message });
   }
@@ -197,15 +206,18 @@ function safeError(error: unknown): FunctionResult {
   return json(503, { error: 'Não foi possível emitir o orçamento. Tente novamente.' });
 }
 
-export function createQuotationIssueHandler(dependencies: QuotationIssueDependencies = {}): LegacyHandler {
+export function createQuotationIssueHandler(
+  dependencies: QuotationIssueDependencies = {}
+): LegacyHandler {
   return async function quotationIssueHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (!isCoreQuotesEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });
     try {
       const body = parseBody(event);
-      const templateOverride = typeof body.template === 'string' && body.template.trim()
-        ? body.template.trim()
-        : undefined;
+      const templateOverride =
+        typeof body.template === 'string' && body.template.trim()
+          ? body.template.trim()
+          : undefined;
       const result = await issueQuotation(requestedId(event), dependencies, { templateOverride });
       return json(result.alreadyIssued ? 200 : 201, {
         status: 'enviado',

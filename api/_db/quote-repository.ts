@@ -277,9 +277,8 @@ function normalizeInlineClient(input: QuoteDraftCreateInput): Omit<QuoteDraftCli
   // client record. Nested client payloads may still use their historical
   // `observacoes` spelling for client notes.
   const nestedNotes = firstDefined(nested, ['notes', 'client_notes', 'observacoes', 'observação']);
-  const clientNotes = nestedNotes === undefined
-    ? firstDefined(topLevel, ['notes', 'client_notes'])
-    : nestedNotes;
+  const clientNotes =
+    nestedNotes === undefined ? firstDefined(topLevel, ['notes', 'client_notes']) : nestedNotes;
   let document: string | null;
   try {
     const documentAliases = ['documento', 'cnpj', 'tax_id']
@@ -293,7 +292,9 @@ function normalizeInlineClient(input: QuoteDraftCreateInput): Omit<QuoteDraftCli
       nome: normalizeClientName(firstDefined(source, ['nome', 'name'])),
       documento: document,
       email: normalizeClientEmail(firstDefined(source, ['email', 'email_id'])),
-      telefone: normalizeClientPhone(firstDefined(source, ['telefone', 'phone', 'mobile_no', 'celular'])),
+      telefone: normalizeClientPhone(
+        firstDefined(source, ['telefone', 'phone', 'mobile_no', 'celular'])
+      ),
       notes: normalizeClientNotes(clientNotes),
       address: normalizeAddressInput(firstDefined(source, ['endereco', 'address'])),
     };
@@ -304,14 +305,30 @@ function normalizeInlineClient(input: QuoteDraftCreateInput): Omit<QuoteDraftCli
 }
 
 function normalizeClientId(input: QuoteDraftCreateInput): string | null {
-  const nested = isRecord(input.client) ? input.client : isRecord(input.cliente) ? input.cliente : null;
-  const nestedId = nested ? firstDefined(nested, ['id', 'client_id', 'clientId', 'cliente_id', 'clienteId']) : undefined;
-  const values = [firstDefined(input as unknown as Record<string, unknown>, ['client_id', 'clientId', 'cliente_id', 'clienteId']), nestedId]
+  const nested = isRecord(input.client)
+    ? input.client
+    : isRecord(input.cliente)
+      ? input.cliente
+      : null;
+  const nestedId = nested
+    ? firstDefined(nested, ['id', 'client_id', 'clientId', 'cliente_id', 'clienteId'])
+    : undefined;
+  const values = [
+    firstDefined(input as unknown as Record<string, unknown>, [
+      'client_id',
+      'clientId',
+      'cliente_id',
+      'clienteId',
+    ]),
+    nestedId,
+  ]
     .filter((value) => value !== undefined && value !== null && String(value).trim() !== '')
     .map((value) => String(value).trim());
   if (values.length === 0) return null;
-  if (values.some((value) => !isUuid(value))) throw new QuoteDraftInputError('Identificador do cliente inválido.');
-  if (values.some((value) => value !== values[0])) throw new QuoteDraftInputError('Os identificadores do cliente entram em conflito.');
+  if (values.some((value) => !isUuid(value)))
+    throw new QuoteDraftInputError('Identificador do cliente inválido.');
+  if (values.some((value) => value !== values[0]))
+    throw new QuoteDraftInputError('Os identificadores do cliente entram em conflito.');
   return values[0];
 }
 
@@ -331,12 +348,14 @@ function parseNonNegativeMoney(value: unknown, label: string): bigint {
     throw error;
   }
   if (cents < 0n) throw new QuoteDraftInputError(`${label} deve ser maior ou igual a zero.`);
-  if (cents > MONEY_MAX_CENTS) throw new QuoteDraftInputError(`${label} está fora do limite permitido.`);
+  if (cents > MONEY_MAX_CENTS)
+    throw new QuoteDraftInputError(`${label} está fora do limite permitido.`);
   return cents;
 }
 
 function assertMoneyWithinLimit(cents: bigint, label: string): void {
-  if (cents > MONEY_MAX_CENTS) throw new QuoteDraftInputError(`${label} está fora do limite permitido.`);
+  if (cents > MONEY_MAX_CENTS)
+    throw new QuoteDraftInputError(`${label} está fora do limite permitido.`);
 }
 
 function signedMoney(cents: bigint): string {
@@ -407,7 +426,10 @@ function snapshotHasAddress(client: QuoteDraftClientSnapshot): ClientAddress | n
   return client.address;
 }
 
-function toClientRow(snapshot: QuoteDraftClientSnapshot, createdAt: Date): typeof clients.$inferInsert {
+function toClientRow(
+  snapshot: QuoteDraftClientSnapshot,
+  createdAt: Date
+): typeof clients.$inferInsert {
   return {
     id: snapshot.id,
     nome: snapshot.nome,
@@ -436,12 +458,22 @@ function isDuplicateDocument(error: unknown): boolean {
     const current = pending.shift();
     if (!current || typeof current !== 'object' || seen.has(current)) continue;
     seen.add(current);
-    const value = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown; cause?: unknown };
+    const value = current as {
+      code?: unknown;
+      constraint?: unknown;
+      constraint_name?: unknown;
+      cause?: unknown;
+    };
     if (
       value.code === '23505' &&
-      (String(value.constraint || value.constraint_name || '').includes('documento') || !value.constraint)
-    ) return true;
-    if (String(value.constraint || value.constraint_name || '').includes('clients_documento_unique')) return true;
+      (String(value.constraint || value.constraint_name || '').includes('documento') ||
+        !value.constraint)
+    )
+      return true;
+    if (
+      String(value.constraint || value.constraint_name || '').includes('clients_documento_unique')
+    )
+      return true;
     if (value.cause && typeof value.cause === 'object') pending.push(value.cause);
   }
   return false;
@@ -484,11 +516,14 @@ function inputText(value: unknown, label: string, maximum: number): string {
   if (value === undefined || value === null) return '';
   if (typeof value !== 'string') throw new QuoteDraftInputError(`${label} deve ser texto.`);
   const normalized = value.trim();
-  if (normalized.length > maximum) throw new QuoteDraftInputError(`${label} deve ter no máximo ${maximum} caracteres.`);
+  if (normalized.length > maximum)
+    throw new QuoteDraftInputError(`${label} deve ter no máximo ${maximum} caracteres.`);
   return normalized;
 }
 
-function clientSnapshotToRow(snapshot: QuoteDraftClientSnapshot): Pick<
+function clientSnapshotToRow(
+  snapshot: QuoteDraftClientSnapshot
+): Pick<
   typeof quoteRevisions.$inferInsert,
   | 'clienteNome'
   | 'clienteDocumento'
@@ -522,7 +557,7 @@ function clientSnapshotToRow(snapshot: QuoteDraftClientSnapshot): Pick<
 
 function itemSnapshot(
   row: typeof quoteRevisionItems.$inferSelect,
-  product: typeof products.$inferSelect,
+  product: typeof products.$inferSelect
 ): QuoteDraftItemSnapshot {
   const source = row.precoFonte === 'tier' ? 'tier' : 'base';
   const tier = row.precoMinimoFaixa == null ? null : String(row.precoMinimoFaixa);
@@ -567,207 +602,232 @@ function resolutionSource(resolution: PricingResolution): 'base' | 'tier' {
  * transaction, including client creation and annual number reservation. */
 export function createPostgresQuoteDraftRepository(
   getDb: DatabaseProvider = getDatabase,
-  options: QuoteDraftRepositoryOptions = {},
+  options: QuoteDraftRepositoryOptions = {}
 ): QuoteDraftRepository {
   const now = options.now || (() => new Date());
   const idFactory = options.idFactory || randomUUID;
 
   const createDraft = async (input: QuoteDraftCreateInput): Promise<QuoteDraftResult> => {
-      if (!isRecord(input)) throw new QuoteDraftInputError('Envie os dados do orçamento em um objeto válido.');
-      const items = normalizeItems(input.items);
-      const clientId = normalizeClientId(input);
-      const requestUrgent = input.urgente === true;
-      const requestObservations = hasOwn(input as unknown as Record<string, unknown>, 'observacoes')
-        ? input.observacoes
-        : undefined;
-      const requestDeadline = input.prazo_producao;
-      const requestFreight = firstDefined(input as unknown as Record<string, unknown>, [
-        'frete',
-        'frete_aplicado',
-        'frete_padrao',
-      ]);
-      let inlineClient: Omit<QuoteDraftClientSnapshot, 'id'> | null = null;
-      if (!clientId) inlineClient = normalizeInlineClient(input);
+    if (!isRecord(input))
+      throw new QuoteDraftInputError('Envie os dados do orçamento em um objeto válido.');
+    const items = normalizeItems(input.items);
+    const clientId = normalizeClientId(input);
+    const requestUrgent = input.urgente === true;
+    const requestObservations = hasOwn(input as unknown as Record<string, unknown>, 'observacoes')
+      ? input.observacoes
+      : undefined;
+    const requestDeadline = input.prazo_producao;
+    const requestFreight = firstDefined(input as unknown as Record<string, unknown>, [
+      'frete',
+      'frete_aplicado',
+      'frete_padrao',
+    ]);
+    let inlineClient: Omit<QuoteDraftClientSnapshot, 'id'> | null = null;
+    if (!clientId) inlineClient = normalizeInlineClient(input);
 
-      let database: AppDatabase;
-      try {
-        database = getDb();
-      } catch {
-        throw new QuoteDraftRepositoryError();
-      }
+    let database: AppDatabase;
+    try {
+      database = getDb();
+    } catch {
+      throw new QuoteDraftRepositoryError();
+    }
 
-      try {
-        const createdAt = ensureDate(now());
-        const result = await database.transaction(async (tx) => {
-          let client: QuoteDraftClientSnapshot;
-          if (clientId) {
-            const [existing] = await tx
-              .select()
-              .from(clients)
-              .where(and(eq(clients.id, clientId), eq(clients.arquivado, false)))
-              .limit(1);
-            if (!existing) throw new QuoteDraftNotFoundError();
-            client = mapClient(existing);
-          } else {
-            const id = idFactory();
-            if (!isUuid(id)) throw new QuoteDraftRepositoryError('Não foi possível gerar o identificador do cliente.');
-            const snapshot: QuoteDraftClientSnapshot = { id, ...(inlineClient as Omit<QuoteDraftClientSnapshot, 'id'>) };
-            const [created] = await tx.insert(clients).values(toClientRow(snapshot, createdAt)).returning();
-            if (!created) throw new QuoteDraftRepositoryError();
-            client = mapClient(created);
-          }
-
-          const skus = [...new Set(items.map((item) => item.sku))];
-          const productRows = await tx
+    try {
+      const createdAt = ensureDate(now());
+      const result = await database.transaction(async (tx) => {
+        let client: QuoteDraftClientSnapshot;
+        if (clientId) {
+          const [existing] = await tx
             .select()
-            .from(products)
-            .where(and(inArray(products.sku, skus), eq(products.ativo, true)));
-          const productBySku = new Map(productRows.map((row) => [row.sku, row]));
-          const missing = skus.find((sku) => !productBySku.has(sku));
-          if (missing) throw new QuoteDraftNotFoundError(`Produto "${missing}" não encontrado ou inativo.`);
+            .from(clients)
+            .where(and(eq(clients.id, clientId), eq(clients.arquivado, false)))
+            .limit(1);
+          if (!existing) throw new QuoteDraftNotFoundError();
+          client = mapClient(existing);
+        } else {
+          const id = idFactory();
+          if (!isUuid(id))
+            throw new QuoteDraftRepositoryError(
+              'Não foi possível gerar o identificador do cliente.'
+            );
+          const snapshot: QuoteDraftClientSnapshot = {
+            id,
+            ...(inlineClient as Omit<QuoteDraftClientSnapshot, 'id'>),
+          };
+          const [created] = await tx
+            .insert(clients)
+            .values(toClientRow(snapshot, createdAt))
+            .returning();
+          if (!created) throw new QuoteDraftRepositoryError();
+          client = mapClient(created);
+        }
 
-          const tierRows = await tx
-            .select()
-            .from(productPricingTiers)
-            .where(inArray(productPricingTiers.productSku, skus))
-            .orderBy(asc(productPricingTiers.productSku), asc(productPricingTiers.minimumQuantity));
-          const tiersBySku = new Map<string, (typeof productPricingTiers.$inferSelect)[]>();
-          for (const row of tierRows) {
-            const rows = tiersBySku.get(row.productSku) || [];
-            rows.push(row);
-            tiersBySku.set(row.productSku, rows);
-          }
+        const skus = [...new Set(items.map((item) => item.sku))];
+        const productRows = await tx
+          .select()
+          .from(products)
+          .where(and(inArray(products.sku, skus), eq(products.ativo, true)));
+        const productBySku = new Map(productRows.map((row) => [row.sku, row]));
+        const missing = skus.find((sku) => !productBySku.has(sku));
+        if (missing)
+          throw new QuoteDraftNotFoundError(`Produto "${missing}" não encontrado ou inativo.`);
 
-          const pricingBySku = new Map<string, ProductWithPricing>();
-          for (const sku of skus) {
-            const product = productBySku.get(sku)!;
-            try {
-              pricingBySku.set(sku, {
-                product,
-                pricing: normalizeProductPricing({
-                  preco_base: product.precoBase,
-                  precos: (tiersBySku.get(sku) || []).map((tier) => ({
-                    minimum_quantity: String(tier.minimumQuantity),
-                    unit_price: String(tier.unitPrice),
-                  })),
-                }),
-              });
-            } catch (error) {
-              if (error instanceof PricingValidationError || error instanceof PricingUnavailableError) {
-                throw new QuoteDraftInputError(`Preço indisponível para o produto "${sku}".`);
-              }
-              throw error;
+        const tierRows = await tx
+          .select()
+          .from(productPricingTiers)
+          .where(inArray(productPricingTiers.productSku, skus))
+          .orderBy(asc(productPricingTiers.productSku), asc(productPricingTiers.minimumQuantity));
+        const tiersBySku = new Map<string, (typeof productPricingTiers.$inferSelect)[]>();
+        for (const row of tierRows) {
+          const rows = tiersBySku.get(row.productSku) || [];
+          rows.push(row);
+          tiersBySku.set(row.productSku, rows);
+        }
+
+        const pricingBySku = new Map<string, ProductWithPricing>();
+        for (const sku of skus) {
+          const product = productBySku.get(sku)!;
+          try {
+            pricingBySku.set(sku, {
+              product,
+              pricing: normalizeProductPricing({
+                preco_base: product.precoBase,
+                precos: (tiersBySku.get(sku) || []).map((tier) => ({
+                  minimum_quantity: String(tier.minimumQuantity),
+                  unit_price: String(tier.unitPrice),
+                })),
+              }),
+            });
+          } catch (error) {
+            if (
+              error instanceof PricingValidationError ||
+              error instanceof PricingUnavailableError
+            ) {
+              throw new QuoteDraftInputError(`Preço indisponível para o produto "${sku}".`);
             }
+            throw error;
           }
+        }
 
-          const settings = await readSettings(tx);
-          const requestTemplateKey = hasOwn(input as Record<string, unknown>, 'template_key')
-            ? (input as Record<string, unknown>).template_key
-            : undefined;
-          const templateKey = typeof requestTemplateKey === 'string' && requestTemplateKey.trim()
+        const settings = await readSettings(tx);
+        const requestTemplateKey = hasOwn(input as Record<string, unknown>, 'template_key')
+          ? (input as Record<string, unknown>).template_key
+          : undefined;
+        const templateKey =
+          typeof requestTemplateKey === 'string' && requestTemplateKey.trim()
             ? requestTemplateKey.trim()
             : settings.template_padrao;
-          const template = getQuotationTemplate(templateKey);
-          if (!template) throw new QuoteDraftInputError('Template do or&ccedil;amento inv&aacute;lido.');
-          const freightCents = requestFreight === undefined
+        const template = getQuotationTemplate(templateKey);
+        if (!template)
+          throw new QuoteDraftInputError('Template do or&ccedil;amento inv&aacute;lido.');
+        const freightCents =
+          requestFreight === undefined
             ? parseNonNegativeMoney(settings.frete_padrao, 'Frete')
             : parseNonNegativeMoney(requestFreight, 'Frete');
-          const observations = requestObservations === undefined
+        const observations =
+          requestObservations === undefined
             ? settings.observacoes
             : inputText(requestObservations, 'Observações', 4000);
-          const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
-          const resolvedItems: Array<{
-            id: string;
-            position: number;
-            quantity: string;
-            product: typeof products.$inferSelect;
-            resolution: PricingResolution;
-            appliedCents: bigint;
-            differenceCents: bigint;
-            lineTotalCents: bigint;
-            manualRate: boolean;
-          }> = [];
-          let subtotalCents = 0n;
+        const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
+        const resolvedItems: Array<{
+          id: string;
+          position: number;
+          quantity: string;
+          product: typeof products.$inferSelect;
+          resolution: PricingResolution;
+          appliedCents: bigint;
+          differenceCents: bigint;
+          lineTotalCents: bigint;
+          manualRate: boolean;
+        }> = [];
+        let subtotalCents = 0n;
 
-          for (let index = 0; index < items.length; index += 1) {
-            const item = items[index];
-            const priced = pricingBySku.get(item.sku)!;
-            let resolution: PricingResolution;
+        for (let index = 0; index < items.length; index += 1) {
+          const item = items[index];
+          const priced = pricingBySku.get(item.sku)!;
+          let resolution: PricingResolution;
+          try {
+            resolution = resolveProductPrice(priced.pricing, item.quantity, requestUrgent);
+          } catch (error) {
+            if (
+              error instanceof PricingValidationError ||
+              error instanceof PricingUnavailableError
+            ) {
+              throw new QuoteDraftInputError(`Preço indisponível para o produto "${item.sku}".`);
+            }
+            throw error;
+          }
+          let appliedCents = resolution.rate_cents;
+          if (item.manualRate) {
             try {
-              resolution = resolveProductPrice(priced.pricing, item.quantity, requestUrgent);
+              appliedCents = parseMoneyCents(item.rate, `Preço manual do item ${index + 1}`);
             } catch (error) {
-              if (error instanceof PricingValidationError || error instanceof PricingUnavailableError) {
-                throw new QuoteDraftInputError(`Preço indisponível para o produto "${item.sku}".`);
-              }
+              if (error instanceof PricingValidationError)
+                throw new QuoteDraftInputError(error.message);
               throw error;
             }
-            let appliedCents = resolution.rate_cents;
-            if (item.manualRate) {
-              try {
-                appliedCents = parseMoneyCents(item.rate, `Preço manual do item ${index + 1}`);
-              } catch (error) {
-                if (error instanceof PricingValidationError) throw new QuoteDraftInputError(error.message);
-                throw error;
-              }
-            }
-            const differenceCents = appliedCents - resolution.rate_cents;
-            const totalCents = lineTotalCents(item.quantityScaled, appliedCents);
-            assertMoneyWithinLimit(totalCents, `Total da linha ${index + 1}`);
-            subtotalCents += totalCents;
-            assertMoneyWithinLimit(subtotalCents, 'Subtotal');
-            resolvedItems.push({
-              id: idFactory(),
-              position: index,
-              quantity: item.quantity,
-              product: priced.product,
-              resolution,
-              appliedCents,
-              differenceCents,
-              lineTotalCents: totalCents,
-              manualRate: item.manualRate,
-            });
           }
-
-          const totalCents = subtotalCents + freightCents;
-          assertMoneyWithinLimit(totalCents, 'Total do orçamento');
-          const year = createdAt.getUTCFullYear();
-          const businessNumber = await reserveBusinessNumber(tx, year);
-          const quotationId = idFactory();
-          const revisionId = idFactory();
-          if (![quotationId, revisionId, ...resolvedItems.map((item) => item.id)].every(isUuid)) {
-            throw new QuoteDraftRepositoryError('Não foi possível gerar os identificadores do orçamento.');
-          }
-
-          await tx.insert(quotations).values({
-            id: quotationId,
-            businessNumber,
-            clientId: client.id,
-            status: 'rascunho',
-            createdAt,
-            updatedAt: createdAt,
+          const differenceCents = appliedCents - resolution.rate_cents;
+          const totalCents = lineTotalCents(item.quantityScaled, appliedCents);
+          assertMoneyWithinLimit(totalCents, `Total da linha ${index + 1}`);
+          subtotalCents += totalCents;
+          assertMoneyWithinLimit(subtotalCents, 'Subtotal');
+          resolvedItems.push({
+            id: idFactory(),
+            position: index,
+            quantity: item.quantity,
+            product: priced.product,
+            resolution,
+            appliedCents,
+            differenceCents,
+            lineTotalCents: totalCents,
+            manualRate: item.manualRate,
           });
+        }
 
-          await tx.insert(quoteRevisions).values({
-            id: revisionId,
-            quotationId,
-            version: 1,
-            status: 'rascunho',
-            validadeDias: settings.validade_dias,
-            pagamento: settings.pagamento,
-            entrega: settings.entrega,
-            fretePadrao: settings.frete_padrao,
-            frete: formatMoneyCents(freightCents),
-            observacoes: observations,
-            prazoProducao: deadline,
-            templatePadrao: template.key,
-            templateHash: template.hash,
-            ...clientSnapshotToRow(client),
-            subtotal: formatMoneyCents(subtotalCents),
-            total: formatMoneyCents(totalCents),
-            createdAt,
-          });
+        const totalCents = subtotalCents + freightCents;
+        assertMoneyWithinLimit(totalCents, 'Total do orçamento');
+        const year = createdAt.getUTCFullYear();
+        const businessNumber = await reserveBusinessNumber(tx, year);
+        const quotationId = idFactory();
+        const revisionId = idFactory();
+        if (![quotationId, revisionId, ...resolvedItems.map((item) => item.id)].every(isUuid)) {
+          throw new QuoteDraftRepositoryError(
+            'Não foi possível gerar os identificadores do orçamento.'
+          );
+        }
 
-          await tx.insert(quoteRevisionItems).values(resolvedItems.map((item) => ({
+        await tx.insert(quotations).values({
+          id: quotationId,
+          businessNumber,
+          clientId: client.id,
+          status: 'rascunho',
+          createdAt,
+          updatedAt: createdAt,
+        });
+
+        await tx.insert(quoteRevisions).values({
+          id: revisionId,
+          quotationId,
+          version: 1,
+          status: 'rascunho',
+          validadeDias: settings.validade_dias,
+          pagamento: settings.pagamento,
+          entrega: settings.entrega,
+          fretePadrao: settings.frete_padrao,
+          frete: formatMoneyCents(freightCents),
+          observacoes: observations,
+          prazoProducao: deadline,
+          templatePadrao: template.key,
+          templateHash: template.hash,
+          ...clientSnapshotToRow(client),
+          subtotal: formatMoneyCents(subtotalCents),
+          total: formatMoneyCents(totalCents),
+          createdAt,
+        });
+
+        await tx.insert(quoteRevisionItems).values(
+          resolvedItems.map((item) => ({
             id: item.id,
             revisionId,
             position: item.position,
@@ -786,83 +846,89 @@ export function createPostgresQuoteDraftRepository(
             diferencaPreco: signedMoney(item.differenceCents),
             totalLinha: formatMoneyCents(item.lineTotalCents),
             manualRate: item.manualRate,
-          })));
+          }))
+        );
 
-          const savedItems = resolvedItems.map((item) => ({
-            id: item.id,
-            position: item.position,
-            item_code: item.product.sku,
-            sku: item.product.sku,
-            qty: item.quantity,
-            quantidade: item.quantity,
-            nome: item.product.nome,
-            descricao: item.product.descricao,
-            unidade: item.product.unidade,
-            categoria: item.product.categoria ?? null,
-            marca: item.product.marca ?? null,
-            price_source: resolutionSource(item.resolution),
-            preco_fonte: resolutionSource(item.resolution),
-            tier_minimum: item.resolution.minimum_quantity,
-            preco_minimo_faixa: item.resolution.minimum_quantity,
-            suggested_unit_price: item.resolution.rate,
-            preco_sugerido: item.resolution.rate,
-            applied_unit_price: formatMoneyCents(item.appliedCents),
-            preco_aplicado: formatMoneyCents(item.appliedCents),
-            price_difference: signedMoney(item.differenceCents),
-            diferenca_preco: signedMoney(item.differenceCents),
-            line_total: formatMoneyCents(item.lineTotalCents),
-            total_linha: formatMoneyCents(item.lineTotalCents),
-            manual_rate: item.manualRate,
-          } satisfies QuoteDraftItemSnapshot));
+        const savedItems = resolvedItems.map(
+          (item) =>
+            ({
+              id: item.id,
+              position: item.position,
+              item_code: item.product.sku,
+              sku: item.product.sku,
+              qty: item.quantity,
+              quantidade: item.quantity,
+              nome: item.product.nome,
+              descricao: item.product.descricao,
+              unidade: item.product.unidade,
+              categoria: item.product.categoria ?? null,
+              marca: item.product.marca ?? null,
+              price_source: resolutionSource(item.resolution),
+              preco_fonte: resolutionSource(item.resolution),
+              tier_minimum: item.resolution.minimum_quantity,
+              preco_minimo_faixa: item.resolution.minimum_quantity,
+              suggested_unit_price: item.resolution.rate,
+              preco_sugerido: item.resolution.rate,
+              applied_unit_price: formatMoneyCents(item.appliedCents),
+              preco_aplicado: formatMoneyCents(item.appliedCents),
+              price_difference: signedMoney(item.differenceCents),
+              diferenca_preco: signedMoney(item.differenceCents),
+              line_total: formatMoneyCents(item.lineTotalCents),
+              total_linha: formatMoneyCents(item.lineTotalCents),
+              manual_rate: item.manualRate,
+            }) satisfies QuoteDraftItemSnapshot
+        );
 
-          return {
-            success: true as const,
-            quotation_id: businessNumber,
-            quotation_name: businessNumber,
-            quote_id: quotationId,
-            quotation_uuid: quotationId,
-            revision_id: revisionId,
-            quote_revision_id: revisionId,
-            revision: 1,
-            revision_number: 1,
-            status: 'rascunho' as const,
-            cliente: client.nome,
-            cliente_id: client.id,
-            cliente_snapshot: client,
-            items: savedItems,
-            subtotal: formatMoneyCents(subtotalCents),
-            frete: formatMoneyCents(freightCents),
-            total: formatMoneyCents(totalCents),
-            validade_dias: settings.validade_dias,
-            pagamento: settings.pagamento,
-            entrega: settings.entrega,
-            observacoes: observations,
-            prazo_producao: deadline,
-            template_padrao: template.key,
-            template_key: template.key,
-            template_hash: template.hash,
-            created_at: createdAt.toISOString(),
-          } satisfies QuoteDraftResult;
-        });
-        return result;
-      } catch (error) {
-        if (
-          error instanceof QuoteDraftInputError ||
-          error instanceof QuoteDraftNotFoundError ||
-          error instanceof QuoteDraftConflictError ||
-          error instanceof QuoteDraftRepositoryError
-        ) throw error;
-        if (isDuplicateDocument(error)) throw new QuoteDraftConflictError('Documento já cadastrado para outro cliente.');
-        console.error(`[quote-repository] create failed (${safeErrorKind(error)})`);
-        throw new QuoteDraftRepositoryError();
-      }
+        return {
+          success: true as const,
+          quotation_id: businessNumber,
+          quotation_name: businessNumber,
+          quote_id: quotationId,
+          quotation_uuid: quotationId,
+          revision_id: revisionId,
+          quote_revision_id: revisionId,
+          revision: 1,
+          revision_number: 1,
+          status: 'rascunho' as const,
+          cliente: client.nome,
+          cliente_id: client.id,
+          cliente_snapshot: client,
+          items: savedItems,
+          subtotal: formatMoneyCents(subtotalCents),
+          frete: formatMoneyCents(freightCents),
+          total: formatMoneyCents(totalCents),
+          validade_dias: settings.validade_dias,
+          pagamento: settings.pagamento,
+          entrega: settings.entrega,
+          observacoes: observations,
+          prazo_producao: deadline,
+          template_padrao: template.key,
+          template_key: template.key,
+          template_hash: template.hash,
+          created_at: createdAt.toISOString(),
+        } satisfies QuoteDraftResult;
+      });
+      return result;
+    } catch (error) {
+      if (
+        error instanceof QuoteDraftInputError ||
+        error instanceof QuoteDraftNotFoundError ||
+        error instanceof QuoteDraftConflictError ||
+        error instanceof QuoteDraftRepositoryError
+      )
+        throw error;
+      if (isDuplicateDocument(error))
+        throw new QuoteDraftConflictError('Documento já cadastrado para outro cliente.');
+      console.error(`[quote-repository] create failed (${safeErrorKind(error)})`);
+      throw new QuoteDraftRepositoryError();
+    }
   };
   return { createDraft, create: createDraft };
 }
 
 export function quoteDraftItemFromRow(
   row: typeof quoteRevisionItems.$inferSelect,
-  product: typeof products.$inferSelect,
+  product: typeof products.$inferSelect
 ): QuoteDraftItemSnapshot {
   return itemSnapshot(row, product);
 }

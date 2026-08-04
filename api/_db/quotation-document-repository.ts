@@ -114,7 +114,10 @@ function asDocument(row: typeof issuedDocuments.$inferSelect): IssuedQuotationDo
   };
 }
 
-async function findByRevision(db: QuoteDatabase, revisionId: string): Promise<IssuedQuotationDocument | null> {
+async function findByRevision(
+  db: QuoteDatabase,
+  revisionId: string
+): Promise<IssuedQuotationDocument | null> {
   const [row] = await db
     .select()
     .from(issuedDocuments)
@@ -123,9 +126,16 @@ async function findByRevision(db: QuoteDatabase, revisionId: string): Promise<Is
   return row ? asDocument(row) : null;
 }
 
-async function findDocument(db: QuoteDatabase, id: string): Promise<IssuedQuotationDocument | null> {
+async function findDocument(
+  db: QuoteDatabase,
+  id: string
+): Promise<IssuedQuotationDocument | null> {
   if (UUID_PATTERN.test(id)) {
-    const [direct] = await db.select().from(issuedDocuments).where(eq(issuedDocuments.id, id)).limit(1);
+    const [direct] = await db
+      .select()
+      .from(issuedDocuments)
+      .where(eq(issuedDocuments.id, id))
+      .limit(1);
     if (direct) return asDocument(direct);
   }
   const [quotation] = await db.select().from(quotations).where(quoteWhere(id)).limit(1);
@@ -140,14 +150,20 @@ async function findDocument(db: QuoteDatabase, id: string): Promise<IssuedQuotat
 }
 
 function isKnownError(error: unknown): boolean {
-  return error instanceof QuotationDocumentNotFoundError
-    || error instanceof QuotationDocumentConflictError
-    || error instanceof QuotationDocumentRepositoryError;
+  return (
+    error instanceof QuotationDocumentNotFoundError ||
+    error instanceof QuotationDocumentConflictError ||
+    error instanceof QuotationDocumentRepositoryError
+  );
 }
 
 function completedAt(now: () => Date, previous: Date): Date {
   const candidate = now();
-  if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime()) || candidate.getTime() <= previous.getTime()) {
+  if (
+    !(candidate instanceof Date) ||
+    Number.isNaN(candidate.getTime()) ||
+    candidate.getTime() <= previous.getTime()
+  ) {
     return new Date(previous.getTime() + 1);
   }
   return candidate;
@@ -155,7 +171,7 @@ function completedAt(now: () => Date, previous: Date): Date {
 
 export function createQuotationDocumentRepository(
   getDb: DatabaseProvider = getDatabase,
-  options: QuotationDocumentRepositoryOptions = {},
+  options: QuotationDocumentRepositoryOptions = {}
 ): QuotationDocumentRepository {
   const now = options.now || (() => new Date());
   const randomId = options.randomId || randomUUID;
@@ -174,8 +190,12 @@ export function createQuotationDocumentRepository(
         };
       } catch (error) {
         if (isKnownError(error)) throw error;
-        console.error(`[quotation-document-repository] prepare failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuotationDocumentRepositoryError('Não foi possível consultar a emissão do orçamento. Tente novamente.');
+        console.error(
+          `[quotation-document-repository] prepare failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuotationDocumentRepositoryError(
+          'Não foi possível consultar a emissão do orçamento. Tente novamente.'
+        );
       }
     },
 
@@ -198,7 +218,9 @@ export function createQuotationDocumentRepository(
             .for('update')
             .limit(1);
           if (!revision || revision.id !== input.revisionId) {
-            throw new QuotationDocumentConflictError('A revisão do orçamento mudou durante a emissão. Tente novamente.');
+            throw new QuotationDocumentConflictError(
+              'A revisão do orçamento mudou durante a emissão. Tente novamente.'
+            );
           }
 
           const existing = await findByRevision(tx, revision.id);
@@ -206,48 +228,70 @@ export function createQuotationDocumentRepository(
             const aggregateStatus = quotation.status === 'emitido' ? 'enviado' : quotation.status;
             const revisionStatus = revision.status === 'emitido' ? 'enviado' : revision.status;
             if (aggregateStatus !== 'enviado' || revisionStatus !== 'enviado') {
-              throw new QuotationDocumentConflictError('O documento existente está inconsistente com o estado do orçamento.');
+              throw new QuotationDocumentConflictError(
+                'O documento existente está inconsistente com o estado do orçamento.'
+              );
             }
             return existing;
           }
 
           if (quotation.status !== 'rascunho' || revision.status !== 'rascunho') {
-            throw new QuotationDocumentConflictError('Somente revisões em rascunho podem ser emitidas.');
+            throw new QuotationDocumentConflictError(
+              'Somente revisões em rascunho podem ser emitidas.'
+            );
           }
           if (quotation.updatedAt.toISOString() !== input.expectedUpdatedAt) {
-            throw new QuotationDocumentConflictError('O orçamento foi alterado durante a emissão. Tente novamente.');
+            throw new QuotationDocumentConflictError(
+              'O orçamento foi alterado durante a emissão. Tente novamente.'
+            );
           }
-          if (revision.templatePadrao !== input.templateKey || revision.templateHash !== input.templateHash) {
-            throw new QuotationDocumentConflictError('O template da revisão mudou durante a emissão. Tente novamente.');
+          if (
+            revision.templatePadrao !== input.templateKey ||
+            revision.templateHash !== input.templateHash
+          ) {
+            throw new QuotationDocumentConflictError(
+              'O template da revisão mudou durante a emissão. Tente novamente.'
+            );
           }
 
           const createdAt = completedAt(now, quotation.updatedAt);
-          const [created] = await tx.insert(issuedDocuments).values({
-            id: randomId(),
-            quotationId: quotation.id,
-            revisionId: revision.id,
-            kind: 'quotation_pdf',
-            blobPathname: input.blobPathname,
-            fileName: input.fileName,
-            mimeType: input.mimeType,
-            sizeBytes: input.sizeBytes,
-            checksumSha256: input.checksumSha256,
-            templateKey: input.templateKey,
-            templateHash: input.templateHash,
-            createdAt,
-          }).returning();
+          const [created] = await tx
+            .insert(issuedDocuments)
+            .values({
+              id: randomId(),
+              quotationId: quotation.id,
+              revisionId: revision.id,
+              kind: 'quotation_pdf',
+              blobPathname: input.blobPathname,
+              fileName: input.fileName,
+              mimeType: input.mimeType,
+              sizeBytes: input.sizeBytes,
+              checksumSha256: input.checksumSha256,
+              templateKey: input.templateKey,
+              templateHash: input.templateHash,
+              createdAt,
+            })
+            .returning();
           if (!created) throw new QuotationDocumentRepositoryError();
 
           // Issuance is the sole rascunho -> enviado transition.  The PDF row
           // and both lifecycle states are committed in this same transaction;
           // a retry sees the existing document and never creates a duplicate.
-          await tx.update(quoteRevisions).set({ status: 'enviado' }).where(eq(quoteRevisions.id, revision.id));
-          await tx.update(quotations).set({ status: 'enviado', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
+          await tx
+            .update(quoteRevisions)
+            .set({ status: 'enviado' })
+            .where(eq(quoteRevisions.id, revision.id));
+          await tx
+            .update(quotations)
+            .set({ status: 'enviado', updatedAt: createdAt })
+            .where(eq(quotations.id, quotation.id));
           return asDocument(created);
         });
       } catch (error) {
         if (isKnownError(error)) throw error;
-        console.error(`[quotation-document-repository] complete failed (${error instanceof Error ? error.name : typeof error})`);
+        console.error(
+          `[quotation-document-repository] complete failed (${error instanceof Error ? error.name : typeof error})`
+        );
         throw new QuotationDocumentRepositoryError();
       }
     },
@@ -259,8 +303,12 @@ export function createQuotationDocumentRepository(
         return await findDocument(getDb(), normalized);
       } catch (error) {
         if (isKnownError(error)) throw error;
-        console.error(`[quotation-document-repository] find failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuotationDocumentRepositoryError('Não foi possível consultar o documento emitido. Tente novamente.');
+        console.error(
+          `[quotation-document-repository] find failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuotationDocumentRepositoryError(
+          'Não foi possível consultar o documento emitido. Tente novamente.'
+        );
       }
     },
 
@@ -273,7 +321,8 @@ export function createQuotationDocumentRepository(
             .where(eq(issuedDocuments.revisionId, input.revisionId))
             .for('update')
             .limit(1);
-          if (!existing) throw new QuotationDocumentNotFoundError('Documento emitido não encontrado.');
+          if (!existing)
+            throw new QuotationDocumentNotFoundError('Documento emitido não encontrado.');
 
           const createdAt = now();
           const [updated] = await tx
@@ -300,7 +349,9 @@ export function createQuotationDocumentRepository(
         });
       } catch (error) {
         if (isKnownError(error)) throw error;
-        console.error(`[quotation-document-repository] reissue failed (${error instanceof Error ? error.name : typeof error})`);
+        console.error(
+          `[quotation-document-repository] reissue failed (${error instanceof Error ? error.name : typeof error})`
+        );
         throw new QuotationDocumentRepositoryError();
       }
     },
