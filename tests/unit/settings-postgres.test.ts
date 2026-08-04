@@ -178,7 +178,7 @@ test(
 
       const reloaded = await handler(event('GET'));
       assert.equal(reloaded.statusCode, 200);
-      assert.deepEqual(parse(reloaded), parse(saved));
+      assert.deepEqual(parse(reloaded), parse(sectionFirst));
 
       const invalid = await handler(
         event('PUT', {

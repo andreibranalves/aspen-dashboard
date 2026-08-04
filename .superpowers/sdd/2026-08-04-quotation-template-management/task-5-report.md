@@ -33,3 +33,16 @@ Implemented quotation section settings persistence and compatibility normalizati
 ## Residual risks
 
 - PostgreSQL integration requires dedicated `TEST_DATABASE_URL`; integration-only migration and persistence assertions remain unexecuted in this environment.
+
+## Fix round 2 evidence
+
+- Corrected `tests/unit/settings-postgres.test.ts` so the post-section-first PUT reload compares against `parse(sectionFirst)`, the latest persisted state, instead of the earlier `parse(saved)` response.
+- No additional assertions were needed: the section-first response already asserts preserved `template_padrao`, preserved `entrega`, and updated `pagamento`; the corrected deep equality now verifies all returned fields, including `secoes` and mirrored `observacoes`, after a fresh GET.
+- `node --test tests/unit/settings.test.ts tests/unit/settings-postgres.test.ts` - passed: 4 passed, 1 skipped because `TEST_DATABASE_URL` is unset.
+- `npx playwright test tests/settings.spec.js --workers=1` - passed: 2 passed, 0 failed.
+- `npm run type-check` - passed.
+- `npm run lint` - passed with existing warnings only: 0 errors, 193 warnings.
+- `npm run build` - passed.
+- `git diff --check` - passed.
+- `lsp_diagnostics` for `tests/unit/settings-postgres.test.ts` - primary TypeScript diagnostics clean; no auxiliary findings.
+- Diff scope is one test assertion only; no generated `api/**/*.js` or Blob files changed.
