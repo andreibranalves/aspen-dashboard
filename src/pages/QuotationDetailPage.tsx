@@ -204,7 +204,7 @@ function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
     item_code: String(item.item_code || item.sku || ''),
     item_name: String(item.item_name || item.nome || ''),
     nome: String(item.nome || item.item_name || ''),
-    qty: String(item.qty ?? item.quantidade ?? '0'),
+    qty: String(item.qty ?? item.quantidade ?? '1'),
     suggested_unit_price: String(item.suggested_unit_price ?? item.preco_sugerido ?? '0.00'),
     applied_unit_price: String(
       item.applied_unit_price ?? item.preco_aplicado ?? item.rate ?? '0.00'
