@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { test } from 'node:test';
 
 import {
@@ -7,6 +8,7 @@ import {
   getQuotationTemplate,
   QUOTATION_TEMPLATES,
   renderQuotationTemplate,
+  quotationTemplateFromVersion,
   QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
   validateQuotationHtmlSource,
   validateQuotationSource,
@@ -111,6 +113,49 @@ const snapshot = {
 function event(query = {}) {
   return { httpMethod: 'GET', headers: {}, queryStringParameters: query, body: '' };
 }
+
+function queuedDb(results, tables = []) {
+  let index = 0;
+  return {
+    select() {
+      const query = {
+        limit: async () => results[index++],
+        orderBy() {
+          return { limit: async () => results[index++] };
+        },
+      };
+      const source = {
+        where: () => query,
+        innerJoin: () => source,
+      };
+      return {
+        from(table) {
+          tables.push(table?.[Symbol.for('drizzle:Name')] || 'unknown');
+          return source;
+        },
+      };
+    },
+  };
+}
+
+const dynamicSource =
+  '<html><body>DYNAMIC-V4 {{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}</body></html>';
+const dynamicVersion = {
+  id: '66666666-6666-4666-8666-666666666666',
+  templateId: '77777777-7777-4777-8777-777777777777',
+  version: 4,
+  source: dynamicSource,
+  sourceHash: 'a'.repeat(64),
+  createdAt: new Date('2026-07-02T12:00:00.000Z'),
+};
+const dynamicModel = {
+  id: dynamicVersion.templateId,
+  key: 'dynamic',
+  name: 'Dinâmico',
+  archived: false,
+  createdAt: dynamicVersion.createdAt,
+  updatedAt: dynamicVersion.createdAt,
+};
 
 test('manifest has one default and server-computed hashes without source', () => {
   const manifest = getQuotationTemplateManifest();
@@ -222,6 +267,135 @@ test('legacy template resolution requires exact key and hash', () => {
     QuotationTemplateResolutionError
   );
   assert.throws(() => resolveQuotationTemplate('unknown', DEFAULT_QUOTATION_TEMPLATE.hash), QuotationTemplateResolutionError);
+});
+
+test('repository resolves revision UUID to exact revision and business number to latest revision', async () => {
+  const oldRevision = { ...snapshot.revision, id: '88888888-8888-4888-8888-888888888888', version: 1, templateVersionId: dynamicVersion.id };
+  const latestRevision = { ...snapshot.revision, version: 3, templateVersionId: dynamicVersion.id };
+  const oldVersion = { ...dynamicVersion, version: 1 };
+  const latestVersion = { ...dynamicVersion, version: 3 };
+
+  const revisionTables = [];
+  const revisionRepository = createQuotationTemplateRepository(() =>
+    queuedDb(
+      [
+        [],
+        [oldRevision],
+        [snapshot.quotation],
+        [oldRevision],
+        [{ version: oldVersion, model: dynamicModel }],
+        snapshot.items,
+      ],
+      revisionTables
+    )
+  );
+  const exact = await revisionRepository.get(oldRevision.id);
+  assert.equal(exact.revision.id, oldRevision.id);
+  assert.equal(exact.templateVersion.id, oldVersion.id);
+
+  const businessTables = [];
+  const businessRepository = createQuotationTemplateRepository(() =>
+    queuedDb(
+      [
+        [snapshot.quotation],
+        [latestRevision],
+        [{ version: latestVersion, model: dynamicModel }],
+        snapshot.items,
+      ],
+      businessTables
+    )
+  );
+  const latest = await businessRepository.get(snapshot.quotation.businessNumber);
+  assert.equal(latest.revision.version, latestRevision.version);
+  assert.equal(latest.templateVersion.id, latestVersion.id);
+  assert.ok(!revisionTables.includes('app_settings'));
+  assert.ok(!businessTables.includes('app_settings'));
+});
+
+test('repository snapshot renders persisted source and stays stable after global settings mutation', async () => {
+  const globalSettings = { template: 'padrao', pagamento: 'live' };
+  const tables = [];
+  const repository = createQuotationTemplateRepository(() =>
+    queuedDb(
+      [
+        [snapshot.quotation],
+        [{ ...snapshot.revision, templateVersionId: dynamicVersion.id }],
+        [{ version: dynamicVersion, model: dynamicModel }],
+        snapshot.items,
+      ],
+      tables
+    )
+  );
+  const first = await repository.get(snapshot.quotation.businessNumber);
+  const firstHtml = renderQuotationTemplate(
+    quotationTemplateFromVersion(first.templateVersion),
+    quotationSnapshotViewModel({ ...first, items: snapshot.items })
+  );
+  globalSettings.template = 'minimalista';
+  globalSettings.pagamento = 'changed after snapshot';
+  const second = await createQuotationTemplateRepository(() =>
+    queuedDb(
+      [
+        [snapshot.quotation],
+        [{ ...snapshot.revision, templateVersionId: dynamicVersion.id }],
+        [{ version: dynamicVersion, model: dynamicModel }],
+        snapshot.items,
+      ],
+      tables
+    )
+  ).get(snapshot.quotation.businessNumber);
+  const secondHtml = renderQuotationTemplate(
+    quotationTemplateFromVersion(second.templateVersion),
+    quotationSnapshotViewModel({ ...second, items: snapshot.items })
+  );
+  assert.equal(firstHtml, secondHtml);
+  assert.match(firstHtml, /DYNAMIC-V4/);
+  assert.match(firstHtml, /ORC-20260001/);
+  assert.ok(!tables.includes('app_settings'));
+});
+
+test('preview accepts draft version override, rejects both legacy overrides, and renders PDF on the fly', async () => {
+  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  const draftSnapshot = {
+    ...snapshot,
+    revision: { ...snapshot.revision, status: 'rascunho', templateVersionId: dynamicVersion.id },
+    templateVersion: { ...dynamicVersion, template: dynamicModel },
+  };
+  const calls = [];
+  const repository = {
+    get: async (id, versionId) => {
+      calls.push([id, versionId]);
+      return versionId ? { ...draftSnapshot, templateVersion: { ...dynamicVersion, id: versionId, template: dynamicModel } } : draftSnapshot;
+    },
+  };
+  try {
+    const handler = createQuotationPreviewHandler({
+      repository,
+      renderPdf: async (html) => {
+        calls.push(['pdf', html]);
+        return Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF');
+      },
+    });
+    const draft = await handler(event({ id: snapshot.quotation.businessNumber, template_version_id: '99999999-9999-4999-8999-999999999999' }));
+    assert.equal(draft.statusCode, 200);
+    assert.equal(calls[0][1], '99999999-9999-4999-8999-999999999999');
+    assert.match(draft.body, /DYNAMIC-V4/);
+    assert.equal(draft.headers['X-Quotation-Template-Version'], '4');
+    assert.equal(draft.headers['X-Quotation-Template-Hash'], 'a'.repeat(64));
+
+    for (const key of ['template', 'template_key']) {
+      const rejected = await handler(event({ id: snapshot.quotation.businessNumber, [key]: 'minimalista' }));
+      assert.equal(rejected.statusCode, 400);
+    }
+    const pdf = await handler(event({ id: snapshot.quotation.businessNumber, format: 'pdf' }));
+    assert.equal(pdf.statusCode, 200);
+    assert.equal(pdf.isBase64Encoded, true);
+    assert.ok(calls.some(([kind]) => kind === 'pdf'));
+  } finally {
+    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
+    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+  }
 });
 
 test('preview preserves repository 409 for a non-draft version override', async () => {

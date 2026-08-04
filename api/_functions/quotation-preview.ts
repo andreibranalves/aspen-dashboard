@@ -21,6 +21,7 @@ export interface QuotationPreviewDependencies {
       templateVersionId?: string
     ): ReturnType<ReturnType<typeof createQuotationTemplateRepository>['get']>;
   };
+  renderPdf?: (html: string) => Promise<Buffer>;
 }
 
 const HTML_SECURITY_HEADERS = {
@@ -57,6 +58,7 @@ export function createQuotationPreviewHandler(
   dependencies: QuotationPreviewDependencies = {}
 ): LegacyHandler {
   const repository = dependencies.repository || createQuotationTemplateRepository();
+  const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
   return async function quotationPreviewHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (!isCoreQuotesEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
@@ -81,7 +83,7 @@ export function createQuotationPreviewHandler(
       if (asPdf) {
         let pdf: Buffer;
         try {
-          pdf = await renderQuotationPdfHtml(html);
+          pdf = await renderPdf(html);
         } catch (error) {
           console.error(
             `[quotation-preview] pdf render failed (${error instanceof Error ? error.name : typeof error})`
