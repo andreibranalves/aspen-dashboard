@@ -76,7 +76,11 @@ export function createQuotationTemplatesHandler(
       }
       if (event.httpMethod === 'GET') {
         const id = event.queryStringParameters?.id;
-        if (id) return json(200, { data: await dependencies.repository.get(id) });
+        if (id) {
+          const data = await dependencies.repository.get(id);
+          if (!data) throw new QuotationTemplateLibraryNotFoundError('Template não encontrado.');
+          return json(200, { data });
+        }
         const result = await dependencies.repository.list(
           event.queryStringParameters?.active === 'true'
         );

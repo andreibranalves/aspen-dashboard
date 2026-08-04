@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createQuotationTemplatesHandler } from '../../api/_functions/quotation-templates.js';
+import {
+  QuotationTemplateLibraryConflictError,
+  QuotationTemplateLibraryInputError,
+} from '../../api/_db/quotation-template-library-repository.js';
 
 const repository = {
   list: async (active?: boolean) => ({
@@ -63,7 +67,7 @@ function event(method: string, path: string, query: Record<string, string> = {},
   };
 }
 
-test('template library handler routes metadata, details, validation and mutations through repository seam', async () => {
+test('template library handler routes metadata, details, validation and mutations through repository seam', { concurrency: false }, async () => {
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
   process.env.CRM_CORE_QUOTES_ENABLED = 'true';
   try {
@@ -122,7 +126,55 @@ test('template library handler routes metadata, details, validation and mutation
   }
 });
 
-test('template library handler rejects malformed JSON and unsupported methods', async () => {
+test('template library handler maps missing details and repository validation failures', { concurrency: false }, async () => {
+  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  try {
+    const rejectingRepository = {
+      ...repository,
+      get: async () => null,
+      create: async (input: { key: string; name: string; source: string }) => {
+        if (input.key === 'padrao')
+          throw new QuotationTemplateLibraryInputError('A chave do template já está em uso.');
+        if (!input.name.trim())
+          throw new QuotationTemplateLibraryInputError('Nome de template inválido.');
+        if (input.source.includes('<script>'))
+          throw new QuotationTemplateLibraryInputError('HTML inválido.');
+        if (input.source.includes('{{#if'))
+          throw new QuotationTemplateLibraryInputError('Handlebars inválido.');
+        return { id: 'template-id' };
+      },
+      archive: async () =>
+        Promise.reject(
+          new QuotationTemplateLibraryConflictError('Não é possível arquivar o template padrão.')
+        ),
+    };
+    const handler = createQuotationTemplatesHandler({ repository: rejectingRepository });
+    assert.equal(
+      (await handler(event('GET', '/api/quotation-templates', { id: 'missing' }))).statusCode,
+      404
+    );
+    const invalidInputs = [
+      { key: 'padrao', name: 'Duplicado', source: '<!doctype html>' },
+      { key: 'novo', name: '   ', source: '<!doctype html>' },
+      { key: 'novo', name: 'HTML', source: '<script>' },
+      { key: 'novo', name: 'Handlebars', source: '{{#if' },
+    ];
+    for (const input of invalidInputs) {
+      const response = await handler(event('POST', '/api/quotation-templates', {}, input));
+      assert.equal(response.statusCode, 400);
+    }
+    const archive = await handler(
+      event('PUT', '/api/quotation-templates', { id: 'template-id' }, { action: 'archive' })
+    );
+    assert.equal(archive.statusCode, 409);
+  } finally {
+    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
+    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+  }
+});
+
+test('template library handler rejects malformed JSON and unsupported methods', { concurrency: false }, async () => {
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
   process.env.CRM_CORE_QUOTES_ENABLED = 'true';
   try {

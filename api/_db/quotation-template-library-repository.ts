@@ -11,7 +11,7 @@ import {
   renderQuotationTemplate,
   validateQuotationHtmlSource,
   validateQuotationTemplateSource,
-  type QuotationTemplateViewModel,
+  QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
 } from '../_functions/lib/quotation-templates.js';
 import { type QuoteDatabase } from './quote-draft-management-repository.js';
 
@@ -65,28 +65,6 @@ export class QuotationTemplateLibraryRepositoryError extends Error {
 
 type DatabaseProvider = () => AppDatabase;
 const KEY = /^[a-z0-9][a-z0-9_-]{0,119}$/;
-const PREVIEW: QuotationTemplateViewModel = {
-  quote_number: 'ORC-PREVIEW',
-  revision: 1,
-  client: { name: 'Cliente de demonstração' },
-  items: [
-    {
-      name: 'Produto de demonstração',
-      quantity: '1',
-      unit: 'Und',
-      display: { unit_price: 'R$ 10,00', line_total: 'R$ 10,00' },
-    },
-  ],
-  display: {
-    quote_date: '01/01/2026',
-    validity_date: '16/01/2026',
-    subtotal: 'R$ 10,00',
-    freight: 'R$ 0,00',
-    total: 'R$ 10,00',
-  },
-  terms: { pagamento: 'À vista', production_deadline: '15 dias', observations: '' },
-} as QuotationTemplateViewModel;
-
 function hash(source: string): string {
   return createHash('sha256').update(Buffer.from(source, 'utf8')).digest('hex');
 }
@@ -119,7 +97,7 @@ function warnings(source: string): string[] {
 function preview(key: string, source: string): TemplateValidation {
   const html = renderQuotationTemplate(
     { key, name: key, is_default: false, hash: hash(source), source },
-    PREVIEW
+    QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL
   );
   return { valid: true, warnings: warnings(source), preview: html };
 }
@@ -265,10 +243,10 @@ export function createQuotationTemplateLibraryRepository(
         return await db.transaction(async (tx) => {
           const id = randomUUID();
           const now = new Date();
+          preview(n.key, n.source);
           await tx
             .insert(quotationTemplates)
             .values({ id, key: n.key, name: n.name, createdAt: now, updatedAt: now });
-          const p = preview(n.key, n.source);
           await tx
             .insert(quotationTemplateVersions)
             .values({

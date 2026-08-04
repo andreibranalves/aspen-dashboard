@@ -491,6 +491,49 @@ export interface QuotationTemplateViewModel {
   [key: string]: unknown;
 }
 
+/** Deterministic data used to validate and preview templates before persistence. */
+export const QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL: QuotationTemplateViewModel = {
+  quote_number: 'ORC-PREVIEW',
+  revision: 1,
+  validity: true,
+  client: {
+    name: 'Cliente de demonstração',
+    document: '00.000.000/0000-00',
+    email: 'cliente@example.com',
+    phone: '(11) 99999-9999',
+    address: 'Rua de demonstração, 100 - Centro',
+  },
+  items: [
+    {
+      position: 1,
+      sku: 'SKU-DEMO',
+      name: 'Produto de demonstração',
+      description: 'Descrição do produto de demonstração',
+      quantity: '1',
+      unit: 'Und',
+      display: { unit_price: 'R$ 10,00', line_total: 'R$ 10,00' },
+    },
+  ],
+  display: {
+    quote_date: '01/01/2026',
+    validity_date: '16/01/2026',
+    subtotal: 'R$ 10,00',
+    freight: 'R$ 0,00',
+    total: 'R$ 10,00',
+  },
+  terms: {
+    pagamento: 'À vista',
+    entrega: '15 dias',
+    production_deadline: '15 dias',
+    observations: 'Observação de demonstração',
+  },
+  secoes: {
+    prazo_producao: true,
+    pagamento: true,
+    condicoes_gerais: true,
+  },
+};
+
 // ── HTML policy tokenizer ──────────────────────────────────────────────
 
 // All allowlists stored lowercase for case-insensitive matching

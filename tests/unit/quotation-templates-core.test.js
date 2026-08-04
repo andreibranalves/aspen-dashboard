@@ -7,6 +7,7 @@ import {
   getQuotationTemplate,
   QUOTATION_TEMPLATES,
   renderQuotationTemplate,
+  QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
   validateQuotationHtmlSource,
   validateQuotationSource,
   validateQuotationTemplateSource,
@@ -460,6 +461,17 @@ test('disabled sections expose no body HTML', () => {
 });
 
 // ── Adversarial: Frappe rendering ───────────────────────────────────
+
+test('deterministic preview fixture renders the standard template with every nested field', () => {
+  const rendered = renderQuotationTemplate(
+    DEFAULT_QUOTATION_TEMPLATE,
+    QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL
+  );
+  assert.match(rendered, /Cliente de demonstração/);
+  assert.match(rendered, /SKU-DEMO/);
+  assert.match(rendered, /Descrição do produto de demonstração/);
+  assert.match(rendered, /Entrega:/);
+});
 
 test('all three built-in templates render without error', () => {
   const model = quotationSnapshotViewModel(snapshot);
