@@ -148,6 +148,7 @@ export function createQuotationTemplateRepository(getDb: DatabaseProvider = getD
       try {
         return await readQuotationTemplateSnapshot(getDb(), normalized, templateVersionId);
       } catch (error) {
+        if (error instanceof QuotationTemplateSnapshotRepositoryError) throw error;
         console.error(
           `[quotation-template-repository] read failed (${error instanceof Error ? error.name : typeof error})`
         );

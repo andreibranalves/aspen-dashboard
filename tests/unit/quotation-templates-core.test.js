@@ -11,8 +11,13 @@ import {
   validateQuotationHtmlSource,
   validateQuotationSource,
   validateQuotationTemplateSource,
+  QuotationTemplateResolutionError,
+  resolveQuotationTemplate,
 } from '../../api/_functions/lib/quotation-templates.js';
-import { quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
+import {
+  createQuotationTemplateRepository,
+  quotationSnapshotViewModel,
+} from '../../api/_db/quotation-template-repository.js';
 import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
 import {
   createQuotationSectionsSnapshot,
@@ -208,6 +213,66 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
   assert.match(standard, /&lt;b&gt;Cliente&lt;\/b&gt;/);
   assert.match(standard, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.notEqual(standard, alternate);
+});
+
+test('legacy template resolution requires exact key and hash', () => {
+  assert.equal(resolveQuotationTemplate('padrao', DEFAULT_QUOTATION_TEMPLATE.hash).key, 'padrao');
+  assert.throws(
+    () => resolveQuotationTemplate('padrao', '0'.repeat(64)),
+    QuotationTemplateResolutionError
+  );
+  assert.throws(() => resolveQuotationTemplate('unknown', DEFAULT_QUOTATION_TEMPLATE.hash), QuotationTemplateResolutionError);
+});
+
+test('preview preserves repository 409 for a non-draft version override', async () => {
+  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  const quotation = { ...snapshot.quotation, status: 'enviado' };
+  const revision = { ...snapshot.revision, status: 'enviado', templateVersionId: null };
+  let selectCount = 0;
+  const db = {
+    select() {
+      const call = ++selectCount;
+      const result = call === 1 ? [quotation] : call === 2 ? [revision] : [];
+      const query = {
+        limit: async () => result,
+        orderBy() {
+          return { limit: async () => result };
+        },
+      };
+      return { from: () => ({ where: () => query }) };
+    },
+  };
+  try {
+    const repository = createQuotationTemplateRepository(() => db);
+    const response = await createQuotationPreviewHandler({ repository })(
+      event({ id: 'ORC-20260001', template_version_id: 'version-1' })
+    );
+    assert.equal(response.statusCode, 409);
+    assert.match(response.body, /só pode ser alterada/);
+  } finally {
+    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
+    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+  }
+});
+
+test('preview consumes an exact legacy hash mismatch as not found', async () => {
+  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  try {
+    const repository = {
+      get: async () => ({
+        ...snapshot,
+        revision: { ...snapshot.revision, templateHash: '0'.repeat(64) },
+      }),
+    };
+    const response = await createQuotationPreviewHandler({ repository })(event({ id: 'ORC-20260001' }));
+    assert.equal(response.statusCode, 404);
+    assert.match(response.body, /Template do orçamento não encontrado/);
+  } finally {
+    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
+    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+  }
 });
 
 test('preview is flag-gated, returns secure headers, and rejects legacy overrides', async () => {

@@ -299,6 +299,15 @@ export interface QuotationTemplate extends QuotationTemplateMetadata {
   source: string;
 }
 
+export class QuotationTemplateResolutionError extends Error {
+  readonly statusCode = 404;
+
+  constructor() {
+    super('Template do orçamento não encontrado.');
+    this.name = 'QuotationTemplateResolutionError';
+  }
+}
+
 function sourceHash(source: string): string {
   return createHash('sha256').update(Buffer.from(source, 'utf8')).digest('hex');
 }
@@ -443,8 +452,8 @@ export function getQuotationTemplate(key: unknown): QuotationTemplate | null {
 
 export function resolveQuotationTemplate(key: unknown, hash?: unknown): QuotationTemplate {
   const template = getQuotationTemplate(key);
-  if (template && (hash === undefined || template.hash === String(hash))) return template;
-  return DEFAULT_TEMPLATE;
+  if (template && typeof hash === 'string' && template.hash === hash.trim()) return template;
+  throw new QuotationTemplateResolutionError();
 }
 
 export function quotationTemplateFromVersion(version: {

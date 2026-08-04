@@ -6,6 +6,7 @@ import {
 } from '../_db/quotation-template-repository.js';
 import {
   quotationTemplateFromVersion,
+  QuotationTemplateResolutionError,
   renderQuotationTemplate,
   resolveQuotationTemplate,
 } from './lib/quotation-templates.js';
@@ -38,7 +39,10 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
 }
 
 function safeError(error: unknown): FunctionResult {
-  if (error instanceof QuotationTemplateSnapshotRepositoryError) {
+  if (
+    error instanceof QuotationTemplateSnapshotRepositoryError ||
+    error instanceof QuotationTemplateResolutionError
+  ) {
     return json(error.statusCode, { error: error.message });
   }
   console.error(
