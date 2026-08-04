@@ -12,6 +12,7 @@ import { createPostgresQuoteDraftRepository } from '../../api/_db/quote-reposito
 import {
   createPostgresQuoteDraftManagementRepository,
   QuoteManagementConflictError,
+  QuoteManagementInputError,
 } from '../../api/_db/quote-draft-management-repository.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
 import {
@@ -157,6 +158,24 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     } finally {
       await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
     }
+    await db
+      .update(quoteRevisions)
+      .set({ templateVersionId: null })
+      .where(eq(quoteRevisions.id, alternateDraft.revision_id));
+    const legacyFallbackBefore = await managementGet(alternateDraft.quotation_name);
+    assert.ok(legacyFallbackBefore);
+    await db.update(quotationTemplates).set({ archived: true }).where(eq(quotationTemplates.key, 'minimalista'));
+    try {
+      await assert.rejects(
+        () => managementUpdate(alternateDraft.quotation_name, {
+          concurrency_token: legacyFallbackBefore.concurrency_token,
+          items: [{ item_code: sku, qty: '30.000' }],
+        }),
+        (error: unknown) => error instanceof QuoteManagementInputError,
+      );
+    } finally {
+      await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
+    }
     assert.ok(laterBefore);
     assert.equal(before.frete_padrao, explicitSettings.fretePadrao);
     assert.equal(before.pagamento, explicitSettings.pagamento);
@@ -253,10 +272,20 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     await db.update(quoteRevisions).set({ status: 'aprovado' }).where(eq(quoteRevisions.id, laterDraft.revision_id));
     await db.update(quotations).set({ status: 'perdido' }).where(eq(quotations.id, terminalDraft.quotation_uuid));
     await db.update(quoteRevisions).set({ status: 'perdido' }).where(eq(quoteRevisions.id, terminalDraft.revision_id));
-    await assert.rejects(
-      () => managementUpdate(draft.quotation_name, { concurrency_token: updated.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
-      (error: unknown) => error instanceof QuoteManagementConflictError,
-    );
+    const assertTerminalUpdateRejected = async (quotationName: string) => {
+      const terminalDetail = await managementGet(quotationName);
+      assert.ok(terminalDetail);
+      await assert.rejects(
+        () => managementUpdate(quotationName, {
+          concurrency_token: terminalDetail.concurrency_token,
+          items: [{ item_code: sku, qty: '1.000' }],
+        }),
+        (error: unknown) => error instanceof QuoteManagementConflictError,
+      );
+    };
+    await assertTerminalUpdateRejected(updated.quotation_name);
+    await assertTerminalUpdateRejected(laterDraft.quotation_name);
+    await assertTerminalUpdateRejected(terminalDraft.quotation_name);
     const assertStatusAliases = async (aliases: string[], quotationId: string, canonical: string) => {
       for (const alias of aliases) {
         const listed = await managementList({ status: alias, limit: 200 });

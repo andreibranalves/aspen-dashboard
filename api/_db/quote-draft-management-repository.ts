@@ -431,7 +431,13 @@ async function readTemplateSelection(
       .select({ key: quotationTemplates.key, hash: quotationTemplateVersions.sourceHash, versionId: quotationTemplateVersions.id, version: quotationTemplateVersions.version })
       .from(quotationTemplateVersions)
       .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
-      .where(and(eq(quotationTemplates.key, revision.templatePadrao), eq(quotationTemplateVersions.sourceHash, revision.templateHash)))
+      .where(
+        and(
+          eq(quotationTemplates.key, revision.templatePadrao),
+          eq(quotationTemplateVersions.sourceHash, revision.templateHash),
+          eq(quotationTemplates.archived, false),
+        ),
+      )
       .limit(1);
     if (!resolved) throw new QuoteManagementInputError('Versão de template do orçamento não encontrada.');
     return resolved;
