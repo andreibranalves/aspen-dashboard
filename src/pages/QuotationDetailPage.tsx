@@ -508,6 +508,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     await onReload();
   }, [onReload]);
 
+  const handleDelete = useCallback(async () => {
+    if (
+      !confirm(
+        `Tem certeza que deseja excluir o orçamento ${data.id}?\n\nEsta ação não pode ser desfeita.`
+      )
+    )
+      return;
+    try {
+      await apiDelete(`/quotations?id=${encodeURIComponent(data.id)}`);
+      navigate('/quotations');
+    } catch (err) {
+      setMessage(`Erro ao excluir: ${(err instanceof Error ? err.message : 'Tente novamente.')}`);
+    }
+  }, [data.id, navigate]);
+
   const displayItems = items;
   const displayedTotal =
     data.total ??
@@ -1064,6 +1079,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           {data.issued_document && (
             <Button variant="outline" size="sm" onClick={openIssuedDocument}>
               <FileText size={14} /> Abrir PDF emitido
+            </Button>
+          )}
+          {draftEditable && !editing && (
+            <Button
+              onClick={handleDelete}
+              variant="outline"
+              size="sm"
+              className="text-destructive border-destructive/20 hover:bg-destructive/10"
+            >
+              <Trash2 size={14} /> Excluir
             </Button>
           )}
           {message && (

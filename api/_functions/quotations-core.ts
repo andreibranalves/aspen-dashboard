@@ -106,6 +106,12 @@ function repositoryUpdate(repository: QuoteDraftManagementRepository, id: string
   return update(id, input);
 }
 
+function repositoryDelete(repository: QuoteDraftManagementRepository, id: string) {
+  const del = repository.delete;
+  if (!del) throw new QuoteManagementRepositoryError('Exclusão não disponível.');
+  return del(id);
+}
+
 function lifecycleRepository(dependencies: QuotationsCoreDependencies): QuotationLifecycleRepository {
   if (dependencies.lifecycleRepository) return dependencies.lifecycleRepository;
   const candidate = dependencies.repository as QuoteDraftManagementRepository & Partial<QuotationLifecycleRepository>;
@@ -197,7 +203,12 @@ export function createCoreHandler(
         throw new QuoteManagementInputError('Ação de orçamento inválida.');
       }
 
-      // Core draft management intentionally has no delete/duplicate/ERP actions.
+      if (event.httpMethod === 'DELETE') {
+        if (!query.id) throw new QuoteManagementInputError('ID do orçamento não informado.');
+        const result = await repositoryDelete(dependencies.repository, query.id);
+        return json(200, { success: true, ...result });
+      }
+
       return json(405, { error: 'Método não permitido.' });
     } catch (error) {
       return errorResponse(event.httpMethod === 'GET' ? (query.id ? 'detail' : 'list') : event.httpMethod.toLowerCase(), error);

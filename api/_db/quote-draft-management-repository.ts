@@ -280,6 +280,7 @@ export interface QuoteDraftManagementRepository {
   listDrafts?: (options?: QuoteDraftManagementListOptions) => Promise<QuoteDraftManagementListResult>;
   getDraft?: (id: string) => Promise<QuoteDraftManagementDetail | null>;
   updateDraft?: (id: string, input: QuoteDraftManagementUpdateInput) => Promise<QuoteDraftManagementDetail>;
+  delete?: (id: string) => Promise<{ id: string; deletedAt: string }>;
 }
 
 export interface QuoteDraftManagementRepositoryOptions {
@@ -1152,6 +1153,29 @@ export function createPostgresQuoteDraftManagementRepository(
         if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
         console.error(`[quote-draft-management] update failed (${error instanceof Error ? error.name : typeof error})`);
         throw new QuoteManagementRepositoryError('Não foi possível salvar as alterações do orçamento. Tente novamente.');
+      }
+    },
+
+    async delete(id: string): Promise<{ id: string; deletedAt: string }> {
+      const normalizedId = String(id || '').trim();
+      if (!normalizedId) throw new QuoteManagementInputError('ID do orçamento não informado.');
+      try {
+        const db = getDb();
+        const result = await db.transaction(async (tx) => {
+          const quotation = await readLockedQuotation(tx, normalizedId);
+          if (!quotation) throw new QuoteManagementNotFoundError();
+          if (quotation.status !== 'rascunho') {
+            throw new QuoteManagementConflictError('Somente orçamentos em rascunho podem ser excluídos.');
+          }
+          const deletedAt = now().toISOString();
+          await tx.delete(quotations).where(eq(quotations.id, quotation.id));
+          return { id: quotation.businessNumber, deletedAt };
+        });
+        return result;
+      } catch (error) {
+        if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
+        console.error(`[quote-draft-management] delete failed (${error instanceof Error ? error.name : typeof error})`);
+        throw new QuoteManagementRepositoryError('Não foi possível excluir o orçamento. Tente novamente.');
       }
     },
   };
