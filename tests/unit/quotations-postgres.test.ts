@@ -39,7 +39,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     entrega: 'Entrega da configuração',
     fretePadrao: '2.25',
     observacoes: 'Observações da configuração',
-    templatePadrao: 'template-configurado',
+    quotationSections: {
+      schema_version: 1 as const,
+      prazo_producao: { enabled: true, title: 'Prazo de produção' },
+      pagamento: { enabled: true, title: 'Pagamento', body: 'Pagamento da configuração' },
+      condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Observações da configuração' },
+    },
+    templatePadrao: 'padrao',
   };
   let previousSettings: typeof appSettings.$inferSelect | undefined;
   try {
@@ -82,18 +88,42 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(draft.template_padrao, defaultTemplate.key);
     assert.equal(draft.template_key, defaultTemplate.key);
     assert.equal(draft.template_hash, defaultTemplate.hash);
+    assert.equal(draft.secoes.pagamento.current.body, explicitSettings.quotationSections.pagamento.body);
+    assert.notEqual(draft.secoes, explicitSettings.quotationSections);
+    const alternateDraft = await create.createDraft({
+      client_id: clientId,
+      template_key: 'minimalista',
+      items: [{ item_code: sku, qty: '30.000' }],
+    });
+    assert.equal(alternateDraft.template_key, 'minimalista');
+    assert.match(alternateDraft.template_version_id, /^[0-9a-f-]{36}$/);
+    const overrideDraft = await create.createDraft({
+      client_id: clientId,
+      template_key: 'minimalista',
+      secoes: {
+        pagamento: { enabled: true, title: 'Pagamento customizado', body: 'Override' },
+      },
+      items: [{ item_code: sku, qty: '30.000' }],
+    });
+    assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
+    assert.equal(overrideDraft.secoes.pagamento.current.body, 'Override');
+    overrideDraft.secoes.pagamento.current.body = 'Mutado';
+    assert.equal(overrideDraft.secoes.pagamento.base.body, explicitSettings.quotationSections.pagamento.body);
     const [createdRevision] = await db.select().from(quoteRevisions).where(eq(quoteRevisions.id, draft.revision_id));
     assert.equal(createdRevision?.templatePadrao, defaultTemplate.key);
     assert.equal(createdRevision?.templateHash, defaultTemplate.hash);
     const management = createPostgresQuoteDraftManagementRepository(() => db, { now: () => new Date('2026-07-04T12:01:00.000Z') });
-    const before = await management.get(draft.quotation_name);
+    const managementGet = management.get!;
+    const managementUpdate = management.update!;
+    const managementList = management.list!;
+    const before = await managementGet(draft.quotation_name);
     assert.ok(before);
-    const laterBefore = await management.get(laterDraft.quotation_name);
+    const laterBefore = await managementGet(laterDraft.quotation_name);
     assert.ok(laterBefore);
     assert.equal(before.frete_padrao, explicitSettings.fretePadrao);
     assert.equal(before.pagamento, explicitSettings.pagamento);
     assert.equal(before.items[0].suggested_unit_price, '9.00');
-    const updated = await management.update(draft.quotation_name, {
+    const updated = await managementUpdate(draft.quotation_name, {
       concurrency_token: before.concurrency_token,
       client_id: secondClientId,
       items: [{ item_code: sku, qty: '30.000', rate: '10.00', manual_rate: true }],
@@ -121,7 +151,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
 
     const ownIds = new Set([draft.quotation_name, laterDraft.quotation_name]);
     const ownOrder = async (orderBy?: string) => {
-      const listed = await management.list({ limit: 200, orderBy });
+      const listed = await managementList({ limit: 200, orderBy });
       return listed.rows.filter((row) => ownIds.has(row.id)).map((row) => row.id);
     };
     assert.deepEqual(await ownOrder(), [laterDraft.quotation_name, draft.quotation_name]);
@@ -133,7 +163,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.deepEqual(await ownOrder('valid_till desc'), [laterDraft.quotation_name, draft.quotation_name]);
 
     await assert.rejects(
-      () => management.update(draft.quotation_name, { concurrency_token: before.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
+      () => managementUpdate(draft.quotation_name, { concurrency_token: before.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
       (error: unknown) => error instanceof QuoteManagementConflictError,
     );
     await db.update(quotations).set({ status: 'enviado' }).where(eq(quotations.id, updated.quotation_uuid));
@@ -143,12 +173,12 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     await db.update(quotations).set({ status: 'perdido' }).where(eq(quotations.id, terminalDraft.quotation_uuid));
     await db.update(quoteRevisions).set({ status: 'perdido' }).where(eq(quoteRevisions.id, terminalDraft.revision_id));
     await assert.rejects(
-      () => management.update(draft.quotation_name, { concurrency_token: updated.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
+      () => managementUpdate(draft.quotation_name, { concurrency_token: updated.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
       (error: unknown) => error instanceof QuoteManagementConflictError,
     );
     const assertStatusAliases = async (aliases: string[], quotationId: string, canonical: string) => {
       for (const alias of aliases) {
-        const listed = await management.list({ status: alias, limit: 200 });
+        const listed = await managementList({ status: alias, limit: 200 });
         const row = listed.rows.find((candidate) => candidate.id === quotationId);
         assert.ok(row, `status filter ${alias} should include ${quotationId}`);
         assert.equal(row.status_canonical, canonical, `status filter ${alias} should map to ${canonical}`);
@@ -159,7 +189,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     await assertStatusAliases(['Issued', 'Open', 'Replied', 'Expired', 'emitido', 'Enviado', 'enviado', ' oPeN ', ' ENVIADO ', ' iSsUeD '], updated.quotation_name, 'enviado');
     await assertStatusAliases(['Ordered', 'Aprovado', 'aprovado', ' OrDeReD ', ' APROVADO '], laterDraft.quotation_name, 'aprovado');
     await assertStatusAliases(['Lost', 'Cancelled', 'Perdido', 'perdido', ' cAnCeLLeD ', ' PERDIDO '], terminalDraft.quotation_name, 'perdido');
-    const statusSummary = (await management.list({ limit: 200 })).statusSummary;
+    const statusSummary = (await managementList({ limit: 200 })).statusSummary;
     assert.ok(statusSummary.Rascunho >= 1);
     assert.ok(statusSummary.Enviado >= 1);
     assert.ok(statusSummary.Aprovado >= 1);
@@ -208,6 +238,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         entrega: previousSettings.entrega,
         fretePadrao: previousSettings.fretePadrao,
         observacoes: previousSettings.observacoes,
+        quotationSections: previousSettings.quotationSections,
         templatePadrao: previousSettings.templatePadrao,
       }).where(eq(appSettings.singletonId, 1));
     } else {

@@ -24,14 +24,52 @@ const draft = {
   quotation_id: 'ORC-20260001',
   quotation_name: 'ORC-20260001',
   quote_id: '11111111-1111-4111-8111-111111111111',
+  quotation_uuid: '11111111-1111-4111-8111-111111111111',
   revision_id: '22222222-2222-4222-8222-222222222222',
+  quote_revision_id: '22222222-2222-4222-8222-222222222222',
+  revision: 1,
   revision_number: 1,
   status: 'rascunho' as const,
   cliente: 'Cliente Teste',
+  cliente_id: '33333333-3333-4333-8333-333333333333',
+  cliente_snapshot: {
+    id: '33333333-3333-4333-8333-333333333333',
+    nome: 'Cliente Teste',
+    documento: null,
+    email: null,
+    telefone: null,
+    notes: null,
+    address: null,
+  },
   items: [],
   subtotal: '0.00',
   frete: '0.00',
   total: '0.00',
+  validade_dias: 15,
+  pagamento: '',
+  entrega: '',
+  observacoes: '',
+  prazo_producao: '',
+  template_padrao: 'padrao',
+  template_key: 'padrao',
+  template_hash: '0'.repeat(64),
+  template_version_id: '44444444-4444-4444-8444-444444444444',
+  secoes: {
+    schema_version: 1 as const,
+    prazo_producao: {
+      base: { enabled: true, title: 'Prazo de produção' },
+      current: { enabled: true, title: 'Prazo de produção' },
+    },
+    pagamento: {
+      base: { enabled: true, title: 'Pagamento', body: '' },
+      current: { enabled: true, title: 'Pagamento', body: '' },
+    },
+    condicoes_gerais: {
+      base: { enabled: true, title: 'Condições Gerais', body: '' },
+      current: { enabled: true, title: 'Condições Gerais', body: '' },
+    },
+  },
+  created_at: '2026-07-01T12:00:00.000Z',
 };
 
 test('quote core validates the envelope and annotates successful drafts', async () => {
@@ -60,6 +98,12 @@ test('quote core validates the envelope and annotates successful drafts', async 
   const result = await handler(event({
     extracted: {
       client_id: '33333333-3333-4333-8333-333333333333',
+      template_key: 'minimalista',
+      template_version_id: '44444444-4444-4444-8444-444444444444',
+      secoes: {
+        schema_version: 1,
+        pagamento: { enabled: true, title: 'Pagamento', body: 'PIX' },
+      },
       items: [{ item_code: 'SKU-1', qty: '30.000', rate: '9.00', manual_rate: false }],
     },
   }));
@@ -67,9 +111,25 @@ test('quote core validates the envelope and annotates successful drafts', async 
   assert.equal(parse(result).quotation_name, 'ORC-20260001');
   assert.equal(parse(result).source, 'postgres');
   assert.equal(received?.client_id, '33333333-3333-4333-8333-333333333333');
+  assert.equal(received?.template_key, 'minimalista');
+  assert.equal(received?.template_version_id, '44444444-4444-4444-8444-444444444444');
+  assert.equal((received?.secoes as Record<string, unknown>).pagamento !== undefined, true);
   const receivedItems = received?.items as Array<Record<string, unknown>>;
   assert.equal(receivedItems[0]?.rate, '9.00');
   assert.equal(receivedItems[0]?.manual_rate, false);
+});
+
+test('quote core maps invalid template selection to 400', async () => {
+  const handler = createCoreHandler({
+    repository: {
+      createDraft: async () => {
+        throw new QuoteDraftInputError('Template do orçamento inválido.');
+      },
+    },
+  });
+  const result = await handler(event({ extracted: { template_key: 'arquivado' } }));
+  assert.equal(result.statusCode, 400);
+  assert.equal(parse(result).error, 'Template do orçamento inválido.');
 });
 
 test('quote core maps safe validation errors without exposing driver details', async () => {
