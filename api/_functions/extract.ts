@@ -299,9 +299,6 @@ async function extractWithOpenRouter(
 }
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'extract não está disponível no modo operacional.' }) };
-  }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

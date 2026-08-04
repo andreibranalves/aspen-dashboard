@@ -60,6 +60,7 @@ const OPERATIONAL_NAV_SECTIONS: NavSection[] = [
   {
     title: 'Operacional',
     items: [
+      { hash: '/auto', label: 'Auto', icon: Sparkles },
       { hash: '/manual', label: 'Novo Orçamento', icon: FileText },
     ],
   },
