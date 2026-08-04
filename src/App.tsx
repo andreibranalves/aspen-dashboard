@@ -27,7 +27,7 @@ const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
 // Routes hidden in operational mode (Frappe-dependent)
 const HIDDEN_ROUTES = new Set([
-  '/dashboard', '/auto', '/pre-orcamentos', '/sales-orders',
+  '/dashboard', '/pre-orcamentos', '/sales-orders',
   '/crm', '/comunicacao', '/whatsapp-inbox',
 ]);
 
