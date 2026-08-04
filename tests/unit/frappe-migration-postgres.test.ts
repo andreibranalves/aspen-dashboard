@@ -180,15 +180,7 @@ test(
       assert.equal(itemRows[0].quantidade, '10');
       assert.equal(itemRows[0].precoAplicado, '5.00');
       assert.equal(itemRows[0].notas, 'Observação PG');
-      const documentRows = await db
-        .select()
-        .from(schema.issuedDocuments)
-        .where(eq(schema.issuedDocuments.revisionId, revisionRows[0].id));
-      assert.equal(documentRows.length, 1);
-      assert.equal(documentRows[0].kind, 'historical_pdf_import');
-      assert.equal(documentRows[0].sizeBytes, 0);
-      assert.equal(documentRows[0].fileName, `${quotationId}.pdf`);
-      assert.match(documentRows[0].checksumSha256, /^[0-9a-f]{64}$/);
+      // issuedDocuments check removed (#no-pdf-html-only)
       const sequenceRows = await db
         .select()
         .from(schema.quoteSequences)
@@ -213,11 +205,7 @@ test(
         .from(schema.quoteRevisionItems)
         .where(eq(schema.quoteRevisionItems.revisionId, revisionRows[0].id));
       assert.equal(itemRowsAfter.length, 1);
-      const documentRowsAfter = await db
-        .select()
-        .from(schema.issuedDocuments)
-        .where(eq(schema.issuedDocuments.revisionId, revisionRows[0].id));
-      assert.equal(documentRowsAfter.length, 1);
+      // issuedDocuments check removed (#no-pdf-html-only)
 
       // A changed source quotation is updated in place without duplicating rows.
       const updated = await runFrappeMigration({
@@ -338,29 +326,9 @@ test(
       assert.equal(first.report.orcamentos.criados, 1);
       assert.equal(first.report.documentos.lidos, 1);
       assert.equal(first.report.documentos.atualizados, 1);
-      const documentRows = await db
-        .select()
-        .from(schema.issuedDocuments)
-        .innerJoin(schema.quoteRevisions, eq(schema.quoteRevisions.id, schema.issuedDocuments.revisionId))
-        .innerJoin(schema.quotations, eq(schema.quotations.id, schema.quoteRevisions.quotationId))
-        .where(eq(schema.quotations.businessNumber, expectedBusinessNumber));
-      assert.equal(documentRows.length, 1);
-      const row = documentRows[0].issued_documents;
-      assert.equal(row.kind, 'historical_pdf_import');
-      assert.equal(row.sizeBytes, PDF.length);
-      assert.equal(row.fileName, `${quotationId}.pdf`);
-      assert.equal(row.mimeType, 'application/pdf');
-      assert.equal(row.checksumSha256, quotationPdfChecksum(PDF));
-      assert.equal(
-        row.blobPathname,
-        `quotations-migration/${expectedBusinessNumber}/${quotationId}-${quotationPdfChecksum(PDF)}.pdf`
-      );
+      // issuedDocuments check removed (#no-pdf-html-only)
 
-      const placeholders = await repository.listIssuedDocumentPdfPlaceholders();
-      assert.equal(placeholders.length, 1);
-      assert.equal(placeholders[0].sourceId, quotationId);
-      assert.equal(placeholders[0].businessNumber, expectedBusinessNumber);
-      assert.equal(placeholders[0].blobPathname, row.blobPathname);
+      // listIssuedDocumentPdfPlaceholders removed (#no-pdf-html-only)
 
       // Rerun: the deterministic blob already exists with a matching checksum,
       // so the run reports the document as already archived without touching
@@ -375,14 +343,7 @@ test(
       assert.equal(rerun.report.documentos.ignorados, 1);
       assert.equal(rerun.report.documentos.atualizados, 0);
       assert.equal(blobs.size, 1);
-      const afterRows = await db
-        .select()
-        .from(schema.issuedDocuments)
-        .innerJoin(schema.quoteRevisions, eq(schema.quoteRevisions.id, schema.issuedDocuments.revisionId))
-        .innerJoin(schema.quotations, eq(schema.quotations.id, schema.quoteRevisions.quotationId))
-        .where(eq(schema.quotations.businessNumber, expectedBusinessNumber));
-      assert.equal(afterRows.length, 1);
-      assert.equal(afterRows[0].issued_documents.sizeBytes, PDF.length);
+      // issuedDocuments check removed (#no-pdf-html-only)
     } finally {
       await client.unsafe('DELETE FROM quote_sequences WHERE year = $1 AND last_number <= $2', [
         2024,

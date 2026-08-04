@@ -4,7 +4,6 @@ import { randomUUID } from 'node:crypto';
 import { getDatabase, type AppDatabase } from './client.js';
 import {
   clients,
-  issuedDocuments,
   products,
   productPricingTiers,
   quoteRevisionItems,
@@ -86,13 +85,23 @@ export type CanonicalQuotationListStatus = 'rascunho' | 'enviado' | 'aprovado' |
  * endpoint to the canonical lifecycle state stored in PostgreSQL. `null`
  * means an empty/All filter, while `undefined` identifies an invalid label.
  */
-export function normalizeQuotationListStatus(value: string | undefined): CanonicalQuotationListStatus | null | undefined {
+export function normalizeQuotationListStatus(
+  value: string | undefined
+): CanonicalQuotationListStatus | null | undefined {
   const normalized = (value || '').trim();
   if (!normalized) return null;
   const lower = normalized.toLowerCase();
   if (lower === 'all') return null;
   if (lower === 'draft' || lower === 'rascunho') return 'rascunho';
-  if (lower === 'issued' || lower === 'open' || lower === 'replied' || lower === 'expired' || lower === 'emitido' || lower === 'enviado') return 'enviado';
+  if (
+    lower === 'issued' ||
+    lower === 'open' ||
+    lower === 'replied' ||
+    lower === 'expired' ||
+    lower === 'emitido' ||
+    lower === 'enviado'
+  )
+    return 'enviado';
   if (lower === 'ordered' || lower === 'aprovado') return 'aprovado';
   if (lower === 'lost' || lower === 'cancelled' || lower === 'perdido') return 'perdido';
   return undefined;
@@ -191,21 +200,6 @@ export interface QuoteDraftManagementDetail {
   expiration_derived: boolean;
   is_expired: boolean;
   expirada: boolean;
-  issued_document: {
-    id: string;
-    quotation_id?: string;
-    revision_id?: string;
-    kind?: string;
-    storage_key?: string;
-    file_name: string;
-    mime_type: string;
-    size_bytes: number;
-    checksum_sha256: string;
-    template_key?: string;
-    template_hash?: string;
-    issued_at: string;
-    download_url: string;
-  } | null;
   revision_history: QuoteRevisionHistoryEntry[];
   subtotal: string;
   total: string;
@@ -246,7 +240,6 @@ export interface QuoteRevisionHistoryEntry {
   expiration_derived: boolean;
   is_expired: boolean;
   expirada: boolean;
-  issued_document: QuoteDraftManagementDetail['issued_document'];
 }
 
 export interface QuoteDraftManagementUpdateInput {
@@ -276,10 +269,18 @@ export interface QuoteDraftManagementUpdateInput {
 export interface QuoteDraftManagementRepository {
   list?: (options?: QuoteDraftManagementListOptions) => Promise<QuoteDraftManagementListResult>;
   get?: (id: string) => Promise<QuoteDraftManagementDetail | null>;
-  update?: (id: string, input: QuoteDraftManagementUpdateInput) => Promise<QuoteDraftManagementDetail>;
-  listDrafts?: (options?: QuoteDraftManagementListOptions) => Promise<QuoteDraftManagementListResult>;
+  update?: (
+    id: string,
+    input: QuoteDraftManagementUpdateInput
+  ) => Promise<QuoteDraftManagementDetail>;
+  listDrafts?: (
+    options?: QuoteDraftManagementListOptions
+  ) => Promise<QuoteDraftManagementListResult>;
   getDraft?: (id: string) => Promise<QuoteDraftManagementDetail | null>;
-  updateDraft?: (id: string, input: QuoteDraftManagementUpdateInput) => Promise<QuoteDraftManagementDetail>;
+  updateDraft?: (
+    id: string,
+    input: QuoteDraftManagementUpdateInput
+  ) => Promise<QuoteDraftManagementDetail>;
   delete?: (id: string) => Promise<{ id: string; deletedAt: string }>;
 }
 
@@ -356,12 +357,14 @@ function parseNonNegativeMoney(value: unknown, label: string): bigint {
     throw error;
   }
   if (cents < 0n) throw new QuoteManagementInputError(`${label} deve ser maior ou igual a zero.`);
-  if (cents > MONEY_MAX_CENTS) throw new QuoteManagementInputError(`${label} está fora do limite permitido.`);
+  if (cents > MONEY_MAX_CENTS)
+    throw new QuoteManagementInputError(`${label} está fora do limite permitido.`);
   return cents;
 }
 
 function assertMoneyWithinLimit(cents: bigint, label: string): void {
-  if (cents > MONEY_MAX_CENTS) throw new QuoteManagementInputError(`${label} está fora do limite permitido.`);
+  if (cents > MONEY_MAX_CENTS)
+    throw new QuoteManagementInputError(`${label} está fora do limite permitido.`);
 }
 
 function inputText(value: unknown, label: string, maximum: number, fallback = ''): string {
@@ -379,22 +382,30 @@ function tokenFor(value: Date | string | null | undefined): string {
   return asIso(value);
 }
 
-function readTemplateSelection(input: Record<string, unknown>): { key: string; hash: string } | undefined {
+function readTemplateSelection(
+  input: Record<string, unknown>
+): { key: string; hash: string } | undefined {
   const rawKey = hasOwn(input, 'template_key') ? input.template_key : undefined;
   const rawLegacy = hasOwn(input, 'template_padrao') ? input.template_padrao : undefined;
-  const values = [rawKey, rawLegacy].filter((value): value is string => value !== undefined) as unknown[];
+  const values = [rawKey, rawLegacy].filter(
+    (value): value is string => value !== undefined
+  ) as unknown[];
   if (values.length === 0) return undefined;
   if (values.some((value) => typeof value !== 'string' || !value.trim())) {
     throw new QuoteManagementInputError('Template do orçamento inválido.');
   }
   const normalized = values.map((value) => String(value).trim());
-  if (new Set(normalized).size > 1) throw new QuoteManagementInputError('Os templates informados entram em conflito.');
+  if (new Set(normalized).size > 1)
+    throw new QuoteManagementInputError('Os templates informados entram em conflito.');
   const template = getQuotationTemplate(normalized[0]);
   if (!template) throw new QuoteManagementInputError('Template do orçamento inválido.');
   return { key: template.key, hash: template.hash };
 }
 
-function mapSnapshot(revision: typeof quoteRevisions.$inferSelect, client: typeof clients.$inferSelect | null): Record<string, unknown> {
+function mapSnapshot(
+  revision: typeof quoteRevisions.$inferSelect,
+  client: typeof clients.$inferSelect | null
+): Record<string, unknown> {
   return {
     id: client?.id || revision.quotationId,
     nome: revision.clienteNome,
@@ -428,7 +439,8 @@ function validityDeadline(createdAt: Date | string, days: number): Date {
 
 function isDerivedExpired(createdAt: Date | string, days: number, now: () => Date): boolean {
   const candidate = now();
-  const clock = candidate instanceof Date && !Number.isNaN(candidate.getTime()) ? candidate : new Date();
+  const clock =
+    candidate instanceof Date && !Number.isNaN(candidate.getTime()) ? candidate : new Date();
   return clock.getTime() >= validityDeadline(createdAt, days).getTime();
 }
 
@@ -459,7 +471,9 @@ function statusUi(value: string): string {
   return value || 'Rascunho';
 }
 
-function productPricingRowsBySku(rows: (typeof productPricingTiers.$inferSelect)[]): Map<string, (typeof productPricingTiers.$inferSelect)[]> {
+function productPricingRowsBySku(
+  rows: (typeof productPricingTiers.$inferSelect)[]
+): Map<string, (typeof productPricingTiers.$inferSelect)[]> {
   const bySku = new Map<string, (typeof productPricingTiers.$inferSelect)[]>();
   for (const row of rows) {
     const existing = bySku.get(row.productSku) || [];
@@ -471,7 +485,7 @@ function productPricingRowsBySku(rows: (typeof productPricingTiers.$inferSelect)
 
 function itemFromRows(
   row: typeof quoteRevisionItems.$inferSelect,
-  product: typeof products.$inferSelect | null,
+  product: typeof products.$inferSelect | null
 ): QuoteDraftManagementItem {
   // Revision snapshots are authoritative for display/history. The current
   // product row is only a fallback for old rows that predate a complete
@@ -517,7 +531,8 @@ function itemFromRows(
 
 function quoteWhere(id: string) {
   const normalized = String(id || '').trim();
-  if (isUuid(normalized)) return or(eq(quotations.id, normalized), eq(quotations.businessNumber, normalized));
+  if (isUuid(normalized))
+    return or(eq(quotations.id, normalized), eq(quotations.businessNumber, normalized));
   return eq(quotations.businessNumber, normalized);
 }
 
@@ -531,44 +546,20 @@ async function readRevision(tx: QuoteDatabase, quotationId: string) {
   return revision || null;
 }
 
-function documentMetadata(row: typeof issuedDocuments.$inferSelect): QuoteDraftManagementDetail['issued_document'] {
-  return {
-    id: row.id,
-    quotation_id: row.quotationId,
-    revision_id: row.revisionId,
-    kind: row.kind,
-    storage_key: row.blobPathname,
-    file_name: row.fileName,
-    mime_type: row.mimeType,
-    size_bytes: row.sizeBytes,
-    checksum_sha256: row.checksumSha256,
-    template_key: row.templateKey,
-    template_hash: row.templateHash,
-    issued_at: asIso(row.createdAt),
-    download_url: `/api/quotation-document?id=${encodeURIComponent(row.id)}`,
-  };
-}
-
 async function readRevisionHistory(
   tx: QuoteDatabase,
   quotationId: string,
-  now: () => Date,
+  now: () => Date
 ): Promise<QuoteRevisionHistoryEntry[]> {
   const revisions = await tx
     .select()
     .from(quoteRevisions)
     .where(eq(quoteRevisions.quotationId, quotationId))
     .orderBy(desc(quoteRevisions.version));
-  const documents = await tx
-    .select()
-    .from(issuedDocuments)
-    .where(eq(issuedDocuments.quotationId, quotationId));
-  const documentByRevision = new Map(documents.map((row) => [row.revisionId, row]));
   return revisions.map((revision) => {
     const validityDate = validUntil(revision.createdAt, revision.validadeDias);
     const createdAt = asIso(revision.createdAt);
     const expired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
-    const document = documentByRevision.get(revision.id);
     const statusCanonical = revision.status === 'emitido' ? 'enviado' : revision.status;
     return {
       id: revision.id,
@@ -589,7 +580,6 @@ async function readRevisionHistory(
       expiration_derived: expired,
       is_expired: expired,
       expirada: expired,
-      issued_document: document ? documentMetadata(document) : null,
     };
   });
 }
@@ -597,33 +587,38 @@ async function readRevisionHistory(
 export async function readPostgresQuotationDetail(
   tx: QuoteDatabase,
   id: string,
-  now: () => Date = () => new Date(),
+  now: () => Date = () => new Date()
 ): Promise<QuoteDraftManagementDetail | null> {
   const [quotation] = await tx.select().from(quotations).where(quoteWhere(id)).limit(1);
   if (!quotation) return null;
   const revision = await readRevision(tx, quotation.id);
   if (!revision) return null;
-  const [client] = await tx.select().from(clients).where(eq(clients.id, quotation.clientId)).limit(1);
+  const [client] = await tx
+    .select()
+    .from(clients)
+    .where(eq(clients.id, quotation.clientId))
+    .limit(1);
   const itemRows = await tx
     .select()
     .from(quoteRevisionItems)
     .where(eq(quoteRevisionItems.revisionId, revision.id))
     .orderBy(asc(quoteRevisionItems.position));
-  const [issuedDocument] = await tx
-    .select()
-    .from(issuedDocuments)
-    .where(eq(issuedDocuments.revisionId, revision.id))
-    .limit(1);
   const skus = [...new Set(itemRows.map((row) => row.productSku))];
   const productRows = skus.length
-    ? await tx.select().from(products).where(or(...skus.map((sku) => eq(products.sku, sku))))
+    ? await tx
+        .select()
+        .from(products)
+        .where(or(...skus.map((sku) => eq(products.sku, sku))))
     : [];
   const productBySku = new Map(productRows.map((row) => [row.sku, row]));
   const updatedAt = asIso(quotation.updatedAt);
   const snapshot = mapSnapshot(revision, client || null);
-  const canonicalStatus = (quotation.status === 'rascunho' ? revision.status : quotation.status) === 'emitido'
-    ? 'enviado'
-    : (quotation.status === 'rascunho' ? revision.status : quotation.status);
+  const canonicalStatus =
+    (quotation.status === 'rascunho' ? revision.status : quotation.status) === 'emitido'
+      ? 'enviado'
+      : quotation.status === 'rascunho'
+        ? revision.status
+        : quotation.status;
   const history = await readRevisionHistory(tx, quotation.id, now);
   const currentExpired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
   const currentValidityDate = validUntil(revision.createdAt, revision.validadeDias);
@@ -660,7 +655,6 @@ export async function readPostgresQuotationDetail(
     template_padrao: revision.templatePadrao,
     template_key: revision.templatePadrao,
     template_hash: revision.templateHash,
-    issued_document: issuedDocument ? documentMetadata(issuedDocument) : null,
     subtotal: formatDbMoney(revision.subtotal),
     total: formatDbMoney(revision.total),
     valor: formatDbMoney(revision.total),
@@ -696,7 +690,9 @@ function safeOrderValue(value: string | undefined): string {
     'grand_total desc',
     'grand_total asc',
   ]);
-  return allowed.has((value || '').trim().toLowerCase()) ? (value || '').trim().toLowerCase() : 'creation desc';
+  return allowed.has((value || '').trim().toLowerCase())
+    ? (value || '').trim().toLowerCase()
+    : 'creation desc';
 }
 
 function asListStatus(value: string | undefined): string | null {
@@ -716,7 +712,10 @@ function normalizeLimit(value: number | undefined, fallback: number): number {
   return Math.min(200, Math.max(1, normalizePage(value, fallback)));
 }
 
-async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOptions): Promise<QuoteDraftManagementListResult> {
+async function listRows(
+  tx: QuoteDatabase,
+  options: QuoteDraftManagementListOptions
+): Promise<QuoteDraftManagementListResult> {
   const page = normalizePage(options.page, 1);
   const limit = normalizeLimit(options.limit, 50);
   const search = (options.search || '').trim().toLocaleLowerCase();
@@ -726,7 +725,8 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
   const revisionsByQuote = new Map<string, typeof quoteRevisions.$inferSelect>();
   for (const revision of revisions) {
     const current = revisionsByQuote.get(revision.quotationId);
-    if (!current || revision.version > current.version) revisionsByQuote.set(revision.quotationId, revision);
+    if (!current || revision.version > current.version)
+      revisionsByQuote.set(revision.quotationId, revision);
   }
   const clientRows = await tx.select().from(clients);
   const clientsById = new Map(clientRows.map((row) => [row.id, row]));
@@ -740,12 +740,17 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
   const searchMatches = mappedRows.filter((row) => {
-      if (!search) return true;
-      return [row.quotation.businessNumber, row.name, row.client?.email || '', row.client?.documento || '']
-        .some((part) => String(part).toLocaleLowerCase().includes(search));
+    if (!search) return true;
+    return [
+      row.quotation.businessNumber,
+      row.name,
+      row.client?.email || '',
+      row.client?.documento || '',
+    ].some((part) => String(part).toLocaleLowerCase().includes(search));
   });
   const candidates = searchMatches.filter((row) => {
-    const rawState = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
+    const rawState =
+      row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
     const state = rawState === 'emitido' ? 'enviado' : rawState;
     return !wantedStatus || state === wantedStatus;
   });
@@ -766,7 +771,8 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
     Cancelled: 0,
   };
   for (const row of searchMatches) {
-    const rawState = row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
+    const rawState =
+      row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
     const state = rawState === 'emitido' ? 'enviado' : rawState;
     const key = statusUi(state);
     if (Object.prototype.hasOwnProperty.call(statusSummary, key)) statusSummary[key] += 1;
@@ -775,90 +781,127 @@ async function listRows(tx: QuoteDatabase, options: QuoteDraftManagementListOpti
     if (key === 'Perdido') statusSummary.Lost += 1;
   }
   const order = safeOrderValue(options.orderBy);
-  const tieBreak = (left: typeof candidates[number], right: typeof candidates[number]): number =>
-    left.quotation.businessNumber.localeCompare(right.quotation.businessNumber);
-  const compareWithTie = (primary: number, left: typeof candidates[number], right: typeof candidates[number]): number =>
-    primary || tieBreak(left, right);
+  const tieBreak = (
+    left: (typeof candidates)[number],
+    right: (typeof candidates)[number]
+  ): number => left.quotation.businessNumber.localeCompare(right.quotation.businessNumber);
+  const compareWithTie = (
+    primary: number,
+    left: (typeof candidates)[number],
+    right: (typeof candidates)[number]
+  ): number => primary || tieBreak(left, right);
   candidates.sort((left, right) => {
     if (order === 'creation asc' || order === 'transaction_date asc') {
       return compareWithTie(
         asDate(left.quotation.createdAt).getTime() - asDate(right.quotation.createdAt).getTime(),
         left,
-        right,
+        right
       );
     }
     if (order === 'creation desc' || order === 'transaction_date desc') {
       return compareWithTie(
         asDate(right.quotation.createdAt).getTime() - asDate(left.quotation.createdAt).getTime(),
         left,
-        right,
+        right
       );
     }
     if (order === 'valid_till asc') {
       return compareWithTie(
-        validUntilTime(left.revision.createdAt, left.revision.validadeDias) - validUntilTime(right.revision.createdAt, right.revision.validadeDias),
+        validUntilTime(left.revision.createdAt, left.revision.validadeDias) -
+          validUntilTime(right.revision.createdAt, right.revision.validadeDias),
         left,
-        right,
+        right
       );
     }
     if (order === 'valid_till desc') {
       return compareWithTie(
-        validUntilTime(right.revision.createdAt, right.revision.validadeDias) - validUntilTime(left.revision.createdAt, left.revision.validadeDias),
+        validUntilTime(right.revision.createdAt, right.revision.validadeDias) -
+          validUntilTime(left.revision.createdAt, left.revision.validadeDias),
         left,
-        right,
+        right
       );
     }
-    if (order === 'name asc') return compareWithTie(left.quotation.businessNumber.localeCompare(right.quotation.businessNumber), left, right);
-    if (order === 'name desc') return compareWithTie(right.quotation.businessNumber.localeCompare(left.quotation.businessNumber), left, right);
-    if (order === 'grand_total asc') return compareWithTie(compareMoneyValues(left.revision.total, right.revision.total), left, right);
-    if (order === 'grand_total desc') return compareWithTie(compareMoneyValues(right.revision.total, left.revision.total), left, right);
+    if (order === 'name asc')
+      return compareWithTie(
+        left.quotation.businessNumber.localeCompare(right.quotation.businessNumber),
+        left,
+        right
+      );
+    if (order === 'name desc')
+      return compareWithTie(
+        right.quotation.businessNumber.localeCompare(left.quotation.businessNumber),
+        left,
+        right
+      );
+    if (order === 'grand_total asc')
+      return compareWithTie(
+        compareMoneyValues(left.revision.total, right.revision.total),
+        left,
+        right
+      );
+    if (order === 'grand_total desc')
+      return compareWithTie(
+        compareMoneyValues(right.revision.total, left.revision.total),
+        left,
+        right
+      );
     if (order === 'updated_at asc') {
       return compareWithTie(
         asDate(left.quotation.updatedAt).getTime() - asDate(right.quotation.updatedAt).getTime(),
         left,
-        right,
+        right
       );
     }
     return compareWithTie(
       asDate(right.quotation.updatedAt).getTime() - asDate(left.quotation.updatedAt).getTime(),
       left,
-      right,
+      right
     );
   });
   const total = candidates.length;
-  const rows = candidates.slice((page - 1) * limit, page * limit).map(({ quotation, revision, client, name }) => {
-    const updatedAt = asIso(quotation.updatedAt);
-    const rawStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
-    const canonicalStatus = rawStatus === 'emitido' ? 'enviado' : rawStatus;
-    return {
-      id: quotation.businessNumber,
-      quotation_id: quotation.businessNumber,
-      quotation_uuid: quotation.id,
-      revision_id: revision.id,
-      revision: revision.version,
-      revision_number: revision.version,
-      client_id: quotation.clientId,
-      cliente: name,
-      cliente_snapshot: mapSnapshot(revision, client),
-      data: asIso(quotation.createdAt).slice(0, 10),
-      validade: validUntil(revision.createdAt, revision.validadeDias),
-      validade_dias: revision.validadeDias,
-      subtotal: formatDbMoney(revision.subtotal),
-      total: formatDbMoney(revision.total),
-      valor: formatDbMoney(revision.total),
-      frete: formatDbMoney(revision.frete),
-      status: statusUi(canonicalStatus),
-      status_canonical: canonicalStatus,
-      updated_at: updatedAt,
-      updatedAt,
-      concurrency_token: tokenFor(quotation.updatedAt),
-      optimistic_concurrency_token: tokenFor(quotation.updatedAt),
-    };
-  });
+  const rows = candidates
+    .slice((page - 1) * limit, page * limit)
+    .map(({ quotation, revision, client, name }) => {
+      const updatedAt = asIso(quotation.updatedAt);
+      const rawStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
+      const canonicalStatus = rawStatus === 'emitido' ? 'enviado' : rawStatus;
+      return {
+        id: quotation.businessNumber,
+        quotation_id: quotation.businessNumber,
+        quotation_uuid: quotation.id,
+        revision_id: revision.id,
+        revision: revision.version,
+        revision_number: revision.version,
+        client_id: quotation.clientId,
+        cliente: name,
+        cliente_snapshot: mapSnapshot(revision, client),
+        data: asIso(quotation.createdAt).slice(0, 10),
+        validade: validUntil(revision.createdAt, revision.validadeDias),
+        validade_dias: revision.validadeDias,
+        subtotal: formatDbMoney(revision.subtotal),
+        total: formatDbMoney(revision.total),
+        valor: formatDbMoney(revision.total),
+        frete: formatDbMoney(revision.frete),
+        status: statusUi(canonicalStatus),
+        status_canonical: canonicalStatus,
+        updated_at: updatedAt,
+        updatedAt,
+        concurrency_token: tokenFor(quotation.updatedAt),
+        optimistic_concurrency_token: tokenFor(quotation.updatedAt),
+      };
+    });
   return { rows, total, page, limit, statusSummary };
 }
 
-function normalizeUpdateItems(input: unknown): Array<{ sku: string; quantityScaled: bigint; quantity: string; rate: unknown; manualRate: boolean }> {
+function normalizeUpdateItems(
+  input: unknown
+): Array<{
+  sku: string;
+  quantityScaled: bigint;
+  quantity: string;
+  rate: unknown;
+  manualRate: boolean;
+}> {
   if (!Array.isArray(input) || input.length === 0) {
     throw new QuoteManagementInputError('Campo "items" obrigatório (array não vazio).');
   }
@@ -870,13 +913,22 @@ function normalizeUpdateItems(input: unknown): Array<{ sku: string; quantityScal
     }
     let quantityScaled: bigint;
     try {
-      quantityScaled = parseQuantityScaled(firstDefined(raw, ['qty', 'quantidade', 'quantity']), `Quantidade do item ${index + 1}`);
+      quantityScaled = parseQuantityScaled(
+        firstDefined(raw, ['qty', 'quantidade', 'quantity']),
+        `Quantidade do item ${index + 1}`
+      );
     } catch (error) {
-      if (error instanceof PricingValidationError) throw new QuoteManagementInputError(error.message);
+      if (error instanceof PricingValidationError)
+        throw new QuoteManagementInputError(error.message);
       throw error;
     }
     const manualRate = raw.manual_rate === true || raw.manualRate === true;
-    const rate = firstDefined(raw, ['rate', 'applied_unit_price', 'preco_aplicado', 'precoAplicado']);
+    const rate = firstDefined(raw, [
+      'rate',
+      'applied_unit_price',
+      'preco_aplicado',
+      'precoAplicado',
+    ]);
     if (manualRate && rate === undefined) {
       throw new QuoteManagementInputError(`Preço manual do item ${index + 1} é obrigatório.`);
     }
@@ -899,9 +951,17 @@ function readClientId(input: Record<string, unknown>): string | undefined {
 }
 
 function readConcurrencyToken(input: Record<string, unknown>): string {
-  const value = firstDefined(input, ['concurrency_token', 'concurrencyToken', 'version_token', 'updated_at', 'updatedAt']);
+  const value = firstDefined(input, [
+    'concurrency_token',
+    'concurrencyToken',
+    'version_token',
+    'updated_at',
+    'updatedAt',
+  ]);
   if (value === undefined || value === null || String(value).trim() === '') {
-    throw new QuoteManagementConflictError('Token de concorrência obrigatório para salvar o rascunho. Recarregue o orçamento.');
+    throw new QuoteManagementConflictError(
+      'Token de concorrência obrigatório para salvar o rascunho. Recarregue o orçamento.'
+    );
   }
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
   return String(value).trim();
@@ -919,7 +979,8 @@ function readValidity(input: Record<string, unknown>, current: number): number {
 
 function updatedAtFor(now: () => Date, previous: Date): Date {
   const candidate = now();
-  if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime())) return new Date(previous.getTime() + 1);
+  if (!(candidate instanceof Date) || Number.isNaN(candidate.getTime()))
+    return new Date(previous.getTime() + 1);
   return candidate.getTime() <= previous.getTime() ? new Date(previous.getTime() + 1) : candidate;
 }
 
@@ -935,7 +996,7 @@ function resolutionSource(resolution: PricingResolution): 'base' | 'tier' {
 
 export function createPostgresQuoteDraftManagementRepository(
   getDb: DatabaseProvider = getDatabase,
-  options: QuoteDraftManagementRepositoryOptions = {},
+  options: QuoteDraftManagementRepositoryOptions = {}
 ): QuoteDraftManagementRepository {
   const now = options.now || (() => new Date());
 
@@ -944,9 +1005,19 @@ export function createPostgresQuoteDraftManagementRepository(
       try {
         return await listRows(getDb(), listOptions);
       } catch (error) {
-        if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
-        console.error(`[quote-draft-management] list failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuoteManagementRepositoryError('Não foi possível consultar os orçamentos. Tente novamente.');
+        if (
+          error instanceof QuoteManagementInputError ||
+          error instanceof QuoteManagementNotFoundError ||
+          error instanceof QuoteManagementConflictError ||
+          error instanceof QuoteManagementRepositoryError
+        )
+          throw error;
+        console.error(
+          `[quote-draft-management] list failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuoteManagementRepositoryError(
+          'Não foi possível consultar os orçamentos. Tente novamente.'
+        );
       }
     },
 
@@ -956,16 +1027,30 @@ export function createPostgresQuoteDraftManagementRepository(
       try {
         return await readDetail(getDb(), normalized, now);
       } catch (error) {
-        if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
-        console.error(`[quote-draft-management] detail failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuoteManagementRepositoryError('Não foi possível consultar o orçamento. Tente novamente.');
+        if (
+          error instanceof QuoteManagementInputError ||
+          error instanceof QuoteManagementNotFoundError ||
+          error instanceof QuoteManagementConflictError ||
+          error instanceof QuoteManagementRepositoryError
+        )
+          throw error;
+        console.error(
+          `[quote-draft-management] detail failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuoteManagementRepositoryError(
+          'Não foi possível consultar o orçamento. Tente novamente.'
+        );
       }
     },
 
-    async update(id: string, rawInput: QuoteDraftManagementUpdateInput): Promise<QuoteDraftManagementDetail> {
+    async update(
+      id: string,
+      rawInput: QuoteDraftManagementUpdateInput
+    ): Promise<QuoteDraftManagementDetail> {
       const normalizedId = String(id || '').trim();
       if (!normalizedId) throw new QuoteManagementInputError('ID do orçamento não informado.');
-      if (!isRecord(rawInput)) throw new QuoteManagementInputError('Envie os dados do orçamento em um objeto válido.');
+      if (!isRecord(rawInput))
+        throw new QuoteManagementInputError('Envie os dados do orçamento em um objeto válido.');
       const input = rawInput as Record<string, unknown>;
       const expectedToken = readConcurrencyToken(input);
       const templateSelection = readTemplateSelection(input);
@@ -978,14 +1063,20 @@ export function createPostgresQuoteDraftManagementRepository(
           if (!quotation) throw new QuoteManagementNotFoundError();
           const currentToken = tokenFor(quotation.updatedAt);
           if (expectedToken !== currentToken) {
-            throw new QuoteManagementConflictError('O orçamento foi alterado por outro usuário. Recarregue antes de salvar.');
+            throw new QuoteManagementConflictError(
+              'O orçamento foi alterado por outro usuário. Recarregue antes de salvar.'
+            );
           }
           if (quotation.status !== 'rascunho') {
-            throw new QuoteManagementConflictError('Somente orçamentos em rascunho podem ser editados.');
+            throw new QuoteManagementConflictError(
+              'Somente orçamentos em rascunho podem ser editados.'
+            );
           }
           const revision = await readRevision(tx, quotation.id);
           if (!revision || revision.status !== 'rascunho') {
-            throw new QuoteManagementConflictError('A revisão do orçamento não está mais em rascunho.');
+            throw new QuoteManagementConflictError(
+              'A revisão do orçamento não está mais em rascunho.'
+            );
           }
           const clientId = selectedClientId || quotation.clientId;
           const [client] = await tx
@@ -1002,7 +1093,10 @@ export function createPostgresQuoteDraftManagementRepository(
             .where(and(or(...skus.map((sku) => eq(products.sku, sku))), eq(products.ativo, true)));
           const productBySku = new Map(productRows.map((row) => [row.sku, row]));
           const missingSku = skus.find((sku) => !productBySku.has(sku));
-          if (missingSku) throw new QuoteManagementNotFoundError(`Produto "${missingSku}" não encontrado ou inativo.`);
+          if (missingSku)
+            throw new QuoteManagementNotFoundError(
+              `Produto "${missingSku}" não encontrado ou inativo.`
+            );
           const tiers = await tx
             .select()
             .from(productPricingTiers)
@@ -1035,8 +1129,13 @@ export function createPostgresQuoteDraftManagementRepository(
                 })),
               });
             } catch (error) {
-              if (error instanceof PricingValidationError || error instanceof PricingUnavailableError) {
-                throw new QuoteManagementInputError(`Preço indisponível para o produto "${item.sku}".`);
+              if (
+                error instanceof PricingValidationError ||
+                error instanceof PricingUnavailableError
+              ) {
+                throw new QuoteManagementInputError(
+                  `Preço indisponível para o produto "${item.sku}".`
+                );
               }
               throw error;
             }
@@ -1044,8 +1143,13 @@ export function createPostgresQuoteDraftManagementRepository(
             try {
               resolution = resolveProductPrice(pricing, item.quantity, false);
             } catch (error) {
-              if (error instanceof PricingValidationError || error instanceof PricingUnavailableError) {
-                throw new QuoteManagementInputError(`Preço indisponível para o produto "${item.sku}".`);
+              if (
+                error instanceof PricingValidationError ||
+                error instanceof PricingUnavailableError
+              ) {
+                throw new QuoteManagementInputError(
+                  `Preço indisponível para o produto "${item.sku}".`
+                );
               }
               throw error;
             }
@@ -1054,7 +1158,8 @@ export function createPostgresQuoteDraftManagementRepository(
               try {
                 appliedCents = parseMoneyCents(item.rate, `Preço manual do item ${index + 1}`);
               } catch (error) {
-                if (error instanceof PricingValidationError) throw new QuoteManagementInputError(error.message);
+                if (error instanceof PricingValidationError)
+                  throw new QuoteManagementInputError(error.message);
                 throw error;
               }
             }
@@ -1077,14 +1182,27 @@ export function createPostgresQuoteDraftManagementRepository(
           }
 
           const freightRaw = firstDefined(input, ['frete', 'frete_aplicado']);
-          const freightCents = freightRaw === undefined ? parseNonNegativeMoney(revision.frete, 'Frete') : parseNonNegativeMoney(freightRaw, 'Frete');
+          const freightCents =
+            freightRaw === undefined
+              ? parseNonNegativeMoney(revision.frete, 'Frete')
+              : parseNonNegativeMoney(freightRaw, 'Frete');
           const totalCents = subtotalCents + freightCents;
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
           const pagamento = inputText(input.pagamento, 'Pagamento', 500, revision.pagamento);
           const entrega = inputText(input.entrega, 'Entrega', 500, revision.entrega);
-          const observacoes = inputText(firstDefined(input, ['observacoes', 'notes']), 'Observações', 4000, revision.observacoes);
-          const prazoProducao = inputText(input.prazo_producao, 'Prazo de produção', 500, revision.prazoProducao);
+          const observacoes = inputText(
+            firstDefined(input, ['observacoes', 'notes']),
+            'Observações',
+            4000,
+            revision.observacoes
+          );
+          const prazoProducao = inputText(
+            input.prazo_producao,
+            'Prazo de produção',
+            500,
+            revision.prazoProducao
+          );
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
 
           await tx
@@ -1120,26 +1238,28 @@ export function createPostgresQuoteDraftManagementRepository(
             })
             .where(eq(quoteRevisions.id, revision.id));
           await tx.delete(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revision.id));
-          await tx.insert(quoteRevisionItems).values(resolvedItems.map((item) => ({
-            id: item.id,
-            revisionId: revision.id,
-            position: item.position,
-            productSku: item.product.sku,
-            quantidade: item.quantity,
-            produtoSku: item.product.sku,
-            produtoNome: item.product.nome,
-            produtoDescricao: item.product.descricao,
-            produtoUnidade: item.product.unidade,
-            produtoCategoria: item.product.categoria,
-            produtoMarca: item.product.marca,
-            precoFonte: resolutionSource(item.resolution),
-            precoMinimoFaixa: item.resolution.minimum_quantity,
-            precoSugerido: item.resolution.rate,
-            precoAplicado: formatMoneyCents(item.appliedCents),
-            diferencaPreco: signedMoney(item.differenceCents),
-            totalLinha: formatMoneyCents(item.lineTotalCents),
-            manualRate: item.manualRate,
-          })));
+          await tx.insert(quoteRevisionItems).values(
+            resolvedItems.map((item) => ({
+              id: item.id,
+              revisionId: revision.id,
+              position: item.position,
+              productSku: item.product.sku,
+              quantidade: item.quantity,
+              produtoSku: item.product.sku,
+              produtoNome: item.product.nome,
+              produtoDescricao: item.product.descricao,
+              produtoUnidade: item.product.unidade,
+              produtoCategoria: item.product.categoria,
+              produtoMarca: item.product.marca,
+              precoFonte: resolutionSource(item.resolution),
+              precoMinimoFaixa: item.resolution.minimum_quantity,
+              precoSugerido: item.resolution.rate,
+              precoAplicado: formatMoneyCents(item.appliedCents),
+              diferencaPreco: signedMoney(item.differenceCents),
+              totalLinha: formatMoneyCents(item.lineTotalCents),
+              manualRate: item.manualRate,
+            }))
+          );
           await tx
             .update(quotations)
             .set({ clientId: client.id, status: 'rascunho', updatedAt })
@@ -1150,9 +1270,19 @@ export function createPostgresQuoteDraftManagementRepository(
         });
         return detail;
       } catch (error) {
-        if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
-        console.error(`[quote-draft-management] update failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuoteManagementRepositoryError('Não foi possível salvar as alterações do orçamento. Tente novamente.');
+        if (
+          error instanceof QuoteManagementInputError ||
+          error instanceof QuoteManagementNotFoundError ||
+          error instanceof QuoteManagementConflictError ||
+          error instanceof QuoteManagementRepositoryError
+        )
+          throw error;
+        console.error(
+          `[quote-draft-management] update failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuoteManagementRepositoryError(
+          'Não foi possível salvar as alterações do orçamento. Tente novamente.'
+        );
       }
     },
 
@@ -1165,7 +1295,9 @@ export function createPostgresQuoteDraftManagementRepository(
           const quotation = await readLockedQuotation(tx, normalizedId);
           if (!quotation) throw new QuoteManagementNotFoundError();
           if (quotation.status !== 'rascunho') {
-            throw new QuoteManagementConflictError('Somente orçamentos em rascunho podem ser excluídos.');
+            throw new QuoteManagementConflictError(
+              'Somente orçamentos em rascunho podem ser excluídos.'
+            );
           }
           const deletedAt = now().toISOString();
           await tx.delete(quotations).where(eq(quotations.id, quotation.id));
@@ -1173,9 +1305,19 @@ export function createPostgresQuoteDraftManagementRepository(
         });
         return result;
       } catch (error) {
-        if (error instanceof QuoteManagementInputError || error instanceof QuoteManagementNotFoundError || error instanceof QuoteManagementConflictError || error instanceof QuoteManagementRepositoryError) throw error;
-        console.error(`[quote-draft-management] delete failed (${error instanceof Error ? error.name : typeof error})`);
-        throw new QuoteManagementRepositoryError('Não foi possível excluir o orçamento. Tente novamente.');
+        if (
+          error instanceof QuoteManagementInputError ||
+          error instanceof QuoteManagementNotFoundError ||
+          error instanceof QuoteManagementConflictError ||
+          error instanceof QuoteManagementRepositoryError
+        )
+          throw error;
+        console.error(
+          `[quote-draft-management] delete failed (${error instanceof Error ? error.name : typeof error})`
+        );
+        throw new QuoteManagementRepositoryError(
+          'Não foi possível excluir o orçamento. Tente novamente.'
+        );
       }
     },
   };
@@ -1186,10 +1328,12 @@ export function createPostgresQuoteDraftManagementRepository(
 }
 
 export const createPostgresQuoteManagementRepository = createPostgresQuoteDraftManagementRepository;
-export const createPostgresQuotationManagementRepository = createPostgresQuoteDraftManagementRepository;
+export const createPostgresQuotationManagementRepository =
+  createPostgresQuoteDraftManagementRepository;
 export const createPostgresQuoteDraftRepository = createPostgresQuoteDraftManagementRepository;
 export const createQuoteDraftManagementRepository = createPostgresQuoteDraftManagementRepository;
-export const createQuotationDraftManagementRepository = createPostgresQuoteDraftManagementRepository;
+export const createQuotationDraftManagementRepository =
+  createPostgresQuoteDraftManagementRepository;
 export const QuoteDraftManagementInputError = QuoteManagementInputError;
 export const QuoteDraftManagementNotFoundError = QuoteManagementNotFoundError;
 export const QuoteDraftManagementConflictError = QuoteManagementConflictError;

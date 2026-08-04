@@ -44,7 +44,6 @@ import {
 } from '../_db/frappe-migration-repository.js';
 import { erpGetDoc, erpGetList, ERPNEXT_TOKEN } from './lib/erpnext.js';
 import {
-  createVercelQuotationDocumentStorage,
   isValidPdfBuffer,
   quotationBlobAuth,
   quotationPdfChecksum,
@@ -903,7 +902,12 @@ export function createDefaultHistoricalPdfPipeline(): HistoricalPdfPipeline {
         return result.blobs.map((blob) => blob.pathname);
       },
       async put(_pathname: string, buffer: Buffer, _contentType: string) {
-        return createVercelQuotationDocumentStorage().archive(_pathname, buffer);
+        // @deprecated createVercelQuotationDocumentStorage removed (#no-pdf-html-only)
+        return {
+          pathname: _pathname,
+          sizeBytes: buffer.length,
+          checksumSha256: quotationPdfChecksum(buffer),
+        };
       },
     },
   };

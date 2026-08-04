@@ -6,7 +6,6 @@ import { getDatabase, type AppDatabase } from './client.js';
 import {
   clients,
   frappeImportLineage,
-  issuedDocuments,
   productPricingTiers,
   products,
   quoteRevisionItems,
@@ -485,27 +484,7 @@ export function createPostgresFrappeMigrationRepository(
           );
         }
         if (unit.document) {
-          const document = unit.document;
-          const documentValues = {
-            quotationId: unit.id,
-            revisionId: revision.id,
-            kind: document.kind,
-            blobPathname: document.blobPathname,
-            fileName: document.fileName,
-            mimeType: document.mimeType,
-            sizeBytes: document.sizeBytes,
-            checksumSha256: document.checksumSha256,
-            templateKey: document.templateKey,
-            templateHash: document.templateHash,
-            createdAt: revision.createdAt,
-          };
-          await tx
-            .insert(issuedDocuments)
-            .values({ id: document.id, ...documentValues })
-            .onConflictDoUpdate({
-              target: issuedDocuments.id,
-              set: { ...documentValues },
-            });
+          // @deprecated issuedDocuments table removed (#no-pdf-html-only)
         }
         await upsertLineage(tx, unit.lineage);
       });
@@ -523,49 +502,20 @@ export function createPostgresFrappeMigrationRepository(
     },
 
     async listIssuedDocumentPdfPlaceholders(): Promise<IssuedDocumentPdfPlaceholder[]> {
-      const db = getDb();
-      const rows = await db
-        .select({
-          documentId: issuedDocuments.id,
-          fileName: issuedDocuments.fileName,
-          blobPathname: issuedDocuments.blobPathname,
-          businessNumber: quotations.businessNumber,
-          sourceId: frappeImportLineage.sourceId,
-        })
-        .from(issuedDocuments)
-        .innerJoin(quotations, eq(quotations.id, issuedDocuments.quotationId))
-        .innerJoin(
-          frappeImportLineage,
-          and(
-            eq(frappeImportLineage.sourceDoctype, 'Quotation'),
-            eq(frappeImportLineage.entityType, 'orcamento'),
-            eq(frappeImportLineage.localKey, sql`${quotations.id}::text`)
-          )
-        )
-        .where(eq(issuedDocuments.kind, 'historical_pdf_import'))
-        .orderBy(asc(quotations.businessNumber));
-      return rows.map((row) => ({
-        documentId: row.documentId,
-        sourceId: row.sourceId,
-        businessNumber: row.businessNumber,
-        fileName: row.fileName,
-        blobPathname: row.blobPathname,
-      }));
+      // @deprecated issuedDocuments table removed (#no-pdf-html-only)
+      return [];
     },
 
     async updateIssuedDocumentPdf(
-      documentId: string,
-      blobPathname: string,
-      fileName: string,
-      mimeType: string,
-      sizeBytes: number,
-      checksumSha256: string
+      _documentId: string,
+      _blobPathname: string,
+      _fileName: string,
+      _mimeType: string,
+      _sizeBytes: number,
+      _checksumSha256: string
     ): Promise<void> {
-      const db = getDb();
-      await db
-        .update(issuedDocuments)
-        .set({ blobPathname, fileName, mimeType, sizeBytes, checksumSha256 })
-        .where(eq(issuedDocuments.id, documentId));
+      // @deprecated issuedDocuments table removed (#no-pdf-html-only)
+      console.warn('updateIssuedDocumentPdf is deprecated (#no-pdf-html-only)');
     },
   };
 }

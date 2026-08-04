@@ -110,28 +110,11 @@ interface QuotationData {
   updatedAt?: string;
   concurrency_token?: string;
   version_token?: string;
-  issued_document?: IssuedQuotationDocumentMetadata | null;
   revision_history?: QuotationRevisionHistoryEntry[];
   derived_expired?: boolean;
   expiration_derived?: boolean;
   is_expired?: boolean;
   expirada?: boolean;
-}
-
-interface IssuedQuotationDocumentMetadata {
-  id: string;
-  quotation_id?: string;
-  revision_id?: string;
-  kind?: string;
-  storage_key?: string;
-  file_name: string;
-  mime_type: string;
-  size_bytes: number;
-  checksum_sha256: string;
-  template_key?: string;
-  template_hash?: string;
-  issued_at: string;
-  download_url: string;
 }
 
 interface QuotationRevisionHistoryEntry {
@@ -153,7 +136,6 @@ interface QuotationRevisionHistoryEntry {
   expiration_derived: boolean;
   is_expired: boolean;
   expirada: boolean;
-  issued_document: IssuedQuotationDocumentMetadata | null;
 }
 
 interface QuotationDetailPageProps {
@@ -519,7 +501,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       await apiDelete(`/quotations?id=${encodeURIComponent(data.id)}`);
       navigate('/quotations');
     } catch (err) {
-      setMessage(`Erro ao excluir: ${(err instanceof Error ? err.message : 'Tente novamente.')}`);
+      setMessage(`Erro ao excluir: ${err instanceof Error ? err.message : 'Tente novamente.'}`);
     }
   }, [data.id, navigate]);
 
@@ -541,37 +523,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       'noopener,noreferrer'
     );
   }, [data.id, selectedTemplate]);
-  const issuePdf = useCallback(async () => {
+  const emitir = useCallback(async () => {
+    if (!confirm(`Emitir orçamento ${data.id}? Após emissão não poderá ser editado.`)) return;
     setIssuing(true);
-    setMessage('Renderizando e arquivando o PDF definitivo…');
+    setMessage('');
     try {
-      const payload: Record<string, unknown> = { id: data.id };
-      if (selectedTemplate) {
-        payload.template = selectedTemplate;
-      }
-      const result = await apiPost<{
-        status: string;
-        already_issued: boolean;
-        document: IssuedQuotationDocumentMetadata;
-      }>('/quotation-issue', payload);
-      setData((current) => ({
-        ...current,
-        status: 'Enviado',
-        status_canonical: 'enviado',
-        issued_document: result.document,
-      }));
-      setMessage(
-        result.already_issued
-          ? 'Este PDF já estava emitido.'
-          : 'PDF definitivo emitido e arquivado.'
-      );
+      await apiPost(`/quotations?id=${encodeURIComponent(data.id)}`, {
+        action: 'set_status',
+        status: 'enviado',
+      });
+      setMessage('Orçamento emitido.');
       await onReload();
     } catch (error) {
       setMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`);
     } finally {
       setIssuing(false);
     }
-  }, [data.id, onReload, selectedTemplate]);
+  }, [data.id, onReload]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido') => {
@@ -881,13 +849,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             {templateError && <span className="text-xs text-destructive">{templateError}</span>}
           </div>
         )}
-        {data.issued_document && (
-          <div className="px-6 py-3 border-b bg-success/10 text-sm text-success" role="status">
-            PDF definitivo arquivado · {data.issued_document.file_name} ·{' '}
-            {(data.issued_document.size_bytes / 1024).toFixed(1)} KB
-          </div>
-        )}
-
         {data.status_canonical === 'enviado' && !editing && (
           <div
             className="px-6 py-3 border-b flex flex-wrap items-center gap-2"
@@ -1060,10 +1021,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
               variant="success"
               size="sm"
               disabled={issuing || lifecycleAction !== null}
-              onClick={issuePdf}
+              onClick={emitir}
             >
               {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
-              {issuing ? 'Emitindo PDF…' : 'Emitir PDF definitivo'}
+              {issuing ? 'Emitindo…' : 'Emitir orçamento'}
             </Button>
           )}
           {editing && (
@@ -1076,9 +1037,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
               </Button>
             </>
           )}
-          {data.issued_document && (
+          {data.status_canonical !== 'rascunho' && (
             <Button variant="outline" size="sm" onClick={openIssuedDocument}>
-              <FileText size={14} /> Abrir PDF emitido
+              <FileText size={14} /> Visualizar
             </Button>
           )}
           {draftEditable && !editing && (
@@ -1125,10 +1086,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                       entry.expiration_derived ||
                       entry.is_expired ||
                       entry.expirada;
-                    const eligible =
-                      Boolean(entry.issued_document) &&
-                      entry.status_canonical !== 'rascunho' &&
-                      !draftEditable;
+                    const eligible = entry.status_canonical !== 'rascunho' && !draftEditable;
                     return (
                       <TableRow key={entry.revision_id || entry.id}>
                         <TableCell className="font-medium">R{entry.revision_number}</TableCell>
@@ -1147,19 +1105,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                           {formatBRL(entry.total || entry.valor)}
                         </TableCell>
                         <TableCell>
-                          {entry.issued_document ? (
+                          {entry.status_canonical !== 'rascunho' ? (
                             <button
                               type="button"
                               className="text-primary hover:underline text-xs"
-                              onClick={() =>
+                              onClick={() => {
                                 window.open(
-                                  entry.issued_document?.download_url,
+                                  `/api/quotation-preview?id=${encodeURIComponent(entry.revision_id)}&format=pdf`,
                                   '_blank',
                                   'noopener,noreferrer'
-                                )
-                              }
+                                );
+                              }}
                             >
-                              Baixar PDF
+                              Visualizar
                             </button>
                           ) : (
                             <span className="text-xs text-fg-muted">—</span>

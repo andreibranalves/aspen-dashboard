@@ -322,48 +322,7 @@ export const quoteRevisionItems = pgTable(
   ]
 );
 
-/** Definitive private files emitted from one immutable quotation revision.
- * A revision can own at most one final PDF, which makes retries idempotent at
- * the database boundary even when rendering or Blob upload is repeated. */
-export const issuedDocuments = pgTable(
-  'issued_documents',
-  {
-    id: uuid('id').primaryKey(),
-    quotationId: uuid('quotation_id')
-      .notNull()
-      .references(() => quotations.id, { onDelete: 'cascade' }),
-    revisionId: uuid('revision_id')
-      .notNull()
-      .references(() => quoteRevisions.id, { onDelete: 'cascade' }),
-    kind: varchar('kind', { length: 32 }).notNull().default('quotation_pdf'),
-    blobPathname: varchar('blob_pathname', { length: 1024 }).notNull(),
-    fileName: varchar('file_name', { length: 255 }).notNull(),
-    mimeType: varchar('mime_type', { length: 100 }).notNull().default('application/pdf'),
-    sizeBytes: integer('size_bytes').notNull(),
-    checksumSha256: varchar('checksum_sha256', { length: 64 }).notNull(),
-    templateKey: varchar('template_key', { length: 120 }).notNull(),
-    templateHash: varchar('template_hash', { length: 64 }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex('issued_documents_revision_unique').on(table.revisionId),
-    uniqueIndex('issued_documents_blob_pathname_unique').on(table.blobPathname),
-    index('issued_documents_quotation_created_idx').on(table.quotationId, table.createdAt),
-    check(
-      'issued_documents_kind_check',
-      sql`${table.kind} IN ('quotation_pdf', 'historical_pdf_import')`
-    ),
-    check('issued_documents_mime_type_check', sql`${table.mimeType} = 'application/pdf'`),
-    // Historical imports record a document placeholder without downloading the
-    // file; size 0 means the real size is still unknown (issue #15).
-    check('issued_documents_size_positive_check', sql`${table.sizeBytes} >= 0`),
-    check('issued_documents_checksum_check', sql`${table.checksumSha256} ~ '^[0-9a-f]{64}$'`),
-    check('issued_documents_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
-  ]
-);
-
-/**
- * Immutable-ish lineage for records imported from Frappe.  A source document
+/** Immutable-ish lineage for records imported from Frappe.  A source document
  * is unique regardless of the entity it currently maps to, which lets a Lead
  * and a Customer retain their independent ERP identifiers while sharing one
  * local client key.  The raw payload is intentionally kept as JSONB for
@@ -409,5 +368,4 @@ export const quoteSequence = quoteSequences;
 export const quotation = quotations;
 export const quoteRevision = quoteRevisions;
 export const quoteRevisionItem = quoteRevisionItems;
-export const issuedDocument = issuedDocuments;
 export const frappeLineage = frappeImportLineage;

@@ -11,7 +11,7 @@ import {
   type QuoteDatabase,
   type QuoteDraftManagementDetail,
 } from './quote-draft-management-repository.js';
-import { issuedDocuments, quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
+import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -216,14 +216,6 @@ export function createPostgresQuotationLifecycleRepository(
           const sourceStatus = source.status === 'emitido' ? 'enviado' : source.status;
           if (!ISSUED_STATES.has(sourceStatus)) {
             throw new QuoteManagementConflictError('Somente uma revisão já enviada pode originar uma nova revisão.');
-          }
-          const [sourceDocument] = await tx
-            .select({ id: issuedDocuments.id })
-            .from(issuedDocuments)
-            .where(and(eq(issuedDocuments.quotationId, quotation.id), eq(issuedDocuments.revisionId, source.id)))
-            .limit(1);
-          if (!sourceDocument) {
-            throw new QuoteManagementConflictError('A revisão de origem não possui documento definitivo emitido.');
           }
 
           const revisions = await tx

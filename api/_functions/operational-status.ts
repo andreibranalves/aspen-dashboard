@@ -1,7 +1,7 @@
 // GET /api/operational-status — readiness check for operational mode activation.
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { getDatabase } from '../_db/client.js';
-import { frappeImportLineage, issuedDocuments, appSettings } from '../_db/schema.js';
+import { frappeImportLineage, appSettings } from '../_db/schema.js';
 import { eq, count, sql } from 'drizzle-orm';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,25 +50,9 @@ async function checkMigrationComplete(): Promise<{ complete: boolean; counts: Re
   return { complete, counts };
 }
 
+/** PDF archival removed (#no-pdf-html-only). Always reports ready. */
 async function checkPdfsArchived(): Promise<{ archived: boolean; pdfCount: number; blobTokenPresent: boolean }> {
-  const blobTokenPresent = !!process.env.BLOB_READ_WRITE_TOKEN;
-  let pdfCount = 0;
-
-  try {
-    const db = getDatabase();
-    const result = await db
-      .select({ cnt: count() })
-      .from(issuedDocuments);
-    pdfCount = result[0]?.cnt ?? 0;
-  } catch {
-    // Database not available
-  }
-
-  return {
-    archived: pdfCount > 0 && blobTokenPresent,
-    pdfCount,
-    blobTokenPresent,
-  };
+  return { archived: true, pdfCount: 0, blobTokenPresent: false };
 }
 
 function checkBackupValidated(): { validated: boolean; lastBackup: string | null } {
