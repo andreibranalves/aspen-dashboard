@@ -169,13 +169,6 @@ test('quotations core forwards complete update input and maps stale/non-editable
 });
 
 test('actual lifecycle repository status transition returns no issuance artifacts', async () => {
-  const sideEffects = { pdf: 0, blob: 0, documentStorage: 0, documentUrl: 0 };
-  const seams = {
-    generatePdf: async () => { sideEffects.pdf += 1; },
-    uploadBlob: async () => { sideEffects.blob += 1; },
-    storeDocument: async () => { sideEffects.documentStorage += 1; },
-    resolveDocumentUrl: async () => { sideEffects.documentUrl += 1; },
-  };
   const lifecycleSource = await readFile(new URL('../../api/_db/quotation-lifecycle-repository.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(lifecycleSource, new RegExp('quotation-pdf|quotation-document-storage|@vercel/blob|issued_documents'));
   const quotation = {
@@ -208,7 +201,6 @@ test('actual lifecycle repository status transition returns no issuance artifact
         status_canonical: 'aprovado',
         revision_history: [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }],
       } as any),
-      sideEffects: seams,
     },
   );
   const payload = await lifecycle.setStatus(detail.id, {
@@ -216,7 +208,6 @@ test('actual lifecycle repository status transition returns no issuance artifact
     concurrency_token: detail.concurrency_token,
   }) as unknown as Record<string, unknown>;
   assert.equal(payload.status_canonical, 'aprovado');
-  assert.deepEqual(sideEffects, { pdf: 0, blob: 0, documentStorage: 0, documentUrl: 0 });
   for (const key of ['pdf_url', 'document_url', 'issued_document', 'issued_document_id']) {
     assert.equal(key in payload, false, `lifecycle response must not expose ${key}`);
   }

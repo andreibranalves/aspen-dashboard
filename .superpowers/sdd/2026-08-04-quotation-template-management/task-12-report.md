@@ -1,91 +1,64 @@
 # Task 12 report
 
-## Scope
+## Round 3 scope
 
-Added regression coverage plus the minimum production seam needed to make lifecycle issuance assertions explicit:
+Removed the inert lifecycle side-effect seam introduced by the previous round:
 
-- lifecycle status response invokes the actual PostgreSQL repository path and observes injectable PDF/Blob/document-storage/document-URL seams; all remain unused and no issuance fields are returned;
-- advisory-lock regression extracts the key from both Drizzle SQL query chunks and postgres tagged strings, then uses an independent key-indexed simulator to prove migration and lifecycle writer serialization;
-- lifecycle repository options document the side-effect seam without adding an issuance path.
+- removed exported `QuotationLifecycleSideEffects`;
+- removed `sideEffects` from `QuotationLifecycleRepositoryOptions`;
+- removed test-only PDF, Blob, document-storage, and document-URL callback spies.
 
-Production files changed: `api/_db/quotation-lifecycle-repository.ts` adds the typed `QuotationLifecycleSideEffects` option seam, so future issuance calls cannot bypass regression spies; it is intentionally unused because status transitions must not issue documents. `api/_db/quotation-write-lock.ts` and `scripts/migrate-quotation-templates.mjs` are existing production lock integration changes under test, not test-only files.
-No generated API output, PDF, Blob, or design docs changed.
+The production lifecycle repository now exposes only behavior it implements.
+Status transitions still use the actual repository `setStatus` path, and tests retain honest source-level and response assertions:
 
-## Targeted unit tests
+- `quotation-lifecycle-repository.ts` imports no PDF, document-storage, Blob, or issued-document dependency;
+- the actual repository status response has no issuance fields such as `pdf_url`, `document_url`, `issued_document`, or `issued_document_id`.
 
-Command:
+The keyed lock regression and migration CLI behavior from prior rounds remain unchanged.
+No generated `api/**/*.js`, PDF, Blob, or design-document files changed.
 
-```bash
-TZ=UTC node --test tests/unit/quotation-content.test.ts tests/unit/quotation-template-library.test.ts tests/unit/quotation-template-migration.test.ts tests/unit/quotation-templates-core.test.js tests/unit/settings.test.ts tests/unit/quotations-core.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
-```
-
-Result: PASS, 92 passed, 0 failed, 2 skipped.
-
-Skipped tests are PostgreSQL integration tests because `TEST_QUOTE_DATABASE_URL` / `TEST_DATABASE_URL` are absent. This is reported as unavailable integration coverage, not as a pass.
-
-## Affected E2E
-
-Command:
-
-```bash
-npx playwright test tests/settings.spec.js tests/quotation-templates-core.spec.js tests/quotation-lifecycle.spec.js
-```
-
-Result: PASS, 9 passed, 0 failed.
-
-The quotation lifecycle E2E covers on-demand PDF preview URL behavior, historical preview identity, status transition, and revision creation. Template preview runs sandboxed in the browser test suite.
-
-## Project verification
-
-- `npm run lint`: PASS, zero errors; existing warnings remain.
-- `npm run type-check`: PASS.
-- `npm run check:tailwind`: PASS.
-- `npm run build`: PASS.
-- `npm run test:unit`: PASS, 460 passed, 0 failed, 12 skipped. PostgreSQL skips remain due to absent database URL.
-
-## Forbidden-reference/security checks
-
-The requested TypeScript/TSX scan found only existing intentional matches:
-
-- `api/_functions/lib/quotation-html.ts` print button validator fixture (`onclick`), existing.
-- React `onClick` handlers in application source, expected.
-- Existing sandboxed template preview iframe in `QuotationTemplateManager`, expected and covered by E2E.
-
-The issuance dependency scan found only historical migration comments/types for `issued_documents` and the historical migration Blob pipeline. No new issuance dependency was introduced. Generated `api/**/*.js` files were not included in source scan and none were staged.
-
-## Migration verification
-
-`npm run migrate:quotation-templates` was attempted. It failed safely because `DATABASE_URL` is absent:
-
-```text
-[quotation-template-migration] failed (Error)
-Falha na migração de templates. Consulte os logs operacionais.
-```
-
-A second idempotency run was not claimed because no database URL exists. Production verification must run `npm run db:migrate`, then `npm run migrate:quotation-templates` twice against PostgreSQL and inspect reports for zero additional revisions on the second run.
-
-## Files
+## Files changed in round 3
 
 - `api/_db/quotation-lifecycle-repository.ts`
-- `api/_db/quotation-write-lock.ts`
-- `scripts/migrate-quotation-templates.mjs`
-- `tests/unit/quotation-template-migration.test.ts`
 - `tests/unit/quotations-core.test.ts`
 - this report
 
+## Targeted verification
+
+Command:
+
+```bash
+TZ=UTC node --test tests/unit/quotations-core.test.ts tests/unit/quotation-template-migration.test.ts
+```
+
+Result: PASS, 12 passed, 0 failed, 0 skipped.
+
+The lifecycle regression invokes the actual PostgreSQL repository status transition against a transaction double, verifies the response contains no issuance fields, and verifies source-level absence of PDF, document-storage, Blob, and issued-document imports.
+The keyed lock regression still extracts the actual migration and lifecycle advisory keys and proves same-key serialization.
+
+## Full verification status
+
+Prior round evidence remains valid for the unchanged scope:
+
+- targeted unit suite: 92 passed, 0 failed, 2 PostgreSQL integration tests skipped because database variables are absent;
+- affected Playwright suite: 9 passed, 0 failed;
+- `npm run lint`: passed with existing warnings;
+- `npm run type-check`: passed;
+- `npm run check:tailwind`: passed;
+- `npm run build`: passed;
+- full unit suite: 460 passed, 0 failed, 12 PostgreSQL tests skipped because database variables are absent.
+
+Migration CLI execution remains unavailable in this checkout because `DATABASE_URL` is absent.
+Real PostgreSQL migration idempotency, advisory-lock behavior, and lifecycle persistence require `DATABASE_URL` or `TEST_DATABASE_URL`.
+
+## Review finding addressed
+
+The dead seam finding is resolved.
+Production no longer exports or accepts an inert side-effect callback contract, and tests no longer claim runtime callback-spy coverage.
+The accepted alternative is source-level dependency verification plus the actual repository response assertion.
+
 ## Residual risks
 
-- PostgreSQL migration idempotency and real cross-process advisory-lock behavior remain unverified in this environment.
+- PostgreSQL migration idempotency and real cross-process advisory-lock behavior remain unverified without a database URL.
 - PostgreSQL lifecycle persistence/concurrency integration remains skipped without a database URL.
-- Existing intentional forbidden-reference matches require reviewer distinction from accepted template source paths.
-- Real PostgreSQL lock ownership, migration idempotency, and lifecycle persistence remain unavailable without `TEST_DATABASE_URL` / `DATABASE_URL`.
-
-## Round-1 evidence
-
-- `runQuotationTemplateMigration` now exposes a dependency seam while the production CLI still acquires the shared advisory lock and performs post-commit verification.
-- The concurrency regression invokes the actual migration runner and actual lifecycle repository `setStatus` path concurrently, extracts each actual lock query key, and uses an independent key-indexed simulator to assert same-key serialized order. A changed key or omitted lock fails the test.
-- The lifecycle regression invokes the actual PostgreSQL lifecycle repository against a fake transaction/database with injectable PDF/Blob/document-storage/document-URL spies and asserts all remain zero plus no `pdf_url`, `document_url`, `issued_document`, or `issued_document_id`; source inspection also proves lifecycle has no issuance import.
-- Focused seam tests: 12 passed, 0 failed.
-- `npm run build:api` and `git diff --check` passed.
-- Existing TypeScript fixture diagnostics in `tests/unit/quotations-core.test.ts` remain unrelated pre-existing mock-shape findings; runtime tests pass.
-- No generated API, PDF, Blob, or design-document changes were introduced.
+- Existing historical migration references to issued-document data remain outside this lifecycle production scope.
