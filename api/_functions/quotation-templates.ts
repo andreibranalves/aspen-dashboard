@@ -1,5 +1,5 @@
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
-import { isQuoteEndpointEnabled, responseMetadata } from './orcamento-mode.js';
+import { isQuoteEndpointEnabled, isCoreWriteEnabled, responseMetadata } from './orcamento-mode.js';
 import {
   createQuotationTemplateLibraryRepository,
   type QuotationTemplateLibraryRepository,
@@ -63,6 +63,7 @@ export function createQuotationTemplatesHandler(
     if (!isQuoteEndpointEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     try {
       if (isValidate(event)) {
+        if (!isCoreWriteEnabled()) return json(403, { error: 'Operação de escrita não permitida neste estado de rollout.' });
         if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });
         const input = body(event);
         if (!input) return json(400, { error: 'JSON inválido.' });
@@ -86,9 +87,10 @@ export function createQuotationTemplatesHandler(
         );
         return json(200, { ...result, data: result.templates });
       }
-      const input = body(event);
-      if (!input) return json(400, { error: 'JSON inválido.' });
-      if (event.httpMethod === 'POST')
+      if (event.httpMethod === 'POST') {
+        if (!isCoreWriteEnabled()) return json(403, { error: 'Operação de escrita não permitida neste estado de rollout.' });
+        const input = body(event);
+        if (!input) return json(400, { error: 'JSON inválido.' });
         return json(
           201,
           await dependencies.repository.create({
@@ -97,7 +99,11 @@ export function createQuotationTemplatesHandler(
             source: String(input.source || ''),
           })
         );
+      }
       if (event.httpMethod !== 'PUT') return json(405, { error: 'Método não permitido.' });
+      if (!isCoreWriteEnabled()) return json(403, { error: 'Operação de escrita não permitida neste estado de rollout.' });
+      const input = body(event);
+      if (!input) return json(400, { error: 'JSON inválido.' });
       const id = event.queryStringParameters?.id;
       if (!id) return json(400, { error: 'ID do template não informado.' });
       const action = input.action;

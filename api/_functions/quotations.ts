@@ -15,7 +15,8 @@ import {
   createHttpError,
 } from './lib/erpnext.js';
 import { handler as coreHandler } from './quotations-core.js';
-import { isCoreQuotesEnabled } from './orcamento-mode.js';
+import { resolveEffectiveRolloutState } from './orcamento-mode.js';
+import type { QuoteRolloutState } from './orcamento-mode.js';
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -535,13 +536,22 @@ export interface QuotationsHandlerDependencies {
 }
 
 /** Feature-flagged boundary. Core failures are returned unchanged and never
- * fall back to Frappe. Every value other than the exact string `true` keeps
- * the pre-rollout handler byte-compatible. */
+ * fall back to Frappe. The effective rollout state selects the dispatch path:
+ * - postgres-write: core handler (read+write via PostgreSQL)
+ * - postgres-read-only: core for reads, legacy for writes
+ * - rollback-compatible: core for reads, legacy for writes
+ * - legacy: legacy handler (Frappe)
+ */
 export function createHandler(dependencies: QuotationsHandlerDependencies = {}): LegacyHandler {
   const selectedCore = dependencies.core || coreHandler;
   const selectedLegacy = dependencies.legacy || legacyHandler;
   return async (event: FunctionEvent): Promise<FunctionResult> => {
-    if (isCoreQuotesEnabled()) return selectedCore(event);
+    const state: QuoteRolloutState = resolveEffectiveRolloutState();
+    if (state === 'postgres-write') return selectedCore(event);
+    if (state === 'postgres-read-only' || state === 'rollback-compatible') {
+      if (event.httpMethod === 'GET') return selectedCore(event);
+      return selectedLegacy(event);
+    }
     return selectedLegacy(event);
   };
 }

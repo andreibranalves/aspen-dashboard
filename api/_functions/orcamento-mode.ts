@@ -31,6 +31,44 @@ export function isQuoteEndpointEnabled(): boolean {
   return getQuoteRolloutState() !== 'legacy';
 }
 
+// ── Precedence-aware dispatch helpers ────────────────────────────────────────
+//
+// Precedence matrix (CRM_CORE_QUOTES_ENABLED x CRM_QUOTES_ROLLOUT_STATE):
+//
+// | Flag    | Rollout state     | Effective state |
+// |---------|-------------------|------------------|
+// | false   | any               | legacy           |
+// | true    | unset / legacy    | postgres-write   |
+// | true    | postgres-write    | postgres-write   |
+// | true    | postgres-read-only| postgres-read-only|
+// | true    | rollback-compat.  | rollback-compat. |
+//
+// CRM_CORE_QUOTES_ENABLED is the master switch. CRM_QUOTES_ROLLOUT_STATE
+// selects the migration phase when the flag is on.
+
+/**
+ * Resolves the effective rollout state combining both env vars.
+ * CRM_CORE_QUOTES_ENABLED=false always returns 'legacy' regardless
+ * of CRM_QUOTES_ROLLOUT_STATE.
+ */
+export function resolveEffectiveRolloutState(): QuoteRolloutState {
+  if (!isCoreQuotesEnabled()) return 'legacy';
+  const raw = getQuoteRolloutState();
+  // Flag on + unset/legacy state -> postgres-write (default migration phase)
+  if (raw === 'legacy') return 'postgres-write';
+  return raw;
+}
+
+/** Core PostgreSQL reads are allowed when effective state is not legacy. */
+export function isCoreReadEnabled(): boolean {
+  return resolveEffectiveRolloutState() !== 'legacy';
+}
+
+/** Core PostgreSQL writes are allowed only in postgres-write state. */
+export function isCoreWriteEnabled(): boolean {
+  return resolveEffectiveRolloutState() === 'postgres-write';
+}
+
 export type QuoteResponseMode = 'core' | 'legacy';
 
 export function responseMetadata(mode: QuoteResponseMode): {
