@@ -24,7 +24,7 @@
     "check:tailwind": "node scripts/check-tailwind-content.mjs",
     "check": "npm run lint && npm run type-check && npm run check:tailwind && npm run build",
     "test": "npm run test:unit && npm run test:e2e",
-    "test:unit": "TZ=UTC node --test tests/unit/*.test.{js,ts}",
+    "test:unit": "npm run build:api && TZ=UTC node --test tests/unit/*.test.{js,ts}",
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report",
