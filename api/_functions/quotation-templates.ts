@@ -1,5 +1,5 @@
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
-import { isCoreQuotesEnabled, responseMetadata } from './orcamento-mode.js';
+import { isQuoteEndpointEnabled, responseMetadata } from './orcamento-mode.js';
 import {
   createQuotationTemplateLibraryRepository,
   type QuotationTemplateLibraryRepository,
@@ -60,7 +60,7 @@ export function createQuotationTemplatesHandler(
   }
 ): LegacyHandler {
   return async (event) => {
-    if (!isCoreQuotesEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
+    if (!isQuoteEndpointEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     try {
       if (isValidate(event)) {
         if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });

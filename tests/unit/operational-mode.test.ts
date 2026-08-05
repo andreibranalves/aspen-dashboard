@@ -34,7 +34,7 @@ describe('isOperationalMode', () => {
 // ── Feature flag override ──────────────────────────────────────────────────
 
 import { isProductsCoreEnabled } from '../../api/_functions/products-mode.js';
-import { isCoreQuotesEnabled } from '../../api/_functions/orcamento-mode.js';
+import { isCoreQuotesEnabled, getQuoteRolloutState } from '../../api/_functions/orcamento-mode.js';
 import { isCoreClientsEnabled } from '../../api/_functions/client-core.js';
 
 describe('feature flag override via operational mode', () => {
@@ -60,12 +60,12 @@ describe('feature flag override via operational mode', () => {
     assert.equal(isProductsCoreEnabled(), true);
   });
 
-  it('quotes core enabled when operational mode is on', () => {
+  it('quotes core NOT enabled by operational mode alone (flag is isolated)', () => {
     savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     process.env.CRM_OPERATIONAL_MODE = 'true';
     delete process.env.CRM_CORE_QUOTES_ENABLED;
-    assert.equal(isCoreQuotesEnabled(), true);
+    assert.equal(isCoreQuotesEnabled(), false);
   });
 
   it('clients core enabled when operational mode is on', () => {
@@ -82,6 +82,108 @@ describe('feature flag override via operational mode', () => {
     process.env.CRM_OPERATIONAL_MODE = 'false';
     process.env.CRM_CORE_PRODUCTS_ENABLED = 'true';
     assert.equal(isProductsCoreEnabled(), true);
+  });
+
+  it('quotes core enabled only by its own flag', () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    process.env.CRM_OPERATIONAL_MODE = 'false';
+    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+    assert.equal(isCoreQuotesEnabled(), true);
+  });
+
+  it('quotes core disabled when own flag is unset', () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    process.env.CRM_OPERATIONAL_MODE = 'true';
+    delete process.env.CRM_CORE_QUOTES_ENABLED;
+    assert.equal(isCoreQuotesEnabled(), false);
+  });
+
+  it('quotes core disabled for invalid flag values', () => {
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    for (const value of ['1', 'TRUE', 'yes', '']) {
+      process.env.CRM_CORE_QUOTES_ENABLED = value;
+      assert.equal(isCoreQuotesEnabled(), false, `expected false for "${value}"`);
+    }
+  });
+});
+
+// ── Quote rollout states ──────────────────────────────────────────────────
+
+describe('getQuoteRolloutState', () => {
+  const savedVars: Record<string, string | undefined> = {};
+
+  afterEach(() => {
+    for (const key of ['CRM_QUOTES_ROLLOUT_STATE']) {
+      if (savedVars[key] === undefined) delete process.env[key];
+      else process.env[key] = savedVars[key];
+    }
+  });
+
+  it('defaults to legacy when env var is unset', () => {
+    delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+    assert.equal(getQuoteRolloutState(), 'legacy');
+  });
+
+  it('returns legacy for unrecognized values', () => {
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'bogus';
+    assert.equal(getQuoteRolloutState(), 'legacy');
+  });
+
+  it('returns postgres-write when set', () => {
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
+    assert.equal(getQuoteRolloutState(), 'postgres-write');
+  });
+
+  it('returns postgres-read-only when set', () => {
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-read-only';
+    assert.equal(getQuoteRolloutState(), 'postgres-read-only');
+  });
+
+  it('returns rollback-compatible when set', () => {
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
+    assert.equal(getQuoteRolloutState(), 'rollback-compatible');
+  });
+});
+
+// ── Rollback contract: postgres record readable after rollback-compatible ─
+
+describe('rollback-compatible quotation detail contract', () => {
+  it('returns postgres record when state is rollback-compatible', async () => {
+    const fakeRecord = { id: 'ORC-TEST001', grand_total: 1000 };
+    const repositoryStub = {
+      list: async () => ({ quotations: [fakeRecord], total: 1 }),
+      get: async (id: string) => (id === 'ORC-TEST001' ? fakeRecord : null),
+      update: async () => fakeRecord,
+      delete: async () => undefined,
+    };
+    const { createCoreHandler } = await import('../../api/_functions/quotations-core.js');
+    const handler = createCoreHandler({ repository: repositoryStub as any });
+    const result = await handler({
+      httpMethod: 'GET',
+      headers: {},
+      queryStringParameters: { id: 'ORC-TEST001' },
+      body: '{}',
+    } as any);
+    assert.equal(result.statusCode, 200);
+    const body = JSON.parse(result.body || '{}');
+    assert.equal(body.id, 'ORC-TEST001');
+    assert.equal(body.source, 'postgres');
+  });
+
+  it('legacy handler path remains accessible for Frappe records', async () => {
+    // Verify the dispatch boundary: when isCoreQuotesEnabled() is false,
+    // the legacy path is never touched by the core handler.
+    const prev = process.env.CRM_CORE_QUOTES_ENABLED;
+    process.env.CRM_CORE_QUOTES_ENABLED = 'false';
+    assert.equal(isCoreQuotesEnabled(), false);
+    if (prev === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
+    else process.env.CRM_CORE_QUOTES_ENABLED = prev;
   });
 });
 

@@ -12,7 +12,7 @@ import {
 } from './lib/quotation-templates.js';
 import { renderQuotationPdfHtml } from './lib/quotation-pdf.js';
 import { isValidPdfBuffer } from './lib/quotation-document-storage.js';
-import { isCoreQuotesEnabled } from './orcamento-mode.js';
+import { isQuoteEndpointEnabled } from './orcamento-mode.js';
 
 export interface QuotationPreviewDependencies {
   repository?: {
@@ -60,7 +60,7 @@ export function createQuotationPreviewHandler(
   const repository = dependencies.repository || createQuotationTemplateRepository();
   const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
   return async function quotationPreviewHandler(event: FunctionEvent): Promise<FunctionResult> {
-    if (!isCoreQuotesEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
+    if (!isQuoteEndpointEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
     const query = event.queryStringParameters || {};
     const id = String(query.id || '').trim();

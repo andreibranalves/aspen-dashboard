@@ -433,7 +433,9 @@ test('repository snapshot renders persisted source and stays stable after global
 
 test('preview selects draft template_version_id through repository join and renders PDF on the fly', async () => {
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
   process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
   const selectedVersionId = '99999999-9999-4999-8999-999999999999';
   const selectedVersion = {
     ...dynamicVersion,
@@ -534,15 +536,19 @@ test('preview selects draft template_version_id through repository join and rend
         return true;
       }
     );
-  } finally {
+    } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
   }
 });
 
 test('preview preserves repository 409 for a non-draft version override', async () => {
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
   process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
   const quotation = { ...snapshot.quotation, status: 'enviado' };
   const revision = { ...snapshot.revision, status: 'enviado', templateVersionId: null };
   let selectCount = 0;
@@ -566,15 +572,19 @@ test('preview preserves repository 409 for a non-draft version override', async 
     );
     assert.equal(response.statusCode, 409);
     assert.match(response.body, /só pode ser alterada/);
-  } finally {
+    } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
   }
 });
 
 test('preview consumes an exact legacy hash mismatch as not found', async () => {
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
   process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
   try {
     const repository = {
       get: async () => ({
@@ -585,9 +595,11 @@ test('preview consumes an exact legacy hash mismatch as not found', async () => 
     const response = await createQuotationPreviewHandler({ repository })(event({ id: 'ORC-20260001' }));
     assert.equal(response.statusCode, 404);
     assert.match(response.body, /Template do orçamento não encontrado/);
-  } finally {
+    } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
   }
 });
 
@@ -595,15 +607,18 @@ test('preview is flag-gated, returns secure headers, and rejects legacy override
   const prevOperational = process.env.CRM_OPERATIONAL_MODE;
   delete process.env.CRM_OPERATIONAL_MODE;
   const previous = process.env.CRM_CORE_QUOTES_ENABLED;
+  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
   const repository = { get: async () => snapshot };
   try {
     delete process.env.CRM_CORE_QUOTES_ENABLED;
+    delete process.env.CRM_QUOTES_ROLLOUT_STATE;
     const disabled = await createQuotationPreviewHandler({ repository })(
       event({ id: 'ORC-20260001' })
     );
     assert.equal(disabled.statusCode, 404);
 
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
     const handler = createQuotationPreviewHandler({ repository });
     const preview = await handler(event({ id: 'ORC-20260001' }));
     assert.equal(preview.statusCode, 200);
@@ -617,9 +632,11 @@ test('preview is flag-gated, returns secure headers, and rejects legacy override
     assert.equal(snapshot.revision.templatePadrao, 'padrao');
     const invalid = await handler(event({ id: 'ORC-20260001', template: 'minimalista' }));
     assert.equal(invalid.statusCode, 400);
-  } finally {
+    } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
+    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
     if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
     else process.env.CRM_OPERATIONAL_MODE = prevOperational;
   }

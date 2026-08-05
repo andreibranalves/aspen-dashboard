@@ -1,12 +1,36 @@
 /**
  * Quote-draft rollout switch. Only the exact string `true` enables the
  * PostgreSQL aggregate; every other value remains on the preserved Frappe
- * implementation.
+ * implementation. CRM_OPERATIONAL_MODE does NOT control this flag - quotes
+ * have independent rollout control.
  */
 export function isCoreQuotesEnabled(): boolean {
-  if (process.env.CRM_OPERATIONAL_MODE === 'true') return true;
   return process.env.CRM_CORE_QUOTES_ENABLED === 'true';
 }
+
+export type QuoteRolloutState = 'legacy' | 'postgres-write' | 'postgres-read-only' | 'rollback-compatible';
+
+/**
+ * Explicit rollout state for the quotation subsystem.
+ * Each state has distinct read/write semantics:
+ * - legacy: Frappe only
+ * - postgres-write: read+write postgres
+ * - postgres-read-only: read postgres, write Frappe
+ * - rollback-compatible: read postgres if present, fall back Frappe; write Frappe
+ */
+export function getQuoteRolloutState(): QuoteRolloutState {
+  const raw = process.env.CRM_QUOTES_ROLLOUT_STATE;
+  if (raw === 'postgres-write' || raw === 'postgres-read-only' || raw === 'rollback-compatible') {
+    return raw;
+  }
+  return 'legacy';
+}
+
+/** True when the quote subsystem has moved beyond legacy Frappe. */
+export function isQuoteEndpointEnabled(): boolean {
+  return getQuoteRolloutState() !== 'legacy';
+}
+
 export type QuoteResponseMode = 'core' | 'legacy';
 
 export function responseMetadata(mode: QuoteResponseMode): {
