@@ -27,12 +27,13 @@
 - Existing repository JavaScript build artifacts are not tracked or modified.
 - Worktree contains only intended source/test modifications; no generated PDF/Blob artifacts.
 
-## Round-3 evidence
+## Round-4 evidence
 
-- Revision UUID and business-number tests now use competing revisions with distinct IDs, versions, sources, hashes, and rendered output.
-- Draft override coverage now uses a table-identity fake DB that exercises `readQuotationTemplateSnapshot`, including distinct base/selected persisted versions, active model validation, selected source, key, and hash.
+- Revision UUID fake DB now returns competing latest and old revisions for the UUID lookup path; assertions verify the old revision ID, version, source, and hash are selected.
+- Draft override coverage now calls `readQuotationTemplateSnapshot` with an archived selected model and asserts `QuotationTemplateSnapshotRepositoryError.statusCode === 400`; active selected model coverage remains.
 - `node --test tests/unit/quotation-templates-core.test.js tests/unit/quotation-html.test.js` - 57 passed.
 - `npm run build:api` - passed.
 - `npm run lint -- --no-warn-ignored` - passed with existing warnings only, zero errors.
+- `lsp_diagnostics` on changed test file - zero diagnostics.
 - `git diff --check` - passed.
 - No production files, generated API files, PDF, or Blob artifacts changed.

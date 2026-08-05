@@ -19,6 +19,8 @@ import {
 import {
   createQuotationTemplateRepository,
   quotationSnapshotViewModel,
+  QuotationTemplateSnapshotRepositoryError,
+  readQuotationTemplateSnapshot,
 } from '../../api/_db/quotation-template-repository.js';
 import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
 import {
@@ -144,6 +146,13 @@ function queuedDb(results, tables = []) {
       };
     },
   };
+}
+
+function conditionParam(condition) {
+  const param = condition?.queryChunks?.find(
+    (chunk) => chunk && !Array.isArray(chunk.value) && typeof chunk.value === 'string'
+  );
+  return param?.value;
 }
 
 const dynamicSource =
@@ -306,25 +315,55 @@ test('repository selects exact revision UUID and latest business-number revision
   };
 
   const revisionTables = [];
-  const revisionRepository = createQuotationTemplateRepository(() =>
-    queuedDb(
-      [
-        [],
-        [oldRevision],
-        [snapshot.quotation],
-        [oldRevision],
-        [{ version: oldVersion, model: dynamicModel }],
-        snapshot.items,
-      ],
-      revisionTables
-    )
-  );
+  const revisionPredicates = [];
+  const competingRevisions = [latestRevision, oldRevision];
+  const revisionRepository = createQuotationTemplateRepository(() => {
+    let selectedTable;
+    let condition;
+    const query = {
+      limit: async () => {
+        if (selectedTable === quotations) return conditionParam(condition) === snapshot.quotation.id ? [snapshot.quotation] : [];
+        if (selectedTable === quoteRevisions) {
+          return conditionParam(condition) === oldRevision.id ? [oldRevision] : competingRevisions;
+        }
+        if (selectedTable === quotationTemplateVersions) return [{ version: oldVersion, model: dynamicModel }];
+        if (selectedTable === quoteRevisionItems) return snapshot.items;
+        return [];
+      },
+      orderBy() {
+        return { limit: async () => query.limit() };
+      },
+    };
+    const source = {
+      where(nextCondition) {
+        condition = nextCondition;
+        if (selectedTable === quoteRevisions) revisionPredicates.push(conditionParam(nextCondition));
+        return query;
+      },
+      innerJoin() {
+        return source;
+      },
+    };
+    return {
+      select() {
+        return {
+          from(table) {
+            selectedTable = table;
+            revisionTables.push(table?.[Symbol.for('drizzle:Name')] || 'unknown');
+            return source;
+          },
+        };
+      },
+    };
+  });
   const exact = await revisionRepository.get(oldRevision.id);
   assert.equal(exact.revision.id, oldRevision.id);
   assert.equal(exact.revision.version, 1);
   assert.equal(exact.templateVersion.id, oldVersion.id);
   assert.equal(exact.templateVersion.source, oldVersion.source);
   assert.equal(exact.templateVersion.sourceHash, oldVersion.sourceHash);
+  assert.deepEqual(competingRevisions.map((revision) => revision.id), [latestRevision.id, oldRevision.id]);
+  assert.equal(revisionPredicates[0], oldRevision.id);
   assert.match(renderQuotationTemplate(quotationTemplateFromVersion(exact.templateVersion), quotationSnapshotViewModel({ ...exact, items: snapshot.items })), /DYNAMIC-V1/);
 
   const businessTables = [];
@@ -417,14 +456,16 @@ test('preview selects draft template_version_id through repository join and rend
   };
   const baseJoin = { version: baseVersion, model: { ...dynamicModel, key: 'base', archived: false } };
   const selectedJoin = { version: selectedVersion, model: { ...dynamicModel, key: 'selected', archived: false } };
-  const makeDraftPreviewDb = () => {
+  const makeDraftPreviewDb = ({ selectedArchived = false } = {}) => {
     const tableCalls = new Map();
     const rowsFor = (table) => {
       const call = tableCalls.get(table) || 0;
       tableCalls.set(table, call + 1);
       if (table === quotations) return [snapshot.quotation];
       if (table === quoteRevisions) return [draftRevision];
-      if (table === quotationTemplateVersions) return [call === 0 ? baseJoin : selectedJoin];
+      if (table === quotationTemplateVersions) {
+        return [call === 0 ? baseJoin : { ...selectedJoin, model: { ...selectedJoin.model, archived: selectedArchived } }];
+      }
       if (table === quoteRevisionItems) return snapshot.items;
       return [];
     };
@@ -480,6 +521,19 @@ test('preview selects draft template_version_id through repository join and rend
     const pdf = await handler(event({ id: snapshot.quotation.businessNumber, format: 'pdf', template_version_id: selectedVersionId }));
     assert.equal(pdf.statusCode, 200);
     assert.equal(pdf.isBase64Encoded, true);
+
+    await assert.rejects(
+      () => readQuotationTemplateSnapshot(
+        makeDraftPreviewDb({ selectedArchived: true }),
+        snapshot.quotation.businessNumber,
+        selectedVersionId
+      ),
+      (error) => {
+        assert.ok(error instanceof QuotationTemplateSnapshotRepositoryError);
+        assert.equal(error.statusCode, 400);
+        return true;
+      }
+    );
   } finally {
     if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
     else process.env.CRM_CORE_QUOTES_ENABLED = previous;
