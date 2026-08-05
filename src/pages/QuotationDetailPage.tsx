@@ -32,6 +32,11 @@ import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/SkeletonDetail';
+import {
+  QuotationSectionsEditor,
+  type QuotationSectionsSnapshot,
+} from '@/components/quotation/QuotationSectionsEditor';
+import type { QuotationSectionsSettings } from '@/lib/settingsApi';
 
 const STATUS_LABELS: Record<string, string> = {
   Rascunho: 'Rascunho',
@@ -103,6 +108,10 @@ interface QuotationData {
   template_padrao?: string;
   template_key?: string;
   template_hash?: string;
+  template_version_id?: string | null;
+  template_version?: number | null;
+  secoes?: QuotationSectionsSnapshot | null;
+  sections_snapshot?: QuotationSectionsSnapshot | null;
   subtotal?: string | number;
   total?: string | number;
   valor?: string | number;
@@ -136,6 +145,9 @@ interface QuotationRevisionHistoryEntry {
   expiration_derived: boolean;
   is_expired: boolean;
   expirada: boolean;
+  template_key?: string | null;
+  template_version?: number | null;
+  template_hash?: string | null;
 }
 
 interface QuotationDetailPageProps {
@@ -174,8 +186,45 @@ interface CoreQuotationDetailProps {
 interface QuotationTemplateMetadata {
   key: string;
   name: string;
-  is_default: boolean;
-  hash: string;
+  is_default?: boolean;
+  archived?: boolean;
+  hash?: string;
+  current_hash?: string | null;
+  current_version_id?: string | null;
+  current_version?: number | null;
+}
+
+const DEFAULT_SECTIONS: QuotationSectionsSettings = {
+  schema_version: 1,
+  prazo_producao: { enabled: true, title: 'Prazo de produção' },
+  pagamento: { enabled: true, title: 'Pagamento', body: '' },
+  condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
+};
+
+function cloneSections<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
+  const existing = data.secoes || data.sections_snapshot;
+  if (existing) return cloneSections(existing);
+  const current: QuotationSectionsSettings = {
+    ...cloneSections(DEFAULT_SECTIONS),
+    pagamento: { ...DEFAULT_SECTIONS.pagamento, body: data.pagamento || '' },
+    condicoes_gerais: {
+      ...DEFAULT_SECTIONS.condicoes_gerais,
+      body: [data.entrega && `Prazo de entrega:\n${data.entrega}`, data.observacoes && `Observações:\n${data.observacoes}`]
+        .filter(Boolean)
+        .join('\n\n'),
+    },
+    prazo_producao: { ...DEFAULT_SECTIONS.prazo_producao, enabled: Boolean(data.prazo_producao) },
+  };
+  return {
+    schema_version: 1,
+    prazo_producao: { base: cloneSections(current.prazo_producao), current: cloneSections(current.prazo_producao) },
+    pagamento: { base: cloneSections(current.pagamento), current: cloneSections(current.pagamento) },
+    condicoes_gerais: { base: cloneSections(current.condicoes_gerais), current: cloneSections(current.condicoes_gerais) },
+  };
 }
 
 function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
@@ -220,7 +269,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const [frete, setFrete] = useState(String(data.frete ?? '0.00'));
   const [observacoes, setObservacoes] = useState(data.observacoes || '');
   const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
+  const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState(data.template_version_id || '');
   const [selectedTemplate, setSelectedTemplate] = useState(
     data.template_key || data.template_padrao || 'padrao'
   );
@@ -241,7 +292,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setFrete(String(initialData.frete ?? '0.00'));
     setObservacoes(initialData.observacoes || '');
     setPrazoProducao(initialData.prazo_producao || '');
+    setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.template_key || initialData.template_padrao || 'padrao');
+    setSelectedVersionId(initialData.template_version_id || '');
     setClientResults([]);
     setClientSearching(false);
     if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -265,12 +318,15 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         const available = result.templates || result.data || [];
         setTemplates(available);
         const persisted = data.template_key || data.template_padrao || '';
-        if (persisted && available.some((template) => template.key === persisted))
+        if (persisted && available.some((template) => template.key === persisted)) {
           setSelectedTemplate(persisted);
-        else if (available.length > 0)
-          setSelectedTemplate(
-            available.find((template) => template.is_default)?.key || available[0].key
-          );
+          const current = available.find((template) => template.key === persisted);
+          setSelectedVersionId(data.template_version_id || current?.current_version_id || '');
+        } else if (available.length > 0) {
+          const fallback = available.find((template) => template.is_default && !template.archived) || available.find((template) => !template.archived) || available[0];
+          setSelectedTemplate(fallback.key);
+          setSelectedVersionId(fallback.current_version_id || '');
+        }
         setTemplateError('');
       })
       .catch((error) => {
@@ -414,7 +470,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       setFrete(String(authoritative.frete ?? '0.00'));
       setObservacoes(authoritative.observacoes || '');
       setPrazoProducao(authoritative.prazo_producao || '');
+      setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.template_key || authoritative.template_padrao || 'padrao');
+      setSelectedVersionId(authoritative.template_version_id || '');
       setMessage('');
       setConflict('');
       setEditing(false);
@@ -449,6 +507,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           observacoes,
           prazo_producao: prazoProducao,
           template_key: selectedTemplate,
+          template_version_id: selectedVersionId || undefined,
+          secoes: sections,
         }
       );
       if (refreshed && refreshed.id) {
@@ -482,6 +542,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     prazoProducao,
     resetEditor,
     selectedTemplate,
+    selectedVersionId,
+    sections,
     validadeDias,
   ]);
 
@@ -515,14 +577,18 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       0
     );
   const selectedTemplateMetadata = templates.find((template) => template.key === selectedTemplate);
+  const visibleTemplates = templates.filter(
+    (template) => !template.archived || template.key === selectedTemplate
+  );
   const openPreview = useCallback(() => {
-    if (!selectedTemplate) return;
+    const params = new URLSearchParams({ id: data.id });
+    if (draftEditable && selectedVersionId) params.set('template_version_id', selectedVersionId);
     window.open(
-      `/api/quotation-preview?id=${encodeURIComponent(data.id)}&template=${encodeURIComponent(selectedTemplate)}`,
+      `/api/quotation-preview?${params.toString()}`,
       '_blank',
       'noopener,noreferrer'
     );
-  }, [data.id, selectedTemplate]);
+  }, [data.id, draftEditable, selectedVersionId]);
   const emitir = useCallback(async () => {
     if (!confirm(`Emitir orçamento ${data.id}? Após emissão não poderá ser editado.`)) return;
     setIssuing(true);
@@ -629,9 +695,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   );
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.id || '', format: 'pdf' });
-    if (selectedTemplate) params.set('template', selectedTemplate);
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
-  }, [data.id, selectedTemplate]);
+  }, [data.id]);
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -814,6 +879,26 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           </label>
         </div>
 
+        <div className="px-6 py-4 border-b space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">Seções do orçamento</h2>
+            <p className="text-xs text-fg-muted">Conteúdo capturado nesta revisão.</p>
+          </div>
+          <QuotationSectionsEditor
+            mode="revision"
+            sections={sections}
+            editable={editing && draftEditable}
+            onChange={setSections}
+            onRestore={(key) => {
+              if (!key) return;
+              setSections((current) => ({
+                ...current,
+                [key]: { ...current[key], current: cloneSections(current[key].base) },
+              }));
+            }}
+          />
+        </div>
+
         {(templates.length > 0 || templateError) && (
           <div className="px-6 py-4 border-b flex flex-wrap items-end gap-3">
             {templates.length > 0 && (
@@ -824,11 +909,17 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                     aria-label="Modelo do orçamento"
                     className="mt-1 h-9 w-full rounded border border-line bg-surface px-2 text-sm"
                     value={selectedTemplate}
-                    onChange={(event) => setSelectedTemplate(event.target.value)}
+                    disabled={!draftEditable}
+                    onChange={(event) => {
+                      const key = event.target.value;
+                      const template = templates.find((item) => item.key === key);
+                      setSelectedTemplate(key);
+                      setSelectedVersionId(template?.current_version_id || '');
+                    }}
                   >
-                    {templates.map((template) => (
+                    {visibleTemplates.map((template) => (
                       <option key={template.key} value={template.key}>
-                        {template.name}
+                        {template.name}{template.archived ? ' (arquivado)' : ''}
                       </option>
                     ))}
                   </select>
@@ -836,9 +927,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                 {selectedTemplateMetadata && (
                   <span
                     className="text-xs text-fg-muted pb-2"
-                    title={selectedTemplateMetadata.hash}
+                    title={selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || ''}
                   >
-                    Hash: {selectedTemplateMetadata.hash.slice(0, 12)}…
+                    {selectedTemplateMetadata.archived ? 'Arquivado · ' : ''}Versão {selectedTemplateMetadata.current_version || data.template_version || '—'} · Hash: {(selectedTemplateMetadata.hash || selectedTemplateMetadata.current_hash || '').slice(0, 12)}…
                   </span>
                 )}
                 <Button type="button" variant="outline" size="sm" onClick={openPreview}>
@@ -1074,6 +1165,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                     <TableHead>Criada em</TableHead>
                     <TableHead>Validade</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead>Modelo</TableHead>
+                    <TableHead>Versão do modelo</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>PDF</TableHead>
                     <TableHead />
@@ -1101,6 +1194,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                             label={STATUS_LABELS[entry.status] || entry.status}
                           />
                         </TableCell>
+                        <TableCell>{entry.template_key || '—'}</TableCell>
+                        <TableCell>{entry.template_version ?? '—'}</TableCell>
                         <TableCell className="text-right font-mono">
                           {formatBRL(entry.total || entry.valor)}
                         </TableCell>

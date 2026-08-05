@@ -25,6 +25,14 @@ function coreDetail(overrides = {}) {
     template_padrao: 'padrao',
     template_key: 'padrao',
     template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
+    template_version_id: '55555555-5555-4555-8555-555555555555',
+    template_version: 1,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: { base: { enabled: true, title: 'Prazo de produção' }, current: { enabled: true, title: 'Prazo de produção' } },
+      pagamento: { base: { enabled: true, title: 'Pagamento', body: 'À vista' }, current: { enabled: true, title: 'Pagamento', body: 'À vista' } },
+      condicoes_gerais: { base: { enabled: true, title: 'Condições Gerais', body: '' }, current: { enabled: true, title: 'Condições Gerais', body: '' } },
+    },
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
@@ -39,8 +47,8 @@ function coreDetail(overrides = {}) {
 
 const manifest = {
   templates: [
-    { key: 'padrao', name: 'Padrão Aspen', is_default: true, hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e' },
-    { key: 'minimalista', name: 'Minimalista', is_default: false, hash: 'c7060a7faa1f54d08d6f2c237f96cef261c57de5259fb7b755a1dd844bce8c8a' },
+    { key: 'padrao', name: 'Padrão Aspen', is_default: true, hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e', current_version_id: '55555555-5555-4555-8555-555555555555', current_version: 1 },
+    { key: 'minimalista', name: 'Minimalista', is_default: false, hash: 'c7060a7faa1f54d08d6f2c237f96cef261c57de5259fb7b755a1dd844bce8c8a', current_version_id: '77777777-7777-4777-8777-777777777777', current_version: 2 },
   ],
 };
 
@@ -76,13 +84,27 @@ test('core UI selects/previews a repository template and saves template_key', as
   const preview = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Visualizar modelo' }).click();
   const popup = await preview;
-  await expect(popup).toHaveURL(new RegExp(`/api/quotation-preview\\?id=${id}&template=minimalista`));
+  await expect(popup).toHaveURL(new RegExp(`/api/quotation-preview\\?id=${id}&template_version_id=77777777-7777-4777-8777-777777777777`));
   await popup.close();
 
   await page.getByRole('button', { name: 'Editar' }).click();
+  await expect(page.getByLabel('Título - Pagamento')).toBeEditable();
+  await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
+  await expect(page.getByLabel('Exibir seção - Pagamento')).toBeEditable();
+  await page.getByLabel('Título - Pagamento').fill('Pagamento personalizado');
+  await expect(page.getByText('Personalizado').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Restaurar padrão' }).nth(1).click();
+  await expect(page.getByText('Padrão').first()).toBeVisible();
   await page.getByRole('button', { name: 'Salvar' }).click();
   await expect(page.getByText('Salvo.')).toBeVisible();
   expect(lastPayload.template_key).toBe('minimalista');
+  expect(lastPayload.template_version_id).toBe('77777777-7777-4777-8777-777777777777');
+  expect(lastPayload.secoes).toEqual(expect.objectContaining({
+    schema_version: 1,
+    pagamento: expect.objectContaining({
+      current: expect.objectContaining({ title: 'Pagamento', body: 'À vista' }),
+    }),
+  }));
 });
 
 test('legacy detail does not render the core template controls', async ({ page }) => {

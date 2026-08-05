@@ -25,7 +25,15 @@ function detail(overrides = {}) {
     prazo_producao: '',
     template_padrao: 'padrao',
     template_key: 'padrao',
-    template_hash: hash,
+        template_hash: hash,
+        template_version_id: '55555555-5555-4555-8555-555555555555',
+        template_version: 1,
+        secoes: {
+          schema_version: 1,
+          prazo_producao: { base: { enabled: true, title: 'Prazo de produção' }, current: { enabled: true, title: 'Prazo de produção' } },
+          pagamento: { base: { enabled: true, title: 'Pagamento', body: 'À vista' }, current: { enabled: true, title: 'Pagamento', body: 'À vista' } },
+          condicoes_gerais: { base: { enabled: true, title: 'Condições Gerais', body: '' }, current: { enabled: true, title: 'Condições Gerais', body: '' } },
+        },
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
@@ -62,6 +70,9 @@ function detail(overrides = {}) {
         valor: '90.00',
         status: 'Enviado',
         status_canonical: 'enviado',
+        template_key: 'padrao',
+        template_version: 1,
+        template_hash: hash,
         derived_expired: false,
         expiration_derived: false,
         is_expired: false,
@@ -158,6 +169,8 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   await routeTemplates(page);
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Marcar como aprovado' }).click();
   await expect(page.getByText('Aprovado', { exact: true }).first()).toBeVisible();
   expect(posts[0]).toMatchObject({

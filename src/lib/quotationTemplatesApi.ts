@@ -9,6 +9,10 @@ export interface QuotationTemplateMetadata {
   current_version_id: string | null;
   current_version: number | null;
   current_hash: string | null;
+  /** Legacy detail fixtures may expose the selected version as hash. */
+  hash?: string;
+  template_version_id?: string | null;
+  template_version?: number | null;
   usage_count: number;
   updated_at: string;
 }
