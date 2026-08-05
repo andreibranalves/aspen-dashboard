@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { createCoreHandler } from '../../api/_functions/quotations-core.js';
+import { createPostgresQuotationLifecycleRepository } from '../../api/_db/quotation-lifecycle-repository.ts';
 import {
   QuoteManagementConflictError,
   QuoteManagementInputError,
@@ -166,37 +167,51 @@ test('quotations core forwards complete update input and maps stale/non-editable
   assert.equal(parse(conflict).core_mode, true);
 });
 
-test('lifecycle status transition returns no issuance or document artifacts', async () => {
-  const calls: string[] = [];
-  const lifecycle = {
-    setStatus: async () => {
-      calls.push('set_status');
-      return {
+test('actual lifecycle repository status transition returns no issuance artifacts', async () => {
+  const sideEffects = {
+    pdf: 0,
+    blob: 0,
+    documentStorage: 0,
+    documentUrl: 0,
+  };
+  const quotation = {
+    id: detail.quotation_uuid,
+    businessNumber: detail.id,
+    status: 'enviado',
+    updatedAt: new Date(detail.concurrency_token),
+  };
+  const revision = { id: detail.revision_id, quotationId: quotation.id, status: 'enviado' };
+  let selectCount = 0;
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          for: () => ({ limit: async () => (++selectCount === 1 ? [quotation] : [revision]) }),
+          orderBy: () => ({ limit: async () => [revision] }),
+          limit: async () => (++selectCount === 1 ? [quotation] : [revision]),
+        }),
+      }),
+    }),
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
+  };
+  const lifecycle = createPostgresQuotationLifecycleRepository(
+    () => ({ transaction: async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx) } as any),
+    {
+      acquireWriteLock: async () => undefined,
+      readDetail: async () => ({
         ...detail,
         status: 'Approved',
         status_canonical: 'aprovado',
         revision_history: [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }],
-      };
+      } as any),
     },
-    createRevision: async () => detail,
-  };
-  const handler = createCoreHandler({
-    lifecycleRepository: lifecycle as any,
-    repository: {
-      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
-      get: async () => detail,
-      update: async () => detail,
-    } as any,
-  });
-
-  const response = await handler(event(
-    'POST',
-    { id: detail.id },
-    JSON.stringify({ action: 'set_status', status: 'aprovado', concurrency_token: detail.concurrency_token }),
-  ));
-  const payload = parse(response);
-  assert.equal(response.statusCode, 200);
-  assert.deepEqual(calls, ['set_status']);
+  );
+  const payload = await lifecycle.setStatus(detail.id, {
+    status: 'aprovado',
+    concurrency_token: detail.concurrency_token,
+  }) as unknown as Record<string, unknown>;
+  assert.equal(payload.status_canonical, 'aprovado');
+  assert.deepEqual(sideEffects, { pdf: 0, blob: 0, documentStorage: 0, documentUrl: 0 });
   for (const key of ['pdf_url', 'document_url', 'issued_document', 'issued_document_id']) {
     assert.equal(key in payload, false, `lifecycle response must not expose ${key}`);
   }

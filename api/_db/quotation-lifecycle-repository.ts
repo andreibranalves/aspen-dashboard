@@ -45,6 +45,8 @@ export interface QuotationLifecycleRepository {
 export interface QuotationLifecycleRepositoryOptions {
   now?: () => Date;
   randomId?: () => string;
+  acquireWriteLock?: typeof acquireQuotationWriteLock;
+  readDetail?: typeof readPostgresQuotationDetail;
 }
 
 // Drizzle's `or` expression is intentionally avoided in this helper's UUID
@@ -156,6 +158,8 @@ export function createPostgresQuotationLifecycleRepository(
 ): QuotationLifecycleRepository {
   const now = options.now || (() => new Date());
   const randomId = options.randomId || randomUUID;
+  const acquireWriteLock = options.acquireWriteLock || acquireQuotationWriteLock;
+  const readDetail = options.readDetail || readPostgresQuotationDetail;
 
   const repository: QuotationLifecycleRepository = {
     async setStatus(id: string, rawInput: SetQuotationStatusInput): Promise<QuoteDraftManagementDetail> {
@@ -166,7 +170,7 @@ export function createPostgresQuotationLifecycleRepository(
       const token = requiredToken(input);
       try {
         const detail = await getDb().transaction(async (tx) => {
-          await acquireQuotationWriteLock(tx);
+          await acquireWriteLock(tx);
           const quotation = await lockedQuotation(tx, id);
           assertToken(quotation, token);
           if (quotation.status !== 'enviado') {
@@ -179,7 +183,7 @@ export function createPostgresQuotationLifecycleRepository(
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
           await tx.update(quotations).set({ status, updatedAt }).where(eq(quotations.id, quotation.id));
-          const refreshed = await readPostgresQuotationDetail(tx, quotation.businessNumber, now);
+          const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;
         });
@@ -198,7 +202,7 @@ export function createPostgresQuotationLifecycleRepository(
       const token = requiredToken(input);
       try {
         const detail = await getDb().transaction(async (tx) => {
-          await acquireQuotationWriteLock(tx);
+          await acquireWriteLock(tx);
           const quotation = await lockedQuotation(tx, id);
           assertToken(quotation, token);
 
@@ -294,7 +298,7 @@ export function createPostgresQuotationLifecycleRepository(
             })));
           }
           await tx.update(quotations).set({ status: 'rascunho', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
-          const refreshed = await readPostgresQuotationDetail(tx, quotation.businessNumber, now);
+          const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;
         });

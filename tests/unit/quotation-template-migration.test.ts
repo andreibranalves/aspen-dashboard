@@ -7,7 +7,8 @@ import {
   templateSeedPlan,
 } from '../../api/_db/quotation-template-migration.js';
 import { acquireQuotationWriteLock } from '../../api/_db/quotation-write-lock.js';
-import { parseQuotationSections } from '../../scripts/migrate-quotation-templates.mjs';
+import { createPostgresQuotationLifecycleRepository } from '../../api/_db/quotation-lifecycle-repository.ts';
+import { parseQuotationSections, runQuotationTemplateMigration } from '../../scripts/migrate-quotation-templates.mjs';
 
 test('legacy revision receives a frozen sections snapshot', () => {
   const snapshot = snapshotFromLegacyRevision({
@@ -50,7 +51,7 @@ test('invalid quotation sections values are treated as empty', () => {
 test('postgres transaction lock adapter executes a tagged query', async () => {
   let called = false;
   const tx = (strings, ...values) => {
-    called = strings.raw?.[0]?.includes('pg_advisory_xact_lock') && values.length === 0;
+    called = strings.raw?.[0]?.includes('pg_advisory_xact_lock(8417392051842::bigint)') && values.length === 0;
     return Promise.resolve();
   };
   await acquireQuotationWriteLock(tx);
@@ -65,31 +66,35 @@ test('built-in seed plan is stable and idempotent by key and hash', () => {
   assert.deepEqual(templateSeedPlan(), plan);
 });
 
-test('shared transaction lock serializes migration and revision-writer critical sections', async () => {
+test('actual migration and lifecycle writer paths share key and serialize transactions', async () => {
+  const events: string[] = [];
   let releaseFirst!: () => void;
-  let firstLocked = false;
-  let secondAttempted = false;
-  let secondLocked = false;
+  let first = true;
   const firstReleased = new Promise<void>((resolve) => { releaseFirst = resolve; });
-  const tx = async (strings: TemplateStringsArray) => {
-    assert.match(strings.raw[0], /pg_advisory_xact_lock/);
-    if (!firstLocked) {
-      firstLocked = true;
-      await firstReleased;
-      return;
-    }
-    secondAttempted = true;
-    await firstReleased;
-    secondLocked = true;
+  const databaseLock = async () => {
+    events.push('attempt:8417392051842');
+    if (!first) await firstReleased;
+    first = false;
+    events.push('acquired:8417392051842');
   };
-
-  const migration = acquireQuotationWriteLock(tx);
+  const sql = async (strings: TemplateStringsArray) => {
+    if (strings.raw[0].includes('pg_advisory_xact_lock')) await databaseLock();
+    return [];
+  };
+  const migration = runQuotationTemplateMigration(sql, {
+    migration: { templateSeedPlan: () => [], isEmptyQuotationSections: () => true },
+  });
   await new Promise<void>((resolve) => setImmediate(resolve));
-  const writer = acquireQuotationWriteLock(tx);
+  const lifecycle = createPostgresQuotationLifecycleRepository(
+    () => ({ transaction: async (callback: (tx: never) => Promise<unknown>) => callback({ execute: databaseLock } as never) } as never),
+  );
+  const writer = lifecycle.setStatus('ORC-1', { status: 'aprovado', concurrency_token: 'token' }).catch(() => undefined);
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.equal(secondAttempted, true);
-  assert.equal(secondLocked, false);
+  assert.deepEqual(events, ['attempt:8417392051842', 'acquired:8417392051842', 'attempt:8417392051842']);
   releaseFirst();
   await Promise.all([migration, writer]);
-  assert.equal(secondLocked, true);
+  assert.deepEqual(events, [
+    'attempt:8417392051842', 'acquired:8417392051842',
+    'attempt:8417392051842', 'acquired:8417392051842',
+  ]);
 });
