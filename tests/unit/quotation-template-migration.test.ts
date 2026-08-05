@@ -64,3 +64,32 @@ test('built-in seed plan is stable and idempotent by key and hash', () => {
   for (const item of plan) assert.match(item.source_hash, /^[0-9a-f]{64}$/);
   assert.deepEqual(templateSeedPlan(), plan);
 });
+
+test('shared transaction lock serializes migration and revision-writer critical sections', async () => {
+  let releaseFirst!: () => void;
+  let firstLocked = false;
+  let secondAttempted = false;
+  let secondLocked = false;
+  const firstReleased = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const tx = async (strings: TemplateStringsArray) => {
+    assert.match(strings.raw[0], /pg_advisory_xact_lock/);
+    if (!firstLocked) {
+      firstLocked = true;
+      await firstReleased;
+      return;
+    }
+    secondAttempted = true;
+    await firstReleased;
+    secondLocked = true;
+  };
+
+  const migration = acquireQuotationWriteLock(tx);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const writer = acquireQuotationWriteLock(tx);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(secondAttempted, true);
+  assert.equal(secondLocked, false);
+  releaseFirst();
+  await Promise.all([migration, writer]);
+  assert.equal(secondLocked, true);
+});

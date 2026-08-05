@@ -166,6 +166,43 @@ test('quotations core forwards complete update input and maps stale/non-editable
   assert.equal(parse(conflict).core_mode, true);
 });
 
+test('lifecycle status transition returns no issuance or document artifacts', async () => {
+  const calls: string[] = [];
+  const lifecycle = {
+    setStatus: async () => {
+      calls.push('set_status');
+      return {
+        ...detail,
+        status: 'Approved',
+        status_canonical: 'aprovado',
+        revision_history: [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }],
+      };
+    },
+    createRevision: async () => detail,
+  };
+  const handler = createCoreHandler({
+    lifecycleRepository: lifecycle as any,
+    repository: {
+      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
+      get: async () => detail,
+      update: async () => detail,
+    } as any,
+  });
+
+  const response = await handler(event(
+    'POST',
+    { id: detail.id },
+    JSON.stringify({ action: 'set_status', status: 'aprovado', concurrency_token: detail.concurrency_token }),
+  ));
+  const payload = parse(response);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(calls, ['set_status']);
+  for (const key of ['pdf_url', 'document_url', 'issued_document', 'issued_document_id']) {
+    assert.equal(key in payload, false, `lifecycle response must not expose ${key}`);
+  }
+  assert.deepEqual(payload.revision_history, [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }]);
+});
+
 test('quotations core validates JSON/status and never exposes unknown repository failures', async () => {
   const handler = createCoreHandler({
     repository: {
