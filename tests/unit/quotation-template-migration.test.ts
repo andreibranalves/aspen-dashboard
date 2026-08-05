@@ -48,14 +48,34 @@ test('invalid quotation sections values are treated as empty', () => {
   }
 });
 
-test('postgres transaction lock adapter executes a tagged query', async () => {
-  let called = false;
-  const tx = (strings, ...values) => {
-    called = strings.raw?.[0]?.includes('pg_advisory_xact_lock(8417392051842::bigint)') && values.length === 0;
+function extractAdvisoryLockKey(queryOrStrings: unknown, values: unknown[] = []): bigint {
+  if (typeof queryOrStrings === 'object' && queryOrStrings !== null && 'queryChunks' in queryOrStrings) {
+    const chunks = (queryOrStrings as { queryChunks?: unknown[] }).queryChunks || [];
+    const key = chunks.find((chunk): chunk is bigint => typeof chunk === 'bigint');
+    if (key !== undefined) return key;
+  }
+  const strings = queryOrStrings as { raw?: readonly string[] };
+  const text = (strings.raw || []).reduce((result, part, index) => `${result}${part}${values[index] === undefined ? '' : String(values[index])}`, '');
+  const match = text.match(/pg_advisory_xact_lock\(\s*(\d+)\s*::bigint\s*\)/);
+  if (!match) throw new Error(`Advisory lock key missing from query: ${text}`);
+  return BigInt(match[1]);
+}
+
+test('postgres and Drizzle lock adapters expose their actual advisory key', async () => {
+  let taggedKey: bigint | undefined;
+  const postgresTx = (strings: TemplateStringsArray, ...values: unknown[]) => {
+    taggedKey = extractAdvisoryLockKey(strings, values);
     return Promise.resolve();
   };
-  await acquireQuotationWriteLock(tx);
-  assert.equal(called, true);
+  await acquireQuotationWriteLock(postgresTx);
+
+  let drizzleKey: bigint | undefined;
+  await acquireQuotationWriteLock({
+    execute: async (query) => {
+      drizzleKey = extractAdvisoryLockKey(query);
+    },
+  });
+  assert.equal(taggedKey, drizzleKey);
 });
 
 test('built-in seed plan is stable and idempotent by key and hash', () => {
@@ -66,35 +86,109 @@ test('built-in seed plan is stable and idempotent by key and hash', () => {
   assert.deepEqual(templateSeedPlan(), plan);
 });
 
-test('actual migration and lifecycle writer paths share key and serialize transactions', async () => {
-  const events: string[] = [];
-  let releaseFirst!: () => void;
-  let first = true;
-  const firstReleased = new Promise<void>((resolve) => { releaseFirst = resolve; });
-  const databaseLock = async () => {
-    events.push('attempt:8417392051842');
-    if (!first) await firstReleased;
-    first = false;
-    events.push('acquired:8417392051842');
-  };
-  const sql = async (strings: TemplateStringsArray) => {
-    if (strings.raw[0].includes('pg_advisory_xact_lock')) await databaseLock();
+class AdvisoryLockSimulator {
+  held = new Map<bigint, string>();
+  waiters = new Map<bigint, Array<() => void>>();
+  events: Array<{ state: 'attempt' | 'acquired'; owner: string; key: bigint }> = [];
+
+  async acquire(key: bigint, owner: string): Promise<void> {
+    this.events.push({ state: 'attempt', owner, key });
+    while (this.held.has(key)) {
+      await new Promise<void>((resolve) => {
+        const waiters = this.waiters.get(key) || [];
+        waiters.push(resolve);
+        this.waiters.set(key, waiters);
+      });
+    }
+    this.held.set(key, owner);
+    this.events.push({ state: 'acquired', owner, key });
+  }
+
+  release(key: bigint, owner: string): void {
+    assert.equal(this.held.get(key), owner);
+    this.held.delete(key);
+    this.waiters.get(key)?.shift()?.();
+  }
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  assert.fail('timed out waiting for advisory-lock evidence');
+}
+
+test('actual migration and lifecycle paths serialize on their extracted advisory key', async () => {
+  const simulator = new AdvisoryLockSimulator();
+  let migrationKey: bigint | undefined;
+  let lifecycleKey: bigint | undefined;
+  let releaseMigration!: () => void;
+  const migrationGate = new Promise<void>((resolve) => { releaseMigration = resolve; });
+
+  const migrationSql = async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    if (strings.raw?.join('').includes('pg_advisory_xact_lock')) {
+      migrationKey = extractAdvisoryLockKey(strings, values);
+      await simulator.acquire(migrationKey, 'migration');
+    }
     return [];
   };
-  const migration = runQuotationTemplateMigration(sql, {
-    migration: { templateSeedPlan: () => [], isEmptyQuotationSections: () => true },
-  });
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  const migration = (async () => {
+    try {
+      await runQuotationTemplateMigration(migrationSql, {
+        migration: { templateSeedPlan: () => [], isEmptyQuotationSections: () => true },
+        acquireLock: acquireQuotationWriteLock,
+      });
+      await migrationGate;
+    } finally {
+      if (migrationKey !== undefined) simulator.release(migrationKey, 'migration');
+    }
+  })();
+
+  await waitFor(() => simulator.events.some((event) => event.owner === 'migration' && event.state === 'acquired'));
+  const quotation = { id: '11111111-1111-4111-8111-111111111111', businessNumber: 'ORC-1', status: 'enviado', updatedAt: new Date('2026-07-01T12:00:00.000Z') };
+  const revision = { id: '22222222-2222-4222-8222-222222222222', quotationId: quotation.id, status: 'enviado' };
+  let selectCount = 0;
+  const lifecycleTx = {
+    execute: async (query: unknown) => {
+      lifecycleKey = extractAdvisoryLockKey(query);
+      await simulator.acquire(lifecycleKey, 'lifecycle');
+    },
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          for: () => ({ limit: async () => (++selectCount === 1 ? [quotation] : [revision]) }),
+          orderBy: () => ({ limit: async () => [revision] }),
+          limit: async () => (++selectCount === 1 ? [quotation] : [revision]),
+        }),
+      }),
+    }),
+    update: () => ({ set: () => ({ where: async () => undefined }) }),
+  };
   const lifecycle = createPostgresQuotationLifecycleRepository(
-    () => ({ transaction: async (callback: (tx: never) => Promise<unknown>) => callback({ execute: databaseLock } as never) } as never),
+    () => ({ transaction: async (callback: (tx: typeof lifecycleTx) => Promise<unknown>) => {
+      try {
+        return await callback(lifecycleTx);
+      } finally {
+        if (lifecycleKey !== undefined) simulator.release(lifecycleKey, 'lifecycle');
+      }
+    } } as never),
+    { readDetail: async () => ({
+      quotation_id: quotation.businessNumber,
+      status: 'Approved',
+      status_canonical: 'aprovado',
+    } as never) },
   );
-  const writer = lifecycle.setStatus('ORC-1', { status: 'aprovado', concurrency_token: 'token' }).catch(() => undefined);
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(events, ['attempt:8417392051842', 'acquired:8417392051842', 'attempt:8417392051842']);
-  releaseFirst();
+  const writer = lifecycle.setStatus('ORC-1', { status: 'aprovado', concurrency_token: quotation.updatedAt.toISOString() });
+
+  await waitFor(() => simulator.events.some((event) => event.owner === 'lifecycle' && event.state === 'attempt'));
+  assert.equal(simulator.events.some((event) => event.owner === 'lifecycle' && event.state === 'acquired'), false);
+  assert.equal(simulator.events.filter((event) => event.state === 'attempt').length, 2);
+  assert.equal(migrationKey, lifecycleKey);
+
+  releaseMigration();
   await Promise.all([migration, writer]);
-  assert.deepEqual(events, [
-    'attempt:8417392051842', 'acquired:8417392051842',
-    'attempt:8417392051842', 'acquired:8417392051842',
+  assert.deepEqual(simulator.events.map(({ state, owner }) => `${state}:${owner}`), [
+    'attempt:migration', 'acquired:migration', 'attempt:lifecycle', 'acquired:lifecycle',
   ]);
 });

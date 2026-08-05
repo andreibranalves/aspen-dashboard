@@ -42,11 +42,19 @@ export interface QuotationLifecycleRepository {
   createRevision(id: string, input: CreateQuotationRevisionInput): Promise<QuoteDraftManagementDetail>;
 }
 
+export interface QuotationLifecycleSideEffects {
+  generatePdf?: () => Promise<unknown>;
+  uploadBlob?: () => Promise<unknown>;
+  storeDocument?: () => Promise<unknown>;
+  resolveDocumentUrl?: () => Promise<unknown>;
+}
+
 export interface QuotationLifecycleRepositoryOptions {
   now?: () => Date;
   randomId?: () => string;
   acquireWriteLock?: typeof acquireQuotationWriteLock;
   readDetail?: typeof readPostgresQuotationDetail;
+  sideEffects?: QuotationLifecycleSideEffects;
 }
 
 // Drizzle's `or` expression is intentionally avoided in this helper's UUID

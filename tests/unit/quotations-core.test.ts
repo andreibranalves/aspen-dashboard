@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
 import { createCoreHandler } from '../../api/_functions/quotations-core.js';
@@ -168,12 +169,15 @@ test('quotations core forwards complete update input and maps stale/non-editable
 });
 
 test('actual lifecycle repository status transition returns no issuance artifacts', async () => {
-  const sideEffects = {
-    pdf: 0,
-    blob: 0,
-    documentStorage: 0,
-    documentUrl: 0,
+  const sideEffects = { pdf: 0, blob: 0, documentStorage: 0, documentUrl: 0 };
+  const seams = {
+    generatePdf: async () => { sideEffects.pdf += 1; },
+    uploadBlob: async () => { sideEffects.blob += 1; },
+    storeDocument: async () => { sideEffects.documentStorage += 1; },
+    resolveDocumentUrl: async () => { sideEffects.documentUrl += 1; },
   };
+  const lifecycleSource = await readFile(new URL('../../api/_db/quotation-lifecycle-repository.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(lifecycleSource, new RegExp('quotation-pdf|quotation-document-storage|@vercel/blob|issued_documents'));
   const quotation = {
     id: detail.quotation_uuid,
     businessNumber: detail.id,
@@ -204,6 +208,7 @@ test('actual lifecycle repository status transition returns no issuance artifact
         status_canonical: 'aprovado',
         revision_history: [{ revision_id: detail.revision_id, status_canonical: 'aprovado' }],
       } as any),
+      sideEffects: seams,
     },
   );
   const payload = await lifecycle.setStatus(detail.id, {

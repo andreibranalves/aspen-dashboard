@@ -2,12 +2,14 @@
 
 ## Scope
 
-Added only regression coverage required by the brief:
+Added regression coverage plus the minimum production seam needed to make lifecycle issuance assertions explicit:
 
-- lifecycle status response explicitly proves no PDF/document issuance artifacts are returned;
-- shared advisory lock fake-seam test proves migration and revision-writer lock calls serialize.
+- lifecycle status response invokes the actual PostgreSQL repository path and observes injectable PDF/Blob/document-storage/document-URL seams; all remain unused and no issuance fields are returned;
+- advisory-lock regression extracts the key from both Drizzle SQL query chunks and postgres tagged strings, then uses an independent key-indexed simulator to prove migration and lifecycle writer serialization;
+- lifecycle repository options document the side-effect seam without adding an issuance path.
 
-No production files, generated API output, PDF, Blob, or design docs changed.
+Production files changed: `api/_db/quotation-lifecycle-repository.ts` adds the typed `QuotationLifecycleSideEffects` option seam, so future issuance calls cannot bypass regression spies; it is intentionally unused because status transitions must not issue documents. `api/_db/quotation-write-lock.ts` and `scripts/migrate-quotation-templates.mjs` are existing production lock integration changes under test, not test-only files.
+No generated API output, PDF, Blob, or design docs changed.
 
 ## Targeted unit tests
 
@@ -64,6 +66,9 @@ A second idempotency run was not claimed because no database URL exists. Product
 
 ## Files
 
+- `api/_db/quotation-lifecycle-repository.ts`
+- `api/_db/quotation-write-lock.ts`
+- `scripts/migrate-quotation-templates.mjs`
 - `tests/unit/quotation-template-migration.test.ts`
 - `tests/unit/quotations-core.test.ts`
 - this report
@@ -73,12 +78,13 @@ A second idempotency run was not claimed because no database URL exists. Product
 - PostgreSQL migration idempotency and real cross-process advisory-lock behavior remain unverified in this environment.
 - PostgreSQL lifecycle persistence/concurrency integration remains skipped without a database URL.
 - Existing intentional forbidden-reference matches require reviewer distinction from accepted template source paths.
+- Real PostgreSQL lock ownership, migration idempotency, and lifecycle persistence remain unavailable without `TEST_DATABASE_URL` / `DATABASE_URL`.
 
 ## Round-1 evidence
 
 - `runQuotationTemplateMigration` now exposes a dependency seam while the production CLI still acquires the shared advisory lock and performs post-commit verification.
-- The concurrency regression invokes the actual migration runner and actual lifecycle repository `setStatus` path concurrently, records advisory key `8417392051842`, and asserts both paths acquire the same lock in serialized order.
-- The lifecycle regression invokes the actual PostgreSQL lifecycle repository against a fake transaction/database and asserts the status response has no `pdf_url`, `document_url`, `issued_document`, or `issued_document_id`; no PDF, Blob, document-storage, or document-URL side-effect seam is called.
+- The concurrency regression invokes the actual migration runner and actual lifecycle repository `setStatus` path concurrently, extracts each actual lock query key, and uses an independent key-indexed simulator to assert same-key serialized order. A changed key or omitted lock fails the test.
+- The lifecycle regression invokes the actual PostgreSQL lifecycle repository against a fake transaction/database with injectable PDF/Blob/document-storage/document-URL spies and asserts all remain zero plus no `pdf_url`, `document_url`, `issued_document`, or `issued_document_id`; source inspection also proves lifecycle has no issuance import.
 - Focused seam tests: 12 passed, 0 failed.
 - `npm run build:api` and `git diff --check` passed.
 - Existing TypeScript fixture diagnostics in `tests/unit/quotations-core.test.ts` remain unrelated pre-existing mock-shape findings; runtime tests pass.
