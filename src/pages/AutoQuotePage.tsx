@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiPost, apiGet, apiPatch } from '@/lib/api';
+import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
@@ -59,6 +60,31 @@ export default function AutoQuotePage() {
   const [quoteLeadsLoading, setQuoteLeadsLoading] = useState<boolean>(false);
   const [quoteLeadsError, setQuoteLeadsError] = useState<string | null>(null);
   const [selectedQuoteLeadId, setSelectedQuoteLeadId] = useState<string>('');
+
+  // ── Quotation template ──
+  const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
+  const [templateKey, setTemplateKey] = useState<string>('');
+  const [templateLoading, setTemplateLoading] = useState<boolean>(true);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+
+  const loadTemplates = useCallback(async () => {
+    setTemplateLoading(true);
+    setTemplateError(null);
+    try {
+      const response = await listQuotationTemplates(true);
+      const available = response.templates || response.data || [];
+      setTemplates(available);
+      setTemplateKey(response.default_key || available.find((template) => template.is_default)?.key || '');
+    } catch {
+      setTemplateError('Não foi possível carregar os modelos HTML.');
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   // ── WhatsApp send state ──
   const [waStatusByDraft, setWaStatusByDraft] = useState<Record<number, WaStatus>>({});
@@ -197,7 +223,7 @@ export default function AutoQuotePage() {
         setExtracting(false);
         return;
       }
-      let newDrafts = buildDraftsFromOrders(orders, '');
+      let newDrafts = buildDraftsFromOrders(orders, '', templateKey);
       const nonUrgent = newDrafts.filter((d) => !d.edited.urgente);
       if (nonUrgent.length > 0) newDrafts = await fetchPricing(nonUrgent, false);
       const urgent = newDrafts.filter((d) => d.edited.urgente);
@@ -211,7 +237,9 @@ export default function AutoQuotePage() {
         const next = [...prev, ...appendedDrafts];
         try {
           localStorage.setItem('aspen_drafts', JSON.stringify(next));
-        } catch {}
+        } catch (storageError) {
+          console.warn('[AutoQuotePage] failed to persist drafts:', (storageError as Error).message);
+        }
         return next;
       });
       loadHistory();
@@ -220,7 +248,7 @@ export default function AutoQuotePage() {
     } finally {
       setExtracting(false);
     }
-  }, [text, imageData, fetchPricing, buildDraftsFromOrders, loadHistory]);
+  }, [text, imageData, templateKey, fetchPricing, buildDraftsFromOrders, loadHistory]);
 
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
   const createSingleQuote = useCallback(
@@ -257,6 +285,7 @@ export default function AutoQuotePage() {
               manual_rate: it._rateManual === true,
             })),
           prazo_producao: draft.edited.prazo_producao || undefined,
+          ...(draft.edited.template_key ? { template_key: draft.edited.template_key } : {}),
         },
       };
       try {
@@ -325,7 +354,8 @@ export default function AutoQuotePage() {
       ].join('\n');
       setText(formatted);
       document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {
+    } catch (loadError) {
+      console.warn('[AutoQuotePage] failed to load history item:', (loadError as Error).message);
       setText(`${item.id} — ${item.cliente || 'Cliente'}`);
     }
   }, []);
@@ -357,7 +387,9 @@ export default function AutoQuotePage() {
     setSelectedQuoteLeadId('');
     try {
       localStorage.removeItem('aspen_drafts');
-    } catch {}
+    } catch (storageError) {
+      console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
+    }
   }, [clearImage, setDrafts, setProductSearch]);
 
   const clearResults = useCallback(() => {
@@ -368,7 +400,9 @@ export default function AutoQuotePage() {
     setSelectedQuoteLeadId('');
     try {
       localStorage.removeItem('aspen_drafts');
-    } catch {}
+    } catch (storageError) {
+      console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
+    }
   }, [setDrafts, setProductSearch]);
 
   // ── WhatsApp handlers ──
@@ -502,7 +536,9 @@ export default function AutoQuotePage() {
           };
           try {
             localStorage.setItem('aspen_drafts', JSON.stringify(next));
-          } catch {}
+          } catch (storageError) {
+            console.warn('[AutoQuotePage] failed to persist drafts:', (storageError as Error).message);
+          }
           return next;
         });
 
@@ -529,6 +565,12 @@ export default function AutoQuotePage() {
           <div className="px-4 md:px-6 pt-4 md:pt-5 space-y-4">
             {/* Page title */}
             <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
+            {templateError && (
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+                <span>{templateError}</span>
+                <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
+              </div>
+            )}
 
             {/* Text input */}
             <div className="mt-2">
@@ -865,6 +907,10 @@ export default function AutoQuotePage() {
                     waSelectedFlowId={waFlowByDraft[draft.index] || defaultWaFlowId}
                     onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
                     onSendWhatsApp={handleSendWhatsApp}
+                    templates={templates}
+                    templateLoading={templateLoading}
+                    templateError={templateError}
+                    onRetryTemplates={loadTemplates}
                     reExtractText={reExtractTextByDraft[draft.index] || ''}
                     reExtractLoading={reExtractLoadingByDraft[draft.index] || false}
                     onReExtractTextChange={handleReExtractTextChange}

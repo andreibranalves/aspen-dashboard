@@ -9,6 +9,14 @@ const CLIENT = {
   tipo: 'cliente',
 };
 
+const TEMPLATE_MANIFEST = {
+  templates: [
+    { key: 'padrao', name: 'Padrão Aspen', is_default: true },
+    { key: 'minimalista', name: 'Minimalista', is_default: false },
+  ],
+  default_key: 'padrao',
+};
+
 const PRODUCT = {
   sku: 'CORE-QUOTE-001',
   nome: 'Produto para rascunho',
@@ -22,7 +30,14 @@ const PRODUCT = {
 };
 
 test.describe('Orçamento manual — rascunho core', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/quotation-templates**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TEMPLATE_MANIFEST) });
+    });
+  });
+
   test('envia ID do cliente existente e mostra apenas a confirmação do rascunho', async ({ page }) => {
+    /** @type {any} */
     let quoteRequest;
 
     await page.route('**/api/leads-clients**', async (route) => {
@@ -86,11 +101,12 @@ test.describe('Orçamento manual — rascunho core', () => {
     await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
 
-    await page.locator('select').selectOption('Google Ads');
+    await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
     await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await expect(page.getByText(PRODUCT.sku, { exact: true }).first()).toBeVisible();
+    await page.getByLabel('Modelo HTML').selectOption('minimalista');
     await page.getByRole('button', { name: 'Criar orçamento' }).click();
 
     await expect(page.getByText('Rascunho persistido com sucesso')).toBeVisible();
@@ -100,9 +116,11 @@ test.describe('Orçamento manual — rascunho core', () => {
     expect(quoteRequest?.extracted?.client_id).toBe(CLIENT.id);
     expect(quoteRequest?.extracted?.items?.[0]?.rate).toBe(9);
     expect(quoteRequest?.extracted?.items?.[0]?.manual_rate).toBe(false);
+    expect(quoteRequest?.extracted?.template_key).toBe('minimalista');
   });
 
   test('envia o mesmo preço exibido para o boundary legado com sinal não manual', async ({ page }) => {
+    /** @type {any} */
     let quoteRequest;
 
     await page.route('**/api/leads-clients**', async (route) => {
@@ -148,7 +166,7 @@ test.describe('Orçamento manual — rascunho core', () => {
     await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Maria');
     await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
     await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
-    await page.locator('select').selectOption('Google Ads');
+    await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
     await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();

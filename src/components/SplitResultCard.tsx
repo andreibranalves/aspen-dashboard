@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
 import type { Draft, DraftEdited, DraftItem } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/communicationApi';
+import type { QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 
 export interface SplitResultCardProps {
   draft: Draft;
@@ -42,6 +43,10 @@ export interface SplitResultCardProps {
   waStatus?: { state?: 'sending' | 'sent' | 'error'; message?: string };
   waFlows?: CommunicationFlow[];
   waSelectedFlowId?: string;
+  templates?: QuotationTemplateMetadata[];
+  templateLoading?: boolean;
+  templateError?: string | null;
+  onRetryTemplates?: () => void;
   onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
   onSendWhatsApp?: (draftIdx: number) => void;
   reExtractText?: string;
@@ -66,6 +71,10 @@ export default function SplitResultCard({
   waStatus,
   waFlows = [],
   waSelectedFlowId = '',
+  templates = [],
+  templateLoading = false,
+  templateError = null,
+  onRetryTemplates,
   onSelectWhatsAppFlow,
   onSendWhatsApp,
   reExtractText = '',
@@ -299,6 +308,34 @@ export default function SplitResultCard({
           )}
         </div>
       </div>
+
+      {/* ── Template selector ── */}
+      {!isDone && (
+        <div className="border-b border-line bg-surface/20 px-4 py-3">
+          {templateError ? (
+            <div className="flex items-center justify-between gap-2 text-xs text-destructive">
+              <span>{templateError}</span>
+              <Button type="button" variant="outline" size="sm" onClick={onRetryTemplates}>Tentar novamente</Button>
+            </div>
+          ) : (
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-fg-muted">Modelo HTML</span>
+              <select
+                aria-label="Modelo HTML"
+                value={draft.edited.template_key || ''}
+                onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
+                disabled={templateLoading || templates.length === 0}
+                className="h-8 w-full rounded-md border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
+              >
+                {!draft.edited.template_key && <option value="">Padrão do servidor</option>}
+                {templates.map((template) => (
+                  <option key={template.key} value={template.key}>{template.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
 
       {/* ── Items table ── */}
       {!isDone && (

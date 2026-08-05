@@ -313,7 +313,7 @@ export function useExtractionDrafts() {
 
   // ── Helper: build draft objects from extracted orders ──
   const buildDraftsFromOrders = useCallback(
-    (orders: Record<string, unknown>[], prazoVal: string): Draft[] => {
+    (orders: Record<string, unknown>[], prazoVal: string, templateKey = ''): Draft[] => {
       return orders.map((order, i) => ({
         index: i,
         original: { ...order },
@@ -331,6 +331,7 @@ export function useExtractionDrafts() {
             rate: (it as Record<string, unknown>).rate != null ? Number((it as Record<string, unknown>).rate) : null,
           })),
           prazo_producao: prazoVal || '',
+          template_key: templateKey || undefined,
         },
         approved: false,
         discarded: false,

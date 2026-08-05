@@ -13,12 +13,20 @@ const MOCK_EXTRACT = {
       telefone: '(11) 99999-0001',
       urgente: false,
       items: [
-        { sku: 'LNC-SED-70', quantity: 50, description: 'Lenço Sedoso 70cm' },
-        { sku: 'LNC-CSD-70', quantity: 50, description: 'Lenço Customizado 70cm' },
-        { sku: 'BNE-TAC-VNL', quantity: 20, description: 'Boné Tactel Vanilla' },
+        { item_code: 'LNC-SED-70', qty: 50, sku: 'LNC-SED-70', description: 'Lenço Sedoso 70cm' },
+        { item_code: 'LNC-CSD-70', qty: 50, sku: 'LNC-CSD-70', description: 'Lenço Customizado 70cm' },
+        { item_code: 'BNE-TAC-VNL', qty: 20, sku: 'BNE-TAC-VNL', description: 'Boné Tactel Vanilla' },
       ],
     },
   ],
+};
+
+const MOCK_TEMPLATES = {
+  templates: [
+    { key: 'padrao', name: 'Padrão Aspen', is_default: true },
+    { key: 'minimalista', name: 'Minimalista', is_default: false },
+  ],
+  default_key: 'padrao',
 };
 
 const MOCK_ORCAMENTO = {
@@ -115,6 +123,14 @@ const MOCK_WHATSAPP_LEADS = {
 // ── Helpers ──
 
 async function setupApiMocks(page) {
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(MOCK_TEMPLATES),
+    });
+  });
+
   await page.route('**/api/extract', async (route) => {
     await route.fulfill({
       status: 200,
@@ -239,6 +255,12 @@ test.describe('Auto Quote — Fluxo Principal', () => {
 
   test('submissão de texto exibe rascunhos para revisão', async ({ page }) => {
     await setupApiMocks(page);
+    /** @type {any} */
+    let quoteRequest;
+    await page.route('**/api/orcamento', async (route) => {
+      quoteRequest = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ORCAMENTO) });
+    });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
@@ -257,6 +279,22 @@ test.describe('Auto Quote — Fluxo Principal', () => {
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
+    await page.getByLabel('Modelo HTML').selectOption('minimalista');
+    await page.getByRole('button', { name: 'Criar orçamento' }).click();
+    await expect.poll(() => quoteRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
+  });
+
+  test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {
+    await setupApiMocks(page);
+    await page.route('**/api/quotation-templates**', async (route) => {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'indisponível' }) });
+    });
+    await page.goto('/#/auto');
+    await page.waitForSelector('textarea', { timeout: 10000 });
+    await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
+    await expect(page.getByText('Não foi possível carregar os modelos HTML.')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
   });
 
   test('botão Extrair desabilitado sem texto', async ({ page }) => {

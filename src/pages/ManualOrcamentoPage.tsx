@@ -2,6 +2,7 @@ import {
   useState,
   useCallback,
   useRef,
+  useEffect,
   type ChangeEvent,
 } from 'react';
 import {
@@ -25,6 +26,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
+import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 import {
   isCoreUnpricedProduct,
   searchProducts as cachedSearchProducts,
@@ -129,6 +131,31 @@ export default function ManualOrcamentoPage() {
   const [prazo, setPrazo] = useState<string>('');
   const [observacoes, setObservacoes] = useState<string>('');
   const [urgente, setUrgente] = useState<boolean>(false);
+
+  // ── Quotation template ──
+  const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
+  const [templateKey, setTemplateKey] = useState<string>('');
+  const [templateLoading, setTemplateLoading] = useState<boolean>(true);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+
+  const loadTemplates = useCallback(async () => {
+    setTemplateLoading(true);
+    setTemplateError(null);
+    try {
+      const response = await listQuotationTemplates(true);
+      const available = response.templates || response.data || [];
+      setTemplates(available);
+      setTemplateKey(response.default_key || available.find((template) => template.is_default)?.key || '');
+    } catch {
+      setTemplateError('Não foi possível carregar os modelos HTML.');
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   // ── Submit state ──
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -377,6 +404,7 @@ export default function ManualOrcamentoPage() {
             ? { client_id: selectedClient.id }
             : {}),
           prazo_producao: prazo || undefined,
+          ...(templateKey ? { template_key: templateKey } : {}),
           ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
         },
       };
@@ -389,7 +417,7 @@ export default function ManualOrcamentoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [getClientInfo, items, urgente, prazo, observacoes, leadSource, cnpj, address, clientCoreMode, clientType, selectedClient]);
+  }, [getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj, address, clientCoreMode, clientType, selectedClient]);
 
   // ── WhatsApp link builder ──
   const buildWaLink = useCallback((telefone: string, nome: string | undefined, quotationId: string | undefined, quotationLink: string): string | null => {
@@ -1023,6 +1051,13 @@ export default function ManualOrcamentoPage() {
                   </div>
                 )}
 
+                {templateError && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+                    <span>{templateError}</span>
+                    <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="text-xs text-fg-muted mb-1 block">Prazo de produção</label>
@@ -1032,6 +1067,21 @@ export default function ManualOrcamentoPage() {
                       onChange={e => setPrazo(e.target.value)}
                       aria-label="Prazo de produção"
                     />
+                  </div>
+                  <div>
+                    <label className="text-xs text-fg-muted mb-1 block">Modelo HTML</label>
+                    <select
+                      className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
+                      value={templateKey}
+                      onChange={(event) => setTemplateKey(event.target.value)}
+                      disabled={templateLoading || templates.length === 0}
+                      aria-label="Modelo HTML"
+                    >
+                      {!templateKey && <option value="">Padrão do servidor</option>}
+                      {templates.map((template) => (
+                        <option key={template.key} value={template.key}>{template.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="rounded-xl border border-line bg-surface px-3 py-2 flex items-center justify-between gap-3">
                     <div>

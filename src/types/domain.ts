@@ -61,6 +61,7 @@ export interface DraftEdited {
   endereco: Address;
   items: DraftItem[];
   prazo_producao: string;
+  template_key?: string;
   _showAddr?: boolean;
 }
 
