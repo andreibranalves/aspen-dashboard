@@ -36,6 +36,34 @@ test.describe('Orçamento manual — rascunho core', () => {
     });
   });
 
+  test('seleciona o modelo padrão retornado pela API', async ({ page }) => {
+    await page.goto('/#/manual');
+    await expect(page.getByLabel('Modelo HTML')).toBeVisible();
+    await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
+    await expect(page.getByLabel('Modelo HTML').locator('option')).toHaveText(['Padrão Aspen', 'Minimalista']);
+  });
+
+  test('falha ao carregar modelos mantém formulário utilizável e permite retry', async ({ page }) => {
+    let templateAttempts = 0;
+    await page.route('**/api/quotation-templates**', async (route) => {
+      templateAttempts += 1;
+      await route.fulfill(templateAttempts === 1
+        ? { status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'indisponível' }) }
+        : { status: 200, contentType: 'application/json', body: JSON.stringify(TEMPLATE_MANIFEST) });
+    });
+
+    await page.goto('/#/manual');
+    await expect(page.getByText('Não foi possível carregar os modelos HTML.')).toBeVisible();
+    await expect(page.getByLabel('Nome do cliente')).toBeVisible();
+    await expect(page.getByLabel('Buscar produto para adicionar ao orçamento')).toBeEnabled();
+    await expect(page.getByLabel('Prazo de produção')).toBeEnabled();
+
+    await page.getByRole('button', { name: 'Tentar novamente' }).click();
+    await expect(page.getByLabel('Modelo HTML')).toBeEnabled();
+    await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
+    expect(templateAttempts).toBeGreaterThanOrEqual(2);
+  });
+
   test('envia ID do cliente existente e mostra apenas a confirmação do rascunho', async ({ page }) => {
     /** @type {any} */
     let quoteRequest;

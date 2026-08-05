@@ -287,14 +287,28 @@ test.describe('Auto Quote — Fluxo Principal', () => {
 
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {
     await setupApiMocks(page);
+    let templateAttempts = 0;
     await page.route('**/api/quotation-templates**', async (route) => {
-      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'indisponível' }) });
+      templateAttempts += 1;
+      await route.fulfill(templateAttempts === 1
+        ? { status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'indisponível' }) }
+        : { status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_TEMPLATES) });
     });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
     await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
     await expect(page.getByText('Não foi possível carregar os modelos HTML.')).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeVisible();
+
+    const textarea = page.locator('textarea').first();
+    await textarea.fill('50 lenços');
+    await expect(textarea).toHaveValue('50 lenços');
+    await page.getByRole('button', { name: 'Tentar novamente' }).click();
+    await expect(page.getByRole('button', { name: 'Tentar novamente' })).toHaveCount(0);
+    await page.getByRole('button', { name: /Extrair/i }).click();
+    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByLabel('Modelo HTML')).toBeEnabled();
+    await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
+    expect(templateAttempts).toBeGreaterThanOrEqual(2);
   });
 
   test('botão Extrair desabilitado sem texto', async ({ page }) => {
