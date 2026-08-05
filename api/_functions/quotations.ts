@@ -535,11 +535,19 @@ export interface QuotationsHandlerDependencies {
   legacy?: LegacyHandler;
 }
 
+function addSourceHeaders(result: FunctionResult, source: 'postgres' | 'frappe'): FunctionResult {
+  if (!result.headers) result.headers = {} as Record<string, string>;
+  (result.headers as Record<string, string>)['X-Quote-Source'] = source;
+  return result;
+}
+
 /** Feature-flagged boundary. Core failures are returned unchanged and never
- * fall back to Frappe. The effective rollout state selects the dispatch path:
+ * fall back to Frappe (except in rollback-compatible mode for GET where a
+ * missing PostgreSQL record triggers a selective, observable Frappe fallback).
+ * The effective rollout state selects the dispatch path:
  * - postgres-write: core handler (read+write via PostgreSQL)
  * - postgres-read-only: core for reads, legacy for writes
- * - rollback-compatible: core for reads, legacy for writes
+ * - rollback-compatible: core for reads with Frappe fallback, legacy for writes
  * - legacy: legacy handler (Frappe)
  */
 export function createHandler(dependencies: QuotationsHandlerDependencies = {}): LegacyHandler {
@@ -549,7 +557,15 @@ export function createHandler(dependencies: QuotationsHandlerDependencies = {}):
     const state: QuoteRolloutState = resolveEffectiveRolloutState();
     if (state === 'postgres-write') return selectedCore(event);
     if (state === 'postgres-read-only' || state === 'rollback-compatible') {
-      if (event.httpMethod === 'GET') return selectedCore(event);
+      if (event.httpMethod === 'GET') {
+        if (state === 'rollback-compatible') {
+          // Try PostgreSQL first; fall back to Frappe for legacy/absent records
+          const coreResult = await selectedCore(event);
+          if (coreResult.statusCode !== 404) return addSourceHeaders(coreResult, 'postgres');
+          return addSourceHeaders(await selectedLegacy(event), 'frappe');
+        }
+        return selectedCore(event);
+      }
       return selectedLegacy(event);
     }
     return selectedLegacy(event);
