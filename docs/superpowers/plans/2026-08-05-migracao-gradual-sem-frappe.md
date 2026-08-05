@@ -20,170 +20,161 @@
 
 ---
 
-### Task 1: Fix baseline generation and branch hygiene
+### Task 1: Make the test baseline reproducible
 
 **Files:**
-- Modify: `package.json` only if test/build workflow requires a minimal generated-output correction.
-- Test: `tests/unit/*.test.ts` existing suite.
+- Modify: `package.json` test scripts only if required to build API output before tests.
+- Modify: `scripts/` only if test setup requires one existing setup entrypoint.
+- Test: `tests/unit/*.test.{js,ts}` existing suite.
 
 **Interfaces:**
 - Consumes: source TypeScript under `api/`.
-- Produces: generated JavaScript required by current unit test imports and documented baseline status.
+- Produces: a clean-checkout test command that generates or loads required API output deterministically.
 
-- [ ] **Step 1: Reproduce baseline failure in the new worktree**
+- [ ] **Step 1: Reproduce the clean-checkout failure**
 
-Run:
-
-```bash
-npm run test:unit
-```
-
-Expected baseline failure: tests importing `api/**/*.js` fail when generated JavaScript is absent.
-
-- [ ] **Step 2: Generate API output**
-
-Run:
-
-```bash
-npm run build:api
-```
-
-Expected: TypeScript emits JavaScript into the API tree.
-
-- [ ] **Step 3: Verify generated baseline**
-
-Run:
+From a fresh worktree with no generated API JavaScript, run:
 
 ```bash
 npm run test:unit
 ```
 
-Expected: no failed tests; PostgreSQL-dependent tests may remain skipped when `TEST_DATABASE_URL` is absent.
+Expected current failure: imports such as `api/_functions/pricing.js` are missing.
 
-- [ ] **Step 4: Commit only if workflow changes were needed**
+- [ ] **Step 2: Choose the smallest reproducible fix**
+
+Prefer changing `test:unit` to run `npm run build:api && TZ=UTC node --test tests/unit/*.test.{js,ts}` if generated JavaScript is required by repository tests. Do not commit generated output merely to mask the missing setup step.
+
+- [ ] **Step 3: Add a regression check**
+
+Run the test command from a clean worktree copy and assert it performs the API build before Node starts tests.
+
+- [ ] **Step 4: Verify**
 
 ```bash
-git status --short
-git diff -- package.json
+npm run test:unit
 ```
 
-Do not commit generated build output if repository policy excludes it. Commit only source changes required to make the workflow reproducible.
+Expected: 0 failed tests. PostgreSQL tests may be skipped only when `TEST_DATABASE_URL` is absent.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add package.json scripts tests
+ git commit -m "test: make unit baseline reproducible"
+```
 
 ---
 
-### Task 2: Create route and dependency inventory
+### Task 2: Inventory quotation routes and dependencies
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-08-05-quotation-route-inventory.md`
-- Test: `tests/unit/route-map.test.ts` or existing route-map test location.
-- Modify: `api/[...path].ts`, `scripts/app-server.mjs`, `scripts/dev-api-server.mjs` only if the inventory finds drift.
+- Create: `tests/unit/route-map.test.ts`
+- Modify: `api/[...path].ts`, `scripts/app-server.mjs`, `scripts/dev-api-server.mjs` only if parity fails.
 
 **Interfaces:**
 - Consumes: all three route maps and handlers under `api/_functions/`.
-- Produces: one table mapping each quotation route to source, auth, storage, Frappe calls, and feature flag.
+- Produces: one route-name parity test and one inventory table mapping route, methods, auth, source, Frappe calls, PostgreSQL tables, side effects, flag and status.
 
-- [ ] **Step 1: Add failing route-map parity test**
+- [ ] **Step 1: Add the parity test**
 
-The test must import or parse the three route maps and assert identical route-name sets. Include `quotations`, `quotation-preview`, `quotation-templates`, `orcamento`, `view`, `pdf`, `send-whatsapp`, `sales-order-from-quotation`, `sales-orders`, and `sales-dashboard`.
+Expose or parse each existing route map without changing handler behavior. Assert equal route-name sets, not object insertion order. Include at least:
 
-- [ ] **Step 2: Run the parity test**
+```text
+quotations
+quotation-preview
+quotation-templates
+orcamento
+view
+pdf
+send-whatsapp
+sales-order-from-quotation
+sales-orders
+sales-dashboard
+```
+
+- [ ] **Step 2: Run the test**
 
 ```bash
+npm run build:api
 node --test tests/unit/route-map.test.ts
 ```
 
-Expected: FAIL if maps differ or test cannot observe the maps.
+Expected: PASS if the current 40 route names match; failure must identify the differing set.
 
-- [ ] **Step 3: Implement the smallest shared/testable route-map seam**
+- [ ] **Step 3: Write the inventory**
 
-Do not create a framework. Export route-name sets from existing maps or extract one plain object only if that removes duplication. Preserve handler signatures and local server behavior.
-
-- [ ] **Step 4: Write inventory document**
-
-For every route, record:
+Record for every quotation-related route:
 
 ```text
 route | methods | auth | source of truth | Frappe calls | PostgreSQL tables | external side effects | flag | migration status
 ```
 
-Mark incomplete PDF/document routes explicitly.
+Mark `view`, `pdf`, WhatsApp and Sales Order routes as legacy until their replacement tests pass.
 
-- [ ] **Step 5: Verify**
-
-```bash
-npm run build:api
-node --test tests/unit/route-map.test.ts
-```
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add api/[...path].ts scripts/app-server.mjs scripts/dev-api-server.mjs tests/unit/route-map.test.ts docs/superpowers/plans/2026-08-05-quotation-route-inventory.md
+git add tests/unit/route-map.test.ts docs/superpowers/plans/2026-08-05-quotation-route-inventory.md api/[...path].ts scripts/app-server.mjs scripts/dev-api-server.mjs
 git commit -m "docs: inventory quotation migration routes"
 ```
 
 ---
 
-### Task 3: Isolate quotation rollout flag and rollback contract
+### Task 3: Isolate quotation flag and define rollout states
 
 **Files:**
-- Modify: `api/_functions/operational-mode.ts`
-- Modify: `api/_functions/orcamento-core.ts`
-- Modify: `api/_functions/quotations-core.ts`
-- Modify: `api/_functions/quotation-preview.ts`
-- Modify: `api/_functions/quotation-templates.ts`
-- Test: `tests/unit/operational-mode.test.ts` and affected quotation handler tests.
+- Modify: `api/_functions/orcamento-mode.ts`
+- Modify: `api/_functions/operational-mode.ts` only where the shared guard incorrectly couples quotes.
+- Modify: `api/_functions/orcamento-core.ts`, `api/_functions/quotations-core.ts`, `api/_functions/quotation-preview.ts`, `api/_functions/quotation-templates.ts`.
+- Test: `tests/unit/operational-mode.test.ts` and affected quotation tests.
 
 **Interfaces:**
-- Consumes: `CRM_CORE_QUOTES_ENABLED`, existing core handlers and repositories.
-- Produces: one function `isCoreQuotesEnabled()` that controls only quotation routes and never activates unrelated domains.
+- Produces: `isCoreQuotesEnabled()` controlled only by `CRM_CORE_QUOTES_ENABLED`, plus explicit rollout-state handling for `legacy`, `postgres-write`, `postgres-read-only` and `rollback-compatible`.
 
 - [ ] **Step 1: Write failing flag tests**
 
 Cover:
 
 ```text
-CRM_CORE_QUOTES_ENABLED=true -> quotation core enabled
-CRM_CORE_QUOTES_ENABLED=false/unset -> quotation core disabled
-CRM_CORE_QUOTES_ENABLED=invalid -> quotation core disabled
-CRM_OPERATIONAL_MODE=true alone -> quotation flag behavior unchanged
+CRM_CORE_QUOTES_ENABLED=true -> postgres-write selection
+CRM_CORE_QUOTES_ENABLED=false/unset -> legacy selection
+CRM_CORE_QUOTES_ENABLED=invalid -> legacy selection
+CRM_OPERATIONAL_MODE=true alone -> no quotation override
 ```
 
-Also assert a core handler does not call legacy fallback after repository failure.
+Assert a repository failure never silently invokes Frappe fallback.
 
-- [ ] **Step 2: Run tests**
-
-```bash
-node --test tests/unit/operational-mode.test.ts tests/unit/*quotation*.test.ts
-```
-
-Expected: FAIL for any current global-mode coupling or missing invalid-value behavior.
-
-- [ ] **Step 3: Implement isolated flag**
-
-Keep the existing public flag name if already used. Remove only the coupling that makes `CRM_OPERATIONAL_MODE` an implicit quotation rollout switch. Preserve explicit operational guards for domains that still need them.
-
-- [ ] **Step 4: Add rollback contract test**
-
-Create a PostgreSQL-backed or repository-seam test that writes a quotation while the core flag is enabled, disables the flag, and verifies the application returns a controlled `core data unavailable` state rather than pretending the quotation is absent in Frappe.
-
-- [ ] **Step 5: Verify**
+- [ ] **Step 2: Run focused tests**
 
 ```bash
 npm run build:api
 node --test tests/unit/operational-mode.test.ts tests/unit/*quotation*.test.ts
 ```
 
-- [ ] **Step 6: Commit**
+Expected: FAIL while the current `CRM_OPERATIONAL_MODE` override remains.
+
+- [ ] **Step 3: Implement the isolated flag**
+
+Remove only quote coupling from `CRM_OPERATIONAL_MODE`. Preserve operational guards for still-legacy domains. Use explicit response/error behavior for `postgres-read-only` and `rollback-compatible`, rather than pretending PostgreSQL records do not exist in Frappe.
+
+- [ ] **Step 4: Add the rollback contract test**
+
+Using a repository seam or PostgreSQL test database, create a PostgreSQL quotation, switch to rollback-compatible state, and verify its detail remains readable. Verify legacy records retain their documented path.
+
+- [ ] **Step 5: Verify and commit**
 
 ```bash
-git add api/_functions/operational-mode.ts api/_functions/orcamento-core.ts api/_functions/quotations-core.ts api/_functions/quotation-preview.ts api/_functions/quotation-templates.ts tests/unit
+npm run build:api
+node --test tests/unit/operational-mode.test.ts tests/unit/*quotation*.test.ts
+git add api/_functions tests/unit
 git commit -m "fix: isolate quotation rollout flag"
 ```
 
 ---
 
-### Task 4: Add migration-run manifest and external lineage fields
+### Task 4: Add persisted migration runs, batches and complete lineage
 
 **Files:**
 - Modify: `api/_db/schema.ts`
@@ -195,24 +186,15 @@ git commit -m "fix: isolate quotation rollout flag"
 - Test: `tests/unit/frappe-migration.test.ts`, `tests/unit/frappe-migration-repository.test.ts`.
 
 **Interfaces:**
-- Produces: `migration_runs` metadata and lineage fields `migration_run_id`, `source_updated_at`, `imported_at`, `source_hash`, plus deterministic batch status.
+- Produces: persisted `migration_runs`, batch checkpoints and lineage fields `provider`, `entity_type`, `source_id`, `local_id`, `business_number`, `migration_run_id`, `source_updated_at`, `imported_at`, `source_hash`.
 
 - [ ] **Step 1: Write failing manifest tests**
 
-Assert dry-run returns a manifest containing run ID, source timestamp, entity counts, canonical hashes and divergence count without writing destination rows.
+Assert dry-run returns a manifest with run ID, source snapshot timestamp, entity counts, canonical hashes and approved/blocking divergence counts without writing destination rows.
 
-- [ ] **Step 2: Run focused tests**
+- [ ] **Step 2: Add the schema migration**
 
-```bash
-npm run build:api
-node --test tests/unit/frappe-migration*.test.ts
-```
-
-Expected: FAIL for missing manifest/run metadata.
-
-- [ ] **Step 3: Add schema migration**
-
-Add a migration-run table with:
+Create a migration-run table with:
 
 ```text
 id UUID primary key
@@ -225,15 +207,19 @@ started_at timestamptz not null
 completed_at timestamptz nullable
 ```
 
-Add lineage references and timestamps without changing existing public response contracts.
+Add batch state sufficient for `pending`, `running`, `completed`, `failed`, checkpoint and attempt count. Add lineage references to the run and preserve existing uniqueness constraints.
 
-- [ ] **Step 4: Implement dry-run and resumable apply**
+- [ ] **Step 3: Define PII policy in code and docs**
 
-Create a run before apply, persist batch outcomes, use existing deterministic IDs and hashes, and make retries no-op for unchanged source records. Never log raw payloads.
+Restrict raw `legacy_payload` to authorized operational reads, exclude it from logs/reports, and record retention policy before production apply. Tests must assert migration output does not serialize raw payloads in summary responses.
+
+- [ ] **Step 4: Implement dry-run, apply and resume**
+
+Create a run before apply, persist batch outcomes, use deterministic IDs/hashes, and make retries no-op for unchanged source records. Return non-zero from `scripts/migrate-frappe-crm.mjs` on blocking errors, failed batches or unmet prerequisites.
 
 - [ ] **Step 5: Verify idempotence**
 
-Run migration fixture twice and assert equal row counts, IDs, hashes and lineage references.
+Run the same fixture twice and assert equal row counts, IDs, hashes, lineage references and completed batch states.
 
 - [ ] **Step 6: Commit**
 
@@ -244,172 +230,180 @@ git commit -m "feat: track migration runs and lineage"
 
 ---
 
-### Task 5: Make prerequisite data migration explicit
+### Task 5: Seed templates and gate prerequisite data migration
 
 **Files:**
-- Modify: `api/_functions/frappe-migration.ts`
-- Modify: `api/_db/frappe-migration-repository.ts`
 - Modify: `api/_db/schema.ts`
+- Modify: `api/_db/frappe-migration-repository.ts`
+- Modify: `api/_functions/frappe-migration.ts`
+- Modify: `api/_functions/lib/frappe-migration-core.ts`
 - Modify: `scripts/migrate-frappe-crm.mjs`
-- Test: `tests/unit/frappe-migration*.test.ts`, `tests/unit/pricing-rollout.test.ts`, `tests/unit/products-quote-mode.test.ts`.
+- Test: `tests/unit/frappe-migration*.test.ts`, `tests/unit/quotation-template*.test.*`, `tests/unit/pricing-rollout.test.ts`, `tests/unit/products-quote-mode.test.ts`.
 
 **Interfaces:**
-- Consumes: deterministic migration infrastructure from Task 4.
-- Produces: validated import order `templates -> products -> prices -> clients/leads -> quotations` and explicit orphan/conflict reports.
+- Consumes: Task 4 run/lineage infrastructure.
+- Produces: validated order `templates -> products -> prices -> clients/leads -> quotations` and explicit orphan/conflict reports.
 
-- [ ] **Step 1: Add failing dependency-order test**
+- [ ] **Step 1: Add template integrity test**
 
-Assert quotation import refuses to apply when referenced product, client or template is absent unless the record is classified in an approved divergence report.
+Assert every expected built-in template and current version exists before an imported quotation can be applied. Assert missing template version blocks apply.
 
-- [ ] **Step 2: Run focused test**
+- [ ] **Step 2: Add dependency-order tests**
 
-```bash
-node --test tests/unit/frappe-migration*.test.ts tests/unit/pricing-rollout.test.ts tests/unit/products-quote-mode.test.ts
-```
+Assert quotation apply refuses missing product, client or template references unless the record is classified in an approved divergence report.
 
-- [ ] **Step 3: Implement prerequisite gates**
+- [ ] **Step 3: Define status policy test**
 
-Use existing repository operations. Do not add a generic migration framework. Make each entity phase report counts, orphans and conflicts. Keep historical original status alongside canonical status.
+Cover `draft`, `open`, `sent`, `lost`, `cancelled`, `ordered`, `completed` and `closed`. Assert canonical status, original status and order linkage/pending marker.
 
-- [ ] **Step 4: Add status policy tests**
+- [ ] **Step 4: Implement gates**
 
-Cover cancelled, lost, ordered, completed and closed source states. Assert canonical mapping and preservation of original status.
+Seed built-in PostgreSQL templates using the existing template library/repository. Do not add templates to the Frappe dataset unless the source system actually owns them. Make each entity phase report counts, approved divergences and blocking divergences.
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 5: Block invalid apply**
+
+Before writes, reject any blocking divergence, missing prerequisite or unsupported status mapping. Continue only with explicitly approved divergence records.
+
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 npm run build:api
-node --test tests/unit/frappe-migration*.test.ts tests/unit/pricing-rollout.test.ts tests/unit/products-quote-mode.test.ts
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add api/_db api/_functions/frappe-migration.ts scripts/migrate-frappe-crm.mjs tests/unit
+node --test tests/unit/frappe-migration*.test.ts tests/unit/quotation-template*.test.* tests/unit/pricing-rollout.test.ts tests/unit/products-quote-mode.test.ts
+git add api/_db api/_functions/frappe-migration.ts api/_functions/lib/frappe-migration-core.ts scripts/migrate-frappe-crm.mjs tests/unit
 git commit -m "feat: gate quotation migration on prerequisites"
 ```
 
 ---
 
-### Task 6: Define document and public-link boundary
+### Task 6: Define PostgreSQL document and public-link boundary
 
 **Files:**
+- Create: `api/_functions/public-quotation.ts` or equivalent narrow handler.
+- Modify: `api/[...path].ts`, `scripts/app-server.mjs`, `scripts/dev-api-server.mjs` to register the new route identically.
 - Modify: `api/_functions/quotation-preview.ts`
-- Modify: `api/_functions/view.ts`
-- Modify: `api/_functions/pdf.ts`
 - Modify: `api/_functions/lib/quotation-pdf.ts`
-- Modify: `api/_functions/lib/quotation-html.ts`
-- Modify: `api/_lib/auth.ts`
-- Test: `tests/unit/quotation-html.test.js`, `tests/unit/quotation-preview.test.ts`, new `tests/unit/public-quotation-link.test.ts`.
+- Modify: `api/_functions/lib/quotation-html.ts` only if shared renderer can accept canonical PostgreSQL snapshots without legacy fetch.
+- Modify: `api/_lib/auth.ts` only to keep admin `view` protected and allow the narrow public route.
+- Test: new `tests/unit/public-quotation.test.ts`, affected `tests/unit/quotation-html.test.js` and preview tests.
 
 **Interfaces:**
-- Produces: explicit policy for generated PDFs and public links. Public links accept only a signed/random token for issued revisions and never expose drafts.
+- Produces: authenticated admin document path and a public token path limited to issued revisions, with expiration, revocation, rate limit and deterministic document metadata.
 
-- [ ] **Step 1: Add failing tests**
+- [ ] **Step 1: Write failing tests**
 
-Cover unauthenticated access with valid public token, invalid token, expired token, draft revision, revoked token, PDF signature and deterministic document metadata.
+Cover valid unauthenticated token, invalid token, expired token, revoked token, draft revision rejection, PDF signature, checksum/metadata and rejection when the renderer tries to call Frappe.
 
-- [ ] **Step 2: Run focused tests**
+- [ ] **Step 2: Implement token storage and route boundary**
+
+Store only a hash or signed material sufficient for validation, bind token to revision, store expiration/revocation, and return only allowed public fields. Do not make generic `/api/view` public.
+
+- [ ] **Step 3: Implement PostgreSQL renderer path**
+
+Render from immutable revision snapshot and versioned template. Persist or return document metadata according to the existing storage contract. Choose and document policy for historical PDFs before cutover.
+
+- [ ] **Step 4: Verify route parity and no Frappe access**
 
 ```bash
 npm run build:api
-node --test tests/unit/quotation-html.test.js tests/unit/quotation-preview.test.ts tests/unit/public-quotation-link.test.ts
+node --test tests/unit/public-quotation.test.ts tests/unit/route-map.test.ts tests/unit/quotation-html.test.js
 ```
 
-- [ ] **Step 3: Implement minimum boundary**
-
-Keep admin APIs authenticated. Add a narrow public route or token branch only for issued revision documents. Do not expose generic `/api/view` by removing authentication.
-
-- [ ] **Step 4: Verify no Frappe call in PostgreSQL document path**
-
-Inject a fetcher that throws if Frappe base URL is requested. Render HTML/PDF from persisted snapshot and assert no throw.
+Use an injected fetcher that throws on Frappe URLs.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add api/_functions api/_lib/auth.ts tests/unit
+git add api/_functions api/_lib/auth.ts api/[...path].ts scripts/app-server.mjs scripts/dev-api-server.mjs tests/unit
 git commit -m "feat: define PostgreSQL quotation documents"
 ```
 
 ---
 
-### Task 7: Add integration outbox seam for external effects
+### Task 7: Add transactional outbox producer and worker contract
 
 **Files:**
 - Modify: `api/_db/schema.ts`
 - Create: `api/_db/quotation-outbox-repository.ts`
+- Create: `api/_functions/quotation-outbox-worker.ts` or a CLI worker entrypoint suitable for deployment.
 - Modify: `api/_functions/orcamento-core.ts`
-- Modify: `api/_functions/send-whatsapp.ts` only after repository seam exists.
-- Test: `tests/unit/quotation-outbox.test.ts`, affected quotation tests.
+- Modify: `api/_functions/send-whatsapp.ts` only after PostgreSQL document path exists.
+- Test: `tests/unit/quotation-outbox.test.ts`, affected quotation and WhatsApp tests.
 
 **Interfaces:**
-- Produces: transactional `quotation.created`, `quotation.updated`, `quotation.issued`, and `quotation.sent` events with idempotency keys and retry state.
+- Produces: transactional `quotation.created`, `quotation.updated`, `quotation.issued`, and `quotation.sent` events with idempotency keys, lease, retry/backoff and dead-letter state.
 
-- [ ] **Step 1: Add failing outbox tests**
+- [ ] **Step 1: Write failing producer/worker tests**
 
-Assert quotation persistence and outbox insertion share one transaction; duplicate event key is ignored; failed external delivery leaves retryable state; external failure does not delete saved quotation.
+Assert quotation persistence and outbox insertion share one transaction; duplicate event key is ignored; lease prevents concurrent processing; failed delivery increments attempts and schedules backoff; exhausted delivery becomes dead-letter; external failure never deletes saved quotation.
 
-- [ ] **Step 2: Run focused tests**
+- [ ] **Step 2: Add outbox schema and repository**
 
-```bash
-node --test tests/unit/quotation-outbox.test.ts
-```
+Store event type, aggregate ID, canonical payload reference, idempotency key, status, attempts, lease owner/expiry, next retry time, last error class and provider message ID. Avoid raw PII in event payloads.
 
-- [ ] **Step 3: Implement repository seam**
+- [ ] **Step 3: Implement worker contract**
 
-Use Drizzle transaction already used by quotation repositories. Keep event payload canonical and avoid raw PII. Store attempts, next retry time, last error class and provider message ID.
+Claim due events with lease, invoke one provider adapter, persist success or retry state, and release/expire lease safely. Define provider adapter boundaries for N8N, Evolution and CRM.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 4: Integrate quotation persistence**
+
+Insert `quotation.created`/`quotation.updated` in the same transaction as the aggregate. Emit `quotation.issued` only after document emission succeeds. Emit `quotation.sent` only after provider accepts the send request.
+
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 npm run build:api
 node --test tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add api/_db api/_functions/orcamento-core.ts tests/unit
+git add api/_db api/_functions tests/unit
 git commit -m "feat: queue quotation external effects"
 ```
 
 ---
 
-### Task 8: Produce cutover runbook and staging checklist
+### Task 8: Write executable cutover and rollback runbook
 
 **Files:**
-- Create: `docs/operational-cutoff-procedure.md` update only if existing procedure conflicts with this design.
+- Modify: `docs/operational-cutoff-procedure.md` to remove conflicts with the new state machine.
 - Create: `docs/superpowers/plans/2026-08-05-quotation-cutover-runbook.md`
-- Test: `tests/unit/cutover-checklist.test.ts` if checklist has machine-verifiable invariants.
+- Test: `tests/unit/cutover-checklist.test.ts` only for machine-verifiable invariants.
 
 **Interfaces:**
-- Produces: operator procedure for backup, snapshot, dry-run, apply, reconciliation, freeze, canary, rollback and abort.
+- Produces: operator procedure for backup, snapshot, dry-run, apply, reconciliation, freeze, delta, canary, abort and rollback.
 
-- [ ] **Step 1: Document preconditions**
+- [ ] **Step 1: Document exact preconditions**
 
-Include exact commands for `npm run build:api`, migration dry-run, database backup/restore, manifest verification and test suite. Never include secret values.
+Include commands for:
+
+```bash
+npm run build:api
+npm run test:unit
+npm run lint
+npm run type-check
+npm run build
+```
+
+Document database backup/restore, staging `TEST_DATABASE_URL`, migration dry-run, manifest verification and Frappe call blocking. Never include secret values.
 
 - [ ] **Step 2: Document abort conditions**
 
-Abort on duplicate business number, unexplained financial divergence, orphan prerequisite, missing PDF integrity, unexpected Frappe call or failed rollback read.
+Abort on duplicate business number, unexplained financial divergence, orphan prerequisite, missing PDF integrity, unexpected Frappe call, failed batch, failed external-link security test or failed rollback read.
 
-- [ ] **Step 3: Document rollback behavior**
+- [ ] **Step 3: Document state transitions**
 
-Rollback must preserve PostgreSQL reads for PostgreSQL-created records. It must not merely set the flag false. Include operator decision for keeping the core flag on in read mode or restoring a compatible deployment.
+Specify operator actions and allowed reads/writes for `legacy`, `postgres-write`, `postgres-read-only` and `rollback-compatible`. Explicitly state that setting a flag false is not sufficient rollback after PostgreSQL writes.
 
-- [ ] **Step 4: Verify docs**
+- [ ] **Step 4: Document historical PDF and status policy**
 
-```bash
-rg -n "TBD|TODO|placeholder|QUOTATIONS_POSTGRES_ENABLED" docs/superpowers/plans/2026-08-05-quotation-cutover-runbook.md docs/superpowers/specs/2026-08-05-migracao-gradual-sem-frappe-design.md
-```
+Record the selected historical-PDF policy, status mapping table, order linkage behavior and retention policy for raw lineage payloads before production apply.
 
-Expected: no placeholders and no obsolete flag name.
+- [ ] **Step 5: Verify docs**
 
-- [ ] **Step 5: Commit**
+Run a marker scan that excludes its own instructions and assert no incomplete marker remains in the prose.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add docs
- git commit -m "docs: define quotation cutover runbook"
+git commit -m "docs: define quotation cutover runbook"
 ```
 
 ---
@@ -427,4 +421,4 @@ npm run test:unit
 npm run build
 ```
 
-Run PostgreSQL-backed tests with `TEST_DATABASE_URL` configured. Run the affected Playwright suites against a staging deployment with Frappe calls blocked and verify the full route inventory.
+Run PostgreSQL-backed tests with `TEST_DATABASE_URL` configured. Run affected Playwright suites against staging with Frappe calls blocked. Verify all route maps, migration manifests, public-link security, document integrity, outbox retry behavior and rollback reads before declaring the first subphase ready.

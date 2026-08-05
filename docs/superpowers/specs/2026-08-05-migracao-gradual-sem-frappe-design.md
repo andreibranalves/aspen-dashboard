@@ -1,6 +1,6 @@
 # Migração gradual sem Frappe - Design
 
-**Status:** aprovado para planejamento da primeira subfase.
+**Status:** revisado após auditoria técnica; aguardando aprovação para implementação.
 
 ## Objetivo
 
@@ -13,13 +13,15 @@ A primeira entrega não declara o ciclo completo de orçamentos pronto antes de 
 - A primeira prioridade funcional continua sendo orçamentos.
 - A transição será gradual, com feature flag isolada por domínio.
 - PostgreSQL será fonte de verdade para novos dados somente após freeze de gravações equivalentes no Frappe.
-- `CRM_CORE_QUOTES_ENABLED` será a flag única do fluxo de orçamentos.
-- `CRM_OPERATIONAL_MODE` não será usado para controlar rollout de orçamentos.
+- `CRM_CORE_QUOTES_ENABLED` será a única flag do fluxo de orçamentos.
+- `CRM_OPERATIONAL_MODE` não habilitará nem desabilitará o fluxo de orçamentos.
 - Rollback de código não poderá esconder dados criados no PostgreSQL.
+- O rollout terá estados explícitos `legacy`, `postgres-write`, `postgres-read-only` e `rollback-compatible`.
 - Migração histórica será baseada em snapshot, manifest, lineage, lotes retomáveis e reconciliação.
-- A fase de orçamento dependerá previamente de templates, produtos, preços, clientes e leads necessários.
+- Templates serão semeados a partir das definições PostgreSQL atuais e validados antes da importação de orçamentos.
+- Produtos, preços, clientes e leads necessários serão migrados antes de qualquer orçamento que os referencie.
 - PDFs novos serão renderizados a partir de snapshots PostgreSQL.
-- Links públicos serão recursos autenticados por token, com validade e acesso limitado a revisões emitidas.
+- Links públicos serão recursos separados, com token, validade, revogação e acesso limitado a revisões emitidas.
 - Integrações externas não poderão impedir a persistência transacional do orçamento.
 - Pedidos de venda permanecerão desabilitados ou usarão ponte explícita até terem domínio PostgreSQL próprio.
 
@@ -34,13 +36,26 @@ Ela entregará:
 - estados e transições comerciais definidos;
 - referências entre IDs legados e IDs PostgreSQL;
 - política de histórico, PDFs e rollback;
-- migração validada de templates, produtos, preços, clientes e leads;
+- semeadura e validação de templates PostgreSQL;
+- migração validada de produtos, preços, clientes e leads;
 - migração histórica de orçamentos com snapshot e reconciliação;
-- feature flag isolada e observável.
+- feature flag isolada e observável;
+- runbook executável de corte, abortamento e rollback.
 
 Ela não removerá ainda os adaptadores Frappe de PDF, WhatsApp, CRM ou pedidos de venda sem substitutos equivalentes.
 
-Esses adaptadores ficarão explicitamente fora do corte até a subfase de efeitos externos.
+Ela também não declarará o envio de WhatsApp, emissão pública de PDF ou conversão em pedido como capacidades PostgreSQL até as subfases específicas desses efeitos.
+
+## Estado atual conhecido
+
+- `api/_functions/orcamento-mode.ts` atualmente considera `CRM_OPERATIONAL_MODE=true` como ativação do core de orçamentos.
+- `api/_lib/auth.ts` atualmente libera a rota `view` sem token público.
+- `api/_functions/view.ts` e `api/_functions/pdf.ts` atualmente usam o caminho legado baseado em Frappe.
+- A lineage atual não possui todos os campos de execução e timestamps definidos neste documento.
+- A migração atual produz relatório em memória e não possui manifest persistido nem checkpoint de lote retomável.
+- Os três mapas de rota possuem os mesmos nomes conhecidos, mas são cópias independentes e precisam de teste de paridade.
+
+Esses fatos são problemas de implementação da primeira subfase, não exceções ao design.
 
 ## Arquitetura
 
@@ -66,19 +81,45 @@ source_updated_at
 imported_at
 ```
 
+A tabela de execução deverá registrar:
+
+```text
+id
+provider
+mode
+source_snapshot_at
+manifest_hash
+status
+started_at
+completed_at
+```
+
+O processamento deverá registrar lote, entidade, estado, contagem, erro classificado e checkpoint suficiente para retomada.
+
 Payloads brutos com dados pessoais terão retenção, acesso e exposição controlados.
 
-Logs e relatórios não poderão imprimir payloads brutos.
+A política padrão será restringir `legacy_payload` ao acesso operacional autorizado, excluir seu conteúdo de logs e relatórios e documentar prazo de retenção antes do apply em produção.
 
-### Rollout
+### Rollout e rollback
 
 O rollout será separado por domínio e deployment.
 
-A flag ligada deverá selecionar PostgreSQL para o fluxo de orçamento sem fallback silencioso para Frappe.
+`CRM_CORE_QUOTES_ENABLED` controlará apenas a seleção do fluxo de orçamento.
 
-A flag desligada deverá preservar o fluxo legado somente para dados legados já compatíveis.
+`CRM_OPERATIONAL_MODE` poderá continuar protegendo outros domínios, mas não será um override de orçamento.
 
-Após a criação de qualquer dado PostgreSQL em produção, rollback de código exigirá preservar leitura PostgreSQL ou usar ponte explícita.
+Os estados de rollout serão:
+
+| Estado | Leitura | Escrita | Uso |
+| --- | --- | --- | --- |
+| `legacy` | Frappe para registros legados | Frappe | operação atual |
+| `postgres-write` | PostgreSQL | PostgreSQL | canary e produção migrada |
+| `postgres-read-only` | PostgreSQL | bloqueada ou somente operações seguras | incidente e diagnóstico |
+| `rollback-compatible` | PostgreSQL e legado conforme origem | somente destino explicitamente suportado | rollback sem ocultar dados |
+
+A flag não poderá, sozinha, representar rollback seguro.
+
+Após a criação de qualquer dado PostgreSQL em produção, rollback deverá manter leitura PostgreSQL para esses dados ou restaurar deployment compatível com essa leitura.
 
 Não haverá gravação concorrente em Frappe e PostgreSQL durante o corte.
 
@@ -90,13 +131,54 @@ O dry-run não escreverá no banco de destino.
 
 O apply será executado por lotes, será retomável e será idempotente.
 
+O apply retornará código diferente de zero quando houver erro, divergência bloqueante ou pré-requisito ausente.
+
 Após o freeze de gravações Frappe, será executado delta final antes da ativação.
 
 A reconciliação comparará IDs, contagens, clientes, produtos, itens, quantidades, preços, totais e estados.
 
-Divergências não explicadas bloquearão o corte.
+Divergências serão classificadas como aprovadas ou bloqueantes.
+
+Qualquer divergência bloqueante impedirá o corte.
+
+### Ordem de dados
+
+A ordem obrigatória será:
+
+```text
+templates PostgreSQL
+-> produtos
+-> preços
+-> clientes e leads
+-> orçamentos
+```
+
+Templates não serão extraídos do dataset Frappe atual.
+
+A pipeline deverá validar que templates e versões esperados estão semeados no PostgreSQL antes de aceitar qualquer orçamento importado.
+
+### Estados comerciais
+
+O modelo PostgreSQL preservará o estado original da origem e o estado canônico.
+
+A tabela inicial de mapeamento deverá ser aprovada antes do apply:
+
+| Estado Frappe | Estado canônico inicial | Regra |
+| --- | --- | --- |
+| `draft` | `rascunho` | editável |
+| `open` ou `sent` | `enviado` | revisão emitida ou enviada |
+| `lost` ou `cancelled` | `perdido` | não editável sem nova revisão |
+| `ordered`, `completed` ou `closed` | `aprovado` | vínculo de pedido deve ser preservado ou marcado como pendente |
+
+Se o negócio exigir distinção entre cancelado, perdido, expirado e fechado, novos estados deverão ser criados antes da migração.
 
 ### Documentos
+
+A rota administrativa de visualização permanecerá autenticada.
+
+O link público será uma rota estreita para revisão emitida, com token aleatório ou assinado, armazenamento seguro de material de validação, expiração, revogação, rate limit e dados mínimos.
+
+Rascunhos nunca serão acessíveis pelo link público.
 
 Novos PDFs serão renderizados usando revisão imutável e template versionado PostgreSQL.
 
@@ -104,43 +186,52 @@ Cada emissão terá revisão, template, MIME, tamanho e SHA-256 registrados.
 
 Emissão repetida com os mesmos dados será idempotente.
 
-PDFs históricos serão tratados por política explícita: importar arquivo real, re-renderizar de snapshot ou declarar fora do escopo.
+A política de PDFs históricos deverá escolher uma opção antes do corte: importar arquivo real, re-renderizar de snapshot ou declarar históricos fora do escopo.
 
 ### Integrações
 
 A persistência do orçamento ocorrerá em transação PostgreSQL independente de N8N, CRM, Evolution ou armazenamento de documentos externo.
 
-Eventos de criação, atualização, emissão e envio serão registrados em outbox transacional antes do processamento externo.
+A outbox será implementada na subfase de efeitos externos, não será requisito falso da primeira subfase de dados.
 
-Cada efeito externo terá chave de idempotência e retry observável.
+Quando implementada, registrará eventos de criação, atualização, emissão e envio antes do processamento externo.
 
-## Critérios de aceite da subfase
+Cada efeito externo terá chave de idempotência, lease, retry com backoff e estado de dead-letter observável.
+
+Até essa subfase, qualquer integração que ainda dependa de Frappe ficará marcada como legado e não será apresentada como capacidade PostgreSQL completa.
+
+## Critérios de aceite da primeira subfase
 
 - A branch parte de commit conhecido e worktree limpo.
-- Templates, produtos, preços, clientes e leads necessários existem no PostgreSQL antes dos orçamentos.
+- `npm run test:unit` funciona em checkout limpo sem depender de JavaScript gerado previamente.
+- Templates e versões PostgreSQL necessárias estão semeados e validados antes dos orçamentos.
+- Produtos, preços, clientes e leads necessários existem no PostgreSQL antes dos orçamentos.
 - Snapshot de origem possui manifest, timestamp, hashes e contagens.
 - Dry-run não modifica o banco.
 - Apply repetido não cria duplicatas nem altera dados sem mudança de origem.
 - Cada registro importado possui lineage e referência externa.
+- Cada lineage aponta para uma execução de migração identificável.
 - Não existem números de orçamento duplicados.
 - Totais e itens reconciliam com a origem ou possuem divergência aprovada.
-- Estados legados possuem mapeamento canônico auditável.
+- Divergência não aprovada bloqueia apply e corte.
+- Estados legados possuem mapeamento canônico e estado original auditável.
 - `CRM_CORE_QUOTES_ENABLED` é a única flag de rollout do domínio.
 - `CRM_OPERATIONAL_MODE` não altera o rollout de orçamentos.
 - Rollback em staging mantém acessíveis orçamentos criados no PostgreSQL.
-- Rotas Vercel, servidor local e testes usam o mesmo mapa de handlers.
+- Rotas Vercel, servidor local e testes usam o mesmo conjunto de handlers.
 - Nenhuma dependência Frappe é removida sem substituto e teste correspondente.
+- O runbook define backup, snapshot, freeze, delta final, canary, abortamento e rollback.
 - Testes unitários, build e checks do projeto passam.
 
 ## Roadmap posterior
 
 ### Subfase 1B - Ciclo PostgreSQL
 
-Migrar criação automática e manual, consulta, edição, revisão, status, templates, HTML, PDF, download, duplicação e link público.
+Migrar criação automática e manual, consulta, edição, revisão, status, templates, HTML, PDF administrativo, download, duplicação e emissão.
 
-### Subfase 1C - Efeitos externos
+### Subfase 1C - Link público e efeitos externos
 
-Migrar outbox, N8N, CRM mínimo, WhatsApp baseado em PostgreSQL e persistência de envio.
+Implementar link público de revisão emitida, outbox, worker com lease e retry, N8N, CRM mínimo, WhatsApp baseado em PostgreSQL e persistência de envio.
 
 A ação de pedido de venda ficará desabilitada com mensagem clara ou usará ponte explícita.
 
