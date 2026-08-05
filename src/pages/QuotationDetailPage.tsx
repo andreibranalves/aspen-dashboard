@@ -249,7 +249,7 @@ function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
 
 function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuotationDetailProps) {
   const [data, setData] = useState<QuotationData>(initialData);
-  const draftEditable = data.status === 'Draft' || data.status_canonical === 'rascunho';
+  const draftEditable = data.status_canonical === 'rascunho';
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);

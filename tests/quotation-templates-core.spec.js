@@ -49,12 +49,14 @@ const manifest = {
   templates: [
     { key: 'padrao', name: 'Padrão Aspen', is_default: true, hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e', current_version_id: '55555555-5555-4555-8555-555555555555', current_version: 1 },
     { key: 'minimalista', name: 'Minimalista', is_default: false, hash: 'c7060a7faa1f54d08d6f2c237f96cef261c57de5259fb7b755a1dd844bce8c8a', current_version_id: '77777777-7777-4777-8777-777777777777', current_version: 2 },
+    { key: 'arquivado', name: 'Arquivado', is_default: false, archived: true, hash: 'archived-hash', current_version_id: '88888888-8888-4888-8888-888888888888', current_version: 3 },
   ],
 };
 
 test('core UI selects/previews a repository template and saves template_key', async ({ page }) => {
   let authoritative = coreDetail();
   let lastPayload;
+  const posts = [];
   await page.route('**/api/quotations**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
@@ -62,9 +64,21 @@ test('core UI selects/previews a repository template and saves template_key', as
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
       return;
     }
+    if (request.method() === 'POST') {
+      posts.push(request.postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
+      return;
+    }
     if (request.method() === 'PUT') {
       lastPayload = request.postDataJSON();
-      authoritative = coreDetail({ template_key: lastPayload.template_key, template_padrao: lastPayload.template_key });
+      const authoritativeSections = JSON.parse(JSON.stringify(lastPayload.secoes));
+      authoritativeSections.pagamento.current.title = 'Título confirmado pelo servidor';
+      authoritative = coreDetail({
+        template_key: lastPayload.template_key,
+        template_padrao: lastPayload.template_key,
+        template_version_id: '99999999-9999-4999-8999-999999999999',
+        secoes: authoritativeSections,
+      });
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
       return;
     }
@@ -81,6 +95,7 @@ test('core UI selects/previews a repository template and saves template_key', as
   await expect(page.getByLabel('Modelo do orçamento')).toBeVisible();
   await page.getByLabel('Modelo do orçamento').selectOption('minimalista');
   await expect(page.getByText(/Hash: c7060a7faa1f/)).toBeVisible();
+  expect(posts.filter((payload) => payload.action === 'create_revision')).toHaveLength(0);
   const preview = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Visualizar modelo' }).click();
   const popup = await preview;
@@ -88,9 +103,17 @@ test('core UI selects/previews a repository template and saves template_key', as
   await popup.close();
 
   await page.getByRole('button', { name: 'Editar' }).click();
+  await expect(page.getByText('Prazo de produção', { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('Prazo de produção do orçamento')).toBeEditable();
+  for (const label of ['Exibir seção - Prazo de produção', 'Exibir seção - Pagamento', 'Exibir seção - Condições Gerais']) {
+    await expect(page.getByLabel(label)).toBeEditable();
+    await expect(page.getByLabel(label)).toBeChecked();
+  }
+  for (const label of ['Título - Prazo de produção', 'Título - Pagamento', 'Título - Condições Gerais'])
+    await expect(page.getByLabel(label)).toBeEditable();
   await expect(page.getByLabel('Título - Pagamento')).toBeEditable();
   await expect(page.getByLabel('Condição de pagamento')).toBeEditable();
-  await expect(page.getByLabel('Exibir seção - Pagamento')).toBeEditable();
+  await expect(page.getByLabel('Observações padrão')).toBeEditable();
   await page.getByLabel('Título - Pagamento').fill('Pagamento personalizado');
   await expect(page.getByText('Personalizado').first()).toBeVisible();
   await page.getByRole('button', { name: 'Restaurar padrão' }).nth(1).click();
@@ -105,6 +128,66 @@ test('core UI selects/previews a repository template and saves template_key', as
       current: expect.objectContaining({ title: 'Pagamento', body: 'À vista' }),
     }),
   }));
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await expect(page.getByLabel('Título - Pagamento')).toHaveValue('Título confirmado pelo servidor');
+  const refreshedPreview = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  const refreshedPopup = await refreshedPreview;
+  await expect(refreshedPopup).toHaveURL(new RegExp('template_version_id=99999999-9999-4999-8999-999999999999'));
+  await refreshedPopup.close();
+});
+
+test('draft retains an archived current template when saving unchanged', async ({ page }) => {
+  const archivedVersionId = '88888888-8888-4888-8888-888888888888';
+  let payload;
+  const archivedDetail = coreDetail({
+    template_key: 'arquivado',
+    template_padrao: 'arquivado',
+    template_version_id: archivedVersionId,
+  });
+  await page.route('**/api/quotations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.get('id')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(archivedDetail) });
+      return;
+    }
+    if (request.method() === 'PUT') {
+      payload = request.postDataJSON();
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(archivedDetail) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...manifest, core_mode: true }) });
+  });
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('arquivado');
+  await expect(page.getByLabel('Modelo do orçamento').locator('option:checked')).toContainText('(arquivado)');
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await page.getByRole('button', { name: 'Salvar' }).click();
+  await expect(page.getByText('Salvo.')).toBeVisible();
+  expect(payload.template_key).toBe('arquivado');
+  expect(payload.template_version_id).toBe(archivedVersionId);
+});
+
+test('mismatched status label cannot enable draft editing', async ({ page }) => {
+  await page.route('**/api/quotations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.get('id')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(coreDetail({ status: 'Draft', status_canonical: 'enviado' })) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...manifest, core_mode: true }) });
+  });
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
+  await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
 });
 
 test('legacy detail does not render the core template controls', async ({ page }) => {

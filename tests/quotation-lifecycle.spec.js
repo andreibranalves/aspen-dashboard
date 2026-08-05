@@ -25,15 +25,15 @@ function detail(overrides = {}) {
     prazo_producao: '',
     template_padrao: 'padrao',
     template_key: 'padrao',
-        template_hash: hash,
-        template_version_id: '55555555-5555-4555-8555-555555555555',
-        template_version: 1,
-        secoes: {
-          schema_version: 1,
-          prazo_producao: { base: { enabled: true, title: 'Prazo de produção' }, current: { enabled: true, title: 'Prazo de produção' } },
-          pagamento: { base: { enabled: true, title: 'Pagamento', body: 'À vista' }, current: { enabled: true, title: 'Pagamento', body: 'À vista' } },
-          condicoes_gerais: { base: { enabled: true, title: 'Condições Gerais', body: '' }, current: { enabled: true, title: 'Condições Gerais', body: '' } },
-        },
+    template_hash: hash,
+    template_version_id: '55555555-5555-4555-8555-555555555555',
+    template_version: 1,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: { base: { enabled: true, title: 'Prazo de produção' }, current: { enabled: true, title: 'Prazo de produção' } },
+      pagamento: { base: { enabled: true, title: 'Pagamento', body: 'À vista' }, current: { enabled: true, title: 'Pagamento', body: 'À vista' } },
+      condicoes_gerais: { base: { enabled: true, title: 'Condições Gerais', body: '' }, current: { enabled: true, title: 'Condições Gerais', body: '' } },
+    },
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
@@ -56,7 +56,7 @@ function detail(overrides = {}) {
     ],
     revision_history: [
       {
-        id: '22222222-2222-4222-8222-222222222222',
+        id: 'stored-document-id-must-not-be-used',
         revision_id: '22222222-2222-4222-8222-222222222222',
         revision: 1,
         revision_number: 1,
@@ -171,6 +171,31 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
+  const modelPreview = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Visualizar modelo' }).click();
+  const modelPopup = await modelPreview;
+  const modelUrl = new globalThis.URL(modelPopup.url());
+  expect(modelUrl.pathname).toBe('/api/quotation-preview');
+  expect(modelUrl.searchParams.get('id')).toBe(id);
+  expect(modelUrl.searchParams.has('template_version_id')).toBe(false);
+  expect(modelUrl.searchParams.has('template')).toBe(false);
+  await modelPopup.close();
+  const pdfPreview = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Visualizar', exact: true }).first().click();
+  const pdfPopup = await pdfPreview;
+  const pdfUrl = new globalThis.URL(pdfPopup.url());
+  expect(pdfUrl.pathname).toBe('/api/quotation-preview');
+  expect(pdfUrl.searchParams.get('id')).toBe(id);
+  expect(pdfUrl.searchParams.get('format')).toBe('pdf');
+  expect(pdfUrl.searchParams.has('template_version_id')).toBe(false);
+  expect(pdfUrl.searchParams.has('template')).toBe(false);
+  await pdfPopup.close();
+  const historyPreview = page.waitForEvent('popup');
+  await page.locator('tbody tr').filter({ hasText: 'R1' }).getByRole('button', { name: 'Visualizar', exact: true }).click();
+  const historyPopup = await historyPreview;
+  const historyUrl = new globalThis.URL(historyPopup.url());
+  expect(historyUrl.searchParams.get('id')).toBe('22222222-2222-4222-8222-222222222222');
+  await historyPopup.close();
   await page.getByRole('button', { name: 'Marcar como aprovado' }).click();
   await expect(page.getByText('Aprovado', { exact: true }).first()).toBeVisible();
   expect(posts[0]).toMatchObject({

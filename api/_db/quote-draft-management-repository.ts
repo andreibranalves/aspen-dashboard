@@ -424,7 +424,7 @@ async function readTemplateSelection(
         .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
         .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
         .limit(1);
-      if (selected && !selected.archived) return selected;
+      if (selected && (!selected.archived || selected.versionId === revision.templateVersionId)) return selected;
       if (selected?.archived) throw new QuoteManagementInputError('Template do orçamento inválido ou arquivado.');
     }
     const [resolved] = await tx
@@ -450,7 +450,8 @@ async function readTemplateSelection(
     .where(versionId ? eq(quotationTemplateVersions.id, versionId) : eq(quotationTemplates.key, keys[0]))
     .orderBy(desc(quotationTemplateVersions.version))
     .limit(1);
-  if (!selected || selected.archived) throw new QuoteManagementInputError('Template do orçamento inválido ou arquivado.');
+  if (!selected || (selected.archived && selected.versionId !== revision.templateVersionId))
+    throw new QuoteManagementInputError('Template do orçamento inválido ou arquivado.');
   if (keys[0] && keys[0] !== selected.key)
     throw new QuoteManagementInputError('A versão de template não pertence ao template informado.');
   return { key: selected.key, hash: selected.hash, versionId: selected.versionId, version: selected.version };

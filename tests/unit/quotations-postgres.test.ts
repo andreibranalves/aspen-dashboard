@@ -140,6 +140,24 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       }),
       (error: unknown) => error instanceof Error && error.name === 'QuoteManagementInputError',
     );
+    const [defaultTemplateState] = await db
+      .select({ archived: quotationTemplates.archived })
+      .from(quotationTemplates)
+      .where(eq(quotationTemplates.key, defaultTemplate.key))
+      .limit(1);
+    await db.update(quotationTemplates).set({ archived: true }).where(eq(quotationTemplates.key, defaultTemplate.key));
+    try {
+      const archivedCurrentBefore = await managementGet(draft.quotation_name);
+      assert.ok(archivedCurrentBefore);
+      const archivedCurrentSaved = await managementUpdate(draft.quotation_name, {
+        concurrency_token: archivedCurrentBefore.concurrency_token,
+        items: [{ item_code: sku, qty: '30.000' }],
+      });
+      assert.equal(archivedCurrentSaved.template_key, defaultTemplate.key);
+      assert.equal(archivedCurrentSaved.template_version_id, draft.template_version_id);
+    } finally {
+      await db.update(quotationTemplates).set({ archived: defaultTemplateState?.archived ?? false }).where(eq(quotationTemplates.key, defaultTemplate.key));
+    }
     const [minimalTemplate] = await db
       .select({ archived: quotationTemplates.archived })
       .from(quotationTemplates)
