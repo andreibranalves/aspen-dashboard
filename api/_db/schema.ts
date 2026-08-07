@@ -274,6 +274,9 @@ export const quoteRevisions = pgTable(
       .references(() => quotations.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
     status: varchar('status', { length: 32 }).notNull().default('rascunho'),
+    statusOriginal: varchar('status_original', { length: 64 }),
+    orderLinkage: varchar('order_linkage', { length: 32 }),
+    orderPending: boolean('order_pending').notNull().default(false),
     validadeDias: integer('validade_dias').notNull(),
     pagamento: varchar('pagamento', { length: 4000 }).notNull().default(''),
     entrega: varchar('entrega', { length: 500 }).notNull().default(''),
@@ -316,6 +319,10 @@ export const quoteRevisions = pgTable(
     check('quote_revisions_subtotal_check', sql`${table.subtotal} >= 0`),
     check('quote_revisions_total_check', sql`${table.total} >= 0`),
     check('quote_revisions_template_hash_check', sql`${table.templateHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      'quote_revisions_order_linkage_check',
+      sql`${table.orderLinkage} IS NULL OR ${table.orderLinkage} IN ('ordered', 'completed', 'closed')`
+    ),
     check(
       'quote_revisions_status_check',
       sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`

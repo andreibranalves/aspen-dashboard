@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import * as migrationRepositoryModule from '../../api/_db/frappe-migration-repository.js';
 import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import { runFrappeMigration, type FrappeDataset } from '../../api/_functions/frappe-migration.js';
+import { templateSeedPlan } from '../../api/_db/quotation-template-migration.js';
 
 const MINIMAL_DATASET: FrappeDataset = {
   items: [{ name: 'ITEM-T1', item_code: 'SKU-T1', item_name: 'Produto Teste' }],
@@ -15,6 +16,15 @@ const MINIMAL_DATASET: FrappeDataset = {
 };
 
 describe('MemoryFrappeMigrationRepository', () => {
+  it('verifica todas as versões numéricas dos templates built-in', async () => {
+    const plan = templateSeedPlan();
+    assert.ok(plan.length >= 3);
+    assert.equal(new Set(plan.map((item) => item.key)).size, plan.length);
+    assert.ok(plan.every((item) => item.version === 1));
+    const repository = new MemoryFrappeMigrationRepository();
+    assert.deepEqual(await repository.ensureQuotationTemplates(), { missing: [] });
+  });
+
   it('bloqueia apply antes das gravações quando falta versão de template', async () => {
     const repository = new MemoryFrappeMigrationRepository({ templatesReady: false });
     const result = await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
@@ -23,6 +33,18 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.equal(repository.writes.products, 0);
     assert.equal(repository.writes.clients, 0);
     assert.equal(repository.writes.quotations, 0);
+
+    const wrongVersion = new MemoryFrappeMigrationRepository();
+    wrongVersion.ensureQuotationTemplates = async () => ({
+      missing: [{ key: 'padrao', sourceHash: '0'.repeat(64), version: 99 }],
+    });
+    const wrongResult = await runFrappeMigration({
+      mode: 'apply',
+      dataset: MINIMAL_DATASET,
+      repository: wrongVersion,
+    });
+    assert.equal(wrongResult.manifest.status, 'failed');
+    assert.equal(wrongVersion.writes.products, 0);
   });
 
   it('bloqueia orçamento com cliente ou produto ausente antes de qualquer gravação', async () => {
@@ -50,6 +72,32 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.equal(repository.writes.products, 0);
     assert.equal(repository.writes.clients, 0);
     assert.equal(repository.writes.quotations, 0);
+
+    const approvedRepository = new MemoryFrappeMigrationRepository();
+    const approved = await runFrappeMigration({
+      mode: 'apply',
+      repository: approvedRepository,
+      approvedDivergences: ['Quotation:QTN-2025-00002'],
+      dataset: {
+        items: [],
+        customers: [{ name: 'CUST-MISSING-APPROVED', customer_name: 'Cliente', tax_id: '12345678901' }],
+        quotations: [
+          {
+            name: 'QTN-2025-00002',
+            creation: '2025-01-01 10:00:00',
+            quotation_to: 'Customer',
+            customer: 'CUST-MISSING-APPROVED',
+            status: 'Draft',
+            items: [{ idx: 1, item_code: 'SKU-MISSING', qty: '1', rate: '5', price_list_rate: '5', amount: '5' }],
+          },
+        ],
+      },
+    });
+    assert.equal(approved.manifest.status, 'completed');
+    assert.equal(approved.report.orcamentos.divergentes, 0);
+    assert.ok(approved.report.orcamentos.aprovadas > 0);
+    assert.equal(approvedRepository.writes.clients, 1);
+    assert.equal(approvedRepository.writes.quotations, 0);
   });
 
   it('permite divergência explicitamente aprovada e mantém contagem separada', async () => {
@@ -77,6 +125,27 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.equal(result.report.orcamentos.divergentes, 0);
     assert.equal(result.report.orcamentos.aprovadas, 1);
     assert.equal(repository.writes.quotations, 1);
+    const persisted = await repository.loadState();
+    const revision = persisted.quotations[0]?.revision;
+    assert.equal(revision?.status, 'rascunho');
+    assert.equal(revision?.statusOriginal, 'Unsupported Legacy Status');
+    assert.equal(revision?.orderLinkage, null);
+    assert.equal(revision?.orderPending, false);
+
+    const orderedRepository = new MemoryFrappeMigrationRepository();
+    await runFrappeMigration({
+      mode: 'apply',
+      repository: orderedRepository,
+      dataset: {
+        ...dataset,
+        quotations: [{ ...dataset.quotations![0]!, name: 'QTN-2025-00002', status: 'Ordered' }],
+      },
+    });
+    const orderedRevision = (await orderedRepository.loadState()).quotations[0]?.revision;
+    assert.equal(orderedRevision?.status, 'aprovado');
+    assert.equal(orderedRevision?.statusOriginal, 'Ordered');
+    assert.equal(orderedRevision?.orderLinkage, 'ordered');
+    assert.equal(orderedRevision?.orderPending, true);
   });
 
   it('loadState e snapshot não expõem legacyPayload na linhagem', async () => {

@@ -144,6 +144,9 @@ export interface ExistingQuotationRevision {
   id: string;
   version: number;
   status: QuotationStatus;
+  statusOriginal?: string | null;
+  orderLinkage?: 'ordered' | 'completed' | 'closed' | null;
+  orderPending?: boolean;
   validadeDias: number;
   pagamento: string;
   entrega: string;
@@ -251,7 +254,9 @@ export interface FrappeMigrationRepository {
   /** Mark a run as completed or failed. */
   completeRun(runId: string, status: 'completed' | 'failed'): Promise<void>;
   /** Ensure every built-in quotation template has its expected version. */
-  ensureQuotationTemplates(): Promise<{ missing: Array<{ key: string; sourceHash: string }> }>;
+  ensureQuotationTemplates(): Promise<{
+    missing: Array<{ key: string; sourceHash: string; version: number }>;
+  }>;
   /** Create a batch checkpoint row within a run. */
   createBatch(params: { id: string; runId: string; entityType: string }): Promise<void>;
   /** Update batch status/checkpoint/attempt count. */
@@ -344,7 +349,7 @@ export function createPostgresFrappeMigrationRepository(
 
     async loadState(): Promise<FrappeMigrationState> {
       const db = getDb();
-      const [productRows, tierRows, clientRows, lineageRows, quotationRows, sequenceRows] =
+      const [productRows, tierRows, clientRows, lineageRows, quotationRows, sequenceRows, revisionRows] =
         await Promise.all([
           db.select().from(products).orderBy(asc(products.sku)),
           db
@@ -358,6 +363,7 @@ export function createPostgresFrappeMigrationRepository(
             .orderBy(asc(frappeImportLineage.sourceDoctype), asc(frappeImportLineage.sourceId)),
           db.select().from(quotations).orderBy(asc(quotations.businessNumber)),
           db.select().from(quoteSequences),
+          db.select().from(quoteRevisions).orderBy(asc(quoteRevisions.quotationId), desc(quoteRevisions.version)),
         ]);
       const tiersBySku = new Map<string, PricingTierInput[]>();
       for (const tier of tierRows) {
@@ -401,13 +407,50 @@ export function createPostgresFrappeMigrationRepository(
           importedAt: row.importedAt ?? null,
           lineageStatus: row.lineageStatus === 'verified' ? 'verified' : 'legacy-unverified',
         })),
-        quotations: quotationRows.map((row) => ({
-          id: row.id,
-          businessNumber: row.businessNumber,
-          clientId: row.clientId,
-          status: row.status as QuotationStatus,
-          createdAt: row.createdAt,
-        })),
+        quotations: quotationRows.map((row) => {
+          const revision = revisionRows.find((candidate) => candidate.quotationId === row.id);
+          return {
+            id: row.id,
+            businessNumber: row.businessNumber,
+            clientId: row.clientId,
+            status: row.status as QuotationStatus,
+            createdAt: row.createdAt,
+            revision: revision
+              ? {
+                  id: revision.id,
+                  version: revision.version,
+                  status: revision.status as QuotationStatus,
+                  statusOriginal: revision.statusOriginal ?? null,
+                  orderLinkage: (revision.orderLinkage as 'ordered' | 'completed' | 'closed' | null) ?? null,
+                  orderPending: revision.orderPending === true,
+                  validadeDias: revision.validadeDias,
+                  pagamento: revision.pagamento,
+                  entrega: revision.entrega,
+                  fretePadrao: revision.fretePadrao,
+                  frete: revision.frete,
+                  observacoes: revision.observacoes,
+                  prazoProducao: revision.prazoProducao,
+                  templatePadrao: revision.templatePadrao,
+                  templateHash: revision.templateHash,
+                  clienteNome: revision.clienteNome,
+                  clienteDocumento: revision.clienteDocumento,
+                  clienteEmail: revision.clienteEmail,
+                  clienteTelefone: revision.clienteTelefone,
+                  clienteEndereco: revision.clienteEndereco,
+                  clienteNumero: revision.clienteNumero,
+                  clienteBairro: revision.clienteBairro,
+                  clienteComplemento: revision.clienteComplemento,
+                  clienteMunicipio: revision.clienteMunicipio,
+                  clienteUf: revision.clienteUf,
+                  clienteCep: revision.clienteCep,
+                  clienteNotas: revision.clienteNotas,
+                  subtotal: revision.subtotal,
+                  total: revision.total,
+                  createdAt: revision.createdAt,
+                }
+              : undefined,
+          };
+        }),
         sequences: Object.fromEntries(sequenceRows.map((row) => [row.year, row.lastNumber])),
       };
     },
@@ -568,6 +611,9 @@ export function createPostgresFrappeMigrationRepository(
           quotationId: unit.id,
           version: revision.version,
           status: revision.status,
+          statusOriginal: revision.statusOriginal ?? null,
+          orderLinkage: revision.orderLinkage ?? null,
+          orderPending: revision.orderPending === true,
           validadeDias: revision.validadeDias,
           pagamento: revision.pagamento,
           entrega: revision.entrega,
@@ -635,7 +681,9 @@ export function createPostgresFrappeMigrationRepository(
       });
     },
 
-    async ensureQuotationTemplates(): Promise<{ missing: Array<{ key: string; sourceHash: string }> }> {
+    async ensureQuotationTemplates(): Promise<{
+      missing: Array<{ key: string; sourceHash: string; version: number }>;
+    }> {
       const db = getDb();
       return db.transaction(async (tx) => {
         await acquireQuotationWriteLock(tx);
@@ -665,27 +713,21 @@ export function createPostgresFrappeMigrationRepository(
             .where(
               and(
                 eq(quotationTemplateVersions.templateId, model.id),
-                eq(quotationTemplateVersions.sourceHash, item.source_hash)
+                eq(quotationTemplateVersions.version, item.version)
               )
             )
             .limit(1);
           if (!version) {
-            const [latest] = await tx
-              .select({ version: quotationTemplateVersions.version })
-              .from(quotationTemplateVersions)
-              .where(eq(quotationTemplateVersions.templateId, model.id))
-              .orderBy(desc(quotationTemplateVersions.version))
-              .limit(1);
             await tx.insert(quotationTemplateVersions).values({
               id: randomUUID(),
               templateId: model.id,
-              version: (latest?.version || 0) + 1,
+              version: item.version,
               source: item.source,
               sourceHash: item.source_hash,
             });
           }
         }
-        const missing: Array<{ key: string; sourceHash: string }> = [];
+        const missing: Array<{ key: string; sourceHash: string; version: number }> = [];
         for (const item of templateSeedPlan()) {
           const [row] = await tx
             .select({ id: quotationTemplateVersions.id })
@@ -694,11 +736,12 @@ export function createPostgresFrappeMigrationRepository(
             .where(
               and(
                 eq(quotationTemplates.key, item.key),
+                eq(quotationTemplateVersions.version, item.version),
                 eq(quotationTemplateVersions.sourceHash, item.source_hash)
               )
             )
             .limit(1);
-          if (!row) missing.push({ key: item.key, sourceHash: item.source_hash });
+          if (!row) missing.push({ key: item.key, sourceHash: item.source_hash, version: item.version });
         }
         return { missing };
       });
@@ -1246,10 +1289,16 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     this.writes.lineage += unit.lineage.length;
   }
 
-  async ensureQuotationTemplates(): Promise<{ missing: Array<{ key: string; sourceHash: string }> }> {
+  async ensureQuotationTemplates(): Promise<{
+    missing: Array<{ key: string; sourceHash: string; version: number }>;
+  }> {
     if (this.templatesReady) return { missing: [] };
     return {
-      missing: templateSeedPlan().map((item) => ({ key: item.key, sourceHash: item.source_hash })),
+      missing: templateSeedPlan().map((item) => ({
+        key: item.key,
+        sourceHash: item.source_hash,
+        version: item.version,
+      })),
     };
   }
 

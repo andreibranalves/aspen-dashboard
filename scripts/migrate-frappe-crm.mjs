@@ -28,7 +28,14 @@ export function parseArgs(argv) {
     }
     if (arg === '--approve-divergence') {
       const key = argv[index + 1];
-      if (!key || key.startsWith('--') || !key.includes(':'))
+      const parts = key ? key.split(':') : [];
+      if (
+        !key ||
+        key.startsWith('--') ||
+        parts.length !== 2 ||
+        !parts[0].trim() ||
+        !parts[1].trim()
+      )
         throw new Error('Informe source_doctype:source_id após --approve-divergence.');
       approvedDivergences.push(key);
       index += 1;

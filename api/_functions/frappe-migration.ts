@@ -1596,7 +1596,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           'divergentes',
           'Quotation Template',
           missing.key,
-          `Versão de template ausente para ${missing.key}; apply bloqueado.`,
+          `Versão ${missing.version} de template ausente para ${missing.key}; apply bloqueado.`,
           missing.key
         );
       }
