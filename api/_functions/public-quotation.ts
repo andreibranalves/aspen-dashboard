@@ -7,13 +7,15 @@ import {
   renderQuotationTemplate,
   resolveQuotationTemplate,
 } from './lib/quotation-templates.js';
-import { renderQuotationPdfHtml } from './lib/quotation-pdf.js';
+import { renderQuotationPdfHtml } from './lib/quotation-pdf-renderer.js';
 import { isValidPdfBuffer, quotationPdfChecksum } from './lib/quotation-document-storage.js';
 import { isCoreReadEnabled } from './orcamento-mode.js';
 
 const TOKEN_PREFIX = 'aspen:public-quotation:';
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_TTL_SECONDS = 30 * 24 * 60 * 60;
+const REVOCATION_TTL_SECONDS = 24 * 60 * 60;
+const UNAVAILABLE_MESSAGE = 'Não foi possível consultar o orçamento. Tente novamente.';
 
 type TokenRecord = {
   quotationId: string;
@@ -44,6 +46,14 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   };
 }
 
+function unavailable(): FunctionResult {
+  return json(503, { error: UNAVAILABLE_MESSAGE });
+}
+
+function logFailure(error: unknown): void {
+  console.error(`[public-quotation] failed (${error instanceof Error ? error.name : typeof error})`);
+}
+
 function tokenHash(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -72,7 +82,9 @@ function ttl(value: unknown): number {
     : DEFAULT_TTL_SECONDS;
 }
 
-function renderSnapshot(snapshot: Awaited<ReturnType<NonNullable<PublicQuotationDependencies['repository']>['get']>>) {
+function renderSnapshot(
+  snapshot: Awaited<ReturnType<NonNullable<PublicQuotationDependencies['repository']>['get']>>
+) {
   if (!snapshot) return null;
   const template = snapshot.templateVersion
     ? quotationTemplateFromVersion(snapshot.templateVersion)
@@ -91,47 +103,51 @@ export function createPublicQuotationHandler(
   const makeToken = dependencies.token || (() => randomBytes(32).toString('base64url'));
 
   return async function publicQuotationHandler(event: FunctionEvent): Promise<FunctionResult> {
-    if (!isCoreReadEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
-
-    if (event.httpMethod === 'POST') {
-      const input = parseBody(event.body);
-      const identifier = String(input.revisionId || input.quotationId || '').trim();
-      if (!identifier) return json(400, { error: 'Revisão do orçamento não informada.' });
-      const snapshot = await repository.get(identifier);
-      if (!snapshot) return json(404, { error: 'Orçamento não encontrado.' });
-      if (snapshot.revision.status === 'rascunho') {
-        return json(409, { error: 'Rascunhos não podem ser compartilhados.' });
-      }
-      const rawToken = makeToken();
-      const expiresAt = now() + ttl(input.expiresInSeconds) * 1000;
-      await store.set(
-        key(rawToken),
-        { quotationId: snapshot.quotation.id, revisionId: snapshot.revision.id, expiresAt },
-        { ex: Math.ceil((expiresAt - now()) / 1000) }
-      );
-      return json(201, {
-        token: rawToken,
-        expiresAt: new Date(expiresAt).toISOString(),
-        revisionId: snapshot.revision.id,
-        businessNumber: snapshot.quotation.businessNumber,
-      });
-    }
-
-    const token = safeToken(event.queryStringParameters?.token);
-    if (!token) return json(401, { error: 'Link público inválido.' });
-    const record = await store.get<TokenRecord>(key(token));
-    if (!record || record.revokedAt) return json(404, { error: 'Link público inválido.' });
-    if (!Number.isFinite(record.expiresAt) || record.expiresAt <= now()) {
-      return json(410, { error: 'Link público expirado.' });
-    }
-
-    if (event.httpMethod === 'DELETE') {
-      await store.set(key(token), { ...record, revokedAt: now() }, { ex: 24 * 60 * 60 });
-      return json(204, {});
-    }
-    if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
-
     try {
+      if (!isCoreReadEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
+
+      if (event.httpMethod === 'POST') {
+        const input = parseBody(event.body);
+        const identifier = String(input.revisionId || input.quotationId || '').trim();
+        if (!identifier) return json(400, { error: 'Revisão do orçamento não informada.' });
+        const snapshot = await repository.get(identifier);
+        if (!snapshot) return json(404, { error: 'Orçamento não encontrado.' });
+        if (snapshot.revision.status === 'rascunho') {
+          return json(409, { error: 'Rascunhos não podem ser compartilhados.' });
+        }
+        const rawToken = makeToken();
+        const expiresAt = now() + ttl(input.expiresInSeconds) * 1000;
+        await store.set(
+          key(rawToken),
+          { quotationId: snapshot.quotation.id, revisionId: snapshot.revision.id, expiresAt },
+          { ex: Math.ceil((expiresAt - now()) / 1000) }
+        );
+        return json(201, {
+          token: rawToken,
+          expiresAt: new Date(expiresAt).toISOString(),
+          revisionId: snapshot.revision.id,
+          businessNumber: snapshot.quotation.businessNumber,
+        });
+      }
+
+      const token = safeToken(event.queryStringParameters?.token);
+      if (!token) return json(401, { error: 'Link público inválido.' });
+      const record = await store.get<TokenRecord>(key(token));
+      if (!record || record.revokedAt) return json(404, { error: 'Link público inválido.' });
+      if (!Number.isFinite(record.expiresAt) || record.expiresAt <= now()) {
+        return json(410, { error: 'Link público expirado.' });
+      }
+
+      if (event.httpMethod === 'DELETE') {
+        await store.set(
+          key(token),
+          { ...record, revokedAt: now() },
+          { ex: REVOCATION_TTL_SECONDS }
+        );
+        return json(204, {});
+      }
+      if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
+
       const snapshot = await repository.get(record.revisionId);
       if (!snapshot || snapshot.revision.id !== record.revisionId || snapshot.revision.status === 'rascunho') {
         return json(404, { error: 'Orçamento não encontrado.' });
@@ -143,15 +159,22 @@ export function createPublicQuotationHandler(
         if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) {
           return json(503, { error: 'Não foi possível gerar o PDF do orçamento.' });
         }
+        const templateVersion = rendered.snapshot.templateVersion
+          ? String(rendered.snapshot.templateVersion.version)
+          : 'legacy';
         return {
           statusCode: 200,
           headers: {
             'Content-Type': 'application/pdf',
             'Content-Disposition': `inline; filename="${snapshot.quotation.businessNumber}.pdf"`,
+            'Content-Length': String(pdf.byteLength),
             'Cache-Control': 'private, no-store',
             'X-Document-Checksum': quotationPdfChecksum(pdf),
+            'X-Document-Size': String(pdf.byteLength),
             'X-Document-Revision': snapshot.revision.id,
-            'X-Quotation-Template-Version': String(snapshot.templateVersion?.version || 'legacy'),
+            'X-Quotation-Template-Key': rendered.template.key,
+            'X-Quotation-Template-Version': templateVersion,
+            'X-Quotation-Template-Hash': rendered.template.hash,
           },
           body: pdf.toString('base64'),
           isBase64Encoded: true,
@@ -164,13 +187,17 @@ export function createPublicQuotationHandler(
           'Cache-Control': 'private, no-store',
           'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline' https:; img-src data: https:; font-src data: https:; script-src 'none'; frame-ancestors 'none'",
           'X-Document-Revision': snapshot.revision.id,
-          'X-Quotation-Template-Version': String(snapshot.templateVersion?.version || 'legacy'),
+          'X-Quotation-Template-Key': rendered.template.key,
+          'X-Quotation-Template-Version': rendered.snapshot.templateVersion
+            ? String(rendered.snapshot.templateVersion.version)
+            : 'legacy',
+          'X-Quotation-Template-Hash': rendered.template.hash,
         },
         body: rendered.html,
       };
     } catch (error) {
-      console.error(`[public-quotation] failed (${error instanceof Error ? error.name : typeof error})`);
-      return json(503, { error: 'Não foi possível consultar o orçamento. Tente novamente.' });
+      logFailure(error);
+      return unavailable();
     }
   };
 }

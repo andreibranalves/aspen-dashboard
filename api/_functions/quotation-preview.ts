@@ -10,7 +10,7 @@ import {
   renderQuotationTemplate,
   resolveQuotationTemplate,
 } from './lib/quotation-templates.js';
-import { renderQuotationPdfHtml } from './lib/quotation-pdf.js';
+import { renderQuotationPdfHtml } from './lib/quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from './lib/quotation-document-storage.js';
 import { isCoreReadEnabled } from './orcamento-mode.js';
 

@@ -77,6 +77,8 @@ describe('app-server authentication handoff', () => {
         APP_AUTH_BYPASS: 'true',
         APP_PASSWORD_HASH: passwordHash,
         APP_SESSION_SECRET: sessionSecret,
+        CRM_CORE_QUOTES_ENABLED: 'true',
+        CRM_QUOTES_ROLLOUT_STATE: 'postgres-read-only',
         ERPNEXT_TOKEN: 'app-server-test-token',
         DATABASE_URL: '',
       },
@@ -98,6 +100,19 @@ describe('app-server authentication handoff', () => {
 
       const unauthenticated = await fetch(`${baseUrl}/api/settings`);
       assert.equal(unauthenticated.status, 401);
+      const genericView = await fetch(`${baseUrl}/api/view/quote-1`);
+      assert.equal(genericView.status, 401);
+
+      const publicRequests: Response[] = [];
+      for (let attempt = 0; attempt < 21; attempt += 1) {
+        publicRequests.push(
+          await fetch(`${baseUrl}/api/public-quotation?token=invalid-token`, {
+            headers: { 'x-forwarded-for': '198.51.100.42' },
+          })
+        );
+      }
+      assert.equal(publicRequests.slice(0, 20).every((response) => response.status === 401), true);
+      assert.equal(publicRequests[20].status, 429);
 
       const login = await fetch(`${baseUrl}/api/login`, {
         method: 'POST',

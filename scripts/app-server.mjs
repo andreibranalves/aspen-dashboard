@@ -10,6 +10,7 @@ import { extname, join, normalize } from 'node:path';
 // Load env from .env using dotenv
 import 'dotenv/config';
 import { isAuthenticated } from '../api/_lib/auth.js';
+import { checkRateLimit } from '../api/_lib/rate-limit.js';
 
 if (!process.env.ERPNEXT_TOKEN) {
   console.error('ERPNEXT_TOKEN não configurado no .env');
@@ -191,12 +192,17 @@ const server = createServer(async (req, res) => {
     const routeName = urlPath.replace(/^\/api\/?/, '').split('/')[0];
     const handler = ROUTES[routeName];
 
-    // This is the self-hosted production API boundary. Authentication stays in
-    // the shared guard so its public login/logout/view classifications and
-    // signed-session checks remain identical to the Vercel catch-all route.
+    // This is the self-hosted production API boundary. Authentication and
+    // rate limiting stay in shared guards, matching the Vercel catch-all route.
     if (!isAuthenticated(req)) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Não autorizado. Faça login em /api/login.' }));
+      return;
+    }
+
+    if (!checkRateLimit(req)) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Muitas requisições. Aguarde um minuto.' }));
       return;
     }
 
@@ -232,10 +238,21 @@ const server = createServer(async (req, res) => {
           : result.body || ''
       );
     } catch (err) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error(`[api/${routeName}]`, err.message);
+      const isPublicQuotation = routeName === 'public-quotation';
+      const code = isPublicQuotation
+        ? 503
+        : Number.isInteger(err?.statusCode)
+          ? err.statusCode
+          : 500;
+      console.error(`[api/${routeName}]`, err instanceof Error ? err.name : typeof err);
       res.writeHead(code, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message || 'Erro interno.' }));
+      res.end(
+        JSON.stringify({
+          error: isPublicQuotation
+            ? 'Não foi possível consultar o orçamento. Tente novamente.'
+            : 'Erro interno. Tente novamente.',
+        })
+      );
     }
     return;
   }

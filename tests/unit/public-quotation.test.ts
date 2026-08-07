@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createPublicQuotationHandler } from '../../api/_functions/public-quotation.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
 
 process.env.CRM_CORE_QUOTES_ENABLED = 'true';
 process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-read-only';
 const template = getQuotationTemplate('padrao')!;
+const versionedTemplate = getQuotationTemplate('minimalista')!;
 const now = Date.parse('2026-08-07T12:00:00.000Z');
 
-function snapshot(status = 'enviado') {
+function snapshot(status = 'enviado', templateVersion: unknown = null) {
   return {
     quotation: {
       id: '11111111-1111-4111-8111-111111111111',
@@ -39,19 +41,41 @@ function snapshot(status = 'enviado') {
       fretePadrao: '0.00',
       secoesSnapshot: {},
     },
-    templateVersion: null,
+    templateVersion,
     sectionsSnapshot: {},
     items: [],
   } as any;
 }
 
-function store() {
-  const values = new Map<string, unknown>();
+type StoreWrite = { key: string; value: unknown; options?: { ex?: number } };
+
+function store(clock: () => number = () => now) {
+  const values = new Map<string, { value: unknown; expiresAt?: number }>();
+  const writes: StoreWrite[] = [];
   return {
     values,
-    async get<T>(key: string) { return (values.get(key) as T) || null; },
-    async set(key: string, value: unknown) { values.set(key, value); return 'OK'; },
-    async del(key: string) { values.delete(key); return 1; },
+    writes,
+    async get<T>(key: string) {
+      const entry = values.get(key);
+      if (!entry) return null;
+      if (entry.expiresAt !== undefined && entry.expiresAt <= clock()) {
+        values.delete(key);
+        return null;
+      }
+      return entry.value as T;
+    },
+    async set(key: string, value: unknown, options?: { ex?: number }) {
+      writes.push({ key, value, options });
+      values.set(key, {
+        value,
+        expiresAt: options?.ex ? clock() + options.ex * 1000 : undefined,
+      });
+      return 'OK';
+    },
+    async del(key: string) {
+      values.delete(key);
+      return 1;
+    },
   };
 }
 
@@ -59,17 +83,75 @@ function event(httpMethod: string, queryStringParameters: Record<string, string>
   return { httpMethod, headers: {}, queryStringParameters, body } as any;
 }
 
-test('issues a revision-bound token and renders immutable HTML without Frappe fetches', async () => {
+test('issues a hashed revision-bound token and renders immutable HTML without Frappe fetches', async () => {
   const fakeStore = store();
   const repository = { get: async (id: string) => id === '22222222-2222-4222-8222-222222222222' ? snapshot() : null };
-  const handler = createPublicQuotationHandler({ repository: repository as any, store: fakeStore, token: () => 'A'.repeat(32), now: () => now });
+  const token = 'A'.repeat(32);
+  const handler = createPublicQuotationHandler({ repository: repository as any, store: fakeStore, token: () => token, now: () => now });
   const issued = await handler(event('POST', {}, JSON.stringify({ revisionId: '22222222-2222-4222-8222-222222222222' })));
   assert.equal(issued.statusCode, 201);
-  const token = JSON.parse(issued.body!).token;
+  assert.equal(fakeStore.writes.length, 1);
+  assert.equal(fakeStore.writes[0].key, `aspen:public-quotation:${createHash('sha256').update(token).digest('hex')}`);
+  assert.equal(fakeStore.writes[0].options?.ex, 7 * 24 * 60 * 60);
+  assert.doesNotMatch(JSON.stringify(fakeStore.writes[0].value), new RegExp(token));
+
+  const previousFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    fetchCalls += 1;
+    throw new Error(`unexpected Frappe fetch: ${String(input)}`);
+  }) as typeof fetch;
+  try {
+    const response = await handler(event('GET', { token }));
+    assert.equal(response.statusCode, 200);
+    assert.match(response.body!, /Cliente Teste/);
+    assert.equal(fetchCalls, 0);
+    assert.ok(!response.body!.includes('ERPNEXT_TOKEN'));
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test('renders the immutable PostgreSQL snapshot with its versioned template', async () => {
+  const fakeStore = store();
+  const selectedVersion = {
+    id: '33333333-3333-4333-8333-333333333333',
+    version: 7,
+    source: versionedTemplate.source,
+    sourceHash: versionedTemplate.hash,
+    template: { key: versionedTemplate.key, name: versionedTemplate.name },
+  };
+  const token = 'V'.repeat(32);
+  const handler = createPublicQuotationHandler({
+    repository: { get: async () => snapshot('enviado', selectedVersion) } as any,
+    store: fakeStore,
+    token: () => token,
+    now: () => now,
+  });
+  await handler(event('POST', {}, JSON.stringify({ quotationId: 'q' })));
   const response = await handler(event('GET', { token }));
   assert.equal(response.statusCode, 200);
-  assert.match(response.body!, /Cliente Teste/);
-  assert.ok(!response.body!.includes('ERPNEXT_TOKEN'));
+  assert.match(response.body!, /Proposta comercial/);
+  assert.equal(response.headers?.['X-Quotation-Template-Key'], versionedTemplate.key);
+  assert.equal(response.headers?.['X-Quotation-Template-Version'], '7');
+  assert.equal(response.headers?.['X-Quotation-Template-Hash'], versionedTemplate.hash);
+});
+
+test('sanitizes KV failures at the public handler boundary', async () => {
+  const providerError = new Error('secret provider credentials leaked');
+  const handler = createPublicQuotationHandler({
+    repository: { get: async () => snapshot() } as any,
+    store: {
+      get: async () => { throw providerError; },
+      set: async () => { throw providerError; },
+      del: async () => 1,
+    },
+    now: () => now,
+  });
+  const response = await handler(event('GET', { token: 'K'.repeat(32) }));
+  assert.equal(response.statusCode, 503);
+  assert.doesNotMatch(response.body!, /secret provider credentials leaked/);
+  assert.match(response.body!, /Tente novamente/);
 });
 
 test('rejects invalid, expired, revoked and draft links', async () => {
@@ -80,21 +162,28 @@ test('rejects invalid, expired, revoked and draft links', async () => {
   const issued = await handler(event('POST', {}, JSON.stringify({ quotationId: 'q' })));
   const token = JSON.parse(issued.body!).token;
   assert.equal((await handler(event('DELETE', { token }))).statusCode, 204);
+  assert.equal(fakeStore.writes.at(-1)?.options?.ex, 24 * 60 * 60);
   assert.equal((await handler(event('GET', { token }))).statusCode, 404);
   const expiredHandler = createPublicQuotationHandler({ repository: repository as any, store: fakeStore, token: () => 'C'.repeat(32), now: () => now + 8 * 24 * 60 * 60 * 1000 });
   const expired = await handler(event('POST', {}, JSON.stringify({ quotationId: 'q' })));
   assert.equal((await expiredHandler(event('GET', { token: JSON.parse(expired.body!).token }))).statusCode, 410);
+  let storageNow = now;
+  const expiringStore = store(() => storageNow);
+  await expiringStore.set('expiring', { ok: true }, { ex: 60 });
+  storageNow += 61 * 1000;
+  assert.equal(await expiringStore.get('expiring'), null);
   const draftHandler = createPublicQuotationHandler({ repository: { get: async () => snapshot('rascunho') } as any, store: store(), token: () => 'D'.repeat(32), now: () => now });
   assert.equal((await draftHandler(event('POST', {}, JSON.stringify({ quotationId: 'q' })))).statusCode, 409);
 });
 
-test('returns PDF signature, checksum and deterministic revision metadata', async () => {
+test('returns PDF signature, checksum, size and deterministic revision/template metadata', async () => {
   const fakeStore = store();
   const pdf = Buffer.from('%PDF-1.7\nbody\n%%EOF');
+  const token = 'E'.repeat(32);
   const handler = createPublicQuotationHandler({
     repository: { get: async () => snapshot() } as any,
     store: fakeStore,
-    token: () => 'E'.repeat(32),
+    token: () => token,
     now: () => now,
     renderPdf: async () => pdf,
   });
@@ -103,6 +192,13 @@ test('returns PDF signature, checksum and deterministic revision metadata', asyn
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers?.['Content-Type'], 'application/pdf');
   assert.equal(response.headers?.['X-Document-Revision'], snapshot().revision.id);
+  assert.equal(response.headers?.['X-Quotation-Template-Key'], template.key);
+  assert.equal(response.headers?.['X-Quotation-Template-Version'], 'legacy');
+  assert.equal(response.headers?.['X-Quotation-Template-Hash'], template.hash);
+  assert.equal(response.headers?.['Content-Length'], String(pdf.length));
+  assert.equal(response.headers?.['X-Document-Size'], String(pdf.length));
+  assert.equal(response.headers?.['X-Document-Checksum'], createHash('sha256').update(pdf).digest('hex'));
   assert.match(response.headers?.['X-Document-Checksum'] || '', /^[0-9a-f]{64}$/);
+  assert.equal(Buffer.from(response.body!, 'base64').toString(), pdf.toString());
   assert.equal(response.isBase64Encoded, true);
 });
