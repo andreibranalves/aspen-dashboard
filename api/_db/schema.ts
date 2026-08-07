@@ -438,16 +438,20 @@ export const frappeMigrationBatches = pgTable(
  * is unique regardless of the entity it currently maps to, which lets a Lead
  * and a Customer retain their independent ERP identifiers while sharing one
  * local client key.  The raw payload is intentionally kept as JSONB for
- * audit/replay; canonicalHash is the only value used for idempotency checks.
+ * audit/replay; canonicalHash and sourceHash are persisted fingerprints used
+ * by legacy and migration contracts respectively.
  */
 export const frappeImportLineage = pgTable(
   'frappe_import_lineage',
   {
+    provider: varchar('provider', { length: 80 }).notNull().default('frappe'),
     sourceDoctype: varchar('source_doctype', { length: 80 }).notNull(),
     sourceId: varchar('source_id', { length: 255 }).notNull(),
     entityType: varchar('entity_type', { length: 32 }).notNull(),
+    localId: varchar('local_id', { length: 255 }).notNull(),
     localKey: varchar('local_key', { length: 255 }).notNull(),
     canonicalHash: varchar('canonical_hash', { length: 64 }).notNull(),
+    sourceHash: varchar('source_hash', { length: 64 }).notNull(),
     /** Denormalized business number (ORC-YYYYNNNN) from the source quotation.
  * Stored here for cross-run lineage queries by business number without
  * joining to the quotations table.  NULL for non-quotation lineage. */
@@ -473,10 +477,15 @@ export const frappeImportLineage = pgTable(
       columns: [table.sourceDoctype, table.sourceId],
       name: 'frappe_import_lineage_pkey',
     }),
+    index('frappe_import_lineage_local_id_idx').on(table.localId),
     index('frappe_import_lineage_local_key_idx').on(table.localKey),
     index('frappe_import_lineage_entity_local_idx').on(table.entityType, table.localKey),
     index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
     index('frappe_import_lineage_run_idx').on(table.migrationRunId),
+    check(
+      'frappe_import_lineage_provider_check',
+      sql`char_length(btrim(${table.provider})) > 0`
+    ),
     check(
       'frappe_import_lineage_source_doctype_check',
       sql`char_length(btrim(${table.sourceDoctype})) > 0`
@@ -486,8 +495,10 @@ export const frappeImportLineage = pgTable(
       'frappe_import_lineage_entity_type_check',
       sql`${table.entityType} IN ('produto', 'faixa', 'cliente', 'orcamento')`
     ),
+    check('frappe_import_lineage_local_id_check', sql`char_length(btrim(${table.localId})) > 0`),
     check('frappe_import_lineage_local_key_check', sql`char_length(btrim(${table.localKey})) > 0`),
     check('frappe_import_lineage_hash_check', sql`${table.canonicalHash} ~ '^[0-9a-f]{64}$'`),
+    check('frappe_import_lineage_source_hash_check', sql`${table.sourceHash} ~ '^[0-9a-f]{64}$'`),
   ]
 );
 

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
@@ -17,6 +17,9 @@ import {
   quoteSequences,
   quotations,
 } from './schema.js';
+/** Capability token required for operational raw-payload reads. */
+export const RAW_PAYLOAD_ACCESS = Symbol('frappe-migration:raw-payload-access');
+
 import type {
   ClientUnit,
   ExistingClient,
@@ -164,15 +167,19 @@ export interface FrappeMigrationRepository {
     batchId: string,
     params: { status?: string; checkpoint?: number; attemptCount?: number }
   ): Promise<void>;
-  /** Find the most recent failed run for a given manifest hash (for resume). */
+  /** Find the most recent failed/interrupted run for a manifest (for resume). */
   findLatestFailedRun(manifestHash: string): Promise<{ id: string } | null>;
   /** Return all batches belonging to a run. */
   findBatchesByRun(
     runId: string
   ): Promise<Array<{ id: string; entityType: string; status: string; checkpoint: number; attemptCount: number }>>;
-  /** Read raw Frappe payload for authorized operational access only.
-   *  Must NOT be used in reports, logs, manifests or CLI output. */
-  readRawPayload(sourceDoctype: string, sourceId: string): Promise<SourceRecord | null>;
+  /** Read raw payload only when the explicit operational capability is passed.
+   *  Two-argument calls are intentionally denied and return null. */
+  readRawPayload(
+    sourceDoctype: string,
+    sourceId: string,
+    access?: typeof RAW_PAYLOAD_ACCESS
+  ): Promise<SourceRecord | null>;
 }
 
 type DatabaseProvider = () => AppDatabase;
@@ -226,7 +233,8 @@ function addressFromRow(row: typeof clients.$inferSelect) {
 }
 
 function sourcePayload(value: unknown): SourceRecord {
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value as SourceRecord;
+  if (value && typeof value === 'object' && !Array.isArray(value))
+    return JSON.parse(JSON.stringify(value)) as SourceRecord;
   return {};
 }
 
@@ -279,14 +287,18 @@ export function createPostgresFrappeMigrationRepository(
           address: addressFromRow(row),
         })),
         lineage: lineageRows.map((row) => ({
+          provider: row.provider,
           sourceDoctype: row.sourceDoctype,
           sourceId: row.sourceId,
           entityType: row.entityType,
+          localId: row.localId,
           localKey: row.localKey,
           canonicalHash: row.canonicalHash,
-          sourceHash: row.canonicalHash,
-          businessNumber: row.businessNumber ?? undefined,
-
+          sourceHash: row.sourceHash,
+          businessNumber: row.businessNumber ?? null,
+          migrationRunId: row.migrationRunId ?? null,
+          sourceUpdatedAt: row.sourceUpdatedAt ?? null,
+          importedAt: row.importedAt ?? null,
         })),
         quotations: quotationRows.map((row) => ({
           id: row.id,
@@ -411,13 +423,13 @@ export function createPostgresFrappeMigrationRepository(
           // local key; retain its actual ID in lineage for future reruns.
           await upsertLineage(
             tx,
-            unit.lineage.map((entry) => ({ ...entry, localKey: existing.id }))
+            unit.lineage.map((entry) => ({ ...entry, localId: existing.id, localKey: existing.id }))
           );
         } else {
           await tx.insert(clients).values({ id, ...values, arquivado: false, archivedAt: null });
           await upsertLineage(
             tx,
-            unit.lineage.map((entry) => ({ ...entry, localKey: id }))
+            unit.lineage.map((entry) => ({ ...entry, localId: id, localKey: id }))
           );
         }
       });
@@ -581,10 +593,13 @@ export function createPostgresFrappeMigrationRepository(
       status: 'completed' | 'failed'
     ): Promise<void> {
       const db = getDb();
-      await db
+      const rows = await db
         .update(frappeMigrationRuns)
         .set({ status, completedAt: new Date() })
-        .where(eq(frappeMigrationRuns.id, runId));
+        .where(eq(frappeMigrationRuns.id, runId))
+        .returning({ id: frappeMigrationRuns.id });
+      if (rows.length === 0)
+        throw new Error(`Run de migração não encontrado: ${runId}`);
     },
 
     async createBatch(params: {
@@ -611,10 +626,13 @@ export function createPostgresFrappeMigrationRepository(
       if (params.checkpoint !== undefined) set.checkpoint = params.checkpoint;
       if (params.attemptCount !== undefined) set.attemptCount = params.attemptCount;
       if (Object.keys(set).length === 0) return;
-      await db
+      const rows = await db
         .update(frappeMigrationBatches)
         .set(set)
-        .where(eq(frappeMigrationBatches.id, batchId));
+        .where(eq(frappeMigrationBatches.id, batchId))
+        .returning({ id: frappeMigrationBatches.id });
+      if (rows.length === 0)
+        throw new Error(`Batch de migração não encontrado: ${batchId}`);
     },
 
     async findLatestFailedRun(
@@ -627,7 +645,10 @@ export function createPostgresFrappeMigrationRepository(
         .where(
           and(
             eq(frappeMigrationRuns.manifestHash, manifestHash),
-            eq(frappeMigrationRuns.status, 'failed')
+            or(
+              eq(frappeMigrationRuns.status, 'failed'),
+              eq(frappeMigrationRuns.status, 'running')
+            )
           )
         )
         .orderBy(sql`${frappeMigrationRuns.startedAt} DESC`)
@@ -652,19 +673,24 @@ export function createPostgresFrappeMigrationRepository(
             }));
       },
 
-      async readRawPayload(sourceDoctype: string, sourceId: string): Promise<SourceRecord | null> {
-            const db = getDb();
-            const [row] = await db
-                .select({ legacyPayload: frappeImportLineage.legacyPayload })
-                .from(frappeImportLineage)
-                .where(
-                    and(
-                        eq(frappeImportLineage.sourceDoctype, sourceDoctype),
-                        eq(frappeImportLineage.sourceId, sourceId)
-                    )
-                )
-                .limit(1);
-            return row ? sourcePayload(row.legacyPayload) : null;
+      async readRawPayload(
+        sourceDoctype: string,
+        sourceId: string,
+        access?: typeof RAW_PAYLOAD_ACCESS
+      ): Promise<SourceRecord | null> {
+        if (access !== RAW_PAYLOAD_ACCESS) return null;
+        const db = getDb();
+        const [row] = await db
+          .select({ legacyPayload: frappeImportLineage.legacyPayload })
+          .from(frappeImportLineage)
+          .where(
+            and(
+              eq(frappeImportLineage.sourceDoctype, sourceDoctype),
+              eq(frappeImportLineage.sourceId, sourceId)
+            )
+          )
+          .limit(1);
+        return row ? sourcePayload(row.legacyPayload) : null;
       },
     };
 }
@@ -677,32 +703,41 @@ async function upsertLineage(
 ): Promise<void> {
   for (const entry of entries) {
     const now = new Date();
+    const localId = entry.localId || entry.localKey;
+    const sourceHash = entry.sourceHash || entry.canonicalHash;
+    const importedAt = entry.importedAt ?? now;
     await tx
       .insert(frappeImportLineage)
       .values({
+        provider: entry.provider || 'frappe',
         sourceDoctype: entry.sourceDoctype,
         sourceId: entry.sourceId,
         entityType: entry.entityType,
+        localId,
         localKey: entry.localKey,
         canonicalHash: entry.canonicalHash,
+        sourceHash,
         businessNumber: entry.businessNumber ?? null,
         legacyPayload: entry.legacyPayload,
         migrationRunId: entry.migrationRunId ?? null,
         sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
-        importedAt: entry.importedAt ?? now,
+        importedAt,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [frappeImportLineage.sourceDoctype, frappeImportLineage.sourceId],
         set: {
+          provider: entry.provider || 'frappe',
           entityType: entry.entityType,
+          localId,
           localKey: entry.localKey,
           canonicalHash: entry.canonicalHash,
+          sourceHash,
           businessNumber: entry.businessNumber ?? null,
           legacyPayload: entry.legacyPayload,
           migrationRunId: entry.migrationRunId ?? null,
           sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
-          importedAt: entry.importedAt ?? now,
+          importedAt,
           updatedAt: now,
         },
       });
@@ -720,6 +755,46 @@ export interface MemoryFrappeMigrationRepositoryOptions {
   failProductSku?: string;
   failClientKey?: string;
   failQuotationKey?: string;
+}
+
+function normalizeLineage(value: ExistingLineage): ExistingLineage {
+  const legacy = value as ExistingLineage & {
+    provider?: string;
+    localId?: string;
+    sourceHash?: string;
+    businessNumber?: string | null;
+    migrationRunId?: string | null;
+    sourceUpdatedAt?: Date | null;
+    importedAt?: Date | null;
+  };
+  return {
+    ...value,
+    provider: legacy.provider || 'frappe',
+    localId: legacy.localId || legacy.localKey,
+    sourceHash: legacy.sourceHash || legacy.canonicalHash,
+    businessNumber: legacy.businessNumber ?? null,
+    migrationRunId: legacy.migrationRunId ?? null,
+    sourceUpdatedAt: legacy.sourceUpdatedAt ?? null,
+    importedAt: legacy.importedAt ?? null,
+  };
+}
+
+function storedLineage(
+  entry: FrappeLineageEntry,
+  localId = entry.localId || entry.localKey,
+  importedAt = new Date()
+): ExistingLineage {
+  return {
+    ...entry,
+    provider: entry.provider || 'frappe',
+    localId,
+    localKey: entry.localKey,
+    sourceHash: entry.sourceHash || entry.canonicalHash,
+    businessNumber: entry.businessNumber ?? null,
+    migrationRunId: entry.migrationRunId ?? null,
+    sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
+    importedAt: entry.importedAt ?? importedAt,
+  };
 }
 
 function cloneQuotation(value: ExistingQuotation): ExistingQuotation {
@@ -776,9 +851,9 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
         address: value.address ? { ...value.address } : null,
       })),
       quotations: (options.state?.quotations || []).map(cloneQuotation),
-      lineage: [...(options.state?.lineage || [])].map((value) => ({
-        ...value,
-      })),
+      lineage: [...(options.state?.lineage || [])].map((value) =>
+        normalizeLineage(value)
+      ),
       sequences: { ...(options.state?.sequences || {}) },
     };
     // Seed rawPayloads from initial state lineage entries that carry a payload.
@@ -808,13 +883,18 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
       })),
       quotations: this.state.quotations.map(cloneQuotation),
       lineage: this.state.lineage.map((v) => ({
+        provider: v.provider,
         sourceDoctype: v.sourceDoctype,
         sourceId: v.sourceId,
         entityType: v.entityType,
+        localId: v.localId,
         localKey: v.localKey,
         canonicalHash: v.canonicalHash,
         sourceHash: v.sourceHash,
         businessNumber: v.businessNumber,
+        migrationRunId: v.migrationRunId,
+        sourceUpdatedAt: v.sourceUpdatedAt,
+        importedAt: v.importedAt,
       })),
       sequences: { ...this.state.sequences },
     };
@@ -844,7 +924,10 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
           (line) => entry.sourceDoctype === line.sourceDoctype && entry.sourceId === line.sourceId
         )
     );
-    next.lineage.push(...unit.lineage);
+    const importedAt = new Date();
+    next.lineage.push(
+      ...unit.lineage.map((entry) => storedLineage(entry, entry.localId, importedAt))
+    );
     for (const entry of unit.lineage)
       this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.legacyPayload);
     this.state = next;
@@ -901,7 +984,12 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
           (line) => entry.sourceDoctype === line.sourceDoctype && entry.sourceId === line.sourceId
         )
     );
-    next.lineage.push(...unit.lineage.map((line) => ({ ...line, localKey: id })));
+    const importedAt = new Date();
+    next.lineage.push(
+      ...unit.lineage.map((line) =>
+        storedLineage({ ...line, localKey: id }, id, importedAt)
+      )
+    );
     for (const entry of unit.lineage)
       this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.legacyPayload);
     this.state = next;
@@ -942,7 +1030,10 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
           (line) => entry.sourceDoctype === line.sourceDoctype && entry.sourceId === line.sourceId
         )
     );
-    next.lineage.push(...unit.lineage);
+    const importedAt = new Date();
+    next.lineage.push(
+      ...unit.lineage.map((entry) => storedLineage(entry, entry.localId, importedAt))
+    );
     for (const entry of unit.lineage)
       this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.legacyPayload);
     this.state = next;
@@ -1022,13 +1113,18 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
       })),
       quotations: this.state.quotations.map(cloneQuotation),
       lineage: this.state.lineage.map((v) => ({
+        provider: v.provider,
         sourceDoctype: v.sourceDoctype,
         sourceId: v.sourceId,
         entityType: v.entityType,
+        localId: v.localId,
         localKey: v.localKey,
         canonicalHash: v.canonicalHash,
         sourceHash: v.sourceHash,
         businessNumber: v.businessNumber,
+        migrationRunId: v.migrationRunId,
+        sourceUpdatedAt: v.sourceUpdatedAt,
+        importedAt: v.importedAt,
       })),
       sequences: { ...this.state.sequences },
     };
@@ -1042,6 +1138,8 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     manifestHash: string;
     startedAt: Date;
   }): Promise<void> {
+    if (this.runs.some((run) => run.id === params.id))
+      throw new Error(`Run de migração duplicado: ${params.id}`);
     this.runs.push({
       ...params,
       status: 'running',
@@ -1054,10 +1152,9 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     status: 'completed' | 'failed'
   ): Promise<void> {
     const run = this.runs.find((r) => r.id === runId);
-    if (run) {
-      run.status = status;
-      run.completedAt = new Date();
-    }
+    if (!run) throw new Error(`Run de migração não encontrado: ${runId}`);
+    run.status = status;
+    run.completedAt = new Date();
   }
 
   async createBatch(params: {
@@ -1065,6 +1162,14 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     runId: string;
     entityType: string;
   }): Promise<void> {
+    if (!this.runs.some((run) => run.id === params.runId))
+      throw new Error(`Run de migração não encontrado: ${params.runId}`);
+    if (!['produtos', 'faixas', 'clientes', 'orcamentos', 'documentos'].includes(params.entityType))
+      throw new Error(`Tipo de batch inválido: ${params.entityType}`);
+    if (this.batches.some((batch) => batch.id === params.id))
+      throw new Error(`Batch de migração duplicado: ${params.id}`);
+    if (this.batches.some((batch) => batch.runId === params.runId && batch.entityType === params.entityType))
+      throw new Error(`Batch duplicado para entidade: ${params.entityType}`);
     this.batches.push({
       ...params,
       status: 'pending',
@@ -1078,7 +1183,13 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     params: { status?: string; checkpoint?: number; attemptCount?: number }
   ): Promise<void> {
     const batch = this.batches.find((b) => b.id === batchId);
-    if (!batch) return;
+    if (!batch) throw new Error(`Batch de migração não encontrado: ${batchId}`);
+    if (params.status !== undefined && !['pending', 'running', 'completed', 'failed'].includes(params.status))
+      throw new Error(`Status de batch inválido: ${params.status}`);
+    if (params.checkpoint !== undefined && params.checkpoint < 0)
+      throw new Error('Checkpoint de batch não pode ser negativo.');
+    if (params.attemptCount !== undefined && params.attemptCount < 0)
+      throw new Error('Contagem de tentativas não pode ser negativa.');
     if (params.status !== undefined) batch.status = params.status;
     if (params.checkpoint !== undefined) batch.checkpoint = params.checkpoint;
     if (params.attemptCount !== undefined) batch.attemptCount = params.attemptCount;
@@ -1088,7 +1199,10 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     manifestHash: string
   ): Promise<{ id: string } | null> {
     const failed = this.runs
-      .filter((r) => r.manifestHash === manifestHash && r.status === 'failed')
+      .filter(
+        (r) =>
+          r.manifestHash === manifestHash && (r.status === 'failed' || r.status === 'running')
+      )
       .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
     return failed[0] ? { id: failed[0].id } : null;
   }
@@ -1106,8 +1220,14 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
         attemptCount: b.attemptCount,
       }));
   }
-  async readRawPayload(sourceDoctype: string, sourceId: string): Promise<SourceRecord | null> {
-    return this.rawPayloads.get(`${sourceDoctype}:${sourceId}`) ?? null;
+  async readRawPayload(
+    sourceDoctype: string,
+    sourceId: string,
+    access?: typeof RAW_PAYLOAD_ACCESS
+  ): Promise<SourceRecord | null> {
+    if (access !== RAW_PAYLOAD_ACCESS) return null;
+    const payload = this.rawPayloads.get(`${sourceDoctype}:${sourceId}`);
+    return payload ? (JSON.parse(JSON.stringify(payload)) as SourceRecord) : null;
   }
 }
 

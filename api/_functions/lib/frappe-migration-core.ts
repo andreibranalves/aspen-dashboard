@@ -30,29 +30,30 @@ export type ImportStatus = (typeof IMPORT_STATUSES)[number];
 export type SourceRecord = Record<string, unknown>;
 
 export interface FrappeLineageEntry {
+  /** Contract provider. Migration entries are sourced from Frappe. */
+  provider: 'frappe';
   sourceDoctype: string;
   sourceId: string;
   entityType: 'produto' | 'faixa' | 'cliente' | 'orcamento';
+  /** Stable local identity. `localKey` remains for pre-Task-4 callers. */
+  localId: string;
   localKey: string;
   canonicalHash: string;
-  /** Content fingerprint.  The database column is named `canonical_hash`
-   * for backward compatibility with pre-Task-4 data; in the brief and
-   * manifest contract this is called `source_hash`.  Both names identify
-   * the same deterministic SHA-256 of the canonicalized source payload. */
-  sourceHash?: string;
-  /** Denormalized business number (ORC-YYYYNNNN).  NULL for non-quotation
-   * lineage.  Stored to allow cross-run queries by business number
-   * without joining quotations. */
-  businessNumber?: string;
+  /** Contract content fingerprint persisted as `source_hash`. */
+  sourceHash: string;
+  /** Denormalized business number (ORC-YYYYNNNN), null for non-quotations. */
+  businessNumber: string | null;
   legacyPayload: SourceRecord;
-  migrationRunId?: string;
-  sourceUpdatedAt?: Date;
-  importedAt?: Date;
+  migrationRunId: string | null;
+  /** Original source timestamp, or null when Frappe provided none. */
+  sourceUpdatedAt: Date | null;
+  importedAt: Date | null;
 }
 
 export interface NormalizedProduct {
   sourceDoctype: 'Item';
   sourceId: string;
+  sourceUpdatedAt: Date | null;
   sku: string;
   legacyId: string;
   nome: string;
@@ -69,6 +70,7 @@ export interface NormalizedProduct {
 export interface NormalizedPriceDocument {
   sourceDoctype: 'Pricing Rule' | 'Item Price';
   sourceId: string;
+  sourceUpdatedAt: Date | null;
   sku: string;
   minimumQuantity: string;
   unitPrice: string;
@@ -79,6 +81,7 @@ export interface NormalizedPriceDocument {
 export interface NormalizedClient {
   sourceDoctype: 'Customer' | 'Lead';
   sourceId: string;
+  sourceUpdatedAt: Date | null;
   localKey: string;
   nome: string;
   documento: string | null;
@@ -131,6 +134,7 @@ export interface QuotationTerms {
 export interface NormalizedQuotation {
   sourceDoctype: 'Quotation';
   sourceId: string;
+  sourceUpdatedAt: Date | null;
   businessNumber: string;
   year: number;
   /** `Customer:<id>` or `Lead:<id>` reference used to resolve the local client. */
@@ -250,17 +254,20 @@ export interface ExistingClient {
 }
 
 export interface ExistingLineage {
+  provider: string;
   sourceDoctype: string;
   sourceId: string;
   entityType: string;
+  localId: string;
   localKey: string;
   canonicalHash: string;
-  /** `source_hash` alias: same value as `canonicalHash`.  The DB column
-   * is `canonical_hash`; this accessor documents the brief contract. */
-  sourceHash?: string;
-  businessNumber?: string;
+  sourceHash: string;
+  businessNumber: string | null;
+  migrationRunId: string | null;
+  sourceUpdatedAt: Date | null;
+  importedAt: Date | null;
   // legacyPayload intentionally excluded from the read-side interface.
-  // Raw Frappe payloads are only accessible via readRawPayload().
+  // Raw Frappe payloads are only accessible with RAW_PAYLOAD_ACCESS.
 }
 
 export interface ImportDetail {
@@ -393,6 +400,34 @@ function sourceIdOf(record: SourceRecord): string {
   return text(first(record, ['name', 'id', 'source_id', 'sourceId']));
 }
 
+/** Preserve Frappe's last-modified timestamp when present; absent/invalid
+ * source metadata is represented explicitly as null in lineage. */
+function sourceUpdatedAtOf(record: SourceRecord): Date | null {
+  const value = first(
+    record,
+    [
+      'modified',
+      'modified_at',
+      'updated',
+      'updated_at',
+      'last_modified',
+      'lastModified',
+      'source_updated_at',
+      'sourceUpdatedAt',
+    ],
+    null
+  );
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const textValue = text(value);
+  if (!textValue) return null;
+  const frappeTimestamp =
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(textValue)
+      ? `${textValue.replace(' ', 'T')}Z`
+      : textValue;
+  const parsed = new Date(frappeTimestamp);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function cloneRecord(record: SourceRecord): SourceRecord {
   // Structured clone is unavailable in older Node versions used by local
   // scripts; JSON is sufficient for sanitized Frappe payloads and strips
@@ -431,6 +466,9 @@ export function sanitizeReportMessage(message: string): string {
   let result = message.replace(/\d{3}\.\d{3}\.\d{3}-\d{2}/g, (m) => m.slice(0, -2) + '**');
   // Formatted CNPJ: XX.XXX.XXX/XXXX-XX
   result = result.replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g, (m) => m.slice(0, -2) + '**');
+  // Frappe often returns documents without punctuation in validation errors.
+  result = result.replace(/(?<!\d)\d{14}(?!\d)/g, (m) => `${m.slice(0, 3)}***********`);
+  result = result.replace(/(?<!\d)\d{11}(?!\d)/g, (m) => `${m.slice(0, 3)}********`);
   // E-mail addresses
   result = result.replace(/([\w.-]+)@([\w.-]+\.\w+)/g, (_, user, domain) => `${user[0]}***@${domain}`);
   return result;
@@ -438,6 +476,13 @@ export function sanitizeReportMessage(message: string): string {
 
 function hashFor(entity: string, value: unknown): string {
   return canonicalHash({ entity, payload: value });
+}
+
+/** Fingerprint the source document itself, independently from normalized
+ * local identity. This keeps `source_hash` useful when the source changes in
+ * fields intentionally omitted from the canonical local representation. */
+function sourceHashFor(source: SourceRecord): string {
+  return canonicalHash(source);
 }
 
 function safeSource(record: SourceRecord): SourceRecord {
@@ -505,6 +550,7 @@ export function normalizeFrappeItem(record: SourceRecord): NormalizedProduct {
   return {
     sourceDoctype: 'Item',
     sourceId,
+    sourceUpdatedAt: sourceUpdatedAtOf(record),
     sku,
     legacyId: sourceId,
     nome,
@@ -585,6 +631,7 @@ export function normalizeFrappePriceDocuments(
       result.push({
         sourceDoctype: doctype,
         sourceId,
+        sourceUpdatedAt: sourceUpdatedAtOf(record),
         sku,
         minimumQuantity: effectiveMinimumQuantity,
         unitPrice,
@@ -659,6 +706,7 @@ export function normalizeFrappeClientRecord(
   return {
     sourceDoctype,
     sourceId,
+    sourceUpdatedAt: sourceUpdatedAtOf(record),
     localKey,
     nome,
     documento,
@@ -951,6 +999,7 @@ export function normalizeFrappeQuotation(
   return {
     sourceDoctype: 'Quotation',
     sourceId,
+    sourceUpdatedAt: sourceUpdatedAtOf(record),
     businessNumber,
     year,
     clientRef,
@@ -1208,7 +1257,7 @@ export function buildQuotationUnits(
       quotation.status === 'enviado' || quotation.status === 'aprovado'
         ? buildIssuedDocumentUnit(quotation)
         : null;
-    const sourceHash = canonicalHash({
+    const canonicalHashValue = canonicalHash({
       entity: 'orcamento',
       payload: {
         businessNumber: quotation.businessNumber,
@@ -1239,16 +1288,30 @@ export function buildQuotationUnits(
     });
     const lineage: FrappeLineageEntry[] = [
       {
+        provider: 'frappe',
         sourceDoctype: 'Quotation',
         sourceId: quotation.sourceId,
         entityType: 'orcamento',
+        localId: id,
         localKey: id,
-        canonicalHash: sourceHash,
+        canonicalHash: canonicalHashValue,
+        sourceHash: sourceHashFor(quotation.source),
         businessNumber: quotation.businessNumber,
+        migrationRunId: null,
+        sourceUpdatedAt: quotation.sourceUpdatedAt,
+        importedAt: null,
         legacyPayload: quotation.source,
       },
     ];
-    const unit: QuotationUnit = { id, revision, quotation, items, document, lineage, sourceHash };
+    const unit: QuotationUnit = {
+      id,
+      revision,
+      quotation,
+      items,
+      document,
+      lineage,
+      sourceHash: canonicalHashValue,
+    };
     quotationUnits.push(unit);
     itemUnits.push(...items);
   }
@@ -1377,9 +1440,11 @@ export function buildProductUnits(
     const normalized = normalizeProductPricing(pricingInput);
     const lineage: FrappeLineageEntry[] = [
       {
+        provider: 'frappe',
         sourceDoctype: product.sourceDoctype,
         sourceId: product.sourceId,
         entityType: 'produto',
+        localId: product.sku,
         localKey: product.sku,
         canonicalHash: hashFor('produto', {
           sku: product.sku,
@@ -1391,6 +1456,11 @@ export function buildProductUnits(
           ativo: product.ativo,
           preco_base: normalized.preco_base,
         }),
+        sourceHash: sourceHashFor(product.source),
+        migrationRunId: null,
+        sourceUpdatedAt: product.sourceUpdatedAt,
+        importedAt: null,
+        businessNumber: null,
         legacyPayload: product.source,
       },
     ];
@@ -1407,9 +1477,11 @@ export function buildProductUnits(
     for (const rows of rowsBySource.values()) {
       const row = rows[0];
       lineage.push({
+        provider: 'frappe',
         sourceDoctype: row.sourceDoctype,
         sourceId: row.sourceId,
         entityType: 'faixa',
+        localId: product.sku,
         localKey: product.sku,
         canonicalHash: hashFor('faixa', {
           sku: product.sku,
@@ -1418,6 +1490,11 @@ export function buildProductUnits(
             unit_price: entry.unitPrice,
           })),
         }),
+        sourceHash: sourceHashFor(row.source),
+        migrationRunId: null,
+        sourceUpdatedAt: row.sourceUpdatedAt,
+        importedAt: null,
+        businessNumber: null,
         legacyPayload: row.source,
       });
     }
@@ -1553,12 +1630,8 @@ export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
         address: mergedAddress,
         links: [...new Set(members.flatMap((member) => member.links))].sort(),
       };
-      const lineage = members.map((member) => ({
-        sourceDoctype: member.sourceDoctype,
-        sourceId: member.sourceId,
-        entityType: 'cliente' as const,
-        localKey,
-        canonicalHash: hashFor('cliente', {
+      const lineage = members.map((member) => {
+        const canonicalHashValue = hashFor('cliente', {
           nome: member.nome,
           documento: member.documento,
           email: member.email,
@@ -1566,9 +1639,23 @@ export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
           notes: member.notes,
           address: member.address,
           localKey,
-        }),
-        legacyPayload: member.source,
-      }));
+        });
+        return {
+          provider: 'frappe' as const,
+          sourceDoctype: member.sourceDoctype,
+          sourceId: member.sourceId,
+          entityType: 'cliente' as const,
+          localId: localKey,
+          localKey,
+          canonicalHash: canonicalHashValue,
+          sourceHash: sourceHashFor(member.source),
+          migrationRunId: null,
+          sourceUpdatedAt: member.sourceUpdatedAt,
+          importedAt: null,
+          businessNumber: null,
+          legacyPayload: member.source,
+        };
+      });
       return { client, members, lineage, conflicts };
     });
 }
@@ -1607,7 +1694,12 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
 }
 
 export function addDetail(report: EntityReport, detail: ImportDetail): void {
-  report.detalhes.push(detail);
+  // Keep every report path behind the same PII boundary, including callers
+  // that build ImportDetail directly instead of using the migration helper.
+  report.detalhes.push({
+    ...detail,
+    mensagem: sanitizeReportMessage(detail.mensagem),
+  });
   report[detail.status] += 1;
 }
 

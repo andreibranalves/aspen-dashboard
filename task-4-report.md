@@ -5,7 +5,7 @@
 ### Files modified
 
 | File | Changes |
-|------|---------|
+| ------ | --------- |
 | `api/_db/schema.ts` | Added `CHECK (checkpoint >= 0)` and `CHECK (attempt_count >= 0)` to `frappe_migration_batches` |
 | `api/_db/frappe-migration-repository.ts` | Removed `legacyPayload` from `ExistingLineage`; added `readRawPayload()` to interface and both implementations; stripped `legacyPayload` from `loadState()` and `snapshot()` lineage; stored raw payloads in authorized-only `rawPayloads` Map |
 | `api/_functions/lib/frappe-migration-core.ts` | Removed `legacyPayload` from `ExistingLineage` interface; added `sanitizeReportMessage()` for centralized PII masking |
@@ -30,7 +30,7 @@
 
 ```bash
 npm run build:api
-# tsc -p api/tsconfig.api.json — clean
+# tsc -p api/tsconfig.api.json - clean
 
 npm run test:unit
 # 541 tests, 529 pass, 0 fail, 12 skipped
@@ -40,3 +40,54 @@ npm run test:unit
 
 - The `FrappeLineageEntry` objects stored internally in `MemoryFrappeMigrationRepository` still carry `legacyPayload` at runtime (from `apply*` methods). Both `loadState()` and `snapshot()` now explicitly strip it via field-mapping. This is correct but depends on the stripping happening at every read boundary.
 - The `faixas` batch tracks the same checkpoint count as `produtos` since faixas are sub-entities. A future improvement could track individual faixa writes if granular resume is needed.
+
+## Fix Round 2
+
+### Context
+
+The previous fix round 2 attempt timed out after recording 66/66 focused tests.
+The suite and build status were not reliably captured before the timeout.
+Existing worktree changes were preserved and audited without reset or checkout.
+
+### Corrections
+
+- Added real `provider`, `local_id`, `source_hash`, `migration_run_id`, `source_updated_at`, `imported_at`, and `business_number` propagation for product, faixa, client, and quotation lineage.
+- `source_hash` now fingerprints the source document independently from the normalized `canonical_hash`.
+- Added source timestamp parsing and assertions for provider, run ID, local identity, hashes, timestamps, and quotation business number.
+- Faixas now use their own source checkpoint, divergences fail batches, resume creates missing batch rows, and terminal verification rejects pending or running batches.
+- Tracking failures from run, batch, state, sequence, and completion persistence are reported and make the manifest failed.
+- Run IDs use UUID execution identities to avoid same-millisecond collisions; failed runs still resume using their persisted ID.
+- Added adapter-level PostgreSQL lineage mapping coverage and repository-level raw payload boundary checks.
+- Registered migration 0013 in the Drizzle journal and added `drizzle/meta/0013_snapshot.json`.
+- Report detail and migration log paths sanitize PII; raw payloads are omitted from state, snapshots, reports, and CLI output.
+
+### Commands and results
+
+```text
+npm run build:api
+# passed: tsc -p api/tsconfig.api.json
+
+TZ=UTC node --test tests/unit/frappe-migration.test.ts tests/unit/frappe-migration-repository.test.ts tests/unit/frappe-migration-postgres.test.ts
+# 69 tests, 66 passed, 0 failed, 3 skipped
+
+npm run test:unit
+# 546 tests, 534 passed, 0 failed, 12 skipped
+
+npm run build
+# passed: API TypeScript compilation and Vite production build
+
+npx drizzle-kit check
+# Everything's fine
+
+npm run lint
+# 0 errors; 196 non-blocking warnings
+
+node scripts/migrate-frappe-crm.mjs --dry-run --fixture <blocking fixture>
+# exit 1; report contained divergences
+```
+
+### Concerns
+
+- PostgreSQL integration tests remain skipped without `TEST_DATABASE_URL`; adapter mapping is covered with a fake database only.
+- Migration 0013 backfills `source_hash` from `canonical_hash` for rows already stored before the new source fingerprint was available.
+- Raw payload access is capability-gated in the repository; deployment-level authorization and retention purge remain operational responsibilities.

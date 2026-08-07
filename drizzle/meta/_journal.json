@@ -92,6 +92,13 @@
       "when": 1785900000000,
       "tag": "0012_frappe_migration_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786130790686,
+      "tag": "0013_frappe_migration_batches_non_negative",
+      "breakpoints": true
     }
   ]
 }

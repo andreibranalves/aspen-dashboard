@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
+import {
+  MemoryFrappeMigrationRepository,
+  RAW_PAYLOAD_ACCESS,
+} from '../../api/_db/frappe-migration-repository.js';
 import { runFrappeMigration, type FrappeDataset } from '../../api/_functions/frappe-migration.js';
 
 const MINIMAL_DATASET: FrappeDataset = {
@@ -38,11 +41,16 @@ describe('MemoryFrappeMigrationRepository', () => {
   it('readRawPayload retorna payload autorizado para operações', async () => {
     const repository = new MemoryFrappeMigrationRepository();
     await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
-    const payload = await repository.readRawPayload('Item', 'ITEM-T1');
+    assert.equal(await repository.readRawPayload('Item', 'ITEM-T1'), null);
+    const payload = await repository.readRawPayload('Item', 'ITEM-T1', RAW_PAYLOAD_ACCESS);
     assert.ok(payload, 'payload deve existir para Item importado');
     assert.equal(payload.item_code, 'SKU-T1');
     // Non-existent entry returns null
-    const missing = await repository.readRawPayload('Item', 'NONEXISTENT');
+    const missing = await repository.readRawPayload(
+      'Item',
+      'NONEXISTENT',
+      RAW_PAYLOAD_ACCESS
+    );
     assert.equal(missing, null);
   });
 
@@ -83,14 +91,209 @@ describe('MemoryFrappeMigrationRepository', () => {
     const result = await runFrappeMigration({ mode: 'apply', dataset, repository });
     assert.equal(result.manifest.status, 'completed');
     const runId = repository.runs[0].id;
-    // All lineage entries should reference the run
-    for (const entry of repository.snapshot().lineage) {
-      // lineage entries from loadState don't expose migrationRunId,
-      // but the repository stores it. Verify via internal state.
-    }
-    // Verify via the raw payload store that lineage was written
-    const payload = await repository.readRawPayload('Item', 'ITEM-R1');
+    // All lineage entries expose the complete contract and reference the run.
+    const lineage = repository.snapshot().lineage;
+    assert.equal(lineage.length, 1);
+    assert.equal(lineage[0].provider, 'frappe');
+    assert.equal(lineage[0].migrationRunId, runId);
+    assert.equal(lineage[0].localId, 'SKU-R1');
+    assert.equal(lineage[0].localKey, 'SKU-R1');
+    assert.match(lineage[0].sourceHash, /^[0-9a-f]{64}$/);
+    assert.notEqual(lineage[0].sourceHash, lineage[0].canonicalHash);
+    assert.equal(lineage[0].sourceUpdatedAt, null);
+    assert.ok(lineage[0].importedAt instanceof Date);
+    const payload = await repository.readRawPayload('Item', 'ITEM-R1', RAW_PAYLOAD_ACCESS);
     assert.ok(payload, 'raw payload exists');
+  });
+
+  it('persiste todos os campos de linhagem, inclusive timestamp e número comercial', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      repository,
+      dataset: {
+        items: [
+          {
+            name: 'ITEM-CONTRACT',
+            item_code: 'SKU-CONTRACT',
+            item_name: 'Produto contrato',
+            modified: '2024-01-02 03:04:05',
+          },
+        ],
+        pricingRules: [
+          {
+            name: 'PR-CONTRACT',
+            item_code: 'SKU-CONTRACT',
+            min_qty: 10,
+            price_list_rate: '8.00',
+            modified: '2024-01-06 03:04:05',
+          },
+        ],
+        itemPrices: [],
+        customers: [
+          {
+            name: 'CUST-CONTRACT',
+            customer_name: 'Cliente contrato',
+            tax_id: '11223344556',
+            modified: '2024-01-03 03:04:05',
+          },
+        ],
+        leads: [],
+        quotations: [
+          {
+            name: 'QTN-2024-00001',
+            creation: '2024-01-04 03:04:05',
+            modified: '2024-01-05 03:04:05',
+            quotation_to: 'Customer',
+            customer: 'CUST-CONTRACT',
+            status: 'Draft',
+            items: [
+              {
+                idx: 1,
+                item_code: 'SKU-CONTRACT',
+                item_name: 'Produto contrato',
+                qty: '1',
+                uom: 'Und',
+                rate: '10.00',
+                price_list_rate: '10.00',
+                amount: '10.00',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.manifest.status, 'completed');
+    const runId = repository.runs[0].id;
+    const lineage = repository.snapshot().lineage;
+    assert.equal(lineage.length, 4);
+    for (const entry of lineage) {
+      assert.equal(entry.provider, 'frappe');
+      assert.equal(entry.migrationRunId, runId);
+      assert.equal(entry.localId, entry.localKey);
+      assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
+      assert.ok(entry.importedAt instanceof Date);
+    }
+    const item = lineage.find((entry) => entry.sourceId === 'ITEM-CONTRACT');
+    assert.ok(item);
+    assert.equal(item.sourceUpdatedAt?.toISOString(), '2024-01-02T03:04:05.000Z');
+    const faixa = lineage.find((entry) => entry.sourceId === 'PR-CONTRACT');
+    assert.ok(faixa);
+    assert.equal(faixa.entityType, 'faixa');
+    assert.equal(faixa.sourceUpdatedAt?.toISOString(), '2024-01-06T03:04:05.000Z');
+    const client = lineage.find((entry) => entry.sourceId === 'CUST-CONTRACT');
+    assert.ok(client);
+    assert.equal(client.sourceUpdatedAt?.toISOString(), '2024-01-03T03:04:05.000Z');
+    const quotation = lineage.find((entry) => entry.sourceId === 'QTN-2024-00001');
+    assert.ok(quotation);
+    assert.equal(quotation.businessNumber, 'ORC-20240001');
+    assert.equal(quotation.sourceUpdatedAt?.toISOString(), '2024-01-05T03:04:05.000Z');
+    assert.notEqual(quotation.localId, 'ORC-20240001');
+  });
+
+  it('faixas usam checkpoint próprio e divergências falham o batch', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      repository,
+      dataset: {
+        items: [{ name: 'ITEM-BATCH', item_code: 'SKU-BATCH', item_name: 'Produto batch' }],
+        pricingRules: [
+          { name: 'PR-BATCH-1', item_code: 'SKU-BATCH', min_qty: 1, price_list_rate: '10.00' },
+          { name: 'PR-BATCH-2', item_code: 'SKU-BATCH', min_qty: 30, price_list_rate: '8.00' },
+        ],
+        itemPrices: [],
+        customers: [],
+        leads: [],
+        quotations: [],
+      },
+    });
+    assert.equal(result.report.produtos.erros, 0);
+    assert.equal(result.report.faixas.erros, 0);
+    const productBatch = repository.batches.find((batch) => batch.entityType === 'produtos');
+    const priceBatch = repository.batches.find((batch) => batch.entityType === 'faixas');
+    assert.ok(productBatch);
+    assert.ok(priceBatch);
+    assert.equal(productBatch.checkpoint, 1);
+    assert.equal(priceBatch.checkpoint, 2);
+    assert.notEqual(priceBatch.checkpoint, productBatch.checkpoint);
+    assert.equal(productBatch.status, 'completed');
+    assert.equal(priceBatch.status, 'completed');
+    assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
+
+    const divergentRepository = new MemoryFrappeMigrationRepository();
+    const divergent = await runFrappeMigration({
+      mode: 'apply',
+      repository: divergentRepository,
+      dataset: {
+        items: [{ name: 'ITEM-DIVERGENT-BATCH', item_code: 'SKU-DIVERGENT-BATCH', item_name: 'Produto' }],
+        pricingRules: [
+          { name: 'PR-DIVERGENT', item_code: 'SKU-DIVERGENT-BATCH', min_qty: 1, price_list_rate: '10.00' },
+          { name: 'PR-DIVERGENT', item_code: 'SKU-DIVERGENT-BATCH', min_qty: 1, price_list_rate: '9.00' },
+        ],
+        itemPrices: [],
+        customers: [],
+        leads: [],
+        quotations: [],
+      },
+    });
+    assert.ok(divergent.report.faixas.divergentes > 0);
+    assert.equal(
+      divergentRepository.batches.find((batch) => batch.entityType === 'faixas')?.status,
+      'failed'
+    );
+    assert.ok(
+      divergentRepository.batches.every((batch) => !['pending', 'running'].includes(batch.status))
+    );
+  });
+
+  it('resume cria batches ausentes e encerra todos em estado terminal', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const originalCreateBatch = repository.createBatch.bind(repository);
+    let failedOnce = false;
+    repository.createBatch = async (params) => {
+      if (!failedOnce && params.entityType === 'faixas') {
+        failedOnce = true;
+        throw new Error('falha parcial de checkpoint');
+      }
+      return originalCreateBatch(params);
+    };
+    const dataset = MINIMAL_DATASET;
+    const first = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(first.manifest.status, 'failed');
+    assert.equal(repository.batches.length, 1);
+    repository.createBatch = originalCreateBatch;
+    const second = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(second.manifest.status, 'completed');
+    assert.equal(repository.batches.length, 5);
+    assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
+  });
+
+  it('falha de completeRun bloqueia manifest e aparece no relatório', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const originalCompleteRun = repository.completeRun.bind(repository);
+    let failCompletion = true;
+    repository.completeRun = async (runId, status) => {
+      if (failCompletion && status === 'completed') {
+        failCompletion = false;
+        throw new Error('falha ao concluir run');
+      }
+      return originalCompleteRun(runId, status);
+    };
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      dataset: MINIMAL_DATASET,
+      repository,
+    });
+    assert.equal(result.manifest.status, 'failed');
+    assert.ok(result.report.total.erros > 0);
+    assert.ok(
+      result.report.total.detalhes.some(
+        (detail) => detail.source_doctype === 'migration_tracking' && detail.status === 'erros'
+      )
+    );
+    assert.equal(repository.runs[0].status, 'failed');
+    assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
   });
 
   it('batches têm checkpoint >= 0 e attempt_count >= 0', async () => {
@@ -150,5 +353,7 @@ describe('MemoryFrappeMigrationRepository', () => {
     const run = repository.runs.find((r) => r.status === 'failed');
     assert.ok(run, 'run should be marked as failed after createBatch error');
     assert.equal(result.manifest.status, 'failed');
+    assert.ok(result.report.total.erros > 0);
+    assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
   });
 });

@@ -16,7 +16,10 @@ import {
   type HistoricalPdfPipeline,
   type ExistingLineage,
 } from '../../api/_functions/frappe-migration.js';
-import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
+import {
+  MemoryFrappeMigrationRepository,
+  RAW_PAYLOAD_ACCESS,
+} from '../../api/_db/frappe-migration-repository.js';
 import {
   isValidPdfBuffer,
   quotationPdfChecksum,
@@ -32,7 +35,7 @@ import {
   createFrappeQuotationNoPdfMetadataFixture,
 } from '../fixtures/frappe-migration-fixtures.ts';
 
-describe('migração Frappe CRM', () => {
+describe('migração Frappe CRM', { concurrency: 1 }, () => {
   it('pagina fonte com ordenação estável e lê todos os documentos', async () => {
     const calls: Array<{ doctype: string; start: number; order_by: string }> = [];
     const source = {
@@ -133,11 +136,18 @@ describe('migração Frappe CRM', () => {
       state: {
         lineage: [
           {
+            provider: 'frappe',
             sourceDoctype: 'Item',
             sourceId: 'ITEM-001',
             entityType: 'produto',
+            localId: 'OUTRO-SKU',
             localKey: 'OUTRO-SKU',
             canonicalHash: 'a'.repeat(64),
+            sourceHash: 'a'.repeat(64),
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
           },
         ],
       },
@@ -154,11 +164,18 @@ describe('migração Frappe CRM', () => {
       state: {
         lineage: [
           {
+            provider: 'frappe',
             sourceDoctype: 'Pricing Rule',
             sourceId: 'PR-LNC',
             entityType: 'faixa',
+            localId: 'OUTRO-SKU',
             localKey: 'OUTRO-SKU',
             canonicalHash: 'b'.repeat(64),
+            sourceHash: 'b'.repeat(64),
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
           },
         ],
       },
@@ -175,11 +192,18 @@ describe('migração Frappe CRM', () => {
       state: {
         lineage: [
           {
+            provider: 'frappe',
             sourceDoctype: 'Item',
             sourceId: 'ITEM-001',
             entityType: 'cliente',
+            localId: 'LNC-SED-70-30',
             localKey: 'LNC-SED-70-30',
             canonicalHash: 'e'.repeat(64),
+            sourceHash: 'e'.repeat(64),
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
           },
         ],
       },
@@ -200,18 +224,32 @@ describe('migração Frappe CRM', () => {
         ],
         lineage: [
           {
+            provider: 'frappe',
             sourceDoctype: 'Customer',
             sourceId: 'CUST-001',
             entityType: 'cliente',
+            localId: '00000000-0000-4000-8000-000000000001',
             localKey: '00000000-0000-4000-8000-000000000001',
             canonicalHash: 'c'.repeat(64),
+            sourceHash: 'c'.repeat(64),
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
           },
           {
+            provider: 'frappe',
             sourceDoctype: 'Lead',
             sourceId: 'LEAD-001',
             entityType: 'cliente',
+            localId: '00000000-0000-4000-8000-000000000002',
             localKey: '00000000-0000-4000-8000-000000000002',
             canonicalHash: 'd'.repeat(64),
+            sourceHash: 'd'.repeat(64),
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
           },
         ],
       },
@@ -480,10 +518,18 @@ describe('migração Frappe CRM', () => {
       assert.equal(result.report.clientes.criados, 2);
       if (mode === 'apply') {
         // Raw payload is only accessible through the authorized readRawPayload method.
-        const payload1 = await repository.readRawPayload('Customer', customerSourceId);
+        const payload1 = await repository.readRawPayload(
+          'Customer',
+          customerSourceId,
+          RAW_PAYLOAD_ACCESS
+        );
         assert.ok(payload1, 'raw payload existe para Customer');
         assert.equal(payload1?.tax_id, documents[0]);
-        const payload2 = await repository.readRawPayload('Lead', leadSourceId);
+        const payload2 = await repository.readRawPayload(
+          'Lead',
+          leadSourceId,
+          RAW_PAYLOAD_ACCESS
+        );
         assert.ok(payload2, 'raw payload existe para Lead');
         assert.equal(payload2?.tax_id, documents[1]);
         // loadState() lineage must NOT expose legacyPayload
@@ -1431,11 +1477,18 @@ describe('migração Frappe CRM', () => {
       state: {
         lineage: [
           {
+            provider: 'frappe',
             sourceDoctype: 'Quotation',
             sourceId: 'QTN-2024-00042',
             entityType: 'cliente',
+            localId: 'outra-entidade',
             localKey: 'outra-entidade',
             canonicalHash: 'f'.repeat(64),
+            sourceHash: 'f'.repeat(64),
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
           },
         ],
       },
@@ -1841,15 +1894,17 @@ describe('migração Frappe CRM', () => {
     assert.ok(repository.batches.length >= 2);
     const completedBatches = repository.batches.filter((b) => b.status === 'completed');
     assert.ok(completedBatches.length >= 2);
-    // Lineage entries reference the run
-    const lineageWithRun = repository
-      .snapshot()
-      .lineage.filter((entry) => {
-        // Memory repo stores migrationRunId in legacyPayload for tracking
-        // In postgres it would be a real column
-        return entry.entityType === 'produto' || entry.entityType === 'cliente';
-      });
+    // Every persisted lineage entry references this run and exposes the
+    // contract fields through the repository read boundary.
+    const lineageWithRun = repository.snapshot().lineage;
     assert.ok(lineageWithRun.length > 0);
+    for (const entry of lineageWithRun) {
+      assert.equal(entry.provider, 'frappe');
+      assert.equal(entry.migrationRunId, run.id);
+      assert.ok(entry.localId);
+      assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
+      assert.ok(entry.importedAt instanceof Date);
+    }
   });
 
   it('dry-run com manifest determinístico: mesmo dataset produz mesmo manifestHash', async () => {
@@ -1967,43 +2022,47 @@ describe('migração Frappe CRM', () => {
     const qtn43 = orcamentoLineage.find((e) => e.sourceId === 'QTN-2024-00043');
     assert.ok(qtn43);
     assert.equal(qtn43.businessNumber, 'ORC-20240043');
-    // Non-quotation lineage (produtos/clientes) should NOT have business_number
+    // Non-quotation lineage keeps the contract field explicitly null.
     const produtoLineage = repository
       .snapshot()
       .lineage.filter((entry) => entry.entityType === 'produto');
     assert.ok(produtoLineage.length > 0);
     for (const entry of produtoLineage) {
-      assert.equal(entry.businessNumber, undefined);
+      assert.equal(entry.businessNumber, null);
     }
   });
 
-  it('source_hash é alias documentado de canonical_hash: mesmo valor, mesmo contrato', () => {
+  it('source_hash e canonical_hash são campos reais e distintos', () => {
     const entry = {
       sourceDoctype: 'Quotation' as const,
       sourceId: 'QTN-2024-00042',
       entityType: 'orcamento' as const,
       localKey: 'stable-id',
       canonicalHash: 'a'.repeat(64),
-      sourceHash: 'a'.repeat(64),
+      sourceHash: 'b'.repeat(64),
       businessNumber: 'ORC-20240042',
       legacyPayload: {} as Record<string, unknown>,
     };
-    // source_hash and canonical_hash MUST be the same value
-    assert.equal(entry.sourceHash, entry.canonicalHash);
-    // Verify the DB column canonical_hash stores what the brief calls source_hash
+    assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
+    assert.match(entry.canonicalHash, /^[0-9a-f]{64}$/);
+    assert.notEqual(entry.sourceHash, entry.canonicalHash);
     const fromDb: ExistingLineage = {
+      provider: 'frappe',
       sourceDoctype: 'Quotation',
       sourceId: 'QTN-2024-00042',
       entityType: 'orcamento',
+      localId: 'stable-id',
       localKey: 'stable-id',
-      canonicalHash: 'b'.repeat(64),
-      sourceHash: 'b'.repeat(64),
+      canonicalHash: 'c'.repeat(64),
+      sourceHash: 'd'.repeat(64),
       businessNumber: 'ORC-20240042',
+      migrationRunId: null,
+      sourceUpdatedAt: null,
+      importedAt: null,
     };
-    assert.equal(fromDb.sourceHash, fromDb.canonicalHash);
-    // Both interfaces expose the same content fingerprint
-    assert.equal(entry.canonicalHash.length, 64);
-    assert.equal(fromDb.canonicalHash.length, 64);
+    assert.match(fromDb.sourceHash, /^[0-9a-f]{64}$/);
+    assert.match(fromDb.canonicalHash, /^[0-9a-f]{64}$/);
+    assert.notEqual(fromDb.sourceHash, fromDb.canonicalHash);
   });
 
   it('idempotência preserva business_number na segunda execução', async () => {

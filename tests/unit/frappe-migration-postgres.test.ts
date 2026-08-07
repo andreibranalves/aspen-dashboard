@@ -21,6 +21,49 @@ const migrationsFolder = path.resolve(
   'drizzle'
 );
 
+test('PostgreSQL adapter mapeia contrato de linhagem sem banco externo', async () => {
+  const sourceUpdatedAt = new Date('2024-01-05T03:04:05.000Z');
+  const importedAt = new Date('2024-01-06T03:04:05.000Z');
+  const lineageRow = {
+    provider: 'frappe',
+    sourceDoctype: 'Quotation',
+    sourceId: 'QTN-ADAPTER',
+    entityType: 'orcamento',
+    localId: '00000000-0000-4000-8000-000000000001',
+    localKey: '00000000-0000-4000-8000-000000000001',
+    canonicalHash: 'a'.repeat(64),
+    sourceHash: 'a'.repeat(64),
+    businessNumber: 'ORC-20240001',
+    migrationRunId: '00000000-0000-4000-8000-000000000002',
+    sourceUpdatedAt,
+    importedAt,
+  };
+  const rowsFor = (table: unknown) =>
+    table === schema.frappeImportLineage ? [lineageRow] : [];
+  const fakeDb = {
+    select() {
+      return {
+        from(table: unknown) {
+          const rows = rowsFor(table);
+          const query = Promise.resolve(rows) as any;
+          query.orderBy = async () => rows;
+          return query;
+        },
+      };
+    },
+  } as any;
+  const repository = createPostgresFrappeMigrationRepository(() => fakeDb);
+  const state = await repository.loadState();
+  assert.deepEqual(state.lineage, [lineageRow]);
+  assert.equal(state.lineage[0].provider, 'frappe');
+  assert.equal(state.lineage[0].localId, lineageRow.localId);
+  assert.equal(state.lineage[0].sourceHash, lineageRow.sourceHash);
+  assert.equal(state.lineage[0].businessNumber, lineageRow.businessNumber);
+  assert.equal(state.lineage[0].migrationRunId, lineageRow.migrationRunId);
+  assert.equal(state.lineage[0].sourceUpdatedAt, sourceUpdatedAt);
+  assert.equal(state.lineage[0].importedAt, importedAt);
+});
+
 test(
   'PostgreSQL importação aplica atomicamente, é idempotente e preserva linhagem',
   { skip: !TEST_DATABASE_URL },

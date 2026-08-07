@@ -1,4 +1,5 @@
 import { list } from '@vercel/blob';
+import { randomUUID } from 'node:crypto';
 
 import {
   addDetail,
@@ -138,8 +139,37 @@ export function createFrappeSource(): FrappeListSource {
   };
 }
 
+const BATCH_ENTITY_TYPES = ['produtos', 'faixas', 'clientes', 'orcamentos', 'documentos'] as const;
+
 function recordKey(doctype: string, id: string): string {
   return `${doctype}:${id}`;
+}
+
+function entityFailed(report: EntityReport): boolean {
+  return report.erros > 0 || report.divergentes > 0;
+}
+
+function safeErrorMessage(error: unknown): string {
+  return sanitizeReportMessage(error instanceof Error ? error.message : String(error));
+}
+
+function logMigrationError(prefix: string, error: unknown): void {
+  console.error(prefix, safeErrorMessage(error));
+}
+
+function safeLogIdentifier(value: string): string {
+  return canonicalHash(value).slice(0, 12);
+}
+
+function trackingError(report: ImportReport, operation: string, error: unknown): void {
+  const message = safeErrorMessage(error);
+  add(
+    report.documentos,
+    'erros',
+    'migration_tracking',
+    operation,
+    `Falha de rastreamento (${operation}): ${message}`
+  );
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -251,6 +281,18 @@ function checkpoint(report: EntityReport): ReportCheckpoint {
     detailsLength: report.detalhes.length,
     addedDetails: [],
   };
+}
+
+/** Count every source outcome, not only successful writes. A checkpoint is a
+ * source cursor, so ignored and divergent records must advance it too. */
+function entityCheckpoint(report: EntityReport): number {
+  return (
+    report.criados +
+    report.atualizados +
+    report.ignorados +
+    report.divergentes +
+    report.erros
+  );
 }
 
 function sealCheckpoint(value: ReportCheckpoint): void {
@@ -941,7 +983,7 @@ async function archiveHistoricalPdfs({
   try {
     placeholders = await repository.listIssuedDocumentPdfPlaceholders();
   } catch (error) {
-    console.error('[frappe-migration] falha ao listar PDFs históricos pendentes:', error);
+    logMigrationError('[frappe-migration] falha ao listar PDFs históricos pendentes:', error);
     addDetail(report.documentos, {
       status: 'erros',
       source_doctype: 'issued_documents',
@@ -987,7 +1029,10 @@ async function archivePlaceholderPdf(
   try {
     html = await pipeline.fetchHtml(fileUrl);
   } catch (error) {
-    console.error(`[frappe-migration] falha ao baixar printview de ${sourceId}:`, error);
+    logMigrationError(
+      `[frappe-migration] falha ao baixar printview de ${safeLogIdentifier(sourceId)}:`,
+      error
+    );
     detail('erros', 'Não foi possível baixar o HTML do PDF histórico.');
     return;
   }
@@ -995,7 +1040,10 @@ async function archivePlaceholderPdf(
   try {
     pdf = await pipeline.renderPdf(html);
   } catch (error) {
-    console.error(`[frappe-migration] falha ao renderizar PDF de ${sourceId}:`, error);
+    logMigrationError(
+      `[frappe-migration] falha ao renderizar PDF de ${safeLogIdentifier(sourceId)}:`,
+      error
+    );
     detail('erros', 'Não foi possível renderizar o PDF histórico.');
     return;
   }
@@ -1009,7 +1057,10 @@ async function archivePlaceholderPdf(
   try {
     existing = await pipeline.blobs.list(`quotations-migration/${businessNumber}/${sourceId}-`);
   } catch (error) {
-    console.error(`[frappe-migration] falha ao consultar blobs de ${sourceId}:`, error);
+    logMigrationError(
+      `[frappe-migration] falha ao consultar blobs de ${safeLogIdentifier(sourceId)}:`,
+      error
+    );
     detail('erros', 'Não foi possível consultar o armazenamento de PDFs.');
     return;
   }
@@ -1044,7 +1095,10 @@ async function archivePlaceholderPdf(
   try {
     archived = await pipeline.blobs.put(pathname, pdf, QUOTATION_PDF_MIME_TYPE);
   } catch (error) {
-    console.error(`[frappe-migration] falha ao arquivar PDF de ${sourceId}:`, error);
+    logMigrationError(
+      `[frappe-migration] falha ao arquivar PDF de ${safeLogIdentifier(sourceId)}:`,
+      error
+    );
     detail('erros', 'Não foi possível arquivar o PDF histórico.');
     return;
   }
@@ -1077,7 +1131,7 @@ async function archivePlaceholderPdf(
  * Dry-run archival analysis: report how many issued documents would be
  * archived, how many URLs are constructable and which quotations are
  * unreachable (missing `name`) or lack integrity hints (checksum).  No URL is
- * fetched and no blob is uploaded — reachability is decided purely at the
+ * fetched and no blob is uploaded - reachability is decided purely at the
  * normalization stage.  A built quotation unit always has a `name`, so every
  * found document is constructable; the divergence pass over raw records
  * covers quotations that can never be normalized into a document.
@@ -1199,7 +1253,10 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   // ── Manifest and run tracking ─────────────────────────────────────────
   const sourceSnapshotAt = new Date();
   const manifestHash = computeManifestHash(dataset);
-  const runId = stableId('run', `${manifestHash}:${sourceSnapshotAt.getTime()}`);
+  // A run is an execution identity, not a source identity. UUID avoids
+  // collisions when two applies start in the same millisecond; resume still
+  // reuses the persisted failed run ID.
+  const runId = randomUUID();
   let activeRunId: string | undefined;
 
   const normalized = normalizeSafely(dataset, report);
@@ -1210,21 +1267,139 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   // Dry-run never touches the database.
   const batchIds = new Map<string, string>();
   const existingAttemptCounts = new Map<string, number>();
+  let trackingFailed = false;
+  const failTracking = (operation: string, error: unknown): void => {
+    trackingFailed = true;
+    trackingError(report, operation, error);
+  };
+  const failedResult = (): MigrationResult => {
+    const finalized = finalizeReport(report);
+    return {
+      report: finalized,
+      manifest: buildManifest(
+        activeRunId || runId,
+        'frappe',
+        options.mode,
+        sourceSnapshotAt,
+        manifestHash,
+        'failed',
+        finalized,
+        dataset
+      ),
+    };
+  };
+  const markKnownBatchesFailed = async (operation: string): Promise<void> => {
+    for (const batchId of batchIds.values()) {
+      try {
+        await repository.updateBatch(batchId, { status: 'failed' });
+      } catch (error) {
+        failTracking(`${operation}:${batchId}`, error);
+      }
+    }
+  };
+  const updateBatchTracked = async (
+    batchId: string | undefined,
+    params: { status?: string; checkpoint?: number; attemptCount?: number },
+    operation: string
+  ): Promise<void> => {
+    if (!batchId) return;
+    try {
+      await repository.updateBatch(batchId, params);
+    } catch (error) {
+      failTracking(operation, error);
+    }
+  };
+  const completeRunFailed = async (operation: string): Promise<void> => {
+    if (!activeRunId) return;
+    try {
+      await repository.completeRun(activeRunId, 'failed');
+    } catch (error) {
+      failTracking(operation, error);
+    }
+  };
+  const failActiveRun = async (operation: string): Promise<void> => {
+    await markKnownBatchesFailed(operation);
+    await completeRunFailed(`completeRun:${operation}`);
+  };
+  const verifyTerminalBatches = async (): Promise<void> => {
+    if (!activeRunId) return;
+    let batches: Array<{
+      id: string;
+      entityType: string;
+      status: string;
+      checkpoint: number;
+      attemptCount: number;
+    }>;
+    try {
+      batches = await repository.findBatchesByRun(activeRunId);
+    } catch (error) {
+      failTracking('findBatchesByRun:verify-terminal', error);
+      return;
+    }
+    const present = new Set(batches.map((batch) => batch.entityType));
+    const missing = BATCH_ENTITY_TYPES.filter((entityType) => !present.has(entityType));
+    if (missing.length > 0)
+      failTracking(
+        'verifyBatchesTerminal:missing',
+        new Error(`Batches ausentes: ${missing.join(', ')}`)
+      );
+    for (const batch of batches) {
+      if (!['pending', 'running'].includes(batch.status)) continue;
+      failTracking(
+        'verifyBatchesTerminal:open',
+        new Error(`Batch ${batch.entityType} terminou em ${batch.status}.`)
+      );
+      await updateBatchTracked(
+        batch.id,
+        { status: 'failed' },
+        `updateBatch:terminal:${batch.entityType}`
+      );
+    }
+  };
   if (options.mode === 'apply') {
-    // Check for a prior failed run with the same manifest hash to resume.
-    const failedRun = await repository.findLatestFailedRun(manifestHash);
-    if (failedRun) {
-      activeRunId = failedRun.id;
-      const existingBatches = await repository.findBatchesByRun(failedRun.id);
+    let resumableRun: { id: string } | null;
+    try {
+      // The repository returns failed or interrupted runs so partially
+      // persisted batches can be resumed instead of duplicated.
+      resumableRun = await repository.findLatestFailedRun(manifestHash);
+    } catch (error) {
+      failTracking('findLatestFailedRun', error);
+      return failedResult();
+    }
+    if (resumableRun) {
+      activeRunId = resumableRun.id;
+      let existingBatches: Array<{
+        id: string;
+        entityType: string;
+        status: string;
+        checkpoint: number;
+        attemptCount: number;
+      }>;
+      try {
+        existingBatches = await repository.findBatchesByRun(resumableRun.id);
+      } catch (error) {
+        failTracking('findBatchesByRun', error);
+        try {
+          await repository.completeRun(resumableRun.id, 'failed');
+        } catch (completeError) {
+          failTracking('completeRun:failed-resume-load', completeError);
+        }
+        return failedResult();
+      }
       for (const batch of existingBatches) {
         batchIds.set(batch.entityType, batch.id);
         existingAttemptCounts.set(batch.entityType, batch.attemptCount);
-        // Reset failed batches to pending so they can be retried.
+        // Reset interrupted work before retrying. Completed batches remain
+        // reusable, but the final pass below seals every batch status.
         if (batch.status === 'failed' || batch.status === 'running') {
-          await repository.updateBatch(batch.id, {
-            status: 'pending',
-            checkpoint: 0,
-          });
+          try {
+            await repository.updateBatch(batch.id, {
+              status: 'pending',
+              checkpoint: 0,
+            });
+          } catch (error) {
+            failTracking(`updateBatch:reset:${batch.entityType}`, error);
+          }
         }
       }
     } else {
@@ -1238,26 +1413,39 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           manifestHash,
           startedAt: sourceSnapshotAt,
         });
-        // Create batch checkpoints for each entity type.
-        for (const entityType of ['produtos', 'faixas', 'clientes', 'orcamentos', 'documentos']) {
-          const batchId = stableId('batch', `${runId}:${entityType}`);
-          await repository.createBatch({ id: batchId, runId, entityType });
-          batchIds.set(entityType, batchId);
-        }
-      } catch {
-        addDetail(report.total, {
-          status: 'erros',
-          source_doctype: 'migration_run',
-          source_id: runId,
-          mensagem: 'Não foi possível criar o registro de migração.',
-        });
-        try { await repository.completeRun(runId, 'failed'); } catch { /* best-effort */ }
-        return { report: finalizeReport(report), manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, 'failed', report, dataset) };
+      } catch (error) {
+        failTracking('createRun', error);
+        return failedResult();
       }
+    }
+    // Create any missing batch rows, including rows absent from a partially
+    // persisted run. This keeps the checkpoint contract complete on resume.
+    for (const entityType of BATCH_ENTITY_TYPES) {
+      if (batchIds.has(entityType)) continue;
+      const batchId = stableId('batch', `${activeRunId}:${entityType}`);
+      try {
+        await repository.createBatch({ id: batchId, runId: activeRunId!, entityType });
+        batchIds.set(entityType, batchId);
+      } catch (error) {
+        failTracking(`createBatch:${entityType}`, error);
+        await failActiveRun('markBatchFailed:createBatch');
+        return failedResult();
+      }
+    }
+    if (trackingFailed) {
+      await failActiveRun('markBatchFailed:resume');
+      return failedResult();
     }
   }
 
-  const state = await repository.loadState();
+  let state: FrappeMigrationState;
+  try {
+    state = await repository.loadState();
+  } catch (error) {
+    failTracking('loadState', error);
+    await failActiveRun('markBatchFailed:loadState');
+    return failedResult();
+  }
 
   // CRITICAL 1: Inject activeRunId into all lineage entries for provenance.
   if (activeRunId) {
@@ -1362,17 +1550,15 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     // Each callback is deliberately awaited independently. A failed product
     // or client unit is reported and does not roll back already confirmed
     // units, making a rerun safe after operator remediation.
-    // ── Products + Faixas batch ──
+    // ── Products + Faixas batches ──
     const prodBatchId = batchIds.get('produtos');
     const faixaBatchId = batchIds.get('faixas');
-    if (prodBatchId) await repository.updateBatch(prodBatchId, { status: 'running' });
-    if (faixaBatchId) await repository.updateBatch(faixaBatchId, { status: 'running' });
-    let processedProducts = 0;
+    await updateBatchTracked(prodBatchId, { status: 'running' }, 'updateBatch:produtos:running');
+    await updateBatchTracked(faixaBatchId, { status: 'running' }, 'updateBatch:faixas:running');
     for (const write of writes) {
       if (!write.checkpoints.some((cp) => cp.report === report.produtos || cp.report === report.faixas)) continue;
       try {
         await write.run();
-        processedProducts += 1;
       } catch {
         const message = 'Não foi possível salvar a unidade importada.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1400,27 +1586,31 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         }
       }
     }
-    if (prodBatchId)
-      await repository.updateBatch(prodBatchId, {
-        status: report.produtos.erros > 0 ? 'failed' : 'completed',
-        checkpoint: processedProducts,
+    await updateBatchTracked(
+      prodBatchId,
+      {
+        status: entityFailed(report.produtos) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.produtos),
         attemptCount: (existingAttemptCounts.get('produtos') ?? 0) + 1,
-      });
-    if (faixaBatchId)
-      await repository.updateBatch(faixaBatchId, {
-        status: report.faixas.erros > 0 ? 'failed' : 'completed',
-        checkpoint: processedProducts,
+      },
+      'updateBatch:produtos:final'
+    );
+    await updateBatchTracked(
+      faixaBatchId,
+      {
+        status: entityFailed(report.faixas) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.faixas),
         attemptCount: (existingAttemptCounts.get('faixas') ?? 0) + 1,
-      });
+      },
+      'updateBatch:faixas:final'
+    );
     // ── Clients batch ──
     const clientBatchId = batchIds.get('clientes');
-    if (clientBatchId) await repository.updateBatch(clientBatchId, { status: 'running' });
-    let processedClients = 0;
+    await updateBatchTracked(clientBatchId, { status: 'running' }, 'updateBatch:clientes:running');
     for (const write of writes) {
       if (!write.checkpoints.some((cp) => cp.report === report.clientes)) continue;
       try {
         await write.run();
-        processedClients += 1;
       } catch {
         const message = 'Não foi possível salvar a unidade importada.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1434,16 +1624,30 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         );
       }
     }
-    if (clientBatchId)
-      await repository.updateBatch(clientBatchId, {
-        status: report.clientes.erros > 0 ? 'failed' : 'completed',
-        checkpoint: processedClients,
+    await updateBatchTracked(
+      clientBatchId,
+      {
+        status: entityFailed(report.clientes) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.clientes),
         attemptCount: (existingAttemptCounts.get('clientes') ?? 0) + 1,
-      });
+      },
+      'updateBatch:clientes:final'
+    );
   }
 
   // ── Quotations (after clients so newly imported clients can be resolved) ──
-  const quotationState = options.mode === 'apply' ? await repository.loadState() : state;
+  let quotationState: FrappeMigrationState;
+  if (options.mode === 'apply') {
+    try {
+      quotationState = await repository.loadState();
+    } catch (error) {
+      failTracking('loadState:quotations', error);
+      await failActiveRun('markBatchFailed:loadState:quotations');
+      return failedResult();
+    }
+  } else {
+    quotationState = state;
+  }
   const clientLineage = new Map<string, string>();
   for (const entry of quotationState.lineage) {
     if (entry.entityType === 'cliente') {
@@ -1521,13 +1725,11 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   }
   if (options.mode === 'apply') {
     const qBatchId = batchIds.get('orcamentos');
-    if (qBatchId) await repository.updateBatch(qBatchId, { status: 'running' });
-    let processedQuotations = 0;
+    await updateBatchTracked(qBatchId, { status: 'running' }, 'updateBatch:orcamentos:running');
     for (const write of writes) {
       if (!write.checkpoints.some((saved) => saved.report === report.orcamentos)) continue;
       try {
         await write.run();
-        processedQuotations += 1;
       } catch {
         const message = 'Não foi possível salvar o orçamento importado.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1545,14 +1747,23 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           );
       }
     }
-    if (qBatchId)
-      await repository.updateBatch(qBatchId, {
-        status: report.orcamentos.erros > 0 ? 'failed' : 'completed',
-        checkpoint: processedQuotations,
+    await updateBatchTracked(
+      qBatchId,
+      {
+        status: entityFailed(report.orcamentos) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.orcamentos),
         attemptCount: (existingAttemptCounts.get('orcamentos') ?? 0) + 1,
-      });
+      },
+      'updateBatch:orcamentos:final'
+    );
     // Advance the per-year numbering counter past the highest imported number.
-    const afterState = await repository.loadState();
+    let afterState: FrappeMigrationState;
+    try {
+      afterState = await repository.loadState();
+    } catch (error) {
+      failTracking('loadState:sequences', error);
+      afterState = quotationState;
+    }
     const maxByYear = new Map<number, number>();
     for (const quotation of afterState.quotations) {
       const match = /^ORC-(\d{4})(\d{4})$/.exec(quotation.businessNumber);
@@ -1561,12 +1772,17 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       const sequence = Number(match[2]);
       maxByYear.set(year, Math.max(maxByYear.get(year) || 0, sequence));
     }
-    for (const [year, lastNumber] of maxByYear)
-      await repository.advanceQuoteSequence(year, lastNumber);
+    for (const [year, lastNumber] of maxByYear) {
+      try {
+        await repository.advanceQuoteSequence(year, lastNumber);
+      } catch (error) {
+        failTracking(`advanceQuoteSequence:${year}`, error);
+      }
+    }
     // Historical PDF archival: replace the size-0 placeholders created above
     // with real Vercel Blob uploads. Skipped when no pipeline is configured.
     const docBatchId = batchIds.get('documentos');
-    if (docBatchId) await repository.updateBatch(docBatchId, { status: 'running' });
+    await updateBatchTracked(docBatchId, { status: 'running' }, 'updateBatch:documentos:running');
     if (options.pdfPipeline) {
       await archiveHistoricalPdfs({
         repository,
@@ -1574,35 +1790,56 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         pipeline: options.pdfPipeline,
       });
     }
-    if (docBatchId)
-      await repository.updateBatch(docBatchId, {
-        status: report.documentos.erros > 0 ? 'failed' : 'completed',
-        checkpoint: report.documentos.atualizados + report.documentos.ignorados,
+    await updateBatchTracked(
+      docBatchId,
+      {
+        status: entityFailed(report.documentos) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.documentos),
         attemptCount: (existingAttemptCounts.get('documentos') ?? 0) + 1,
-      });
+      },
+      'updateBatch:documentos:final'
+    );
   } else {
     // Dry-run archive analysis: counts + divergences only, no fetch/upload.
     analyzeHistoricalPdfArchive(dataset, builtQuotations.quotationUnits, report);
   }
-  // ── Complete run and build manifest ───────────────────────────────────
-  if (activeRunId) {
-    // Compute blocking status directly from entity reports (finalizeReport
-    // hasn't run yet, so report.total is still at its initial zero values).
-    const entityReports = [
-      report.produtos,
-      report.faixas,
-      report.clientes,
-      report.orcamentos,
-      report.documentos,
-    ];
-    const hasBlocking = entityReports.some(
-      (e) => e.divergentes + e.erros > 0
-    );
-    try {
-      await repository.completeRun(activeRunId, hasBlocking ? 'failed' : 'completed');
-    } catch { /* best-effort */ }
+  if (options.mode === 'apply' && activeRunId) {
+    // Seal every known batch after all entity processing. In particular, a
+    // partial run must never remain pending/running merely because its batch
+    // was absent during the first attempt.
+    const finalBatchState: Record<string, { status: string; checkpoint: number }> = {
+      produtos: {
+        status: entityFailed(report.produtos) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.produtos),
+      },
+      faixas: {
+        status: entityFailed(report.faixas) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.faixas),
+      },
+      clientes: {
+        status: entityFailed(report.clientes) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.clientes),
+      },
+      orcamentos: {
+        status: entityFailed(report.orcamentos) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.orcamentos),
+      },
+      documentos: {
+        status: entityFailed(report.documentos) ? 'failed' : 'completed',
+        checkpoint: entityCheckpoint(report.documentos),
+      },
+    };
+    for (const entityType of BATCH_ENTITY_TYPES) {
+      const outcome = finalBatchState[entityType];
+      await updateBatchTracked(
+        batchIds.get(entityType),
+        { status: outcome.status, checkpoint: outcome.checkpoint },
+        `updateBatch:${entityType}:seal`
+      );
+    }
   }
-  // Compute manifest status from entity reports (report.total not yet populated).
+  if (options.mode === 'apply') await verifyTerminalBatches();
+  // ── Complete run and build manifest ───────────────────────────────────
   const entityReports = [
     report.produtos,
     report.faixas,
@@ -1610,8 +1847,23 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     report.orcamentos,
     report.documentos,
   ];
+  const hasBlocking = entityReports.some(entityFailed) || trackingFailed;
+  if (activeRunId) {
+    try {
+      await repository.completeRun(activeRunId, hasBlocking ? 'failed' : 'completed');
+    } catch (error) {
+      // A completion write is part of the migration contract. Record it in
+      // the report and make a best-effort failed completion, never success.
+      failTracking('completeRun', error);
+      try {
+        await repository.completeRun(activeRunId, 'failed');
+      } catch (failedError) {
+        failTracking('completeRun:failed', failedError);
+      }
+    }
+  }
   const manifestStatus: 'completed' | 'failed' =
-    entityReports.some((e) => e.divergentes + e.erros > 0) ? 'failed' : 'completed';
+    hasBlocking || trackingFailed ? 'failed' : 'completed';
   return {
     report: finalizeReport(report),
     manifest: buildManifest(activeRunId || runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, report, dataset),
