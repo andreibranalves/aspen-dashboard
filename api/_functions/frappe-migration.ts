@@ -1208,31 +1208,50 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   // In apply mode, persist the run row before any entity writes.
   // Dry-run never touches the database.
   const batchIds = new Map<string, string>();
+  const existingAttemptCounts = new Map<string, number>();
   if (options.mode === 'apply') {
-    activeRunId = runId;
-    try {
-      await repository.createRun({
-        id: runId,
-        provider: 'frappe',
-        mode: options.mode,
-        sourceSnapshotAt,
-        manifestHash,
-        startedAt: sourceSnapshotAt,
-      });
-      // Create batch checkpoints for each entity type.
-      for (const entityType of ['produtos', 'clientes', 'orcamentos', 'documentos']) {
-        const batchId = stableId('batch', `${runId}:${entityType}`);
-        await repository.createBatch({ id: batchId, runId, entityType });
-        batchIds.set(entityType, batchId);
+    // Check for a prior failed run with the same manifest hash to resume.
+    const failedRun = await repository.findLatestFailedRun(manifestHash);
+    if (failedRun) {
+      activeRunId = failedRun.id;
+      const existingBatches = await repository.findBatchesByRun(failedRun.id);
+      for (const batch of existingBatches) {
+        batchIds.set(batch.entityType, batch.id);
+        existingAttemptCounts.set(batch.entityType, batch.attemptCount);
+        // Reset failed batches to pending so they can be retried.
+        if (batch.status === 'failed' || batch.status === 'running') {
+          await repository.updateBatch(batch.id, {
+            status: 'pending',
+            checkpoint: 0,
+          });
+        }
       }
-    } catch {
-      addDetail(report.total, {
-        status: 'erros',
-        source_doctype: 'migration_run',
-        source_id: runId,
-        mensagem: 'Não foi possível criar o registro de migração.',
-      });
-      return { report: finalizeReport(report), manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, 'failed', report, dataset) };
+    } else {
+      activeRunId = runId;
+      try {
+        await repository.createRun({
+          id: runId,
+          provider: 'frappe',
+          mode: options.mode,
+          sourceSnapshotAt,
+          manifestHash,
+          startedAt: sourceSnapshotAt,
+        });
+        // Create batch checkpoints for each entity type.
+        for (const entityType of ['produtos', 'clientes', 'orcamentos', 'documentos']) {
+          const batchId = stableId('batch', `${runId}:${entityType}`);
+          await repository.createBatch({ id: batchId, runId, entityType });
+          batchIds.set(entityType, batchId);
+        }
+      } catch {
+        addDetail(report.total, {
+          status: 'erros',
+          source_doctype: 'migration_run',
+          source_id: runId,
+          mensagem: 'Não foi possível criar o registro de migração.',
+        });
+        return { report: finalizeReport(report), manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, 'failed', report, dataset) };
+      }
     }
   }
 
@@ -1383,7 +1402,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       await repository.updateBatch(batchId, {
         status: report.produtos.erros > 0 ? 'failed' : 'completed',
         checkpoint: processedProducts,
-        attemptCount: 1,
+        attemptCount: (existingAttemptCounts.get('produtos') ?? 0) + 1,
       });
   }
 
@@ -1489,7 +1508,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       await repository.updateBatch(qBatchId, {
         status: report.orcamentos.erros > 0 ? 'failed' : 'completed',
         checkpoint: processedQuotations,
-        attemptCount: 1,
+        attemptCount: (existingAttemptCounts.get('orcamentos') ?? 0) + 1,
       });
     // Advance the per-year numbering counter past the highest imported number.
     const afterState = await repository.loadState();
@@ -1518,7 +1537,18 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   }
   // ── Complete run and build manifest ───────────────────────────────────
   if (activeRunId) {
-    const hasBlocking = report.total.divergentes + report.total.erros > 0;
+    // Compute blocking status directly from entity reports (finalizeReport
+    // hasn't run yet, so report.total is still at its initial zero values).
+    const entityReports = [
+      report.produtos,
+      report.faixas,
+      report.clientes,
+      report.orcamentos,
+      report.documentos,
+    ];
+    const hasBlocking = entityReports.some(
+      (e) => e.divergentes + e.erros > 0
+    );
     try {
       await repository.completeRun(activeRunId, hasBlocking ? 'failed' : 'completed');
     } catch { /* best-effort */ }

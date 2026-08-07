@@ -18,6 +18,7 @@ CREATE TABLE "frappe_migration_batches" (
 	"attempt_count" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "frappe_import_lineage" ADD COLUMN "business_number" varchar(16);--> statement-breakpoint
 ALTER TABLE "frappe_import_lineage" ADD COLUMN "migration_run_id" uuid;--> statement-breakpoint
 ALTER TABLE "frappe_import_lineage" ADD COLUMN "source_updated_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "frappe_import_lineage" ADD COLUMN "imported_at" timestamp with time zone;--> statement-breakpoint

@@ -446,6 +446,10 @@ export const frappeImportLineage = pgTable(
     entityType: varchar('entity_type', { length: 32 }).notNull(),
     localKey: varchar('local_key', { length: 255 }).notNull(),
     canonicalHash: varchar('canonical_hash', { length: 64 }).notNull(),
+    /** Denormalized business number (ORC-YYYYNNNN) from the source quotation.
+ * Stored here for cross-run lineage queries by business number without
+ * joining to the quotations table.  NULL for non-quotation lineage. */
+    businessNumber: varchar('business_number', { length: 16 }),
     /** Raw Frappe document for audit/replay.  Intentionally JSONB; must
      * NEVER be serialized in reports, manifests, logs or API responses.
      * Retention policy: keep for the lifetime of the lineage row; purge

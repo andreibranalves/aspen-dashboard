@@ -35,6 +35,15 @@ export interface FrappeLineageEntry {
   entityType: 'produto' | 'faixa' | 'cliente' | 'orcamento';
   localKey: string;
   canonicalHash: string;
+  /** Content fingerprint.  The database column is named `canonical_hash`
+   * for backward compatibility with pre-Task-4 data; in the brief and
+   * manifest contract this is called `source_hash`.  Both names identify
+   * the same deterministic SHA-256 of the canonicalized source payload. */
+  sourceHash?: string;
+  /** Denormalized business number (ORC-YYYYNNNN).  NULL for non-quotation
+   * lineage.  Stored to allow cross-run queries by business number
+   * without joining quotations. */
+  businessNumber?: string;
   legacyPayload: SourceRecord;
   migrationRunId?: string;
   sourceUpdatedAt?: Date;
@@ -246,6 +255,10 @@ export interface ExistingLineage {
   entityType: string;
   localKey: string;
   canonicalHash: string;
+  /** `source_hash` alias: same value as `canonicalHash`.  The DB column
+   * is `canonical_hash`; this accessor documents the brief contract. */
+  sourceHash?: string;
+  businessNumber?: string;
   legacyPayload?: SourceRecord | null;
 }
 
@@ -1218,6 +1231,7 @@ export function buildQuotationUnits(
         entityType: 'orcamento',
         localKey: id,
         canonicalHash: sourceHash,
+        businessNumber: quotation.businessNumber,
         legacyPayload: quotation.source,
       },
     ];

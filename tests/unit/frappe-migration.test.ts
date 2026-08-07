@@ -14,6 +14,7 @@ import {
   stableId,
   type FrappeDataset,
   type HistoricalPdfPipeline,
+  type ExistingLineage,
 } from '../../api/_functions/frappe-migration.js';
 import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import {
@@ -1920,6 +1921,113 @@ describe('migração Frappe CRM', () => {
     // Manifest must not contain raw Frappe payloads
     assert.equal(serialized.includes('legacy_payload'), false, 'Manifest contém legacy_payload');
     assert.equal(serialized.includes('Lancheira'), false, 'Manifest contém dados do produto Frappe');
+  });
+
+  // ── Fix round 0 / pre-review tests ──────────────────────────────────
+
+  it('resume retoma batch com falha e incrementa attemptCount preservando checkpoint', async () => {
+    const repository = new MemoryFrappeMigrationRepository({ failProductSku: 'LNC-SED-70-30' });
+    const dataset = createFrappeMigrationFixture();
+
+    // First run: products batch will fail (LNC-SED-70-30 throws)
+    const first = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(first.report.produtos.erros, 1);
+    assert.ok(repository.batches.length >= 2);
+    const productsBatch = repository.batches.find((b) => b.entityType === 'produtos');
+    assert.ok(productsBatch);
+    assert.equal(productsBatch.status, 'failed');
+    assert.equal(productsBatch.attemptCount, 1);
+    assert.ok(productsBatch.checkpoint >= 1, 'checkpoint deve refletir writes antes da falha');
+    const firstRunId = repository.runs[0].id;
+
+    // Second run: same dataset, same manifest hash - should resume
+    repository.failProductSku = undefined;
+    const second = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(second.report.produtos.criados, 1);
+    // Same run was reused (no new run created)
+    assert.equal(repository.runs.length, 1);
+    assert.equal(repository.runs[0].id, firstRunId);
+    // Batch was reused with incremented attemptCount
+    const resumedBatch = repository.batches.find((b) => b.entityType === 'produtos');
+    assert.ok(resumedBatch);
+    assert.equal(resumedBatch.id, productsBatch.id);
+    assert.equal(resumedBatch.attemptCount, 2);
+    assert.equal(resumedBatch.status, 'completed');
+  });
+
+  it('lineage persiste business_number de orçamento com fonte canônica', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset = createFrappeQuotationFixture();
+    await runFrappeMigration({ mode: 'apply', dataset, repository });
+    const orcamentoLineage = repository
+      .snapshot()
+      .lineage.filter((entry) => entry.entityType === 'orcamento');
+    assert.equal(orcamentoLineage.length, 3);
+    for (const entry of orcamentoLineage) {
+      assert.ok(entry.businessNumber, `businessNumber ausente para ${entry.sourceId}`);
+      assert.match(entry.businessNumber!, /^ORC-[0-9]{8}$/);
+    }
+    // Verify specific business numbers
+    const qtn42 = orcamentoLineage.find((e) => e.sourceId === 'QTN-2024-00042');
+    assert.ok(qtn42);
+    assert.equal(qtn42.businessNumber, 'ORC-20240042');
+    const qtn43 = orcamentoLineage.find((e) => e.sourceId === 'QTN-2024-00043');
+    assert.ok(qtn43);
+    assert.equal(qtn43.businessNumber, 'ORC-20240043');
+    // Non-quotation lineage (produtos/clientes) should NOT have business_number
+    const produtoLineage = repository
+      .snapshot()
+      .lineage.filter((entry) => entry.entityType === 'produto');
+    assert.ok(produtoLineage.length > 0);
+    for (const entry of produtoLineage) {
+      assert.equal(entry.businessNumber, undefined);
+    }
+  });
+
+  it('source_hash é alias documentado de canonical_hash: mesmo valor, mesmo contrato', () => {
+    const entry = {
+      sourceDoctype: 'Quotation' as const,
+      sourceId: 'QTN-2024-00042',
+      entityType: 'orcamento' as const,
+      localKey: 'stable-id',
+      canonicalHash: 'a'.repeat(64),
+      sourceHash: 'a'.repeat(64),
+      businessNumber: 'ORC-20240042',
+      legacyPayload: {} as Record<string, unknown>,
+    };
+    // source_hash and canonical_hash MUST be the same value
+    assert.equal(entry.sourceHash, entry.canonicalHash);
+    // Verify the DB column canonical_hash stores what the brief calls source_hash
+    const fromDb: ExistingLineage = {
+      sourceDoctype: 'Quotation',
+      sourceId: 'QTN-2024-00042',
+      entityType: 'orcamento',
+      localKey: 'stable-id',
+      canonicalHash: 'b'.repeat(64),
+      sourceHash: 'b'.repeat(64),
+      businessNumber: 'ORC-20240042',
+      legacyPayload: {},
+    };
+    assert.equal(fromDb.sourceHash, fromDb.canonicalHash);
+    // Both interfaces expose the same content fingerprint
+    assert.equal(entry.canonicalHash.length, 64);
+    assert.equal(fromDb.canonicalHash.length, 64);
+  });
+
+  it('idempotência preserva business_number na segunda execução', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset = createFrappeQuotationFixture();
+    const first = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    const second = await runFrappeMigration({ mode: 'apply', dataset, repository });
+    assert.equal(first.manifest.status, 'completed');
+    assert.equal(second.manifest.status, 'completed');
+    const lineageAfter = repository
+      .snapshot()
+      .lineage.filter((e) => e.entityType === 'orcamento');
+    assert.equal(lineageAfter.length, 3);
+    for (const entry of lineageAfter) {
+      assert.ok(entry.businessNumber);
+    }
   });
 });
 

@@ -164,6 +164,12 @@ export interface FrappeMigrationRepository {
     batchId: string,
     params: { status?: string; checkpoint?: number; attemptCount?: number }
   ): Promise<void>;
+  /** Find the most recent failed run for a given manifest hash (for resume). */
+  findLatestFailedRun(manifestHash: string): Promise<{ id: string } | null>;
+  /** Return all batches belonging to a run. */
+  findBatchesByRun(
+    runId: string
+  ): Promise<Array<{ id: string; entityType: string; status: string; checkpoint: number; attemptCount: number }>>;
 }
 
 type DatabaseProvider = () => AppDatabase;
@@ -275,6 +281,8 @@ export function createPostgresFrappeMigrationRepository(
           entityType: row.entityType,
           localKey: row.localKey,
           canonicalHash: row.canonicalHash,
+          sourceHash: row.canonicalHash,
+          businessNumber: row.businessNumber ?? undefined,
           legacyPayload: sourcePayload(row.legacyPayload),
         })),
         quotations: quotationRows.map((row) => ({
@@ -605,6 +613,41 @@ export function createPostgresFrappeMigrationRepository(
         .set(set)
         .where(eq(frappeMigrationBatches.id, batchId));
     },
+
+    async findLatestFailedRun(
+      manifestHash: string
+    ): Promise<{ id: string } | null> {
+      const db = getDb();
+      const [row] = await db
+        .select({ id: frappeMigrationRuns.id })
+        .from(frappeMigrationRuns)
+        .where(
+          and(
+            eq(frappeMigrationRuns.manifestHash, manifestHash),
+            eq(frappeMigrationRuns.status, 'failed')
+          )
+        )
+        .orderBy(sql`${frappeMigrationRuns.startedAt} DESC`)
+        .limit(1);
+      return row ?? null;
+    },
+
+    async findBatchesByRun(
+      runId: string
+    ): Promise<Array<{ id: string; entityType: string; status: string; checkpoint: number; attemptCount: number }>> {
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(frappeMigrationBatches)
+        .where(eq(frappeMigrationBatches.runId, runId));
+      return rows.map((row) => ({
+        id: row.id,
+        entityType: row.entityType,
+        status: row.status,
+        checkpoint: row.checkpoint,
+        attemptCount: row.attemptCount,
+      }));
+    },
   };
 }
 
@@ -624,6 +667,7 @@ async function upsertLineage(
         entityType: entry.entityType,
         localKey: entry.localKey,
         canonicalHash: entry.canonicalHash,
+        businessNumber: entry.businessNumber ?? null,
         legacyPayload: entry.legacyPayload,
         migrationRunId: entry.migrationRunId ?? null,
         sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
@@ -636,6 +680,7 @@ async function upsertLineage(
           entityType: entry.entityType,
           localKey: entry.localKey,
           canonicalHash: entry.canonicalHash,
+          businessNumber: entry.businessNumber ?? null,
           legacyPayload: entry.legacyPayload,
           migrationRunId: entry.migrationRunId ?? null,
           sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
@@ -975,6 +1020,29 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     if (params.status !== undefined) batch.status = params.status;
     if (params.checkpoint !== undefined) batch.checkpoint = params.checkpoint;
     if (params.attemptCount !== undefined) batch.attemptCount = params.attemptCount;
+  }
+
+  async findLatestFailedRun(
+    manifestHash: string
+  ): Promise<{ id: string } | null> {
+    const failed = this.runs
+      .filter((r) => r.manifestHash === manifestHash && r.status === 'failed')
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+    return failed[0] ? { id: failed[0].id } : null;
+  }
+
+  async findBatchesByRun(
+    runId: string
+  ): Promise<Array<{ id: string; entityType: string; status: string; checkpoint: number; attemptCount: number }>> {
+    return this.batches
+      .filter((b) => b.runId === runId)
+      .map((b) => ({
+        id: b.id,
+        entityType: b.entityType,
+        status: b.status,
+        checkpoint: b.checkpoint,
+        attemptCount: b.attemptCount,
+      }));
   }
 }
 
