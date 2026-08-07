@@ -399,6 +399,14 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.ok(result.report.total.detalhes.some((detail) => detail.source_doctype === 'migration_tracking'));
   });
 
+  it('lease em memória permite manifestos distintos em paralelo', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    await repository.acquireMigrationLease('manifest-a', 'owner-a');
+    await repository.acquireMigrationLease('manifest-b', 'owner-b');
+    await repository.releaseMigrationLease('manifest-a', 'owner-a');
+    await repository.releaseMigrationLease('manifest-b', 'owner-b');
+  });
+
   it('lease impede dois applies concorrentes de reutilizar run e cursor', async () => {
     let releaseWrite!: () => void;
     let markStarted!: () => void;

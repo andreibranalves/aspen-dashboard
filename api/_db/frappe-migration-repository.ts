@@ -517,16 +517,10 @@ export function createPostgresFrappeMigrationRepository(
           await tx.update(clients).set(values).where(eq(clients.id, existing.id));
           // A document match may have a different UUID than the deterministic
           // local key; retain its actual ID in lineage for future reruns.
-          await upsertLineage(
-            tx,
-            unit.lineage.map((entry) => ({ ...entry, localId: existing.id, localKey: existing.id }))
-          );
+          await upsertLineage(tx, relinkLineageEntries(unit.lineage, existing.id));
         } else {
           await tx.insert(clients).values({ id, ...values, arquivado: false, archivedAt: null });
-          await upsertLineage(
-            tx,
-            unit.lineage.map((entry) => ({ ...entry, localId: id, localKey: id }))
-          );
+          await upsertLineage(tx, relinkLineageEntries(unit.lineage, id));
         }
       });
     },
@@ -884,9 +878,26 @@ function normalizeLineage(value: ExistingLineage): ExistingLineage {
 
 type LineageWriteEntry = FrappeLineageEntry & { legacyPayload?: SourceRecord };
 
+function attachLineagePayload(entry: FrappeLineageEntry, payload: SourceRecord): void {
+  Object.defineProperty(entry, 'legacyPayload', {
+    configurable: true,
+    enumerable: false,
+    value: payload,
+    writable: false,
+  });
+}
+
 function lineagePayload(entry: FrappeLineageEntry): SourceRecord {
   const payload = (entry as LineageWriteEntry).legacyPayload;
   return payload && typeof payload === 'object' ? payload : {};
+}
+
+function relinkLineageEntries(entries: FrappeLineageEntry[], localId: string): FrappeLineageEntry[] {
+  return entries.map((entry) => {
+    const relinked = { ...entry, localId, localKey: localId };
+    attachLineagePayload(relinked, lineagePayload(entry));
+    return relinked;
+  });
 }
 
 function storedLineage(
@@ -953,7 +964,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
   failProductSku?: string;
   failClientKey?: string;
   failQuotationKey?: string;
-  private migrationLeaseOwner: string | null = null;
+  private readonly migrationLeaseOwners = new Map<string, string>();
 
   constructor(options: MemoryFrappeMigrationRepositoryOptions = {}) {
     this.state = {
@@ -1248,15 +1259,15 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
   }
 
   async acquireMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
-    if (this.migrationLeaseOwner)
+    if (this.migrationLeaseOwners.has(manifestHash))
       throw new Error(`Já existe uma migração em execução para o manifesto ${manifestHash}.`);
-    this.migrationLeaseOwner = ownerId;
+    this.migrationLeaseOwners.set(manifestHash, ownerId);
   }
 
-  async releaseMigrationLease(_manifestHash: string, ownerId: string): Promise<void> {
-    if (this.migrationLeaseOwner !== ownerId)
+  async releaseMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
+    if (this.migrationLeaseOwners.get(manifestHash) !== ownerId)
       throw new Error('Lease de migração não pertence a este proprietário.');
-    this.migrationLeaseOwner = null;
+    this.migrationLeaseOwners.delete(manifestHash);
   }
 
   async createRun(params: {

@@ -81,13 +81,14 @@ test(
     const sku = `MIGRATION-${suffix}`;
     const itemId = `ITEM-${suffix}`;
     const priceId = `PR-${suffix}`;
+    const customerId = `CUST-${suffix}`;
     const triggerName = `migration_fail_${suffix.replace(/[^a-z0-9_]/gi, '_')}`;
     const functionName = `${triggerName}_fn`;
     const dataset = {
       items: [{ name: itemId, item_code: sku, item_name: 'Produto PG' }],
       pricingRules: [{ name: priceId, item_code: sku, min_qty: 30, price_list_rate: '9.00' }],
       itemPrices: [],
-      customers: [],
+      customers: [{ name: customerId, customer_name: 'Cliente PG lineage', tax_id: '12345678901' }],
       leads: [],
     };
     try {
@@ -96,6 +97,14 @@ test(
       const first = await runFrappeMigration({ mode: 'apply', dataset, repository });
       assert.equal(first.report.produtos.criados, 1);
       assert.equal(first.report.faixas.criados, 1);
+      assert.equal(first.report.clientes.criados, 1);
+      const clientLineageRows = await db
+        .select()
+        .from(schema.frappeImportLineage)
+        .where(eq(schema.frappeImportLineage.sourceId, customerId));
+      assert.equal(clientLineageRows.length, 1);
+      assert.equal(clientLineageRows[0].legacyPayload?.customer_name, 'Cliente PG lineage');
+      assert.equal((await repository.loadState()).lineage.some((entry) => 'legacyPayload' in entry), false);
       const rerun = await runFrappeMigration({ mode: 'apply', dataset, repository });
       assert.equal(rerun.report.produtos.ignorados, 1);
       assert.equal(rerun.report.faixas.ignorados, 1);
