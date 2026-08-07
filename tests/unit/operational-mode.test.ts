@@ -185,12 +185,12 @@ describe('resolveEffectiveRolloutState precedence matrix', () => {
     assert.equal(resolveEffectiveRolloutState(), 'postgres-write');
   });
 
-  it('flag=true + legacy state -> postgres-write', () => {
+  it('flag=true + legacy state -> legacy (explicit state preserved)', () => {
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
-    assert.equal(resolveEffectiveRolloutState(), 'postgres-write');
+    assert.equal(resolveEffectiveRolloutState(), 'legacy');
   });
 
   it('flag=true + postgres-write -> postgres-write', () => {
@@ -232,7 +232,7 @@ describe('resolveEffectiveRolloutState precedence matrix', () => {
     delete process.env.CRM_QUOTES_ROLLOUT_STATE;
     assert.equal(isCoreReadEnabled(), true);
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
-    assert.equal(isCoreReadEnabled(), true);
+    assert.equal(isCoreReadEnabled(), false); // explicit legacy preserved
     process.env.CRM_CORE_QUOTES_ENABLED = 'false';
     assert.equal(isCoreReadEnabled(), false);
   });
@@ -248,7 +248,7 @@ describe('resolveEffectiveRolloutState precedence matrix', () => {
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
     assert.equal(isCoreWriteEnabled(), false);
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
-    assert.equal(isCoreWriteEnabled(), true); // flag on + legacy -> postgres-write
+    assert.equal(isCoreWriteEnabled(), false); // explicit legacy preserved
     process.env.CRM_CORE_QUOTES_ENABLED = 'false';
     assert.equal(isCoreWriteEnabled(), false);
   });
@@ -278,11 +278,10 @@ describe('orcamento dispatch uses rollout state', () => {
       legacy: async () => { called = true; return { statusCode: 200, body: '{}' }; },
     });
     await handler({ httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: '{}' } as any);
-    const body = JSON.parse((await handler({ httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: '{}' } as any)).body || '{}');
     assert.equal(called, true);
   });
 
-  it('legacy state + flag=true dispatches to core (flag overrides legacy)', async () => {
+  it('legacy state + flag=true dispatches to legacy (explicit state preserved)', async () => {
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
@@ -295,9 +294,9 @@ describe('orcamento dispatch uses rollout state', () => {
       legacy: async () => { legacyCalled = true; return { statusCode: 200, body: '{}' }; },
     });
     await handler({ httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: '{}' } as any);
-    // flag=true + state=legacy -> effective postgres-write -> core
-    assert.equal(coreCalled, true);
-    assert.equal(legacyCalled, false);
+    // flag=true + explicit state=legacy -> effective legacy -> legacy handler
+    assert.equal(legacyCalled, true);
+    assert.equal(coreCalled, false);
   });
 
   it('flag=false + legacy state dispatches to legacy handler', async () => {
@@ -437,21 +436,21 @@ describe('quotations dispatch uses rollout state', () => {
     assert.equal(legacyPutCalled, true, 'PUT should dispatch to legacy');
   });
 
-  it('legacy state + flag=true dispatches all methods to core (flag overrides)', async () => {
+  it('legacy state + flag=true dispatches all methods to legacy (explicit state preserved)', async () => {
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
     const { createHandler } = await import('../../api/_functions/quotations.js');
     for (const method of ['GET', 'PUT', 'DELETE'] as const) {
-      let coreCalled = false;
+      let legacyCalled = false;
       const handler = createHandler({
-        core: async () => { coreCalled = true; return { statusCode: 200, body: '{}' }; },
-        legacy: async () => { throw new Error('legacy should not be called'); },
+        core: async () => { throw new Error('core should not be called'); },
+        legacy: async () => { legacyCalled = true; return { statusCode: 200, body: '{}' }; },
       });
       await handler({ httpMethod: method, headers: {}, queryStringParameters: { id: 'X' }, body: '{}' } as any);
-      // flag=true + state=legacy -> effective postgres-write -> core
-      assert.equal(coreCalled, true, `core should be called for ${method}`);
+      // flag=true + explicit state=legacy -> effective legacy -> legacy handler
+      assert.equal(legacyCalled, true, `legacy should be called for ${method}`);
     }
   });
 
@@ -588,7 +587,7 @@ describe('quotation-templates write blocking', () => {
     assert.equal(postResult.statusCode, 201);
   });
 
-  it('flag=true + state=legacy resolves to postgres-write (allows GET)', async () => {
+  it('flag=true + state=legacy returns 404 (legacy preserved)', async () => {
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
@@ -600,8 +599,8 @@ describe('quotation-templates write blocking', () => {
       httpMethod: 'GET', headers: {}, queryStringParameters: {}, body: '',
       url: '/api/quotation-templates',
     } as any);
-    // flag=true + state=legacy -> effective postgres-write -> isCoreReadEnabled=true
-    assert.equal(result.statusCode, 200);
+    // flag=true + explicit state=legacy -> effective legacy -> 404
+    assert.equal(result.statusCode, 404);
   });
 
   it('flag=false returns 404', async () => {
@@ -695,10 +694,11 @@ describe('real legacy handler invokes pipeline', () => {
     assert.equal(body.deal_id, 'DEAL-001');
   });
 
-  it('returns pipeline errors directly as HTTP errors', async () => {
+  it('returns pipeline errors as generic message without upstream details', async () => {
     const failingPipeline = async () => {
       const err: any = new Error('Frappe unavailable');
       err.statusCode = 502;
+      err.logMessage = 'Frappe connection timeout';
       throw err;
     };
     const { createLegacyHandler } = await import('../../api/_functions/orcamento-legacy.js');
@@ -711,8 +711,13 @@ describe('real legacy handler invokes pipeline', () => {
     } as any);
     assert.equal(result.statusCode, 502);
     const body = JSON.parse(result.body || '{}');
-    assert.match(body.error, /Frappe unavailable/);
-    assert.equal(body.stack, undefined, 'no stack trace leak');
+    // Client receives generic Portuguese message, not upstream error
+    assert.equal(body.error, 'Erro ao processar orçamento. Tente novamente.');
+    assert.match(body.error, /Erro ao processar orçamento/);
+    // Upstream details must NOT leak to response
+    assert.ok(!JSON.stringify(body).includes('Frappe unavailable'));
+    assert.ok(!JSON.stringify(body).includes('connection timeout'));
+    assert.ok(!JSON.stringify(body).includes('stack'));
   });
 
   it('rejects non-POST methods', async () => {
@@ -961,9 +966,13 @@ describe('quotations handler with operational mode and no quotes flag', () => {
   });
 });
 
-// ── Rollback-compatible contract: PostgreSQL record vs legacy record ──────
+// ── Rollback-compatible contract: real handlers with repository seams ────
+//
+// These tests wire the REAL createCoreHandler from quotations-core.ts through
+// the REAL createHandler from quotations.ts, backed by an in-memory repository
+// seam. This proves the boundary works end-to-end, not just with stubs.
 
-describe('rollback-compatible contract: PostgreSQL and legacy records', () => {
+describe('rollback-compatible contract: real handlers + repository seam', () => {
   const savedVars: Record<string, string | undefined> = {};
 
   afterEach(() => {
@@ -973,81 +982,256 @@ describe('rollback-compatible contract: PostgreSQL and legacy records', () => {
     }
   });
 
-  it('GET returns PostgreSQL record with X-Quote-Source postgres when record exists in PG', async () => {
-    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
-    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
-    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-    process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
-    const pgRecord = { id: 'ORC-PG-001', data: '2026-01-01', cliente: 'Teste PG', valor: 1000 };
-    const { createHandler } = await import('../../api/_functions/quotations.js');
-    const handler = createHandler({
-      core: async () => ({ statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pgRecord) }),
-      legacy: async () => { throw new Error('legacy should not be called for PG record'); },
-    });
-    const result = await handler({
-      httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'ORC-PG-001' }, body: '{}',
-    } as any);
-    assert.equal(result.statusCode, 200);
-    assert.equal((result.headers as any)['X-Quote-Source'], 'postgres');
-    const body = JSON.parse(result.body || '{}');
-    assert.equal(body.id, 'ORC-PG-001');
-  });
+  /** Shared in-memory store between create and read repos. */
+  function createSharedStore() {
+    const store = new Map<string, Record<string, unknown>>();
+    return {
+      store,
+      /** QuoteDraftRepository seam for orcamento-core (createDraft). */
+      createRepo: {
+        createDraft: async (input: Record<string, unknown>) => {
+          const id = `ORC-PG-${store.size + 1}`;
+          const record = { id, ...input, created_at: new Date().toISOString() };
+          store.set(id, record);
+          return {
+            success: true as const,
+            quotation_id: id,
+            quotation_name: id,
+            quote_id: id,
+            quotation_uuid: id,
+            revision_id: 'rev-1',
+            quote_revision_id: 'rev-1',
+            revision: 1,
+            revision_number: 1,
+            status: 'rascunho' as const,
+            cliente: String((input as any).cliente_nome || ''),
+            cliente_id: '',
+            cliente_snapshot: { id: '', nome: String((input as any).cliente_nome || ''), documento: null, email: null, telefone: null, notes: null, address: null },
+            items: [],
+            subtotal: '0', frete: '0', total: '0',
+            validade_dias: 30, pagamento: '', entrega: '', observacoes: '', prazo_producao: '',
+            template_padrao: '', template_key: '', template_hash: '', template_version_id: '',
+            secoes: {} as any,
+            created_at: record.created_at,
+          };
+        },
+      },
+      /** QuoteDraftManagementRepository seam for quotations-core (list/get/update/delete). */
+      managementRepo: {
+        list: async (opts?: { page?: number; limit?: number }) => {
+          const rows = [...store.values()];
+          return {
+            rows,
+            total: rows.length,
+            page: opts?.page || 1,
+            limit: opts?.limit || 50,
+            status_summary: {} as Record<string, number>,
+          };
+        },
+        get: async (id: string) => store.get(id) || null,
+        update: async (id: string, input: Record<string, unknown>) => {
+          const existing = store.get(id);
+          if (!existing) throw Object.assign(new Error('não encontrado'), { statusCode: 404 });
+          const updated = { ...existing, ...input };
+          store.set(id, updated);
+          return updated;
+        },
+        delete: async (id: string) => {
+          store.delete(id);
+          return { id, deletedAt: new Date().toISOString() };
+        },
+      },
+    };
+  }
 
-  it('GET falls back to Frappe with X-Quote-Source frappe when PG returns 404 (legacy record)', async () => {
+  it('POST creates via orcamento-core, then GET reads in rollback-compatible from PG', async () => {
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
-    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-    process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
-    const legacyRecord = { id: 'ORC-LEGACY-001', cliente: 'Teste Legacy', valor: 500 };
-    let legacyCalled = false;
-    const { createHandler } = await import('../../api/_functions/quotations.js');
-    const handler = createHandler({
-      core: async () => ({ statusCode: 404, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'não encontrado' }) }),
-      legacy: async () => { legacyCalled = true; return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(legacyRecord) }; },
-    });
-    const result = await handler({
-      httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'ORC-LEGACY-001' }, body: '{}',
-    } as any);
-    assert.equal(result.statusCode, 200);
-    assert.equal(legacyCalled, true, 'legacy handler must be called for fallback');
-    assert.equal((result.headers as any)['X-Quote-Source'], 'frappe');
-    const body = JSON.parse(result.body || '{}');
-    assert.equal(body.id, 'ORC-LEGACY-001');
-  });
 
-  it('GET does NOT fall back to Frappe when core returns non-404 error', async () => {
-    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
-    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    // Phase 1: create the quote in PG via postgres-write
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
+
+    const shared = createSharedStore();
+    const { createHandler: createOrcamentoHandler } = await import('../../api/_functions/orcamento.js');
+    const { createCoreHandler: createOrcamentoCoreHandler } = await import('../../api/_functions/orcamento-core.js');
+    const coreHandler = createOrcamentoCoreHandler({ repository: shared.createRepo as any });
+    const noopLegacy = async () => { throw new Error('legacy must not be called in postgres-write'); };
+    const orcamentoHandler = createOrcamentoHandler({ core: coreHandler, legacy: noopLegacy });
+
+    const createResult = await orcamentoHandler({
+      httpMethod: 'POST',
+      headers: {},
+      queryStringParameters: {},
+      body: JSON.stringify({
+        extracted: {
+          cliente_nome: 'Teste PG',
+          items: [{ item_code: 'SKU-TEST', qty: 2, rate: 150 }],
+        },
+      }),
+    } as any);
+    assert.equal(createResult.statusCode, 201, 'create should succeed');
+    const created = JSON.parse(createResult.body || '{}');
+    const createdId = created.quotation_id || created.id || created.name;
+    assert.ok(createdId, 'created record must have an id');
+    assert.equal(shared.store.has(createdId), true, 'record must exist in PG seam');
+
+    // Phase 2: switch to rollback-compatible and read the same record
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
+
+    const { createHandler: createQuotationsHandler } = await import('../../api/_functions/quotations.js');
+    const { createCoreHandler: createQuotationsCoreHandler } = await import('../../api/_functions/quotations-core.js');
+    const quotationsCore = createQuotationsCoreHandler({ repository: shared.managementRepo as any });
     let legacyCalled = false;
-    const { createHandler } = await import('../../api/_functions/quotations.js');
-    const handler = createHandler({
-      core: async () => ({ statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'db down' }) }),
+    const quotationsHandler = createQuotationsHandler({
+      core: quotationsCore,
       legacy: async () => { legacyCalled = true; return { statusCode: 200, body: '{}' }; },
     });
-    const result = await handler({
-      httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'X' }, body: '{}',
+
+    const getResult = await quotationsHandler({
+      httpMethod: 'GET',
+      headers: {},
+      queryStringParameters: { id: createdId },
+      body: '{}',
     } as any);
-    assert.equal(result.statusCode, 503);
-    assert.equal(legacyCalled, false, 'legacy should NOT be called on non-404 error');
+    assert.equal(getResult.statusCode, 200, 'GET must succeed');
+    assert.equal(legacyCalled, false, 'legacy must NOT be called when PG has the record');
+    assert.equal((getResult.headers as any)['X-Quote-Source'], 'postgres', 'source must be postgres');
+    const detail = JSON.parse(getResult.body || '{}');
+    assert.equal(detail.id, createdId, 'returned id must match');
   });
 
-  it('PUT in rollback-compatible writes to Frappe (not PostgreSQL)', async () => {
+  it('GET falls back to Frappe when record only exists in legacy (not in PG)', async () => {
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
+
+    const sharedRead = createSharedStore(); // empty - no PG records
+    const { createHandler: createQuotationsHandler } = await import('../../api/_functions/quotations.js');
+    const { createCoreHandler: createQuotationsCoreHandler } = await import('../../api/_functions/quotations-core.js');
+    const quotationsCore = createQuotationsCoreHandler({ repository: sharedRead.managementRepo as any });
+
+    const legacyRecord = {
+      id: 'ORC-FRAPPE-001', data: '2025-06-01', cliente: 'Cliente Legado',
+      tipo_entidade: 'Customer', entidade_id: 'CUST-001', valor: 350,
+      status: 'Open', docstatus: 1, validade: '2025-12-31',
+      items: [{ item_code: 'SKU-OLD', item_name: 'Old SKU', qty: 1, rate: 350, amount: 350, uom: 'Un' }],
+      email: '', telefone: '', sales_order_id: null,
+    };
+    let legacyCalled = false;
+    const quotationsHandler = createQuotationsHandler({
+      core: quotationsCore,
+      legacy: async () => {
+        legacyCalled = true;
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(legacyRecord),
+        };
+      },
+    });
+
+    const result = await quotationsHandler({
+      httpMethod: 'GET',
+      headers: {},
+      queryStringParameters: { id: 'ORC-FRAPPE-001' },
+      body: '{}',
+    } as any);
+    assert.equal(result.statusCode, 200);
+    assert.equal(legacyCalled, true, 'legacy handler must be called when PG has no record');
+    assert.equal((result.headers as any)['X-Quote-Source'], 'frappe', 'source must be frappe');
+    const detail = JSON.parse(result.body || '{}');
+    assert.equal(detail.id, 'ORC-FRAPPE-001');
+  });
+
+  it('GET does NOT fall back to Frappe on non-404 core error', async () => {
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
+
+    const brokenShared = createSharedStore();
+    // Inject a broken repo that throws a 503-level error
+    const brokenRepo = {
+      ...brokenShared.managementRepo,
+      get: async () => { throw Object.assign(new Error('connection refused'), { statusCode: 503 }); },
+    };
+    const { createHandler: createQuotationsHandler } = await import('../../api/_functions/quotations.js');
+    const { createCoreHandler: createQuotationsCoreHandler } = await import('../../api/_functions/quotations-core.js');
+    const quotationsCore = createQuotationsCoreHandler({ repository: brokenRepo as any });
+    let legacyCalled = false;
+    const quotationsHandler = createQuotationsHandler({
+      core: quotationsCore,
+      legacy: async () => { legacyCalled = true; return { statusCode: 200, body: '{}' }; },
+    });
+
+    const result = await quotationsHandler({
+      httpMethod: 'GET',
+      headers: {},
+      queryStringParameters: { id: 'X' },
+      body: '{}',
+    } as any);
+    assert.equal(result.statusCode, 503);
+    assert.equal(legacyCalled, false, 'legacy must NOT be called on non-404 error');
+  });
+
+  it('PUT in rollback-compatible writes to legacy handler, not PG', async () => {
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'rollback-compatible';
+
+    const writeShared = createSharedStore();
+    writeShared.store.set('ORC-001', { id: 'ORC-001', items: [{ item_code: 'SKU', qty: 1, rate: 100 }] });
+    const { createHandler: createQuotationsHandler } = await import('../../api/_functions/quotations.js');
+    const { createCoreHandler: createQuotationsCoreHandler } = await import('../../api/_functions/quotations-core.js');
+    const quotationsCore = createQuotationsCoreHandler({ repository: writeShared.managementRepo as any });
+    let legacyCalled = false;
+    const quotationsHandler = createQuotationsHandler({
+      core: quotationsCore,
+      legacy: async () => { legacyCalled = true; return { statusCode: 200, body: JSON.stringify({ ok: true }) }; },
+    });
+
+    const result = await quotationsHandler({
+      httpMethod: 'PUT',
+      headers: {},
+      queryStringParameters: { id: 'ORC-001' },
+      body: JSON.stringify({ items: [{ item_code: 'SKU', qty: 2, rate: 200 }] }),
+    } as any);
+    assert.equal(result.statusCode, 200);
+    assert.equal(legacyCalled, true, 'writes must go to legacy in rollback-compatible');
+  });
+
+  it('legacy-only path: handler without core uses Frappe directly', async () => {
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_CORE_QUOTES_ENABLED = 'false';
+    delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+
+    const legacyRecord = { id: 'ORC-LEGACY-ONLY', cliente: 'Só Frappe', valor: 100 };
     let legacyCalled = false;
     const { createHandler } = await import('../../api/_functions/quotations.js');
     const handler = createHandler({
-      core: async () => { throw new Error('core should not be called for writes'); },
-      legacy: async () => { legacyCalled = true; return { statusCode: 200, body: JSON.stringify({ ok: true }) }; },
+      core: async () => { throw new Error('no core'); },
+      legacy: async () => {
+        legacyCalled = true;
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(legacyRecord),
+        };
+      },
     });
     const result = await handler({
-      httpMethod: 'PUT', headers: {}, queryStringParameters: { id: 'X' }, body: JSON.stringify({ items: [] }),
+      httpMethod: 'GET',
+      headers: {},
+      queryStringParameters: { id: 'ORC-LEGACY-ONLY' },
+      body: '{}',
     } as any);
     assert.equal(result.statusCode, 200);
-    assert.equal(legacyCalled, true, 'writes must go to Frappe in rollback-compatible');
+    assert.equal(legacyCalled, true, 'legacy must be called when flag is off');
+    const detail = JSON.parse(result.body || '{}');
+    assert.equal(detail.id, 'ORC-LEGACY-ONLY');
   });
 });

@@ -35,16 +35,19 @@ export function isQuoteEndpointEnabled(): boolean {
 //
 // Precedence matrix (CRM_CORE_QUOTES_ENABLED x CRM_QUOTES_ROLLOUT_STATE):
 //
-// | Flag    | Rollout state     | Effective state |
-// |---------|-------------------|------------------|
-// | false   | any               | legacy           |
-// | true    | unset / legacy    | postgres-write   |
-// | true    | postgres-write    | postgres-write   |
-// | true    | postgres-read-only| postgres-read-only|
-// | true    | rollback-compat.  | rollback-compat. |
+// | Flag    | Rollout state     | Effective state   |
+// |---------|-------------------|--------------------|
+// | false   | any               | legacy             |
+// | true    | unset             | postgres-write     |
+// | true    | legacy            | legacy (explicit)  |
+// | true    | postgres-write    | postgres-write     |
+// | true    | postgres-read-only| postgres-read-only |
+// | true    | rollback-compat.  | rollback-compat.   |
 //
 // CRM_CORE_QUOTES_ENABLED is the master switch. CRM_QUOTES_ROLLOUT_STATE
 // selects the migration phase when the flag is on.
+// Explicit legacy state is always preserved, even when flag is on - this
+// allows an operator to keep quotes on Frappe while other subsystems advance.
 
 /**
  * Resolves the effective rollout state combining both env vars.
@@ -53,10 +56,16 @@ export function isQuoteEndpointEnabled(): boolean {
  */
 export function resolveEffectiveRolloutState(): QuoteRolloutState {
   if (!isCoreQuotesEnabled()) return 'legacy';
-  const raw = getQuoteRolloutState();
-  // Flag on + unset/legacy state -> postgres-write (default migration phase)
-  if (raw === 'legacy') return 'postgres-write';
-  return raw;
+  const raw = process.env.CRM_QUOTES_ROLLOUT_STATE;
+  // Flag on + unset state -> postgres-write (default migration phase)
+  // Flag on + explicit 'legacy' -> legacy (operator choice preserved)
+  // Flag on + other explicit state -> that state
+  // Flag on + unrecognized value -> postgres-write (safe default)
+  if (raw === 'legacy') return 'legacy';
+  if (raw === 'postgres-write' || raw === 'postgres-read-only' || raw === 'rollback-compatible') {
+    return raw;
+  }
+  return 'postgres-write';
 }
 
 /** Core PostgreSQL reads are allowed when effective state is not legacy. */

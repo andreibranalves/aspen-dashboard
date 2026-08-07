@@ -135,7 +135,7 @@ export function createLegacyHandler(
       return withLegacyMetadata({
         statusCode,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: typedErr?.statusCode ? typedErr.message : 'Erro interno.' }),
+        body: JSON.stringify({ error: 'Erro ao processar orçamento. Tente novamente.' }),
       });
     }
   };
