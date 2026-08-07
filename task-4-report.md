@@ -120,3 +120,42 @@ node scripts/migrate-frappe-crm.mjs --dry-run --fixture <blocking fixture>
 - PostgreSQL integration tests remain skipped without `TEST_DATABASE_URL`.
 - Historical rows require the 0014 migration before production reconciliation; no production database was available in this run.
 - PDF archival checkpointing remains coarse because the existing archival seam exposes placeholders as a whole-list operation.
+
+## Fix Round 4
+
+### Corrections
+
+- Added a per-manifest PostgreSQL session advisory lease with an owner token and safe owner-checked release.
+- Added the equivalent in-memory lease used by unit tests.
+- Lease acquisition happens before run lookup, so a second apply cannot reuse a running run or dispute its batches and cursors.
+- Tracking failures now abort before the next client, quotation, or document phase.
+- Run and batch failures mark the run/batches failed when persistence remains available and return a blocking manifest.
+- `normalizeLineage()` now accepts `verified` only when `lineageStatus === 'verified'`; a pre-0014 row with a non-null hash remains `legacy-unverified` until re-imported.
+- Migration 0014 explicitly resets pre-existing rows to `source_hash = NULL` and `lineage_status = 'legacy-unverified'`.
+- Public lineage builders no longer include `legacyPayload`; raw payload attachment occurs only at the repository write boundary and read access remains capability-gated.
+
+### Tests and checks
+
+```text
+TZ=UTC node --test tests/unit/frappe-migration.test.ts tests/unit/frappe-migration-repository.test.ts tests/unit/frappe-migration-postgres.test.ts
+# 77 tests, 74 passed, 0 failed, 3 skipped without TEST_DATABASE_URL
+
+npm run test:unit
+# 554 tests, 542 passed, 0 failed, 12 skipped
+
+npm run build
+# passed: API TypeScript compilation and Vite production build
+
+npx drizzle-kit check
+# Everything's fine
+
+npm run lint
+# 0 errors; 196 non-blocking warnings
+```
+
+### Concerns
+
+- PostgreSQL integration tests remain skipped because `TEST_DATABASE_URL` is not set.
+- The PostgreSQL lease uses session advisory locks and relies on the existing `postgres.js` `max: 1` pool configuration so acquire and release stay on one session.
+- No PostgreSQL concurrency evidence was produced in this run.
+- No global migration lock is used; leases are keyed by manifest, so unrelated manifests can proceed independently.

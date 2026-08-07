@@ -39,6 +39,83 @@ import type {
  */
 const RAW_PAYLOAD_ACCESS = Symbol('frappe-migration:raw-payload-access');
 
+// Session advisory lock provides cross-process exclusion. The module-local
+// owner map closes the re-entrant-lock hole when two invocations share the
+// same max=1 postgres.js pool/session.
+const localMigrationLeaseOwners = new Map<string, string>();
+const localMigrationLeaseQueues = new Map<string, Promise<void>>();
+const localMigrationLeaseDbIds = new WeakMap<object, number>();
+let nextMigrationLeaseDbId = 1;
+
+function localMigrationLeaseKey(db: AppDatabase, manifestHash: string): string {
+  const identity = db as unknown as object;
+  let dbId = localMigrationLeaseDbIds.get(identity);
+  if (!dbId) {
+    dbId = nextMigrationLeaseDbId++;
+    localMigrationLeaseDbIds.set(identity, dbId);
+  }
+  return `postgres:${dbId}:${manifestHash}`;
+}
+
+function migrationLeaseKeys(manifestHash: string): [number, number] {
+  const digest = createHash('sha256').update(`frappe-migration:${manifestHash}`).digest();
+  return [digest.readInt32BE(0), digest.readInt32BE(4)];
+}
+
+async function acquirePostgresMigrationLease(
+  db: AppDatabase,
+  manifestHash: string,
+  ownerId: string
+): Promise<void> {
+  const key = localMigrationLeaseKey(db, manifestHash);
+  const previous = localMigrationLeaseQueues.get(key) || Promise.resolve();
+  let releaseQueue!: () => void;
+  const current = new Promise<void>((resolve) => {
+    releaseQueue = resolve;
+  });
+  localMigrationLeaseQueues.set(key, current);
+  await previous;
+  try {
+    if (localMigrationLeaseOwners.has(key))
+      throw new Error('Já existe uma migração em execução para este manifesto.');
+    const execute = (db as unknown as { execute?: (query: unknown) => Promise<unknown> }).execute;
+    if (typeof execute !== 'function')
+      throw new Error('PostgreSQL sem suporte a advisory lock para migração.');
+    const [keyOne, keyTwo] = migrationLeaseKeys(manifestHash);
+    const rows = (await execute.call(
+      db,
+      sql`SELECT pg_try_advisory_lock(${keyOne}, ${keyTwo}) AS acquired`
+    )) as Array<{ acquired?: boolean }>;
+    if (rows[0]?.acquired !== true)
+      throw new Error('Já existe uma migração em execução para este manifesto.');
+    localMigrationLeaseOwners.set(key, ownerId);
+  } finally {
+    releaseQueue();
+    if (localMigrationLeaseQueues.get(key) === current) localMigrationLeaseQueues.delete(key);
+  }
+}
+
+async function releasePostgresMigrationLease(
+  db: AppDatabase,
+  manifestHash: string,
+  ownerId: string
+): Promise<void> {
+  const key = localMigrationLeaseKey(db, manifestHash);
+  if (localMigrationLeaseOwners.get(key) !== ownerId)
+    throw new Error('Lease de migração não pertence a este proprietário.');
+  const execute = (db as unknown as { execute?: (query: unknown) => Promise<unknown> }).execute;
+  if (typeof execute !== 'function')
+    throw new Error('PostgreSQL sem suporte a advisory lock para migração.');
+  const [keyOne, keyTwo] = migrationLeaseKeys(manifestHash);
+  const rows = (await execute.call(
+    db,
+    sql`SELECT pg_advisory_unlock(${keyOne}, ${keyTwo}) AS released`
+  )) as Array<{ released?: boolean }>;
+  if (rows[0]?.released !== true)
+    throw new Error('Não foi possível liberar o lease de migração.');
+  localMigrationLeaseOwners.delete(key);
+}
+
 export interface ExistingQuotationRevisionItem {
   id: string;
   position: number;
@@ -155,6 +232,10 @@ export interface FrappeMigrationRepository {
     checksumSha256: string
   ): Promise<void>;
   // ── Run / batch tracking ──────────────────────────────────────────────
+  /** Acquire an apply lease keyed by the source manifest. */
+  acquireMigrationLease(manifestHash: string, ownerId: string): Promise<void>;
+  /** Release an apply lease only when still owned by this invocation. */
+  releaseMigrationLease(manifestHash: string, ownerId: string): Promise<void>;
   /** Persist a new migration run row (apply mode only). */
   createRun(params: {
     id: string;
@@ -248,6 +329,14 @@ export function createPostgresFrappeMigrationRepository(
   getDb: DatabaseProvider = getDatabase
 ): FrappeMigrationRepository {
   return {
+    async acquireMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
+      await acquirePostgresMigrationLease(getDb(), manifestHash, ownerId);
+    },
+
+    async releaseMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
+      await releasePostgresMigrationLease(getDb(), manifestHash, ownerId);
+    },
+
     async loadState(): Promise<FrappeMigrationState> {
       const db = getDb();
       const [productRows, tierRows, clientRows, lineageRows, quotationRows, sequenceRows] =
@@ -726,7 +815,7 @@ async function upsertLineage(
         sourceHash,
         lineageStatus: 'verified',
         businessNumber: entry.businessNumber ?? null,
-        legacyPayload: entry.legacyPayload,
+        legacyPayload: lineagePayload(entry),
         migrationRunId: entry.migrationRunId ?? null,
         sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
         importedAt,
@@ -743,7 +832,7 @@ async function upsertLineage(
           sourceHash,
           lineageStatus: 'verified',
           businessNumber: entry.businessNumber ?? null,
-          legacyPayload: entry.legacyPayload,
+          legacyPayload: lineagePayload(entry),
           migrationRunId: entry.migrationRunId ?? null,
           sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
           importedAt,
@@ -786,9 +875,18 @@ function normalizeLineage(value: ExistingLineage): ExistingLineage {
     migrationRunId: legacy.migrationRunId ?? null,
     sourceUpdatedAt: legacy.sourceUpdatedAt ?? null,
     importedAt: legacy.importedAt ?? null,
-    lineageStatus:
-      legacy.lineageStatus || (legacy.sourceHash ? 'verified' : 'legacy-unverified'),
+    // A non-null source hash alone is not proof of verification. Rows loaded
+    // before migration 0014 remain explicitly legacy-unverified until a fresh
+    // source import reconciles their payload.
+    lineageStatus: legacy.lineageStatus === 'verified' ? 'verified' : 'legacy-unverified',
   };
+}
+
+type LineageWriteEntry = FrappeLineageEntry & { legacyPayload?: SourceRecord };
+
+function lineagePayload(entry: FrappeLineageEntry): SourceRecord {
+  const payload = (entry as LineageWriteEntry).legacyPayload;
+  return payload && typeof payload === 'object' ? payload : {};
 }
 
 function storedLineage(
@@ -797,10 +895,13 @@ function storedLineage(
   importedAt = new Date()
 ): ExistingLineage {
   return {
-    ...entry,
     provider: entry.provider || 'frappe',
+    sourceDoctype: entry.sourceDoctype,
+    sourceId: entry.sourceId,
+    entityType: entry.entityType,
     localId,
     localKey: entry.localKey,
+    canonicalHash: entry.canonicalHash,
     sourceHash: entry.sourceHash,
     businessNumber: entry.businessNumber ?? null,
     migrationRunId: entry.migrationRunId ?? null,
@@ -852,6 +953,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
   failProductSku?: string;
   failClientKey?: string;
   failQuotationKey?: string;
+  private migrationLeaseOwner: string | null = null;
 
   constructor(options: MemoryFrappeMigrationRepositoryOptions = {}) {
     this.state = {
@@ -943,7 +1045,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
       ...unit.lineage.map((entry) => storedLineage(entry, entry.localId, importedAt))
     );
     for (const entry of unit.lineage)
-      this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.legacyPayload);
+      this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, lineagePayload(entry));
     this.state = next;
     this.writes.products += 1;
     this.writes.lineage += unit.lineage.length;
@@ -1005,7 +1107,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
       )
     );
     for (const entry of unit.lineage)
-      this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.legacyPayload);
+      this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, lineagePayload(entry));
     this.state = next;
     this.writes.clients += 1;
     this.writes.lineage += unit.lineage.length;
@@ -1049,7 +1151,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
       ...unit.lineage.map((entry) => storedLineage(entry, entry.localId, importedAt))
     );
     for (const entry of unit.lineage)
-      this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.legacyPayload);
+      this.rawPayloads.set(`${entry.sourceDoctype}:${entry.sourceId}`, lineagePayload(entry));
     this.state = next;
     this.writes.quotations += 1;
     this.writes.lineage += unit.lineage.length;
@@ -1143,6 +1245,18 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
       })),
       sequences: { ...this.state.sequences },
     };
+  }
+
+  async acquireMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
+    if (this.migrationLeaseOwner)
+      throw new Error(`Já existe uma migração em execução para o manifesto ${manifestHash}.`);
+    this.migrationLeaseOwner = ownerId;
+  }
+
+  async releaseMigrationLease(_manifestHash: string, ownerId: string): Promise<void> {
+    if (this.migrationLeaseOwner !== ownerId)
+      throw new Error('Lease de migração não pertence a este proprietário.');
+    this.migrationLeaseOwner = null;
   }
 
   async createRun(params: {

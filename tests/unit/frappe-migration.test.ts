@@ -1006,6 +1006,11 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(result.quotationUnits.length, 1);
     assert.equal(result.itemUnits.length, 1);
     const unit = result.quotationUnits[0];
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(unit.lineage[0], 'legacyPayload'),
+      false,
+      'builders must not expose raw payloads on lineage entries'
+    );
     assert.equal(unit.id, stableId('quotation', 'QTN-2024-00042'));
     assert.equal(unit.revision.id, stableId('revision', 'QTN-2024-00042:v1'));
     assert.equal(unit.items[0].id, stableId('item', 'QTN-2024-00042:item:1'));
@@ -2046,7 +2051,6 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       canonicalHash: 'a'.repeat(64),
       sourceHash: 'b'.repeat(64),
       businessNumber: 'ORC-20240042',
-      legacyPayload: {} as Record<string, unknown>,
     };
     assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
     assert.match(entry.canonicalHash, /^[0-9a-f]{64}$/);

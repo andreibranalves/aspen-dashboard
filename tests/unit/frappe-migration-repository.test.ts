@@ -355,6 +355,105 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
   });
 
+  it('falha de tracking interrompe antes de gravar clientes e orçamentos', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const originalUpdateBatch = repository.updateBatch.bind(repository);
+    let failed = false;
+    repository.updateBatch = async (batchId, params) => {
+      if (!failed && params.checkpoint !== undefined) {
+        failed = true;
+        throw new Error('falha ao persistir cursor');
+      }
+      return originalUpdateBatch(batchId, params);
+    };
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      repository,
+      dataset: {
+        ...MINIMAL_DATASET,
+        quotations: [
+          {
+            name: 'QTN-2024-00001',
+            quotation_to: 'Customer',
+            customer: 'CUST-T1',
+            creation: '2024-01-01 10:00:00',
+            items: [
+              {
+                idx: 1,
+                item_code: 'SKU-T1',
+                item_name: 'Produto Teste',
+                qty: 1,
+                rate: '10.00',
+                amount: '10.00',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(result.manifest.status, 'failed');
+    assert.equal(repository.writes.products, 1);
+    assert.equal(repository.writes.clients, 0);
+    assert.equal(repository.writes.quotations, 0);
+    assert.equal(repository.runs[0].status, 'failed');
+    assert.ok(result.report.total.detalhes.some((detail) => detail.source_doctype === 'migration_tracking'));
+  });
+
+  it('lease impede dois applies concorrentes de reutilizar run e cursor', async () => {
+    let releaseWrite!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    class BlockingRepository extends MemoryFrappeMigrationRepository {
+      override async applyProductUnit(...args: Parameters<MemoryFrappeMigrationRepository['applyProductUnit']>) {
+        markStarted();
+        await gate;
+        return super.applyProductUnit(...args);
+      }
+    }
+    const repository = new BlockingRepository();
+    const firstPromise = runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
+    await started;
+    const second = await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
+    assert.equal(second.manifest.status, 'failed');
+    assert.equal(repository.transactions.products, 0);
+    releaseWrite();
+    const first = await firstPromise;
+    assert.equal(first.manifest.status, 'completed');
+    assert.equal(repository.transactions.products, 1);
+    assert.equal(repository.runs.length, 1);
+    assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
+  });
+
+  it('falha de createRun bloqueia todas as gravações', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    repository.createRun = async () => {
+      throw new Error('falha ao criar run');
+    };
+    const result = await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
+    assert.equal(result.manifest.status, 'failed');
+    assert.equal(repository.writes.products, 0);
+    assert.equal(repository.writes.clients, 0);
+    assert.equal(repository.writes.quotations, 0);
+  });
+
+  it('reconhece linha pré-0014 como legacy-unverified mesmo com sourceHash', async () => {
+    const seeded = new MemoryFrappeMigrationRepository();
+    await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository: seeded });
+    const state = await seeded.loadState();
+    const legacy = state.lineage.find((entry) => entry.sourceId === 'ITEM-T1');
+    assert.ok(legacy?.sourceHash);
+    legacy.lineageStatus = undefined;
+    const repository = new MemoryFrappeMigrationRepository({ state });
+    const result = await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
+    assert.equal(result.report.produtos.atualizados, 1);
+    assert.equal(repository.snapshot().lineage[0].lineageStatus, 'verified');
+  });
+
   it('reconcilia linhagem legacy-unverified sem tratar canonical_hash como source_hash', async () => {
     const repository = new MemoryFrappeMigrationRepository({
       state: {

@@ -452,8 +452,8 @@ export const frappeImportLineage = pgTable(
     localKey: varchar('local_key', { length: 255 }).notNull(),
     canonicalHash: varchar('canonical_hash', { length: 64 }).notNull(),
     sourceHash: varchar('source_hash', { length: 64 }),
-    /** Historical rows from before source-payload hashing are explicitly
-     * unverified until a source re-import reconciles their payload. */
+    /** Rows from before migration 0014 are explicitly legacy-unverified and
+     * block no-op reuse until a source re-import reconciles their payload. */
     lineageStatus: varchar('lineage_status', { length: 24 })
       .notNull()
       .default('legacy-unverified'),

@@ -145,6 +145,27 @@ function recordKey(doctype: string, id: string): string {
   return `${doctype}:${id}`;
 }
 
+/** Attach raw payloads only at the persistence boundary. Public builders return
+ * lineage metadata without carrying this field. */
+function attachLineagePayload(entry: FrappeLineageEntry, payload: SourceRecord | undefined): void {
+  if (!payload) return;
+  Object.defineProperty(entry, 'legacyPayload', {
+    configurable: true,
+    enumerable: false,
+    value: payload,
+    writable: false,
+  });
+}
+
+function attachUnitLineagePayloads(
+  units: Array<{ lineage: FrappeLineageEntry[] }>,
+  payloads: Map<string, SourceRecord>
+): void {
+  for (const unit of units)
+    for (const entry of unit.lineage)
+      attachLineagePayload(entry, payloads.get(recordKey(entry.sourceDoctype, entry.sourceId)));
+}
+
 function entityFailed(report: EntityReport): boolean {
   return report.erros > 0 || report.divergentes > 0;
 }
@@ -1305,6 +1326,15 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
 
   const normalized = normalizeSafely(dataset, report);
   addReadCounts(report, dataset);
+  const lineagePayloads = new Map<string, SourceRecord>();
+  for (const product of normalized.products)
+    lineagePayloads.set(recordKey(product.sourceDoctype, product.sourceId), product.source);
+  for (const price of normalized.priceDocuments)
+    lineagePayloads.set(recordKey(price.sourceDoctype, price.sourceId), price.source);
+  for (const client of normalized.clients)
+    lineagePayloads.set(recordKey(client.sourceDoctype, client.sourceId), client.source);
+  attachUnitLineagePayloads(normalized.productUnits, lineagePayloads);
+  attachUnitLineagePayloads(normalized.clientUnits, lineagePayloads);
   const repository = options.repository || createPostgresFrappeMigrationRepository();
 
   // In apply mode, persist the run row before any entity writes.
@@ -1318,7 +1348,19 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     trackingFailed = true;
     trackingError(report, operation, error);
   };
-  const failedResult = (): MigrationResult => {
+  const leaseOwnerId = randomUUID();
+  let leaseAcquired = false;
+  const releaseMigrationLease = async (): Promise<void> => {
+    if (!leaseAcquired) return;
+    try {
+      await repository.releaseMigrationLease(manifestHash, leaseOwnerId);
+      leaseAcquired = false;
+    } catch (error) {
+      failTracking('releaseMigrationLease', error);
+    }
+  };
+  const failedResult = async (): Promise<MigrationResult> => {
+    await releaseMigrationLease();
     const finalized = finalizeReport(report);
     return {
       report: finalized,
@@ -1367,6 +1409,11 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     await markKnownBatchesFailed(operation);
     await completeRunFailed(`completeRun:${operation}`);
   };
+  const abortTrackingFailure = async (operation: string): Promise<boolean> => {
+    if (!trackingFailed) return false;
+    await failActiveRun(operation);
+    return true;
+  };
   const verifyTerminalBatches = async (): Promise<void> => {
     if (!activeRunId) return;
     let batches: Array<{
@@ -1403,6 +1450,13 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     }
   };
   if (options.mode === 'apply') {
+    try {
+      await repository.acquireMigrationLease(manifestHash, leaseOwnerId);
+      leaseAcquired = true;
+    } catch (error) {
+      failTracking('acquireMigrationLease', error);
+      return failedResult();
+    }
     let resumableRun: { id: string } | null;
     try {
       // The repository returns failed or interrupted runs so partially
@@ -1623,8 +1677,11 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const prodBatchId = batchIds.get('produtos');
     const faixaBatchId = batchIds.get('faixas');
     await updateBatchTracked(prodBatchId, { status: 'running' }, 'updateBatch:produtos:running');
+    if (await abortTrackingFailure('abort:produtos:running')) return failedResult();
     await updateBatchTracked(faixaBatchId, { status: 'running' }, 'updateBatch:faixas:running');
+    if (await abortTrackingFailure('abort:faixas:running')) return failedResult();
     for (const write of writes) {
+      if (trackingFailed) break;
       if (write.phase !== 'produtos') continue;
       try {
         await write.run();
@@ -1693,10 +1750,13 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       },
       'updateBatch:faixas:final'
     );
+    if (await abortTrackingFailure('abort:produtos:final')) return failedResult();
     // ── Clients batch ──
     const clientBatchId = batchIds.get('clientes');
     await updateBatchTracked(clientBatchId, { status: 'running' }, 'updateBatch:clientes:running');
+    if (await abortTrackingFailure('abort:clientes:running')) return failedResult();
     for (const write of writes) {
+      if (trackingFailed) break;
       if (write.phase !== 'clientes') continue;
       try {
         await write.run();
@@ -1734,6 +1794,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       },
       'updateBatch:clientes:final'
     );
+    if (await abortTrackingFailure('abort:clientes:final')) return failedResult();
   }
 
   // ── Quotations (after clients so newly imported clients can be resolved) ──
@@ -1805,6 +1866,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     knownProducts
   );
   for (const issue of builtQuotations.issues) addDetail(report.orcamentos, issue);
+  for (const unit of builtQuotations.quotationUnits)
+    for (const entry of unit.lineage) attachLineagePayload(entry, unit.quotation.source);
   // Inject activeRunId into quotation lineage entries.
   if (activeRunId) {
     for (const unit of builtQuotations.quotationUnits)
@@ -1834,7 +1897,9 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   if (options.mode === 'apply') {
     const qBatchId = batchIds.get('orcamentos');
     await updateBatchTracked(qBatchId, { status: 'running' }, 'updateBatch:orcamentos:running');
+    if (await abortTrackingFailure('abort:orcamentos:running')) return failedResult();
     for (const write of writes) {
+      if (trackingFailed) break;
       if (write.phase !== 'orcamentos') continue;
       try {
         await write.run();
@@ -1876,6 +1941,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       },
       'updateBatch:orcamentos:final'
     );
+    if (await abortTrackingFailure('abort:orcamentos:final')) return failedResult();
     // Advance the per-year numbering counter past the highest imported number.
     let afterState: FrappeMigrationState;
     try {
@@ -1893,16 +1959,19 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       maxByYear.set(year, Math.max(maxByYear.get(year) || 0, sequence));
     }
     for (const [year, lastNumber] of maxByYear) {
+      if (trackingFailed) break;
       try {
         await repository.advanceQuoteSequence(year, lastNumber);
       } catch (error) {
         failTracking(`advanceQuoteSequence:${year}`, error);
       }
     }
+    if (await abortTrackingFailure('abort:advanceQuoteSequence')) return failedResult();
     // Historical PDF archival: replace the size-0 placeholders created above
     // with real Vercel Blob uploads. Skipped when no pipeline is configured.
     const docBatchId = batchIds.get('documentos');
     await updateBatchTracked(docBatchId, { status: 'running' }, 'updateBatch:documentos:running');
+    if (await abortTrackingFailure('abort:documentos:running')) return failedResult();
     if (options.pdfPipeline) {
       await archiveHistoricalPdfs({
         repository,
@@ -1921,6 +1990,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       },
       'updateBatch:documentos:final'
     );
+    if (await abortTrackingFailure('abort:documentos:final')) return failedResult();
   } else {
     // Dry-run archive analysis: counts + divergences only, no fetch/upload.
     analyzeHistoricalPdfArchive(dataset, builtQuotations.quotationUnits, report);
@@ -1984,11 +2054,20 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       }
     }
   }
+  await releaseMigrationLease();
+  if (trackingFailed && activeRunId && !hasBlocking) {
+    try {
+      await repository.completeRun(activeRunId, 'failed');
+    } catch (error) {
+      failTracking('completeRun:release-failure', error);
+    }
+  }
   const manifestStatus: 'completed' | 'failed' =
     hasBlocking || trackingFailed ? 'failed' : 'completed';
+  const finalized = finalizeReport(report);
   return {
-    report: finalizeReport(report),
-    manifest: buildManifest(activeRunId || runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, report, dataset),
+    report: finalized,
+    manifest: buildManifest(activeRunId || runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, finalized, dataset),
   };
 }
 

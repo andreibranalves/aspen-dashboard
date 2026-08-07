@@ -43,7 +43,6 @@ export interface FrappeLineageEntry {
   sourceHash: string;
   /** Denormalized business number (ORC-YYYYNNNN), null for non-quotations. */
   businessNumber: string | null;
-  legacyPayload: SourceRecord;
   migrationRunId: string | null;
   /** Original source timestamp, or null when Frappe provided none. */
   sourceUpdatedAt: Date | null;
@@ -1306,7 +1305,6 @@ export function buildQuotationUnits(
         migrationRunId: null,
         sourceUpdatedAt: quotation.sourceUpdatedAt,
         importedAt: null,
-        legacyPayload: quotation.source,
       },
     ];
     const unit: QuotationUnit = {
@@ -1467,7 +1465,6 @@ export function buildProductUnits(
         sourceUpdatedAt: product.sourceUpdatedAt,
         importedAt: null,
         businessNumber: null,
-        legacyPayload: product.source,
       },
     ];
     // Keep each source price document in lineage, even when its values are
@@ -1501,7 +1498,6 @@ export function buildProductUnits(
         sourceUpdatedAt: row.sourceUpdatedAt,
         importedAt: null,
         businessNumber: null,
-        legacyPayload: row.source,
       });
     }
     const serializableTiers = normalized.precos.map((tier) => ({
@@ -1659,7 +1655,6 @@ export function buildClientUnits(clients: NormalizedClient[]): ClientUnit[] {
           sourceUpdatedAt: member.sourceUpdatedAt,
           importedAt: null,
           businessNumber: null,
-          legacyPayload: member.source,
         };
       });
       return { client, members, lineage, conflicts };
