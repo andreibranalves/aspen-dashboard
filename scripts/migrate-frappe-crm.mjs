@@ -73,6 +73,10 @@ async function main() {
     pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
   });
   process.stdout.write(`${JSON.stringify(result.report)}\n`);
+  // Non-zero exit on blocking errors, failed batches or failed run.
+  const hasBlocking = result.report.total.divergentes + result.report.total.erros > 0;
+  const runFailed = result.manifest.status === 'failed';
+  if (hasBlocking || runFailed) process.exitCode = 1;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {

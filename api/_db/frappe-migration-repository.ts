@@ -8,6 +8,8 @@ import { resolveQuotationRevisionMetadata } from './quotation-revision-invariant
 import {
   clients,
   frappeImportLineage,
+  frappeMigrationBatches,
+  frappeMigrationRuns,
   productPricingTiers,
   products,
   quoteRevisionItems,
@@ -142,6 +144,25 @@ export interface FrappeMigrationRepository {
     mimeType: string,
     sizeBytes: number,
     checksumSha256: string
+  ): Promise<void>;
+  // ── Run / batch tracking ──────────────────────────────────────────────
+  /** Persist a new migration run row (apply mode only). */
+  createRun(params: {
+    id: string;
+    provider: string;
+    mode: string;
+    sourceSnapshotAt: Date;
+    manifestHash: string;
+    startedAt: Date;
+  }): Promise<void>;
+  /** Mark a run as completed or failed. */
+  completeRun(runId: string, status: 'completed' | 'failed'): Promise<void>;
+  /** Create a batch checkpoint row within a run. */
+  createBatch(params: { id: string; runId: string; entityType: string }): Promise<void>;
+  /** Update batch status/checkpoint/attempt count. */
+  updateBatch(
+    batchId: string,
+    params: { status?: string; checkpoint?: number; attemptCount?: number }
   ): Promise<void>;
 }
 
@@ -523,13 +544,78 @@ export function createPostgresFrappeMigrationRepository(
       // @deprecated issuedDocuments table removed (#no-pdf-html-only)
       console.warn('updateIssuedDocumentPdf is deprecated (#no-pdf-html-only)');
     },
+
+    async createRun(params: {
+      id: string;
+      provider: string;
+      mode: string;
+      sourceSnapshotAt: Date;
+      manifestHash: string;
+      startedAt: Date;
+    }): Promise<void> {
+      const db = getDb();
+      await db.insert(frappeMigrationRuns).values({
+        id: params.id,
+        provider: params.provider,
+        mode: params.mode,
+        sourceSnapshotAt: params.sourceSnapshotAt,
+        manifestHash: params.manifestHash,
+        status: 'running',
+        startedAt: params.startedAt,
+      });
+    },
+
+    async completeRun(
+      runId: string,
+      status: 'completed' | 'failed'
+    ): Promise<void> {
+      const db = getDb();
+      await db
+        .update(frappeMigrationRuns)
+        .set({ status, completedAt: new Date() })
+        .where(eq(frappeMigrationRuns.id, runId));
+    },
+
+    async createBatch(params: {
+      id: string;
+      runId: string;
+      entityType: string;
+    }): Promise<void> {
+      const db = getDb();
+      await db.insert(frappeMigrationBatches).values({
+        id: params.id,
+        runId: params.runId,
+        entityType: params.entityType,
+        status: 'pending',
+      });
+    },
+
+    async updateBatch(
+      batchId: string,
+      params: { status?: string; checkpoint?: number; attemptCount?: number }
+    ): Promise<void> {
+      const db = getDb();
+      const set: Record<string, unknown> = {};
+      if (params.status !== undefined) set.status = params.status;
+      if (params.checkpoint !== undefined) set.checkpoint = params.checkpoint;
+      if (params.attemptCount !== undefined) set.attemptCount = params.attemptCount;
+      if (Object.keys(set).length === 0) return;
+      await db
+        .update(frappeMigrationBatches)
+        .set(set)
+        .where(eq(frappeMigrationBatches.id, batchId));
+    },
   };
 }
 
 type Transaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 
-async function upsertLineage(tx: Transaction, entries: FrappeLineageEntry[]): Promise<void> {
+async function upsertLineage(
+  tx: Transaction,
+  entries: FrappeLineageEntry[]
+): Promise<void> {
   for (const entry of entries) {
+    const now = new Date();
     await tx
       .insert(frappeImportLineage)
       .values({
@@ -539,7 +625,10 @@ async function upsertLineage(tx: Transaction, entries: FrappeLineageEntry[]): Pr
         localKey: entry.localKey,
         canonicalHash: entry.canonicalHash,
         legacyPayload: entry.legacyPayload,
-        updatedAt: new Date(),
+        migrationRunId: entry.migrationRunId ?? null,
+        sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
+        importedAt: entry.importedAt ?? now,
+        updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [frappeImportLineage.sourceDoctype, frappeImportLineage.sourceId],
@@ -548,7 +637,10 @@ async function upsertLineage(tx: Transaction, entries: FrappeLineageEntry[]): Pr
           localKey: entry.localKey,
           canonicalHash: entry.canonicalHash,
           legacyPayload: entry.legacyPayload,
-          updatedAt: new Date(),
+          migrationRunId: entry.migrationRunId ?? null,
+          sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
+          importedAt: entry.importedAt ?? now,
+          updatedAt: now,
         },
       });
   }
@@ -585,6 +677,24 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
   private state: FrappeMigrationState;
   readonly writes = { products: 0, clients: 0, quotations: 0, lineage: 0, documents: 0 };
   readonly transactions = { products: 0, clients: 0, quotations: 0 };
+  readonly runs: Array<{
+    id: string;
+    provider: string;
+    mode: string;
+    sourceSnapshotAt: Date;
+    manifestHash: string;
+    status: string;
+    startedAt: Date;
+    completedAt: Date | null;
+  }> = [];
+  readonly batches: Array<{
+    id: string;
+    runId: string;
+    entityType: string;
+    status: string;
+    checkpoint: number;
+    attemptCount: number;
+  }> = [];
   failProductSku?: string;
   failClientKey?: string;
   failQuotationKey?: string;
@@ -815,6 +925,56 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
 
   snapshot(): FrappeMigrationState {
     return this.state;
+  }
+
+  async createRun(params: {
+    id: string;
+    provider: string;
+    mode: string;
+    sourceSnapshotAt: Date;
+    manifestHash: string;
+    startedAt: Date;
+  }): Promise<void> {
+    this.runs.push({
+      ...params,
+      status: 'running',
+      completedAt: null,
+    });
+  }
+
+  async completeRun(
+    runId: string,
+    status: 'completed' | 'failed'
+  ): Promise<void> {
+    const run = this.runs.find((r) => r.id === runId);
+    if (run) {
+      run.status = status;
+      run.completedAt = new Date();
+    }
+  }
+
+  async createBatch(params: {
+    id: string;
+    runId: string;
+    entityType: string;
+  }): Promise<void> {
+    this.batches.push({
+      ...params,
+      status: 'pending',
+      checkpoint: 0,
+      attemptCount: 0,
+    });
+  }
+
+  async updateBatch(
+    batchId: string,
+    params: { status?: string; checkpoint?: number; attemptCount?: number }
+  ): Promise<void> {
+    const batch = this.batches.find((b) => b.id === batchId);
+    if (!batch) return;
+    if (params.status !== undefined) batch.status = params.status;
+    if (params.checkpoint !== undefined) batch.checkpoint = params.checkpoint;
+    if (params.attemptCount !== undefined) batch.attemptCount = params.attemptCount;
   }
 }
 

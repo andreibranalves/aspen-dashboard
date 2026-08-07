@@ -6,6 +6,7 @@ import {
   buildProductUnits,
   buildQuotationUnits,
   canonicalHash,
+  computeManifestHash,
   deriveHistoricalPdfBlobPath,
   finalizeReport,
   historicalPdfPrintviewUrl,
@@ -16,6 +17,7 @@ import {
   normalizeFrappeQuotation,
   normalizeHistoricalPdf,
   readFrappeDataset,
+  stableId,
   validateFrappeDataset,
   type ClientUnit,
   type EntityReport,
@@ -27,6 +29,7 @@ import {
   type FrappeLineageEntry,
   type HistoricalPdfRecord,
   type ImportReport,
+  type MigrationManifest,
   type NormalizedClient,
   type NormalizedPriceDocument,
   type NormalizedProduct,
@@ -101,6 +104,7 @@ export interface MigrationOptions {
 
 export interface MigrationResult {
   report: ImportReport;
+  manifest: MigrationManifest;
 }
 
 /** Production source adapter. Stable ordering is enforced by the core reader. */
@@ -1147,6 +1151,36 @@ function analyzeHistoricalPdfArchive(
   documentos.estimativa_volume = constructable;
 }
 
+function buildManifest(
+  runId: string,
+  provider: string,
+  mode: 'dry-run' | 'apply',
+  sourceSnapshotAt: Date,
+  manifestHash: string,
+  status: 'completed' | 'failed',
+  report: ImportReport,
+  dataset: FrappeDataset
+): MigrationManifest {
+  return {
+    runId,
+    provider,
+    mode,
+    sourceSnapshotAt,
+    manifestHash,
+    status,
+    entityCounts: {
+      products: (dataset.items || []).length,
+      pricingTiers: (dataset.pricingRules || []).length + (dataset.itemPrices || []).length,
+      clients: (dataset.customers || []).length + (dataset.leads || []).length,
+      quotations: (dataset.quotations || []).length,
+    },
+    divergenceCounts: {
+      approved: report.total.criados + report.total.atualizados + report.total.ignorados,
+      blocking: report.total.divergentes + report.total.erros,
+    },
+  };
+}
+
 export async function runFrappeMigration(options: MigrationOptions): Promise<MigrationResult> {
   if (!options || (options.mode !== 'dry-run' && options.mode !== 'apply'))
     throw new Error('Informe exatamente --dry-run ou --apply.');
@@ -1160,9 +1194,48 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   } else if (source) dataset = (await readFrappeDataset(source, options.pageSize || 200)).dataset;
   else throw new Error('Fonte Frappe não configurada.');
   validateFrappeDataset(dataset);
+
+  // ── Manifest and run tracking ─────────────────────────────────────────
+  const sourceSnapshotAt = new Date();
+  const manifestHash = computeManifestHash(dataset);
+  const runId = stableId('run', `${manifestHash}:${sourceSnapshotAt.getTime()}`);
+  let activeRunId: string | undefined;
+
   const normalized = normalizeSafely(dataset, report);
   addReadCounts(report, dataset);
   const repository = options.repository || createPostgresFrappeMigrationRepository();
+
+  // In apply mode, persist the run row before any entity writes.
+  // Dry-run never touches the database.
+  const batchIds = new Map<string, string>();
+  if (options.mode === 'apply') {
+    activeRunId = runId;
+    try {
+      await repository.createRun({
+        id: runId,
+        provider: 'frappe',
+        mode: options.mode,
+        sourceSnapshotAt,
+        manifestHash,
+        startedAt: sourceSnapshotAt,
+      });
+      // Create batch checkpoints for each entity type.
+      for (const entityType of ['produtos', 'clientes', 'orcamentos', 'documentos']) {
+        const batchId = stableId('batch', `${runId}:${entityType}`);
+        await repository.createBatch({ id: batchId, runId, entityType });
+        batchIds.set(entityType, batchId);
+      }
+    } catch {
+      addDetail(report.total, {
+        status: 'erros',
+        source_doctype: 'migration_run',
+        source_id: runId,
+        mensagem: 'Não foi possível criar o registro de migração.',
+      });
+      return { report: finalizeReport(report), manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, 'failed', report, dataset) };
+    }
+  }
+
   const state = await repository.loadState();
   const duplicateSkus = productSkuCollisions(normalized.products);
   const duplicateSources = duplicateSourceIds(dataset.items || [], 'Item');
@@ -1260,9 +1333,13 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     // Each callback is deliberately awaited independently. A failed product
     // or client unit is reported and does not roll back already confirmed
     // units, making a rerun safe after operator remediation.
+    const batchId = batchIds.get('produtos');
+    if (batchId) await repository.updateBatch(batchId, { status: 'running' });
+    let processedProducts = 0;
     for (const write of writes) {
       try {
         await write.run();
+        processedProducts += 1;
       } catch {
         const message = 'Não foi possível salvar a unidade importada.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1302,6 +1379,12 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         }
       }
     }
+    if (batchId)
+      await repository.updateBatch(batchId, {
+        status: report.produtos.erros > 0 ? 'failed' : 'completed',
+        checkpoint: processedProducts,
+        attemptCount: 1,
+      });
   }
 
   // ── Quotations (after clients so newly imported clients can be resolved) ──
@@ -1377,10 +1460,14 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       });
   }
   if (options.mode === 'apply') {
+    const qBatchId = batchIds.get('orcamentos');
+    if (qBatchId) await repository.updateBatch(qBatchId, { status: 'running' });
+    let processedQuotations = 0;
     for (const write of writes) {
       if (!write.checkpoints.some((saved) => saved.report === report.orcamentos)) continue;
       try {
         await write.run();
+        processedQuotations += 1;
       } catch {
         const message = 'Não foi possível salvar o orçamento importado.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1398,6 +1485,12 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           );
       }
     }
+    if (qBatchId)
+      await repository.updateBatch(qBatchId, {
+        status: report.orcamentos.erros > 0 ? 'failed' : 'completed',
+        checkpoint: processedQuotations,
+        attemptCount: 1,
+      });
     // Advance the per-year numbering counter past the highest imported number.
     const afterState = await repository.loadState();
     const maxByYear = new Map<number, number>();
@@ -1423,7 +1516,19 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     // Dry-run archive analysis: counts + divergences only, no fetch/upload.
     analyzeHistoricalPdfArchive(dataset, builtQuotations.quotationUnits, report);
   }
-  return { report: finalizeReport(report) };
+  // ── Complete run and build manifest ───────────────────────────────────
+  if (activeRunId) {
+    const hasBlocking = report.total.divergentes + report.total.erros > 0;
+    try {
+      await repository.completeRun(activeRunId, hasBlocking ? 'failed' : 'completed');
+    } catch { /* best-effort */ }
+  }
+  const manifestStatus: 'completed' | 'failed' =
+    report.total.divergentes + report.total.erros > 0 ? 'failed' : 'completed';
+  return {
+    report: finalizeReport(report),
+    manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, report, dataset),
+  };
 }
 
 export const migrateFrappeCrm = runFrappeMigration;

@@ -371,6 +371,67 @@ export const quoteRevisionItems = pgTable(
   ]
 );
 
+/** Per-run tracking for Frappe CRM migrations.  Every apply creates one row;
+ * dry-run manifests are computed in-memory only.
+ */
+export const frappeMigrationRuns = pgTable(
+  'frappe_migration_runs',
+  {
+    id: uuid('id').primaryKey(),
+    provider: varchar('provider', { length: 80 }).notNull().default('frappe'),
+    mode: varchar('mode', { length: 20 }).notNull(),
+    sourceSnapshotAt: timestamp('source_snapshot_at', { withTimezone: true }).notNull(),
+    manifestHash: varchar('manifest_hash', { length: 64 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (table) => [
+    check('frappe_migration_runs_mode_check', sql`${table.mode} IN ('dry-run', 'apply')`),
+    check(
+      'frappe_migration_runs_status_check',
+      sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`
+    ),
+    check(
+      'frappe_migration_runs_manifest_hash_check',
+      sql`${table.manifestHash} ~ '^[0-9a-f]{64}$'`
+    ),
+  ]
+);
+
+/** Per-entity-type batch progress within a migration run.  Each entity group
+ * (produtos, faixas, clientes, orcamentos, documentos) gets one batch row
+ * that tracks processing status, checkpoint count and attempt count for
+ * resume-after-failure.
+ */
+export const frappeMigrationBatches = pgTable(
+  'frappe_migration_batches',
+  {
+    id: uuid('id').primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => frappeMigrationRuns.id, { onDelete: 'cascade' }),
+    entityType: varchar('entity_type', { length: 32 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    checkpoint: integer('checkpoint').notNull().default(0),
+    attemptCount: integer('attempt_count').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('frappe_migration_batches_run_entity_unique').on(
+      table.runId,
+      table.entityType
+    ),
+    check(
+      'frappe_migration_batches_entity_type_check',
+      sql`${table.entityType} IN ('produtos', 'faixas', 'clientes', 'orcamentos', 'documentos')`
+    ),
+    check(
+      'frappe_migration_batches_status_check',
+      sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`
+    ),
+  ]
+);
+
 /** Immutable-ish lineage for records imported from Frappe.  A source document
  * is unique regardless of the entity it currently maps to, which lets a Lead
  * and a Customer retain their independent ERP identifiers while sharing one
@@ -385,7 +446,19 @@ export const frappeImportLineage = pgTable(
     entityType: varchar('entity_type', { length: 32 }).notNull(),
     localKey: varchar('local_key', { length: 255 }).notNull(),
     canonicalHash: varchar('canonical_hash', { length: 64 }).notNull(),
+    /** Raw Frappe document for audit/replay.  Intentionally JSONB; must
+     * NEVER be serialized in reports, manifests, logs or API responses.
+     * Retention policy: keep for the lifetime of the lineage row; purge
+     * when lineage is archived. */
     legacyPayload: jsonb('legacy_payload').$type<Record<string, unknown>>().notNull(),
+    /** FK to the migration run that created/updated this lineage entry. */
+    migrationRunId: uuid('migration_run_id').references(
+      () => frappeMigrationRuns.id
+    ),
+    /** Last-modified timestamp reported by the Frappe source document. */
+    sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }),
+    /** When this lineage entry was first written or last updated locally. */
+    importedAt: timestamp('imported_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -397,6 +470,7 @@ export const frappeImportLineage = pgTable(
     index('frappe_import_lineage_local_key_idx').on(table.localKey),
     index('frappe_import_lineage_entity_local_idx').on(table.entityType, table.localKey),
     index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
+    index('frappe_import_lineage_run_idx').on(table.migrationRunId),
     check(
       'frappe_import_lineage_source_doctype_check',
       sql`char_length(btrim(${table.sourceDoctype})) > 0`
@@ -418,3 +492,5 @@ export const quotation = quotations;
 export const quoteRevision = quoteRevisions;
 export const quoteRevisionItem = quoteRevisionItems;
 export const frappeLineage = frappeImportLineage;
+export const frappeMigrationRun = frappeMigrationRuns;
+export const frappeMigrationBatch = frappeMigrationBatches;

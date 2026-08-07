@@ -36,6 +36,9 @@ export interface FrappeLineageEntry {
   localKey: string;
   canonicalHash: string;
   legacyPayload: SourceRecord;
+  migrationRunId?: string;
+  sourceUpdatedAt?: Date;
+  importedAt?: Date;
 }
 
 export interface NormalizedProduct {
@@ -1692,6 +1695,32 @@ export async function readFrappeDataset(
       quotations: quotations.length,
     },
   };
+}
+
+export interface MigrationManifest {
+  runId: string;
+  provider: string;
+  mode: 'dry-run' | 'apply';
+  sourceSnapshotAt: Date;
+  manifestHash: string;
+  status: 'completed' | 'failed';
+  entityCounts: {
+    products: number;
+    pricingTiers: number;
+    clients: number;
+    quotations: number;
+  };
+  divergenceCounts: {
+    approved: number;
+    blocking: number;
+  };
+}
+
+/** Compute a deterministic content hash for the full source dataset.  Two
+ * runs with identical input data produce the same manifest hash regardless
+ * of execution time, enabling fast comparison of source snapshots. */
+export function computeManifestHash(dataset: FrappeDataset): string {
+  return canonicalHash(dataset);
 }
 
 export const normalizeDataset = normalizeFrappeDataset;
