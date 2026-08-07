@@ -9,6 +9,7 @@ const ROUTE_LIMITS: Record<string, number> = {
   'send-whatsapp': 5,
   'typebot-lead-capture': 20,
   login: 10,
+  'public-quotation': 20,
 };
 
 interface BucketEntry {

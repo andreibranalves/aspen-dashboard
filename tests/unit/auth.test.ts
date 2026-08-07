@@ -21,7 +21,9 @@ function protectedRequest(headers: Record<string, string> = {}) {
 
 describe('auth guard', () => {
   it('keeps public and login/logout routes available while protected routes fail closed', () => {
-    assert.equal(isAuthenticated({ url: '/api/view/quote-1' }, {}), true);
+    assert.equal(isAuthenticated({ url: '/api/view/quote-1' }, {}), false);
+    assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'GET' }, {}), true);
+    assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'POST' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/typebot-lead-capture' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/login' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/logout' }, {}), true);
