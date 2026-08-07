@@ -9,7 +9,16 @@ import { parseArgs, resolveRepositoryMode } from '../../scripts/migrate-frappe-c
 
 describe('CLI de migração Frappe', () => {
   it('exige exatamente um modo', () => {
-    assert.deepEqual(parseArgs(['--dry-run']), { mode: 'dry-run', fixture: null });
+    assert.deepEqual(parseArgs(['--dry-run']), {
+      mode: 'dry-run',
+      fixture: null,
+      approvedDivergences: [],
+    });
+    assert.deepEqual(parseArgs(['--apply', '--approve-divergence', 'Quotation:QTN-1']), {
+      mode: 'apply',
+      fixture: null,
+      approvedDivergences: ['Quotation:QTN-1'],
+    });
     assert.throws(() => parseArgs([]), /exatamente/);
     assert.throws(() => parseArgs(['--dry-run', '--apply']), /exatamente/);
   });

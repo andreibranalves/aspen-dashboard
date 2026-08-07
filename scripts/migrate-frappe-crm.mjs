@@ -12,6 +12,7 @@ function fail(message) {
 export function parseArgs(argv) {
   let mode = null;
   let fixture = null;
+  const approvedDivergences = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--dry-run' || arg === '--apply') {
@@ -25,10 +26,18 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === '--approve-divergence') {
+      const key = argv[index + 1];
+      if (!key || key.startsWith('--') || !key.includes(':'))
+        throw new Error('Informe source_doctype:source_id após --approve-divergence.');
+      approvedDivergences.push(key);
+      index += 1;
+      continue;
+    }
     throw new Error(`Opção desconhecida: ${arg}`);
   }
   if (!mode) throw new Error('Informe exatamente um modo: --dry-run ou --apply.');
-  return { mode: mode === 'dry-run' ? 'dry-run' : 'apply', fixture };
+  return { mode: mode === 'dry-run' ? 'dry-run' : 'apply', fixture, approvedDivergences };
 }
 
 export function resolveRepositoryMode({ mode, hasFixture, hasDatabaseUrl }) {
@@ -50,7 +59,7 @@ async function loadFixture(pathname) {
 }
 
 async function main() {
-  const { mode, fixture } = parseArgs(process.argv.slice(2));
+  const { mode, fixture, approvedDivergences } = parseArgs(process.argv.slice(2));
   // API sources are compiled by the package script before this CLI runs. The
   // explicit dynamic import keeps this standalone entrypoint ESM-only.
   const migration = await import('../api/_functions/frappe-migration.js');
@@ -71,6 +80,7 @@ async function main() {
     // Apply replaces the placeholder issued_documents rows with real PDFs
     // uploaded to Vercel Blob through the production pipeline.
     pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
+    approvedDivergences,
   });
   process.stdout.write(`${JSON.stringify(result.report)}\n`);
   // Non-zero exit on blocking errors, failed batches or failed run.

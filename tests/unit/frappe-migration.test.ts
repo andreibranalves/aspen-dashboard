@@ -835,6 +835,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
         ['Draft', 'rascunho', true],
         ['Submitted', 'enviado', true],
         ['Open', 'enviado', true],
+        ['Sent', 'enviado', true],
         ['Ordered', 'aprovado', true],
         ['Completed', 'aprovado', true],
         ['Closed', 'aprovado', true],
@@ -845,7 +846,12 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
         ['Whatever', 'rascunho', false],
       ];
     for (const [raw, status, known] of expectations) {
-      assert.deepEqual(mapQuotationStatus(raw), { status, source: raw, known });
+      const result = mapQuotationStatus(raw);
+      assert.equal(result.status, status);
+      assert.equal(result.source, raw);
+      assert.equal(result.known, known);
+      assert.equal(result.orderLinkage, ['Ordered', 'Completed', 'Closed'].includes(raw) ? raw.toLowerCase() : null);
+      assert.equal(result.orderPending, result.orderLinkage !== null);
     }
   });
 
@@ -893,6 +899,9 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(normalized.businessNumber, 'ORC-20240042');
     assert.equal(normalized.year, 2024);
     assert.equal(normalized.status, 'enviado');
+    assert.equal(normalized.statusSource, 'Submitted');
+    assert.equal(normalized.orderLinkage, null);
+    assert.equal(normalized.orderPending, false);
     assert.equal(normalized.statusKnown, true);
     assert.equal(normalized.clientId, clientId);
     assert.equal(normalized.terms.validadeDias, 30);

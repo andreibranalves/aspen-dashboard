@@ -15,6 +15,70 @@ const MINIMAL_DATASET: FrappeDataset = {
 };
 
 describe('MemoryFrappeMigrationRepository', () => {
+  it('bloqueia apply antes das gravações quando falta versão de template', async () => {
+    const repository = new MemoryFrappeMigrationRepository({ templatesReady: false });
+    const result = await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
+    assert.equal(result.manifest.status, 'failed');
+    assert.ok(result.report.orcamentos.divergentes > 0);
+    assert.equal(repository.writes.products, 0);
+    assert.equal(repository.writes.clients, 0);
+    assert.equal(repository.writes.quotations, 0);
+  });
+
+  it('bloqueia orçamento com cliente ou produto ausente antes de qualquer gravação', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      repository,
+      dataset: {
+        items: [],
+        customers: [{ name: 'CUST-MISSING', customer_name: 'Cliente', tax_id: '12345678901' }],
+        quotations: [
+          {
+            name: 'QTN-2025-00002',
+            creation: '2025-01-01 10:00:00',
+            quotation_to: 'Customer',
+            customer: 'CUST-MISSING',
+            status: 'Draft',
+            items: [{ idx: 1, item_code: 'SKU-MISSING', qty: '1', rate: '5', price_list_rate: '5', amount: '5' }],
+          },
+        ],
+      },
+    });
+    assert.equal(result.manifest.status, 'failed');
+    assert.ok(result.report.orcamentos.divergentes > 0);
+    assert.equal(repository.writes.products, 0);
+    assert.equal(repository.writes.clients, 0);
+    assert.equal(repository.writes.quotations, 0);
+  });
+
+  it('permite divergência explicitamente aprovada e mantém contagem separada', async () => {
+    const dataset: FrappeDataset = {
+      items: [{ name: 'ITEM-S5', item_code: 'SKU-S5', item_name: 'Produto' }],
+      customers: [{ name: 'CUST-S5', customer_name: 'Cliente', tax_id: '12345678901' }],
+      quotations: [
+        {
+          name: 'QTN-2025-00001',
+          creation: '2025-01-01 10:00:00',
+          quotation_to: 'Customer',
+          customer: 'CUST-S5',
+          status: 'Unsupported Legacy Status',
+          items: [{ idx: 1, item_code: 'SKU-S5', qty: '1', rate: '5', price_list_rate: '5', amount: '5' }],
+        },
+      ],
+    };
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigration({
+      mode: 'apply',
+      dataset,
+      repository,
+      approvedDivergences: ['Quotation:QTN-2025-00001'],
+    });
+    assert.equal(result.report.orcamentos.divergentes, 0);
+    assert.equal(result.report.orcamentos.aprovadas, 1);
+    assert.equal(repository.writes.quotations, 1);
+  });
+
   it('loadState e snapshot não expõem legacyPayload na linhagem', async () => {
     const repository = new MemoryFrappeMigrationRepository();
     await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
@@ -376,6 +440,7 @@ describe('MemoryFrappeMigrationRepository', () => {
             name: 'QTN-2024-00001',
             quotation_to: 'Customer',
             customer: 'CUST-T1',
+            status: 'Draft',
             creation: '2024-01-01 10:00:00',
             items: [
               {
@@ -384,6 +449,7 @@ describe('MemoryFrappeMigrationRepository', () => {
                 item_name: 'Produto Teste',
                 qty: 1,
                 rate: '10.00',
+                price_list_rate: '10.00',
                 amount: '10.00',
               },
             ],

@@ -20,6 +20,7 @@ export const IMPORT_STATUSES = [
   'criados',
   'atualizados',
   'ignorados',
+  'aprovadas',
   'divergentes',
   'erros',
   'estimativa_volume',
@@ -143,6 +144,8 @@ export interface NormalizedQuotation {
   /** Raw legacy status text (e.g. `Submitted`) or empty when only docstatus was available. */
   statusSource: string;
   statusKnown: boolean;
+  orderLinkage: 'ordered' | 'completed' | 'closed' | null;
+  orderPending: boolean;
   createdAt: string;
   modifiedAt: string;
   items: NormalizedQuotationItem[];
@@ -189,6 +192,10 @@ export interface QuotationRevisionUnit {
   id: string;
   version: number;
   status: QuotationStatus;
+  /** Original Frappe status and order reconciliation markers. */
+  statusOriginal?: string;
+  orderLinkage?: 'ordered' | 'completed' | 'closed' | null;
+  orderPending?: boolean;
   validadeDias: number;
   pagamento: string;
   entrega: string;
@@ -276,7 +283,8 @@ export interface ExistingLineage {
 }
 
 export interface ImportDetail {
-  status: Exclude<ImportStatus, 'lidos' | 'estimativa_volume'>;
+  status: Exclude<ImportStatus, 'lidos' | 'estimativa_volume' | 'aprovadas'>;
+  aprovada?: boolean;
   source_doctype?: string;
   source_id?: string;
   local_key?: string;
@@ -288,6 +296,7 @@ export interface EntityReport {
   criados: number;
   atualizados: number;
   ignorados: number;
+  aprovadas: number;
   divergentes: number;
   erros: number;
   estimativa_volume: number;
@@ -844,6 +853,7 @@ const QUOTATION_STATUS_MAP: Record<string, QuotationStatus> = {
   draft: 'rascunho',
   submitted: 'enviado',
   open: 'enviado',
+  sent: 'enviado',
   ordered: 'aprovado',
   completed: 'aprovado',
   closed: 'aprovado',
@@ -856,12 +866,21 @@ export interface QuotationStatusInfo {
   status: QuotationStatus;
   source: string;
   known: boolean;
+  orderLinkage: 'ordered' | 'completed' | 'closed' | null;
+  orderPending: boolean;
 }
 
 export function mapQuotationStatus(raw: string): QuotationStatusInfo {
   const source = text(raw);
-  const status = QUOTATION_STATUS_MAP[source.toLowerCase()];
-  return status ? { status, source, known: true } : { status: 'rascunho', source, known: false };
+  const normalized = source.toLowerCase();
+  const status = QUOTATION_STATUS_MAP[normalized];
+  const orderLinkage =
+    normalized === 'ordered' || normalized === 'completed' || normalized === 'closed'
+      ? (normalized as 'ordered' | 'completed' | 'closed')
+      : null;
+  return status
+    ? { status, source, known: true, orderLinkage, orderPending: orderLinkage !== null }
+    : { status: 'rascunho', source, known: false, orderLinkage: null, orderPending: false };
 }
 
 function rawQuotationStatus(record: SourceRecord): string {
@@ -1012,6 +1031,8 @@ export function normalizeFrappeQuotation(
     status: statusInfo.status,
     statusSource: statusInfo.source,
     statusKnown: statusInfo.known,
+    orderLinkage: statusInfo.orderLinkage,
+    orderPending: statusInfo.orderPending,
     createdAt: text(first(record, ['creation', 'created', 'created_on'])),
     modifiedAt: text(first(record, ['modified', 'updated', 'updated_on'])),
     items,
@@ -1244,6 +1265,9 @@ export function buildQuotationUnits(
       id: revisionId,
       version: 1,
       status: quotation.status,
+      statusOriginal: quotation.statusSource,
+      orderLinkage: quotation.orderLinkage,
+      orderPending: quotation.orderPending,
       validadeDias: quotation.terms.validadeDias,
       pagamento: quotation.terms.pagamento || '',
       entrega: quotation.terms.entrega || '',
@@ -1667,6 +1691,7 @@ export function emptyEntityReport(): EntityReport {
     criados: 0,
     atualizados: 0,
     ignorados: 0,
+    aprovadas: 0,
     divergentes: 0,
     erros: 0,
     estimativa_volume: 0,

@@ -12,6 +12,7 @@ import {
   finalizeReport,
   historicalPdfPrintviewUrl,
   makeReport,
+  mapQuotationStatus,
   normalizeFrappeClientRecord,
   normalizeFrappeItem,
   normalizeFrappePriceDocuments,
@@ -102,6 +103,8 @@ export interface MigrationOptions {
    * (analysis only, no I/O).  When absent the archival step is skipped.
    */
   pdfPipeline?: HistoricalPdfPipeline;
+  /** Explicit operator-approved divergence keys (`source_doctype:source_id`). */
+  approvedDivergences?: string[];
 }
 
 export interface MigrationResult {
@@ -168,6 +171,27 @@ function attachUnitLineagePayloads(
 
 function entityFailed(report: EntityReport): boolean {
   return report.erros > 0 || report.divergentes > 0;
+}
+
+function hasBlockingDetails(details: EntityReport['detalhes']): boolean {
+  return details.some(
+    (detail) => !detail.aprovada && (detail.status === 'divergentes' || detail.status === 'erros')
+  );
+}
+
+function approveDivergences(report: ImportReport, approvedKeys: string[] = []): void {
+  const approved = new Set(approvedKeys.map((key) => String(key).trim()).filter(Boolean));
+  if (approved.size === 0) return;
+  for (const entity of [report.produtos, report.faixas, report.clientes, report.orcamentos, report.documentos]) {
+    for (const detail of entity.detalhes) {
+      const key = `${detail.source_doctype || ''}:${detail.source_id || ''}`;
+      if (!detail.aprovada && detail.status === 'divergentes' && approved.has(key)) {
+        detail.aprovada = true;
+        entity.divergentes -= 1;
+        entity.aprovadas += 1;
+      }
+    }
+  }
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -330,6 +354,7 @@ function entityCheckpoint(report: EntityReport): number {
     report.criados +
     report.atualizados +
     report.ignorados +
+    report.aprovadas +
     report.divergentes +
     report.erros
   );
@@ -864,7 +889,15 @@ function processQuotationUnit(
     );
     return false;
   }
-  if (!source.statusKnown) {
+  if (
+    !source.statusKnown &&
+    !report.orcamentos.detalhes.some(
+      (detail) =>
+        detail.source_doctype === 'Quotation' &&
+        detail.source_id === source.sourceId &&
+        detail.mensagem.startsWith('Status legado desconhecido')
+    )
+  ) {
     add(
       report.orcamentos,
       'divergentes',
@@ -1295,7 +1328,11 @@ function buildManifest(
       quotations: (dataset.quotations || []).length,
     },
     divergenceCounts: {
-      approved: report.total.criados + report.total.atualizados + report.total.ignorados,
+      approved:
+        report.total.criados +
+        report.total.atualizados +
+        report.total.ignorados +
+        report.total.aprovadas,
       blocking: report.total.divergentes + report.total.erros,
     },
   };
@@ -1548,6 +1585,32 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     return failedResult();
   }
 
+  // Templates are PostgreSQL-owned prerequisites. Seed and verify them before
+  // planning any entity write so a missing version cannot leave partial data.
+  if (options.mode === 'apply') {
+    try {
+      const templateIntegrity = await repository.ensureQuotationTemplates();
+      for (const missing of templateIntegrity.missing) {
+        add(
+          report.orcamentos,
+          'divergentes',
+          'Quotation Template',
+          missing.key,
+          `Versão de template ausente para ${missing.key}; apply bloqueado.`,
+          missing.key
+        );
+      }
+      if (templateIntegrity.missing.length > 0) {
+        await failActiveRun('markBatchFailed:template-integrity');
+        return failedResult();
+      }
+    } catch (error) {
+      failTracking('ensureQuotationTemplates', error);
+      await failActiveRun('markBatchFailed:template-integrity');
+      return failedResult();
+    }
+  }
+
   // CRITICAL 1: Inject activeRunId into all lineage entries for provenance.
   if (activeRunId) {
     for (const unit of normalized.productUnits)
@@ -1592,6 +1655,61 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       price.sku
     );
   }
+  // Quote dependencies are preflighted before any product/client transaction.
+  // This makes missing prerequisites fail closed instead of leaving a partial
+  // apply whose final quote phase can never succeed.
+  if (options.mode === 'apply') {
+  const preflightClientLineage = new Map<string, string>();
+  for (const entry of state.lineage) {
+    if (entry.entityType === 'cliente')
+      preflightClientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, entry.localKey);
+  }
+  for (const unit of normalized.clientUnits) {
+    const id = stableClientUuid(unit.client.localKey);
+    for (const entry of unit.lineage)
+      preflightClientLineage.set(`${entry.sourceDoctype}:${entry.sourceId}`, id);
+  }
+  const preflightKnownProducts = new Set([
+    ...state.products.map((product) => product.sku),
+    ...normalized.products.map((product) => product.sku),
+  ]);
+  for (const record of uniqueSourceRecords(dataset.quotations || [])) {
+    try {
+      const quotation = normalizeFrappeQuotation(record, preflightClientLineage);
+      const status = mapQuotationStatus(quotation.statusSource);
+      if (!status.known)
+        add(
+          report.orcamentos,
+          'divergentes',
+          'Quotation',
+          quotation.sourceId,
+          `Status legado desconhecido '${quotation.statusSource}' mapeado para rascunho.`,
+          quotation.businessNumber
+        );
+      const preflight = buildQuotationUnits(
+        [quotation],
+        preflightClientLineage,
+        { clients: state.clients, products: state.products },
+        preflightKnownProducts
+      );
+      for (const issue of preflight.issues) addDetail(report.orcamentos, issue);
+    } catch (error) {
+      add(
+        report.orcamentos,
+        'erros',
+        'Quotation',
+        String(record.name || record.id || ''),
+        error instanceof Error ? error.message : 'Orçamento inválido.'
+      );
+    }
+  }
+  approveDivergences(report, options.approvedDivergences);
+  if (hasBlockingDetails(report.orcamentos.detalhes)) {
+    await failActiveRun('markBatchFailed:quotation-preflight');
+    return failedResult();
+  }
+  }
+
   const writes: Array<{
     phase: 'produtos' | 'clientes' | 'orcamentos';
     cursor: number;
@@ -1622,9 +1740,10 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     );
     sealCheckpoint(productCheckpoint);
     sealCheckpoint(pricingCheckpoint);
-    const blocked = [...productCheckpoint.addedDetails, ...pricingCheckpoint.addedDetails].some(
-      (detail) => detail.status === 'divergentes' || detail.status === 'erros'
-    );
+    const blocked = hasBlockingDetails([
+      ...productCheckpoint.addedDetails,
+      ...pricingCheckpoint.addedDetails,
+    ]);
     const nextFaixaCursor =
       faixaCursor + unit.lineage.filter((entry) => entry.entityType === 'faixa').length;
     writes.push({
@@ -1653,9 +1772,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const clientCheckpoint = checkpoint(report.clientes);
     const clientAction = processClientUnit(unit, state, report);
     sealCheckpoint(clientCheckpoint);
-    const blocked = clientCheckpoint.addedDetails.some(
-      (detail) => detail.status === 'divergentes' || detail.status === 'erros'
-    );
+    const blocked = hasBlockingDetails(clientCheckpoint.addedDetails);
     writes.push({
       phase: 'clientes',
       cursor: clientIndex + 1,
@@ -1669,6 +1786,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     });
     if (clientAction) plannedClientUnits.push(unit);
   }
+  approveDivergences(report, options.approvedDivergences);
   if (options.mode === 'apply') {
     // Each callback is deliberately awaited independently. A failed product
     // or client unit is reported and does not roll back already confirmed
@@ -1879,20 +1997,23 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const quotationCheckpoint = checkpoint(report.orcamentos);
     const quotationAction = processQuotationUnit(unit, quotationState, report);
     sealCheckpoint(quotationCheckpoint);
-    const blocked = quotationCheckpoint.addedDetails.some(
-      (detail) => detail.status === 'divergentes' || detail.status === 'erros'
-    );
+    const blocked = hasBlockingDetails(quotationCheckpoint.addedDetails);
     writes.push({
       phase: 'orcamentos',
       cursor: quotationIndex + 1,
       blocked,
-      run: !blocked && quotationAction ? () => repository.applyQuotationUnit(unit) : async () => undefined,
+      run: quotationAction ? () => repository.applyQuotationUnit(unit) : async () => undefined,
       checkpoints: [quotationCheckpoint],
       sourceDoctype: 'Quotation',
       sourceId: unit.quotation.sourceId,
       localKey: unit.quotation.businessNumber,
       pricingSources: [],
     });
+  }
+  approveDivergences(report, options.approvedDivergences);
+  for (const write of writes) {
+    if (write.phase === 'orcamentos')
+      write.blocked = hasBlockingDetails(write.checkpoints.flatMap((item) => item.addedDetails));
   }
   if (options.mode === 'apply') {
     const qBatchId = batchIds.get('orcamentos');
@@ -1901,6 +2022,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     for (const write of writes) {
       if (trackingFailed) break;
       if (write.phase !== 'orcamentos') continue;
+      if (write.blocked) continue;
       try {
         await write.run();
         const previousQuotationCursor =

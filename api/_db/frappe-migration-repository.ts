@@ -1,10 +1,11 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
-import { and, asc, eq, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
+import { templateSeedPlan } from './quotation-template-migration.js';
 import {
   clients,
   frappeImportLineage,
@@ -16,6 +17,8 @@ import {
   quoteRevisions,
   quoteSequences,
   quotations,
+  quotationTemplates,
+  quotationTemplateVersions,
 } from './schema.js';
 
 import type {
@@ -247,6 +250,8 @@ export interface FrappeMigrationRepository {
   }): Promise<void>;
   /** Mark a run as completed or failed. */
   completeRun(runId: string, status: 'completed' | 'failed'): Promise<void>;
+  /** Ensure every built-in quotation template has its expected version. */
+  ensureQuotationTemplates(): Promise<{ missing: Array<{ key: string; sourceHash: string }> }>;
   /** Create a batch checkpoint row within a run. */
   createBatch(params: { id: string; runId: string; entityType: string }): Promise<void>;
   /** Update batch status/checkpoint/attempt count. */
@@ -630,6 +635,75 @@ export function createPostgresFrappeMigrationRepository(
       });
     },
 
+    async ensureQuotationTemplates(): Promise<{ missing: Array<{ key: string; sourceHash: string }> }> {
+      const db = getDb();
+      return db.transaction(async (tx) => {
+        await acquireQuotationWriteLock(tx);
+        for (const item of templateSeedPlan()) {
+          let [model] = await tx
+            .select()
+            .from(quotationTemplates)
+            .where(eq(quotationTemplates.key, item.key))
+            .limit(1);
+          if (!model) {
+            const id = randomUUID();
+            const now = new Date();
+            [model] = await tx
+              .insert(quotationTemplates)
+              .values({ id, key: item.key, name: item.name, archived: false, createdAt: now, updatedAt: now })
+              .returning();
+          } else if (model.archived || model.name !== item.name) {
+            [model] = await tx
+              .update(quotationTemplates)
+              .set({ name: item.name, archived: false, updatedAt: new Date() })
+              .where(eq(quotationTemplates.id, model.id))
+              .returning();
+          }
+          const [version] = await tx
+            .select()
+            .from(quotationTemplateVersions)
+            .where(
+              and(
+                eq(quotationTemplateVersions.templateId, model.id),
+                eq(quotationTemplateVersions.sourceHash, item.source_hash)
+              )
+            )
+            .limit(1);
+          if (!version) {
+            const [latest] = await tx
+              .select({ version: quotationTemplateVersions.version })
+              .from(quotationTemplateVersions)
+              .where(eq(quotationTemplateVersions.templateId, model.id))
+              .orderBy(desc(quotationTemplateVersions.version))
+              .limit(1);
+            await tx.insert(quotationTemplateVersions).values({
+              id: randomUUID(),
+              templateId: model.id,
+              version: (latest?.version || 0) + 1,
+              source: item.source,
+              sourceHash: item.source_hash,
+            });
+          }
+        }
+        const missing: Array<{ key: string; sourceHash: string }> = [];
+        for (const item of templateSeedPlan()) {
+          const [row] = await tx
+            .select({ id: quotationTemplateVersions.id })
+            .from(quotationTemplateVersions)
+            .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+            .where(
+              and(
+                eq(quotationTemplates.key, item.key),
+                eq(quotationTemplateVersions.sourceHash, item.source_hash)
+              )
+            )
+            .limit(1);
+          if (!row) missing.push({ key: item.key, sourceHash: item.source_hash });
+        }
+        return { missing };
+      });
+    },
+
     async advanceQuoteSequence(year: number, lastNumber: number): Promise<void> {
       const db = getDb();
       await db
@@ -847,6 +921,8 @@ export interface MemoryFrappeMigrationRepositoryOptions {
   failProductSku?: string;
   failClientKey?: string;
   failQuotationKey?: string;
+  /** Test seam for a deployment missing a required built-in template version. */
+  templatesReady?: boolean;
 }
 
 function normalizeLineage(value: ExistingLineage): ExistingLineage {
@@ -964,6 +1040,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
   failProductSku?: string;
   failClientKey?: string;
   failQuotationKey?: string;
+  private readonly templatesReady: boolean;
   private readonly migrationLeaseOwners = new Map<string, string>();
 
   constructor(options: MemoryFrappeMigrationRepositoryOptions = {}) {
@@ -995,6 +1072,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     this.failProductSku = options.failProductSku;
     this.failClientKey = options.failClientKey;
     this.failQuotationKey = options.failQuotationKey;
+    this.templatesReady = options.templatesReady !== false;
   }
 
   async loadState(): Promise<FrappeMigrationState> {
@@ -1166,6 +1244,13 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     this.state = next;
     this.writes.quotations += 1;
     this.writes.lineage += unit.lineage.length;
+  }
+
+  async ensureQuotationTemplates(): Promise<{ missing: Array<{ key: string; sourceHash: string }> }> {
+    if (this.templatesReady) return { missing: [] };
+    return {
+      missing: templateSeedPlan().map((item) => ({ key: item.key, sourceHash: item.source_hash })),
+    };
   }
 
   async advanceQuoteSequence(year: number, lastNumber: number): Promise<void> {
