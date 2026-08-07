@@ -17,6 +17,7 @@ import {
   normalizeFrappeQuotation,
   normalizeHistoricalPdf,
   readFrappeDataset,
+  sanitizeReportMessage,
   stableId,
   validateFrappeDataset,
   type ClientUnit,
@@ -234,7 +235,7 @@ function add(
     source_doctype: sourceDoctype,
     source_id: reportSourceId,
     local_key: reportLocalKey,
-    mensagem,
+    mensagem: sanitizeReportMessage(mensagem),
   });
 }
 
@@ -1238,7 +1239,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           startedAt: sourceSnapshotAt,
         });
         // Create batch checkpoints for each entity type.
-        for (const entityType of ['produtos', 'clientes', 'orcamentos', 'documentos']) {
+        for (const entityType of ['produtos', 'faixas', 'clientes', 'orcamentos', 'documentos']) {
           const batchId = stableId('batch', `${runId}:${entityType}`);
           await repository.createBatch({ id: batchId, runId, entityType });
           batchIds.set(entityType, batchId);
@@ -1250,12 +1251,21 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           source_id: runId,
           mensagem: 'Não foi possível criar o registro de migração.',
         });
+        try { await repository.completeRun(runId, 'failed'); } catch { /* best-effort */ }
         return { report: finalizeReport(report), manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, 'failed', report, dataset) };
       }
     }
   }
 
   const state = await repository.loadState();
+
+  // CRITICAL 1: Inject activeRunId into all lineage entries for provenance.
+  if (activeRunId) {
+    for (const unit of normalized.productUnits)
+      for (const entry of unit.lineage) entry.migrationRunId = activeRunId;
+    for (const unit of normalized.clientUnits)
+      for (const entry of unit.lineage) entry.migrationRunId = activeRunId;
+  }
   const duplicateSkus = productSkuCollisions(normalized.products);
   const duplicateSources = duplicateSourceIds(dataset.items || [], 'Item');
   const duplicatePriceSources = new Set<string>([
@@ -1352,10 +1362,14 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     // Each callback is deliberately awaited independently. A failed product
     // or client unit is reported and does not roll back already confirmed
     // units, making a rerun safe after operator remediation.
-    const batchId = batchIds.get('produtos');
-    if (batchId) await repository.updateBatch(batchId, { status: 'running' });
+    // ── Products + Faixas batch ──
+    const prodBatchId = batchIds.get('produtos');
+    const faixaBatchId = batchIds.get('faixas');
+    if (prodBatchId) await repository.updateBatch(prodBatchId, { status: 'running' });
+    if (faixaBatchId) await repository.updateBatch(faixaBatchId, { status: 'running' });
     let processedProducts = 0;
     for (const write of writes) {
+      if (!write.checkpoints.some((cp) => cp.report === report.produtos || cp.report === report.faixas)) continue;
       try {
         await write.run();
         processedProducts += 1;
@@ -1364,9 +1378,6 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
         const productCheckpoint = write.checkpoints.find(
           (saved) => saved.report === report.produtos
-        );
-        const clientCheckpoint = write.checkpoints.find(
-          (saved) => saved.report === report.clientes
         );
         if (productCheckpoint) {
           add(
@@ -1386,23 +1397,48 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
               message,
               price.localKey
             );
-        } else if (clientCheckpoint) {
-          add(
-            report.clientes,
-            'erros',
-            write.sourceDoctype,
-            write.sourceId,
-            message,
-            write.localKey
-          );
         }
       }
     }
-    if (batchId)
-      await repository.updateBatch(batchId, {
+    if (prodBatchId)
+      await repository.updateBatch(prodBatchId, {
         status: report.produtos.erros > 0 ? 'failed' : 'completed',
         checkpoint: processedProducts,
         attemptCount: (existingAttemptCounts.get('produtos') ?? 0) + 1,
+      });
+    if (faixaBatchId)
+      await repository.updateBatch(faixaBatchId, {
+        status: report.faixas.erros > 0 ? 'failed' : 'completed',
+        checkpoint: processedProducts,
+        attemptCount: (existingAttemptCounts.get('faixas') ?? 0) + 1,
+      });
+    // ── Clients batch ──
+    const clientBatchId = batchIds.get('clientes');
+    if (clientBatchId) await repository.updateBatch(clientBatchId, { status: 'running' });
+    let processedClients = 0;
+    for (const write of writes) {
+      if (!write.checkpoints.some((cp) => cp.report === report.clientes)) continue;
+      try {
+        await write.run();
+        processedClients += 1;
+      } catch {
+        const message = 'Não foi possível salvar a unidade importada.';
+        for (const saved of write.checkpoints) rollbackCheckpoint(saved);
+        add(
+          report.clientes,
+          'erros',
+          write.sourceDoctype,
+          write.sourceId,
+          message,
+          write.localKey
+        );
+      }
+    }
+    if (clientBatchId)
+      await repository.updateBatch(clientBatchId, {
+        status: report.clientes.erros > 0 ? 'failed' : 'completed',
+        checkpoint: processedClients,
+        attemptCount: (existingAttemptCounts.get('clientes') ?? 0) + 1,
       });
   }
 
@@ -1464,6 +1500,11 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     knownProducts
   );
   for (const issue of builtQuotations.issues) addDetail(report.orcamentos, issue);
+  // Inject activeRunId into quotation lineage entries.
+  if (activeRunId) {
+    for (const unit of builtQuotations.quotationUnits)
+      for (const entry of unit.lineage) entry.migrationRunId = activeRunId;
+  }
   for (const unit of builtQuotations.quotationUnits) {
     const quotationCheckpoint = checkpoint(report.orcamentos);
     const quotationAction = processQuotationUnit(unit, quotationState, report);
@@ -1524,6 +1565,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       await repository.advanceQuoteSequence(year, lastNumber);
     // Historical PDF archival: replace the size-0 placeholders created above
     // with real Vercel Blob uploads. Skipped when no pipeline is configured.
+    const docBatchId = batchIds.get('documentos');
+    if (docBatchId) await repository.updateBatch(docBatchId, { status: 'running' });
     if (options.pdfPipeline) {
       await archiveHistoricalPdfs({
         repository,
@@ -1531,6 +1574,12 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         pipeline: options.pdfPipeline,
       });
     }
+    if (docBatchId)
+      await repository.updateBatch(docBatchId, {
+        status: report.documentos.erros > 0 ? 'failed' : 'completed',
+        checkpoint: report.documentos.atualizados + report.documentos.ignorados,
+        attemptCount: (existingAttemptCounts.get('documentos') ?? 0) + 1,
+      });
   } else {
     // Dry-run archive analysis: counts + divergences only, no fetch/upload.
     analyzeHistoricalPdfArchive(dataset, builtQuotations.quotationUnits, report);
@@ -1553,11 +1602,19 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       await repository.completeRun(activeRunId, hasBlocking ? 'failed' : 'completed');
     } catch { /* best-effort */ }
   }
+  // Compute manifest status from entity reports (report.total not yet populated).
+  const entityReports = [
+    report.produtos,
+    report.faixas,
+    report.clientes,
+    report.orcamentos,
+    report.documentos,
+  ];
   const manifestStatus: 'completed' | 'failed' =
-    report.total.divergentes + report.total.erros > 0 ? 'failed' : 'completed';
+    entityReports.some((e) => e.divergentes + e.erros > 0) ? 'failed' : 'completed';
   return {
     report: finalizeReport(report),
-    manifest: buildManifest(runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, report, dataset),
+    manifest: buildManifest(activeRunId || runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, report, dataset),
   };
 }
 

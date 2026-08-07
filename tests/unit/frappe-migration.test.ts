@@ -138,7 +138,6 @@ describe('migração Frappe CRM', () => {
             entityType: 'produto',
             localKey: 'OUTRO-SKU',
             canonicalHash: 'a'.repeat(64),
-            legacyPayload: {},
           },
         ],
       },
@@ -160,7 +159,6 @@ describe('migração Frappe CRM', () => {
             entityType: 'faixa',
             localKey: 'OUTRO-SKU',
             canonicalHash: 'b'.repeat(64),
-            legacyPayload: {},
           },
         ],
       },
@@ -182,7 +180,6 @@ describe('migração Frappe CRM', () => {
             entityType: 'cliente',
             localKey: 'LNC-SED-70-30',
             canonicalHash: 'e'.repeat(64),
-            legacyPayload: {},
           },
         ],
       },
@@ -208,7 +205,6 @@ describe('migração Frappe CRM', () => {
             entityType: 'cliente',
             localKey: '00000000-0000-4000-8000-000000000001',
             canonicalHash: 'c'.repeat(64),
-            legacyPayload: {},
           },
           {
             sourceDoctype: 'Lead',
@@ -216,7 +212,6 @@ describe('migração Frappe CRM', () => {
             entityType: 'cliente',
             localKey: '00000000-0000-4000-8000-000000000002',
             canonicalHash: 'd'.repeat(64),
-            legacyPayload: {},
           },
         ],
       },
@@ -484,23 +479,22 @@ describe('migração Frappe CRM', () => {
       );
       assert.equal(result.report.clientes.criados, 2);
       if (mode === 'apply') {
+        // Raw payload is only accessible through the authorized readRawPayload method.
+        const payload1 = await repository.readRawPayload('Customer', customerSourceId);
+        assert.ok(payload1, 'raw payload existe para Customer');
+        assert.equal(payload1?.tax_id, documents[0]);
+        const payload2 = await repository.readRawPayload('Lead', leadSourceId);
+        assert.ok(payload2, 'raw payload existe para Lead');
+        assert.equal(payload2?.tax_id, documents[1]);
+        // loadState() lineage must NOT expose legacyPayload
         const lineage = repository
           .snapshot()
           .lineage.filter((entry) => entry.entityType === 'cliente');
-        assert.equal(
-          lineage.some(
-            (entry) =>
-              entry.sourceId === customerSourceId && entry.legacyPayload?.tax_id === documents[0]
-          ),
-          true
-        );
-        assert.equal(
-          lineage.some(
-            (entry) =>
-              entry.sourceId === leadSourceId && entry.legacyPayload?.tax_id === documents[1]
-          ),
-          true
-        );
+        assert.ok(lineage.length > 0);
+        for (const entry of lineage) {
+          assert.equal((entry as unknown as Record<string, unknown>).legacyPayload, undefined,
+            'loadState lineage não deve expor legacyPayload');
+        }
       }
     }
   });
@@ -1442,7 +1436,6 @@ describe('migração Frappe CRM', () => {
             entityType: 'cliente',
             localKey: 'outra-entidade',
             canonicalHash: 'f'.repeat(64),
-            legacyPayload: {},
           },
         ],
       },
@@ -2006,7 +1999,6 @@ describe('migração Frappe CRM', () => {
       canonicalHash: 'b'.repeat(64),
       sourceHash: 'b'.repeat(64),
       businessNumber: 'ORC-20240042',
-      legacyPayload: {},
     };
     assert.equal(fromDb.sourceHash, fromDb.canonicalHash);
     // Both interfaces expose the same content fingerprint

@@ -429,6 +429,8 @@ export const frappeMigrationBatches = pgTable(
       'frappe_migration_batches_status_check',
       sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`
     ),
+    check('frappe_migration_batches_checkpoint_non_negative_check', sql`${table.checkpoint} >= 0`),
+    check('frappe_migration_batches_attempt_count_non_negative_check', sql`${table.attemptCount} >= 0`),
   ]
 );
 

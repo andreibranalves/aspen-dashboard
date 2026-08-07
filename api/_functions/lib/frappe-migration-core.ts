@@ -259,7 +259,8 @@ export interface ExistingLineage {
    * is `canonical_hash`; this accessor documents the brief contract. */
   sourceHash?: string;
   businessNumber?: string;
-  legacyPayload?: SourceRecord | null;
+  // legacyPayload intentionally excluded from the read-side interface.
+  // Raw Frappe payloads are only accessible via readRawPayload().
 }
 
 export interface ImportDetail {
@@ -421,6 +422,18 @@ export function canonicalJson(value: unknown): string {
 
 export function canonicalHash(value: unknown): string {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
+/** Centralized PII mask for report/CLI messages.  Strips formatted CPF,
+ *  CNPJ and e-mail patterns so no raw PII crosses the report boundary. */
+export function sanitizeReportMessage(message: string): string {
+  // Formatted CPF: XXX.XXX.XXX-XX
+  let result = message.replace(/\d{3}\.\d{3}\.\d{3}-\d{2}/g, (m) => m.slice(0, -2) + '**');
+  // Formatted CNPJ: XX.XXX.XXX/XXXX-XX
+  result = result.replace(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/g, (m) => m.slice(0, -2) + '**');
+  // E-mail addresses
+  result = result.replace(/([\w.-]+)@([\w.-]+\.\w+)/g, (_, user, domain) => `${user[0]}***@${domain}`);
+  return result;
 }
 
 function hashFor(entity: string, value: unknown): string {
