@@ -37,6 +37,7 @@ test('PostgreSQL adapter mapeia contrato de linhagem sem banco externo', async (
     migrationRunId: '00000000-0000-4000-8000-000000000002',
     sourceUpdatedAt,
     importedAt,
+    lineageStatus: 'legacy-unverified',
   };
   const rowsFor = (table: unknown) =>
     table === schema.frappeImportLineage ? [lineageRow] : [];

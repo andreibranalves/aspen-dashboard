@@ -17,8 +17,6 @@ import {
   quoteSequences,
   quotations,
 } from './schema.js';
-/** Capability token required for operational raw-payload reads. */
-export const RAW_PAYLOAD_ACCESS = Symbol('frappe-migration:raw-payload-access');
 
 import type {
   ClientUnit,
@@ -31,7 +29,15 @@ import type {
   QuotationStatus,
   QuotationUnit,
   SourceRecord,
+  LineageVerificationStatus,
 } from '../_functions/lib/frappe-migration-core.js';
+
+/**
+ * Capability token stays module-private: ordinary repository consumers cannot
+ * authorize raw-payload reads. Operational code in this boundary may use it
+ * without exposing the payload through migration state or reports.
+ */
+const RAW_PAYLOAD_ACCESS = Symbol('frappe-migration:raw-payload-access');
 
 export interface ExistingQuotationRevisionItem {
   id: string;
@@ -299,6 +305,7 @@ export function createPostgresFrappeMigrationRepository(
           migrationRunId: row.migrationRunId ?? null,
           sourceUpdatedAt: row.sourceUpdatedAt ?? null,
           importedAt: row.importedAt ?? null,
+          lineageStatus: row.lineageStatus === 'verified' ? 'verified' : 'legacy-unverified',
         })),
         quotations: quotationRows.map((row) => ({
           id: row.id,
@@ -704,7 +711,7 @@ async function upsertLineage(
   for (const entry of entries) {
     const now = new Date();
     const localId = entry.localId || entry.localKey;
-    const sourceHash = entry.sourceHash || entry.canonicalHash;
+    const sourceHash = entry.sourceHash;
     const importedAt = entry.importedAt ?? now;
     await tx
       .insert(frappeImportLineage)
@@ -717,6 +724,7 @@ async function upsertLineage(
         localKey: entry.localKey,
         canonicalHash: entry.canonicalHash,
         sourceHash,
+        lineageStatus: 'verified',
         businessNumber: entry.businessNumber ?? null,
         legacyPayload: entry.legacyPayload,
         migrationRunId: entry.migrationRunId ?? null,
@@ -733,6 +741,7 @@ async function upsertLineage(
           localKey: entry.localKey,
           canonicalHash: entry.canonicalHash,
           sourceHash,
+          lineageStatus: 'verified',
           businessNumber: entry.businessNumber ?? null,
           legacyPayload: entry.legacyPayload,
           migrationRunId: entry.migrationRunId ?? null,
@@ -761,21 +770,24 @@ function normalizeLineage(value: ExistingLineage): ExistingLineage {
   const legacy = value as ExistingLineage & {
     provider?: string;
     localId?: string;
-    sourceHash?: string;
+    sourceHash?: string | null;
     businessNumber?: string | null;
     migrationRunId?: string | null;
     sourceUpdatedAt?: Date | null;
     importedAt?: Date | null;
+    lineageStatus?: LineageVerificationStatus;
   };
   return {
     ...value,
     provider: legacy.provider || 'frappe',
     localId: legacy.localId || legacy.localKey,
-    sourceHash: legacy.sourceHash || legacy.canonicalHash,
+    sourceHash: legacy.sourceHash ?? null,
     businessNumber: legacy.businessNumber ?? null,
     migrationRunId: legacy.migrationRunId ?? null,
     sourceUpdatedAt: legacy.sourceUpdatedAt ?? null,
     importedAt: legacy.importedAt ?? null,
+    lineageStatus:
+      legacy.lineageStatus || (legacy.sourceHash ? 'verified' : 'legacy-unverified'),
   };
 }
 
@@ -789,11 +801,12 @@ function storedLineage(
     provider: entry.provider || 'frappe',
     localId,
     localKey: entry.localKey,
-    sourceHash: entry.sourceHash || entry.canonicalHash,
+    sourceHash: entry.sourceHash,
     businessNumber: entry.businessNumber ?? null,
     migrationRunId: entry.migrationRunId ?? null,
     sourceUpdatedAt: entry.sourceUpdatedAt ?? null,
     importedAt: entry.importedAt ?? importedAt,
+    lineageStatus: 'verified',
   };
 }
 
@@ -895,6 +908,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
         migrationRunId: v.migrationRunId,
         sourceUpdatedAt: v.sourceUpdatedAt,
         importedAt: v.importedAt,
+        lineageStatus: v.lineageStatus,
       })),
       sequences: { ...this.state.sequences },
     };
@@ -1125,6 +1139,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
         migrationRunId: v.migrationRunId,
         sourceUpdatedAt: v.sourceUpdatedAt,
         importedAt: v.importedAt,
+        lineageStatus: v.lineageStatus,
       })),
       sequences: { ...this.state.sequences },
     };

@@ -176,6 +176,25 @@ function sameValue(left: unknown, right: unknown): boolean {
   return canonicalHash(left) === canonicalHash(right);
 }
 
+/**
+ * A source is unchanged only when the complete source payload hash and the
+ * source's last-modified timestamp both match a verified lineage row.
+ * Historical rows without a source hash must be reconciled, never treated as
+ * equivalent because their old canonical hash happened to match.
+ */
+function sourceLineageMatches(
+  previous: ExistingLineage | undefined,
+  current: FrappeLineageEntry
+): boolean {
+  return Boolean(
+    previous &&
+    previous.lineageStatus === 'verified' &&
+    previous.sourceHash !== null &&
+    previous.sourceHash === current.sourceHash &&
+    sameValue(previous.sourceUpdatedAt, current.sourceUpdatedAt)
+  );
+}
+
 function productIdentity(product: NormalizedProduct): Record<string, unknown> {
   return {
     sku: product.sku,
@@ -594,8 +613,19 @@ function processProductUnit(
     sameValue(productCurrentIdentity(existing), productIdentity(unit.product)) &&
     sameValue(currentPricingIdentity(existing), pricingIdentity(unit))
   );
+  const lineageSame = unit.lineage.every((entry) => {
+    const old = lineageFor(state, entry.sourceDoctype, entry.sourceId);
+    return Boolean(
+      old &&
+      old.entityType === entry.entityType &&
+      old.localKey === entry.localKey &&
+      sourceLineageMatches(old, entry)
+    );
+  });
   const itemSame = Boolean(
-    previous && previous.canonicalHash === importedProductHash(unit.product)
+    previous &&
+    previous.canonicalHash === importedProductHash(unit.product) &&
+    lineageSame
   );
   if (productSame && itemSame)
     add(
@@ -628,7 +658,11 @@ function processProductUnit(
         'Faixa nova.',
         unit.product.sku
       );
-    else if (old.canonicalHash === entry.canonicalHash && old.localKey === entry.localKey)
+    else if (
+      old.canonicalHash === entry.canonicalHash &&
+      old.localKey === entry.localKey &&
+      sourceLineageMatches(old, entry)
+    )
       add(
         report.faixas,
         'ignorados',
@@ -647,9 +681,7 @@ function processProductUnit(
         unit.product.sku
       );
   }
-  const hasNewLineage = unit.lineage.some(
-    (entry) => !lineageFor(state, entry.sourceDoctype, entry.sourceId)
-  );
+  const hasNewLineage = !lineageSame;
   return {
     write: !productSame || !itemSame || hasNewLineage,
     lineageOnly: productSame && itemSame && hasNewLineage,
@@ -728,11 +760,15 @@ function processClientUnit(
   const exact = Boolean(
     existing &&
     sameValue(currentClientIdentity(existing), clientIdentity(unit.client)) &&
-    unit.lineage.every(
-      (entry) =>
-        lineageFor(state, entry.sourceDoctype, entry.sourceId)?.canonicalHash ===
-        entry.canonicalHash
-    )
+    unit.lineage.every((entry) => {
+      const old = lineageFor(state, entry.sourceDoctype, entry.sourceId);
+      return Boolean(
+        old &&
+        old.entityType === entry.entityType &&
+        old.canonicalHash === entry.canonicalHash &&
+        sourceLineageMatches(old, entry)
+      );
+    })
   );
   if (exact)
     add(
@@ -817,7 +853,15 @@ function processQuotationUnit(
       source.businessNumber
     );
   }
-  if (previous && previous.canonicalHash === unit.sourceHash) {
+  const currentLineage = unit.lineage[0];
+  const exact = Boolean(
+    previous &&
+    currentLineage &&
+    previous.canonicalHash === currentLineage.canonicalHash &&
+    previous.localKey === currentLineage.localKey &&
+    sourceLineageMatches(previous, currentLineage)
+  );
+  if (exact) {
     add(
       report.orcamentos,
       'ignorados',
@@ -1267,6 +1311,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   // Dry-run never touches the database.
   const batchIds = new Map<string, string>();
   const existingAttemptCounts = new Map<string, number>();
+  const persistedCheckpoints = new Map<string, number>();
+  const phaseCursors = new Map<string, number>();
   let trackingFailed = false;
   const failTracking = (operation: string, error: unknown): void => {
     trackingFailed = true;
@@ -1389,16 +1435,15 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       for (const batch of existingBatches) {
         batchIds.set(batch.entityType, batch.id);
         existingAttemptCounts.set(batch.entityType, batch.attemptCount);
-        // Reset interrupted work before retrying. Completed batches remain
-        // reusable, but the final pass below seals every batch status.
+        // Checkpoint is a source cursor. Never reset it on resume: confirmed
+        // units before this cursor must not be processed again.
+        persistedCheckpoints.set(batch.entityType, batch.checkpoint);
+        phaseCursors.set(batch.entityType, batch.checkpoint);
         if (batch.status === 'failed' || batch.status === 'running') {
           try {
-            await repository.updateBatch(batch.id, {
-              status: 'pending',
-              checkpoint: 0,
-            });
+            await repository.updateBatch(batch.id, { status: 'pending' });
           } catch (error) {
-            failTracking(`updateBatch:reset:${batch.entityType}`, error);
+            failTracking(`updateBatch:resume:${batch.entityType}`, error);
           }
         }
       }
@@ -1426,6 +1471,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       try {
         await repository.createBatch({ id: batchId, runId: activeRunId!, entityType });
         batchIds.set(entityType, batchId);
+        persistedCheckpoints.set(entityType, 0);
+        phaseCursors.set(entityType, 0);
       } catch (error) {
         failTracking(`createBatch:${entityType}`, error);
         await failActiveRun('markBatchFailed:createBatch');
@@ -1492,6 +1539,10 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     );
   }
   const writes: Array<{
+    phase: 'produtos' | 'clientes' | 'orcamentos';
+    cursor: number;
+    blocked?: boolean;
+    faixaCursor?: number;
     run: () => Promise<void>;
     checkpoints: ReportCheckpoint[];
     sourceDoctype: string;
@@ -1500,7 +1551,10 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     pricingSources: Array<{ sourceDoctype: string; sourceId: string; localKey: string }>;
   }> = [];
   const plannedClientUnits: ClientUnit[] = [];
-  for (const unit of normalized.productUnits) {
+  const productStart = persistedCheckpoints.get('produtos') ?? 0;
+  let faixaCursor = persistedCheckpoints.get('faixas') ?? 0;
+  for (const [productIndex, unit] of normalized.productUnits.entries()) {
+    if (productIndex < productStart) continue;
     const productCheckpoint = checkpoint(report.produtos);
     const pricingCheckpoint = checkpoint(report.faixas);
     const action = processProductUnit(
@@ -1514,37 +1568,52 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     );
     sealCheckpoint(productCheckpoint);
     sealCheckpoint(pricingCheckpoint);
-    if (action.write)
-      writes.push({
-        run: () => repository.applyProductUnit(unit),
-        checkpoints: [productCheckpoint, pricingCheckpoint],
-        sourceDoctype: 'Item',
-        sourceId: unit.product.sourceId,
-        localKey: unit.product.sku,
-        pricingSources: unit.lineage
-          .filter((entry) => entry.entityType === 'faixa')
-          .map((entry) => ({
-            sourceDoctype: entry.sourceDoctype,
-            sourceId: entry.sourceId,
-            localKey: entry.localKey,
-          })),
-      });
+    const blocked = [...productCheckpoint.addedDetails, ...pricingCheckpoint.addedDetails].some(
+      (detail) => detail.status === 'divergentes' || detail.status === 'erros'
+    );
+    const nextFaixaCursor =
+      faixaCursor + unit.lineage.filter((entry) => entry.entityType === 'faixa').length;
+    writes.push({
+      phase: 'produtos',
+      cursor: productIndex + 1,
+      blocked,
+      faixaCursor: nextFaixaCursor,
+      run: !blocked && action.write ? () => repository.applyProductUnit(unit) : async () => undefined,
+      checkpoints: [productCheckpoint, pricingCheckpoint],
+      sourceDoctype: 'Item',
+      sourceId: unit.product.sourceId,
+      localKey: unit.product.sku,
+      pricingSources: unit.lineage
+        .filter((entry) => entry.entityType === 'faixa')
+        .map((entry) => ({
+          sourceDoctype: entry.sourceDoctype,
+          sourceId: entry.sourceId,
+          localKey: entry.localKey,
+        })),
+    });
+    faixaCursor = nextFaixaCursor;
   }
-  for (const unit of normalized.clientUnits) {
+  const clientStart = persistedCheckpoints.get('clientes') ?? 0;
+  for (const [clientIndex, unit] of normalized.clientUnits.entries()) {
+    if (clientIndex < clientStart) continue;
     const clientCheckpoint = checkpoint(report.clientes);
     const clientAction = processClientUnit(unit, state, report);
     sealCheckpoint(clientCheckpoint);
-    if (clientAction) {
-      writes.push({
-        run: () => repository.applyClientUnit(unit),
-        checkpoints: [clientCheckpoint],
-        sourceDoctype: unit.client.sourceDoctype,
-        sourceId: unit.client.sourceId,
-        localKey: unit.client.localKey,
-        pricingSources: [],
-      });
-      plannedClientUnits.push(unit);
-    }
+    const blocked = clientCheckpoint.addedDetails.some(
+      (detail) => detail.status === 'divergentes' || detail.status === 'erros'
+    );
+    writes.push({
+      phase: 'clientes',
+      cursor: clientIndex + 1,
+      blocked,
+      run: !blocked && clientAction ? () => repository.applyClientUnit(unit) : async () => undefined,
+      checkpoints: [clientCheckpoint],
+      sourceDoctype: unit.client.sourceDoctype,
+      sourceId: unit.client.sourceId,
+      localKey: unit.client.localKey,
+      pricingSources: [],
+    });
+    if (clientAction) plannedClientUnits.push(unit);
   }
   if (options.mode === 'apply') {
     // Each callback is deliberately awaited independently. A failed product
@@ -1556,9 +1625,28 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     await updateBatchTracked(prodBatchId, { status: 'running' }, 'updateBatch:produtos:running');
     await updateBatchTracked(faixaBatchId, { status: 'running' }, 'updateBatch:faixas:running');
     for (const write of writes) {
-      if (!write.checkpoints.some((cp) => cp.report === report.produtos || cp.report === report.faixas)) continue;
+      if (write.phase !== 'produtos') continue;
       try {
         await write.run();
+        const previousProductCursor =
+          phaseCursors.get('produtos') ?? persistedCheckpoints.get('produtos') ?? 0;
+        if (!write.blocked && write.cursor === previousProductCursor + 1) {
+          phaseCursors.set('produtos', write.cursor);
+          await updateBatchTracked(
+            prodBatchId,
+            { checkpoint: write.cursor },
+            'updateBatch:produtos:checkpoint'
+          );
+          if (write.faixaCursor !== undefined) {
+            phaseCursors.set('faixas', write.faixaCursor);
+            await updateBatchTracked(
+              faixaBatchId,
+              { checkpoint: write.faixaCursor },
+              'updateBatch:faixas:checkpoint'
+            );
+          }
+        }
+        if (trackingFailed) break;
       } catch {
         const message = 'Não foi possível salvar a unidade importada.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1584,13 +1672,14 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
               price.localKey
             );
         }
+        continue;
       }
     }
     await updateBatchTracked(
       prodBatchId,
       {
         status: entityFailed(report.produtos) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.produtos),
+        checkpoint: phaseCursors.get('produtos') ?? persistedCheckpoints.get('produtos') ?? 0,
         attemptCount: (existingAttemptCounts.get('produtos') ?? 0) + 1,
       },
       'updateBatch:produtos:final'
@@ -1599,7 +1688,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       faixaBatchId,
       {
         status: entityFailed(report.faixas) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.faixas),
+        checkpoint: phaseCursors.get('faixas') ?? persistedCheckpoints.get('faixas') ?? 0,
         attemptCount: (existingAttemptCounts.get('faixas') ?? 0) + 1,
       },
       'updateBatch:faixas:final'
@@ -1608,9 +1697,20 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const clientBatchId = batchIds.get('clientes');
     await updateBatchTracked(clientBatchId, { status: 'running' }, 'updateBatch:clientes:running');
     for (const write of writes) {
-      if (!write.checkpoints.some((cp) => cp.report === report.clientes)) continue;
+      if (write.phase !== 'clientes') continue;
       try {
         await write.run();
+        const previousClientCursor =
+          phaseCursors.get('clientes') ?? persistedCheckpoints.get('clientes') ?? 0;
+        if (!write.blocked && write.cursor === previousClientCursor + 1) {
+          phaseCursors.set('clientes', write.cursor);
+          await updateBatchTracked(
+            clientBatchId,
+            { checkpoint: write.cursor },
+            'updateBatch:clientes:checkpoint'
+          );
+        }
+        if (trackingFailed) break;
       } catch {
         const message = 'Não foi possível salvar a unidade importada.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1622,13 +1722,14 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
           message,
           write.localKey
         );
+        continue;
       }
     }
     await updateBatchTracked(
       clientBatchId,
       {
         status: entityFailed(report.clientes) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.clientes),
+        checkpoint: phaseCursors.get('clientes') ?? persistedCheckpoints.get('clientes') ?? 0,
         attemptCount: (existingAttemptCounts.get('clientes') ?? 0) + 1,
       },
       'updateBatch:clientes:final'
@@ -1709,27 +1810,45 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     for (const unit of builtQuotations.quotationUnits)
       for (const entry of unit.lineage) entry.migrationRunId = activeRunId;
   }
-  for (const unit of builtQuotations.quotationUnits) {
+  const quotationStart = persistedCheckpoints.get('orcamentos') ?? 0;
+  for (const [quotationIndex, unit] of builtQuotations.quotationUnits.entries()) {
+    if (quotationIndex < quotationStart) continue;
     const quotationCheckpoint = checkpoint(report.orcamentos);
     const quotationAction = processQuotationUnit(unit, quotationState, report);
     sealCheckpoint(quotationCheckpoint);
-    if (quotationAction)
-      writes.push({
-        run: () => repository.applyQuotationUnit(unit),
-        checkpoints: [quotationCheckpoint],
-        sourceDoctype: 'Quotation',
-        sourceId: unit.quotation.sourceId,
-        localKey: unit.quotation.businessNumber,
-        pricingSources: [],
-      });
+    const blocked = quotationCheckpoint.addedDetails.some(
+      (detail) => detail.status === 'divergentes' || detail.status === 'erros'
+    );
+    writes.push({
+      phase: 'orcamentos',
+      cursor: quotationIndex + 1,
+      blocked,
+      run: !blocked && quotationAction ? () => repository.applyQuotationUnit(unit) : async () => undefined,
+      checkpoints: [quotationCheckpoint],
+      sourceDoctype: 'Quotation',
+      sourceId: unit.quotation.sourceId,
+      localKey: unit.quotation.businessNumber,
+      pricingSources: [],
+    });
   }
   if (options.mode === 'apply') {
     const qBatchId = batchIds.get('orcamentos');
     await updateBatchTracked(qBatchId, { status: 'running' }, 'updateBatch:orcamentos:running');
     for (const write of writes) {
-      if (!write.checkpoints.some((saved) => saved.report === report.orcamentos)) continue;
+      if (write.phase !== 'orcamentos') continue;
       try {
         await write.run();
+        const previousQuotationCursor =
+          phaseCursors.get('orcamentos') ?? persistedCheckpoints.get('orcamentos') ?? 0;
+        if (!write.blocked && write.cursor === previousQuotationCursor + 1) {
+          phaseCursors.set('orcamentos', write.cursor);
+          await updateBatchTracked(
+            qBatchId,
+            { checkpoint: write.cursor },
+            'updateBatch:orcamentos:checkpoint'
+          );
+        }
+        if (trackingFailed) break;
       } catch {
         const message = 'Não foi possível salvar o orçamento importado.';
         for (const saved of write.checkpoints) rollbackCheckpoint(saved);
@@ -1745,13 +1864,14 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
             message,
             write.localKey
           );
+        continue;
       }
     }
     await updateBatchTracked(
       qBatchId,
       {
         status: entityFailed(report.orcamentos) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.orcamentos),
+        checkpoint: phaseCursors.get('orcamentos') ?? persistedCheckpoints.get('orcamentos') ?? 0,
         attemptCount: (existingAttemptCounts.get('orcamentos') ?? 0) + 1,
       },
       'updateBatch:orcamentos:final'
@@ -1790,11 +1910,13 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         pipeline: options.pdfPipeline,
       });
     }
+    if (!entityFailed(report.documentos))
+      phaseCursors.set('documentos', entityCheckpoint(report.documentos));
     await updateBatchTracked(
       docBatchId,
       {
         status: entityFailed(report.documentos) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.documentos),
+        checkpoint: phaseCursors.get('documentos') ?? persistedCheckpoints.get('documentos') ?? 0,
         attemptCount: (existingAttemptCounts.get('documentos') ?? 0) + 1,
       },
       'updateBatch:documentos:final'
@@ -1810,23 +1932,23 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     const finalBatchState: Record<string, { status: string; checkpoint: number }> = {
       produtos: {
         status: entityFailed(report.produtos) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.produtos),
+        checkpoint: phaseCursors.get('produtos') ?? persistedCheckpoints.get('produtos') ?? 0,
       },
       faixas: {
         status: entityFailed(report.faixas) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.faixas),
+        checkpoint: phaseCursors.get('faixas') ?? persistedCheckpoints.get('faixas') ?? 0,
       },
       clientes: {
         status: entityFailed(report.clientes) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.clientes),
+        checkpoint: phaseCursors.get('clientes') ?? persistedCheckpoints.get('clientes') ?? 0,
       },
       orcamentos: {
         status: entityFailed(report.orcamentos) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.orcamentos),
+        checkpoint: phaseCursors.get('orcamentos') ?? persistedCheckpoints.get('orcamentos') ?? 0,
       },
       documentos: {
         status: entityFailed(report.documentos) ? 'failed' : 'completed',
-        checkpoint: entityCheckpoint(report.documentos),
+        checkpoint: phaseCursors.get('documentos') ?? persistedCheckpoints.get('documentos') ?? 0,
       },
     };
     for (const entityType of BATCH_ENTITY_TYPES) {

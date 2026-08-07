@@ -223,6 +223,7 @@ export interface QuotationUnit {
   items: QuotationItemUnit[];
   document: IssuedDocumentUnit | null;
   lineage: FrappeLineageEntry[];
+  /** Source hash of the complete quotation payload, including metadata. */
   sourceHash: string;
 }
 
@@ -253,6 +254,8 @@ export interface ExistingClient {
   address?: ClientAddress | null;
 }
 
+export type LineageVerificationStatus = 'verified' | 'legacy-unverified';
+
 export interface ExistingLineage {
   provider: string;
   sourceDoctype: string;
@@ -261,13 +264,16 @@ export interface ExistingLineage {
   localId: string;
   localKey: string;
   canonicalHash: string;
-  sourceHash: string;
+  /** Null for historical rows that predate source-payload hashing. */
+  sourceHash: string | null;
   businessNumber: string | null;
   migrationRunId: string | null;
   sourceUpdatedAt: Date | null;
   importedAt: Date | null;
+  /** Historical rows remain auditable but unverified until re-imported. */
+  lineageStatus?: LineageVerificationStatus;
   // legacyPayload intentionally excluded from the read-side interface.
-  // Raw Frappe payloads are only accessible with RAW_PAYLOAD_ACCESS.
+  // Raw Frappe payloads are only accessible through an internal repository boundary.
 }
 
 export interface ImportDetail {
@@ -1310,7 +1316,7 @@ export function buildQuotationUnits(
       items,
       document,
       lineage,
-      sourceHash: canonicalHashValue,
+      sourceHash: sourceHashFor(quotation.source),
     };
     quotationUnits.push(unit);
     itemUnits.push(...items);

@@ -91,3 +91,32 @@ node scripts/migrate-frappe-crm.mjs --dry-run --fixture <blocking fixture>
 - PostgreSQL integration tests remain skipped without `TEST_DATABASE_URL`; adapter mapping is covered with a fake database only.
 - Migration 0013 backfills `source_hash` from `canonical_hash` for rows already stored before the new source fingerprint was available.
 - Raw payload access is capability-gated in the repository; deployment-level authorization and retention purge remain operational responsibilities.
+
+## Fix Round 3
+
+### Corrections
+
+- `processProductUnit`, `processClientUnit` and `processQuotationUnit` now require verified lineage plus matching hashes of the complete source payload and `source_updated_at` before reporting a no-op.
+- Source-only metadata changes now persist lineage updates even when normalized local fields are unchanged.
+- Quotation units now carry the complete source-payload hash instead of the normalized canonical hash in `sourceHash`.
+- Resume preserves persisted batch cursors and skips confirmed source units instead of resetting checkpoints to zero.
+- Cursors advance after each successful or no-op unit; a failed write remains the next cursor and is retried.
+- Historical lineage is explicit: `source_hash` is nullable, `lineage_status` distinguishes `verified` from `legacy-unverified`, migration 0014 clears the old canonical-hash backfill, and re-import reconciles legacy rows before completion.
+- `RAW_PAYLOAD_ACCESS` is module-private; unauthorised repository calls return null and the export boundary is tested.
+
+### Tests added or updated
+
+- Source-only payload and modified-timestamp tests cover products, clients and quotations, including identical-source no-op reruns.
+- Synthetic resume test verifies a failure after one product preserves checkpoint 1 and the retry performs only the remaining write.
+- Synthetic legacy-unverified reconciliation test verifies canonical hashes are not accepted as source hashes.
+- Focused migration, repository and adapter tests pass: 73 tests, 70 passed, 3 skipped without `TEST_DATABASE_URL`.
+- Full unit suite passes: 550 tests, 538 passed, 12 skipped.
+- `npm run build` passes.
+- `npx drizzle-kit check` passes.
+- `npm run lint` reports 0 errors and 196 warnings.
+
+### Concerns
+
+- PostgreSQL integration tests remain skipped without `TEST_DATABASE_URL`.
+- Historical rows require the 0014 migration before production reconciliation; no production database was available in this run.
+- PDF archival checkpointing remains coarse because the existing archival seam exposes placeholders as a whole-list operation.

@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import {
-  MemoryFrappeMigrationRepository,
-  RAW_PAYLOAD_ACCESS,
-} from '../../api/_db/frappe-migration-repository.js';
+import * as migrationRepositoryModule from '../../api/_db/frappe-migration-repository.js';
+import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import { runFrappeMigration, type FrappeDataset } from '../../api/_functions/frappe-migration.js';
 
 const MINIMAL_DATASET: FrappeDataset = {
@@ -42,15 +40,14 @@ describe('MemoryFrappeMigrationRepository', () => {
     const repository = new MemoryFrappeMigrationRepository();
     await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
     assert.equal(await repository.readRawPayload('Item', 'ITEM-T1'), null);
-    const payload = await repository.readRawPayload('Item', 'ITEM-T1', RAW_PAYLOAD_ACCESS);
-    assert.ok(payload, 'payload deve existir para Item importado');
-    assert.equal(payload.item_code, 'SKU-T1');
-    // Non-existent entry returns null
-    const missing = await repository.readRawPayload(
-      'Item',
-      'NONEXISTENT',
-      RAW_PAYLOAD_ACCESS
+    assert.equal(await repository.readRawPayload('Item', 'ITEM-T1'), null);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(migrationRepositoryModule, 'RAW_PAYLOAD_ACCESS'),
+      false,
+      'capability não pode ser exportada'
     );
+    // Non-existent entry returns null
+    const missing = await repository.readRawPayload('Item', 'NONEXISTENT');
     assert.equal(missing, null);
   });
 
@@ -98,12 +95,12 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.equal(lineage[0].migrationRunId, runId);
     assert.equal(lineage[0].localId, 'SKU-R1');
     assert.equal(lineage[0].localKey, 'SKU-R1');
+    assert.ok(lineage[0].sourceHash);
     assert.match(lineage[0].sourceHash, /^[0-9a-f]{64}$/);
     assert.notEqual(lineage[0].sourceHash, lineage[0].canonicalHash);
     assert.equal(lineage[0].sourceUpdatedAt, null);
     assert.ok(lineage[0].importedAt instanceof Date);
-    const payload = await repository.readRawPayload('Item', 'ITEM-R1', RAW_PAYLOAD_ACCESS);
-    assert.ok(payload, 'raw payload exists');
+    assert.equal(await repository.readRawPayload('Item', 'ITEM-R1'), null);
   });
 
   it('persiste todos os campos de linhagem, inclusive timestamp e número comercial', async () => {
@@ -171,6 +168,7 @@ describe('MemoryFrappeMigrationRepository', () => {
       assert.equal(entry.provider, 'frappe');
       assert.equal(entry.migrationRunId, runId);
       assert.equal(entry.localId, entry.localKey);
+      assert.ok(entry.sourceHash);
       assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
       assert.ok(entry.importedAt instanceof Date);
     }
@@ -355,5 +353,49 @@ describe('MemoryFrappeMigrationRepository', () => {
     assert.equal(result.manifest.status, 'failed');
     assert.ok(result.report.total.erros > 0);
     assert.ok(repository.batches.every((batch) => !['pending', 'running'].includes(batch.status)));
+  });
+
+  it('reconcilia linhagem legacy-unverified sem tratar canonical_hash como source_hash', async () => {
+    const repository = new MemoryFrappeMigrationRepository({
+      state: {
+        products: [
+          {
+            sku: 'SKU-T1',
+            nome: 'Produto Teste',
+            descricao: '',
+            unidade: 'Und',
+            categoria: null,
+            marca: null,
+            ativo: true,
+            precoBase: null,
+            precos: [],
+          },
+        ],
+        lineage: [
+          {
+            provider: 'frappe',
+            sourceDoctype: 'Item',
+            sourceId: 'ITEM-T1',
+            entityType: 'produto',
+            localId: 'SKU-T1',
+            localKey: 'SKU-T1',
+            canonicalHash: 'a'.repeat(64),
+            sourceHash: null,
+            lineageStatus: 'legacy-unverified',
+            businessNumber: null,
+            migrationRunId: null,
+            sourceUpdatedAt: null,
+            importedAt: null,
+          },
+        ],
+      },
+    });
+    const result = await runFrappeMigration({ mode: 'apply', dataset: MINIMAL_DATASET, repository });
+    assert.equal(result.report.produtos.atualizados, 1);
+    const reconciled = repository.snapshot().lineage.find((entry) => entry.sourceId === 'ITEM-T1');
+    assert.ok(reconciled);
+    assert.equal(reconciled.lineageStatus, 'verified');
+    assert.ok(reconciled.sourceHash);
+    assert.notEqual(reconciled.sourceHash, reconciled.canonicalHash);
   });
 });

@@ -16,10 +16,8 @@ import {
   type HistoricalPdfPipeline,
   type ExistingLineage,
 } from '../../api/_functions/frappe-migration.js';
-import {
-  MemoryFrappeMigrationRepository,
-  RAW_PAYLOAD_ACCESS,
-} from '../../api/_db/frappe-migration-repository.js';
+import * as migrationRepositoryModule from '../../api/_db/frappe-migration-repository.js';
+import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import {
   isValidPdfBuffer,
   quotationPdfChecksum,
@@ -518,20 +516,21 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       assert.equal(result.report.clientes.criados, 2);
       if (mode === 'apply') {
         // Raw payload is only accessible through the authorized readRawPayload method.
-        const payload1 = await repository.readRawPayload(
-          'Customer',
-          customerSourceId,
-          RAW_PAYLOAD_ACCESS
+        assert.equal(
+          await repository.readRawPayload('Customer', customerSourceId),
+          null,
+          'raw payload requer boundary operacional interno'
         );
-        assert.ok(payload1, 'raw payload existe para Customer');
-        assert.equal(payload1?.tax_id, documents[0]);
-        const payload2 = await repository.readRawPayload(
-          'Lead',
-          leadSourceId,
-          RAW_PAYLOAD_ACCESS
+        assert.equal(
+          await repository.readRawPayload('Lead', leadSourceId),
+          null,
+          'raw payload requer boundary operacional interno'
         );
-        assert.ok(payload2, 'raw payload existe para Lead');
-        assert.equal(payload2?.tax_id, documents[1]);
+        assert.equal(
+          Object.prototype.hasOwnProperty.call(migrationRepositoryModule, 'RAW_PAYLOAD_ACCESS'),
+          false,
+          'capability não pode ser exportada'
+        );
         // loadState() lineage must NOT expose legacyPayload
         const lineage = repository
           .snapshot()
@@ -1902,6 +1901,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       assert.equal(entry.provider, 'frappe');
       assert.equal(entry.migrationRunId, run.id);
       assert.ok(entry.localId);
+      assert.ok(entry.sourceHash);
       assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
       assert.ok(entry.importedAt instanceof Date);
     }
@@ -1974,10 +1974,12 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
   // ── Fix round 0 / pre-review tests ──────────────────────────────────
 
   it('resume retoma batch com falha e incrementa attemptCount preservando checkpoint', async () => {
-    const repository = new MemoryFrappeMigrationRepository({ failProductSku: 'LNC-SED-70-30' });
+    // Source order is stable; fail after the first product so checkpoint 1
+    // proves resume starts at the persisted cursor.
+    const repository = new MemoryFrappeMigrationRepository({ failProductSku: 'ECO-30' });
     const dataset = createFrappeMigrationFixture();
 
-    // First run: products batch will fail (LNC-SED-70-30 throws)
+    // First run: products batch fails after LNC-SED-70-30 succeeds.
     const first = await runFrappeMigration({ mode: 'apply', dataset, repository });
     assert.equal(first.report.produtos.erros, 1);
     assert.ok(repository.batches.length >= 2);
@@ -1985,10 +1987,11 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.ok(productsBatch);
     assert.equal(productsBatch.status, 'failed');
     assert.equal(productsBatch.attemptCount, 1);
-    assert.ok(productsBatch.checkpoint >= 1, 'checkpoint deve refletir writes antes da falha');
+    assert.equal(productsBatch.checkpoint, 1);
     const firstRunId = repository.runs[0].id;
+    const productTransactionsBeforeResume = repository.transactions.products;
 
-    // Second run: same dataset, same manifest hash - should resume
+    // Second run: same dataset, same manifest hash - should resume at cursor 1
     repository.failProductSku = undefined;
     const second = await runFrappeMigration({ mode: 'apply', dataset, repository });
     assert.equal(second.report.produtos.criados, 1);
@@ -2001,6 +2004,8 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(resumedBatch.id, productsBatch.id);
     assert.equal(resumedBatch.attemptCount, 2);
     assert.equal(resumedBatch.status, 'completed');
+    assert.equal(resumedBatch.checkpoint, 2);
+    assert.equal(repository.transactions.products, productTransactionsBeforeResume + 1);
   });
 
   it('lineage persiste business_number de orçamento com fonte canônica', async () => {
@@ -2060,6 +2065,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       sourceUpdatedAt: null,
       importedAt: null,
     };
+    assert.ok(fromDb.sourceHash);
     assert.match(fromDb.sourceHash, /^[0-9a-f]{64}$/);
     assert.match(fromDb.canonicalHash, /^[0-9a-f]{64}$/);
     assert.notEqual(fromDb.sourceHash, fromDb.canonicalHash);
@@ -2079,6 +2085,114 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     for (const entry of lineageAfter) {
       assert.ok(entry.businessNumber);
     }
+  });
+
+  it('atualiza produto quando somente payload-fonte ou modified muda e converge para no-op', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset: FrappeDataset = {
+      items: [
+        {
+          name: 'ITEM-SOURCE-ONLY',
+          item_code: 'SKU-SOURCE-ONLY',
+          item_name: 'Produto',
+          modified: '2024-01-01 00:00:00',
+          custom_metadata: 'v1',
+        },
+      ],
+      pricingRules: [],
+      itemPrices: [],
+      customers: [],
+      leads: [],
+    };
+    await runFrappeMigration({ mode: 'apply', dataset, repository });
+    const before = repository.snapshot().lineage.find((entry) => entry.sourceId === 'ITEM-SOURCE-ONLY');
+    const changed = {
+      ...dataset,
+      items: [{ ...dataset.items[0], modified: '2024-01-02 00:00:00', custom_metadata: 'v2' }],
+    };
+    const updated = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    assert.equal(updated.report.produtos.atualizados, 1);
+    const after = repository.snapshot().lineage.find((entry) => entry.sourceId === 'ITEM-SOURCE-ONLY');
+    assert.ok(before && after);
+    assert.notEqual(after.sourceHash, before.sourceHash);
+    assert.equal(after.sourceUpdatedAt?.toISOString(), '2024-01-02T00:00:00.000Z');
+    const rerun = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    assert.equal(rerun.report.produtos.ignorados, 1);
+  });
+
+  it('atualiza cliente quando somente payload-fonte ou modified muda e converge para no-op', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset: FrappeDataset = {
+      items: [],
+      customers: [
+        {
+          name: 'CUST-SOURCE-ONLY',
+          customer_name: 'Cliente',
+          tax_id: '11223344556',
+          modified: '2024-02-01 00:00:00',
+          custom_metadata: 'v1',
+        },
+      ],
+      leads: [],
+    };
+    await runFrappeMigration({ mode: 'apply', dataset, repository });
+    const before = repository.snapshot().lineage.find((entry) => entry.sourceId === 'CUST-SOURCE-ONLY');
+    const changed = {
+      ...dataset,
+      customers: [{ ...dataset.customers?.[0], modified: '2024-02-02 00:00:00', custom_metadata: 'v2' }],
+    };
+    const updated = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    assert.equal(updated.report.clientes.atualizados, 1);
+    const after = repository.snapshot().lineage.find((entry) => entry.sourceId === 'CUST-SOURCE-ONLY');
+    assert.ok(before && after);
+    assert.notEqual(after.sourceHash, before.sourceHash);
+    assert.equal(after.sourceUpdatedAt?.toISOString(), '2024-02-02T00:00:00.000Z');
+    const rerun = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    assert.equal(rerun.report.clientes.ignorados, 1);
+  });
+
+  it('atualiza orçamento quando somente payload-fonte ou modified muda e converge para no-op', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset: FrappeDataset = {
+      items: [{ name: 'ITEM-Q-SOURCE-ONLY', item_code: 'SKU-Q-SOURCE-ONLY', item_name: 'Produto' }],
+      customers: [{ name: 'CUST-Q-SOURCE-ONLY', customer_name: 'Cliente', tax_id: '11223344556' }],
+      leads: [],
+      quotations: [
+        {
+          name: 'QTN-2024-00061',
+          creation: '2024-03-01 00:00:00',
+          modified: '2024-03-01 00:00:00',
+          quotation_to: 'Customer',
+          customer: 'CUST-Q-SOURCE-ONLY',
+          status: 'Draft',
+          custom_metadata: 'v1',
+          items: [
+            {
+              idx: 1,
+              item_code: 'SKU-Q-SOURCE-ONLY',
+              qty: '1',
+              rate: '5.00',
+              price_list_rate: '5.00',
+              amount: '5.00',
+            },
+          ],
+        },
+      ],
+    };
+    await runFrappeMigration({ mode: 'apply', dataset, repository });
+    const before = repository.snapshot().lineage.find((entry) => entry.sourceId === 'QTN-2024-00061');
+    const changed = {
+      ...dataset,
+      quotations: [{ ...dataset.quotations?.[0], modified: '2024-03-02 00:00:00', custom_metadata: 'v2' }],
+    };
+    const updated = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    assert.equal(updated.report.orcamentos.atualizados, 1);
+    const after = repository.snapshot().lineage.find((entry) => entry.sourceId === 'QTN-2024-00061');
+    assert.ok(before && after);
+    assert.notEqual(after.sourceHash, before.sourceHash);
+    assert.equal(after.sourceUpdatedAt?.toISOString(), '2024-03-02T00:00:00.000Z');
+    const rerun = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    assert.equal(rerun.report.orcamentos.ignorados, 1);
   });
 });
 
