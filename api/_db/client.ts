@@ -50,3 +50,10 @@ export function getDatabase(): AppDatabase {
   }
   return cachedConnection.db;
 }
+
+/** Close the cached pool for one-shot workers and migration CLIs. */
+export async function closeDatabase(): Promise<void> {
+  const connection = cachedConnection;
+  cachedConnection = undefined;
+  if (connection) await connection.client.end({ timeout: 5 });
+}

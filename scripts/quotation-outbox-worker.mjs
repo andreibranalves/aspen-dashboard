@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
+import { closeDatabase } from '../api/_db/client.js';
 import { createPostgresQuotationOutboxRepository } from '../api/_db/quotation-outbox-repository.js';
 import {
   createConfiguredQuotationOutboxProviderAdapters,
@@ -47,5 +48,13 @@ if (missing.length > 0) {
       error_class: error instanceof Error ? error.name : 'Error',
     }));
     process.exitCode = 1;
+  } finally {
+    await closeDatabase().catch((error) => {
+      console.error(JSON.stringify({
+        error: 'Worker de outbox não conseguiu fechar o banco.',
+        error_class: error instanceof Error ? error.name : 'Error',
+      }));
+      process.exitCode = 1;
+    });
   }
 }

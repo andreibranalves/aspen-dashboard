@@ -17,6 +17,7 @@ export interface QuotationOutboxProviderContext {
   provider: QuotationOutboxProvider;
   reference: QuotationOutboxPayloadReference;
   idempotencyKey: string;
+  signal?: AbortSignal;
 }
 
 export interface QuotationOutboxDeliveryResult {
@@ -61,6 +62,18 @@ export class QuotationOutboxProviderRejectedError extends Error {
   constructor(provider: QuotationOutboxProvider) {
     super(`O provedor rejeitou o evento de outbox: ${provider}`);
     this.name = 'QuotationOutboxProviderRejectedError';
+  }
+}
+
+export class QuotationOutboxProviderTimeoutError extends Error {
+  readonly provider: QuotationOutboxProvider;
+  readonly timeoutMs: number;
+
+  constructor(provider: QuotationOutboxProvider, timeoutMs: number) {
+    super(`Tempo limite do adaptador de outbox excedido: ${provider}.`);
+    this.name = 'QuotationOutboxProviderTimeoutError';
+    this.provider = provider;
+    this.timeoutMs = timeoutMs;
   }
 }
 
@@ -123,6 +136,7 @@ function configuredOperation(
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      signal: context.signal,
       body: JSON.stringify({
         event_type: context.eventType,
         provider: context.provider,
@@ -174,6 +188,8 @@ export interface QuotationOutboxWorkerOptions {
   owner: string;
   limit?: number;
   leaseMs?: number;
+  /** Must remain below leaseMs so timeout failures release before reclaim. */
+  providerTimeoutMs?: number;
   now?: () => Date;
 }
 
@@ -185,7 +201,10 @@ export interface QuotationOutboxWorkerResult {
   leaseLost: number;
 }
 
-function contextFor(event: QuotationOutboxEvent): QuotationOutboxProviderContext {
+function contextFor(
+  event: QuotationOutboxEvent,
+  signal?: AbortSignal,
+): QuotationOutboxProviderContext {
   return {
     eventType: event.eventType,
     provider: event.provider,
@@ -195,7 +214,47 @@ function contextFor(event: QuotationOutboxEvent): QuotationOutboxProviderContext
       businessNumber: event.payloadReference.businessNumber,
     },
     idempotencyKey: event.idempotencyKey,
+    ...(signal ? { signal } : {}),
   };
+}
+
+const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
+const LEASE_SAFETY_MARGIN_MS = 1_000;
+
+function providerTimeoutMs(options: QuotationOutboxWorkerOptions): number {
+  const leaseMs = Number.isFinite(options.leaseMs) && (options.leaseMs as number) > 0
+    ? Math.min(Math.floor(options.leaseMs as number), 60 * 60 * 1_000)
+    : 60_000;
+  const requested = Number.isFinite(options.providerTimeoutMs) && (options.providerTimeoutMs as number) > 0
+    ? Math.floor(options.providerTimeoutMs as number)
+    : DEFAULT_PROVIDER_TIMEOUT_MS;
+  return Math.max(1, Math.min(requested, Math.max(1, leaseMs - LEASE_SAFETY_MARGIN_MS)));
+}
+
+async function invokeProviderWithTimeout(
+  provider: QuotationOutboxProviderAdapter,
+  event: QuotationOutboxEvent,
+  timeoutMs: number,
+): Promise<QuotationOutboxDeliveryResult | void> {
+  const controller = new AbortController();
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const invocation = provider.deliver(contextFor(event, controller.signal));
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new QuotationOutboxProviderTimeoutError(event.provider, timeoutMs));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([invocation, timeout]);
+  } catch (error) {
+    if (timedOut) throw new QuotationOutboxProviderTimeoutError(event.provider, timeoutMs);
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function accepted(
@@ -217,6 +276,7 @@ export async function processQuotationOutbox(
 ): Promise<QuotationOutboxWorkerResult> {
   const repository = options.repository || createPostgresQuotationOutboxRepository();
   const current = options.now?.() || new Date();
+  const timeoutMs = providerTimeoutMs(options);
   const events = await repository.claimDueEvents({
     owner: options.owner,
     limit: options.limit,
@@ -237,7 +297,10 @@ export async function processQuotationOutbox(
       if (!provider || provider.provider !== event.provider) {
         throw new QuotationOutboxProviderUnavailableError(event.provider);
       }
-      const delivery = accepted(event.provider, await provider.deliver(contextFor(event)));
+      const delivery = accepted(
+        event.provider,
+        await invokeProviderWithTimeout(provider, event, timeoutMs),
+      );
       const delivered = await repository.markDelivered(
         event.id,
         options.owner,

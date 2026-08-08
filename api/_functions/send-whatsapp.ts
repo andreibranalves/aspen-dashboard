@@ -15,6 +15,7 @@ import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
 import { getDatabase } from '../_db/client.js';
 import {
+  deriveOpaqueQuotationOutboxIdempotencyKey,
   enqueueQuotationSentEvent,
   QuotationOutboxDurabilityError,
 } from '../_db/quotation-outbox-repository.js';
@@ -669,10 +670,10 @@ async function queuePostgresSentEvent(
         payload.businessNumber as string | undefined,
         quotationId,
       ),
-      idempotencyKey: firstNonEmpty(
-        payload.idempotency_key as string | undefined,
-        payload.idempotencyKey as string | undefined,
+      idempotencyKey: deriveOpaqueQuotationOutboxIdempotencyKey(
+        payload.idempotency_key ?? payload.idempotencyKey,
         `quotation.sent:crm:${quotationUuid}:${revisionId}`,
+        `${quotationUuid}:${revisionId}`,
       ),
     });
   } catch (error) {

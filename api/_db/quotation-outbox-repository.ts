@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   and,
@@ -222,6 +222,22 @@ function normalizeReference(input: EnqueueQuotationOutboxInput): QuotationOutbox
     revisionId: canonicalText(input.revisionId, 'Identificador canônico da revisão'),
     businessNumber: canonicalText(input.businessNumber, 'Número canônico do orçamento'),
   };
+}
+
+export function deriveOpaqueQuotationOutboxIdempotencyKey(
+  value: unknown,
+  fallback: string,
+  scope: string,
+): string {
+  const safeFallback = canonicalText(fallback, 'Chave de idempotência do outbox');
+  const safeScope = canonicalText(scope, 'Escopo da chave de idempotência');
+  if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) {
+    return safeFallback;
+  }
+  if (typeof value !== 'string' || value.length > 512) {
+    throw new Error('Chave de idempotência externa inválida.');
+  }
+  return `client:${createHash('sha256').update(`${safeScope}\u0000${value}`, 'utf8').digest('hex')}`;
 }
 
 function normalizeIdempotencyKey(

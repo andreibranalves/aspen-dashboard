@@ -152,3 +152,109 @@ Preserved `cf29980 feat: queue quotation external effects`.
   "manualNotes": "Single follow-up commit will preserve cf29980 and contain fix round 1."
 }
 ```
+
+## Fix round 2
+
+- Added bounded provider timeout and `AbortSignal` propagation.
+- Timeout is capped below the requested lease and timeout failures use the normal retry/dead-letter path.
+- Timeout failures clear lease ownership through `markFailed`; timeout test asserts abort, retry classification and released owner.
+- Added scoped SHA-256 opaque idempotency derivation for caller-supplied keys.
+- Arbitrary objects and oversized external keys are rejected before persistence or provider transmission.
+- Added assertions that email-like values and secrets never appear in persisted/transmitted keys.
+- Added `closeDatabase()` and one-shot worker `finally` cleanup for the cached PostgreSQL pool.
+
+### Fix round 2 validation
+
+- `node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts` - 20 passed, 1 skipped.
+- `npm run test:unit` - 567 passed, 13 skipped, 0 failed.
+- `npm run build` - passed.
+- `npm run lint` - 0 errors, 196 existing warnings.
+- `npx drizzle-kit check` - passed.
+- `node scripts/quotation-outbox-worker.mjs` without configuration - exited 1 with explicit missing configuration and no open pool.
+- `git diff --check` - passed.
+
+### Fix round 2 limits
+
+- PostgreSQL-backed rollback, lease and ownership tests remain skipped because `TEST_DATABASE_URL` is unavailable.
+- Provider bridge timeout behavior is tested through the injected abort-aware adapter seam; live bridge cancellation remains deployment validation.
+
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "Fix round 2 preserves 4ea1f48 and adds lease-bounded cancellation, opaque external idempotency keys, and one-shot database cleanup without dependencies or timing changes."
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "This report now includes fix-round-2 implementation, focused/full validation, changed scope and honest PostgreSQL/provider limits."
+    }
+  ],
+  "changedFiles": [
+    "api/_db/client.ts",
+    "api/_db/quotation-outbox-repository.ts",
+    "api/_functions/quotation-outbox-worker.ts",
+    "api/_functions/send-whatsapp-flow.ts",
+    "api/_functions/send-whatsapp.ts",
+    "scripts/quotation-outbox-worker.mjs",
+    "tests/unit/quotation-outbox.test.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "tests/unit/quotation-outbox.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts",
+      "result": "passed",
+      "summary": "20 passed, 1 skipped"
+    },
+    {
+      "command": "npm run test:unit",
+      "result": "passed",
+      "summary": "567 passed, 13 skipped, 0 failed"
+    },
+    {
+      "command": "npm run build",
+      "result": "passed",
+      "summary": "Production build passed"
+    },
+    {
+      "command": "npm run lint",
+      "result": "passed",
+      "summary": "0 errors, 196 existing warnings"
+    },
+    {
+      "command": "npx drizzle-kit check",
+      "result": "passed",
+      "summary": "Schema check passed"
+    },
+    {
+      "command": "node scripts/quotation-outbox-worker.mjs",
+      "result": "passed",
+      "summary": "Missing configuration rejected safely"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "summary": "No whitespace errors"
+    }
+  ],
+  "validationOutput": [
+    "Provider timeout aborts before lease expiry and releases ownership into retry state.",
+    "Caller keys become scoped client SHA-256 identifiers; raw PII and secrets are rejected from output.",
+    "One-shot worker closes the cached PostgreSQL client in finally cleanup.",
+    "Worktree is clean after the single fix-round-2 commit."
+  ],
+  "residualRisks": [
+    "Live PostgreSQL and provider bridge cancellation remain unexecuted environment validation."
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "Adds lease-bounded provider cancellation, safe opaque caller idempotency handling and one-shot database cleanup.",
+  "reviewFindings": [
+    "No known fix-round-2 blockers remain."
+  ],
+  "manualNotes": "Single follow-up commit preserves 4ea1f48."
+}
+```

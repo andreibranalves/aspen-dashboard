@@ -9,6 +9,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
 import {
+  deriveOpaqueQuotationOutboxIdempotencyKey,
   enqueueQuotationSentEvent,
   InMemoryQuotationOutboxRepository,
   QuotationOutboxDurabilityError,
@@ -137,6 +138,33 @@ test('lease prevents a second worker from claiming an event concurrently', async
   assert.equal(first.length, 1);
   assert.equal(second.length, 0);
   assert.equal(first[0]?.leaseOwner, 'worker-a');
+});
+
+test('external idempotency keys become bounded opaque scoped hashes', () => {
+  const emailKey = deriveOpaqueQuotationOutboxIdempotencyKey(
+    'cliente@example.com:super-secret',
+    'quotation.sent:crm:quote-1:revision-1',
+    'quote-1:revision-1',
+  );
+  assert.match(emailKey, /^client:[0-9a-f]{64}$/);
+  assert.equal(emailKey.includes('cliente@example.com'), false);
+  assert.equal(emailKey.includes('super-secret'), false);
+  assert.equal(
+    deriveOpaqueQuotationOutboxIdempotencyKey(
+      'cliente@example.com:super-secret',
+      'fallback',
+      'quote-1:revision-1',
+    ),
+    emailKey,
+  );
+  assert.throws(
+    () => deriveOpaqueQuotationOutboxIdempotencyKey({ secret: 'x' }, 'fallback', 'scope'),
+    /inválida/,
+  );
+  assert.throws(
+    () => deriveOpaqueQuotationOutboxIdempotencyKey('x'.repeat(513), 'fallback', 'scope'),
+    /inválida/,
+  );
 });
 
 test('durability failure identifies provider acceptance without claiming durable success', () => {
@@ -315,7 +343,14 @@ test('worker failure preserves an aggregate created in the same transaction', as
     leaseLost: 0,
   });
   assert.deepEqual(savedQuotations, new Map([['quote-1', { status: 'rascunho' }]]));
-  assert.deepEqual(seen, [{
+  assert.equal(seen.length, 1);
+  const [seenContext] = seen as Array<Record<string, unknown>>;
+  assert.deepEqual({
+    eventType: seenContext.eventType,
+    provider: seenContext.provider,
+    reference: seenContext.reference,
+    idempotencyKey: seenContext.idempotencyKey,
+  }, {
     eventType: 'quotation.created',
     provider: 'crm',
     reference: {
@@ -324,7 +359,39 @@ test('worker failure preserves an aggregate created in the same transaction', as
       businessNumber: 'ORC-20260001',
     },
     idempotencyKey: 'created:quote-1:revision-1',
-  }]);
+  });
+  assert.equal(seenContext.signal instanceof AbortSignal, true);
+});
+
+test('provider timeout aborts invocation before lease expiry and releases ownership', async () => {
+  const repository = await queued({ maxAttempts: 2 });
+  let aborted = false;
+  const result = await processQuotationOutbox({
+    repository,
+    owner: 'worker-a',
+    leaseMs: 100,
+    providerTimeoutMs: 10,
+    now: () => new Date('2026-08-05T10:00:01.000Z'),
+    adapters: createQuotationOutboxProviderAdapters({
+      crm: async ({ signal }) => new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(signal.reason || new Error('aborted'));
+        }, { once: true });
+      }),
+    }),
+  });
+  assert.deepEqual(result, {
+    claimed: 1,
+    delivered: 0,
+    retried: 1,
+    deadLettered: 0,
+    leaseLost: 0,
+  });
+  assert.equal(aborted, true);
+  const [event] = await repository.list();
+  assert.equal(event?.lastErrorClass, 'QuotationOutboxProviderTimeoutError');
+  assert.equal(event?.leaseOwner, null);
 });
 
 test('worker records provider acceptance and message id', async () => {
