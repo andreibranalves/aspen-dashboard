@@ -2,7 +2,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 5173;
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const IS_STAGING = process.env.STAGING_E2E === '1';
+const BASE_URL = process.env.BASE_URL || process.env.STAGING_BASE_URL || `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: './tests',
@@ -28,12 +29,16 @@ export default defineConfig({
     },
   ],
 
-  // Auto-start Vite dev server
-  webServer: {
-    command: 'npx vite --port 5173',
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 20_000,
-    cwd: '.',
-  },
+  // Auto-start Vite only for local suites; staging runs against STAGING_BASE_URL.
+  ...(IS_STAGING
+    ? {}
+    : {
+        webServer: {
+          command: 'npx vite --port 5173',
+          url: BASE_URL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 20_000,
+          cwd: '.',
+        },
+      }),
 });

@@ -537,13 +537,28 @@ Com o bloqueio confirmado no log de egress, execute os testes de staging contra 
 ```bash
 set -euo pipefail
 : "${STAGING_BASE_URL:?configure the staging origin without credentials in the URL}"
-BASE_URL="$STAGING_BASE_URL" npx playwright test --config=playwright.config.js \
+: "${E2E_USERNAME:?configure the staging test username through the secret manager}"
+: "${E2E_PASSWORD:?configure the staging test password through the secret manager}"
+: "${KNOWN_POSTGRES_QUOTATION_ID:?configure a non-PII PostgreSQL quotation id}"
+: "${KNOWN_LEGACY_QUOTATION_ID:?configure a non-PII legacy quotation id}"
+BASE_URL="$STAGING_BASE_URL" \
+STAGING_E2E=1 \
+E2E_USERNAME="$E2E_USERNAME" \
+E2E_PASSWORD="$E2E_PASSWORD" \
+KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
+KNOWN_LEGACY_QUOTATION_ID="$KNOWN_LEGACY_QUOTATION_ID" \
+npx playwright test --config=playwright.config.js \
+  tests/quotation-cutover-staging.spec.js \
   tests/operational-mode.spec.js \
   tests/quotations-core.spec.js \
   tests/quotation-lifecycle.spec.js
 ```
 
 O comando só é válido depois do bloqueio Frappe e da confirmação de que staging aponta para a base nomeada esperada.
+
+A suíte staging falha explicitamente quando qualquer precondição ou credencial estiver ausente.
+
+A senha é usada somente pelo formulário de login e não é salva em `storageState` ou artefato versionado.
 
 ## 9. Máquina de estados e transições
 
