@@ -77,6 +77,13 @@ export class QuotationOutboxProviderTimeoutError extends Error {
   }
 }
 
+export class QuotationOutboxLeaseExpiredError extends Error {
+  constructor(provider: QuotationOutboxProvider | 'unknown') {
+    super(`Lease do adaptador de outbox expirou antes da entrega: ${provider}.`);
+    this.name = 'QuotationOutboxLeaseExpiredError';
+  }
+}
+
 function adapter(
   provider: QuotationOutboxProvider,
   operation: QuotationOutboxProviderOperation | undefined,
@@ -219,27 +226,46 @@ function contextFor(
 }
 
 const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
-const LEASE_SAFETY_MARGIN_MS = 1_000;
+const MIN_REMAINING_LEASE_MS = 2;
 
-function providerTimeoutMs(options: QuotationOutboxWorkerOptions): number {
-  const leaseMs = Number.isFinite(options.leaseMs) && (options.leaseMs as number) > 0
-    ? Math.min(Math.floor(options.leaseMs as number), 60 * 60 * 1_000)
-    : 60_000;
-  const requested = Number.isFinite(options.providerTimeoutMs) && (options.providerTimeoutMs as number) > 0
+function requestedProviderTimeoutMs(options: QuotationOutboxWorkerOptions): number {
+  return Number.isFinite(options.providerTimeoutMs) && (options.providerTimeoutMs as number) > 0
     ? Math.floor(options.providerTimeoutMs as number)
     : DEFAULT_PROVIDER_TIMEOUT_MS;
-  return Math.max(1, Math.min(requested, Math.max(1, leaseMs - LEASE_SAFETY_MARGIN_MS)));
+}
+
+/**
+ * Calculate a timeout from the event's own lease after the batch has been
+ * claimed. A one millisecond guard keeps the timer strictly before expiry;
+ * events with no safe window are failed without invoking a provider.
+ */
+export function quotationOutboxProviderTimeoutMs(
+  leaseExpiresAt: Date | null | undefined,
+  now: Date,
+  requestedMs: number = DEFAULT_PROVIDER_TIMEOUT_MS,
+): number {
+  const remainingMs = leaseExpiresAt instanceof Date
+    ? leaseExpiresAt.getTime() - now.getTime()
+    : Number.NaN;
+  if (!Number.isFinite(remainingMs) || remainingMs < MIN_REMAINING_LEASE_MS) {
+    throw new QuotationOutboxLeaseExpiredError('unknown');
+  }
+  const requested = Number.isFinite(requestedMs) && requestedMs > 0
+    ? Math.floor(requestedMs)
+    : DEFAULT_PROVIDER_TIMEOUT_MS;
+  return Math.max(1, Math.min(requested, Math.floor(remainingMs) - 1));
 }
 
 async function invokeProviderWithTimeout(
   provider: QuotationOutboxProviderAdapter,
   event: QuotationOutboxEvent,
-  timeoutMs: number,
+  now: Date,
+  requestedMs: number,
 ): Promise<QuotationOutboxDeliveryResult | void> {
+  const timeoutMs = quotationOutboxProviderTimeoutMs(event.leaseExpiresAt, now, requestedMs);
   const controller = new AbortController();
   let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const invocation = provider.deliver(contextFor(event, controller.signal));
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       timedOut = true;
@@ -247,6 +273,7 @@ async function invokeProviderWithTimeout(
       reject(new QuotationOutboxProviderTimeoutError(event.provider, timeoutMs));
     }, timeoutMs);
   });
+  const invocation = provider.deliver(contextFor(event, controller.signal));
   try {
     return await Promise.race([invocation, timeout]);
   } catch (error) {
@@ -275,8 +302,9 @@ export async function processQuotationOutbox(
   options: QuotationOutboxWorkerOptions,
 ): Promise<QuotationOutboxWorkerResult> {
   const repository = options.repository || createPostgresQuotationOutboxRepository();
-  const current = options.now?.() || new Date();
-  const timeoutMs = providerTimeoutMs(options);
+  const clock = options.now || (() => new Date());
+  const current = clock();
+  const requestedTimeoutMs = requestedProviderTimeoutMs(options);
   const events = await repository.claimDueEvents({
     owner: options.owner,
     limit: options.limit,
@@ -299,13 +327,13 @@ export async function processQuotationOutbox(
       }
       const delivery = accepted(
         event.provider,
-        await invokeProviderWithTimeout(provider, event, timeoutMs),
+        await invokeProviderWithTimeout(provider, event, clock(), requestedTimeoutMs),
       );
       const delivered = await repository.markDelivered(
         event.id,
         options.owner,
         delivery.providerMessageId,
-        options.now?.() || new Date(),
+        clock(),
       );
       if (delivered) result.delivered += 1;
       else result.leaseLost += 1;
@@ -314,7 +342,7 @@ export async function processQuotationOutbox(
         event.id,
         options.owner,
         error,
-        options.now?.() || new Date(),
+        clock(),
       );
       if (!failed) {
         result.leaseLost += 1;

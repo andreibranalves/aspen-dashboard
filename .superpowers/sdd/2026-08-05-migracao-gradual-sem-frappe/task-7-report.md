@@ -258,3 +258,105 @@ Preserved `cf29980 feat: queue quotation external effects`.
   "manualNotes": "Single follow-up commit preserves 4ea1f48."
 }
 ```
+
+## Fix round 3
+
+- Provider timeout is computed separately for each claimed event from its own lease expiry and the worker clock immediately before invocation.
+- The timeout leaves a one millisecond guard before expiry.
+- Events with less than two milliseconds remaining are retried without invoking a provider.
+- Added deterministic timeout calculations, multi-event claim-latency coverage, and short-lease safety coverage.
+- External idempotency keys are trimmed before size validation and hashing, so formatting-only whitespace variants are equivalent.
+- The missing-configuration probe is explicitly an expected nonzero safety check, not a successful worker run.
+- Timeout validation uses an injected clock and one bounded real timer assertion; no fixed-clock test is presented as wall-clock proof.
+
+### Fix round 3 validation
+
+- Focused outbox and quotation tests passed: 22 passed, 1 skipped.
+- Full unit tests passed: 569 passed, 13 skipped, 0 failed.
+- Production build passed.
+- Lint passed with 0 errors and 196 existing warnings.
+- Drizzle schema check passed.
+- Diff whitespace check passed.
+
+### Fix round 3 limits
+
+- Live PostgreSQL lease and transaction behavior remains unexecuted because `TEST_DATABASE_URL` is unavailable.
+- Provider bridge cancellation remains covered through the injected `AbortSignal` seam rather than a live bridge.
+
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "Round 3 computes timeout per event lease after claim latency, safely skips provider calls without a two-millisecond window, and trims external idempotency keys before validation and hashing."
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "Focused and full tests, build, lint, Drizzle and diff checks passed, with live PostgreSQL and provider bridge limits recorded explicitly."
+    }
+  ],
+  "changedFiles": [
+    "api/_db/quotation-outbox-repository.ts",
+    "api/_functions/quotation-outbox-worker.ts",
+    "tests/unit/quotation-outbox.test.ts",
+    ".superpowers/sdd/2026-08-05-migracao-gradual-sem-frappe/task-7-report.md"
+  ],
+  "testsAddedOrUpdated": [
+    "tests/unit/quotation-outbox.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "npm run build:api",
+      "result": "passed",
+      "summary": "TypeScript API build passed"
+    },
+    {
+      "command": "node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts",
+      "result": "passed",
+      "summary": "22 passed, 1 skipped"
+    },
+    {
+      "command": "npm run test:unit",
+      "result": "passed",
+      "summary": "569 passed, 13 skipped, 0 failed"
+    },
+    {
+      "command": "npm run build",
+      "result": "passed",
+      "summary": "Production build passed"
+    },
+    {
+      "command": "npm run lint",
+      "result": "passed",
+      "summary": "0 errors, 196 existing warnings"
+    },
+    {
+      "command": "npx drizzle-kit check",
+      "result": "passed",
+      "summary": "Schema check passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "summary": "No whitespace errors"
+    }
+  ],
+  "validationOutput": [
+    "Two claimed events use separate remaining-lease timeouts after the first event advances the injected clock by 60 milliseconds.",
+    "A one-millisecond lease retries without invoking the provider.",
+    "Whitespace-only idempotency formatting normalizes to the same opaque key, while 513 meaningful characters are rejected after trimming."
+  ],
+  "residualRisks": [
+    "TEST_DATABASE_URL is unavailable, so live PostgreSQL lease and transaction behavior remains unexecuted.",
+    "Provider bridge cancellation remains covered through injected AbortSignal tests rather than a live bridge."
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "Computes lease-aware per-event provider timeouts, safely handles short leases, and normalizes external idempotency keys with focused coverage.",
+  "reviewFindings": [
+    "No known blockers in this fix round."
+  ],
+  "manualNotes": "The missing-configuration worker probe is intentionally nonzero and is documented as an expected safety rejection."
+}
+```

@@ -21,6 +21,7 @@ import {
   createConfiguredQuotationOutboxProviderAdapters,
   createQuotationOutboxProviderAdapters,
   processQuotationOutbox,
+  quotationOutboxProviderTimeoutMs,
 } from '../../api/_functions/quotation-outbox-worker.js';
 import { createPublicQuotationHandler } from '../../api/_functions/public-quotation.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
@@ -157,12 +158,20 @@ test('external idempotency keys become bounded opaque scoped hashes', () => {
     ),
     emailKey,
   );
+  assert.equal(
+    deriveOpaqueQuotationOutboxIdempotencyKey('  cliente@example.com:super-secret  ', 'fallback', 'quote-1:revision-1'),
+    emailKey,
+  );
+  assert.equal(
+    deriveOpaqueQuotationOutboxIdempotencyKey('   ', 'fallback', 'quote-1:revision-1'),
+    'fallback',
+  );
   assert.throws(
     () => deriveOpaqueQuotationOutboxIdempotencyKey({ secret: 'x' }, 'fallback', 'scope'),
     /inválida/,
   );
   assert.throws(
-    () => deriveOpaqueQuotationOutboxIdempotencyKey('x'.repeat(513), 'fallback', 'scope'),
+    () => deriveOpaqueQuotationOutboxIdempotencyKey(`  ${'x'.repeat(513)}  `, 'fallback', 'scope'),
     /inválida/,
   );
 });
@@ -361,6 +370,93 @@ test('worker failure preserves an aggregate created in the same transaction', as
     idempotencyKey: 'created:quote-1:revision-1',
   });
   assert.equal(seenContext.signal instanceof AbortSignal, true);
+});
+
+test('provider timeout uses each event lease after batch claim latency', async () => {
+  const startMs = Date.parse('2026-08-05T10:00:00.000Z');
+  const leaseExpiresAt = new Date(startMs + 100);
+  assert.equal(quotationOutboxProviderTimeoutMs(leaseExpiresAt, new Date(startMs), 80), 80);
+  assert.equal(quotationOutboxProviderTimeoutMs(leaseExpiresAt, new Date(startMs + 60), 80), 39);
+  assert.throws(
+    () => quotationOutboxProviderTimeoutMs(leaseExpiresAt, new Date(startMs + 99), 80),
+    /expirou/,
+  );
+
+  const repository = new InMemoryQuotationOutboxRepository();
+  await repository.enqueue(base);
+  await repository.enqueue({
+    ...base,
+    quotationId: 'quote-2',
+    revisionId: 'revision-2',
+    businessNumber: 'ORC-20260002',
+    idempotencyKey: 'created:quote-2:revision-2',
+  });
+  let clockMs = startMs;
+  let calls = 0;
+  let secondElapsedMs = 0;
+  const result = await processQuotationOutbox({
+    repository,
+    owner: 'worker-a',
+    limit: 2,
+    leaseMs: 100,
+    providerTimeoutMs: 80,
+    now: () => new Date(clockMs),
+    adapters: createQuotationOutboxProviderAdapters({
+      crm: async ({ signal }) => {
+        calls += 1;
+        if (calls === 1) {
+          clockMs += 60;
+          return { accepted: true };
+        }
+        const started = Date.now();
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => {
+            secondElapsedMs = Date.now() - started;
+            reject(new Error('aborted'));
+          }, { once: true });
+        });
+      },
+    }),
+  });
+  assert.deepEqual(result, {
+    claimed: 2,
+    delivered: 1,
+    retried: 1,
+    deadLettered: 0,
+    leaseLost: 0,
+  });
+  assert.equal(calls, 2);
+  assert.ok(secondElapsedMs >= 20, `second event timed out too early: ${secondElapsedMs}ms`);
+  assert.ok(secondElapsedMs < 200, `second event timeout exceeded lease guard: ${secondElapsedMs}ms`);
+});
+
+test('short leases do not invoke a provider without a safe timeout window', async () => {
+  const repository = await queued({ maxAttempts: 2 });
+  let invoked = false;
+  const result = await processQuotationOutbox({
+    repository,
+    owner: 'worker-a',
+    leaseMs: 1,
+    providerTimeoutMs: 10,
+    now: () => new Date('2026-08-05T10:00:01.000Z'),
+    adapters: createQuotationOutboxProviderAdapters({
+      crm: async () => {
+        invoked = true;
+        return { accepted: true };
+      },
+    }),
+  });
+  assert.deepEqual(result, {
+    claimed: 1,
+    delivered: 0,
+    retried: 1,
+    deadLettered: 0,
+    leaseLost: 0,
+  });
+  assert.equal(invoked, false);
+  const [event] = await repository.list();
+  assert.equal(event?.lastErrorClass, 'QuotationOutboxLeaseExpiredError');
+  assert.equal(event?.leaseOwner, null);
 });
 
 test('provider timeout aborts invocation before lease expiry and releases ownership', async () => {

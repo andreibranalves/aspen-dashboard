@@ -234,10 +234,14 @@ export function deriveOpaqueQuotationOutboxIdempotencyKey(
   if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) {
     return safeFallback;
   }
-  if (typeof value !== 'string' || value.length > 512) {
+  if (typeof value !== 'string') {
     throw new Error('Chave de idempotência externa inválida.');
   }
-  return `client:${createHash('sha256').update(`${safeScope}\u0000${value}`, 'utf8').digest('hex')}`;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 512) {
+    throw new Error('Chave de idempotência externa inválida.');
+  }
+  return `client:${createHash('sha256').update(`${safeScope}\u0000${normalized}`, 'utf8').digest('hex')}`;
 }
 
 function normalizeIdempotencyKey(
