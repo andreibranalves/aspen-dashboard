@@ -87,7 +87,7 @@ function quotationYear(row, original) {
   return yearMatch ? yearMatch[1] : '2000';
 }
 
-function quotationSequenceSeed(salt, year, original) {
+export function quotationSequenceSeed(salt, year, original) {
   return Number(BigInt(`0x${hash(salt, `quotation-sequence:${year}`, original).slice(0, 15)}`) % 9999n) + 1;
 }
 

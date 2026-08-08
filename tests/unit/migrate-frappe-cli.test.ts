@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,7 +13,7 @@ import {
   readPgServiceTarget,
   resolveRepositoryMode,
 } from '../../scripts/migrate-frappe-crm.mjs';
-import { anonymizeSnapshot } from '../../scripts/anonymize-frappe-snapshot.mjs';
+import { anonymizeSnapshot, quotationSequenceSeed } from '../../scripts/anonymize-frappe-snapshot.mjs';
 
 describe('CLI de migração Frappe', () => {
   it('exige exatamente um modo', () => {
@@ -214,7 +213,7 @@ describe('CLI de migração Frappe', () => {
         party_type: 'Lead',
         customer: 'CUST-ALIAS-1',
         party_name: 'CUST-ALIAS-1',
-        items: [{ itemCode: 'SKU-ALIAS-1', item_code: 'SKU-ALIAS-1', qty: '2', price_list_rate: '5.00', rate: '5.00', amount: '10.00' }],
+        items: [{ itemCode: 'SKU-ALIAS-1', qty: '2', price_list_rate: '5.00', rate: '5.00', amount: '10.00' }],
       }],
     };
     const anonymized = anonymizeSnapshot(raw, 'alias-salt');
@@ -252,19 +251,16 @@ describe('CLI de migração Frappe', () => {
       rmSync(aliasDirectory, { recursive: true, force: true });
     }
 
-    const legacyBucket = (sourceId: string): number => Number(
-      BigInt(`0x${createHash('sha256').update(`alias-salt\\0quotation-sequence\\0${sourceId}`).digest('hex').slice(0, 12)}`) % 9000n
-    );
-    const buckets = new Map<number, string>();
+    const seedBuckets = new Map<number, string>();
     let collision: [string, string] | null = null;
     for (let index = 0; index < 20000 && !collision; index += 1) {
       const sourceId = `QTN-2024-COLLIDE-${index}`;
-      const bucket = legacyBucket(sourceId);
-      const prior = buckets.get(bucket);
+      const seed = quotationSequenceSeed('alias-salt', '2024', sourceId);
+      const prior = seedBuckets.get(seed);
       if (prior) collision = [prior, sourceId];
-      else buckets.set(bucket, sourceId);
+      else seedBuckets.set(seed, sourceId);
     }
-    assert.ok(collision, 'fixture must contain an otherwise-colliding pair');
+    assert.ok(collision, 'fixture must contain a production-seed collision');
     const collisionDataset = {
       items: [],
       quotations: collision!.map((sourceId) => ({ sourceId, creation: '2024-06-01 10:00:00' })),
@@ -272,9 +268,43 @@ describe('CLI de migração Frappe', () => {
     const collisionA = anonymizeSnapshot(collisionDataset, 'alias-salt');
     const collisionB = anonymizeSnapshot(collisionDataset, 'alias-salt');
     assert.deepEqual(collisionA, collisionB);
-    assert.notEqual(collisionA.quotations[0].sourceId, collisionA.quotations[1].sourceId);
+    const productionSeed = quotationSequenceSeed('alias-salt', '2024', collision![0]);
+    const collisionSequences = collisionA.quotations.map((quotation) => Number(quotation.sourceId.slice(-4)));
+    assert.equal(new Set(collisionSequences).size, 2);
+    assert.ok(collisionSequences.includes(productionSeed));
+    assert.ok(collisionSequences.includes(productionSeed === 9999 ? 1 : productionSeed + 1));
     assert.match(collisionA.quotations[0].sourceId, /^QTN-2024-\d{4}$/);
     assert.match(collisionA.quotations[1].sourceId, /^QTN-2024-\d{4}$/);
+
+    const capacityDataset = (count: number) => ({
+      items: [],
+      quotations: Array.from({ length: count }, (_, index) => ({
+        sourceId: `QTN-2024-CAPACITY-${index}`,
+        creation: '2024-07-01 10:00:00',
+      })),
+    });
+    const capacity9999 = anonymizeSnapshot(capacityDataset(9999), 'capacity-salt');
+    assert.equal(new Set(capacity9999.quotations.map((quotation) => quotation.sourceId)).size, 9999);
+
+    const capacityDirectory = mkdtempSync(path.join(tmpdir(), 'frappe-capacity-'));
+    const capacityInput = path.join(capacityDirectory, 'input.json');
+    const capacityOutput = path.join(capacityDirectory, 'output.json');
+    const capacityRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    writeFileSync(capacityInput, JSON.stringify(capacityDataset(10000)));
+    try {
+      const exhausted = spawnSync(
+        process.execPath,
+        ['scripts/anonymize-frappe-snapshot.mjs', '--input', capacityInput, '--output', capacityOutput],
+        { cwd: capacityRoot, env: { ...process.env, FRAPPE_SNAPSHOT_SALT: 'capacity-salt' }, encoding: 'utf8' }
+      );
+      assert.notEqual(exhausted.status, 0);
+      assert.match(exhausted.stderr, /Falha ao anonimizar snapshot|capacidade anual/);
+      assert.equal(exhausted.stderr.includes(capacityInput), false);
+      assert.equal(exhausted.stderr.includes(capacityOutput), false);
+      assert.equal(statSync(capacityOutput, { throwIfNoEntry: false }), undefined);
+    } finally {
+      rmSync(capacityDirectory, { recursive: true, force: true });
+    }
   });
 
   it('rejeita erro dinâmico de fixture sem ecoar conteúdo não confiável', () => {

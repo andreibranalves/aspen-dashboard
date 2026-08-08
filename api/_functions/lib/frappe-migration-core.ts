@@ -1035,7 +1035,7 @@ export function normalizeQuotationItem(
   quotationId: string,
   index: number
 ): NormalizedQuotationItem {
-  const sku = text(first(record, ['item_code', 'sku', 'codigo']));
+  const sku = text(first(record, ['item_code', 'sku', 'codigo', 'itemCode']));
   if (!sku) throw new Error(`Item de ${quotationId} sem item_code.`);
   const positionValue = text(first(record, ['idx', 'position']));
   const position = positionValue && /^\d+$/.test(positionValue) ? Number(positionValue) : index + 1;
