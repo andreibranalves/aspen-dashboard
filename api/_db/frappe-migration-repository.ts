@@ -598,22 +598,33 @@ export function createPostgresFrappeMigrationRepository(
           .limit(1);
         const quotationId = sourceLineage?.localId || unit.id;
         const [latestRevision] = await tx
-          .select({ id: quoteRevisions.id, version: quoteRevisions.version })
+          .select({ id: quoteRevisions.id, version: quoteRevisions.version, status: quoteRevisions.status })
           .from(quoteRevisions)
           .where(eq(quoteRevisions.quotationId, quotationId))
           .orderBy(desc(quoteRevisions.version))
           .limit(1);
         const sourceChanged = Boolean(sourceLineage && sourceLineage.sourceHash !== unit.sourceHash);
-        const revision = sourceChanged && latestRevision
-          ? { ...unit.revision, id: randomUUID(), version: latestRevision.version + 1 }
-          : unit.revision;
+        const appendRevision = sourceChanged && latestRevision && latestRevision.status !== 'rascunho';
+        const revision = appendRevision
+          ? {
+              ...unit.revision,
+              id: randomUUID(),
+              version: latestRevision.version + 1,
+              status: 'rascunho' as const,
+              orderLinkage: null,
+              orderPending: false,
+            }
+          : sourceChanged && latestRevision
+            ? { ...unit.revision, id: latestRevision.id, version: latestRevision.version }
+            : unit.revision;
+        const quotationStatus = appendRevision ? 'rascunho' as const : unit.quotation.status;
         await tx
           .insert(quotations)
           .values({
             id: quotationId,
             businessNumber: unit.quotation.businessNumber,
             clientId,
-            status: unit.quotation.status,
+            status: quotationStatus,
             createdAt,
             updatedAt: createdAt,
           })
@@ -622,7 +633,7 @@ export function createPostgresFrappeMigrationRepository(
             set: {
               businessNumber: unit.quotation.businessNumber,
               clientId,
-              status: unit.quotation.status,
+              status: quotationStatus,
               updatedAt: new Date(),
             },
           });
@@ -1279,30 +1290,36 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     );
     const existingQuotation = next.quotations.find((value) => value.id === unit.id);
     const sourceChanged = Boolean(existingLineage && existingLineage.sourceHash !== unit.sourceHash);
-    if (sourceChanged && existingQuotation?.revision) {
+    const appendRevision = sourceChanged && existingQuotation?.revision && existingQuotation.revision.status !== 'rascunho';
+    if (appendRevision && existingQuotation?.revision) {
       const history = this.historicalRevisions.get(unit.id) || [];
       history.push({ ...existingQuotation.revision, createdAt: new Date(existingQuotation.revision.createdAt) });
       this.historicalRevisions.set(unit.id, history);
     }
-    const revision = sourceChanged && existingQuotation?.revision
+    const revision = appendRevision && existingQuotation?.revision
       ? {
           ...unit.revision,
           id: randomUUID(),
           version: existingQuotation.revision.version + 1,
+          status: 'rascunho' as const,
+          orderLinkage: null,
+          orderPending: false,
         }
-      : unit.revision;
+      : sourceChanged && existingQuotation?.revision
+        ? { ...unit.revision, id: existingQuotation.revision.id, version: existingQuotation.revision.version }
+        : unit.revision;
     const quotation: ExistingQuotation = {
       id: existingQuotation?.id || unit.id,
       businessNumber: unit.quotation.businessNumber,
       clientId,
-      status: unit.quotation.status,
+      status: appendRevision ? 'rascunho' : unit.quotation.status,
       createdAt: revision.createdAt,
       revision: {
         ...revision,
         id: revision.id,
         createdAt: new Date(revision.createdAt),
       },
-      items: unit.items.map((item) => ({ ...item, id: sourceChanged ? randomUUID() : item.id })),
+      items: unit.items.map((item) => ({ ...item, id: appendRevision ? randomUUID() : item.id })),
       document: unit.document
         ? { ...unit.document, createdAt: new Date(revision.createdAt) }
         : null,

@@ -215,6 +215,36 @@ test('keeps a public token bound to its original revision after a newer revision
   assert.doesNotMatch(response.body!, /20,00/);
 });
 
+test('keeps an issued revision PDF and checksum immutable after a source change', async () => {
+  const fakeStore = store();
+  const oldRevisionId = '66666666-6666-4666-8666-666666666666';
+  const newRevisionId = '77777777-7777-4777-8777-777777777777';
+  const oldSnapshot = snapshot();
+  oldSnapshot.revision.id = oldRevisionId;
+  oldSnapshot.revision.total = '10.00';
+  const newSnapshot = snapshot();
+  newSnapshot.revision.id = newRevisionId;
+  newSnapshot.revision.total = '20.00';
+  const snapshots = new Map([[oldRevisionId, oldSnapshot], [newRevisionId, newSnapshot]]);
+  const token = 'P'.repeat(32);
+  const renderPdf = async (html: string) => Buffer.from(`%PDF-1.7\\n${html}\\n%%EOF`);
+  const handler = createPublicQuotationHandler({
+    repository: { get: async (id: string) => snapshots.get(id) || null } as any,
+    store: fakeStore,
+    token: () => token,
+    now: () => now,
+    renderPdf,
+  });
+  await handler(event('POST', {}, JSON.stringify({ revisionId: oldRevisionId })));
+  const oldPdf = await handler(event('GET', { token, format: 'pdf' }));
+  assert.equal(oldPdf.statusCode, 200);
+  assert.equal(oldPdf.headers?.['X-Document-Revision'], oldRevisionId);
+  const oldBody = Buffer.from(oldPdf.body!, 'base64');
+  assert.match(oldBody.toString(), /10,00/);
+  assert.equal(oldPdf.headers?.['X-Document-Checksum'], createHash('sha256').update(oldBody).digest('hex'));
+  assert.doesNotMatch(oldBody.toString(), /20,00/);
+});
+
 test('returns PDF signature, checksum, size and deterministic revision/template metadata', async () => {
   const fakeStore = store();
   const pdf = Buffer.from('%PDF-1.7\nbody\n%%EOF');

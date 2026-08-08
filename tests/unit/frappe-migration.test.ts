@@ -2375,6 +2375,9 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     const current = repository.snapshot().quotations.find((quotation) => quotation.businessNumber === 'ORC-20240042');
     assert.ok(current?.revision);
     assert.notEqual(current.revision.id, first.revision.id);
+    assert.equal(current.revision.version, first.revision.version + 1);
+    assert.equal(current.revision.status, 'rascunho');
+    assert.equal(current.status, 'rascunho');
     assert.equal(repository.revisionHistory(current.id)[0]?.id, first.revision.id);
     assert.equal(repository.revisionHistory(current.id)[0]?.total, first.revision.total);
   });

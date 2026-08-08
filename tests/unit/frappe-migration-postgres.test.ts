@@ -109,13 +109,14 @@ test(
     const itemId = `ITEM-${suffix}`;
     const priceId = `PR-${suffix}`;
     const customerId = `CUST-${suffix}`;
+    const customerDocument = `9${suffix.replace(/[^0-9]/g, '').slice(-10).padStart(10, '0')}`;
     const triggerName = `migration_fail_${suffix.replace(/[^a-z0-9_]/gi, '_')}`;
     const functionName = `${triggerName}_fn`;
     const dataset = {
       items: [{ name: itemId, item_code: sku, item_name: 'Produto PG' }],
       pricingRules: [{ name: priceId, item_code: sku, min_qty: 30, price_list_rate: '9.00' }],
       itemPrices: [],
-      customers: [{ name: customerId, customer_name: 'Cliente PG lineage', tax_id: '12345678901' }],
+      customers: [{ name: customerId, customer_name: `Cliente PG lineage ${suffix}`, tax_id: customerDocument }],
       leads: [],
     };
     try {
@@ -130,7 +131,7 @@ test(
         .from(schema.frappeImportLineage)
         .where(eq(schema.frappeImportLineage.sourceId, customerId));
       assert.equal(clientLineageRows.length, 1);
-      assert.equal(clientLineageRows[0].legacyPayload?.customer_name, 'Cliente PG lineage');
+      assert.match(clientLineageRows[0].legacyPayload?.customer_name || '', /^Cliente PG lineage /);
       assert.equal((await repository.loadState()).lineage.some((entry) => 'legacyPayload' in entry), false);
       const rerun = await runFrappeMigration({ mode: 'apply', dataset, repository });
       assert.equal(rerun.report.produtos.ignorados, 1);
@@ -172,6 +173,7 @@ test(
         `%${suffix}`,
       ]);
       await client.unsafe('DELETE FROM products WHERE sku LIKE $1', [`%${suffix}`]);
+      await client.unsafe('DELETE FROM clients WHERE documento = $1', [customerDocument]);
       await client.end({ timeout: 5 });
     }
   }
@@ -257,7 +259,7 @@ test(
         .from(schema.quoteRevisionItems)
         .where(eq(schema.quoteRevisionItems.revisionId, revisionRows[0].id));
       assert.equal(itemRows.length, 1);
-      assert.equal(itemRows[0].quantidade, '10');
+      assert.equal(Number(itemRows[0].quantidade), 10);
       assert.equal(itemRows[0].precoAplicado, '5.00');
       assert.equal(itemRows[0].notas, 'Observação PG');
       // issuedDocuments check removed (#no-pdf-html-only)
@@ -302,7 +304,43 @@ test(
         .from(schema.quotations)
         .where(sql`${schema.quotations.businessNumber} = ${expectedBusinessNumber}`);
       assert.equal(quotationRowsUpdated.length, 1);
-      assert.equal(quotationRowsUpdated[0].status, 'aprovado');
+      assert.equal(quotationRowsUpdated[0].status, 'rascunho');
+      const revisionsAfterAppend = await db
+        .select()
+        .from(schema.quoteRevisions)
+        .where(eq(schema.quoteRevisions.quotationId, quotationRowsUpdated[0].id))
+        .orderBy(schema.quoteRevisions.version);
+      assert.equal(revisionsAfterAppend.length, 2);
+      assert.equal(revisionsAfterAppend[0].status, 'enviado');
+      assert.equal(revisionsAfterAppend[0].total, '50.00');
+      assert.equal(revisionsAfterAppend[1].status, 'rascunho');
+      assert.equal(revisionsAfterAppend[1].version, 2);
+      const draftRevisionId = revisionsAfterAppend[1].id;
+
+      const draftUpdate = await runFrappeMigration({
+        mode: 'apply',
+        dataset: {
+          ...dataset,
+          quotations: [{
+            ...dataset.quotations[0],
+            status: 'Ordered',
+            net_total: '75.00',
+            grand_total: '75.00',
+            items: [{ ...dataset.quotations[0].items[0], rate: '7.50', amount: '75.00' }],
+          }],
+        },
+        repository,
+      });
+      assert.equal(draftUpdate.report.orcamentos.atualizados, 1);
+      const revisionsAfterDraftUpdate = await db
+        .select()
+        .from(schema.quoteRevisions)
+        .where(eq(schema.quoteRevisions.quotationId, quotationRowsUpdated[0].id))
+        .orderBy(schema.quoteRevisions.version);
+      assert.equal(revisionsAfterDraftUpdate.length, 2);
+      assert.equal(revisionsAfterDraftUpdate[1].id, draftRevisionId);
+      assert.equal(revisionsAfterDraftUpdate[1].total, '75.00');
+      assert.equal(revisionsAfterDraftUpdate[0].total, '50.00');
     } finally {
       // Only remove the sequence row when this test created it; a higher value
       // from another suite must not be destroyed.

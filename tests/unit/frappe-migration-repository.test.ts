@@ -9,6 +9,7 @@ import {
   type FrappeDataset,
 } from '../../api/_functions/frappe-migration.js';
 import { templateSeedPlan } from '../../api/_db/quotation-template-migration.js';
+import { createFrappeQuotationFixture } from '../fixtures/frappe-migration-fixtures.ts';
 
 const MINIMAL_DATASET: FrappeDataset = {
   items: [{ name: 'ITEM-T1', item_code: 'SKU-T1', item_name: 'Produto Teste' }],
@@ -27,6 +28,57 @@ const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImpleme
   );
 
 describe('MemoryFrappeMigrationRepository', () => {
+  it('reusa draft source-changed e cria novo draft após revisão não editável', async () => {
+    const dataset = (status: string, total: string) => {
+      const fixture = createFrappeQuotationFixture();
+      return {
+        ...fixture,
+        quotations: fixture.quotations.map((quotation) =>
+          quotation.name === 'QTN-2024-00042'
+            ? {
+                ...quotation,
+                modified: `2024-04-01 ${total === '5.00' ? '00:00:00' : '00:01:00'}`,
+                status,
+                net_total: total,
+                grand_total: total,
+                items: quotation.items?.map((item, index) =>
+                  index === 0 ? { ...item, rate: total, amount: total } : item
+                ),
+              }
+            : quotation,
+        ),
+      };
+    };
+
+    const draftRepository = new MemoryFrappeMigrationRepository();
+    await runFrappeMigration({ mode: 'apply', dataset: dataset('Draft', '5.00'), repository: draftRepository });
+    const draftQuotationId = draftRepository.snapshot().quotations[0]!.id;
+    const firstDraft = draftRepository.snapshot().quotations[0]?.revision;
+    assert.ok(firstDraft);
+    await runFrappeMigration({ mode: 'apply', dataset: dataset('Draft', '7.00'), repository: draftRepository });
+    const updatedDraft = draftRepository.snapshot().quotations[0]?.revision;
+    assert.ok(updatedDraft);
+    assert.equal(updatedDraft.id, firstDraft.id);
+    assert.equal(updatedDraft.version, firstDraft.version);
+    assert.equal(updatedDraft.status, 'rascunho');
+    assert.equal(Number(updatedDraft.total), 7);
+    assert.deepEqual(draftRepository.revisionHistory(draftQuotationId), []);
+
+    const sentRepository = new MemoryFrappeMigrationRepository();
+    await runFrappeMigration({ mode: 'apply', dataset: dataset('Submitted', '5.00'), repository: sentRepository });
+    const sentRevision = sentRepository.snapshot().quotations[0]?.revision;
+    assert.ok(sentRevision);
+    const quotationId = sentRepository.snapshot().quotations[0]!.id;
+    await runFrappeMigration({ mode: 'apply', dataset: dataset('Submitted', '7.00'), repository: sentRepository });
+    const nextRevision = sentRepository.snapshot().quotations[0]?.revision;
+    assert.ok(nextRevision);
+    assert.notEqual(nextRevision.id, sentRevision.id);
+    assert.equal(nextRevision.version, sentRevision.version + 1);
+    assert.equal(nextRevision.status, 'rascunho');
+    assert.equal(sentRepository.revisionHistory(quotationId)[0]?.id, sentRevision.id);
+    assert.equal(Number(sentRepository.revisionHistory(quotationId)[0]?.total), 5);
+  });
+
   it('verifica todas as versões numéricas dos templates built-in', async () => {
     const plan = templateSeedPlan();
     assert.ok(plan.length >= 3);
