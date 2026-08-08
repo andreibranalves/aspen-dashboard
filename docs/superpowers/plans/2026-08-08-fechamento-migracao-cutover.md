@@ -35,6 +35,7 @@
 - Modify: `.env.example`
 - Modify: `docs/superpowers/plans/2026-08-05-quotation-cutover-runbook.md`
 - Modify: `scripts/migrate-frappe-crm.mjs`
+- Modify: `api/_functions/frappe-migration.ts`
 - Test: `tests/unit/migrate-frappe-cli.test.ts`
 - Test: `tests/unit/cutover-checklist.test.ts`
 
@@ -93,7 +94,7 @@ Atualizar o runbook para usar sempre:
 ```bash
 env -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  DATABASE_URL="$TEST_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
   npm run db:migrate
 ```
 
@@ -455,7 +456,7 @@ Run with explicit target:
 ```bash
 env -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  DATABASE_URL="$TEST_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
   npm run db:migrate
 node --test --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
 ```
@@ -628,7 +629,7 @@ git commit -m "fix: make external outbox providers optional"
 - Test: `tests/unit/migrate-frappe-cli.test.ts`
 
 **Interfaces:**
-- `node scripts/anonymize-frappe-snapshot.mjs --input <protected-file> --output <protected-file>` preserva doctype, relacionamento, itens, preços e estados.
+- `node scripts/anonymize-frappe-snapshot.mjs --input "$FRAPPE_SNAPSHOT_INPUT" --output "$FRAPPE_SNAPSHOT_OUTPUT"` preserva doctype, relacionamento, itens, preços e estados.
 - A saída substitui nomes, documentos, telefones, emails e endereços por valores determinísticos.
 - A saída não contém token, payload HTTP ou identificador real.
 
@@ -674,7 +675,7 @@ Run:
 ```bash
 env -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  DATABASE_URL="$TEST_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
   node scripts/migrate-frappe-crm.mjs --apply \
     --expected-manifest-hash "$EXPECTED_MANIFEST_HASH"
 ```
@@ -907,7 +908,7 @@ git commit -m "docs: verify backup restore and reconciliation"
 Deploy sem Production:
 
 ```bash
-vercel deploy --cwd .worktrees/migracao-sem-frappe
+vercel deploy
 ```
 
 Confirmar commit, env Preview, logs sem segredo e health endpoint.
@@ -982,7 +983,7 @@ git commit -m "docs: record quotation canary and rollback evidence"
 ### Task 12: Full verification and final review gate
 
 **Files:**
-- Modify: `.superpowers/sdd/2026-08-05-migracao-gradual-sem-frappe/progress.md`
+- Modify: `.superpowers/sdd/2026-08-08-fechamento-migracao-cutover/progress.md`
 - Create: `docs/superpowers/reports/2026-08-08-migracao-acceptance.md`
 
 **Interfaces:**
@@ -1009,7 +1010,7 @@ Expected: zero falhas, warnings existentes documentados e zero segredo detectado
 ```bash
 env -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  DATABASE_URL="$TEST_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
   npm run db:migrate
 node --test --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
 ```
