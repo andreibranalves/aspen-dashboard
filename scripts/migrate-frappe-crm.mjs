@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -51,11 +52,55 @@ export function parseArgs(argv) {
   return { mode: normalizedMode, fixture, approvedDivergences };
 }
 
+function parseServiceFile(contents, serviceName) {
+  let section = null;
+  const values = {};
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const sectionMatch = line.match(/^\[([^\]]+)\]$/);
+    if (sectionMatch) {
+      section = sectionMatch[1].trim();
+      continue;
+    }
+    if (section !== serviceName) continue;
+    const separator = line.indexOf('=');
+    if (separator === -1) continue;
+    values[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
+  }
+  const host = values.host;
+  const port = values.port || '5432';
+  const database = values.dbname || values.database;
+  if (!host || !database) {
+    throw new Error('CUTOVER_PG_SERVICE não informa host e database no PGSERVICEFILE.');
+  }
+  if (values.hostaddr && values.hostaddr !== host) {
+    throw new Error('CUTOVER_PG_SERVICE não pode sobrescrever host com hostaddr.');
+  }
+  return { host, port, database };
+}
+
+export function readPgServiceTarget(env = process.env) {
+  const serviceName = env.CUTOVER_PG_SERVICE?.trim();
+  const serviceFile = env.PGSERVICEFILE?.trim();
+  if (!serviceName || !serviceFile) {
+    throw new Error('CUTOVER_PG_SERVICE exige PGSERVICEFILE para validar o destino real.');
+  }
+  let contents;
+  try {
+    contents = readFileSync(serviceFile, 'utf8');
+  } catch {
+    throw new Error('PGSERVICEFILE não pôde ser lido.');
+  }
+  return parseServiceFile(contents, serviceName);
+}
+
 export function assertDatabaseContract(env = process.env) {
   if (!env.CUTOVER_PG_SERVICE) return;
-  if (!env.DATABASE_URL || !env.CUTOVER_DATABASE_HOST || !env.CUTOVER_DATABASE_PORT || !env.CUTOVER_DATABASE_NAME) {
-    throw new Error('CUTOVER_PG_SERVICE exige DATABASE_URL, host, port e database esperados.');
+  if (!env.DATABASE_URL) {
+    throw new Error('CUTOVER_PG_SERVICE exige DATABASE_URL para validar o destino.');
   }
+  const serviceTarget = readPgServiceTarget(env);
   let url;
   try {
     url = new URL(env.DATABASE_URL);
@@ -65,12 +110,13 @@ export function assertDatabaseContract(env = process.env) {
   const port = url.port || '5432';
   const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
   if (
-    url.hostname !== env.CUTOVER_DATABASE_HOST ||
-    port !== env.CUTOVER_DATABASE_PORT ||
-    database !== env.CUTOVER_DATABASE_NAME
+    url.hostname.toLowerCase() !== serviceTarget.host.toLowerCase() ||
+    port !== serviceTarget.port ||
+    database !== serviceTarget.database
   ) {
     throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
   }
+  return serviceTarget;
 }
 
 export function resolveRepositoryMode({ mode, hasFixture, hasDatabaseUrl }) {

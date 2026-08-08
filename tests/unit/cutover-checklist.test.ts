@@ -57,7 +57,7 @@ test('runbook includes abort, document, status, order and lineage policies', () 
     'business number duplicado',
     'divergência financeira',
     'template ou outra pré-condição órfã',
-    'PDF ausente',
+    'PDF atual exigido',
     'chamada Frappe inesperada',
     'lote com estado `failed`',
     'teste de segurança de link público externo falhar',
@@ -73,9 +73,9 @@ test('runbook includes abort, document, status, order and lineage policies', () 
     'approvedDivergenceKeys',
     'RESTORE_DATABASE_URL',
     'CUTOVER_PG_SERVICE',
-    'CUTOVER_DATABASE_NAME',
-    'CUTOVER_DATABASE_PORT',
-    'TARGET_MATCH',
+    'PGSERVICEFILE',
+    'EXPECTED_DATABASE',
+    'current_database()',
     'manifest.apply.persisted.sha256',
     'sha256sum --check',
     'exit 1',
@@ -118,6 +118,8 @@ test('delta comparison uses stable manifest hash and aborts real changes', () =>
 
 test('supporting scripts fail closed and emit verifiable migration artifacts', () => {
   assert.match(backupScript, /RESTORE_DATABASE_URL/);
+  assert.match(backupScript, /delete env\.TEST_DATABASE_URL/);
+  assert.match(backupScript, /TEST_DATABASE_URL: ''/);
   assert.match(backupScript, /--file/);
   assert.match(backupScript, /alvo isolado diferente/);
   assert.doesNotMatch(backupScript, /issued_documents/);
@@ -125,6 +127,8 @@ test('supporting scripts fail closed and emit verifiable migration artifacts', (
   assert.match(migrationCli, /normalizedMode === 'apply' && fixture/);
   assert.match(migrationCli, /mode === 'apply' && process\.env\.FRAPPE_MIGRATION_FIXTURE/);
   assert.match(migrationCli, /assertDatabaseContract/);
+  assert.match(migrationCli, /readPgServiceTarget/);
+  assert.match(migrationCli, /PGSERVICEFILE/);
   assert.match(migrationCli, /approvedDivergenceKeys/);
   assert.match(migrationCli, /manifest: result\.manifest/);
   assert.match(playwrightConfig, /process\.env\.BASE_URL/);

@@ -85,13 +85,14 @@ test('parsed connection fields override inherited libpq environment', () => {
     PGSERVICE: 'wrong-service',
     PGSERVICEFILE: '/tmp/wrong-service-file',
     PGPASSFILE: '/tmp/wrong-pass-file',
+    TEST_DATABASE_URL: 'postgresql://wrong.test/test-db',
   });
   assert.equal(env.PGHOST, 'target.test');
   assert.equal(env.PGPORT, '5433');
   assert.equal(env.PGUSER, 'target-user');
   assert.equal(env.PGPASSWORD, 'target-pass');
   assert.equal(env.PGDATABASE, 'target-db');
-  for (const key of ['PGHOSTADDR', 'PGSERVICE', 'PGSERVICEFILE', 'PGPASSFILE'])
+  for (const key of ['PGHOSTADDR', 'PGSERVICE', 'PGSERVICEFILE', 'PGPASSFILE', 'TEST_DATABASE_URL'])
     assert.equal(env[key], undefined, `${key} must not override parsed connection`);
 });
 

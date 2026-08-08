@@ -135,6 +135,7 @@ export function postgresEnv(connection, database = connection.database, inherite
   }
   delete env.DATABASE_URL;
   delete env.RESTORE_DATABASE_URL;
+  delete env.TEST_DATABASE_URL;
   env.PGHOST = connection.host;
   env.PGPORT = connection.port;
   env.PGUSER = connection.user;
@@ -238,7 +239,11 @@ function runValidate(dumpFile) {
   stdout('Dump restaurado no alvo isolado.');
   command('npx', ['drizzle-kit', 'migrate'], {
     cwd: PROJECT_ROOT,
-    env: { ...targetEnv, DATABASE_URL: connectionUrlForDatabase(restore, restore.database) },
+    env: {
+      ...targetEnv,
+      DATABASE_URL: connectionUrlForDatabase(restore, restore.database),
+      TEST_DATABASE_URL: '',
+    },
     timeout: 60_000,
   });
   stdout('Migrações concluídas no alvo isolado.');

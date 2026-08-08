@@ -50,7 +50,7 @@ A flag mestre só pode ser alterada com snapshot, motivo, operador, revisor e ho
 
 ## Abort e rollback
 
-Aborte para duplicata, divergência financeira sem explicação, órfão, PDF inválido, chamada Frappe inesperada, lote falho, falha de link público ou falha de leitura de rollback.
+Aborte para duplicata, divergência financeira sem explicação, órfão, PDF atual inválido, chamada Frappe inesperada, lote falho, falha de link público ou falha de leitura de rollback; a ausência esperada de PDF histórico persistido não é falha de integridade.
 
 No rollback, congele novos efeitos, mantenha `CRM_CORE_QUOTES_ENABLED=true`, defina `CRM_QUOTES_ROLLOUT_STATE=rollback-compatible` e faça redeploy.
 

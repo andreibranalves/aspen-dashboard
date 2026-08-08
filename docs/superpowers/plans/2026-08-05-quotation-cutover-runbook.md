@@ -21,7 +21,7 @@ A execução para imediatamente quando qualquer condição abaixo ocorrer:
 - business number duplicado ou colisão de chave canônica;
 - divergência financeira sem explicação aprovada e registrada;
 - produto, cliente, template ou outra pré-condição órfã;
-- PDF ausente, ilegível, sem `%PDF-`, sem `%%EOF`, com checksum diferente ou tamanho inesperado;
+- PDF atual exigido pelo canário ausente, ilegível, sem `%PDF-`, sem `%%EOF`, com checksum diferente ou tamanho inesperado; a ausência esperada de arquivo histórico não é essa condição;
 - chamada Frappe inesperada depois do congelamento, inclusive uma chamada de leitura não prevista pelo passo atual;
 - lote com estado `failed`, tentativa excedida ou checkpoint inconsistente;
 - teste de segurança de link público externo falhar;
@@ -50,9 +50,6 @@ umask 077
 export CUTOVER_DIR="${CUTOVER_DIR:-$HOME/aspen-cutover-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$CUTOVER_DIR"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
-: "${CUTOVER_DATABASE_NAME:?configure the expected apply database name}"
-: "${CUTOVER_DATABASE_HOST:?configure the expected apply database host}"
-: "${CUTOVER_DATABASE_PORT:?configure the expected apply database port}"
 : "${PGSERVICEFILE:?configure a protected libpq service file path}"
 : "${PGPASSFILE:?configure a protected libpq password file path}"
 export PGSERVICEFILE PGPASSFILE
@@ -77,18 +74,17 @@ A mensagem de erro acima não contém o valor da variável.
 
 Não passe uma URL PostgreSQL em argumento de processo, log ou comando `psql`.
 
-Confirme que `DATABASE_URL` usada pelo worker aponta para o mesmo host, port e database da conexão nomeada sem imprimir nenhum valor.
+O contrato compara `DATABASE_URL` com host, porta e database efetivos lidos da seção `CUTOVER_PG_SERVICE` em `PGSERVICEFILE`.
 
-`DATABASE_URL` é a credencial de configuração da API para o mesmo destino identificado por `CUTOVER_PG_SERVICE`; não existe uma segunda base de reconciliação.
+Não substitua essa verificação por variáveis `CUTOVER_DATABASE_*` digitadas pelo operador ou por uma leitura isolada de `current_database()`.
+
+`DATABASE_URL` é a credencial de configuração da API para o mesmo destino identificado pelo serviço nomeado; não existe uma segunda base de reconciliação.
 
 ```bash
 set -euo pipefail
 node --input-type=module <<'NODE'
-const url = new URL(process.env.DATABASE_URL || '');
-const port = url.port || '5432';
-const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
-if (url.hostname !== process.env.CUTOVER_DATABASE_HOST || port !== process.env.CUTOVER_DATABASE_PORT || database !== process.env.CUTOVER_DATABASE_NAME)
-  throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
 NODE
 ```
 
@@ -277,7 +273,7 @@ jq -e '(.approvedDivergenceKeys | length == 0)' "$CUTOVER_DIR/report.dry-run.jso
 
 Uma divergência aprovada deve referenciar `source_doctype:source_id` e existir no conjunto explícito `approvedDivergenceKeys` do report.
 
-Não use `--approve-divergence` para contornar duplicata, perda financeira, órfão, PDF inválido ou falha de segurança.
+Não use `--approve-divergence` para contornar duplicata, perda financeira, órfão, PDF atual inválido ou falha de segurança.
 
 ## 6. Ordem de dependências e apply
 
@@ -384,15 +380,24 @@ Para retomar um run falho, corrija a causa, preserve o mesmo manifest e faça no
 
 Capture contagens e invariantes sem selecionar dados pessoais.
 
-Apply e reconciliação devem usar `CUTOVER_PG_SERVICE` e `CUTOVER_DATABASE_NAME` da mesma conexão nomeada.
+Apply e reconciliação devem usar `CUTOVER_PG_SERVICE` da mesma conexão nomeada.
+
+Valide o serviço efetivo e compare o database da conexão ativa com a configuração lida de `PGSERVICEFILE`.
 
 ```bash
 set -euo pipefail
-TARGET_MATCH="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
-  --variable=expected_database="$CUTOVER_DATABASE_NAME" \
-  --command "SELECT current_database() = :'expected_database';")"
-printf '%s\n' "$TARGET_MATCH" | tee "$CUTOVER_DIR/reconciliation-target.txt"
-test "$TARGET_MATCH" = 't'
+node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
+TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
+EXPECTED_DATABASE="$(node --input-type=module <<'NODE'
+import { readPgServiceTarget } from './scripts/migrate-frappe-crm.mjs';
+process.stdout.write(readPgServiceTarget(process.env).database);
+NODE
+)"
+printf '%s\n' "$TARGET_DATABASE" | tee "$CUTOVER_DIR/reconciliation-target.txt"
+test "$TARGET_DATABASE" = "$EXPECTED_DATABASE"
 psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 <<'SQL' | tee "$CUTOVER_DIR/reconciliation.txt"
 SELECT 'duplicate_business_number' AS check_name, count(*) AS failures
 FROM (
@@ -543,7 +548,7 @@ A resposta de preview informa MIME, tamanho e metadados do template; o operador 
 
 Não existe retenção de PDF histórico nesta fase.
 
-A ausência de um PDF histórico persistido não bloqueia o apply, mas bloqueia o canário se o cenário exigir download histórico arquivado.
+A ausência de um PDF histórico persistido é esperada e não bloqueia o apply nem o canário on-demand; somente um cenário que exigir download histórico arquivado deve abortar por política não suportada, não por integridade de PDF atual.
 
 O canário de documento deve validar `%PDF-`, `%%EOF`, MIME, tamanho e checksum do PDF renderizado sob demanda.
 

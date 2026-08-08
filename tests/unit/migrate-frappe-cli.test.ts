@@ -10,6 +10,7 @@ import { canonicalHash } from '../../api/_functions/frappe-migration.js';
 import {
   assertDatabaseContract,
   parseArgs,
+  readPgServiceTarget,
   resolveRepositoryMode,
 } from '../../scripts/migrate-frappe-crm.mjs';
 
@@ -35,27 +36,44 @@ describe('CLI de migração Frappe', () => {
       );
   });
 
-  it('valida host, porta e database do contrato de cutover sem aceitar outro destino', () => {
+  it('valida host, porta e database do serviço libpq real sem aceitar outro destino', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'pg-service-'));
+    const serviceFile = path.join(directory, 'pg_service.conf');
+    writeFileSync(
+      serviceFile,
+      '[cutover-quotes]\nhost=db.example\nport=5433\ndbname=quotes\n'
+    );
     const base = {
       DATABASE_URL: 'postgresql://api-user@db.example:5433/quotes',
       CUTOVER_PG_SERVICE: 'cutover-quotes',
-      CUTOVER_DATABASE_HOST: 'db.example',
-      CUTOVER_DATABASE_PORT: '5433',
-      CUTOVER_DATABASE_NAME: 'quotes',
+      PGSERVICEFILE: serviceFile,
     };
-    assert.doesNotThrow(() => assertDatabaseContract(base));
-    assert.throws(
-      () => assertDatabaseContract({ ...base, CUTOVER_DATABASE_HOST: 'other.example' }),
-      /mesmo destino/
-    );
-    assert.throws(
-      () => assertDatabaseContract({ ...base, CUTOVER_DATABASE_PORT: '5432' }),
-      /mesmo destino/
-    );
-    assert.throws(
-      () => assertDatabaseContract({ ...base, CUTOVER_DATABASE_NAME: 'other' }),
-      /mesmo destino/
-    );
+    try {
+      assert.deepEqual(readPgServiceTarget(base), {
+        host: 'db.example',
+        port: '5433',
+        database: 'quotes',
+      });
+      assert.doesNotThrow(() => assertDatabaseContract(base));
+      assert.throws(
+        () => assertDatabaseContract({ ...base, DATABASE_URL: 'postgresql://api-user@other.example:5433/quotes' }),
+        /mesmo destino/
+      );
+      assert.throws(
+        () => assertDatabaseContract({ ...base, DATABASE_URL: 'postgresql://api-user@db.example:5432/quotes' }),
+        /mesmo destino/
+      );
+      assert.throws(
+        () => assertDatabaseContract({ ...base, DATABASE_URL: 'postgresql://api-user@db.example:5433/other' }),
+        /mesmo destino/
+      );
+      assert.throws(
+        () => assertDatabaseContract({ ...base, PGSERVICEFILE: path.join(directory, 'missing.conf') }),
+        /PGSERVICEFILE/
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('nunca simula apply com fixture sem DATABASE_URL', () => {
