@@ -672,13 +672,21 @@ export class InMemoryQuotationOutboxRepository implements QuotationOutboxReposit
     const duration = boundedPositive(leaseMs, DEFAULT_LEASE_MS, MAX_LEASE_MS);
     const current = validDate(requestedNow, this.now());
     const providerSet = providers === undefined ? null : new Set(providers);
+    const candidates = [...this.events.values()]
+      .filter((event) => {
+        const due =
+          ((event.status === 'pending' || event.status === 'retry') && event.nextAttemptAt <= current) ||
+          (event.status === 'processing' && !!event.leaseExpiresAt && event.leaseExpiresAt <= current);
+        const leaseFree = !event.leaseExpiresAt || event.leaseExpiresAt <= current;
+        return due && leaseFree && (!providerSet || providerSet.has(event.provider));
+      })
+      .sort((left, right) =>
+        left.nextAttemptAt.getTime() - right.nextAttemptAt.getTime() ||
+        left.createdAt.getTime() - right.createdAt.getTime(),
+      )
+      .slice(0, batchSize);
     const claimed: QuotationOutboxEvent[] = [];
-    for (const event of this.events.values()) {
-      const due =
-        ((event.status === 'pending' || event.status === 'retry') && event.nextAttemptAt <= current) ||
-        (event.status === 'processing' && !!event.leaseExpiresAt && event.leaseExpiresAt <= current);
-      const leaseFree = !event.leaseExpiresAt || event.leaseExpiresAt <= current;
-      if (!due || !leaseFree || claimed.length >= batchSize || (providerSet && !providerSet.has(event.provider))) continue;
+    for (const event of candidates) {
       event.status = 'processing';
       event.leaseOwner = leaseOwner;
       event.leaseExpiresAt = new Date(current.getTime() + duration);

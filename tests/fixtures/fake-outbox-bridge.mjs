@@ -3,11 +3,16 @@
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 
+const EVENT_TYPES = new Set(['quotation.created', 'quotation.updated', 'quotation.issued', 'quotation.sent']);
+const PROVIDERS = new Set(['n8n', 'evolution', 'crm']);
+const CANONICAL_FIELDS = ['event_type', 'provider', 'quotation_id', 'revision_id', 'business_number', 'idempotency_key'];
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function json(response, status, body) {
+  if (response.destroyed) return;
   response.writeHead(status, { 'content-type': 'application/json' });
   response.end(JSON.stringify(body));
 }
@@ -18,10 +23,21 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
+function canonicalEvent(body) {
+  if (
+    typeof body !== 'object' || body === null ||
+    typeof body.event_type !== 'string' || !EVENT_TYPES.has(body.event_type) ||
+    typeof body.provider !== 'string' || !PROVIDERS.has(body.provider) ||
+    CANONICAL_FIELDS.slice(2).some((field) => typeof body[field] !== 'string' || !body[field].trim())
+  ) return null;
+  return Object.fromEntries(CANONICAL_FIELDS.map((field) => [field, body[field].trim()]));
+}
+
 export async function createFakeOutboxBridge(options = {}) {
   const mode = options.mode || process.env.FAKE_OUTBOX_MODE || 'accepted';
   const delayMs = Number(options.delayMs ?? process.env.FAKE_OUTBOX_DELAY_MS ?? 0);
   const requests = [];
+  const duplicates = [];
   const seenKeys = new Set();
   const server = createServer(async (request, response) => {
     if (request.method === 'GET' && request.url === '/health') {
@@ -40,21 +56,25 @@ export async function createFakeOutboxBridge(options = {}) {
       json(response, 400, { error: 'invalid_json' });
       return;
     }
-    requests.push(body);
-    const idempotencyKey = typeof body.idempotency_key === 'string' ? body.idempotency_key : '';
-    const duplicate = idempotencyKey && seenKeys.has(idempotencyKey);
-    if (idempotencyKey) seenKeys.add(idempotencyKey);
+    const event = canonicalEvent(body);
+    if (!event) {
+      json(response, 400, { error: 'canonical_event_required' });
+      return;
+    }
+    requests.push(event);
+    const duplicate = seenKeys.has(event.idempotency_key);
+    seenKeys.add(event.idempotency_key);
+    if (duplicate) duplicates.push(event.idempotency_key);
 
     if (mode === 'error') {
       json(response, 500, { accepted: false, error: 'fake_failure' });
       return;
     }
-    if (mode === 'timeout') {
-      await delay(delayMs || 60_000);
-    }
+    if (mode === 'timeout') await delay(delayMs || 60_000);
     json(response, 202, {
       accepted: true,
-      message_id: duplicate ? 'fake-1' : 'fake-1',
+      duplicate,
+      message_id: 'fake-1',
     });
   });
 
@@ -70,6 +90,7 @@ export async function createFakeOutboxBridge(options = {}) {
   return {
     url: `http://${address.address}:${address.port}`,
     requests,
+    duplicates,
     async close() {
       await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     },

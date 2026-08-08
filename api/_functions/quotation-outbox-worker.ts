@@ -32,6 +32,7 @@ export type QuotationOutboxProviderOperation = (
 
 export interface QuotationOutboxProviderAdapter {
   readonly provider: QuotationOutboxProvider;
+  readonly configured?: boolean;
   deliver: QuotationOutboxProviderOperation;
 }
 
@@ -53,10 +54,15 @@ export interface QuotationOutboxProviderConfig {
 
 const OUTBOX_PROVIDERS = ['n8n', 'evolution', 'crm'] as const;
 
+function configuredUrlValue(value: string | undefined): string | undefined {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed || undefined;
+}
+
 export function configuredQuotationOutboxProviders(
   config: QuotationOutboxProviderConfig,
 ): QuotationOutboxProvider[] {
-  return OUTBOX_PROVIDERS.filter((provider) => Boolean(config[`${provider}Url` as 'n8nUrl' | 'evolutionUrl' | 'crmUrl'])) as QuotationOutboxProvider[];
+  return OUTBOX_PROVIDERS.filter((provider) => Boolean(configuredUrlValue(config[`${provider}Url` as 'n8nUrl' | 'evolutionUrl' | 'crmUrl']))) as QuotationOutboxProvider[];
 }
 
 export class QuotationOutboxProviderUnavailableError extends Error {
@@ -98,6 +104,7 @@ function adapter(
 ): QuotationOutboxProviderAdapter {
   return {
     provider,
+    configured: Boolean(operation),
     deliver: operation || (async () => {
       throw new QuotationOutboxProviderUnavailableError(provider);
     }),
@@ -120,10 +127,11 @@ export function createQuotationOutboxProviderAdapters(
 }
 
 function configuredUrl(value: string | undefined, provider: QuotationOutboxProvider): string {
-  if (!value) throw new QuotationOutboxProviderUnavailableError(provider);
+  const normalized = configuredUrlValue(value);
+  if (!normalized) throw new QuotationOutboxProviderUnavailableError(provider);
   let parsed: URL;
   try {
-    parsed = new URL(value);
+    parsed = new URL(normalized);
   } catch {
     throw new Error(`URL do adaptador de outbox inválida: ${provider}`);
   }
@@ -178,9 +186,15 @@ export function createConfiguredQuotationOutboxProviderAdapters(
 ): Record<QuotationOutboxProvider, QuotationOutboxProviderAdapter> {
   const fetcher = config.fetcher || fetch;
   return createQuotationOutboxProviderAdapters({
-    n8n: configuredOperation('n8n', config.n8nUrl, config.n8nToken, fetcher),
-    evolution: configuredOperation('evolution', config.evolutionUrl, config.evolutionToken, fetcher),
-    crm: configuredOperation('crm', config.crmUrl, config.crmToken, fetcher),
+    n8n: configuredUrlValue(config.n8nUrl)
+      ? configuredOperation('n8n', config.n8nUrl, config.n8nToken, fetcher)
+      : undefined,
+    evolution: configuredUrlValue(config.evolutionUrl)
+      ? configuredOperation('evolution', config.evolutionUrl, config.evolutionToken, fetcher)
+      : undefined,
+    crm: configuredUrlValue(config.crmUrl)
+      ? configuredOperation('crm', config.crmUrl, config.crmToken, fetcher)
+      : undefined,
   });
 }
 
@@ -188,9 +202,9 @@ export function quotationOutboxConfigFromEnv(
   env: Record<string, string | undefined> = process.env,
 ): QuotationOutboxProviderConfig {
   return {
-    n8nUrl: env.OUTBOX_N8N_URL || env.N8N_OUTBOX_WEBHOOK_URL,
-    evolutionUrl: env.OUTBOX_EVOLUTION_URL,
-    crmUrl: env.OUTBOX_CRM_URL,
+    n8nUrl: configuredUrlValue(env.OUTBOX_N8N_URL || env.N8N_OUTBOX_WEBHOOK_URL),
+    evolutionUrl: configuredUrlValue(env.OUTBOX_EVOLUTION_URL),
+    crmUrl: configuredUrlValue(env.OUTBOX_CRM_URL),
     n8nToken: env.OUTBOX_N8N_TOKEN,
     evolutionToken: env.OUTBOX_EVOLUTION_TOKEN,
     crmToken: env.OUTBOX_CRM_TOKEN,
@@ -315,8 +329,9 @@ export async function processQuotationOutbox(
 ): Promise<QuotationOutboxWorkerResult> {
   const configuredProviders = (options.configuredProviders
     ? [...new Set(options.configuredProviders)]
-    : OUTBOX_PROVIDERS.filter((provider) => options.adapters[provider]))
-    .filter((provider) => options.adapters[provider]?.provider === provider);
+    : OUTBOX_PROVIDERS)
+    .filter((provider) => options.adapters[provider]?.provider === provider)
+    .filter((provider) => options.adapters[provider]?.configured !== false);
   const emptyResult = (): QuotationOutboxWorkerResult => ({
     claimed: 0,
     delivered: 0,

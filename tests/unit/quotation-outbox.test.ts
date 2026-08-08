@@ -22,6 +22,7 @@ import {
   createConfiguredQuotationOutboxProviderAdapters,
   createQuotationOutboxProviderAdapters,
   processQuotationOutbox,
+  quotationOutboxConfigFromEnv,
   quotationOutboxProviderTimeoutMs,
 } from '../../api/_functions/quotation-outbox-worker.js';
 import { createFakeOutboxBridge } from '../fixtures/fake-outbox-bridge.mjs';
@@ -134,6 +135,56 @@ test('outbox ignores exact duplicate keys but rejects conflicting references', a
   assert.equal('secret' in first.payloadReference, false);
 });
 
+test('SQL and Memory claim due events in the same timestamp order', async () => {
+  const repositorySource = await readFile(new URL('../../api/_db/quotation-outbox-repository.ts', import.meta.url), 'utf8');
+  assert.match(repositorySource, /orderBy\(asc\(quotationOutboxEvents\.nextAttemptAt\), asc\(quotationOutboxEvents\.createdAt\)\)[\s\S]*?\.limit\(batchSize\)/);
+  const seed = async () => {
+    const repository = new InMemoryQuotationOutboxRepository({
+      idFactory: (() => {
+        let next = 0;
+        return () => `event-${++next}`;
+      })(),
+    });
+    await repository.enqueue({
+      ...base,
+      quotationId: 'late',
+      revisionId: 'late-revision',
+      businessNumber: 'ORC-20260002',
+      idempotencyKey: 'late-key',
+      now: new Date('2026-08-05T10:00:02.000Z'),
+    });
+    await repository.enqueue({
+      ...base,
+      quotationId: 'early',
+      revisionId: 'early-revision',
+      businessNumber: 'ORC-20260003',
+      idempotencyKey: 'early-key',
+      now: new Date('2026-08-05T10:00:01.000Z'),
+    });
+    return repository;
+  };
+  const first = await (await seed()).claimDueEvents({
+    owner: 'worker-a',
+    limit: 1,
+    now: new Date('2026-08-05T10:00:03.000Z'),
+    leaseMs: 30_000,
+  });
+  const secondRepository = await seed();
+  const second = await secondRepository.claimDueEvents({
+    owner: 'worker-a',
+    limit: 1,
+    now: new Date('2026-08-05T10:00:03.000Z'),
+    leaseMs: 30_000,
+  });
+  assert.deepEqual(first.map((event) => event.id), second.map((event) => event.id));
+  assert.equal(first[0]?.payloadReference.quotationId, 'early');
+  assert.equal(first[0]?.leaseOwner, 'worker-a');
+  assert.equal(first[0]?.status, 'processing');
+  assert.equal(second[0]?.leaseOwner, 'worker-a');
+  assert.equal(second[0]?.status, 'processing');
+  assert.equal((await secondRepository.list()).find((event) => event.payloadReference.quotationId === 'late')?.status, 'pending');
+});
+
 test('lease prevents a second worker from claiming an event concurrently', async () => {
   const repository = await queued();
   const now = new Date('2026-08-05T10:00:01.000Z');
@@ -188,10 +239,17 @@ test('durability failure identifies provider acceptance without claiming durable
 });
 
 test('outbox worker is disabled without providers and does not claim events', async () => {
-  const config = configuredQuotationOutboxProviders({ DATABASE_URL: 'postgres://internal.test/db' });
-  assert.deepEqual(config, []);
-  const env = { DATABASE_URL: 'postgres://internal.test/db' };
-  assert.deepEqual(requiredConfiguration({}, env), []);
+  const env = {
+    DATABASE_URL: 'postgres://internal.test/db',
+    OUTBOX_CRM_URL: '   ',
+    OUTBOX_N8N_URL: '\t',
+    OUTBOX_EVOLUTION_URL: '',
+  };
+  const config = quotationOutboxConfigFromEnv(env);
+  assert.deepEqual(configuredQuotationOutboxProviders(config), []);
+  assert.equal(config.crmUrl, undefined);
+  assert.equal(config.n8nUrl, undefined);
+  assert.deepEqual(requiredConfiguration(config, env), []);
   let output = '';
   const originalLog = console.log;
   console.log = (value?: unknown) => { output = String(value); };
@@ -224,7 +282,6 @@ test('worker claims only providers with configured adapters', async () => {
   const result = await processQuotationOutbox({
     repository,
     owner: 'worker-a',
-    configuredProviders: ['crm'],
     adapters: createQuotationOutboxProviderAdapters({ crm: async () => ({ accepted: true }) }),
   });
   assert.deepEqual(result, { claimed: 1, delivered: 1, retried: 0, deadLettered: 0, leaseLost: 0 });
@@ -244,8 +301,15 @@ test('fake bridge accepts only canonical references and deduplicates idempotency
       idempotencyKey: 'opaque-key',
     };
     assert.deepEqual(await adapters.crm.deliver(context), { accepted: true, providerMessageId: 'fake-1' });
+    const duplicateResponse = await fetch(`${bridge.url}/events`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(bridge.requests[0]),
+    });
+    assert.equal((await duplicateResponse.json()).duplicate, true);
     assert.deepEqual(await adapters.crm.deliver(context), { accepted: true, providerMessageId: 'fake-1' });
-    assert.equal(bridge.requests.length, 2);
+    assert.equal(bridge.requests.length, 3);
+    assert.deepEqual(bridge.duplicates, ['opaque-key', 'opaque-key']);
     assert.deepEqual(bridge.requests[0], {
       event_type: 'quotation.sent',
       provider: 'crm',
@@ -257,6 +321,21 @@ test('fake bridge accepts only canonical references and deduplicates idempotency
     assert.equal('email' in bridge.requests[0], false);
     assert.equal('token' in bridge.requests[0], false);
     assert.equal('legacy_payload' in bridge.requests[0], false);
+
+    const defensiveResponse = await fetch(`${bridge.url}/events`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...bridge.requests[0],
+        email: 'cliente@example.com',
+        token: 'secret-token',
+        legacy_payload: { cpf: '123' },
+      }),
+    });
+    assert.equal(defensiveResponse.status, 202);
+    assert.equal('email' in bridge.requests.at(-1), false);
+    assert.equal('token' in bridge.requests.at(-1), false);
+    assert.equal('legacy_payload' in bridge.requests.at(-1), false);
   } finally {
     await bridge.close();
   }
@@ -297,6 +376,59 @@ test('fake bridge exposes health and controlled provider failures', async () => 
     }));
   } finally {
     await timedOut.close();
+  }
+});
+
+test('fake bridge failures drive worker retry and dead-letter', async () => {
+  const bridge = await createFakeOutboxBridge({ mode: 'error' });
+  try {
+    const repository = await queued({ maxAttempts: 2, retryBaseMs: 1 });
+    const adapters = createConfiguredQuotationOutboxProviderAdapters({ crmUrl: `${bridge.url}/events` });
+    let now = new Date('2026-08-05T10:00:01.000Z');
+    const first = await processQuotationOutbox({
+      repository,
+      owner: 'worker-a',
+      configuredProviders: ['crm'],
+      now: () => now,
+      adapters,
+    });
+    assert.deepEqual(first, { claimed: 1, delivered: 0, retried: 1, deadLettered: 0, leaseLost: 0 });
+    now = new Date('2026-08-05T10:00:02.000Z');
+    const second = await processQuotationOutbox({
+      repository,
+      owner: 'worker-a',
+      configuredProviders: ['crm'],
+      now: () => now,
+      adapters,
+    });
+    assert.deepEqual(second, { claimed: 1, delivered: 0, retried: 0, deadLettered: 1, leaseLost: 0 });
+    assert.equal((await repository.list())[0]?.status, 'dead_letter');
+    assert.equal(bridge.requests.length, 2);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('fake bridge timeout retries and releases the lease', async () => {
+  const bridge = await createFakeOutboxBridge({ mode: 'timeout', delayMs: 50 });
+  try {
+    const repository = await queued({ maxAttempts: 2 });
+    const result = await processQuotationOutbox({
+      repository,
+      owner: 'worker-a',
+      configuredProviders: ['crm'],
+      providerTimeoutMs: 5,
+      leaseMs: 100,
+      now: () => new Date('2026-08-05T10:00:01.000Z'),
+      adapters: createConfiguredQuotationOutboxProviderAdapters({ crmUrl: `${bridge.url}/events` }),
+    });
+    assert.deepEqual(result, { claimed: 1, delivered: 0, retried: 1, deadLettered: 0, leaseLost: 0 });
+    const [event] = await repository.list();
+    assert.equal(event?.status, 'retry');
+    assert.equal(event?.leaseOwner, null);
+    assert.equal(bridge.requests.length, 1);
+  } finally {
+    await bridge.close();
   }
 });
 
