@@ -977,25 +977,25 @@ const APPROVABLE_SOURCE_DOCTYPES = new Set([
  * Customer/Lead identifiers are always one-way hashed unless already carrying
  * the report's opaque cliente token.
  */
+const OPAQUE_CLIENT_TOKEN = /^cliente-[0-9a-f]{12}$/i;
+
 export function canonicalApprovalKey(sourceDoctype: string, sourceId: string): string | null {
   const doctype = text(sourceDoctype);
-  let id = text(sourceId);
-  if (!doctype || !id || !APPROVABLE_SOURCE_DOCTYPES.has(doctype)) return null;
+  const id = text(sourceId);
+  if (!doctype || !id || id.includes(':') || !APPROVABLE_SOURCE_DOCTYPES.has(doctype)) return null;
   if (doctype === 'Customer' || doctype === 'Lead') {
-    if (id.startsWith('cliente:')) {
-      const token = id.slice('cliente:'.length);
-      if (/^[0-9a-f]{12}$/i.test(token)) return `cliente:${token.toLowerCase()}`;
-      id = token;
-    }
-    return `cliente:${canonicalHash(`${doctype}:${id}`).slice(0, 12)}`;
+    const token = OPAQUE_CLIENT_TOKEN.test(id)
+      ? id.toLowerCase()
+      : `cliente-${canonicalHash(`${doctype}:${id}`).slice(0, 12)}`;
+    return `${doctype}:${token}`;
   }
   return `${doctype}:${id}`;
 }
 
 export function safeApprovalKey(key: string): string {
-  const separator = key.indexOf(':');
-  if (separator <= 0) throw new Error('Chave de aprovação inválida.');
-  const canonical = canonicalApprovalKey(key.slice(0, separator), key.slice(separator + 1));
+  const parts = String(key).split(':');
+  if (parts.length !== 2) throw new Error('Chave de aprovação inválida.');
+  const canonical = canonicalApprovalKey(parts[0], parts[1]);
   if (!canonical) throw new Error('Chave de aprovação inválida.');
   return canonical;
 }
@@ -1770,22 +1770,15 @@ export function addDetail(report: EntityReport, detail: ImportDetail): void {
   // Keep every report path behind the same PII boundary, including callers
   // that build ImportDetail directly instead of using the migration helper.
   const sourceDoctype = String(detail.source_doctype || '');
-  const safeClientIdentifier = (value: string | undefined): string | undefined => {
-    if (!value) return value;
-    if (value.startsWith('cliente:')) return value;
-    return `cliente:${canonicalHash(`${sourceDoctype}:${value}`).slice(0, 12)}`;
+  const reportClientToken = (value: string | undefined): string | undefined => {
+    if (!value || (sourceDoctype !== 'Customer' && sourceDoctype !== 'Lead')) return value;
+    const canonical = canonicalApprovalKey(sourceDoctype, value);
+    return canonical ? canonical.slice(sourceDoctype.length + 1) : undefined;
   };
-  const sourceId =
-    (sourceDoctype === 'Customer' || sourceDoctype === 'Lead')
-      ? safeClientIdentifier(detail.source_id)
-      : detail.source_id;
   report.detalhes.push({
     ...detail,
-    source_id: sourceId,
-    local_key:
-      (sourceDoctype === 'Customer' || sourceDoctype === 'Lead')
-        ? safeClientIdentifier(detail.local_key)
-        : detail.local_key,
+    source_id: reportClientToken(detail.source_id),
+    local_key: reportClientToken(detail.local_key),
     mensagem: sanitizeReportMessage(detail.mensagem),
   });
   report[detail.status] += 1;

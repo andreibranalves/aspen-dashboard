@@ -231,7 +231,7 @@ async function main() {
     approvedDivergences,
     expectedManifestHash,
   });
-  const safeApprovedDivergences = approvedDivergences.map((key) => migration.safeApprovalKey(key));
+  const safeApprovedDivergences = [...new Set(approvedDivergences.map((key) => migration.safeApprovalKey(key)))];
   process.stdout.write(`${JSON.stringify({
     ...result.report,
     manifest: result.manifest,

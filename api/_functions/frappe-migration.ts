@@ -199,19 +199,38 @@ function approvalKeyForDetail(detail: ImportDetail): string | null {
   return canonicalApprovalKey(String(detail.source_doctype || ''), String(detail.source_id || ''));
 }
 
-function approveDivergences(
-  report: ImportReport,
-  approvedKeys: string[] = [],
-  strict = true
+function sourceIdForApproval(record: SourceRecord): string {
+  return String(record.name || record.id || '').trim();
+}
+
+function validateApprovalKeysAgainstDataset(
+  dataset: FrappeDataset,
+  approvedKeys: string[] = []
 ): void {
   if (approvedKeys.length === 0) return;
-  const entities = [report.produtos, report.faixas, report.clientes, report.orcamentos, report.documentos];
-  const detailKeys = new Set(
-    entities.flatMap((entity) => entity.detalhes.map(approvalKeyForDetail).filter((key): key is string => Boolean(key)))
-  );
-  const approved = new Set(approvedKeys.map((key) => safeApprovalKey(String(key))));
-  if (strict && [...approved].some((key) => !detailKeys.has(key)))
+  const available = new Set<string>();
+  const addRecords = (sourceDoctype: string, records: SourceRecord[] = []): void => {
+    for (const record of records) {
+      const sourceId = sourceIdForApproval(record);
+      const key = canonicalApprovalKey(sourceDoctype, sourceId);
+      if (key) available.add(key);
+    }
+  };
+  addRecords('Item', dataset.items || []);
+  addRecords('Pricing Rule', dataset.pricingRules || []);
+  addRecords('Item Price', dataset.itemPrices || []);
+  addRecords('Customer', dataset.customers || []);
+  addRecords('Lead', dataset.leads || []);
+  addRecords('Quotation', dataset.quotations || []);
+  const requested = approvedKeys.map((key) => safeApprovalKey(String(key)));
+  if (requested.some((key) => !available.has(key)))
     throw new Error('Chave de aprovação inválida.');
+}
+
+function approveDivergences(report: ImportReport, approvedKeys: string[] = []): void {
+  if (approvedKeys.length === 0) return;
+  const entities = [report.produtos, report.faixas, report.clientes, report.orcamentos, report.documentos];
+  const approved = new Set(approvedKeys.map((key) => safeApprovalKey(String(key))));
   for (const entity of entities) {
     for (const detail of entity.detalhes) {
       const key = approvalKeyForDetail(detail);
@@ -342,23 +361,11 @@ function add(
   mensagem: string,
   localKey?: string
 ): void {
-  // Customer/Lead source IDs may themselves be CPF/CNPJ, e-mail, or a
-  // person's name. Keep a stable one-way token in the report/CLI while the
-  // complete source ID remains available to internal lineage/state writes.
-  const reportSourceId =
-    sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
-      ? `cliente:${canonicalHash(`${sourceDoctype}:${sourceId}`).slice(0, 12)}`
-      : sourceId;
-  // Client local keys can be document-derived (CPF/CNPJ). They are useful
-  // only inside the migration state/lineage and must never cross the report
-  // boundary, including dry-run, apply, and write-failure details.
-  const reportLocalKey =
-    sourceDoctype === 'Customer' || sourceDoctype === 'Lead' ? undefined : localKey;
   addDetail(report, {
     status,
     source_doctype: sourceDoctype,
-    source_id: reportSourceId,
-    local_key: reportLocalKey,
+    source_id: sourceId,
+    local_key: localKey,
     mensagem: sanitizeReportMessage(mensagem),
   });
 }
@@ -1387,10 +1394,11 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   else throw new Error('Fonte Frappe não configurada.');
   validateFrappeDataset(dataset);
 
-  // ── Manifest and run tracking ─────────────────────────────────────────
+  // ── Manifest and approval contract before any repository side effect ───
   const manifestHash = computeManifestHash(dataset);
   if (options.mode === 'apply' && expectedManifestHash !== manifestHash)
     throw new Error('Manifesto revisado não corresponde ao snapshot atual; apply bloqueado.');
+  validateApprovalKeysAgainstDataset(dataset, options.approvedDivergences);
   // A run is an execution identity, not a source identity. UUID avoids
   // collisions when two applies start in the same millisecond; resume still
   // reuses the persisted failed run ID.
@@ -1739,7 +1747,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       );
     }
   }
-  approveDivergences(report, options.approvedDivergences, false);
+  approveDivergences(report, options.approvedDivergences);
   if (hasBlockingDetails(report.orcamentos.detalhes)) {
     await failActiveRun('markBatchFailed:quotation-preflight');
     return failedResult();
@@ -1822,7 +1830,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     });
     if (clientAction) plannedClientUnits.push(unit);
   }
-  approveDivergences(report, options.approvedDivergences, false);
+  approveDivergences(report, options.approvedDivergences);
   if (
     options.mode === 'apply' &&
     [report.produtos, report.faixas, report.clientes].some((entity) => hasBlockingDetails(entity.detalhes))

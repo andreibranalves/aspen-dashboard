@@ -228,10 +228,35 @@ describe('CLI de migração Frappe', () => {
     assert.deepEqual(
       cliClientIds.sort(),
       [
-        `cliente:${canonicalHash('Customer:12.345.678/0001-90').slice(0, 12)}`,
-        `cliente:${canonicalHash('Lead:lead@example.com').slice(0, 12)}`,
+        `cliente-${canonicalHash('Customer:12.345.678/0001-90').slice(0, 12)}`,
+        `cliente-${canonicalHash('Lead:lead@example.com').slice(0, 12)}`,
       ].sort()
     );
+    const reportApprovalKeys = cliReport.clientes.detalhes
+      .map((detail: { source_doctype?: string; source_id?: string }) => `${detail.source_doctype}:${detail.source_id}`)
+      .sort();
+    assert.deepEqual(reportApprovalKeys, [
+      `Customer:cliente-${canonicalHash('Customer:12.345.678/0001-90').slice(0, 12)}`,
+      `Lead:cliente-${canonicalHash('Lead:lead@example.com').slice(0, 12)}`,
+    ].sort());
+    const roundTrip = spawnSync(
+      process.execPath,
+      [
+        'scripts/migrate-frappe-crm.mjs',
+        '--dry-run',
+        '--fixture',
+        'tests/fixtures/frappe-migration-valid.json',
+        '--approve-divergence',
+        reportApprovalKeys[0],
+        '--approve-divergence',
+        reportApprovalKeys[1],
+      ],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    assert.equal(roundTrip.status, 0, roundTrip.stderr);
+    const roundTripReport = JSON.parse(roundTrip.stdout);
+    assert.deepEqual(roundTripReport.approvedDivergenceKeys.sort(), reportApprovalKeys);
+    assert.doesNotMatch(roundTrip.stdout, /12\.345\.678|0001-90|lead@example\.com/);
 
     const invalid = spawnSync(
       process.execPath,
@@ -291,6 +316,8 @@ describe('CLI de migração Frappe', () => {
           '--dry-run',
           '--fixture',
           blockingFixture,
+          '--approve-divergence',
+          'Quotation:QTN-2025-00099',
           '--approve-divergence',
           'Quotation:QTN-2025-00099',
         ],

@@ -3,10 +3,12 @@ import { describe, it } from 'node:test';
 
 import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
 import {
+  addDetail,
   buildQuotationUnits,
   canonicalApprovalKey,
   canonicalHash,
   deriveHistoricalPdfBlobPath,
+  emptyEntityReport,
   mapQuotationStatus,
   normalizeFrappeQuotation,
   normalizeHistoricalPdf,
@@ -496,8 +498,8 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     const leadSourceId = 'lead@example.com';
     const documents = ['12345678000190', '98765432000100'];
     const expectedSourceIds = [
-      `cliente:${canonicalHash(`Customer:${customerSourceId}`).slice(0, 12)}`,
-      `cliente:${canonicalHash(`Lead:${leadSourceId}`).slice(0, 12)}`,
+      `cliente-${canonicalHash(`Customer:${customerSourceId}`).slice(0, 12)}`,
+      `cliente-${canonicalHash(`Lead:${leadSourceId}`).slice(0, 12)}`,
     ];
     for (const mode of ['dry-run', 'apply'] as const) {
       const repository = new MemoryFrappeMigrationRepository();
@@ -972,14 +974,86 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     const leadId = 'lead@example.com';
     const customerKey = canonicalApprovalKey('Customer', customerId);
     const leadKey = canonicalApprovalKey('Lead', leadId);
-    assert.match(customerKey || '', /^cliente:[0-9a-f]{12}$/);
-    assert.match(leadKey || '', /^cliente:[0-9a-f]{12}$/);
+    assert.match(customerKey || '', /^Customer:cliente-[0-9a-f]{12}$/);
+    assert.match(leadKey || '', /^Lead:cliente-[0-9a-f]{12}$/);
     assert.doesNotMatch(customerKey || '', /12\.345\.678|0001-90/);
     assert.doesNotMatch(leadKey || '', /lead@example\.com/);
-    assert.equal(canonicalApprovalKey('Customer', customerKey || ''), customerKey);
+    assert.equal(canonicalApprovalKey('Customer', (customerKey || '').split(':')[1] || ''), customerKey);
+    assert.equal(safeApprovalKey(customerKey || ''), customerKey);
     assert.equal(canonicalApprovalKey('Quotation', 'QTN-2025-00001'), 'Quotation:QTN-2025-00001');
     assert.equal(canonicalApprovalKey('Unknown', 'secret-value'), null);
     assert.throws(() => safeApprovalKey('Unknown:secret-value'), /chave de aprovação inválida/i);
+    assert.throws(() => safeApprovalKey('Quotation:id:extra'), /chave de aprovação inválida/i);
+    assert.throws(() => safeApprovalKey('cliente-abcdef012345'), /chave de aprovação inválida/i);
+
+    const report = emptyEntityReport();
+    addDetail(report, {
+      status: 'divergentes',
+      source_doctype: 'Customer',
+      source_id: 'cliente:raw@example.com',
+      mensagem: 'Identidade inválida.',
+    });
+    assert.equal(report.detalhes[0].source_id, undefined);
+  });
+
+  it('rejeita approval ausente antes de lease e writes no apply', async () => {
+    const dataset = createFrappeMigrationFixture();
+    const repository = new MemoryFrappeMigrationRepository();
+    await assert.rejects(
+      () =>
+        runFrappeMigrationImplementation({
+          mode: 'apply',
+          dataset,
+          repository,
+          expectedManifestHash: computeManifestHash(dataset),
+          approvedDivergences: ['Quotation:DOES-NOT-EXIST'],
+        }),
+      /chave de aprovação inválida/i
+    );
+    assert.deepEqual(repository.writes, { products: 0, clients: 0, quotations: 0, lineage: 0, documents: 0 });
+    assert.equal(repository.runs.length, 0);
+    assert.equal(repository.batches.length, 0);
+  });
+
+  it('aceita key conhecida sem divergência e não incrementa aprovações', async () => {
+    const dataset = createFrappeMigrationFixture();
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigrationImplementation({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+      approvedDivergences: ['Item:ITEM-001'],
+    });
+    assert.equal(result.report.total.aprovadas, 0);
+    assert.equal(repository.writes.products, 2);
+  });
+
+  it('marca enrichment falho sem persistir a quotation', async () => {
+    const dataset: FrappeDataset = {
+      items: [],
+      customers: [],
+      leads: [],
+      quotations: [
+        {
+          __migration_enrichment_error: true,
+          name: 'QTN-2025-00100',
+          creation: '2025-01-01 10:00:00',
+          quotation_to: 'Customer',
+          party_name: 'CUST-ENRICHMENT',
+          items: [{ item_code: 'SKU-001', qty: 2, rate: 10 }],
+        },
+      ],
+    };
+    const repository = new MemoryFrappeMigrationRepository();
+    const result = await runFrappeMigrationImplementation({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+    });
+    assert.equal(result.report.orcamentos.erros, 1);
+    assert.equal(repository.writes.quotations, 0);
   });
 
   it('rejeita orçamentos sem ano ou sem sequência numérica no nome', () => {

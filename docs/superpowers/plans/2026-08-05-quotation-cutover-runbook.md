@@ -288,7 +288,9 @@ jq -e '(.total.divergentes // 0) == 0 and (.total.erros // 0) == 0' "$CUTOVER_DI
 jq -e '(.approvedDivergenceKeys | length == 0)' "$CUTOVER_DIR/report.dry-run.json"
 ```
 
-Uma divergência aprovada deve referenciar `source_doctype:source_id` e existir no conjunto explícito `approvedDivergenceKeys` do report.
+Uma divergência aprovada deve referenciar a mesma chave canônica `source_doctype:source_id` exibida no detalhe do report e no conjunto explícito `approvedDivergenceKeys`.
+
+Para Customer e Lead, `source_id` é sempre um token opaco no formato `cliente-<12 hex>`, sem CPF, CNPJ, e-mail ou dois-pontos adicionais.
 
 Não use `--approve-divergence` para contornar duplicata, perda financeira, órfão, PDF atual inválido ou falha de segurança.
 
@@ -379,7 +381,7 @@ import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
-EXPECTED_APPROVAL='SourceDoctype:source-id'
+EXPECTED_APPROVAL='SourceDoctype:opaque-source-id'
 node scripts/migrate-frappe-crm.mjs --apply \
   --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
   --approve-divergence "$EXPECTED_APPROVAL" \
