@@ -944,7 +944,18 @@ async function dispatchN8n(payload: Record<string, unknown>, email?: string): Pr
   }).catch((err: Error) => console.error('[send-whatsapp] n8n webhook failed:', err.message));
 }
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+export type SendWhatsappHandlerDependencies = {
+  repository?: QuotationSnapshotRepository;
+  store?: PublicQuotationStore;
+  token?: () => string;
+  renderPdf?: NonNullable<PublicQuotationDependencies['renderPdf']>;
+  enqueueSentEvent?: typeof queuePostgresSentEvent;
+};
+
+export async function handler(
+  event: FunctionEvent,
+  dependencies: SendWhatsappHandlerDependencies = {},
+): Promise<FunctionResult> {
   if (isOperationalMode()) {
     return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'send-whatsapp não está disponível no modo operacional.' }) };
   }
@@ -960,7 +971,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   }
 
   let providerAcceptedCount = 0;
+  let providerDeliveryComplete = false;
   let postgresOutboxContext: { quotationId: string; payload: Record<string, unknown> } | null = null;
+  const enqueueSentEvent = dependencies.enqueueSentEvent || queuePostgresSentEvent;
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
@@ -1001,7 +1014,10 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           ) || undefined,
           needPdf,
           baseUrl,
-          repository: createQuotationTemplateRepository(),
+          repository: dependencies.repository || createQuotationTemplateRepository(),
+          store: dependencies.store,
+          token: dependencies.token,
+          renderPdf: dependencies.renderPdf,
           mediaCandidates: collectMediaCandidates(sequenceForResolution, payload),
         })
       : shouldResolveQuotation
@@ -1157,7 +1173,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
             }
           }
         }
-        await queuePostgresSentEvent(messageQuotationId, outboxPayload);
+        providerDeliveryComplete = true;
+        await enqueueSentEvent(messageQuotationId, outboxPayload);
         if (!postgresPath) await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       }
 
@@ -1199,7 +1216,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       evolution = await sendText(number, text);
       if (!evolution.accepted) throw createHttpError(502, 'O provedor não confirmou a mensagem.');
       providerAcceptedCount = 1;
-      await queuePostgresSentEvent(messageQuotationId, outboxPayload);
+      providerDeliveryComplete = true;
+      await enqueueSentEvent(messageQuotationId, outboxPayload);
       if (!postgresPath) await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       await dispatchN8n(
         {
@@ -1238,14 +1256,14 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         error: err.message,
         provider_accepted: true,
         outbox_durable: false,
-        partial_send: providerAcceptedCount > 0,
+        partial_send: providerAcceptedCount > 0 && !providerDeliveryComplete,
         alert_id: err.alertId,
       });
     }
     if (providerAcceptedCount > 0) {
       if (postgresOutboxContext) {
         try {
-          await queuePostgresSentEvent(
+          await enqueueSentEvent(
             postgresOutboxContext.quotationId,
             postgresOutboxContext.payload,
           );

@@ -21,6 +21,7 @@ export function normalizeEvolutionDelivery(body: unknown): EvolutionDeliveryResu
       record.messageId ||
       key.id,
   );
+  if (record.accepted === false) return null;
   if (record.accepted === true) {
     return { accepted: true, providerMessageId: providerMessageId || 'accepted' };
   }

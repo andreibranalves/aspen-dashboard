@@ -610,7 +610,21 @@ function fireN8n(payload: Record<string, unknown>): void {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+export type SendWhatsappFlowDependencies = {
+  repository?: ReturnType<typeof createQuotationTemplateRepository>;
+  store?: Parameters<typeof loadPostgresSendContext>[0]['store'];
+  token?: () => string;
+  renderPdf?: Parameters<typeof loadPostgresSendContext>[0]['renderPdf'];
+  resolveFlow?: (flowId: string) => Promise<Record<string, any> | null>;
+  checkDuplicate?: typeof checkDuplicate;
+  recordSendEvent?: typeof recordSendEvent;
+  enqueueSentEvent?: typeof queuePostgresSentEvent;
+};
+
+export async function handler(
+  event: FunctionEvent,
+  dependencies: SendWhatsappFlowDependencies = {},
+): Promise<FunctionResult> {
   if (isOperationalMode()) {
     return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'send-whatsapp-flow não está disponível no modo operacional.' }) };
   }
@@ -624,7 +638,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   }
 
   let providerAcceptedCount = 0;
+  let providerDeliveryComplete = false;
   let postgresOutboxContext: { quotationId: string; payload: Record<string, unknown> } | null = null;
+  const enqueueSentEvent = dependencies.enqueueSentEvent || queuePostgresSentEvent;
+  const flowResolver = dependencies.resolveFlow || resolveFlow;
+  const duplicateChecker = dependencies.checkDuplicate || checkDuplicate;
+  const sendEventRecorder = dependencies.recordSendEvent || recordSendEvent;
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
 
@@ -641,7 +660,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       throw createHttpError(400, 'Revisão PostgreSQL do orçamento não informada.');
     }
 
-    const flow = await resolveFlow(flowId);
+    const flow = await flowResolver(flowId);
     if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
 
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
@@ -665,7 +684,10 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           (step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf',
         ),
         baseUrl,
-        repository: createQuotationTemplateRepository(),
+        repository: dependencies.repository || createQuotationTemplateRepository(),
+        store: dependencies.store,
+        token: dependencies.token,
+        renderPdf: dependencies.renderPdf,
       });
       payload.quotation_uuid = context.quotationUuid;
       payload.revision_id = context.revisionId;
@@ -732,7 +754,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     // Duplicate check
     let duplicateWarning = false;
     if (businessNumber && !dryRun) {
-      duplicateWarning = await checkDuplicate(businessNumber, number, flowId);
+      duplicateWarning = await duplicateChecker(businessNumber, number, flowId);
     }
 
     // Send
@@ -747,14 +769,15 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         providerAcceptedCount += 1;
         evolution.push(resp);
       }
-      await queuePostgresSentEvent(businessNumber, payload);
+      providerDeliveryComplete = true;
+      await enqueueSentEvent(businessNumber, payload);
       if (!postgresPath) await updateDeal(dealId, businessNumber);
     }
 
     // Record send event
     let sendEventId = null;
     if (!dryRun) {
-      sendEventId = await recordSendEvent({
+      sendEventId = await sendEventRecorder({
         quotationId: businessNumber,
         phone: number,
         flowId,
@@ -803,14 +826,14 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         error: err.message,
         provider_accepted: true,
         outbox_durable: false,
-        partial_send: providerAcceptedCount > 0,
+        partial_send: providerAcceptedCount > 0 && !providerDeliveryComplete,
         alert_id: err.alertId,
       });
     }
     if (providerAcceptedCount > 0) {
       if (postgresOutboxContext) {
         try {
-          await queuePostgresSentEvent(
+          await enqueueSentEvent(
             postgresOutboxContext.quotationId,
             postgresOutboxContext.payload,
           );

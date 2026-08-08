@@ -144,8 +144,8 @@ function getMockContext() {
 async function resolvePostgresQuotationContext(
   quotationId: string,
   revisionId: string,
+  repository = createQuotationTemplateRepository(),
 ): Promise<Record<string, any> | null> {
-  const repository = createQuotationTemplateRepository();
   const snapshot = await repository.get(revisionId);
   if (!snapshot || snapshot.revision.id !== revisionId) return null;
   if (quotationId !== snapshot.quotation.id && quotationId !== snapshot.quotation.businessNumber) return null;
@@ -249,7 +249,16 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+export type CommunicationFlowPreviewDependencies = {
+  resolveFlow?: (flowId: string) => Promise<Record<string, any> | null>;
+  resolvePostgresContext?: typeof resolvePostgresQuotationContext;
+  resolveMedia?: typeof resolveMediaUrls;
+};
+
+export async function handler(
+  event: FunctionEvent,
+  dependencies: CommunicationFlowPreviewDependencies = {},
+): Promise<FunctionResult> {
   if (isOperationalMode()) {
     return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-flow-preview não está disponível no modo operacional.' }) };
   }
@@ -281,7 +290,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     // Resolve flow
     let flow = null;
-    if (flowId) {
+    if (flowId && !dependencies.resolveFlow) {
       try {
         const flows = await kv.get(KV_KEY_FLOWS);
         if (Array.isArray(flows)) flow = flows.find((f) => f.id === flowId);
@@ -289,6 +298,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         /* ignore */
       }
     }
+    if (flowId && dependencies.resolveFlow) flow = await dependencies.resolveFlow(flowId);
 
     // Use provided flow or fallback to mock
     if (!flow && payload.flow) {
@@ -316,7 +326,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     let context;
     if (quotationId) {
       context = postgresPath
-        ? await resolvePostgresQuotationContext(quotationId, revisionId)
+        ? await (dependencies.resolvePostgresContext || resolvePostgresQuotationContext)(quotationId, revisionId)
         : await resolveQuotationContext(quotationId);
       if (!context) {
         return jsonResponse(404, { error: 'Orçamento não encontrado.' });
@@ -326,7 +336,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     }
 
     // Resolve media for product_media steps
-    const mediaUrls = await resolveMediaUrls(
+    const mediaUrls = await (dependencies.resolveMedia || resolveMediaUrls)(
       context.categories || [],
       applicationOrigin,
       postgresPath,
