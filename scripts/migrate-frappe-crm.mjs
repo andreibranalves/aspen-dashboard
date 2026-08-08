@@ -24,7 +24,8 @@ function safeCliMessage(error) {
     'PGPASSFILE',
     'RESTORE_PG_SERVICE',
     'Fixture não pode',
-    'Fixture Frappe inválida',
+    'Fixture Frappe inválida: dataset inválido.',
+    'Fixture Frappe inválida: informe um objeto de dataset.',
     'Dataset Frappe inválido',
     'Chave de aprovação inválida',
     'Manifesto revisado',
@@ -247,9 +248,13 @@ async function loadFixture(pathname) {
   }
   try {
     const module = await import(pathToFileURL(absolute).href);
-    return assertFixtureObject(module.default || module.dataset || module);
+    try {
+      return assertFixtureObject(module.default || module.dataset || module);
+    } catch {
+      throw new Error('Fixture Frappe inválida: dataset inválido.');
+    }
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Fixture Frappe inválida')) throw error;
+    if (error instanceof Error && error.message === 'Fixture Frappe inválida: dataset inválido.') throw error;
     throw new Error('Arquivo de fixture Frappe não pôde ser carregado.', { cause: error });
   }
 }

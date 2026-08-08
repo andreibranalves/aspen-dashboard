@@ -47,6 +47,15 @@ function keyName(key) {
   return String(key).replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
 }
 
+function canonicalField(key) {
+  return keyName(key).replace(/[_-]/g, '');
+}
+
+function hasAlias(aliases, key) {
+  const candidate = canonicalField(key);
+  return [...aliases].some((alias) => canonicalField(alias) === candidate);
+}
+
 function isOmittedKey(key) {
   return OMIT_KEYS.test(keyName(key));
 }
@@ -72,18 +81,57 @@ function register(map, salt, scope, prefix, value) {
   return map.get(original);
 }
 
-function quotationToken(salt, row, value) {
-  const original = text(value);
+function quotationYear(row, original) {
   const date = text(row?.creation ?? row?.created ?? row?.created_on);
-  const yearMatch = date.match(/(?:^|[-/ ])(20\d{2})(?:[-/ ]|$)/) || original.match(/(20\d{2})/);
-  const year = yearMatch ? yearMatch[1] : '2000';
-  const sequence = Number(BigInt(`0x${hash(salt, 'quotation-sequence', original).slice(0, 12)}`) % 9000n) + 1;
-  return `QTN-${year}-${String(sequence).padStart(4, '0')}`;
+  const yearMatch = date.match(/(?:^|[-/ ])(20\d{2})(?:[-/ ]|$)/) || text(original).match(/(20\d{2})/);
+  return yearMatch ? yearMatch[1] : '2000';
+}
+
+function quotationSequenceSeed(salt, year, original) {
+  return Number(BigInt(`0x${hash(salt, `quotation-sequence:${year}`, original).slice(0, 15)}`) % 9999n) + 1;
+}
+
+function quotationTokens(salt, rows) {
+  const entries = [];
+  for (const row of rows || []) {
+    for (const value of scalarAliasValues(row, [...IDENTITY_KEYS, 'quotation_id'])) {
+      const original = text(value);
+      if (original) entries.push({ original, row, year: quotationYear(row, original) });
+    }
+  }
+  const byYear = new Map();
+  for (const entry of entries) {
+    const key = `${entry.year}:${entry.original}`;
+    if (!byYear.has(entry.year)) byYear.set(entry.year, new Map());
+    byYear.get(entry.year).set(key, entry);
+  }
+  const result = new Map();
+  for (const [year, yearEntries] of byYear) {
+    const used = new Set();
+    for (const entry of [...yearEntries.values()].sort((left, right) => left.original.localeCompare(right.original))) {
+      let sequence = quotationSequenceSeed(salt, year, entry.original);
+      const start = sequence;
+      while (used.has(sequence)) {
+        sequence = sequence === 9999 ? 1 : sequence + 1;
+        if (sequence === start) throw new Error('Snapshot Frappe inválido: capacidade anual de quotations excedida.');
+      }
+      used.add(sequence);
+      result.set(entry.original, `QTN-${year}-${String(sequence).padStart(4, '0')}`);
+    }
+  }
+  return result;
+}
+
+function quotationToken(salt, row, value, tokens) {
+  const original = text(value);
+  return tokens.get(original) || `QTN-${quotationYear(row, original)}-${String(quotationSequenceSeed(salt, quotationYear(row, original), original)).padStart(4, '0')}`;
 }
 
 function scalarAliasValues(record, aliases) {
-  return aliases
-    .map((alias) => record?.[alias])
+  if (!isRecord(record)) return [];
+  return Object.entries(record)
+    .filter(([key]) => hasAlias(aliases, key))
+    .map(([, value]) => value)
     .filter((value) => value !== null && value !== undefined && (typeof value === 'string' || typeof value === 'number'));
 }
 
@@ -117,10 +165,11 @@ function makeContext(dataset, salt) {
   addRows(dataset.items, maps.itemRef, 'item-reference', 'ITEM');
   addRows(dataset.customers, maps.customerRef, 'customer-reference', 'CUST');
   addRows(dataset.leads, maps.leadRef, 'lead-reference', 'LEAD');
+  const quotationMap = quotationTokens(salt, dataset.quotations || []);
   for (const row of dataset.quotations || []) {
     for (const value of scalarAliasValues(row, [...IDENTITY_KEYS, 'quotation_id'])) {
       const original = text(value);
-      if (original && !maps.quotationRef.has(original)) maps.quotationRef.set(original, quotationToken(salt, row, original));
+      if (original && !maps.quotationRef.has(original)) maps.quotationRef.set(original, quotationToken(salt, row, original, quotationMap));
     }
   }
   addRows(dataset.pricingRules, maps.pricingRuleRef, 'pricing-rule-reference', 'PR');
@@ -139,7 +188,7 @@ function mapped(map, value, salt, scope, prefix) {
 }
 
 function partyType(record) {
-  return (text(record?.party_type) || text(record?.quotation_to)).toLowerCase();
+  return (text(record?.quotation_to) || text(record?.party_type)).toLowerCase();
 }
 
 function entityKind(kind, record) {
@@ -165,20 +214,20 @@ function sanitizePrimitive(key, value, kind, context, arrayIndex = '') {
   const original = text(value);
   if (!original) return typeof value === 'string' ? '' : value;
 
-  if (ITEM_REF_KEYS.has(canonical)) return mapped(context.maps.itemRef, value, context.salt, 'item-reference', 'ITEM');
-  if (LEAD_REF_KEYS.has(canonical)) return mapped(context.maps.leadRef, value, context.salt, 'lead-reference', 'LEAD');
-  if (CUSTOMER_REF_KEYS.has(canonical)) {
+  if (hasAlias(ITEM_REF_KEYS, key)) return mapped(context.maps.itemRef, value, context.salt, 'item-reference', 'ITEM');
+  if (hasAlias(LEAD_REF_KEYS, key)) return mapped(context.maps.leadRef, value, context.salt, 'lead-reference', 'LEAD');
+  if (hasAlias(CUSTOMER_REF_KEYS, key)) {
     const useLead = (canonical === 'party' || canonical === 'party_name') && kind === 'lead-quotation';
     return mapped(useLead ? context.maps.leadRef : context.maps.customerRef, value, context.salt, useLead ? 'lead-reference' : 'customer-reference', useLead ? 'LEAD' : 'CUST');
   }
-  if (QUOTATION_REF_KEYS.has(canonical)) return mapped(context.maps.quotationRef, value, context.salt, 'quotation-reference', 'QTN');
-  if (IDENTITY_KEYS.has(canonical)) {
+  if (hasAlias(QUOTATION_REF_KEYS, key)) return mapped(context.maps.quotationRef, value, context.salt, 'quotation-reference', 'QTN');
+  if (hasAlias(IDENTITY_KEYS, key)) {
     const [map, mapScope, prefix] = idMapForKind(kind, context.maps);
     return map ? mapped(map, value, context.salt, mapScope, prefix) : token(context.salt, scope, original);
   }
   if (canonical === 'customer_name' && kind === 'lead-quotation') return mapped(context.maps.leadRef, value, context.salt, 'lead-reference', 'LEAD');
   if (canonical === 'customer_name' && kind === 'quotation') return mapped(context.maps.customerRef, value, context.salt, 'customer-reference', 'CUST');
-  if (PRESERVED_STRING_KEYS.has(canonical) || DATE_KEYS.has(canonical) || NUMERIC_KEYS.has(canonical)) return value;
+  if (hasAlias(PRESERVED_STRING_KEYS, key) || hasAlias(DATE_KEYS, key) || hasAlias(NUMERIC_KEYS, key)) return value;
   if (HASH_KEYS.test(canonical) && /^[0-9a-f]{64}$/i.test(original)) return value;
   if (EMAIL_KEYS.test(canonical)) return `${hash(context.salt, `${kind}-email`, original).slice(0, 12)}@example.invalid`;
   if (PHONE_KEYS.test(canonical)) return `11${digits(context.salt, `${kind}-phone`, original, 9)}`;
@@ -190,7 +239,18 @@ function sanitizePrimitive(key, value, kind, context, arrayIndex = '') {
     return `${kind === 'lead' ? 'Lead' : 'Cliente'} Teste ${hash(context.salt, `${kind}-name`, original).slice(0, 10).toUpperCase()}`;
   }
   if (canonical === 'item_name' || canonical === 'nome') return `Produto ${hash(context.salt, `${kind}-name`, original).slice(0, 10).toUpperCase()}`;
-  if (canonical === 'description' || canonical === 'descricao' || canonical === 'notes' || canonical === 'observacoes' || canonical === 'terms' || canonical === 'remarks' || canonical === 'subject' || canonical === 'title') {
+  if ((canonical === 'title' || canonical === 'rule_title') && kind === 'pricingRule') {
+    const itemReferences = [...context.maps.itemRef.keys()].sort((left, right) => right.length - left.length);
+    const exact = itemReferences.find((item) => item === original);
+    const suffixMatch = itemReferences
+      .filter((item) => original.startsWith(`${item}-`))
+      .map((item) => ({ item, suffix: original.slice(item.length + 1) }))
+      .filter(({ suffix }) => /^\d+(?:[.,]\d+)?$/.test(suffix) && Number(suffix.replace(',', '.')) > 0)[0];
+    const base = exact || suffixMatch?.item || original;
+    const suffix = exact ? '' : suffixMatch ? `-${suffixMatch.suffix}` : '';
+    return `${mapped(context.maps.itemRef, base, context.salt, 'item-reference', 'ITEM')}${suffix}`;
+  }
+  if (canonical === 'description' || canonical === 'descricao' || canonical === 'notes' || canonical === 'observacoes' || canonical === 'terms' || canonical === 'remarks' || canonical === 'subject' || canonical === 'title' || canonical === 'rule_title') {
     return `Texto sanitizado ${hash(context.salt, `${kind}-${canonical}`, original).slice(0, 10).toUpperCase()}`;
   }
   if (typeof value === 'number') return token(context.salt, scope, original, 'NUM');

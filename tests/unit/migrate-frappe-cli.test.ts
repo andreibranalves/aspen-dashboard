@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -191,6 +192,105 @@ describe('CLI de migração Frappe', () => {
       assert.equal(report.manifest.status, 'completed');
       assert.deepEqual(report.manifest.entityCounts, { products: 2, pricingTiers: 2, clients: 2, quotations: 2 });
       assert.doesNotMatch(dryRun.stdout, /CUST-REAL|LEAD-REAL|ITEM-REAL|SKU-REAL|QTN-REAL|financeiro@|secret-token/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('preserva aliases camelCase, title fallback e números de quotation sem colisão', () => {
+    const raw = {
+      items: [{ sourceId: 'ITEM-ALIAS-1', itemCode: 'SKU-ALIAS-1', itemName: 'Produto Alias' }],
+      pricingRules: [
+        { sourceId: 'PR-TITLE-1', title: 'SKU-ALIAS-1-10', rate: '5.00' },
+        { sourceId: 'PR-RULE-TITLE-1', rule_title: 'SKU-ALIAS-1-20', rate: '4.00' },
+      ],
+      customers: [{ name: 'CUST-ALIAS-1', customer_name: 'Cliente Alias' }],
+      leads: [{ name: 'LEAD-ALIAS-1', lead_name: 'Lead Alias' }],
+      quotations: [{
+        sourceId: 'QTN-2024-ALIAS-1',
+        creation: '2024-04-05 10:00:00',
+        status: 'Draft',
+        quotation_to: 'Customer',
+        party_type: 'Lead',
+        customer: 'CUST-ALIAS-1',
+        party_name: 'CUST-ALIAS-1',
+        items: [{ itemCode: 'SKU-ALIAS-1', item_code: 'SKU-ALIAS-1', qty: '2', price_list_rate: '5.00', rate: '5.00', amount: '10.00' }],
+      }],
+    };
+    const anonymized = anonymizeSnapshot(raw, 'alias-salt');
+    const item = anonymized.items[0];
+    const quotation = anonymized.quotations[0];
+    assert.notEqual(item.sourceId, item.itemCode);
+    assert.equal(item.itemCode, anonymized.pricingRules[0].title.replace(/-10$/, ''));
+    assert.equal(item.itemCode, anonymized.pricingRules[1].rule_title.replace(/-20$/, ''));
+    assert.equal(quotation.sourceId.match(/^QTN-2024-\d{4}$/)?.[0], quotation.sourceId);
+    assert.equal(quotation.quotation_to, 'Customer');
+    assert.equal(quotation.party_type, 'Lead');
+    assert.equal(quotation.party_name, anonymized.customers[0].name);
+    assert.equal(quotation.items[0].itemCode, item.itemCode);
+
+    const aliasDirectory = mkdtempSync(path.join(tmpdir(), 'frappe-alias-dry-run-'));
+    const aliasInput = path.join(aliasDirectory, 'input.json');
+    const aliasOutput = path.join(aliasDirectory, 'output.json');
+    const aliasRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    writeFileSync(aliasInput, JSON.stringify(raw));
+    try {
+      const anonymizer = spawnSync(
+        process.execPath,
+        ['scripts/anonymize-frappe-snapshot.mjs', '--input', aliasInput, '--output', aliasOutput],
+        { cwd: aliasRoot, env: { ...process.env, FRAPPE_SNAPSHOT_SALT: 'alias-salt' }, encoding: 'utf8' }
+      );
+      assert.equal(anonymizer.status, 0, anonymizer.stderr);
+      const dryRun = spawnSync(
+        process.execPath,
+        ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--fixture', aliasOutput],
+        { cwd: aliasRoot, env: { ...process.env, DATABASE_URL: '', TEST_DATABASE_URL: '' }, encoding: 'utf8' }
+      );
+      assert.equal(dryRun.status, 0, dryRun.stderr);
+      assert.equal(JSON.parse(dryRun.stdout).manifest.status, 'completed');
+    } finally {
+      rmSync(aliasDirectory, { recursive: true, force: true });
+    }
+
+    const legacyBucket = (sourceId: string): number => Number(
+      BigInt(`0x${createHash('sha256').update(`alias-salt\\0quotation-sequence\\0${sourceId}`).digest('hex').slice(0, 12)}`) % 9000n
+    );
+    const buckets = new Map<number, string>();
+    let collision: [string, string] | null = null;
+    for (let index = 0; index < 20000 && !collision; index += 1) {
+      const sourceId = `QTN-2024-COLLIDE-${index}`;
+      const bucket = legacyBucket(sourceId);
+      const prior = buckets.get(bucket);
+      if (prior) collision = [prior, sourceId];
+      else buckets.set(bucket, sourceId);
+    }
+    assert.ok(collision, 'fixture must contain an otherwise-colliding pair');
+    const collisionDataset = {
+      items: [],
+      quotations: collision!.map((sourceId) => ({ sourceId, creation: '2024-06-01 10:00:00' })),
+    };
+    const collisionA = anonymizeSnapshot(collisionDataset, 'alias-salt');
+    const collisionB = anonymizeSnapshot(collisionDataset, 'alias-salt');
+    assert.deepEqual(collisionA, collisionB);
+    assert.notEqual(collisionA.quotations[0].sourceId, collisionA.quotations[1].sourceId);
+    assert.match(collisionA.quotations[0].sourceId, /^QTN-2024-\d{4}$/);
+    assert.match(collisionA.quotations[1].sourceId, /^QTN-2024-\d{4}$/);
+  });
+
+  it('rejeita erro dinâmico de fixture sem ecoar conteúdo não confiável', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'frappe-dynamic-fixture-'));
+    const fixturePath = path.join(directory, 'throws.mjs');
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    writeFileSync(fixturePath, "throw new Error('Fixture Frappe inválida: /secret/path?token=real-secret')\n");
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--fixture', fixturePath],
+        { cwd: root, env: { ...process.env, DATABASE_URL: '', TEST_DATABASE_URL: '' }, encoding: 'utf8' }
+      );
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /Arquivo de fixture|Falha ao processar migração|Fixture Frappe inválida/);
+      assert.doesNotMatch(result.stderr, /secret\/path|real-secret/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
