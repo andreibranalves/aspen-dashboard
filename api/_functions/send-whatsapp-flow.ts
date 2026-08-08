@@ -18,7 +18,11 @@ import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
 import { getDatabase } from '../_db/client.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
-import { issuePublicQuotationToken, renderPublicQuotationPdf } from './public-quotation.js';
+import {
+  issuePublicQuotationToken,
+  isRevisionBoundPublicQuotationUrl,
+  renderPublicQuotationPdf,
+} from './public-quotation.js';
 import {
   deriveOpaqueQuotationOutboxIdempotencyKey,
   enqueueQuotationSentEvent,
@@ -632,7 +636,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     items = (payload.items || items || []) as Record<string, unknown>[];
     dealId = payload.deal_id || payload.dealId || dealId;
     if (!link) link = firstNonEmpty(payload.public_link, payload.link_orcamento, payload.short_url);
-    if (/\/api\/view(?:[/?]|$)/i.test(link)) link = '';
+    if (!isRevisionBoundPublicQuotationUrl(link)) link = '';
 
     const number = normalizePhone(telefone);
     if (!number) throw createHttpError(400, 'Telefone inválido ou ausente.');

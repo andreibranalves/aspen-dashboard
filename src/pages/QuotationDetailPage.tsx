@@ -15,7 +15,6 @@ import {
   X,
   Plus,
   GripVertical,
-  Phone,
   AlertTriangle,
   ShoppingCart,
   Loader2,
@@ -1598,7 +1597,6 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   }
 
   const quotationViewUrl = buildQuotationViewUrl(data.id);
-  const fullQuotationViewUrl = new URL(quotationViewUrl, window.location.origin).toString();
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -1847,15 +1845,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
                   <FileText size={14} /> Visualizar
                 </Button>
               </a>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent('Olá ' + (data.cliente || '') + '! Segue orçamento ' + data.id + ':\n' + fullQuotationViewUrl)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button variant="outline" size="sm" className="text-success">
-                  <Phone size={14} /> WhatsApp
-                </Button>
-              </a>
+              <span className="text-xs text-fg-muted">Link público indisponível para esta cotação legada.</span>
               <div className="flex-1" />
               <Button
                 onClick={handleDelete}

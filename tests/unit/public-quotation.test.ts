@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { createPublicQuotationHandler } from '../../api/_functions/public-quotation.js';
+import {
+  createPublicQuotationHandler,
+  isRevisionBoundPublicQuotationUrl,
+} from '../../api/_functions/public-quotation.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
 
 process.env.CRM_CORE_QUOTES_ENABLED = 'true';
@@ -82,6 +85,13 @@ function store(clock: () => number = () => now) {
 function event(httpMethod: string, queryStringParameters: Record<string, string> = {}, body = '') {
   return { httpMethod, headers: {}, queryStringParameters, body } as any;
 }
+
+test('accepts only revision-bound public quotation URLs', () => {
+  assert.equal(isRevisionBoundPublicQuotationUrl('/api/view?q=ORC-1'), false);
+  assert.equal(isRevisionBoundPublicQuotationUrl('/api/public-quotation?token=' + 'A'.repeat(32)), true);
+  assert.equal(isRevisionBoundPublicQuotationUrl('/api/public-quotation?token=short'), false);
+  assert.equal(isRevisionBoundPublicQuotationUrl('https://evil.example/?token=' + 'A'.repeat(32)), false);
+});
 
 test('issues a hashed revision-bound token and renders immutable HTML without Frappe fetches', async () => {
   const fakeStore = store();
@@ -174,6 +184,35 @@ test('rejects invalid, expired, revoked and draft links', async () => {
   assert.equal(await expiringStore.get('expiring'), null);
   const draftHandler = createPublicQuotationHandler({ repository: { get: async () => snapshot('rascunho') } as any, store: store(), token: () => 'D'.repeat(32), now: () => now });
   assert.equal((await draftHandler(event('POST', {}, JSON.stringify({ quotationId: 'q' })))).statusCode, 409);
+});
+
+test('keeps a public token bound to its original revision after a newer revision exists', async () => {
+  const fakeStore = store();
+  const oldRevisionId = '44444444-4444-4444-8444-444444444444';
+  const newRevisionId = '55555555-5555-4555-8555-555555555555';
+  const oldSnapshot = snapshot();
+  oldSnapshot.revision.id = oldRevisionId;
+  oldSnapshot.revision.total = '10.00';
+  const newSnapshot = snapshot();
+  newSnapshot.revision.id = newRevisionId;
+  newSnapshot.revision.total = '20.00';
+  const repository = {
+    get: async (id: string) => id === oldRevisionId ? oldSnapshot : id === newRevisionId ? newSnapshot : null,
+  };
+  const token = 'R'.repeat(32);
+  const handler = createPublicQuotationHandler({
+    repository: repository as any,
+    store: fakeStore,
+    token: () => token,
+    now: () => now,
+  });
+  const issued = await handler(event('POST', {}, JSON.stringify({ revisionId: oldRevisionId })));
+  assert.equal(issued.statusCode, 201);
+  const response = await handler(event('GET', { token }));
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers?.['X-Document-Revision'], oldRevisionId);
+  assert.match(response.body!, /10,00/);
+  assert.doesNotMatch(response.body!, /20,00/);
 });
 
 test('returns PDF signature, checksum, size and deterministic revision/template metadata', async () => {

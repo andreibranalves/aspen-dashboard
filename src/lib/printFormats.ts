@@ -47,6 +47,7 @@ export function getPrintFormatLabel(value: unknown): string {
   return PRINT_FORMAT_OPTIONS.find(option => option.value === normalizePrintFormat(value))?.label || PRINT_FORMAT_OPTIONS[0].label;
 }
 
+/** Administrative PDF URL. Never include this value in customer messages. */
 export function buildQuotationViewUrl(quotationId: string, printFormat: unknown = null): string {
   const params = new URLSearchParams({ q: quotationId });
   const normalized = normalizePrintFormat(printFormat);
@@ -54,4 +55,19 @@ export function buildQuotationViewUrl(quotationId: string, printFormat: unknown 
     params.set('format', normalized);
   }
   return `/api/view?${params.toString()}`;
+}
+
+/** Accept only revision-bound public quotation links for customer messages. */
+export function normalizePublicQuotationUrl(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  try {
+    const raw = value.trim();
+    const parsed = new URL(raw, 'https://public-quotation.invalid');
+    const token = parsed.searchParams.get('token') || '';
+    return parsed.pathname === '/api/public-quotation' && /^[A-Za-z0-9_-]{32,256}$/.test(token)
+      ? raw
+      : '';
+  } catch {
+    return '';
+  }
 }

@@ -34,7 +34,7 @@ import {
 import type { Product } from '@/types/domain';
 import type { OrcamentoResponse } from '@/types/erpnext';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
-import { buildQuotationViewUrl } from '@/lib/printFormats';
+import { buildQuotationViewUrl, normalizePublicQuotationUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -490,9 +490,12 @@ export default function ManualOrcamentoPage() {
               </a>
             )}
             {(() => {
+              const publicUrl = normalizePublicQuotationUrl(result.public_url || result.publicUrl);
+              if (!publicUrl) {
+                return <span className="text-xs text-fg-muted">Link público indisponível para esta cotação legada.</span>;
+              }
               const info = getClientInfo();
-              const quotationLink = result.quotation_id ? new URL(buildQuotationViewUrl(result.quotation_id), window.location.origin).toString() : '';
-              const waLink = buildWaLink(info.telefone, result.cliente, result.quotation_id, quotationLink);
+              const waLink = buildWaLink(info.telefone, result.cliente, result.quotation_id, publicUrl);
               return waLink ? (
                 <a
                   href={waLink}

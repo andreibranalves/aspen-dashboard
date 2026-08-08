@@ -30,6 +30,9 @@ export interface OrcamentoResponse {
   source?: 'postgres' | 'frappe';
   deal_id?: string;
   pdf_url?: string;
+  /** Revision-bound customer link, when a public token was issued. */
+  public_url?: string | null;
+  publicUrl?: string | null;
 }
 
 export interface LeadCreateResponse {

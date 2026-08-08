@@ -6,6 +6,7 @@ const ERPNEXT_BASE = 'https://aspenestamparia.l.frappe.cloud';
 const ERPNEXT_TOKEN = process.env.ERPNEXT_TOKEN;
 
 import { resolvePrintFormat } from './print-format.js';
+import { isRevisionBoundPublicQuotationUrl } from '../public-quotation.js';
 
 export interface VercelEventLike {
   headers?: Record<string, string | undefined>;
@@ -135,7 +136,7 @@ export async function buildQuoteResponse(
   } = opts;
 
   const baseUrl = buildBaseUrl(event);
-  const fullUrl = opts.publicUrl && !/\/api\/view(?:[/?]|$)/i.test(opts.publicUrl)
+  const fullUrl = opts.publicUrl && isRevisionBoundPublicQuotationUrl(opts.publicUrl)
     ? opts.publicUrl
     : buildViewUrl(baseUrl, quotationId);
   const shortUrl = fullUrl ? await shortenUrl(fullUrl) : '';
@@ -156,6 +157,7 @@ export async function buildQuoteResponse(
     pdf_url: pdfUrl,
     print_html: printHtml,
     view_url: fullUrl,
+    public_url: fullUrl || null,
     short_url: shortUrl,
     origem,
     ...(fullUrl ? {} : { public_link_unavailable: 'O link público requer uma revisão PostgreSQL compartilhável.' }),

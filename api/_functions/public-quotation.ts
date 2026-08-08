@@ -80,6 +80,17 @@ function safeToken(value: unknown): string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{32,256}$/.test(value) ? value : '';
 }
 
+/** Validate the only URL shape that may be sent to a customer. */
+export function isRevisionBoundPublicQuotationUrl(value: unknown): value is string {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const parsed = new URL(value.trim(), 'https://public-quotation.invalid');
+    return parsed.pathname === '/api/public-quotation' && Boolean(safeToken(parsed.searchParams.get('token')));
+  } catch {
+    return false;
+  }
+}
+
 function ttl(value: unknown): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0

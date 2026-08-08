@@ -12,6 +12,7 @@ import { erpGetDoc } from './lib/erpnext.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
 import { isOperationalMode } from './operational-mode.js';
+import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ function renderTemplate(template: string, context: Record<string, any>): string 
     .replace(/\(primeiro_nome\)/g, primeiroNome)
     .replace(/\(numero_pedido\)/g, ctx.quotationId || '')
     .replace(/\(empresa\)/g, ctx.empresa || 'Aspen Estamparia')
-    .replace(/\(link_orcamento\)/g, ctx.link || '')
+    .replace(/\(link_orcamento\)/g, isRevisionBoundPublicQuotationUrl(ctx.link) ? ctx.link : '')
     .replace(/\(vendedora\)/g, ctx.vendorName || 'Juliana')
     .replace(/\(produto_resumo\)/g, ctx.productSummary || 'produtos')
     .replace(/\(produto_adjetivo_personalizado\)/g, productPersonalizationAdjective)

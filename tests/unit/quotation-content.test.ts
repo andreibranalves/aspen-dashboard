@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { normalizePublicQuotationUrl } from '../../src/lib/printFormats.ts';
 import {
   DEFAULT_QUOTATION_SECTIONS,
   combineLegacyConditions,
@@ -14,6 +15,13 @@ const legacy = {
   entrega: '3 dias úteis',
   observacoes: 'A arte precisa ser aprovada antes da produção.',
 };
+
+test('aceita somente links públicos revision-bound para clientes', () => {
+  assert.equal(normalizePublicQuotationUrl('/api/view?q=ORC-1'), '');
+  assert.equal(normalizePublicQuotationUrl('/api/public-quotation?token=' + 'A'.repeat(32)), '/api/public-quotation?token=' + 'A'.repeat(32));
+  assert.equal(normalizePublicQuotationUrl('/api/public-quotation?token=short'), '');
+  assert.equal(normalizePublicQuotationUrl('https://app.test/api/view?q=ORC-1'), '');
+});
 
 test('normaliza três seções e combina campos legados em condições gerais', () => {
   const sections = normalizeQuotationSections(undefined, legacy);
