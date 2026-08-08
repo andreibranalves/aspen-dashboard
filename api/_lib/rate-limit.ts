@@ -5,6 +5,17 @@ import { getRouteName } from './auth.js';
 
 const WINDOW_MS = 60_000;
 const WINDOW_SECONDS = 60;
+const ATOMIC_INCREMENT_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return count
+`;
+
+type KvEval = <T = unknown>(script: string, keys: string[], args: unknown[]) => Promise<T>;
+
+export const rateLimitKv: { eval: KvEval } = {
+  eval: (script, keys, args) => kv.eval(script, keys, args),
+};
 
 const ROUTE_LIMITS: Record<string, number> = {
   extract: 10,
@@ -57,7 +68,8 @@ function publicRateLimitKey(req: VercelRequestLike): string {
   const socketAddress = (req as VercelRequestLike & { socket?: { remoteAddress?: string } }).socket?.remoteAddress;
   // Forwarded headers are caller-controlled here; use the platform socket
   // identity and fall back to one fail-closed bucket when unavailable.
-  return `public-ip:${String(socketAddress || 'unknown').trim()}`;
+  const socketIdentity = String(socketAddress || 'unknown').trim() || 'unknown';
+  return `public-ip:${createHash('sha256').update(socketIdentity).digest('hex')}`;
 }
 
 /**
@@ -72,8 +84,10 @@ export async function checkRateLimitAsync(req: VercelRequestLike): Promise<boole
   const max = ROUTE_LIMITS[routeName];
   const key = `aspen:rate-limit:${routeName}:${publicRateLimitKey(req)}`;
   try {
-    const count = await kv.incr(key);
-    if (count === 1) await kv.expire(key, WINDOW_SECONDS);
+    const count = Number(
+      await rateLimitKv.eval<number>(ATOMIC_INCREMENT_SCRIPT, [key], [WINDOW_SECONDS]),
+    );
+    if (!Number.isSafeInteger(count) || count < 1) throw new Error('invalid shared limiter count');
     return count <= max;
   } catch (error) {
     console.error(`[rate-limit] shared limiter unavailable (${error instanceof Error ? error.name : typeof error})`);
