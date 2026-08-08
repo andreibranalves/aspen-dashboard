@@ -51,6 +51,28 @@ export function parseArgs(argv) {
   return { mode: normalizedMode, fixture, approvedDivergences };
 }
 
+export function assertDatabaseContract(env = process.env) {
+  if (!env.CUTOVER_PG_SERVICE) return;
+  if (!env.DATABASE_URL || !env.CUTOVER_DATABASE_HOST || !env.CUTOVER_DATABASE_PORT || !env.CUTOVER_DATABASE_NAME) {
+    throw new Error('CUTOVER_PG_SERVICE exige DATABASE_URL, host, port e database esperados.');
+  }
+  let url;
+  try {
+    url = new URL(env.DATABASE_URL);
+  } catch {
+    throw new Error('DATABASE_URL inválida para o contrato de cutover.');
+  }
+  const port = url.port || '5432';
+  const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
+  if (
+    url.hostname !== env.CUTOVER_DATABASE_HOST ||
+    port !== env.CUTOVER_DATABASE_PORT ||
+    database !== env.CUTOVER_DATABASE_NAME
+  ) {
+    throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
+  }
+}
+
 export function resolveRepositoryMode({ mode, hasFixture, hasDatabaseUrl }) {
   if (mode === 'apply' && hasFixture) {
     throw new Error('Fixture não pode ser usada com --apply; use --dry-run explicitamente.');
@@ -74,6 +96,7 @@ async function loadFixture(pathname) {
 
 async function main() {
   const { mode, fixture, approvedDivergences } = parseArgs(process.argv.slice(2));
+  if (mode === 'apply') assertDatabaseContract();
   if (mode === 'apply' && process.env.FRAPPE_MIGRATION_FIXTURE) {
     throw new Error('FRAPPE_MIGRATION_FIXTURE não pode ser usada com --apply; remova a variável.');
   }
@@ -94,8 +117,8 @@ async function main() {
     dataset,
     source,
     repository,
-    // Apply replaces the placeholder issued_documents rows with real PDFs
-    // uploaded to Vercel Blob through the production pipeline.
+    // Apply may render historical PDF bytes for validation, but the current
+    // PostgreSQL repository does not persist historical PDF documents.
     pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
     approvedDivergences,
   });

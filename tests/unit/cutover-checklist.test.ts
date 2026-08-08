@@ -69,13 +69,17 @@ test('runbook includes abort, document, status, order and lineage policies', () 
     'enviado',
     'aprovado',
     'perdido',
-    'metadata-only',
+    'PDF on-demand',
     'approvedDivergenceKeys',
     'RESTORE_DATABASE_URL',
     'CUTOVER_PG_SERVICE',
     'CUTOVER_DATABASE_NAME',
+    'CUTOVER_DATABASE_PORT',
     'TARGET_MATCH',
+    'manifest.apply.persisted.sha256',
+    'sha256sum --check',
     'exit 1',
+    'PUT in rollback-compatible writes to legacy',
   ])
     assert.ok(
       runbook.toLocaleLowerCase().includes(marker.toLocaleLowerCase()),
@@ -104,16 +108,23 @@ test('marker scan covers operational prose, excluding this test instructions', (
   }
 });
 
+test('delta comparison uses stable manifest hash and aborts real changes', () => {
+  assert.match(runbook, /BASE_MANIFEST_HASH=.*manifest\.manifestHash/);
+  assert.match(runbook, /DELTA_MANIFEST_HASH=.*manifest\.manifestHash/);
+  assert.match(runbook, /if \[ "\$BASE_MANIFEST_HASH" != "\$DELTA_MANIFEST_HASH" \]/);
+  assert.match(runbook, /ABORT: source delta changed/);
+  assert.match(runbook, /ABORT: source delta changed[\s\S]*exit 1/);
+});
+
 test('supporting scripts fail closed and emit verifiable migration artifacts', () => {
   assert.match(backupScript, /RESTORE_DATABASE_URL/);
   assert.match(backupScript, /--file/);
   assert.match(backupScript, /alvo isolado diferente/);
-  assert.doesNotMatch(
-    backupScript,
-    /function runValidate[\\s\\S]*getDatabaseUrl\('DATABASE_URL'\)/
-  );
+  assert.doesNotMatch(backupScript, /issued_documents/);
+  assert.doesNotMatch(backupScript, /function runValidate[\s\S]*getDatabaseUrl\('DATABASE_URL'\)/);
   assert.match(migrationCli, /normalizedMode === 'apply' && fixture/);
   assert.match(migrationCli, /mode === 'apply' && process\.env\.FRAPPE_MIGRATION_FIXTURE/);
+  assert.match(migrationCli, /assertDatabaseContract/);
   assert.match(migrationCli, /approvedDivergenceKeys/);
   assert.match(migrationCli, /manifest: result\.manifest/);
   assert.match(playwrightConfig, /process\.env\.BASE_URL/);

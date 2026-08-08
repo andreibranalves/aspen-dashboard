@@ -7,7 +7,11 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { canonicalHash } from '../../api/_functions/frappe-migration.js';
-import { parseArgs, resolveRepositoryMode } from '../../scripts/migrate-frappe-crm.mjs';
+import {
+  assertDatabaseContract,
+  parseArgs,
+  resolveRepositoryMode,
+} from '../../scripts/migrate-frappe-crm.mjs';
 
 describe('CLI de migração Frappe', () => {
   it('exige exatamente um modo', () => {
@@ -29,6 +33,29 @@ describe('CLI de migração Frappe', () => {
         () => parseArgs(['--dry-run', '--approve-divergence', value]),
         /source_doctype/
       );
+  });
+
+  it('valida host, porta e database do contrato de cutover sem aceitar outro destino', () => {
+    const base = {
+      DATABASE_URL: 'postgresql://api-user@db.example:5433/quotes',
+      CUTOVER_PG_SERVICE: 'cutover-quotes',
+      CUTOVER_DATABASE_HOST: 'db.example',
+      CUTOVER_DATABASE_PORT: '5433',
+      CUTOVER_DATABASE_NAME: 'quotes',
+    };
+    assert.doesNotThrow(() => assertDatabaseContract(base));
+    assert.throws(
+      () => assertDatabaseContract({ ...base, CUTOVER_DATABASE_HOST: 'other.example' }),
+      /mesmo destino/
+    );
+    assert.throws(
+      () => assertDatabaseContract({ ...base, CUTOVER_DATABASE_PORT: '5432' }),
+      /mesmo destino/
+    );
+    assert.throws(
+      () => assertDatabaseContract({ ...base, CUTOVER_DATABASE_NAME: 'other' }),
+      /mesmo destino/
+    );
   });
 
   it('nunca simula apply com fixture sem DATABASE_URL', () => {

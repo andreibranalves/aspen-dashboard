@@ -20,7 +20,7 @@ Depois de qualquer escrita PostgreSQL, definir uma flag como `false` não restau
 - dry-run com manifest, hash e divergências revisados;
 - dependências aplicadas na ordem templates, produtos, preços, clientes/leads e orçamentos;
 - PDFs sob demanda validados com `%PDF-`, `%%EOF`, tamanho e checksum;
-- política metadata-only de PDFs históricos registrada, sem claim de Blob arquivado;
+- política PDF on-demand registrada, sem retenção de PDF histórico;
 - bloqueio de egress Frappe preparado para a fase pós-apply;
 - leitura de rollback e teste de segurança de link público aprovados.
 

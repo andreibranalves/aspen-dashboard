@@ -52,6 +52,7 @@ mkdir -p "$CUTOVER_DIR"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
 : "${CUTOVER_DATABASE_NAME:?configure the expected apply database name}"
 : "${CUTOVER_DATABASE_HOST:?configure the expected apply database host}"
+: "${CUTOVER_DATABASE_PORT:?configure the expected apply database port}"
 : "${PGSERVICEFILE:?configure a protected libpq service file path}"
 : "${PGPASSFILE:?configure a protected libpq password file path}"
 export PGSERVICEFILE PGPASSFILE
@@ -76,14 +77,17 @@ A mensagem de erro acima não contém o valor da variável.
 
 Não passe uma URL PostgreSQL em argumento de processo, log ou comando `psql`.
 
-Confirme que `DATABASE_URL` usada pelo worker aponta para o mesmo host e database da conexão nomeada sem imprimir nenhum valor:
+Confirme que `DATABASE_URL` usada pelo worker aponta para o mesmo host, port e database da conexão nomeada sem imprimir nenhum valor.
+
+`DATABASE_URL` é a credencial de configuração da API para o mesmo destino identificado por `CUTOVER_PG_SERVICE`; não existe uma segunda base de reconciliação.
 
 ```bash
 set -euo pipefail
 node --input-type=module <<'NODE'
 const url = new URL(process.env.DATABASE_URL || '');
+const port = url.port || '5432';
 const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
-if (url.hostname !== process.env.CUTOVER_DATABASE_HOST || database !== process.env.CUTOVER_DATABASE_NAME)
+if (url.hostname !== process.env.CUTOVER_DATABASE_HOST || port !== process.env.CUTOVER_DATABASE_PORT || database !== process.env.CUTOVER_DATABASE_NAME)
   throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
 NODE
 ```
@@ -225,7 +229,7 @@ Não redirecione um report ou manifest para o repositório.
 
 O CLI grava o report sanitizado.
 
-O `MigrationManifest` do dry-run permanece em memória e é validado pelo teste de contrato abaixo.
+O CLI emite o `MigrationManifest` sanitizado dentro do report e o teste de contrato abaixo valida sua forma.
 
 ```bash
 node --test --import tsx tests/unit/frappe-migration.test.ts \
@@ -297,7 +301,10 @@ sha256sum "$CUTOVER_DIR/report.delta.json" | tee "$CUTOVER_DIR/report.delta.sha2
 Compare o report delta com o report aprovado e reabra a reconciliação quando contagens, divergências ou detalhes mudarem:
 
 ```bash
-if ! cmp -s "$CUTOVER_DIR/report.dry-run.json" "$CUTOVER_DIR/report.delta.json"; then
+set -euo pipefail
+BASE_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
+DELTA_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.delta.json")"
+if [ "$BASE_MANIFEST_HASH" != "$DELTA_MANIFEST_HASH" ]; then
   echo 'ABORT: source delta changed; repeat manifest review before apply' >&2
   exit 1
 fi
@@ -326,6 +333,8 @@ psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-ali
   --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
   -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
   > "$CUTOVER_DIR/manifest.apply.persisted.json"
+sha256sum "$CUTOVER_DIR/manifest.apply.persisted.json" > "$CUTOVER_DIR/manifest.apply.persisted.sha256"
+sha256sum --check "$CUTOVER_DIR/manifest.apply.persisted.sha256"
 jq -e --arg run_id "$RUN_ID" --arg manifest_hash "$MANIFEST_HASH" '(.runId == $run_id) and (.manifestHash == $manifest_hash) and (.status == "completed")' "$CUTOVER_DIR/manifest.apply.persisted.json"
 ```
 
@@ -356,6 +365,8 @@ psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-ali
   --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
   -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
   > "$CUTOVER_DIR/manifest.apply.persisted.json"
+sha256sum "$CUTOVER_DIR/manifest.apply.persisted.json" > "$CUTOVER_DIR/manifest.apply.persisted.sha256"
+sha256sum --check "$CUTOVER_DIR/manifest.apply.persisted.sha256"
 jq -e --arg run_id "$RUN_ID" --arg manifest_hash "$MANIFEST_HASH" '(.runId == $run_id) and (.manifestHash == $manifest_hash) and (.status == "completed")' "$CUTOVER_DIR/manifest.apply.persisted.json"
 ```
 
@@ -522,13 +533,17 @@ Qualquer falha do canário é uma condição de abort e inicia a seção de roll
 
 ## 11. Política de documentos históricos, status e pedidos
 
-A política selecionada para este corte é metadata-only: a migração cria o registro `issued_documents` histórico e seus metadados, mas não promete um objeto PDF arquivado no Blob.
+A política selecionada para este corte é PDF on-demand: o PostgreSQL persiste o agregado, a revisão e a lineage, e o endpoint renderiza o PDF a partir da revisão imutável quando solicitado.
 
-A implementação atual pode renderizar um PDF sob demanda a partir do snapshot PostgreSQL e do template versionado.
+O repositório PostgreSQL atual ignora a unidade de documento histórico e não grava linha nem metadados de PDF histórico.
 
-A implementação atual não deve ser descrita como arquivamento durável no Vercel Blob, porque o adapter padrão de upload somente verifica bytes e não persiste o objeto.
+A resposta pública de PDF on-demand informa MIME, tamanho e checksum do conteúdo renderizado.
 
-A ausência de um PDF histórico arquivado não bloqueia o apply desta fase, mas bloqueia o canário se o cenário exigir download histórico.
+A resposta de preview informa MIME, tamanho e metadados do template; o operador deve calcular o checksum dos bytes retornados quando essa rota for usada.
+
+Não existe retenção de PDF histórico nesta fase.
+
+A ausência de um PDF histórico persistido não bloqueia o apply, mas bloqueia o canário se o cenário exigir download histórico arquivado.
 
 O canário de documento deve validar `%PDF-`, `%%EOF`, MIME, tamanho e checksum do PDF renderizado sob demanda.
 
@@ -536,9 +551,9 @@ O sistema não deve regenerar um PDF histórico a partir de dados Frappe depois 
 
 Qualquer política futura de archive precisa de uma implementação de storage real, teste de read-back e uma mudança de escopo aprovada.
 
-A retenção desta fase cobre o snapshot da revisão, seus metadados e a lineage autorizada.
+A retenção desta fase cobre somente a revisão PostgreSQL e a lineage autorizada.
 
-Não declare retenção de objeto Blob nem construa links históricos para um pathname que não foi comprovadamente persistido.
+Não declare retenção de objeto Blob ou metadata row de PDF histórico.
 
 O status original permanece em lineage para auditoria.
 
@@ -612,8 +627,9 @@ Execute the rollback write-route contract without mutating a live record:
 
 ```bash
 set -euo pipefail
-node --test --import tsx tests/unit/operational-mode.test.ts \
-  --test-name-pattern 'PUT in rollback-compatible writes to legacy'
+node --test --import tsx \
+  --test-name-pattern='PUT in rollback-compatible writes to legacy' \
+  tests/unit/operational-mode.test.ts
 ```
 
 Valide que nenhuma leitura PostgreSQL existente foi apagada ou mascarada.

@@ -117,22 +117,22 @@ export function parseConnectionUrl(raw, name = 'DATABASE_URL') {
 }
 
 export function connectionIdentity(connection) {
-  return [connection.host, connection.port, connection.user, connection.database]
+  return [connection.host, connection.port, connection.database]
     .map((value) => value.toLowerCase())
     .join('|');
 }
 
-function assertRestoreTargetIsDistinct(restore) {
-  const sourceRaw = process.env.DATABASE_URL;
-  if (!sourceRaw) return;
-  const source = parseConnectionUrl(sourceRaw, 'DATABASE_URL');
+function assertRestoreTargetIsDistinct(source, restore) {
   if (connectionIdentity(source) === connectionIdentity(restore)) {
     throw new Error('RESTORE_DATABASE_URL deve apontar para um alvo isolado diferente de DATABASE_URL.');
   }
 }
 
-function postgresEnv(connection, database = connection.database) {
-  const env = { ...process.env };
+export function postgresEnv(connection, database = connection.database, inheritedEnv = process.env) {
+  const env = { ...inheritedEnv };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('PG')) delete env[key];
+  }
   delete env.DATABASE_URL;
   delete env.RESTORE_DATABASE_URL;
   env.PGHOST = connection.host;
@@ -221,8 +221,9 @@ function retentionCleanup() {
 }
 
 function runValidate(dumpFile) {
+  const source = parseConnectionUrl(connectionUrl('DATABASE_URL'), 'DATABASE_URL');
   const restore = parseConnectionUrl(connectionUrl('RESTORE_DATABASE_URL'), 'RESTORE_DATABASE_URL');
-  assertRestoreTargetIsDistinct(restore);
+  assertRestoreTargetIsDistinct(source, restore);
   const filepath = resolve(dumpFile);
   if (!existsSync(filepath) || !statSync(filepath).isFile()) {
     throw new Error(`Arquivo de dump não encontrado: ${filepath}`);
@@ -247,7 +248,6 @@ function runValidate(dumpFile) {
     'quotations',
     'quote_revisions',
     'quote_revision_items',
-    'issued_documents',
     'frappe_import_lineage',
   ];
   let allPass = true;
@@ -278,6 +278,10 @@ function runValidate(dumpFile) {
   stdout('\nValidação concluída com sucesso. Estrutura íntegra.');
 }
 
+export function exceedsMegabyteQuota(bytes, maxMegabytes) {
+  return bytes > maxMegabytes * 1024 * 1024;
+}
+
 async function runPreflight() {
   const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
   const env = postgresEnv(connection);
@@ -287,7 +291,7 @@ async function runPreflight() {
   let hasCritical = false;
   const results = [];
   for (const [metric, query, quota, criticalWhen] of [
-    ['Tamanho do banco', 'SELECT pg_database_size(current_database());', maxDbSizeMb, (value) => value > maxDbSizeMb],
+    ['Tamanho do banco', 'SELECT pg_database_size(current_database());', maxDbSizeMb, (value) => exceedsMegabyteQuota(value, maxDbSizeMb)],
     ['Conexões ativas', 'SELECT count(*) FROM pg_stat_activity;', maxConnections, (value) => value > maxConnections],
   ]) {
     try {
