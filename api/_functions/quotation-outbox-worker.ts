@@ -51,6 +51,14 @@ export interface QuotationOutboxProviderConfig {
   fetcher?: typeof fetch;
 }
 
+const OUTBOX_PROVIDERS = ['n8n', 'evolution', 'crm'] as const;
+
+export function configuredQuotationOutboxProviders(
+  config: QuotationOutboxProviderConfig,
+): QuotationOutboxProvider[] {
+  return OUTBOX_PROVIDERS.filter((provider) => Boolean(config[`${provider}Url` as 'n8nUrl' | 'evolutionUrl' | 'crmUrl'])) as QuotationOutboxProvider[];
+}
+
 export class QuotationOutboxProviderUnavailableError extends Error {
   constructor(provider: QuotationOutboxProvider) {
     super(`Adaptador de outbox não configurado: ${provider}`);
@@ -192,6 +200,8 @@ export function quotationOutboxConfigFromEnv(
 export interface QuotationOutboxWorkerOptions {
   repository?: QuotationOutboxRepository;
   adapters: Record<QuotationOutboxProvider, QuotationOutboxProviderAdapter>;
+  /** Providers with configured endpoints. Unlisted providers are never claimed. */
+  configuredProviders?: readonly QuotationOutboxProvider[];
   owner: string;
   limit?: number;
   leaseMs?: number;
@@ -303,6 +313,19 @@ function accepted(
 export async function processQuotationOutbox(
   options: QuotationOutboxWorkerOptions,
 ): Promise<QuotationOutboxWorkerResult> {
+  const configuredProviders = (options.configuredProviders
+    ? [...new Set(options.configuredProviders)]
+    : OUTBOX_PROVIDERS.filter((provider) => options.adapters[provider]))
+    .filter((provider) => options.adapters[provider]?.provider === provider);
+  const emptyResult = (): QuotationOutboxWorkerResult => ({
+    claimed: 0,
+    delivered: 0,
+    retried: 0,
+    deadLettered: 0,
+    leaseLost: 0,
+  });
+  if (configuredProviders.length === 0) return emptyResult();
+
   const repository = options.repository || createPostgresQuotationOutboxRepository();
   const clock = options.now || (() => new Date());
   const current = clock();
@@ -312,6 +335,7 @@ export async function processQuotationOutbox(
     limit: options.limit,
     leaseMs: options.leaseMs,
     now: current,
+    providers: configuredProviders,
   });
   const result: QuotationOutboxWorkerResult = {
     claimed: events.length,

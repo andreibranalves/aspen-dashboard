@@ -581,21 +581,33 @@ Qualquer falha do canário é uma condição de abort e inicia a seção de roll
 
 ## 11. Worker de outbox e monitoramento
 
-Configure `OUTBOX_N8N_URL`, `OUTBOX_EVOLUTION_URL` e `OUTBOX_CRM_URL` como endpoints HTTPS de bridges aprovadas.
+O outbox é interno e não exige CRM externo, N8N ou Evolution.
 
-Configure `OUTBOX_N8N_TOKEN`, `OUTBOX_EVOLUTION_TOKEN` e `OUTBOX_CRM_TOKEN` somente no ambiente protegido do worker.
+Deixe `OUTBOX_N8N_URL`, `OUTBOX_EVOLUTION_URL` e `OUTBOX_CRM_URL` unset em Preview e Production nesta fase.
+
+Com `DATABASE_URL` e nenhum provider configurado, `npm run worker:quotation-outbox` termina com estado `disabled` e não reivindica eventos.
+
+Quando um bridge futuro for aprovado, configure somente o provider correspondente e seu token no ambiente protegido do worker.
+
+O worker reivindica somente eventos cujo provider possui endpoint configurado; eventos de outros providers permanecem pendentes e não perdem lease.
 
 Execute uma vez ou agende com lock externo: `npm run worker:quotation-outbox`.
-
-O worker deve receber `DATABASE_URL`, as três URLs e os tokens por ambiente, nunca por argumento de processo ou arquivo versionado.
 
 O scheduler deve executar lotes curtos em intervalo menor que o próximo retry e impedir duas instâncias sem leases PostgreSQL.
 
 Monitore contagem `pending`, idade do evento mais antigo, `attempts`, `dead_letter`, `last_error_class`, provider message ID e eventos sem lease.
 
+O fake bridge de testes usa somente Node built-in e não pode ser configurado em Preview/Production:
+
+```bash
+node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/settings-app-server.test.ts
+```
+
+O teste de bridge deve comprovar health, payload canônico sem PII/raw payload, 500, timeout, retry/backoff, idempotency key, dead-letter e lease ownership.
+
 Qualquer dead-letter, lease perdida repetidamente, bridge indisponível ou divergência entre provider acceptance e outbox deve abortar o canário e abrir incidente.
 
-No canário, injete uma falha de bridge, confirme retry/backoff e depois confirme entrega idempotente com o mesmo `idempotency_key`.
+No canário futuro, injete uma falha de bridge, confirme retry/backoff e depois confirme entrega idempotente com o mesmo `idempotency_key`.
 
 ## 12. Política de documentos históricos, status e pedidos
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { closeDatabase } from '../api/_db/client.js';
 import { createPostgresQuotationOutboxRepository } from '../api/_db/quotation-outbox-repository.js';
 import {
+  configuredQuotationOutboxProviders,
   createConfiguredQuotationOutboxProviderAdapters,
   quotationOutboxConfigFromEnv,
   runQuotationOutboxWorker,
@@ -14,40 +16,47 @@ function positiveInt(value, fallback, maximum) {
   return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
 }
 
-function requiredConfiguration(config) {
-  const missing = [
-    ['OUTBOX_N8N_URL or N8N_OUTBOX_WEBHOOK_URL', config.n8nUrl],
-    ['OUTBOX_EVOLUTION_URL', config.evolutionUrl],
-    ['OUTBOX_CRM_URL', config.crmUrl],
-  ].filter(([, value]) => !value).map(([name]) => name);
-  if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
-  return missing;
+export function requiredConfiguration(config, env = process.env) {
+  const providers = configuredQuotationOutboxProviders(config);
+  return providers.length > 0 && !env.DATABASE_URL ? ['DATABASE_URL'] : [];
 }
 
-const config = quotationOutboxConfigFromEnv();
-const missing = requiredConfiguration(config);
-if (missing.length > 0) {
-  console.error(JSON.stringify({
-    error: 'Configuração do worker de outbox incompleta.',
-    missing,
-  }));
-  process.exitCode = 1;
-} else {
+export async function main(env = process.env) {
+  const config = quotationOutboxConfigFromEnv(env);
+  const providers = configuredQuotationOutboxProviders(config);
+  const missing = requiredConfiguration(config, env);
+  if (missing.length > 0) {
+    console.error(JSON.stringify({
+      error: 'Configuração do worker de outbox incompleta.',
+      missing,
+    }));
+    return 1;
+  }
+  if (providers.length === 0) {
+    console.log(JSON.stringify({
+      status: 'disabled',
+      reason: 'Nenhum provider externo de outbox configurado; nenhum evento foi reivindicado.',
+    }));
+    return 0;
+  }
+
   try {
     const result = await runQuotationOutboxWorker({
       repository: createPostgresQuotationOutboxRepository(),
       adapters: createConfiguredQuotationOutboxProviderAdapters(config),
-      owner: process.env.OUTBOX_WORKER_ID?.trim() || `quotation-outbox-${randomUUID()}`,
-      limit: positiveInt(process.env.OUTBOX_BATCH_SIZE, 10, 100),
-      leaseMs: positiveInt(process.env.OUTBOX_LEASE_MS, 60_000, 60 * 60 * 1_000),
+      configuredProviders: providers,
+      owner: env.OUTBOX_WORKER_ID?.trim() || `quotation-outbox-${randomUUID()}`,
+      limit: positiveInt(env.OUTBOX_BATCH_SIZE, 10, 100),
+      leaseMs: positiveInt(env.OUTBOX_LEASE_MS, 60_000, 60 * 60 * 1_000),
     });
     console.log(JSON.stringify(result));
+    return 0;
   } catch (error) {
     console.error(JSON.stringify({
       error: 'Worker de outbox falhou.',
       error_class: error instanceof Error ? error.name : 'Error',
     }));
-    process.exitCode = 1;
+    return 1;
   } finally {
     await closeDatabase().catch((error) => {
       console.error(JSON.stringify({
@@ -58,3 +67,6 @@ if (missing.length > 0) {
     });
   }
 }
+
+const invokedPath = process.argv[1] && pathToFileURL(process.argv[1]).href;
+if (invokedPath && import.meta.url === invokedPath) process.exitCode = await main();

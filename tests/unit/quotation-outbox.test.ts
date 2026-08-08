@@ -18,11 +18,14 @@ import {
   type EnqueueQuotationOutboxInput,
 } from '../../api/_db/quotation-outbox-repository.js';
 import {
+  configuredQuotationOutboxProviders,
   createConfiguredQuotationOutboxProviderAdapters,
   createQuotationOutboxProviderAdapters,
   processQuotationOutbox,
   quotationOutboxProviderTimeoutMs,
 } from '../../api/_functions/quotation-outbox-worker.js';
+import { createFakeOutboxBridge } from '../fixtures/fake-outbox-bridge.mjs';
+import { main as runOutboxWorker, requiredConfiguration } from '../../scripts/quotation-outbox-worker.mjs';
 import { createPublicQuotationHandler } from '../../api/_functions/public-quotation.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
 import * as schema from '../../api/_db/schema.js';
@@ -182,6 +185,119 @@ test('durability failure identifies provider acceptance without claiming durable
   assert.equal(error.providerAccepted, true);
   assert.equal(error.outboxDurable, false);
   assert.match(error.alertId, /^[0-9a-f-]{36}$/);
+});
+
+test('outbox worker is disabled without providers and does not claim events', async () => {
+  const config = configuredQuotationOutboxProviders({ DATABASE_URL: 'postgres://internal.test/db' });
+  assert.deepEqual(config, []);
+  const env = { DATABASE_URL: 'postgres://internal.test/db' };
+  assert.deepEqual(requiredConfiguration({}, env), []);
+  let output = '';
+  const originalLog = console.log;
+  console.log = (value?: unknown) => { output = String(value); };
+  try {
+    assert.equal(await runOutboxWorker(env), 0);
+  } finally {
+    console.log = originalLog;
+  }
+  assert.match(output, /disabled/);
+
+  const repository = await queued();
+  const result = await processQuotationOutbox({
+    repository,
+    owner: 'worker-a',
+    configuredProviders: ['n8n'],
+    adapters: createQuotationOutboxProviderAdapters({ crm: async () => ({ accepted: true }) }),
+  });
+  assert.deepEqual(result, { claimed: 0, delivered: 0, retried: 0, deadLettered: 0, leaseLost: 0 });
+  assert.equal((await repository.list())[0]?.status, 'pending');
+});
+
+test('worker claims only providers with configured adapters', async () => {
+  const repository = new InMemoryQuotationOutboxRepository();
+  await repository.enqueue(base);
+  await repository.enqueue({
+    ...base,
+    provider: 'n8n',
+    idempotencyKey: 'created:quote-1:revision-1:n8n',
+  });
+  const result = await processQuotationOutbox({
+    repository,
+    owner: 'worker-a',
+    configuredProviders: ['crm'],
+    adapters: createQuotationOutboxProviderAdapters({ crm: async () => ({ accepted: true }) }),
+  });
+  assert.deepEqual(result, { claimed: 1, delivered: 1, retried: 0, deadLettered: 0, leaseLost: 0 });
+  assert.equal((await repository.list()).find((event) => event.provider === 'n8n')?.status, 'pending');
+});
+
+test('fake bridge accepts only canonical references and deduplicates idempotency', async () => {
+  const bridge = await createFakeOutboxBridge();
+  try {
+    const adapters = createConfiguredQuotationOutboxProviderAdapters({
+      crmUrl: `${bridge.url}/events`,
+    });
+    const context = {
+      eventType: 'quotation.sent' as const,
+      provider: 'crm' as const,
+      reference: base,
+      idempotencyKey: 'opaque-key',
+    };
+    assert.deepEqual(await adapters.crm.deliver(context), { accepted: true, providerMessageId: 'fake-1' });
+    assert.deepEqual(await adapters.crm.deliver(context), { accepted: true, providerMessageId: 'fake-1' });
+    assert.equal(bridge.requests.length, 2);
+    assert.deepEqual(bridge.requests[0], {
+      event_type: 'quotation.sent',
+      provider: 'crm',
+      quotation_id: 'quote-1',
+      revision_id: 'revision-1',
+      business_number: 'ORC-20260001',
+      idempotency_key: 'opaque-key',
+    });
+    assert.equal('email' in bridge.requests[0], false);
+    assert.equal('token' in bridge.requests[0], false);
+    assert.equal('legacy_payload' in bridge.requests[0], false);
+  } finally {
+    await bridge.close();
+  }
+});
+
+test('fake bridge exposes health and controlled provider failures', async () => {
+  const healthy = await createFakeOutboxBridge();
+  try {
+    assert.equal((await fetch(`${healthy.url}/health`)).status, 200);
+  } finally {
+    await healthy.close();
+  }
+
+  const failed = await createFakeOutboxBridge({ mode: 'error' });
+  try {
+    const adapter = createConfiguredQuotationOutboxProviderAdapters({ crmUrl: `${failed.url}/events` }).crm;
+    await assert.rejects(() => adapter.deliver({
+      eventType: 'quotation.sent',
+      provider: 'crm',
+      reference: base,
+      idempotencyKey: 'error-key',
+    }), /rejeitou/);
+  } finally {
+    await failed.close();
+  }
+
+  const timedOut = await createFakeOutboxBridge({ mode: 'timeout', delayMs: 40 });
+  try {
+    const adapter = createConfiguredQuotationOutboxProviderAdapters({ crmUrl: `${timedOut.url}/events` }).crm;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 5);
+    await assert.rejects(() => adapter.deliver({
+      eventType: 'quotation.sent',
+      provider: 'crm',
+      reference: base,
+      idempotencyKey: 'timeout-key',
+      signal: controller.signal,
+    }));
+  } finally {
+    await timedOut.close();
+  }
 });
 
 test('configured provider adapters post canonical references without PII', async () => {

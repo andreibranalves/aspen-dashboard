@@ -5,9 +5,11 @@ import {
   asc,
   eq,
   gt,
+  inArray,
   isNull,
   lte,
   or,
+  sql,
 } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
@@ -65,6 +67,8 @@ export interface ClaimDueOutboxOptions {
   limit?: number;
   leaseMs?: number;
   now?: Date;
+  /** Restrict claims to providers with configured delivery adapters. */
+  providers?: readonly QuotationOutboxProvider[];
 }
 
 export interface QuotationOutboxRepositoryOptions {
@@ -446,16 +450,22 @@ export function createPostgresQuotationOutboxRepository(
   const enqueue = (input: EnqueueQuotationOutboxInput, transaction?: OutboxDatabase) =>
     enqueueQuotationOutboxEvent(transaction || getDb(), input, { idFactory, now });
 
-  const claimDueEvents = async ({ owner, limit, leaseMs, now: requestedNow }: ClaimDueOutboxOptions) => {
+  const claimDueEvents = async ({ owner, limit, leaseMs, now: requestedNow, providers }: ClaimDueOutboxOptions) => {
     const leaseOwner = normalizeOwner(owner);
     const batchSize = boundedPositive(limit, 10, MAX_BATCH_SIZE);
     const duration = boundedPositive(leaseMs, DEFAULT_LEASE_MS, MAX_LEASE_MS);
     const current = validDate(requestedNow, now());
+    const providerPredicate = providers === undefined
+      ? undefined
+      : providers.length > 0
+        ? inArray(quotationOutboxEvents.provider, [...new Set(providers)])
+        : sql`false`;
+    const due = providerPredicate ? and(duePredicate(current), providerPredicate) : duePredicate(current);
     return getDb().transaction(async (tx) => {
       const candidates = await tx
         .select()
         .from(quotationOutboxEvents)
-        .where(duePredicate(current))
+        .where(due)
         .orderBy(asc(quotationOutboxEvents.nextAttemptAt), asc(quotationOutboxEvents.createdAt))
         .for('update', { skipLocked: true })
         .limit(batchSize);
@@ -469,7 +479,7 @@ export function createPostgresQuotationOutboxRepository(
             leaseExpiresAt: new Date(current.getTime() + duration),
             updatedAt: current,
           })
-          .where(and(eq(quotationOutboxEvents.id, candidate.id), duePredicate(current)))
+          .where(and(eq(quotationOutboxEvents.id, candidate.id), due))
           .returning();
         if (row) claimed.push(asEvent(row));
       }
@@ -656,18 +666,19 @@ export class InMemoryQuotationOutboxRepository implements QuotationOutboxReposit
     }
   }
 
-  async claimDueEvents({ owner, limit, leaseMs, now: requestedNow }: ClaimDueOutboxOptions) {
+  async claimDueEvents({ owner, limit, leaseMs, now: requestedNow, providers }: ClaimDueOutboxOptions) {
     const leaseOwner = normalizeOwner(owner);
     const batchSize = boundedPositive(limit, 10, MAX_BATCH_SIZE);
     const duration = boundedPositive(leaseMs, DEFAULT_LEASE_MS, MAX_LEASE_MS);
     const current = validDate(requestedNow, this.now());
+    const providerSet = providers === undefined ? null : new Set(providers);
     const claimed: QuotationOutboxEvent[] = [];
     for (const event of this.events.values()) {
       const due =
         ((event.status === 'pending' || event.status === 'retry') && event.nextAttemptAt <= current) ||
         (event.status === 'processing' && !!event.leaseExpiresAt && event.leaseExpiresAt <= current);
       const leaseFree = !event.leaseExpiresAt || event.leaseExpiresAt <= current;
-      if (!due || !leaseFree || claimed.length >= batchSize) continue;
+      if (!due || !leaseFree || claimed.length >= batchSize || (providerSet && !providerSet.has(event.provider))) continue;
       event.status = 'processing';
       event.leaseOwner = leaseOwner;
       event.leaseExpiresAt = new Date(current.getTime() + duration);
