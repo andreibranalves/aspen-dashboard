@@ -81,11 +81,21 @@ function safeToken(value: unknown): string {
 }
 
 /** Validate the only URL shape that may be sent to a customer. */
-export function isRevisionBoundPublicQuotationUrl(value: unknown): value is string {
+export function isRevisionBoundPublicQuotationUrl(
+  value: unknown,
+  applicationOrigin?: string,
+): value is string {
   if (typeof value !== 'string' || !value.trim()) return false;
+  const raw = value.trim();
   try {
-    const parsed = new URL(value.trim(), 'https://public-quotation.invalid');
-    return parsed.pathname === '/api/public-quotation' && Boolean(safeToken(parsed.searchParams.get('token')));
+    const origin = applicationOrigin ? new URL(applicationOrigin).origin : '';
+    const parsed = new URL(raw, origin || 'https://public-quotation.invalid');
+    const relative = raw.startsWith('/') && !raw.startsWith('//');
+    if (
+      parsed.pathname !== '/api/public-quotation' ||
+      !safeToken(parsed.searchParams.get('token'))
+    ) return false;
+    return relative || Boolean(origin && parsed.origin === origin);
   } catch {
     return false;
   }

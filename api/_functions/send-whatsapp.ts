@@ -14,7 +14,11 @@ import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
-import { issuePublicQuotationToken, renderPublicQuotationPdf } from './public-quotation.js';
+import {
+  issuePublicQuotationToken,
+  isRevisionBoundPublicQuotationUrl,
+  renderPublicQuotationPdf,
+} from './public-quotation.js';
 import { getDatabase } from '../_db/client.js';
 import {
   deriveOpaqueQuotationOutboxIdempotencyKey,
@@ -843,13 +847,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       throw createHttpError(400, 'Telefone inválido ou ausente para envio via WhatsApp.');
     }
 
-    const linkCandidate = firstNonEmpty(
-      resolved.publicLink,
-      payload.public_link as string | undefined,
-      payload.link_orcamento as string | undefined,
-      payload.short_url as string | undefined,
-    );
-    const link = /\/api\/view(?:[/?]|$)/i.test(linkCandidate) ? '' : linkCandidate;
+    const link = postgresPath && isRevisionBoundPublicQuotationUrl(resolved.publicLink, baseUrl)
+      ? resolved.publicLink
+      : '';
 
     const sequence = sequenceForResolution;
     const items = (payload.items ||

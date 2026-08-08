@@ -97,25 +97,6 @@ body > div:first-child:not(.print-format-gutter) { display: none !important; }
   }
 }
 
-// ── URL shortening ───────────────────────────────────────────────────────────
-
-async function shortenUrl(longUrl: string): Promise<string> {
-  try {
-    const tinyRes = await fetch(
-      `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`
-    );
-    if (tinyRes.ok) {
-      const tiny = (await tinyRes.text()).trim();
-      if (tiny.startsWith('https://') && tiny.length < longUrl.length) {
-        return tiny;
-      }
-    }
-  } catch {
-    // non-fatal — keep full URL
-  }
-  return longUrl;
-}
-
 // ── Result builder ───────────────────────────────────────────────────────────
 
 export async function buildQuoteResponse(
@@ -136,10 +117,9 @@ export async function buildQuoteResponse(
   } = opts;
 
   const baseUrl = buildBaseUrl(event);
-  const fullUrl = opts.publicUrl && isRevisionBoundPublicQuotationUrl(opts.publicUrl)
+  const fullUrl = opts.publicUrl && isRevisionBoundPublicQuotationUrl(opts.publicUrl, baseUrl)
     ? opts.publicUrl
     : buildViewUrl(baseUrl, quotationId);
-  const shortUrl = fullUrl ? await shortenUrl(fullUrl) : '';
   const printHtml = await fetchPrintHtml(quotationId, entityType, entityId, nomeCliente);
 
   const printFormat = await resolvePrintFormat(quotationId);
@@ -156,9 +136,7 @@ export async function buildQuoteResponse(
     items: savedItems.map((i: SavedQuoteItem) => ({ sku: i.item_code, qty: i.qty, rate: i.rate })),
     pdf_url: pdfUrl,
     print_html: printHtml,
-    view_url: fullUrl,
     public_url: fullUrl || null,
-    short_url: shortUrl,
     origem,
     ...(fullUrl ? {} : { public_link_unavailable: 'O link público requer uma revisão PostgreSQL compartilhável.' }),
   };

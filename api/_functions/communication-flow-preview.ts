@@ -39,7 +39,11 @@ function productPersonalizationAdjectiveFromCategories(categories: string[] = []
     : 'personalizados';
 }
 
-function renderTemplate(template: string, context: Record<string, any>): string {
+export function renderTemplate(
+  template: string,
+  context: Record<string, any>,
+  applicationOrigin = '',
+): string {
   const ctx = { ...context };
   if (template.includes('(Saudacao)') && !ctx.Saudacao) {
     ctx.Saudacao = getTimeBasedGreeting();
@@ -58,7 +62,10 @@ function renderTemplate(template: string, context: Record<string, any>): string 
     .replace(/\(primeiro_nome\)/g, primeiroNome)
     .replace(/\(numero_pedido\)/g, ctx.quotationId || '')
     .replace(/\(empresa\)/g, ctx.empresa || 'Aspen Estamparia')
-    .replace(/\(link_orcamento\)/g, isRevisionBoundPublicQuotationUrl(ctx.link) ? ctx.link : '')
+    .replace(
+      /\(link_orcamento\)/g,
+      isRevisionBoundPublicQuotationUrl(ctx.link, applicationOrigin) ? ctx.link : '',
+    )
     .replace(/\(vendedora\)/g, ctx.vendorName || 'Juliana')
     .replace(/\(produto_resumo\)/g, ctx.productSummary || 'produtos')
     .replace(/\(produto_adjetivo_personalizado\)/g, productPersonalizationAdjective)
@@ -225,6 +232,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   try {
     const flowId = String(payload.flow_id || payload.flowId || '').trim();
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
+    const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
+    const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
+    const applicationOrigin = `${proto}://${host}`;
 
     // Resolve flow
     let flow = null;
@@ -280,14 +290,14 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     for (const step of flow.steps || []) {
       if (step.type === 'text') {
-        const text = renderTemplate(step.template || '', context).trim();
+        const text = renderTemplate(step.template || '', context, applicationOrigin).trim();
         if (text) previewSteps.push({ type: 'text', text });
       } else if (step.type === 'document' && step.source === 'quotation_pdf') {
         if (!pdfAdded) {
           previewSteps.push({
             type: 'document',
             fileName: `${context.quotationId || 'ORC-EXEMPLO'}.pdf`,
-            caption: step.caption ? renderTemplate(step.caption, context).trim() : '',
+            caption: step.caption ? renderTemplate(step.caption, context, applicationOrigin).trim() : '',
           });
           pdfAdded = true;
         }
@@ -298,7 +308,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
             step.max_items || flow.max_media_per_product_group || 1
           )) {
             const caption = step.caption_template
-              ? renderTemplate(step.caption_template, context).trim()
+              ? renderTemplate(step.caption_template, context, applicationOrigin).trim()
               : m.caption || '';
             previewSteps.push({
               type: m.kind === 'video' ? 'video' : 'image',

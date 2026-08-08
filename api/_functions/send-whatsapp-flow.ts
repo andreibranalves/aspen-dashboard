@@ -530,6 +530,16 @@ async function buildSteps(flow: Record<string, any>, context: Record<string, any
   return steps;
 }
 
+export function resolveServerIssuedPublicLink(
+  postgresPath: boolean,
+  serverIssuedLink: unknown,
+  applicationOrigin: string,
+): string {
+  return postgresPath && isRevisionBoundPublicQuotationUrl(serverIssuedLink, applicationOrigin)
+    ? serverIssuedLink
+    : '';
+}
+
 // ── N8n webhook ────────────────────────────────────────────────────────────
 
 function fireN8n(payload: Record<string, unknown>): void {
@@ -635,8 +645,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     telefone = firstNonEmpty(payload.phone || payload.telefone, telefone);
     items = (payload.items || items || []) as Record<string, unknown>[];
     dealId = payload.deal_id || payload.dealId || dealId;
-    if (!link) link = firstNonEmpty(payload.public_link, payload.link_orcamento, payload.short_url);
-    if (!isRevisionBoundPublicQuotationUrl(link)) link = '';
+    link = resolveServerIssuedPublicLink(postgresPath, link, baseUrl);
 
     const number = normalizePhone(telefone);
     if (!number) throw createHttpError(400, 'Telefone inválido ou ausente.');

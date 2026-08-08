@@ -58,13 +58,16 @@ export function buildQuotationViewUrl(quotationId: string, printFormat: unknown 
 }
 
 /** Accept only revision-bound public quotation links for customer messages. */
-export function normalizePublicQuotationUrl(value: unknown): string {
+export function normalizePublicQuotationUrl(value: unknown, applicationOrigin?: string): string {
   if (typeof value !== 'string' || !value.trim()) return '';
+  const raw = value.trim();
   try {
-    const raw = value.trim();
-    const parsed = new URL(raw, 'https://public-quotation.invalid');
+    const origin = applicationOrigin || (typeof window !== 'undefined' ? window.location.origin : '');
+    const parsed = new URL(raw, origin || 'https://public-quotation.invalid');
     const token = parsed.searchParams.get('token') || '';
-    return parsed.pathname === '/api/public-quotation' && /^[A-Za-z0-9_-]{32,256}$/.test(token)
+    const relative = raw.startsWith('/') && !raw.startsWith('//');
+    return parsed.pathname === '/api/public-quotation' && /^[A-Za-z0-9_-]{32,256}$/.test(token) &&
+      (relative || Boolean(origin && parsed.origin === new URL(origin).origin))
       ? raw
       : '';
   } catch {

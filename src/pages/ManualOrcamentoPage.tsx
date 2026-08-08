@@ -490,7 +490,10 @@ export default function ManualOrcamentoPage() {
               </a>
             )}
             {(() => {
-              const publicUrl = normalizePublicQuotationUrl(result.public_url || result.publicUrl);
+              const publicUrl = normalizePublicQuotationUrl(
+                result.public_url || result.publicUrl,
+                window.location.origin,
+              );
               if (!publicUrl) {
                 return <span className="text-xs text-fg-muted">Link público indisponível para esta cotação legada.</span>;
               }

@@ -20,7 +20,9 @@ test('aceita somente links públicos revision-bound para clientes', () => {
   assert.equal(normalizePublicQuotationUrl('/api/view?q=ORC-1'), '');
   assert.equal(normalizePublicQuotationUrl('/api/public-quotation?token=' + 'A'.repeat(32)), '/api/public-quotation?token=' + 'A'.repeat(32));
   assert.equal(normalizePublicQuotationUrl('/api/public-quotation?token=short'), '');
-  assert.equal(normalizePublicQuotationUrl('https://app.test/api/view?q=ORC-1'), '');
+  assert.equal(normalizePublicQuotationUrl('https://app.test/api/public-quotation?token=' + 'A'.repeat(32), 'https://app.test'), 'https://app.test/api/public-quotation?token=' + 'A'.repeat(32));
+  assert.equal(normalizePublicQuotationUrl('https://evil.test/api/public-quotation?token=' + 'A'.repeat(32), 'https://app.test'), '');
+  assert.equal(normalizePublicQuotationUrl('https://app.test/api/view?q=ORC-1', 'https://app.test'), '');
 });
 
 test('normaliza três seções e combina campos legados em condições gerais', () => {
