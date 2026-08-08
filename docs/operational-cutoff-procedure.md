@@ -1,93 +1,58 @@
-# Procedimento de Corte Operacional (Go-Live)
+# Procedimento de corte operacional
 
-## Pré-requisitos
+O procedimento executável de corte e rollback de orçamentos está em [`docs/superpowers/plans/2026-08-05-quotation-cutover-runbook.md`](superpowers/plans/2026-08-05-quotation-cutover-runbook.md).
 
-1. Migração concluída (tabela `frappe_import_lineage` populada)
-2. PDFs arquivados no Vercel Blob (mínimo 1 documento emitido)
-3. Backup validado (último backup < 24h)
-4. Capacidade verde (DB < 80% limite, conexões < 80%)
-5. Configurações obrigatórias preenchidas (validade, pagamento, template)
+Este documento permanece como índice operacional curto.
 
-## Passo a Passo
+Não use o procedimento antigo que desligava somente `CRM_OPERATIONAL_MODE` e declarava rollback concluído.
 
-### 1. Validar pré-requisitos
+Depois de qualquer escrita PostgreSQL, definir uma flag como `false` não restaura dados Frappe e não é rollback suficiente.
 
-```bash
-node scripts/backup-crm.mjs --validate
-node scripts/backup-crm.mjs --preflight
-curl -s https://aspen-orcamento.vercel.app/api/operational-status | jq .ready
-```
+## Pré-condições obrigatórias
 
-### 2. Backup final pré-corte
+- backup PostgreSQL criado e validado em destino isolado;
+- `npm run build:api` concluído;
+- `npm run test:unit` concluído;
+- `npm run lint` concluído;
+- `npm run type-check` concluído;
+- `npm run check:tailwind` concluído;
+- `npm run build` concluído;
+- dry-run com manifest, hash e divergências revisados;
+- dependências aplicadas na ordem templates, produtos, preços, clientes/leads e orçamentos;
+- PDFs históricos válidos arquivados com checksum;
+- bloqueio de egress Frappe preparado para a fase pós-apply;
+- leitura de rollback e teste de segurança de link público aprovados.
 
-```bash
-node scripts/backup-crm.mjs
-# Salve o backup gerado em backups/backup-YYYY-MM-DDTHH:mm:ss.sql em local seguro
-```
+## Estados do domínio de orçamentos
 
-### 3. Travar escrita no Frappe (lock de aplicação)
+| Estado | Leitura | Escrita |
+| --- | --- | --- |
+| `legacy` | Frappe | Frappe |
+| `postgres-write` | PostgreSQL | PostgreSQL e outbox |
+| `postgres-read-only` | PostgreSQL | congelada ou comportamento endpoint-específico testado |
+| `rollback-compatible` | PostgreSQL com fallback observável para registro legado ausente | Frappe |
 
-```bash
-# Via painel Frappe: bloquear permissões de escrita para o usuário da API
-# Alternativa: rotacionar ERPNEXT_TOKEN para invalidar o token atual
-```
+A fonte de verdade é `CRM_CORE_QUOTES_ENABLED` combinada com `CRM_QUOTES_ROLLOUT_STATE`.
 
-### 4. Sincronização final
+A flag mestre só pode ser alterada com snapshot, motivo, operador, revisor e horário UTC registrados.
 
-```bash
-node scripts/migrate-frappe-crm.mjs --apply --mode final-sync
-```
+## Fluxo resumido
 
-### 5. Validar consistência
+1. Execute o runbook completo em ambiente de staging.
+2. Faça backup e restore de validação.
+3. Execute dry-run e verifique o manifest sem expor dados brutos.
+4. Resolva divergências e órfãos antes do apply.
+5. Execute apply uma vez e preserve o run ID.
+6. Reconcilie contagens, hashes, status, pedidos, PDFs e outbox.
+7. Congele chamadas Frappe não previstas e execute o canário.
+8. Avance ou entre em `rollback-compatible` conforme as evidências.
 
-```bash
-# Comparar contagem: PostgreSQL vs Frappe
-curl -s https://aspen-orcamento.vercel.app/api/operational-status | jq .details
+## Abort e rollback
 
-# Amostragem: 10 registros de cada entidade, comparar campos chave
-node scripts/validate-migration-sample.mjs --sample-size 10
-```
+Aborte para duplicata, divergência financeira sem explicação, órfão, PDF inválido, chamada Frappe inesperada, lote falho, falha de link público ou falha de leitura de rollback.
 
-### 6. Ativar modo operacional
+No rollback, congele novos efeitos, mantenha `CRM_CORE_QUOTES_ENABLED=true`, defina `CRM_QUOTES_ROLLOUT_STATE=rollback-compatible` e faça redeploy.
 
-```bash
-# No Vercel Dashboard -> Settings -> Environment Variables:
-# CRM_OPERATIONAL_MODE = true
-# Re-deploy
-```
+Valide registros PostgreSQL e legados antes de qualquer decisão posterior.
 
-### 7. Verificação pós-ativação
-
-```bash
-# Confirmar que a API responde em modo core
-curl -s https://aspen-orcamento.vercel.app/api/products?limit=1 | jq .source
-# Deve retornar: "postgres"
-
-# Navegar pelas páginas principais
-# - Novo orçamento manual
-# - Lista de clientes
-# - Catálogo de produtos
-# - Lista de orçamentos
-```
-
-## Rollback
-
-```bash
-# Vercel Dashboard -> CRM_OPERATIONAL_MODE = false -> Re-deploy
-# Reativar token Frappe original
-```
-
-## Checklist de Verificação
-
-- [ ] /api/products -> source: "postgres"
-- [ ] /api/leads-clients -> source: "postgres"
-- [ ] /api/quotations -> source: "postgres"
-- [ ] /api/orcamento -> POST cria rascunho
-- [ ] /api/pricing-lookup -> source: "postgres"
-- [ ] /api/sales-orders -> 503
-- [ ] /api/crm-deals -> 503
-- [ ] /api/send-whatsapp -> 503
-- [ ] Sidebar mostra apenas: Novo Orcamento, Orcamentos, Produtos, Clientes, Configuracoes
-- [ ] Sidebar esconde: Auto, Pre-orcamentos, WhatsApp, Dashboard, Pedidos, CRM, Comunicacao
-- [ ] #/auto redireciona para #/manual
-- [ ] Configuracoes mostra secao de "Modo Operacional"
+Nunca apague o PostgreSQL para simular rollback.
