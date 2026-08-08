@@ -1020,6 +1020,7 @@ Expected: PASS contra `aspen_test`, sem conexão em `neondb`.
 - [ ] **Step 3: Run complete Playwright verification.**
 
 ```bash
+set -euo pipefail
 npm run test:e2e -- tests/quotation-cutover.spec.js tests/client-core.spec.js tests/orcamento-core.spec.js tests/quotations-core.spec.js tests/quotation-lifecycle.spec.js tests/quotation-templates-core.spec.js tests/whatsapp-inbox.spec.js
 : "${STAGING_BASE_URL:?configure staging origin without credentials}"
 : "${E2E_USERNAME:?configure staging test account identifier}"
@@ -1036,6 +1037,7 @@ npm run test:e2e -- tests/quotation-cutover.spec.js tests/client-core.spec.js te
 [ "$STAGING_EGRESS_BLOCKED" = 1 ]
 [ "$STAGING_FIXTURE_RESET" = 1 ]
 [ -z "${OUTBOX_N8N_URL:-}" ]
+[ -z "${N8N_OUTBOX_WEBHOOK_URL:-}" ]
 [ -z "${OUTBOX_EVOLUTION_URL:-}" ]
 [ -z "${OUTBOX_CRM_URL:-}" ]
 BASE_URL="$STAGING_BASE_URL" \

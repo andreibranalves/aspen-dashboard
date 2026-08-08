@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 
 import { getDatabase } from '../_db/client.js';
 import { quotationOutboxEvents } from '../_db/schema.js';
@@ -12,11 +12,21 @@ function json(statusCode: number, body: Record<string, unknown>): FunctionResult
   };
 }
 
+const EXTERNAL_PROVIDER_ENV_VARS = [
+  'OUTBOX_N8N_URL',
+  'N8N_OUTBOX_WEBHOOK_URL',
+  'OUTBOX_EVOLUTION_URL',
+  'OUTBOX_CRM_URL',
+] as const;
+
 function enabled(): boolean {
+  const productionDeployment = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
   return (
+    !productionDeployment &&
     process.env.STAGING_E2E === '1' &&
     process.env.STAGING_EXTERNAL_PROVIDERS_DISABLED === '1' &&
-    process.env.STAGING_EGRESS_BLOCKED === '1'
+    process.env.STAGING_EGRESS_BLOCKED === '1' &&
+    EXTERNAL_PROVIDER_ENV_VARS.every((name) => !String(process.env[name] || '').trim())
   );
 }
 
@@ -28,7 +38,9 @@ function header(event: FunctionEvent, name: string): string {
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (!enabled()) return json(404, { error: 'Endpoint não encontrado.' });
-  if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
+  if (event.httpMethod !== 'GET' && event.httpMethod !== 'DELETE') {
+    return json(405, { error: 'Método não permitido.' });
+  }
 
   const expectedAccount = String(process.env.STAGING_E2E_USERNAME || '').trim();
   if (!expectedAccount || header(event, 'x-e2e-username') !== expectedAccount) {
@@ -41,7 +53,20 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   }
 
   try {
-    const rows = await getDatabase()
+    const database = getDatabase();
+    if (event.httpMethod === 'DELETE') {
+      await database
+        .delete(quotationOutboxEvents)
+        .where(
+          and(
+            eq(quotationOutboxEvents.aggregateId, quotationId),
+            inArray(quotationOutboxEvents.status, ['pending', 'retry']),
+          ),
+        );
+      return { statusCode: 204, headers: { 'Cache-Control': 'no-store' }, body: '' };
+    }
+
+    const rows = await database
       .select({
         eventType: quotationOutboxEvents.eventType,
         provider: quotationOutboxEvents.provider,

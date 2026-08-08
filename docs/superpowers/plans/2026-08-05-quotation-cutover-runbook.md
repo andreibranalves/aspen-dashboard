@@ -551,6 +551,7 @@ set -euo pipefail
 [ "$STAGING_EGRESS_BLOCKED" = 1 ]
 [ "$STAGING_FIXTURE_RESET" = 1 ]
 [ -z "${OUTBOX_N8N_URL:-}" ]
+[ -z "${N8N_OUTBOX_WEBHOOK_URL:-}" ]
 [ -z "${OUTBOX_EVOLUTION_URL:-}" ]
 [ -z "${OUTBOX_CRM_URL:-}" ]
 BASE_URL="$STAGING_BASE_URL" \
@@ -642,7 +643,7 @@ Qualquer falha do canário é uma condição de abort e inicia a seção de roll
 
 O outbox é interno e não exige CRM externo, N8N ou Evolution.
 
-Deixe `OUTBOX_N8N_URL`, `OUTBOX_EVOLUTION_URL` e `OUTBOX_CRM_URL` unset em Preview e Production nesta fase.
+Deixe `OUTBOX_N8N_URL`, `N8N_OUTBOX_WEBHOOK_URL`, `OUTBOX_EVOLUTION_URL` e `OUTBOX_CRM_URL` unset em Preview e Production nesta fase.
 
 Com `DATABASE_URL` e nenhum provider configurado, `npm run worker:quotation-outbox` termina com estado `disabled` e não reivindica eventos.
 

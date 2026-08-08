@@ -14,6 +14,7 @@ const REQUIRED_STAGING_VARS = [
 ];
 const EXTERNAL_PROVIDER_VARS = [
   'OUTBOX_N8N_URL',
+  'N8N_OUTBOX_WEBHOOK_URL',
   'OUTBOX_EVOLUTION_URL',
   'OUTBOX_CRM_URL',
 ];
@@ -69,7 +70,21 @@ export function assertStagingConfig(env = process.env) {
 
 export function assertSafeApiPath(path) {
   const value = String(path || '');
-  if (/\/api\/send-whatsapp(?:-flow)?(?:[/?]|$)|(?:n8n|evolution|hubspot|salesforce)/i.test(value)) {
+  let parsed;
+  try {
+    parsed = new globalThis.URL(value, process.env.STAGING_BASE_URL || 'http://staging.invalid');
+  } catch {
+    throw new Error('Staging test attempted an invalid API URL');
+  }
+  const expectedOrigin = process.env.STAGING_BASE_URL ? safeStagingOrigin(process.env.STAGING_BASE_URL) : null;
+  if (expectedOrigin && parsed.origin !== expectedOrigin) {
+    throw new Error('Staging test attempted an API request outside the staging origin');
+  }
+  if (
+    /\/api\/send-whatsapp(?:-flow)?(?:[/?]|$)|(?:n8n|evolution|hubspot|salesforce|frappe|erpnext)/i.test(
+      `${parsed.hostname}${parsed.pathname}`,
+    )
+  ) {
     throw new Error('Staging test attempted a forbidden provider/send request');
   }
   return value;

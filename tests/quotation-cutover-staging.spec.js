@@ -64,6 +64,7 @@ test.describe('quotation cutover staging', () => {
 
   test('uses disposable scratch quotation for public outbox and UI revision edit', async ({ page }) => {
     let scratchDetail;
+    let mainError;
     let cleanupError;
     try {
       const detailResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
@@ -180,20 +181,46 @@ test.describe('quotation cutover staging', () => {
       expect(edited.revision_id).toBe(revisedDetail.revision_id);
       expect(edited.status_canonical).toBe('rascunho');
       expect(edited.observacoes).toBe('staging cutover Playwright');
-    } finally {
-      if (scratchDetail) {
+    } catch (error) {
+      mainError = error;
+    }
+
+    if (scratchDetail) {
+      try {
+        const aggregateId = scratchDetail.quotation_uuid || scratchDetail.quote_id || scratchDetail.id;
+        const purge = await apiRequest(
+          page,
+          'DELETE',
+          `/api/quotation-outbox-inspect?quotation_id=${encodeURIComponent(aggregateId)}`,
+          { headers: { 'x-e2e-username': CONFIG.username } },
+        );
+        if (purge.status() !== 204) {
+          throw new Error(`STAGING_FIXTURE_RESET failed: outbox purge returned ${purge.status()}`);
+        }
+
         const currentResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
-        if (currentResponse.ok()) {
+        if (currentResponse.status() === 404) {
+          // Already cleaned by a prior attempt.
+        } else if (!currentResponse.ok()) {
+          throw new Error(`STAGING_FIXTURE_RESET failed: scratch lookup returned ${currentResponse.status()}`);
+        } else {
           const current = await currentResponse.json();
-          if (current.status_canonical === 'rascunho') {
-            const cleanup = await apiRequest(page, 'DELETE', quotationPath(CONFIG.scratchQuotationId));
-            expect(cleanup.status()).toBe(200);
-          } else {
-            cleanupError = new Error('STAGING_FIXTURE_RESET failed: scratch quotation is not disposable draft');
+          if (current.status_canonical !== 'rascunho') {
+            throw new Error('STAGING_FIXTURE_RESET failed: scratch quotation is not disposable draft');
+          }
+          const cleanup = await apiRequest(page, 'DELETE', quotationPath(CONFIG.scratchQuotationId));
+          if (cleanup.status() !== 200 && cleanup.status() !== 404) {
+            throw new Error(`STAGING_FIXTURE_RESET failed: quotation cleanup returned ${cleanup.status()}`);
           }
         }
+      } catch (error) {
+        cleanupError = error;
       }
     }
+    if (mainError && cleanupError) {
+      throw new AggregateError([mainError, cleanupError], 'Staging flow and fixture cleanup both failed');
+    }
+    if (mainError) throw mainError;
     if (cleanupError) throw cleanupError;
   });
 
