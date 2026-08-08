@@ -4,7 +4,14 @@ import { createHash } from 'node:crypto';
 import {
   createPublicQuotationHandler,
   isRevisionBoundPublicQuotationUrl,
+  issuePublicQuotationToken,
 } from '../../api/_functions/public-quotation.js';
+import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
+import {
+  computeManifestHash,
+  runFrappeMigration,
+} from '../../api/_functions/frappe-migration.js';
+import { createFrappeQuotationFixture } from '../fixtures/frappe-migration-fixtures.ts';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
 
 process.env.CRM_CORE_QUOTES_ENABLED = 'true';
@@ -84,6 +91,30 @@ function store(clock: () => number = () => now) {
 
 function event(httpMethod: string, queryStringParameters: Record<string, string> = {}, body = '') {
   return { httpMethod, headers: {}, queryStringParameters, body } as any;
+}
+
+async function memoryPublicSnapshot(repository: MemoryFrappeMigrationRepository, revisionId: string) {
+  const state = await repository.loadState();
+  const quotation = state.quotations.find((row) => row.revision?.id === revisionId);
+  if (!quotation?.revision) return null;
+  return {
+    quotation: {
+      id: quotation.id,
+      businessNumber: quotation.businessNumber,
+      clientId: quotation.clientId,
+      status: quotation.status,
+      createdAt: quotation.createdAt || quotation.revision.createdAt,
+    },
+    revision: {
+      ...quotation.revision,
+      quotationId: quotation.id,
+      templateVersionId: null,
+      sectionsSnapshot: null,
+    },
+    templateVersion: null,
+    sectionsSnapshot: null,
+    items: quotation.items || [],
+  } as any;
 }
 
 test('accepts only revision-bound public quotation URLs', () => {
@@ -243,6 +274,93 @@ test('keeps an issued revision PDF and checksum immutable after a source change'
   assert.match(oldBody.toString(), /10,00/);
   assert.equal(oldPdf.headers?.['X-Document-Checksum'], createHash('sha256').update(oldBody).digest('hex'));
   assert.doesNotMatch(oldBody.toString(), /20,00/);
+});
+
+test('keeps old token content after actual repository append', async () => {
+  const repository = new MemoryFrappeMigrationRepository();
+  const appliedUnits: Array<Parameters<typeof repository.applyQuotationUnit>[0]> = [];
+  const applyQuotationUnit = repository.applyQuotationUnit.bind(repository);
+  repository.applyQuotationUnit = async (unit) => {
+    appliedUnits.push(unit);
+    return applyQuotationUnit(unit);
+  };
+  const sourceA = createFrappeQuotationFixture();
+  await runFrappeMigration({
+    mode: 'apply',
+    dataset: sourceA,
+    repository,
+    expectedManifestHash: computeManifestHash(sourceA),
+  });
+  const oldUnit = appliedUnits.find((unit) => unit.quotation.sourceId === 'QTN-2024-00042')!;
+  const oldRevisionId = oldUnit.revision.id;
+  const oldSnapshot = await memoryPublicSnapshot(repository, oldRevisionId);
+  assert.ok(oldSnapshot);
+  assert.equal(oldSnapshot.revision.version, 1);
+  assert.equal(oldSnapshot.revision.status, 'enviado');
+
+  const snapshots = new Map([[oldRevisionId, oldSnapshot]]);
+  const publicRepository = {
+    get: async (revisionId: string) => snapshots.get(revisionId) || memoryPublicSnapshot(repository, revisionId),
+  };
+  const fakeStore = store();
+  const token = 'A'.repeat(32);
+  await issuePublicQuotationToken({
+    revisionId: oldRevisionId,
+    repository: publicRepository as any,
+    store: fakeStore,
+    token: () => token,
+    now: () => now,
+  });
+
+  const sourceB = {
+    ...sourceA,
+    quotations: sourceA.quotations.map((quotation) =>
+      quotation.name === 'QTN-2024-00042'
+        ? {
+            ...quotation,
+            status: 'Ordered',
+            net_total: '999.00',
+            grand_total: '999.00',
+            modified: '2024-04-01 00:00:00',
+            items: quotation.items?.map((item, index) =>
+              index === 0 ? { ...item, rate: '999.00', amount: '999.00' } : item
+            ),
+          }
+        : quotation,
+    ),
+  };
+  await runFrappeMigration({
+    mode: 'apply',
+    dataset: sourceB,
+    repository,
+    expectedManifestHash: computeManifestHash(sourceB),
+  });
+  const currentUnit = appliedUnits.find((unit) =>
+    unit.quotation.sourceId === 'QTN-2024-00042' && unit.sourceHash !== oldUnit.sourceHash
+  )!;
+  assert.ok(currentUnit);
+  const currentState = await repository.loadState();
+  const currentRevisionId = currentState.quotations.find((row) => row.id === oldSnapshot.quotation.id)!.revision!.id;
+  const currentSnapshot = await memoryPublicSnapshot(repository, currentRevisionId);
+  assert.ok(currentSnapshot);
+  assert.equal(currentSnapshot.revision.version, 2);
+  assert.equal(currentSnapshot.revision.status, 'rascunho');
+  assert.notEqual(currentSnapshot.revision.total, oldSnapshot.revision.total);
+
+  const renderPdf = async (html: string) => Buffer.from(`%PDF-1.7\\n${html}\\n%%EOF`);
+  const handler = createPublicQuotationHandler({
+    repository: publicRepository as any,
+    store: fakeStore,
+    now: () => now,
+    renderPdf,
+  });
+  const response = await handler(event('GET', { token, format: 'pdf' }));
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers?.['X-Document-Revision'], oldRevisionId);
+  const body = Buffer.from(response.body!, 'base64');
+  assert.match(body.toString(), /120,00/);
+  assert.doesNotMatch(body.toString(), /999,00/);
+  assert.equal(response.headers?.['X-Document-Checksum'], createHash('sha256').update(body).digest('hex'));
 });
 
 test('returns PDF signature, checksum, size and deterministic revision/template metadata', async () => {

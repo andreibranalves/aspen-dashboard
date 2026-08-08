@@ -235,6 +235,12 @@ test(
     try {
       await migrate(db, { migrationsFolder });
       const repository = createPostgresFrappeMigrationRepository(() => db);
+      const appliedUnits: Array<Parameters<typeof repository.applyQuotationUnit>[0]> = [];
+      const applyQuotationUnit = repository.applyQuotationUnit.bind(repository);
+      repository.applyQuotationUnit = async (unit) => {
+        appliedUnits.push(unit);
+        return applyQuotationUnit(unit);
+      };
       const first = await runFrappeMigration({ mode: 'apply', dataset, repository });
       assert.equal(first.report.produtos.criados, 1);
       assert.equal(first.report.clientes.criados, 1);
@@ -316,6 +322,25 @@ test(
       assert.equal(revisionsAfterAppend[1].status, 'rascunho');
       assert.equal(revisionsAfterAppend[1].version, 2);
       const draftRevisionId = revisionsAfterAppend[1].id;
+      const appendedUnit = appliedUnits.at(-1)!;
+      const oldItemsBeforeReapply = await db
+        .select()
+        .from(schema.quoteRevisionItems)
+        .where(eq(schema.quoteRevisionItems.revisionId, revisionsAfterAppend[0].id));
+      await repository.applyQuotationUnit(appendedUnit);
+      const revisionsAfterReapply = await db
+        .select()
+        .from(schema.quoteRevisions)
+        .where(eq(schema.quoteRevisions.quotationId, quotationRowsUpdated[0].id))
+        .orderBy(schema.quoteRevisions.version);
+      const oldItemsAfterReapply = await db
+        .select()
+        .from(schema.quoteRevisionItems)
+        .where(eq(schema.quoteRevisionItems.revisionId, revisionsAfterAppend[0].id));
+      assert.equal(revisionsAfterReapply.length, 2);
+      assert.deepEqual(oldItemsAfterReapply, oldItemsBeforeReapply);
+      assert.equal(revisionsAfterReapply[0].total, '50.00');
+      assert.equal(revisionsAfterReapply[1].id, draftRevisionId);
 
       const draftUpdate = await runFrappeMigration({
         mode: 'apply',
@@ -339,6 +364,12 @@ test(
         .orderBy(schema.quoteRevisions.version);
       assert.equal(revisionsAfterDraftUpdate.length, 2);
       assert.equal(revisionsAfterDraftUpdate[1].id, draftRevisionId);
+      assert.equal(revisionsAfterDraftUpdate[1].status, 'rascunho');
+      const [quotationAfterDraftUpdate] = await db
+        .select({ status: schema.quotations.status })
+        .from(schema.quotations)
+        .where(eq(schema.quotations.id, quotationRowsUpdated[0].id));
+      assert.equal(quotationAfterDraftUpdate?.status, 'rascunho');
       assert.equal(revisionsAfterDraftUpdate[1].total, '75.00');
       assert.equal(revisionsAfterDraftUpdate[0].total, '50.00');
     } finally {

@@ -27,6 +27,16 @@ const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImpleme
       : options
   );
 
+function captureQuotationUnits(repository: MemoryFrappeMigrationRepository) {
+  const units: Array<Parameters<typeof repository.applyQuotationUnit>[0]> = [];
+  const apply = repository.applyQuotationUnit.bind(repository);
+  repository.applyQuotationUnit = async (unit) => {
+    units.push(unit);
+    return apply(unit);
+  };
+  return units;
+}
+
 describe('MemoryFrappeMigrationRepository', () => {
   it('reusa draft source-changed e cria novo draft após revisão não editável', async () => {
     const dataset = (status: string, total: string) => {
@@ -51,32 +61,97 @@ describe('MemoryFrappeMigrationRepository', () => {
     };
 
     const draftRepository = new MemoryFrappeMigrationRepository();
+    const draftUnits = captureQuotationUnits(draftRepository);
     await runFrappeMigration({ mode: 'apply', dataset: dataset('Draft', '5.00'), repository: draftRepository });
-    const draftQuotationId = draftRepository.snapshot().quotations[0]!.id;
-    const firstDraft = draftRepository.snapshot().quotations[0]?.revision;
+    const draftQuotation = draftRepository.snapshot().quotations.find((row) => row.businessNumber === 'ORC-20240042')!;
+    const draftQuotationId = draftQuotation.id;
+    const firstDraft = draftQuotation.revision;
+    const firstDraftItemIds = new Set(draftQuotation.items?.map((item) => item.id));
     assert.ok(firstDraft);
-    await runFrappeMigration({ mode: 'apply', dataset: dataset('Draft', '7.00'), repository: draftRepository });
-    const updatedDraft = draftRepository.snapshot().quotations[0]?.revision;
+    await runFrappeMigration({ mode: 'apply', dataset: dataset('Ordered', '7.00'), repository: draftRepository });
+    const updatedDraftQuotation = draftRepository.snapshot().quotations.find((row) => row.id === draftQuotationId)!;
+    const updatedDraft = updatedDraftQuotation.revision;
     assert.ok(updatedDraft);
     assert.equal(updatedDraft.id, firstDraft.id);
     assert.equal(updatedDraft.version, firstDraft.version);
     assert.equal(updatedDraft.status, 'rascunho');
+    assert.equal(updatedDraftQuotation.status, 'rascunho');
     assert.equal(Number(updatedDraft.total), 7);
+    assert.ok(
+      updatedDraftQuotation.items?.every((item) => !firstDraftItemIds.has(item.id)),
+      'draft reuse must allocate fresh item IDs'
+    );
+    assert.equal(draftUnits.filter((unit) => unit.quotation.sourceId === 'QTN-2024-00042').length, 2);
     assert.deepEqual(draftRepository.revisionHistory(draftQuotationId), []);
 
     const sentRepository = new MemoryFrappeMigrationRepository();
+    const sentUnits = captureQuotationUnits(sentRepository);
     await runFrappeMigration({ mode: 'apply', dataset: dataset('Submitted', '5.00'), repository: sentRepository });
-    const sentRevision = sentRepository.snapshot().quotations[0]?.revision;
+    const sentQuotation = sentRepository.snapshot().quotations.find((row) => row.businessNumber === 'ORC-20240042')!;
+    const sentRevision = sentQuotation.revision;
     assert.ok(sentRevision);
-    const quotationId = sentRepository.snapshot().quotations[0]!.id;
+    const quotationId = sentQuotation.id;
     await runFrappeMigration({ mode: 'apply', dataset: dataset('Submitted', '7.00'), repository: sentRepository });
-    const nextRevision = sentRepository.snapshot().quotations[0]?.revision;
+    const nextRevision = sentRepository.snapshot().quotations.find((row) => row.id === quotationId)!.revision;
     assert.ok(nextRevision);
     assert.notEqual(nextRevision.id, sentRevision.id);
     assert.equal(nextRevision.version, sentRevision.version + 1);
     assert.equal(nextRevision.status, 'rascunho');
     assert.equal(sentRepository.revisionHistory(quotationId)[0]?.id, sentRevision.id);
     assert.equal(Number(sentRepository.revisionHistory(quotationId)[0]?.total), 5);
+
+    const secondUnit = sentUnits.filter((unit) => unit.quotation.sourceId === 'QTN-2024-00042').at(-1)!;
+    const beforeReapply = sentRepository.snapshot();
+    const historyBeforeReapply = sentRepository.revisionHistory(quotationId);
+    await sentRepository.applyQuotationUnit(secondUnit);
+    assert.deepEqual(sentRepository.snapshot(), beforeReapply);
+    assert.deepEqual(sentRepository.revisionHistory(quotationId), historyBeforeReapply);
+  });
+
+  it('serializa applies concorrentes de quotations e recupera após falha', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const appliedUnits = captureQuotationUnits(repository);
+    const base = createFrappeQuotationFixture();
+    await runFrappeMigration({ mode: 'apply', dataset: base, repository });
+    const initialUnits = appliedUnits.filter((unit) =>
+      ['QTN-2024-00042', 'QTN-2024-00043'].includes(unit.quotation.sourceId)
+    );
+    assert.equal(initialUnits.length, 2);
+    const changedUnits = initialUnits.map((unit, index) => {
+      const sourceHash = unit.sourceHash === 'a'.repeat(64) ? 'b'.repeat(64) : 'a'.repeat(64);
+      return {
+        ...unit,
+        sourceHash,
+        quotation: {
+          ...unit.quotation,
+          total: String(Number(unit.quotation.total) + index + 1),
+          subtotal: String(Number(unit.quotation.subtotal) + index + 1),
+        },
+        revision: {
+          ...unit.revision,
+          total: String(Number(unit.revision.total) + index + 1),
+          subtotal: String(Number(unit.revision.subtotal) + index + 1),
+        },
+        lineage: unit.lineage.map((line) => ({ ...line, sourceHash })),
+      };
+    });
+
+    repository.failQuotationKey = changedUnits[0].quotation.sourceId;
+    const settled = await Promise.allSettled(changedUnits.map((unit) => repository.applyQuotationUnit(unit)));
+    assert.equal(settled.filter((result) => result.status === 'rejected').length, 1);
+    assert.equal(settled.filter((result) => result.status === 'fulfilled').length, 1);
+    repository.failQuotationKey = undefined;
+    await repository.applyQuotationUnit(changedUnits[0]);
+
+    const state = await repository.loadState();
+    for (const unit of changedUnits) {
+      const row = state.quotations.find((quotation) => quotation.id === unit.id);
+      assert.ok(row?.revision);
+      assert.equal(Number(row.revision.total), Number(unit.revision.total));
+    }
+    const beforeNoop = repository.snapshot();
+    await repository.applyQuotationUnit(changedUnits[1]);
+    assert.deepEqual(repository.snapshot(), beforeNoop);
   });
 
   it('verifica todas as versões numéricas dos templates built-in', async () => {
