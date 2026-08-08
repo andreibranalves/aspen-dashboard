@@ -47,10 +47,10 @@ const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImpleme
 
 describe('migração Frappe CRM', { concurrency: 1 }, () => {
   it('pagina fonte com ordenação estável e lê todos os documentos', async () => {
-    const calls: Array<{ doctype: string; start: number; order_by: string }> = [];
+    const calls: Array<{ doctype: string; start: number; order_by: string; modified_before?: string }> = [];
     const source = {
-      async list(doctype: string, options: { limit: number; start: number; order_by: string }) {
-        calls.push({ doctype, start: options.start, order_by: options.order_by });
+      async list(doctype: string, options: { limit: number; start: number; order_by: string; modified_before?: string }) {
+        calls.push({ doctype, start: options.start, order_by: options.order_by, modified_before: options.modified_before });
         const values =
           doctype === 'Item'
             ? [
@@ -61,9 +61,11 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
         return options.start === 0 ? values : [];
       },
     };
-    const result = await readFrappeDataset(source, 2);
+    const sourceSnapshotAt = new Date('2025-01-02T03:04:05.000Z');
+    const result = await readFrappeDataset(source, 2, sourceSnapshotAt);
     assert.equal(result.dataset.items.length, 2);
     assert.ok(calls.every((call) => call.order_by === 'creation asc, name asc'));
+    assert.ok(calls.every((call) => call.modified_before === sourceSnapshotAt.toISOString()));
   });
 
   it('dry-run não grava e apply é idempotente por unidade', async () => {

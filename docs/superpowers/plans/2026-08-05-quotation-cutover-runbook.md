@@ -215,6 +215,23 @@ Não restaure sobre a base ativa durante o rollback sem uma aprovação explíci
 
 Fixe o snapshot de origem antes do apply.
 
+Para staging, gere a fixture a partir do arquivo protegido sem guardar o salt, a entrada ou a saída no repositório:
+
+```bash
+set -euo pipefail
+umask 077
+: "${FRAPPE_SNAPSHOT_INPUT:?configure the protected source snapshot path}"
+: "${FRAPPE_SNAPSHOT_OUTPUT:?configure an output path outside the repository}"
+: "${FRAPPE_SNAPSHOT_SALT:?load the anonymization salt only from the secret manager}"
+node scripts/anonymize-frappe-snapshot.mjs \
+  --input "$FRAPPE_SNAPSHOT_INPUT" \
+  --output "$FRAPPE_SNAPSHOT_OUTPUT"
+unset FRAPPE_SNAPSHOT_SALT FRAPPE_SNAPSHOT_INPUT
+export FRAPPE_MIGRATION_FIXTURE="$FRAPPE_SNAPSHOT_OUTPUT"
+```
+
+O anonimizador preserva doctypes, estados, itens, preços e relacionamentos, mas substitui identificadores, documentos, contatos e endereços por valores determinísticos.
+
 O dry-run deve ser executado com uma fixture sem segredos ou contra a fonte autorizada em staging.
 
 Fixture só pode ser usada com `--dry-run`.

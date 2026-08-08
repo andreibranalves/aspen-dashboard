@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
@@ -13,6 +13,7 @@ import {
   readPgServiceTarget,
   resolveRepositoryMode,
 } from '../../scripts/migrate-frappe-crm.mjs';
+import { anonymizeSnapshot } from '../../scripts/anonymize-frappe-snapshot.mjs';
 
 describe('CLI de migração Frappe', () => {
   it('exige exatamente um modo', () => {
@@ -50,6 +51,109 @@ describe('CLI de migração Frappe', () => {
         () => parseArgs(['--dry-run', '--approve-divergence', value]),
         /source_doctype/
       );
+  });
+
+  it('anonimiza snapshot mantendo relações, estados e determinismo', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'frappe-anonymizer-'));
+    const inputPath = path.join(directory, 'input.json');
+    const outputPath = path.join(directory, 'output.json');
+    const repeatPath = path.join(directory, 'repeat.json');
+    const raw = {
+      items: [
+        { name: 'ITEM-REAL-1', item_code: 'SKU-REAL-1', item_name: 'Produto Real 1' },
+        { name: 'ITEM-REAL-2', item_code: 'SKU-REAL-2', item_name: 'Produto Real 2' },
+      ],
+      pricingRules: [{ name: 'PR-REAL-1', item_code: 'SKU-REAL-1', min_qty: 10, price_list_rate: '5.00' }],
+      itemPrices: [{ name: 'IP-REAL-1', item_code: 'SKU-REAL-2', price_list_rate: '7.00' }],
+      customers: [{
+        name: 'CUST-REAL-1',
+        customer_name: 'Empresa Real Ltda',
+        tax_id: '12.345.678/0001-90',
+        email_id: 'financeiro@empresa-real.example',
+        phone: '+55 11 99999-0001',
+        address_line1: 'Rua Real, 123',
+        api_token: 'secret-token-must-disappear',
+      }],
+      leads: [{
+        name: 'LEAD-REAL-1',
+        lead_name: 'Pessoa Real',
+        tax_id: '987.654.321-00',
+        email_id: 'lead.real@example.com',
+        mobile_no: '+55 11 98888-0002',
+      }],
+      quotations: [
+        {
+          name: 'QTN-REAL-1', creation: '2024-01-02 10:00:00', quotation_to: 'Customer', customer: 'CUST-REAL-1',
+          party_name: 'CUST-REAL-1', status: 'Submitted',
+          pdf_checksum_sha256: 'ab'.repeat(32), pdf_size_bytes: 1024,
+          items: [{ idx: 1, item_code: 'SKU-REAL-1', item_name: 'Produto Real 1', qty: '2', rate: '5.00', price_list_rate: '5.00', amount: '10.00' }],
+          legacy_payload: { authorization: 'Bearer raw-secret' },
+        },
+        {
+          name: 'QTN-REAL-2', creation: '2025-02-03 11:00:00', quotation_to: 'Lead', party_name: 'LEAD-REAL-1', status: 'Draft',
+          items: [{ idx: 1, item_code: 'SKU-REAL-2', item_name: 'Produto Real 2', qty: '3', rate: '7.00', price_list_rate: '7.00', amount: '21.00' }],
+        },
+      ],
+    };
+    writeFileSync(inputPath, JSON.stringify(raw));
+    try {
+      const first = anonymizeSnapshot(raw, 'test-salt');
+      const second = anonymizeSnapshot(raw, 'test-salt');
+      assert.deepEqual(first, second);
+      assert.equal(first.customers?.length, 1);
+      assert.equal(first.leads?.length, 1);
+      assert.equal(first.items.length, 2);
+      assert.equal(first.quotations?.length, 2);
+      assert.equal(first.customers?.[0]?.name, first.quotations?.[0]?.customer);
+      assert.equal(first.leads?.[0]?.name, first.quotations?.[1]?.party_name);
+      assert.equal(first.items[0]?.item_code, first.quotations?.[0]?.items?.[0]?.item_code);
+      assert.equal(first.items[1]?.item_code, first.quotations?.[1]?.items?.[0]?.item_code);
+      assert.equal(first.pricingRules?.[0]?.item_code, first.items[0]?.item_code);
+      assert.equal(first.itemPrices?.[0]?.item_code, first.items[1]?.item_code);
+      const serialized = JSON.stringify(first);
+      for (const rawValue of [
+        'CUST-REAL-1', 'LEAD-REAL-1', 'ITEM-REAL-1', 'SKU-REAL-1', 'QTN-REAL-1',
+        '12.345.678/0001-90', 'Empresa Real Ltda', 'financeiro@empresa-real.example',
+        '+55 11 99999-0001', 'Rua Real, 123', 'secret-token-must-disappear',
+        'Bearer raw-secret',
+      ]) assert.equal(serialized.includes(rawValue), false, `raw value leaked: ${rawValue}`);
+      assert.equal(Object.prototype.hasOwnProperty.call(first.customers?.[0] || {}, 'api_token'), false);
+      assert.equal(Object.prototype.hasOwnProperty.call(first.quotations?.[0] || {}, 'legacy_payload'), false);
+
+      const result = spawnSync(
+        process.execPath,
+        ['scripts/anonymize-frappe-snapshot.mjs', '--input', inputPath, '--output', outputPath],
+        { cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'), env: { ...process.env, FRAPPE_SNAPSHOT_SALT: 'test-salt' }, encoding: 'utf8' }
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const artifact = JSON.parse(readFileSync(outputPath, 'utf8'));
+      assert.deepEqual(artifact, first);
+      assert.equal(statSync(outputPath).mode & 0o777, 0o600);
+
+      const repeat = spawnSync(
+        process.execPath,
+        ['scripts/anonymize-frappe-snapshot.mjs', '--input', inputPath, '--output', repeatPath],
+        { cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'), env: { ...process.env, FRAPPE_SNAPSHOT_SALT: 'test-salt' }, encoding: 'utf8' }
+      );
+      assert.equal(repeat.status, 0, repeat.stderr);
+      assert.deepEqual(JSON.parse(readFileSync(repeatPath, 'utf8')), artifact);
+
+      const migrationEnv = { ...process.env };
+      delete migrationEnv.DATABASE_URL;
+      delete migrationEnv.TEST_DATABASE_URL;
+      const dryRun = spawnSync(
+        process.execPath,
+        ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--fixture', outputPath],
+        { cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'), env: migrationEnv, encoding: 'utf8' }
+      );
+      assert.equal(dryRun.status, 0, dryRun.stderr);
+      const report = JSON.parse(dryRun.stdout);
+      assert.equal(report.manifest.status, 'completed');
+      assert.deepEqual(report.manifest.entityCounts, { products: 2, pricingTiers: 2, clients: 2, quotations: 2 });
+      assert.doesNotMatch(dryRun.stdout, /CUST-REAL|LEAD-REAL|ITEM-REAL|SKU-REAL|QTN-REAL|financeiro@|secret-token/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('valida host, porta e database do serviço libpq real sem aceitar outro destino', () => {
@@ -273,6 +377,15 @@ describe('CLI de migração Frappe', () => {
     assert.match(invalid.stderr, /Dataset Frappe inválido/);
 
     const temporaryDirectory = mkdtempSync(path.join(tmpdir(), 'frappe-cli-'));
+    const scalarFixture = path.join(temporaryDirectory, 'scalar.json');
+    writeFileSync(scalarFixture, '[]');
+    const scalar = spawnSync(
+      process.execPath,
+      ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--fixture', scalarFixture],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    assert.notEqual(scalar.status, 0);
+    assert.match(scalar.stderr, /Fixture Frappe inválida/);
     const blockingFixture = path.join(temporaryDirectory, 'blocking.json');
     writeFileSync(
       blockingFixture,

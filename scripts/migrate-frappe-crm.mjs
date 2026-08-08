@@ -193,13 +193,20 @@ export function resolveRepositoryMode({ mode, hasFixture, hasDatabaseUrl }) {
   throw new Error('DATABASE_URL é obrigatória para consultar o estado local; use fixture apenas com --dry-run.');
 }
 
+function assertFixtureObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Fixture Frappe inválida: informe um objeto de dataset.');
+  }
+  return value;
+}
+
 async function loadFixture(pathname) {
   const absolute = resolve(pathname);
   if (extname(absolute).toLowerCase() === '.json') {
-    return JSON.parse(await readFile(absolute, 'utf8'));
+    return assertFixtureObject(JSON.parse(await readFile(absolute, 'utf8')));
   }
   const module = await import(pathToFileURL(absolute).href);
-  return module.default || module.dataset || module;
+  return assertFixtureObject(module.default || module.dataset || module);
 }
 
 async function main() {
