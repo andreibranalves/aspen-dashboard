@@ -5,8 +5,37 @@ import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-function fail(message) {
-  process.stderr.write(`${message}\n`);
+function safeCliMessage(error) {
+  const message = error instanceof Error ? error.message : '';
+  const safePrefixes = [
+    'Informe exatamente um modo',
+    'Informe o caminho da fixture',
+    'Informe um manifest hash',
+    'Informe source_doctype',
+    'Opção desconhecida.',
+    '--expected-manifest-hash',
+    '--fixture só pode',
+    'FRAPPE_MIGRATION_FIXTURE',
+    'CUTOVER_PG_SERVICE',
+    'DATABASE_URL',
+    'TEST_DATABASE_URL',
+    'RESTORE_DATABASE_URL',
+    'PGSERVICEFILE',
+    'PGPASSFILE',
+    'RESTORE_PG_SERVICE',
+    'Fixture não pode',
+    'Fixture Frappe inválida',
+    'Dataset Frappe inválido',
+    'Chave de aprovação inválida',
+    'Manifesto revisado',
+    'Fonte Frappe',
+    'Arquivo de fixture Frappe',
+  ];
+  return safePrefixes.some((prefix) => message.startsWith(prefix)) ? message : 'Falha ao processar migração Frappe.';
+}
+
+function fail(error) {
+  process.stderr.write(`${safeCliMessage(error)}\n`);
   process.exitCode = 2;
 }
 
@@ -51,7 +80,7 @@ export function parseArgs(argv) {
       index += 1;
       continue;
     }
-    throw new Error(`Opção desconhecida: ${arg}`);
+    throw new Error('Opção desconhecida.');
   }
   if (!mode) throw new Error('Informe exatamente um modo: --dry-run ou --apply.');
   const normalizedMode = mode === 'dry-run' ? 'dry-run' : 'apply';
@@ -203,10 +232,26 @@ function assertFixtureObject(value) {
 async function loadFixture(pathname) {
   const absolute = resolve(pathname);
   if (extname(absolute).toLowerCase() === '.json') {
-    return assertFixtureObject(JSON.parse(await readFile(absolute, 'utf8')));
+    let contents;
+    try {
+      contents = await readFile(absolute, 'utf8');
+    } catch (error) {
+      throw new Error('Arquivo de fixture Frappe não pôde ser lido.', { cause: error });
+    }
+    try {
+      return assertFixtureObject(JSON.parse(contents));
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Fixture Frappe inválida')) throw error;
+      throw new Error('Fixture Frappe inválida: JSON malformado.', { cause: error });
+    }
   }
-  const module = await import(pathToFileURL(absolute).href);
-  return assertFixtureObject(module.default || module.dataset || module);
+  try {
+    const module = await import(pathToFileURL(absolute).href);
+    return assertFixtureObject(module.default || module.dataset || module);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Fixture Frappe inválida')) throw error;
+    throw new Error('Arquivo de fixture Frappe não pôde ser carregado.', { cause: error });
+  }
 }
 
 async function main() {
@@ -254,6 +299,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   try {
     await main();
   } catch (error) {
-    fail(error instanceof Error ? error.message : 'Falha na migração Frappe.');
+    fail(error);
   }
 }
