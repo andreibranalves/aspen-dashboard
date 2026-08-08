@@ -116,6 +116,24 @@ test('delta comparison uses stable manifest hash and aborts real changes', () =>
   assert.match(runbook, /ABORT: source delta changed[\s\S]*exit 1/);
 });
 
+test('service contract and repository root are exported before Node checks', () => {
+  const preflight = runbook.slice(runbook.indexOf('## 2.'), runbook.indexOf('## 3.'));
+  const reconciliation = runbook.slice(runbook.indexOf('## 7.'), runbook.indexOf('## 8.'));
+  for (const section of [preflight, reconciliation]) {
+    assert.match(section, /set -euo pipefail/);
+    assert.match(section, /: "\$\{CUTOVER_PG_SERVICE:\?[^\"]+\}"[\s\S]*export CUTOVER_PG_SERVICE/);
+    assert.match(section, /: "\$\{REPO_ROOT:\?[^\"]+\}"[\s\S]*cd "\$REPO_ROOT"[\s\S]*node --input-type=module <<'NODE'[\s\S]*assertDatabaseContract\(process\.env\)/);
+  }
+  assert.match(
+    preflight,
+    /export CUTOVER_PG_SERVICE[\s\S]*cd "\$REPO_ROOT"[\s\S]*node --input-type=module/
+  );
+  assert.match(
+    reconciliation,
+    /export CUTOVER_PG_SERVICE[\s\S]*cd "\$REPO_ROOT"[\s\S]*node --input-type=module/
+  );
+});
+
 test('supporting scripts fail closed and emit verifiable migration artifacts', () => {
   assert.match(backupScript, /RESTORE_DATABASE_URL/);
   assert.match(backupScript, /delete env\.TEST_DATABASE_URL/);

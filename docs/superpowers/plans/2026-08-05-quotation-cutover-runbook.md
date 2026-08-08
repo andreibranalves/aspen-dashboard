@@ -52,7 +52,7 @@ mkdir -p "$CUTOVER_DIR"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
 : "${PGSERVICEFILE:?configure a protected libpq service file path}"
 : "${PGPASSFILE:?configure a protected libpq password file path}"
-export PGSERVICEFILE PGPASSFILE
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
 ```
 
 Não use `set -x` durante este procedimento.
@@ -82,6 +82,10 @@ Não substitua essa verificação por variáveis `CUTOVER_DATABASE_*` digitadas 
 
 ```bash
 set -euo pipefail
+: "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
+export CUTOVER_PG_SERVICE
+: "${REPO_ROOT:?configure the absolute path to the reviewed checkout}"
+cd "$REPO_ROOT"
 node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
@@ -386,12 +390,16 @@ Valide o serviço efetivo e compare o database da conexão ativa com a configura
 
 ```bash
 set -euo pipefail
+: "${CUTOVER_PG_SERVICE:?configure the named libpq service for reconciliation}"
+export CUTOVER_PG_SERVICE
+: "${REPO_ROOT:?configure the absolute path to the reviewed checkout}"
+cd "$REPO_ROOT"
 node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
-EXPECTED_DATABASE="$(node --input-type=module <<'NODE'
+EXPECTED_DATABASE="$(cd "$REPO_ROOT" && node --input-type=module <<'NODE'
 import { readPgServiceTarget } from './scripts/migrate-frappe-crm.mjs';
 process.stdout.write(readPgServiceTarget(process.env).database);
 NODE
