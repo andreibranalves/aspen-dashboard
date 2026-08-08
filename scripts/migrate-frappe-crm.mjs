@@ -44,10 +44,17 @@ export function parseArgs(argv) {
     throw new Error(`Opção desconhecida: ${arg}`);
   }
   if (!mode) throw new Error('Informe exatamente um modo: --dry-run ou --apply.');
-  return { mode: mode === 'dry-run' ? 'dry-run' : 'apply', fixture, approvedDivergences };
+  const normalizedMode = mode === 'dry-run' ? 'dry-run' : 'apply';
+  if (normalizedMode === 'apply' && fixture) {
+    throw new Error('--fixture só pode ser usado explicitamente com --dry-run.');
+  }
+  return { mode: normalizedMode, fixture, approvedDivergences };
 }
 
 export function resolveRepositoryMode({ mode, hasFixture, hasDatabaseUrl }) {
+  if (mode === 'apply' && hasFixture) {
+    throw new Error('Fixture não pode ser usada com --apply; use --dry-run explicitamente.');
+  }
   if (mode === 'apply' && !hasDatabaseUrl) {
     throw new Error('DATABASE_URL é obrigatória para --apply; fixture não pode simular uma aplicação.');
   }
@@ -67,6 +74,9 @@ async function loadFixture(pathname) {
 
 async function main() {
   const { mode, fixture, approvedDivergences } = parseArgs(process.argv.slice(2));
+  if (mode === 'apply' && process.env.FRAPPE_MIGRATION_FIXTURE) {
+    throw new Error('FRAPPE_MIGRATION_FIXTURE não pode ser usada com --apply; remova a variável.');
+  }
   // API sources are compiled by the package script before this CLI runs. The
   // explicit dynamic import keeps this standalone entrypoint ESM-only.
   const migration = await import('../api/_functions/frappe-migration.js');
@@ -89,7 +99,11 @@ async function main() {
     pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
     approvedDivergences,
   });
-  process.stdout.write(`${JSON.stringify(result.report)}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ...result.report,
+    manifest: result.manifest,
+    approvedDivergenceKeys: approvedDivergences,
+  })}\n`);
   // Non-zero exit on blocking errors, failed batches or failed run.
   const hasBlocking = result.report.total.divergentes + result.report.total.erros > 0;
   const runFailed = result.manifest.status === 'failed';

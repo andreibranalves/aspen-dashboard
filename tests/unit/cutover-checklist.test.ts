@@ -8,6 +8,9 @@ const runbookPath = resolve(root, 'docs/superpowers/plans/2026-08-05-quotation-c
 const operationalPath = resolve(root, 'docs/operational-cutoff-procedure.md');
 const runbook = readFileSync(runbookPath, 'utf8');
 const operational = readFileSync(operationalPath, 'utf8');
+const backupScript = readFileSync(resolve(root, 'scripts/backup-crm.mjs'), 'utf8');
+const migrationCli = readFileSync(resolve(root, 'scripts/migrate-frappe-crm.mjs'), 'utf8');
+const playwrightConfig = readFileSync(resolve(root, 'playwright.config.js'), 'utf8');
 
 const requiredCommands = [
   'npm run build:api',
@@ -20,6 +23,7 @@ const requiredCommands = [
   'node scripts/backup-crm.mjs --validate',
   'node scripts/migrate-frappe-crm.mjs --dry-run',
   'node scripts/migrate-frappe-crm.mjs --apply',
+  'npx playwright test --config=playwright.config.js',
 ];
 
 test('runbook contains executable preconditions and migration phases', () => {
@@ -65,6 +69,13 @@ test('runbook includes abort, document, status, order and lineage policies', () 
     'enviado',
     'aprovado',
     'perdido',
+    'metadata-only',
+    'approvedDivergenceKeys',
+    'RESTORE_DATABASE_URL',
+    'CUTOVER_PG_SERVICE',
+    'CUTOVER_DATABASE_NAME',
+    'TARGET_MATCH',
+    'exit 1',
   ])
     assert.ok(
       runbook.toLocaleLowerCase().includes(marker.toLocaleLowerCase()),
@@ -75,18 +86,37 @@ test('runbook includes abort, document, status, order and lineage policies', () 
 test('marker scan covers operational prose, excluding this test instructions', () => {
   const prose = [runbook, operational];
   const incompleteWords = ['TODO', 'FIXME', 'TBD', 'PLACEHOLDER', 'WIP'];
+  const secretMarker =
+    /(?:DATABASE_URL|TEST_DATABASE_URL|RESTORE_DATABASE_URL|ERPNEXT_TOKEN)\s*=\s*(?:postgres(?:ql)?:|https?:\/\/|sk-)/i;
+  const secretValue = /(?:sk-[A-Za-z0-9]|Bearer\s+[A-Za-z0-9]{12,}|postgres(?:ql)?:\/\/[^$"\s]+)/i;
   for (const document of prose) {
     const words = document.toLocaleUpperCase().split(/[^A-Z0-9_]+/);
     for (const marker of incompleteWords)
       assert.equal(words.includes(marker), false, `incomplete marker: ${marker}`);
+    assert.equal(document.includes('[ ]'), false, 'incomplete checklist marker');
     assert.equal(document.includes('[]'), false, 'incomplete checklist marker');
+    assert.doesNotMatch(document, secretMarker);
+    assert.doesNotMatch(document, secretValue);
+    assert.doesNotMatch(
+      document,
+      /psql\s+["']?\$(?:DATABASE_URL|TEST_DATABASE_URL|RESTORE_DATABASE_URL)/
+    );
   }
+});
+
+test('supporting scripts fail closed and emit verifiable migration artifacts', () => {
+  assert.match(backupScript, /RESTORE_DATABASE_URL/);
+  assert.match(backupScript, /--file/);
+  assert.match(backupScript, /alvo isolado diferente/);
   assert.doesNotMatch(
-    runbook,
-    /(?:DATABASE_URL|TEST_DATABASE_URL|ERPNEXT_TOKEN)\s*=\s*(?:postgres(?:ql)?:|https?:\/\/|sk-)/i
+    backupScript,
+    /function runValidate[\\s\\S]*getDatabaseUrl\('DATABASE_URL'\)/
   );
-  assert.doesNotMatch(
-    runbook,
-    /(?:sk-[A-Za-z0-9]|Bearer\s+[A-Za-z0-9]{12,}|postgres(?:ql)?:\/\/[^$"\s]+)/i
-  );
+  assert.match(migrationCli, /normalizedMode === 'apply' && fixture/);
+  assert.match(migrationCli, /mode === 'apply' && process\.env\.FRAPPE_MIGRATION_FIXTURE/);
+  assert.match(migrationCli, /approvedDivergenceKeys/);
+  assert.match(migrationCli, /manifest: result\.manifest/);
+  assert.match(playwrightConfig, /process\.env\.BASE_URL/);
+  assert.match(runbook, /set -euo pipefail/);
+  assert.doesNotMatch(runbook, /set -eu\n/);
 });

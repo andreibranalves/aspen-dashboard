@@ -19,7 +19,8 @@ Depois de qualquer escrita PostgreSQL, definir uma flag como `false` não restau
 - `npm run build` concluído;
 - dry-run com manifest, hash e divergências revisados;
 - dependências aplicadas na ordem templates, produtos, preços, clientes/leads e orçamentos;
-- PDFs históricos válidos arquivados com checksum;
+- PDFs sob demanda validados com `%PDF-`, `%%EOF`, tamanho e checksum;
+- política metadata-only de PDFs históricos registrada, sem claim de Blob arquivado;
 - bloqueio de egress Frappe preparado para a fase pós-apply;
 - leitura de rollback e teste de segurança de link público aprovados.
 
@@ -38,12 +39,12 @@ A flag mestre só pode ser alterada com snapshot, motivo, operador, revisor e ho
 
 ## Fluxo resumido
 
-1. Execute o runbook completo em ambiente de staging.
+1. Execute o runbook draft completo em ambiente de staging.
 2. Faça backup e restore de validação.
 3. Execute dry-run e verifique o manifest sem expor dados brutos.
 4. Resolva divergências e órfãos antes do apply.
 5. Execute apply uma vez e preserve o run ID.
-6. Reconcilie contagens, hashes, status, pedidos, PDFs e outbox.
+6. Reconcilie contagens, hashes, status, pedidos, PDFs sob demanda e outbox.
 7. Congele chamadas Frappe não previstas e execute o canário.
 8. Avance ou entre em `rollback-compatible` conforme as evidências.
 

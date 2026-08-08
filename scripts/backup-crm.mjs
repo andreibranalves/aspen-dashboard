@@ -1,18 +1,16 @@
 #!/usr/bin/env node
 
 /**
- * scripts/backup-crm.mjs
- *
- * Backup, restore validation, and capacity preflight for the CRM database.
+ * Backup, restore validation and capacity preflight for the CRM database.
  *
  * Modes:
- *   (no flags)        Backup: pg_dump → backups/backup-{ISO-date}.sql + retention
- *   --validate        Restore dump to temp DB/schema, run migrations, validate counts
- *   --preflight       Check DB size, connection count, blob usage → OK / AVISO / CRÍTICO
- *   --file <path>     Override dump file for --validate
+ *   (no flags)        Backup: pg_dump -> backups/backup-{ISO-date}.sql + retention
+ *   --validate        Restore an explicitly named dump into RESTORE_DATABASE_URL
+ *   --preflight       Check DB size, connection count and blob usage
+ *   --file <path>     Required with --validate
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import {
   readdirSync,
   statSync,
@@ -23,7 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
@@ -32,14 +30,12 @@ const BACKUPS_DIR = resolve(PROJECT_ROOT, 'backups');
 const BACKUP_PREFIX = 'backup-';
 const BACKUP_SUFFIX = '.sql';
 
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-function stderr(msg) {
-  process.stderr.write(`${msg}\n`);
+function stderr(message) {
+  process.stderr.write(`${message}\n`);
 }
 
-function stdout(msg) {
-  process.stdout.write(`${msg}\n`);
+function stdout(message) {
+  process.stdout.write(`${message}\n`);
 }
 
 function loadDotEnv() {
@@ -63,500 +59,298 @@ function loadDotEnv() {
   }
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const args = { mode: 'backup', file: null };
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--validate') {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--validate') {
+      if (args.mode !== 'backup') throw new Error('Informe apenas um modo de execução.');
       args.mode = 'validate';
-    } else if (argv[i] === '--preflight') {
+    } else if (arg === '--preflight') {
+      if (args.mode !== 'backup') throw new Error('Informe apenas um modo de execução.');
       args.mode = 'preflight';
-    } else if (argv[i] === '--file') {
-      args.file = argv[++i];
+    } else if (arg === '--file') {
+      const file = argv[index + 1];
+      if (!file || file.startsWith('--')) throw new Error('Informe um arquivo após --file.');
+      args.file = file;
+      index += 1;
     } else {
-      stderr(`Opção desconhecida: ${argv[i]}`);
-      process.exit(2);
+      throw new Error(`Opção desconhecida: ${arg}`);
     }
+  }
+  if (args.mode === 'validate' && !args.file) {
+    throw new Error('--validate exige --file; seleção automática de backup está desativada.');
+  }
+  if (args.mode !== 'validate' && args.file) {
+    throw new Error('--file só pode ser usado com --validate.');
   }
   return args;
 }
 
+function connectionUrl(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} não configurada. Defina a variável pelo gerenciador de segredos.`);
+  return value;
+}
+
+export function parseConnectionUrl(raw, name = 'DATABASE_URL') {
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`${name} inválida.`);
+  }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error(`${name} deve usar o esquema PostgreSQL.`);
+  }
+  const database = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  if (!database || !parsed.hostname) throw new Error(`${name} precisa informar host e database.`);
+  return {
+    raw,
+    host: parsed.hostname,
+    port: parsed.port || '5432',
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database,
+    sslmode: parsed.searchParams.get('sslmode') || undefined,
+  };
+}
+
+export function connectionIdentity(connection) {
+  return [connection.host, connection.port, connection.user, connection.database]
+    .map((value) => value.toLowerCase())
+    .join('|');
+}
+
+function assertRestoreTargetIsDistinct(restore) {
+  const sourceRaw = process.env.DATABASE_URL;
+  if (!sourceRaw) return;
+  const source = parseConnectionUrl(sourceRaw, 'DATABASE_URL');
+  if (connectionIdentity(source) === connectionIdentity(restore)) {
+    throw new Error('RESTORE_DATABASE_URL deve apontar para um alvo isolado diferente de DATABASE_URL.');
+  }
+}
+
+function postgresEnv(connection, database = connection.database) {
+  const env = { ...process.env };
+  delete env.DATABASE_URL;
+  delete env.RESTORE_DATABASE_URL;
+  env.PGHOST = connection.host;
+  env.PGPORT = connection.port;
+  env.PGUSER = connection.user;
+  env.PGDATABASE = database;
+  if (connection.password) env.PGPASSWORD = connection.password;
+  else delete env.PGPASSWORD;
+  if (connection.sslmode) env.PGSSLMODE = connection.sslmode;
+  return env;
+}
+
+function connectionUrlForDatabase(connection, database) {
+  const parsed = new URL(connection.raw);
+  parsed.pathname = `/${encodeURIComponent(database)}`;
+  return parsed.toString();
+}
+
+function command(file, args, options = {}) {
+  return execFileSync(file, args, {
+    cwd: options.cwd || PROJECT_ROOT,
+    env: options.env || process.env,
+    encoding: options.encoding || 'utf8',
+    stdio: options.stdio || 'pipe',
+    maxBuffer: options.maxBuffer || 256 * 1024 * 1024,
+    timeout: options.timeout,
+  });
+}
+
 function ensureBackupsDir() {
-  if (!existsSync(BACKUPS_DIR)) {
-    mkdirSync(BACKUPS_DIR, { recursive: true });
-  }
+  if (!existsSync(BACKUPS_DIR)) mkdirSync(BACKUPS_DIR, { recursive: true });
 }
-
-function getDatabaseUrl() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    stderr('DATABASE_URL não configurada. Defina a variável de ambiente.');
-    process.exit(1);
-  }
-  return url;
-}
-
-// ── Backup mode ──────────────────────────────────────────────────────────
 
 function runBackup() {
-  const databaseUrl = getDatabaseUrl();
+  const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
   ensureBackupsDir();
-
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `backup-${timestamp}.sql`;
   const filepath = join(BACKUPS_DIR, filename);
-
   stdout(`Iniciando backup: ${filename}`);
-
   try {
-    const dumpCmd = [
+    const output = command(
       'pg_dump',
-      '--no-owner',
-      '--no-acl',
-      '--clean',
-      '--if-exists',
-      '--format=plain',
-      databaseUrl,
-    ].join(' ');
-
-    const output = execSync(dumpCmd, {
-      maxBuffer: 256 * 1024 * 1024,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
+      ['--no-owner', '--no-acl', '--clean', '--if-exists', '--format=plain'],
+      { env: postgresEnv(connection) }
+    );
     writeFileSync(filepath, output);
-
     const stat = statSync(filepath);
-    stdout(`Backup concluído com sucesso.`);
+    stdout('Backup concluído com sucesso.');
     stdout(`  Arquivo: ${filepath}`);
     stdout(`  Tamanho: ${stat.size} bytes`);
     stdout(`  Timestamp: ${new Date().toISOString()}`);
-
     retentionCleanup();
-    return true;
-  } catch (err) {
-    stderr(`Falha ao executar pg_dump: ${err.message}`);
-    return false;
+  } catch (error) {
+    throw new Error(
+      `Falha ao executar pg_dump: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
+    );
   }
 }
-
-// ── Retention policy ─────────────────────────────────────────────────────
 
 function retentionCleanup() {
   const retentionDays = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
   const now = Date.now();
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const cutoff = now - retentionDays * msPerDay;
+  const cutoff = now - retentionDays * 24 * 60 * 60 * 1000;
   const resolvedDir = resolve(BACKUPS_DIR);
-
   stdout(`Retenção: ${retentionDays} dias. Verificando arquivos antigos...`);
-
   let files;
   try {
     files = readdirSync(resolvedDir);
   } catch {
-    stderr('Não foi possível listar o diretório de backups.');
-    return;
+    throw new Error('Não foi possível listar o diretório de backups.');
   }
-
   let deleted = 0;
   for (const file of files) {
     if (!file.startsWith(BACKUP_PREFIX) || !file.endsWith(BACKUP_SUFFIX)) continue;
-
     const filepath = resolve(resolvedDir, file);
-    // Safety: ensure the resolved path is within the backups directory
-    const realResolvedDir = resolve(BACKUPS_DIR);
-    if (!filepath.startsWith(realResolvedDir + '/') && filepath !== realResolvedDir) {
-      continue;
-    }
-
-    const st = statSync(filepath);
-    if (st.mtimeMs < cutoff) {
-      const ageDays = Math.floor((now - st.mtimeMs) / msPerDay);
-      stdout(`  Removendo: ${file} (${ageDays} dias)`);
+    if (!filepath.startsWith(`${resolvedDir}/`) || !statSync(filepath).isFile()) continue;
+    const stat = statSync(filepath);
+    if (stat.mtimeMs < cutoff) {
       unlinkSync(filepath);
       deleted += 1;
     }
   }
-
   stdout(`${deleted} arquivo(s) antigo(s) removido(s).`);
 }
 
-// ── Restore validation ───────────────────────────────────────────────────
-
 function runValidate(dumpFile) {
-  const databaseUrl = getDatabaseUrl();
-  const resolvedDir = resolve(BACKUPS_DIR);
-
-  // Determine dump file
-  let filepath;
-  if (dumpFile) {
-    filepath = resolve(dumpFile);
-  } else {
-    let files;
+  const restore = parseConnectionUrl(connectionUrl('RESTORE_DATABASE_URL'), 'RESTORE_DATABASE_URL');
+  assertRestoreTargetIsDistinct(restore);
+  const filepath = resolve(dumpFile);
+  if (!existsSync(filepath) || !statSync(filepath).isFile()) {
+    throw new Error(`Arquivo de dump não encontrado: ${filepath}`);
+  }
+  const targetEnv = postgresEnv(restore);
+  stdout(`Validando dump explícito no alvo RESTORE_DATABASE_URL: ${filepath}`);
+  command(
+    'psql',
+    ['--no-psqlrc', '--quiet', '--set=ON_ERROR_STOP=1', '--dbname', restore.database, '--file', filepath],
+    { env: targetEnv }
+  );
+  stdout('Dump restaurado no alvo isolado.');
+  command('npx', ['drizzle-kit', 'migrate'], {
+    cwd: PROJECT_ROOT,
+    env: { ...targetEnv, DATABASE_URL: connectionUrlForDatabase(restore, restore.database) },
+    timeout: 60_000,
+  });
+  stdout('Migrações concluídas no alvo isolado.');
+  const tables = [
+    'products',
+    'clients',
+    'quotations',
+    'quote_revisions',
+    'quote_revision_items',
+    'issued_documents',
+    'frappe_import_lineage',
+  ];
+  let allPass = true;
+  stdout('\nValidação de integridade:');
+  for (const table of tables) {
     try {
-      files = readdirSync(resolvedDir);
-    } catch {
-      stderr('Diretório de backups não encontrado.');
-      process.exit(1);
-    }
-    const backups = files
-      .filter((f) => f.startsWith(BACKUP_PREFIX) && f.endsWith(BACKUP_SUFFIX))
-      .sort()
-      .reverse();
-    if (backups.length === 0) {
-      stderr('Nenhum backup encontrado em backups/.');
-      process.exit(1);
-    }
-    filepath = join(resolvedDir, backups[0]);
-  }
-
-  stdout(`Validando dump: ${filepath}`);
-
-  if (!existsSync(filepath)) {
-    stderr(`Arquivo de dump não encontrado: ${filepath}`);
-    process.exit(1);
-  }
-
-  // Parse connection info from DATABASE_URL
-  let parsedUrl;
-  try {
-    parsedUrl = new URL(databaseUrl);
-  } catch {
-    stderr('DATABASE_URL inválida.');
-    process.exit(1);
-  }
-  const host = parsedUrl.hostname;
-  const port = parsedUrl.port || '5432';
-  const user = parsedUrl.username;
-  const dbName = parsedUrl.pathname.replace(/^\//, '');
-  const password = parsedUrl.password;
-
-  const envVars = {
-    ...process.env,
-    PGPASSWORD: password,
-  };
-
-  // Try creating a temporary database first
-  const tempDbName = `restore_validate_${Date.now()}`;
-  let useTempDb = true;
-  let createdSchema = false;
-
-  try {
-    stdout(`Tentando criar banco temporário: ${tempDbName}`);
-    execSync(`createdb -h ${host} -p ${port} -U ${user} ${tempDbName}`, {
-      env: envVars,
-      stdio: 'pipe',
-    });
-    stdout('Banco temporário criado com sucesso.');
-  } catch {
-    // Fallback: create schema in existing database
-    useTempDb = false;
-    stdout('createdb indisponível. Usando schema restaurado dentro do banco atual.');
-    try {
-      execSync(
-        `psql -h ${host} -p ${port} -U ${user} -d ${dbName} --no-psqlrc -c "DROP SCHEMA IF EXISTS restore_validate CASCADE; CREATE SCHEMA restore_validate;"`,
-        { env: envVars, stdio: 'pipe' }
+      const result = command(
+        'psql',
+        [
+          '--no-psqlrc',
+          '--set=ON_ERROR_STOP=1',
+          '--tuples-only',
+          '--no-align',
+          '--dbname',
+          restore.database,
+          '--command',
+          `SELECT count(*) FROM ${table};`,
+        ],
+        { env: targetEnv }
       );
-      createdSchema = true;
-    } catch (schemaErr) {
-      stderr(`Não foi possível criar schema de validação: ${schemaErr.message}`);
-      process.exit(1);
-    }
-  }
-
-  const targetDb = useTempDb ? tempDbName : dbName;
-
-  try {
-    // Restore dump
-    stdout('Restaurando dump...');
-    const restoreCmd = [
-      'psql',
-      '--no-psqlrc',
-      '--quiet',
-      '-h',
-      host,
-      '-p',
-      port,
-      '-U',
-      user,
-      '-d',
-      targetDb,
-      ...(!useTempDb ? ['-c', 'SET search_path TO restore_validate;'] : []),
-      '-f',
-      filepath,
-    ].join(' ');
-    execSync(restoreCmd, { env: envVars, stdio: 'pipe', maxBuffer: 256 * 1024 * 1024 });
-    stdout('Dump restaurado com sucesso.');
-
-    // Run migrations
-    stdout('Executando migrações...');
-    try {
-      execSync('npx drizzle-kit migrate', {
-        cwd: PROJECT_ROOT,
-        env: { ...process.env, DATABASE_URL: databaseUrl },
-        stdio: 'pipe',
-        timeout: 60_000,
-      });
-      stdout('Migrações concluídas.');
-    } catch (migErr) {
-      stderr(`Falha nas migrações: ${migErr.message}`);
-      cleanupTarget(targetDb, useTempDb, databaseUrl, tempDbName, createdSchema);
-      process.exit(1);
-    }
-
-    // Validate table counts
-    const tables = [
-      'products',
-      'clients',
-      'quotations',
-      'quote_revisions',
-      'quote_revision_items',
-      'issued_documents',
-      'frappe_import_lineage',
-    ];
-
-    const searchPath = useTempDb ? '' : 'SET search_path TO restore_validate; ';
-
-    stdout('\nValidação de integridade:');
-    let allPass = true;
-    for (const table of tables) {
-      try {
-        const result = execSync(
-          `psql -h ${host} -p ${port} -U ${user} -d ${targetDb} --no-psqlrc -t -A -c "${searchPath}SELECT count(*) FROM ${table};"`,
-          { env: envVars, encoding: 'utf8', stdio: 'pipe' }
-        );
-        const count = parseInt(result.trim(), 10);
-        stdout(`  ${table}: ${count} registros - tabela acessível ✓`);
-      } catch {
-        stdout(`  ${table}: tabela ausente ✗`);
-        allPass = false;
-      }
-    }
-
-    if (allPass) {
-      stdout('\nValidação concluída com sucesso. Estrutura íntegra.');
-    } else {
-      stderr('\nValidação falhou. Estrutura comprometida.');
-      cleanupTarget(targetDb, useTempDb, databaseUrl, tempDbName, createdSchema);
-      process.exit(1);
-    }
-  } finally {
-    cleanupTarget(targetDb, useTempDb, databaseUrl, tempDbName, createdSchema);
-  }
-}
-
-function cleanupTarget(targetDb, useTempDb, databaseUrl, tempDbName, createdSchema) {
-  const parsedUrl = new URL(databaseUrl);
-  const host = parsedUrl.hostname;
-  const port = parsedUrl.port || '5432';
-  const user = parsedUrl.username;
-  const dbName = parsedUrl.pathname.replace(/^\//, '');
-  const password = parsedUrl.password;
-  const envVars = { ...process.env, PGPASSWORD: password };
-
-  if (useTempDb) {
-    try {
-      execSync(`dropdb -h ${host} -p ${port} -U ${user} ${tempDbName}`, {
-        env: envVars,
-        stdio: 'pipe',
-      });
-      stdout(`Banco temporário ${tempDbName} removido.`);
+      stdout(`  ${table}: ${parseInt(result.trim(), 10)} registros - tabela acessível`);
     } catch {
-      stderr(`Não foi possível remover banco temporário ${tempDbName}.`);
-    }
-  } else if (createdSchema) {
-    try {
-      execSync(
-        `psql -h ${host} -p ${port} -U ${user} -d ${dbName} --no-psqlrc -c "DROP SCHEMA IF EXISTS restore_validate CASCADE;"`,
-        { env: envVars, stdio: 'pipe' }
-      );
-      stdout('Schema restore_validate removido.');
-    } catch {
-      stderr('Não foi possível remover schema restore_validate.');
+      stdout(`  ${table}: tabela ausente`);
+      allPass = false;
     }
   }
+  if (!allPass) throw new Error('Validação falhou. Estrutura comprometida.');
+  stdout('\nValidação concluída com sucesso. Estrutura íntegra.');
 }
-
-// ── Capacity preflight ───────────────────────────────────────────────────
 
 async function runPreflight() {
-  const databaseUrl = getDatabaseUrl();
+  const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
+  const env = postgresEnv(connection);
   const maxDbSizeMb = parseInt(process.env.PREFLIGHT_MAX_DB_SIZE_MB || '512', 10);
   const maxBlobSizeMb = parseInt(process.env.PREFLIGHT_MAX_BLOB_SIZE_MB || '512', 10);
   const maxConnections = parseInt(process.env.PREFLIGHT_MAX_CONNECTIONS || '100', 10);
-
-  const parsedUrl = new URL(databaseUrl);
-  const host = parsedUrl.hostname;
-  const port = parsedUrl.port || '5432';
-  const user = parsedUrl.username;
-  const dbName = parsedUrl.pathname.replace(/^\//, '');
-  const password = parsedUrl.password;
-
-  const envVars = { ...process.env, PGPASSWORD: password };
-
   let hasCritical = false;
   const results = [];
-
-  // 1. Database size
-  try {
-    const sizeResult = execSync(
-      `psql -h ${host} -p ${port} -U ${user} -d ${dbName} --no-psqlrc -t -A -c "SELECT pg_database_size(current_database());"`,
-      { env: envVars, encoding: 'utf8', stdio: 'pipe' }
-    );
-    const sizeBytes = parseInt(sizeResult.trim(), 10);
-    const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
-    let status = 'OK';
-    if (parseFloat(sizeMb) > maxDbSizeMb) {
-      status = 'CRÍTICO';
+  for (const [metric, query, quota, criticalWhen] of [
+    ['Tamanho do banco', 'SELECT pg_database_size(current_database());', maxDbSizeMb, (value) => value > maxDbSizeMb],
+    ['Conexões ativas', 'SELECT count(*) FROM pg_stat_activity;', maxConnections, (value) => value > maxConnections],
+  ]) {
+    try {
+      const value = parseInt(
+        command('psql', ['--no-psqlrc', '--set=ON_ERROR_STOP=1', '--tuples-only', '--no-align', '--dbname', connection.database, '--command', query], { env }).trim(),
+        10
+      );
+      const normalized = metric === 'Tamanho do banco' ? `${(value / (1024 * 1024)).toFixed(2)} MB` : String(value);
+      const limit = metric === 'Tamanho do banco' ? `${quota} MB` : String(quota);
+      const status = criticalWhen(value) ? 'CRÍTICO' : 'OK';
+      if (status === 'CRÍTICO') hasCritical = true;
+      results.push({ metric, value: normalized, quota: limit, status });
+    } catch {
+      results.push({ metric, value: 'ERRO', quota: String(quota), status: 'CRÍTICO' });
       hasCritical = true;
     }
-    results.push({
-      metric: 'Tamanho do banco',
-      value: `${sizeMb} MB`,
-      quota: `${maxDbSizeMb} MB`,
-      status,
-    });
-  } catch {
-    results.push({
-      metric: 'Tamanho do banco',
-      value: 'ERRO',
-      quota: `${maxDbSizeMb} MB`,
-      status: 'CRÍTICO',
-    });
-    hasCritical = true;
   }
-
-  // 2. Active connections
-  try {
-    const connResult = execSync(
-      `psql -h ${host} -p ${port} -U ${user} -d ${dbName} --no-psqlrc -t -A -c "SELECT count(*) FROM pg_stat_activity;"`,
-      { env: envVars, encoding: 'utf8', stdio: 'pipe' }
-    );
-    const connCount = parseInt(connResult.trim(), 10);
-    let status = 'OK';
-    if (connCount > maxConnections) {
-      status = 'CRÍTICO';
-      hasCritical = true;
-    }
-    results.push({
-      metric: 'Conexões ativas',
-      value: String(connCount),
-      quota: String(maxConnections),
-      status,
-    });
-  } catch {
-    results.push({
-      metric: 'Conexões ativas',
-      value: 'ERRO',
-      quota: String(maxConnections),
-      status: 'CRÍTICO',
-    });
-    hasCritical = true;
-  }
-
-  // 3. Blob store usage
-  const blobToken =
-    process.env.BLOB_READ_WRITE_TOKEN || process.env.QUOTATION_BLOB_READ_WRITE_TOKEN;
-
+  const blobToken = process.env.BLOB_READ_WRITE_TOKEN || process.env.QUOTATION_BLOB_READ_WRITE_TOKEN;
   if (!blobToken) {
-    results.push({
-      metric: 'Armazenamento de blobs',
-      value: 'N/A',
-      quota: `${maxBlobSizeMb} MB`,
-      status: 'AVISO',
-    });
+    results.push({ metric: 'Armazenamento de blobs', value: 'N/A', quota: `${maxBlobSizeMb} MB`, status: 'AVISO' });
   } else {
     try {
       const { list } = await import('@vercel/blob');
       let totalBytes = 0;
-      let cursor = undefined;
+      let cursor;
       do {
-        const opts = { limit: 1000 };
-        if (cursor) opts.cursor = cursor;
+        const opts = { limit: 1000, ...(cursor ? { cursor } : {}) };
+        opts.token = blobToken;
         if (blobToken === process.env.QUOTATION_BLOB_READ_WRITE_TOKEN) {
-          opts.token = blobToken;
           const storeId = process.env.QUOTATION_BLOB_STORE_ID?.trim();
           if (storeId) opts.storeId = storeId;
-        } else {
-          opts.token = blobToken;
         }
         const page = await list(opts);
-        for (const blob of page.blobs) {
-          totalBytes += blob.size || 0;
-        }
+        for (const blob of page.blobs) totalBytes += blob.size || 0;
         cursor = page.cursor;
       } while (cursor);
-
-      const totalMb = (totalBytes / (1024 * 1024)).toFixed(2);
-      let status = 'OK';
-      if (parseFloat(totalMb) > maxBlobSizeMb) {
-        status = 'CRÍTICO';
-        hasCritical = true;
-      }
-      results.push({
-        metric: 'Armazenamento de blobs',
-        value: `${totalMb} MB`,
-        quota: `${maxBlobSizeMb} MB`,
-        status,
-      });
+      const totalMb = totalBytes / (1024 * 1024);
+      const status = totalMb > maxBlobSizeMb ? 'CRÍTICO' : 'OK';
+      if (status === 'CRÍTICO') hasCritical = true;
+      results.push({ metric: 'Armazenamento de blobs', value: `${totalMb.toFixed(2)} MB`, quota: `${maxBlobSizeMb} MB`, status });
     } catch {
-      results.push({
-        metric: 'Armazenamento de blobs',
-        value: 'ERRO',
-        quota: `${maxBlobSizeMb} MB`,
-        status: 'AVISO',
-      });
+      results.push({ metric: 'Armazenamento de blobs', value: 'ERRO', quota: `${maxBlobSizeMb} MB`, status: 'AVISO' });
     }
   }
-
-  // 4. Transfer estimation
-  results.push({
-    metric: 'Transferência mensal',
-    value: 'N/A',
-    quota: '1000 MB',
-    status: 'AVISO — não mensurável antes de operação',
-  });
-
-  // Print report
-  stdout('\n══════════════════════════════════════════════');
-  stdout('  PREFLIGHT DE CAPACIDADE');
-  stdout('══════════════════════════════════════════════\n');
-
-  for (const r of results) {
-    const marker = r.status === 'OK' ? '✓' : r.status.startsWith('AVISO') ? '⚠' : '✗';
-    stdout(`  ${marker} ${r.metric}: ${r.value} / ${r.quota}`);
-    stdout(`    Status: ${r.status}\n`);
-  }
-
-  if (hasCritical) {
-    stderr('CAPACIDADE INSUFICIENTE. Go-live bloqueado.');
-    process.exit(1);
-  }
-
+  results.push({ metric: 'Transferência mensal', value: 'N/A', quota: '1000 MB', status: 'AVISO - não mensurável antes de operação' });
+  stdout('\nPREFLIGHT DE CAPACIDADE\n');
+  for (const result of results) stdout(`${result.status} ${result.metric}: ${result.value} / ${result.quota}`);
+  if (hasCritical) throw new Error('CAPACIDADE INSUFICIENTE. Go-live bloqueado.');
   stdout('Resultado: CAPACIDADE SUFICIENTE. Go-live permitido.');
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────
+async function main(args) {
+  if (args.mode === 'backup') runBackup();
+  else if (args.mode === 'validate') runValidate(args.file);
+  else await runPreflight();
+}
 
-loadDotEnv();
-const args = parseArgs(process.argv.slice(2));
-
-switch (args.mode) {
-  case 'backup': {
-    const ok = runBackup();
-    process.exit(ok ? 0 : 1);
-    break;
-  }
-  case 'validate': {
-    runValidate(args.file);
-    break;
-  }
-  case 'preflight': {
-    runPreflight().catch((err) => {
-      stderr(`Falha no preflight: ${err.message}`);
-      process.exit(1);
-    });
-    break;
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
+  loadDotEnv();
+  try {
+    await main(parseArgs(process.argv.slice(2)));
+  } catch (error) {
+    stderr(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
   }
 }

@@ -1,6 +1,6 @@
 # Runbook de corte e rollback de orçamentos
 
-Status deste documento: procedimento aprovado para execução assistida.
+Status deste documento: draft operacional pendente de revisão independente e validação ao vivo.
 
 Este runbook é a fonte operacional para snapshot, migração, reconciliação, congelamento, canário, corte e rollback do domínio de orçamentos.
 
@@ -45,10 +45,16 @@ O responsável pelo negócio aprova divergências financeiras, retenção de lin
 Use um diretório de trabalho fora do repositório para manifests, dumps e logs protegidos.
 
 ```bash
-set -eu
+set -euo pipefail
 umask 077
 export CUTOVER_DIR="${CUTOVER_DIR:-$HOME/aspen-cutover-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$CUTOVER_DIR"
+: "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
+: "${CUTOVER_DATABASE_NAME:?configure the expected apply database name}"
+: "${CUTOVER_DATABASE_HOST:?configure the expected apply database host}"
+: "${PGSERVICEFILE:?configure a protected libpq service file path}"
+: "${PGPASSFILE:?configure a protected libpq password file path}"
+export PGSERVICEFILE PGPASSFILE
 ```
 
 Não use `set -x` durante este procedimento.
@@ -64,6 +70,24 @@ Valide somente a presença das variáveis necessárias:
 
 A mensagem de erro acima não contém o valor da variável.
 
+`CUTOVER_PG_SERVICE` é a conexão nomeada usada pelo apply e por toda reconciliação PostgreSQL.
+
+`PGSERVICEFILE` e `PGPASSFILE` devem ser arquivos protegidos fornecidos pelo gerenciador de segredos.
+
+Não passe uma URL PostgreSQL em argumento de processo, log ou comando `psql`.
+
+Confirme que `DATABASE_URL` usada pelo worker aponta para o mesmo host e database da conexão nomeada sem imprimir nenhum valor:
+
+```bash
+set -euo pipefail
+node --input-type=module <<'NODE'
+const url = new URL(process.env.DATABASE_URL || '');
+const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
+if (url.hostname !== process.env.CUTOVER_DATABASE_HOST || database !== process.env.CUTOVER_DATABASE_NAME)
+  throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
+NODE
+```
+
 ## 3. Pré-condições executáveis
 
 Execute a partir da raiz do checkout revisado.
@@ -71,6 +95,7 @@ Execute a partir da raiz do checkout revisado.
 Registre o commit sem incluir segredos:
 
 ```bash
+set -euo pipefail
 git rev-parse HEAD | tee "$CUTOVER_DIR/commit.txt"
 git status --short
 ```
@@ -127,30 +152,42 @@ Se `TEST_DATABASE_URL` não estiver disponível, marque os testes como não exec
 Faça o backup final com retenção configurada pelo ambiente:
 
 ```bash
+set -euo pipefail
 node scripts/backup-crm.mjs | tee "$CUTOVER_DIR/backup.log"
 ```
 
-Localize o dump pelo nome retornado sem copiá-lo para o repositório:
+Copie manualmente o caminho exato impresso pelo comando para `BACKUP_FILE`.
+
+Não selecione automaticamente o arquivo mais recente.
 
 ```bash
-BACKUP_FILE="$(find backups -maxdepth 1 -type f -name 'backup-*.sql' -printf '%T@ %p\n' \
-  | sort -nr | head -1 | cut -d' ' -f2-)"
-: "${BACKUP_FILE:?backup file not found}"
+set -euo pipefail
+: "${BACKUP_FILE:?set the exact backup path printed by the backup command}"
+test -f "$BACKUP_FILE"
 sha256sum "$BACKUP_FILE" | tee "$CUTOVER_DIR/backup.sha256"
 ```
 
-Valide o dump em destino temporário ou schema de validação:
+Valide o dump no alvo isolado explicitamente configurado em `RESTORE_DATABASE_URL`:
 
 ```bash
+set -euo pipefail
+: "${RESTORE_DATABASE_URL:?configure an isolated restore target through the deployment secret manager}"
+if [ "${RESTORE_DATABASE_URL}" = "${DATABASE_URL:-}" ]; then
+  echo 'ABORT: restore target equals source database' >&2
+  exit 1
+fi
 node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE" \
   | tee "$CUTOVER_DIR/restore-validation.log"
 ```
 
-Para um restore aprovado em uma base isolada, use uma variável fornecida pelo gerenciador de segredos e não o valor literal:
+O script recusa validação sem `RESTORE_DATABASE_URL`, recusa a mesma identidade do source e nunca executa migration contra `DATABASE_URL`.
+
+Para uma inspeção SQL adicional no alvo isolado, use a conexão libpq nomeada e não uma URL:
 
 ```bash
-: "${RESTORE_DATABASE_URL:?configure an isolated restore target through the deployment secret manager}"
-psql "$RESTORE_DATABASE_URL" --set ON_ERROR_STOP=1 < "$BACKUP_FILE"
+set -euo pipefail
+: "${RESTORE_PG_SERVICE:?configure the named libpq service for the isolated restore target}"
+psql --dbname "$RESTORE_PG_SERVICE" --set=ON_ERROR_STOP=1 --command 'SELECT current_database();' > "$CUTOVER_DIR/restore-target.txt"
 ```
 
 Leia a base restaurada e confirme tabelas, contagens e um registro de teste antes de descartar o destino isolado.
@@ -166,6 +203,7 @@ O dry-run deve ser executado com uma fixture sem segredos ou contra a fonte auto
 Fixture só pode ser usada com `--dry-run`.
 
 ```bash
+set -euo pipefail
 : "${FRAPPE_MIGRATION_FIXTURE:?configure a sanitized fixture path for dry-run, or unset it for the staging source}"
 npm run build:api
 node scripts/migrate-frappe-crm.mjs --dry-run --fixture "$FRAPPE_MIGRATION_FIXTURE" \
@@ -176,9 +214,11 @@ sha256sum "$CUTOVER_DIR/report.dry-run.json" | tee "$CUTOVER_DIR/report.dry-run.
 Para consultar a fonte de staging em vez de uma fixture sanitizada, remova a fixture e forneça as credenciais somente pelo gerenciador de segredos:
 
 ```bash
+set -euo pipefail
 unset FRAPPE_MIGRATION_FIXTURE
 node scripts/migrate-frappe-crm.mjs --dry-run \
   > "$CUTOVER_DIR/report.dry-run.json"
+sha256sum "$CUTOVER_DIR/report.dry-run.json" | tee "$CUTOVER_DIR/report.dry-run.sha256"
 ```
 
 Não redirecione um report ou manifest para o repositório.
@@ -195,20 +235,30 @@ node --test --import tsx tests/unit/frappe-migration.test.ts \
 Verifique a forma mínima do report sem imprimir o payload inteiro:
 
 ```bash
+set -euo pipefail
 jq -e '
   (.modo == "dry-run") and
   (.dry_run == true) and
+  (.manifest.mode == "dry-run") and
+  (.manifest.runId | type == "string" and length > 0) and
+  (.manifest.manifestHash | test("^[0-9a-f]{64}$")) and
+  (.manifest.status == "completed") and
+  (.manifest.divergenceCounts.blocking == 0) and
+  (.approvedDivergenceKeys | length == 0) and
   (.total | type == "object") and
   (.total.detalhes | type == "array")
 ' "$CUTOVER_DIR/report.dry-run.json"
 ```
 
+O report e o manifest aninhado são o artefato verificável do dry-run.
+
 Verifique que o report não contém payload bruto, CPF, CNPJ, telefone, e-mail ou token:
 
 ```bash
+set -euo pipefail
 if rg -n -i 'legacy_payload|legacyPayload|erpnext_token|bearer |token [A-Za-z0-9._-]{12,}|cpf|cnpj|telefone|email' \
   "$CUTOVER_DIR/report.dry-run.json"; then
-  echo 'ABORT: manifest contains forbidden raw data' >&2
+  echo 'ABORT: report contains forbidden raw data' >&2
   exit 1
 fi
 ```
@@ -216,11 +266,12 @@ fi
 Verifique divergências antes de aprovar qualquer exceção:
 
 ```bash
+set -euo pipefail
 jq -e '(.total.divergentes // 0) == 0 and (.total.erros // 0) == 0' "$CUTOVER_DIR/report.dry-run.json"
-jq -e '(.total.aprovadas // 0) >= 0' "$CUTOVER_DIR/report.dry-run.json"
+jq -e '(.approvedDivergenceKeys | length == 0)' "$CUTOVER_DIR/report.dry-run.json"
 ```
 
-Uma divergência aprovada deve referenciar `source_doctype:source_id` e existir no registro de aprovação.
+Uma divergência aprovada deve referenciar `source_doctype:source_id` e existir no conjunto explícito `approvedDivergenceKeys` do report.
 
 Não use `--approve-divergence` para contornar duplicata, perda financeira, órfão, PDF inválido ou falha de segurança.
 
@@ -237,6 +288,7 @@ Se a origem mudou depois do primeiro dry-run, execute um delta imediatamente ant
 O delta é um novo dry-run contra o mesmo snapshot operacional ou contra a fonte congelada, nunca uma edição manual do report.
 
 ```bash
+set -euo pipefail
 node scripts/migrate-frappe-crm.mjs --dry-run \
   > "$CUTOVER_DIR/report.delta.json"
 sha256sum "$CUTOVER_DIR/report.delta.json" | tee "$CUTOVER_DIR/report.delta.sha256"
@@ -246,7 +298,8 @@ Compare o report delta com o report aprovado e reabra a reconciliação quando c
 
 ```bash
 if ! cmp -s "$CUTOVER_DIR/report.dry-run.json" "$CUTOVER_DIR/report.delta.json"; then
-  echo 'DELTA: source changed; repeat manifest review before apply' >&2
+  echo 'ABORT: source delta changed; repeat manifest review before apply' >&2
+  exit 1
 fi
 ```
 
@@ -257,46 +310,60 @@ A idempotência por lineage, hashes e checkpoints permite aplicar somente mudan�
 Execute o apply contra a base autorizada somente depois do backup, do dry-run e do delta aprovados:
 
 ```bash
+set -euo pipefail
+if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
+  echo 'ABORT: FRAPPE_MIGRATION_FIXTURE must be unset during apply' >&2
+  exit 1
+fi
+unset FRAPPE_MIGRATION_FIXTURE
 node scripts/migrate-frappe-crm.mjs --apply \
   > "$CUTOVER_DIR/report.apply.json"
 sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha256"
-
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --tuples-only --no-align \
-  -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE mode = 'apply' ORDER BY started_at DESC LIMIT 1" \
-  > "$CUTOVER_DIR/manifest.apply.json"
-sha256sum "$CUTOVER_DIR/manifest.apply.json" | tee "$CUTOVER_DIR/manifest.apply.sha256"
-jq -e '
-  (.runId | type == "string" and length > 0) and
-  (.manifestHash | test("^[0-9a-f]{64}$")) and
-  (.mode == "apply") and
-  (.status == "completed")
-' "$CUTOVER_DIR/manifest.apply.json"
+RUN_ID="$(jq -er '.manifest.runId | select(test("^[0-9a-f-]{36}$"))' "$CUTOVER_DIR/report.apply.json")"
+MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.apply.json")"
+jq -e '.manifest.mode == "apply" and .manifest.status == "completed" and (.approvedDivergenceKeys | length == 0) and .manifest.divergenceCounts.blocking == 0' "$CUTOVER_DIR/report.apply.json"
+psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
+  -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
+  > "$CUTOVER_DIR/manifest.apply.persisted.json"
+jq -e --arg run_id "$RUN_ID" --arg manifest_hash "$MANIFEST_HASH" '(.runId == $run_id) and (.manifestHash == $manifest_hash) and (.status == "completed")' "$CUTOVER_DIR/manifest.apply.persisted.json"
 ```
 
 Se houver uma divergência de baixo risco previamente aprovada, passe somente sua chave registrada:
 
 ```bash
+set -euo pipefail
+if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
+  echo 'ABORT: FRAPPE_MIGRATION_FIXTURE must be unset during apply' >&2
+  exit 1
+fi
+unset FRAPPE_MIGRATION_FIXTURE
+EXPECTED_APPROVAL='SourceDoctype:source-id'
 node scripts/migrate-frappe-crm.mjs --apply \
-  --approve-divergence 'SourceDoctype:source-id' \
+  --approve-divergence "$EXPECTED_APPROVAL" \
   > "$CUTOVER_DIR/report.apply.json"
-
-psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --tuples-only --no-align \
-  -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE mode = 'apply' ORDER BY started_at DESC LIMIT 1" \
-  > "$CUTOVER_DIR/manifest.apply.json"
-sha256sum "$CUTOVER_DIR/manifest.apply.json" | tee "$CUTOVER_DIR/manifest.apply.sha256"
-jq -e '
-  (.runId | type == "string" and length > 0) and
-  (.manifestHash | test("^[0-9a-f]{64}$")) and
-  (.mode == "apply") and
-  (.status == "completed")
-' "$CUTOVER_DIR/manifest.apply.json"
+sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha256"
+RUN_ID="$(jq -er '.manifest.runId | select(test("^[0-9a-f-]{36}$"))' "$CUTOVER_DIR/report.apply.json")"
+MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.apply.json")"
+jq -e --arg expected "$EXPECTED_APPROVAL" '
+  (.manifest.mode == "apply") and
+  (.manifest.status == "completed") and
+  (.manifest.divergenceCounts.blocking == 0) and
+  (.approvedDivergenceKeys == [$expected]) and
+  (.total.detalhes | map(select(((.source_doctype // "") + ":" + (.source_id // "")) == $expected and .aprovada == true)) | length > 0)
+' "$CUTOVER_DIR/report.apply.json"
+psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
+  -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
+  > "$CUTOVER_DIR/manifest.apply.persisted.json"
+jq -e --arg run_id "$RUN_ID" --arg manifest_hash "$MANIFEST_HASH" '(.runId == $run_id) and (.manifestHash == $manifest_hash) and (.status == "completed")' "$CUTOVER_DIR/manifest.apply.persisted.json"
 ```
 
 O valor acima é um identificador de exemplo e deve ser substituído por uma chave já aprovada, nunca por um segredo.
 
 Um apply com erro de lote, divergência bloqueante ou run `failed` retorna código diferente de zero.
 
-Preserve o report, o manifest persistido, seus checksums, o run ID e o log de cada tentativa.
+Preserve o report, o manifest persistido, seus checksums, o run ID, o conjunto explícito de approvals e o log de cada tentativa.
 
 Não execute apply novamente para mascarar um erro.
 
@@ -304,10 +371,18 @@ Para retomar um run falho, corrija a causa, preserve o mesmo manifest e faça no
 
 ## 7. Reconciliação técnica e funcional
 
-Capture contagens e invariantes sem selecionar dados pessoais:
+Capture contagens e invariantes sem selecionar dados pessoais.
+
+Apply e reconciliação devem usar `CUTOVER_PG_SERVICE` e `CUTOVER_DATABASE_NAME` da mesma conexão nomeada.
 
 ```bash
-psql "$TEST_DATABASE_URL" --set ON_ERROR_STOP=1 <<'SQL' | tee "$CUTOVER_DIR/reconciliation.txt"
+set -euo pipefail
+TARGET_MATCH="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --variable=expected_database="$CUTOVER_DATABASE_NAME" \
+  --command "SELECT current_database() = :'expected_database';")"
+printf '%s\n' "$TARGET_MATCH" | tee "$CUTOVER_DIR/reconciliation-target.txt"
+test "$TARGET_MATCH" = 't'
+psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 <<'SQL' | tee "$CUTOVER_DIR/reconciliation.txt"
 SELECT 'duplicate_business_number' AS check_name, count(*) AS failures
 FROM (
   SELECT business_number
@@ -338,7 +413,7 @@ Confirme que cada business number é único e que cada revisão aponta para uma 
 
 Confirme que nenhum relatório ou resposta operacional serializa `legacy_payload`.
 
-Confirme que o checksum do PDF persistido e o tamanho do objeto correspondem ao documento arquivado.
+Confirme que o checksum e o tamanho do PDF renderizado sob demanda correspondem ao resultado retornado pela mesma revisão imutável.
 
 Execute os testes de documento, link público, outbox, rotas e rollback antes do canário:
 
@@ -380,6 +455,19 @@ Um HTTP 401, 403, 404 ou 5xx recebido do host não prova bloqueio e exige abort.
 Os testes com Frappe bloqueado devem usar fixture ou adapter/fetch injetado que falha em qualquer chamada inesperada.
 
 Não declare sucesso se uma chamada Frappe ocorrer fora da fase de fonte explicitamente aprovada.
+
+Com o bloqueio confirmado no log de egress, execute os testes de staging contra uma URL sem credenciais:
+
+```bash
+set -euo pipefail
+: "${STAGING_BASE_URL:?configure the staging origin without credentials in the URL}"
+BASE_URL="$STAGING_BASE_URL" npx playwright test --config=playwright.config.js \
+  tests/operational-mode.spec.js \
+  tests/quotations-core.spec.js \
+  tests/quotation-lifecycle.spec.js
+```
+
+O comando só é válido depois do bloqueio Frappe e da confirmação de que staging aponta para a base nomeada esperada.
 
 ## 9. Máquina de estados e transições
 
@@ -434,17 +522,23 @@ Qualquer falha do canário é uma condição de abort e inicia a seção de roll
 
 ## 11. Política de documentos históricos, status e pedidos
 
-A política selecionada é arquivar uma cópia imutável de cada PDF histórico válido no Vercel Blob antes do primeiro corte.
+A política selecionada para este corte é metadata-only: a migração cria o registro `issued_documents` histórico e seus metadados, mas não promete um objeto PDF arquivado no Blob.
 
-O objeto usa a chave determinística `quotations-migration/{businessNumber}/{sourceId}-{sha256}.pdf`.
+A implementação atual pode renderizar um PDF sob demanda a partir do snapshot PostgreSQL e do template versionado.
 
-O PDF deve conservar MIME `application/pdf`, tamanho, checksum SHA-256 e metadados da revisão de origem.
+A implementação atual não deve ser descrita como arquivamento durável no Vercel Blob, porque o adapter padrão de upload somente verifica bytes e não persiste o objeto.
 
-O sistema não deve regenerar o PDF histórico a partir do template atual depois do corte.
+A ausência de um PDF histórico arquivado não bloqueia o apply desta fase, mas bloqueia o canário se o cenário exigir download histórico.
 
-PDF ausente, corrompido, sem checksum verificável ou com checksum divergente bloqueia o apply e o canário.
+O canário de documento deve validar `%PDF-`, `%%EOF`, MIME, tamanho e checksum do PDF renderizado sob demanda.
 
-A política de retenção de PDF é manter o objeto enquanto o orçamento ou sua lineage estiver retido, com exclusão somente por procedimento de arquivamento aprovado.
+O sistema não deve regenerar um PDF histórico a partir de dados Frappe depois do congelamento.
+
+Qualquer política futura de archive precisa de uma implementação de storage real, teste de read-back e uma mudança de escopo aprovada.
+
+A retenção desta fase cobre o snapshot da revisão, seus metadados e a lineage autorizada.
+
+Não declare retenção de objeto Blob nem construa links históricos para um pathname que não foi comprovadamente persistido.
 
 O status original permanece em lineage para auditoria.
 
@@ -493,13 +587,41 @@ Mude primeiro para compatibilidade, mantendo a flag mestre ligada:
 
 Não use somente `CRM_CORE_QUOTES_ENABLED=false` para rollback depois de qualquer escrita PostgreSQL.
 
-Valide uma leitura de orçamento PostgreSQL conhecido, uma leitura de orçamento legado conhecido e uma nova escrita compatível encaminhada ao caminho aprovado.
+Valide registros conhecidos sem imprimir payloads ou credenciais:
+
+```bash
+set -euo pipefail
+: "${KNOWN_POSTGRES_QUOTATION_ID:?configure a non-PII PostgreSQL quotation id for rollback read verification}"
+: "${KNOWN_LEGACY_QUOTATION_ID:?configure a non-PII legacy quotation id for rollback read verification}"
+: "${APP_ORIGIN:?configure the staging origin without credentials in the URL}"
+: "${APP_CURL_CONFIG:?configure a protected curl config with staging authentication}"
+PG_COUNT="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+  --variable=quotation_id="$KNOWN_POSTGRES_QUOTATION_ID" \
+  --command "SELECT count(*) FROM quotations WHERE id = :'quotation_id'::uuid;")"
+test "$PG_COUNT" = '1'
+
+curl --fail --silent --show-error --config "$APP_CURL_CONFIG" \
+  --url "$APP_ORIGIN/api/quotations?id=$KNOWN_LEGACY_QUOTATION_ID" \
+  > "$CUTOVER_DIR/rollback-legacy-read.json"
+jq -e 'type == "object" and length > 0' "$CUTOVER_DIR/rollback-legacy-read.json"
+```
+
+The PostgreSQL query and the authenticated legacy route read are both required evidence.
+
+Execute the rollback write-route contract without mutating a live record:
+
+```bash
+set -euo pipefail
+node --test --import tsx tests/unit/operational-mode.test.ts \
+  --test-name-pattern 'PUT in rollback-compatible writes to legacy'
+```
 
 Valide que nenhuma leitura PostgreSQL existente foi apagada ou mascarada.
 
-Execute a leitura de rollback:
+Execute os demais testes de leitura de rollback:
 
 ```bash
+set -euo pipefail
 node --test --import tsx \
   tests/unit/operational-mode.test.ts \
   tests/unit/quotations-core.test.ts \
@@ -523,7 +645,7 @@ O corte só pode ser encerrado quando todos os artefatos abaixo estiverem no dir
 - commit e status limpo;
 - logs dos checks obrigatórios;
 - checksum do backup e validação de restore;
-- manifest dry-run e apply com hashes;
+- report e manifest dry-run/apply com hashes;
 - divergências aprovadas ou contagem bloqueante zero;
 - reconciliação técnica e funcional;
 - evidência de bloqueio Frappe;
