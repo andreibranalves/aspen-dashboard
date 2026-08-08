@@ -11,6 +11,7 @@ import { kv } from '@vercel/kv';
 import { erpGetDoc } from './lib/erpnext.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
 import { isOperationalMode } from './operational-mode.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 
@@ -139,6 +140,29 @@ function getMockContext() {
 
 // ── Quotation context resolution ───────────────────────────────────────────
 
+async function resolvePostgresQuotationContext(
+  quotationId: string,
+  revisionId: string,
+): Promise<Record<string, any> | null> {
+  const repository = createQuotationTemplateRepository();
+  const snapshot = await repository.get(revisionId);
+  if (!snapshot || snapshot.revision.id !== revisionId) return null;
+  if (quotationId !== snapshot.quotation.id && quotationId !== snapshot.quotation.businessNumber) return null;
+  const view = quotationSnapshotViewModel(snapshot);
+  const client = view.client as Record<string, unknown>;
+  const items = (view.items || []) as Record<string, unknown>[];
+  const categories = detectCategories(items);
+  return {
+    nome: client.name || client.nome || '',
+    quotationId: snapshot.quotation.businessNumber,
+    link: '',
+    vendorName: 'Juliana',
+    empresa: 'Aspen Estamparia',
+    productSummary: productSummaryFromCategories(categories),
+    categories,
+  };
+}
+
 async function resolveQuotationContext(quotationId: string): Promise<Record<string, any> | null> {
   try {
     const quotation = await erpGetDoc('Quotation', quotationId);
@@ -232,6 +256,16 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   try {
     const flowId = String(payload.flow_id || payload.flowId || '').trim();
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
+    const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
+    const revisionId = String(
+      payload.revision_id || payload.revisionId || payload.quote_revision_id || ''
+    ).trim();
+    if (postgresPath && !quotationId) {
+      return jsonResponse(400, { error: 'Cotação PostgreSQL é obrigatória.' });
+    }
+    if (postgresPath && !revisionId) {
+      return jsonResponse(400, { error: 'Revisão PostgreSQL do orçamento é obrigatória.' });
+    }
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
     const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
     const applicationOrigin = `${proto}://${host}`;
@@ -272,7 +306,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     // Resolve context
     let context;
     if (quotationId) {
-      context = await resolveQuotationContext(quotationId);
+      context = postgresPath
+        ? await resolvePostgresQuotationContext(quotationId, revisionId)
+        : await resolveQuotationContext(quotationId);
       if (!context) {
         return jsonResponse(404, { error: 'Orçamento não encontrado.' });
       }

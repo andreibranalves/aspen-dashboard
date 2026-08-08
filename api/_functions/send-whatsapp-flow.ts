@@ -17,12 +17,11 @@ import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
 import { getDatabase } from '../_db/client.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
+import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
 import {
-  issuePublicQuotationToken,
   isRevisionBoundPublicQuotationUrl,
-  renderPublicQuotationPdf,
 } from './public-quotation.js';
+import { loadPostgresSendContext } from './send-whatsapp.js';
 import {
   deriveOpaqueQuotationOutboxIdempotencyKey,
   enqueueQuotationSentEvent,
@@ -263,8 +262,15 @@ async function fetchQuotationPdfBuffer(quotationId: string): Promise<Buffer> {
   }
 }
 
-async function sendMedia(number: string, step: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function sendMedia(number: string, step: Record<string, unknown>, postgresPath = false): Promise<Record<string, unknown>> {
   let media: string | undefined = step.media as string | undefined;
+
+  if (postgresPath && typeof media === 'string' && media.startsWith('__pdf__:')) {
+    throw createHttpError(400, 'O PDF PostgreSQL precisa ser gerado a partir da revisão.');
+  }
+  if (postgresPath && typeof media === 'string' && media.startsWith(ERPNEXT_BASE)) {
+    throw createHttpError(400, 'Mídia Frappe não pode ser enviada por uma cotação PostgreSQL.');
+  }
 
   // PDF marker
   if (media && typeof media === 'string' && media.startsWith('__pdf-base64__:')) {
@@ -298,9 +304,9 @@ async function sendMedia(number: string, step: Record<string, unknown>): Promise
   });
 }
 
-async function sendStep(number: string, step: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function sendStep(number: string, step: Record<string, unknown>, postgresPath = false): Promise<Record<string, unknown>> {
   if (step.type === 'text') return sendText(number, step.text as string);
-  return sendMedia(number, step);
+  return sendMedia(number, step, postgresPath);
 }
 
 // ── Media resolution ───────────────────────────────────────────────────────
@@ -572,16 +578,24 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
-    if (!dryRun) assertEvolutionConfig();
 
     const flowId = String(payload.flow_id || payload.flowId || '').trim();
     if (!flowId) throw createHttpError(400, 'ID do fluxo é obrigatório.');
 
-    const flow = await resolveFlow(flowId);
-    if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
-
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
     const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
+    if (postgresPath && !quotationId) {
+      throw createHttpError(400, 'Cotação PostgreSQL é obrigatória.');
+    }
+    const revisionId = firstNonEmpty(payload.revision_id, payload.revisionId, payload.quote_revision_id);
+    if (postgresPath && !revisionId) {
+      throw createHttpError(400, 'Revisão PostgreSQL do orçamento não informada.');
+    }
+
+    const flow = await resolveFlow(flowId);
+    if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
+    if (!dryRun) assertEvolutionConfig();
+
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
     const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
     const baseUrl = `${proto}://${host}`;
@@ -591,35 +605,30 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     let items: Record<string, unknown>[] = [];
     let link = '';
     let pdfBase64 = '';
-    let postgresSnapshot: ReturnType<typeof quotationSnapshotViewModel> | null = null;
+    let businessNumber = quotationId;
 
-    if (postgresPath && quotationId && !dryRun) {
-      const revisionId = firstNonEmpty(payload.revision_id, payload.revisionId, payload.quote_revision_id);
-      if (!revisionId) throw createHttpError(400, 'Revisão PostgreSQL do orçamento não informada.');
-      const repository = createQuotationTemplateRepository();
-      const snapshot = await repository.get(revisionId);
-      if (!snapshot || snapshot.revision.id !== revisionId)
-        throw createHttpError(404, 'Orçamento PostgreSQL não encontrado.');
-      postgresSnapshot = quotationSnapshotViewModel(snapshot);
-      const publicToken = await issuePublicQuotationToken({ revisionId, repository });
-      payload.quotation_uuid = payload.quotation_uuid || publicToken.quotationId;
-      payload.revision_id = revisionId;
-      link = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(publicToken.token)}`;
-      // Render from the immutable PostgreSQL snapshot. This path never calls
-      // Frappe or the legacy print/PDF renderer.
-      if (
-        (flow.steps || []).some(
+    if (postgresPath) {
+      const context = await loadPostgresSendContext({
+        quotationId,
+        revisionId,
+        businessNumber: firstNonEmpty(payload.business_number, payload.businessNumber),
+        recipientPhone: firstNonEmpty(payload.phone, payload.telefone) || undefined,
+        needPdf: (flow.steps || []).some(
           (step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf',
-        )
-      ) {
-        const pdf = await renderPublicQuotationPdf(revisionId, { repository });
-        pdfBase64 = pdf.toString('base64');
-      }
-      const client = (postgresSnapshot.client || {}) as unknown as Record<string, unknown>;
-      nome = firstNonEmpty(payload.nome, client.name, client.nome);
-      telefone = firstNonEmpty(payload.phone || payload.telefone, client.phone, client.telefone);
-      items = (postgresSnapshot.items || []) as Record<string, unknown>[];
-    } else if (quotationId && !postgresPath) {
+        ),
+        baseUrl,
+        repository: createQuotationTemplateRepository(),
+      });
+      payload.quotation_uuid = context.quotationUuid;
+      payload.revision_id = context.revisionId;
+      payload.business_number = context.businessNumber;
+      businessNumber = context.businessNumber;
+      link = context.publicLink;
+      pdfBase64 = context.pdfBase64;
+      nome = context.nome;
+      telefone = context.telefone;
+      items = context.view.items as Record<string, unknown>[];
+    } else if (quotationId) {
       try {
         const quotation = await erpGetDoc('Quotation', quotationId) as Record<string, unknown>;
         nome = firstNonEmpty(payload.nome, quotation?.customer_name, quotation?.party_name);
@@ -641,10 +650,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       }
     }
 
-    nome = firstNonEmpty(payload.nome, nome);
-    telefone = firstNonEmpty(payload.phone || payload.telefone, telefone);
-    items = (payload.items || items || []) as Record<string, unknown>[];
-    dealId = payload.deal_id || payload.dealId || dealId;
+    if (!postgresPath) {
+      nome = firstNonEmpty(payload.nome, nome);
+      telefone = firstNonEmpty(payload.phone || payload.telefone, telefone);
+      items = (payload.items || items || []) as Record<string, unknown>[];
+      dealId = payload.deal_id || payload.dealId || dealId;
+    }
     link = resolveServerIssuedPublicLink(postgresPath, link, baseUrl);
 
     const number = normalizePhone(telefone);
@@ -654,7 +665,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     const productSummary = firstNonEmpty(payload.product_summary, productSummaryFromCategories(categories));
     const context = {
       nome,
-      quotationId,
+      quotationId: businessNumber,
       link,
       pdfBase64,
       postgresPath,
@@ -680,18 +691,18 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       for (let i = 0; i < steps.length; i++) {
         if (i > 0)
           await wait(randomDelay(flow.delay_min_seconds * 1000, flow.delay_max_seconds * 1000));
-        const resp = await sendStep(number, steps[i]);
+        const resp = await sendStep(number, steps[i], postgresPath);
         evolution.push(resp);
       }
-      await queuePostgresSentEvent(quotationId, payload);
-      if (!postgresPath) await updateDeal(dealId, quotationId);
+      await queuePostgresSentEvent(businessNumber, payload);
+      if (!postgresPath) await updateDeal(dealId, businessNumber);
     }
 
     // Record send event
     let sendEventId = null;
     if (!dryRun) {
       sendEventId = await recordSendEvent({
-        quotationId,
+        quotationId: businessNumber,
         phone: number,
         flowId,
         flowName: flow.name,
@@ -703,7 +714,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     // N8n webhook (fire-and-forget)
     if (!dryRun) {
-      fireN8n({ quotation_id: quotationId, deal_id: dealId, nome, phone: number, flow_id: flowId });
+      fireN8n({ quotation_id: businessNumber, deal_id: dealId, nome, phone: number, flow_id: flowId });
     }
 
     return jsonResponse(200, {
@@ -715,7 +726,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         : '',
       flow_id: flowId,
       flow_name: flow.name,
-      quotation_id: quotationId || null,
+      quotation_id: businessNumber || null,
       deal_id: dealId || null,
       phone: number,
       product_summary: productSummary,
