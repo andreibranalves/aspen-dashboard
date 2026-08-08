@@ -184,17 +184,15 @@ export function createPostgresQuotationLifecycleRepository(
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
           await tx.update(quotations).set({ status, updatedAt }).where(eq(quotations.id, quotation.id));
-          if (typeof (tx as { insert?: unknown }).insert === 'function') {
-            await enqueueQuotationOutboxEvent(tx, {
-              eventType: 'quotation.updated',
-              provider: 'crm',
-              quotationId: quotation.id,
-              revisionId: revision.id,
-              businessNumber: quotation.businessNumber,
-              idempotencyKey: `quotation.updated:crm:${quotation.id}:${revision.id}:${updatedAt.toISOString()}`,
-              now: updatedAt,
-            });
-          }
+          await enqueueQuotationOutboxEvent(tx, {
+            eventType: 'quotation.updated',
+            provider: 'crm',
+            quotationId: quotation.id,
+            revisionId: revision.id,
+            businessNumber: quotation.businessNumber,
+            idempotencyKey: `quotation.updated:crm:${quotation.id}:${revision.id}:${updatedAt.toISOString()}`,
+            now: updatedAt,
+          });
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;
@@ -310,17 +308,15 @@ export function createPostgresQuotationLifecycleRepository(
             })));
           }
           await tx.update(quotations).set({ status: 'rascunho', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
-          if (typeof (tx as { insert?: unknown }).insert === 'function') {
-            await enqueueQuotationOutboxEvent(tx, {
-              eventType: 'quotation.updated',
-              provider: 'crm',
-              quotationId: quotation.id,
-              revisionId,
-              businessNumber: quotation.businessNumber,
-              idempotencyKey: `quotation.updated:crm:${quotation.id}:${revisionId}:${createdAt.toISOString()}`,
-              now: createdAt,
-            });
-          }
+          await enqueueQuotationOutboxEvent(tx, {
+            eventType: 'quotation.updated',
+            provider: 'crm',
+            quotationId: quotation.id,
+            revisionId,
+            businessNumber: quotation.businessNumber,
+            idempotencyKey: `quotation.updated:crm:${quotation.id}:${revisionId}:${createdAt.toISOString()}`,
+            now: createdAt,
+          });
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;

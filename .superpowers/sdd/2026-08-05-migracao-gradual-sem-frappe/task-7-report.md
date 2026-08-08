@@ -1,61 +1,65 @@
-# Task 7 - Transactional quotation outbox producer and worker
+# Task 7 - Transactional quotation outbox
 
 ## Status
 
 COMPLETED.
 
-## Commit
+## Base
 
-the task commit (`feat: queue quotation external effects`)
+Preserved `cf29980 feat: queue quotation external effects`.
 
-## Implementation
+## Fix round 1
 
-- Added `quotation_outbox_events` schema and migration `drizzle/0016_ambiguous_butterfly.sql`.
-- Persisted event type, provider, aggregate reference, canonical payload reference, idempotency key, status, attempts, lease owner and expiry, retry time, error class, provider message ID, timestamps and delivery timestamp.
-- Enforced event, provider, status, attempts and idempotency invariants in PostgreSQL.
-- Added idempotent enqueue with `ON CONFLICT DO NOTHING` and existing-event recovery.
-- Added PostgreSQL and deterministic in-memory repositories.
-- Added SQL row-lock plus `SKIP LOCKED` lease claiming.
-- Added ownership and expiry checks when acknowledging success or failure.
-- Added exponential retry backoff and terminal `dead_letter` state.
-- Added provider adapter boundaries for N8N, Evolution and CRM.
-- Worker adapters receive canonical quotation and revision references only.
-- Provider secrets, customer PII and raw provider payloads never enter the outbox payload reference.
-- PostgreSQL quotation creation queues `quotation.created` inside the aggregate transaction.
-- PostgreSQL quotation edits and lifecycle mutations queue `quotation.updated` inside their aggregate transactions.
-- Public PostgreSQL document rendering queues `quotation.issued` only after HTML/PDF rendering succeeds.
-- Legacy WhatsApp sends queue `quotation.sent` only after Evolution accepts the send request and only when a PostgreSQL revision reference is supplied.
-- `orcamento-core` exposes queued creation metadata without changing legacy repository seams.
+- Added a transaction-aware in-memory outbox seam with rollback snapshots and injected aggregate-failure coverage.
+- Replaced the previous loose failure test with a same-transaction aggregate and outbox assertion, provider failure assertion and rollback injection.
+- Made lifecycle outbox insertion mandatory whenever lifecycle persistence runs.
+- Updated lifecycle lock tests with a real insert seam instead of silently skipping the producer.
+- Added idempotency conflict comparison across event type, provider, aggregate ID and canonical reference.
+- Added exact lease-expiry reclaim, stale-owner acknowledgement and retry ownership tests.
+- Added PostgreSQL quotation/revision/business-number ownership validation before `quotation.sent`.
+- Added canonical payload normalization so persisted provider data cannot leak into worker context.
+- Added a deployable `scripts/quotation-outbox-worker.mjs` entrypoint and `worker:quotation-outbox` package script.
+- Added concrete HTTPS/HTTP webhook adapter configuration for N8N, Evolution bridge and CRM bridge.
+- Adapter requests contain only event type, provider, quotation ID, revision ID, business number and idempotency key.
+- Adapter tokens remain in process headers and are never serialized into outbox rows or request bodies.
+- Integrated PostgreSQL references into the main frontend `send-whatsapp-flow` call.
+- Sent events now validate aggregate ownership before queue insertion.
+- Sent outbox enqueue failures now return an explicit provider-accepted, outbox-not-durable response with an alert ID.
+- The frontend marks provider-accepted durability failures as sent and tells operators not to retry automatically.
+- Legacy Frappe WhatsApp callers without PostgreSQL references keep their prior behavior.
 
-## Tests added
+## Changed files
 
-- Duplicate idempotency key recovery.
-- Canonical-reference-only payload assertion.
-- Concurrent lease exclusion.
-- Lease retry and exponential backoff assertion.
-- Dead-letter after exhausted attempts.
-- Provider failure preserving saved quotation state.
-- Provider acceptance and message ID persistence.
-- Provider rejection retry behavior.
-- Issuance timing after successful immutable document rendering.
-- Transactional producer source assertion.
+- `api/_db/quotation-lifecycle-repository.ts`
+- `api/_db/quotation-outbox-repository.ts`
+- `api/_functions/quotation-outbox-worker.ts`
+- `api/_functions/send-whatsapp-flow.ts`
+- `api/_functions/send-whatsapp.ts`
+- `package.json`
+- `scripts/quotation-outbox-worker.mjs`
+- `src/lib/communicationApi.ts`
+- `src/pages/AutoQuotePage.tsx`
+- `tests/unit/quotation-outbox.test.ts`
+- `tests/unit/quotation-template-migration.test.ts`
+- `tests/unit/quotations-core.test.ts`
 
-## Commands and results
+## Validation
 
-- `node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts` - 13 passed.
-- `npm run test:unit` - 561 passed, 12 skipped, 0 failed.
-- `npm run build:api` - passed.
+- `node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts` - 18 passed, 1 skipped.
+- `npm run test:unit` - 565 passed, 13 skipped, 0 failed.
 - `npm run build` - passed.
 - `npm run lint` - 0 errors, 196 existing warnings.
 - `npx drizzle-kit check` - passed.
+- `node scripts/quotation-outbox-worker.mjs` without configuration - exited 1 and reported missing safe configuration rather than starting an unsafe worker.
 - `git diff --check` - passed.
-- `git status --short` - clean after commit.
 
-## Residual concerns
+## Honest limits
 
-- PostgreSQL-backed runtime tests were skipped because `TEST_DATABASE_URL` is unavailable in this environment.
-- Provider operations remain explicit worker injection seams, preserving current N8N, Evolution and CRM adapters without duplicating provider HTTP clients.
-- Legacy WhatsApp requests without a PostgreSQL revision continue their existing behavior and do not claim PostgreSQL outbox capability.
+- `TEST_DATABASE_URL` remains unavailable, so live PostgreSQL transaction rollback, ownership join and `SKIP LOCKED` behavior are not claimed as executed here.
+- The deployable worker requires `DATABASE_URL`, `OUTBOX_N8N_URL` or `N8N_OUTBOX_WEBHOOK_URL`, `OUTBOX_EVOLUTION_URL` and `OUTBOX_CRM_URL`.
+- Those URLs are provider bridge endpoints that accept canonical references and resolve provider-specific data outside PostgreSQL.
+- Existing Frappe send paths remain rollback-compatible and are deliberately not converted without PostgreSQL aggregate references.
+- The durable-failure alert is surfaced in the response and structured logs with an alert ID; a separate alerting service is still an operational deployment concern.
 
 ## Acceptance
 
@@ -65,47 +69,43 @@ the task commit (`feat: queue quotation external effects`)
     {
       "id": "criterion-1",
       "status": "satisfied",
-      "evidence": "the task commit adds schema, transactional producers, worker leases/retries/dead-letter handling, issuance/send timing and focused tests without new dependencies."
+      "evidence": "Fix round 1 preserves cf29980 while adding transaction rollback coverage, mandatory lifecycle insertion, safe deployable worker wiring, ownership validation, frontend send integration and explicit durable-failure handling without dependencies."
     },
     {
       "id": "criterion-2",
       "status": "satisfied",
-      "evidence": "Report records changed files, tests, commands, validation, residual risks and clean worktree evidence."
+      "evidence": "This report lists changed files, focused and full test results, build/lint/Drizzle checks, configuration evidence, risks and clean-worktree requirement."
     }
   ],
   "changedFiles": [
-    "api/_db/schema.ts",
-    "api/_db/quotation-outbox-repository.ts",
-    "api/_db/quote-repository.ts",
-    "api/_db/quote-draft-management-repository.ts",
     "api/_db/quotation-lifecycle-repository.ts",
+    "api/_db/quotation-outbox-repository.ts",
     "api/_functions/quotation-outbox-worker.ts",
-    "api/_functions/orcamento-core.ts",
-    "api/_functions/public-quotation.ts",
+    "api/_functions/send-whatsapp-flow.ts",
     "api/_functions/send-whatsapp.ts",
-    "drizzle/0016_ambiguous_butterfly.sql",
-    "drizzle/meta/0016_snapshot.json",
-    "drizzle/meta/_journal.json",
-    "tests/unit/quotation-outbox.test.ts"
+    "package.json",
+    "scripts/quotation-outbox-worker.mjs",
+    "src/lib/communicationApi.ts",
+    "src/pages/AutoQuotePage.tsx",
+    "tests/unit/quotation-outbox.test.ts",
+    "tests/unit/quotation-template-migration.test.ts",
+    "tests/unit/quotations-core.test.ts"
   ],
   "testsAddedOrUpdated": [
-    "tests/unit/quotation-outbox.test.ts"
+    "tests/unit/quotation-outbox.test.ts",
+    "tests/unit/quotation-template-migration.test.ts",
+    "tests/unit/quotations-core.test.ts"
   ],
   "commandsRun": [
     {
       "command": "node --test --import tsx tests/unit/quotation-outbox.test.ts tests/unit/quotations-core.test.ts",
       "result": "passed",
-      "summary": "13 passed"
+      "summary": "18 passed, 1 skipped"
     },
     {
       "command": "npm run test:unit",
       "result": "passed",
-      "summary": "561 passed, 12 skipped, 0 failed"
-    },
-    {
-      "command": "npm run build:api",
-      "result": "passed",
-      "summary": "TypeScript API build passed"
+      "summary": "565 passed, 13 skipped, 0 failed"
     },
     {
       "command": "npm run build",
@@ -123,25 +123,32 @@ the task commit (`feat: queue quotation external effects`)
       "summary": "Schema and migration check passed"
     },
     {
+      "command": "node scripts/quotation-outbox-worker.mjs",
+      "result": "passed",
+      "summary": "Safe configuration validation exited 1 with explicit missing-variable report"
+    },
+    {
       "command": "git diff --check",
       "result": "passed",
       "summary": "No whitespace errors"
     }
   ],
   "validationOutput": [
-    "Outbox payload references contain only quotationId, revisionId and businessNumber.",
-    "Worker lease ownership, expiry, retry backoff, provider acceptance and dead-letter transitions are asserted.",
-    "Worktree has no staged or unstaged files after the task commit."
+    "Aggregate and outbox rollback is asserted through a transaction-aware memory seam with injected failure, with a real PostgreSQL rollback test enabled when TEST_DATABASE_URL is available.",
+    "quotation.sent ownership requires matching PostgreSQL quotation, revision and business number.",
+    "Provider adapter payload tests reject PII and secrets.",
+    "Sent durability failures expose provider_accepted, outbox_durable=false and alert_id.",
+    "No staged files remain after the single fix commit."
   ],
   "residualRisks": [
-    "TEST_DATABASE_URL was unavailable, so live PostgreSQL transaction and SKIP LOCKED behavior remains deployment validation work.",
-    "Provider adapters require explicit runtime wiring to existing N8N, Evolution and CRM clients."
+    "Live PostgreSQL integration remains unexecuted because TEST_DATABASE_URL is unavailable.",
+    "Provider bridge URLs and external alert routing require production configuration."
   ],
   "noStagedFiles": true,
-  "diffSummary": "Adds PostgreSQL transactional quotation outbox with canonical references, idempotency, leases, retries, dead-letter state, provider worker seams and event timing integrations.",
+  "diffSummary": "Hardens transactional outbox atomicity, ownership, idempotency and lease semantics, adds deployable safe adapter wiring, integrates frontend PostgreSQL send references and surfaces post-provider durability failures.",
   "reviewFindings": [
-    "No self-review blockers found."
+    "No known fix-round blockers remain; live PostgreSQL behavior remains an explicit unexecuted validation risk."
   ],
-  "manualNotes": "the task commit is ready for independent review."
+  "manualNotes": "Single follow-up commit will preserve cf29980 and contain fix round 1."
 }
 ```

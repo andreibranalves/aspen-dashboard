@@ -454,6 +454,10 @@ export default function AutoQuotePage() {
       try {
         const res = await executeFlow({
           quotation_id: quotationId,
+          quotation_uuid: (resultData.quotation_uuid as string | null) || (resultData.quote_id as string | null) || null,
+          business_number: quotationId,
+          revision_id: (resultData.revision_id as string | null) || (resultData.quote_revision_id as string | null) || null,
+          source: resultData.core_mode === true || resultData.source === 'postgres' ? 'postgres' : 'frappe',
           flow_id: flowId,
           telefone,
           nome,
@@ -471,12 +475,17 @@ export default function AutoQuotePage() {
           },
         }));
       } catch (err) {
-        console.error('[sendWhatsApp] failed:', (err as Error).message);
+        const sendError = err as Error & { providerAccepted?: boolean; alertId?: string };
+        console.error('[sendWhatsApp] failed:', sendError.message);
         setWaStatusByDraft((prev) => ({
           ...prev,
           [draftIndex]: {
-            state: 'error',
-            message: (err as Error).message || 'Erro ao enviar WhatsApp.',
+            // Evolution accepted the message, so show a warning-like sent
+            // state and prevent an accidental duplicate retry.
+            state: sendError.providerAccepted ? 'sent' : 'error',
+            message: sendError.providerAccepted
+              ? `${sendError.message} Alerta ${sendError.alertId || 'sem ID'}.`
+              : sendError.message || 'Erro ao enviar WhatsApp.',
           },
         }));
       }

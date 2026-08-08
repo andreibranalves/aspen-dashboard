@@ -165,6 +165,11 @@ export interface SaveFlowsResponse {
 
 export interface ExecuteFlowPayload {
   quotation_id: string;
+  /** Stable PostgreSQL aggregate references required for durable sent events. */
+  quotation_uuid?: string | null;
+  business_number?: string | null;
+  revision_id?: string | null;
+  source?: 'postgres' | 'frappe';
   flow_id: string;
   telefone: string;
   nome: string;
@@ -188,6 +193,9 @@ export interface ExecuteFlowResponse {
   steps: unknown[];
   evolution: unknown[];
   send_event_id: string | null;
+  provider_accepted?: boolean;
+  outbox_durable?: boolean;
+  alert_id?: string;
 }
 
 // ── Media endpoints ────────────────────────────────────────────────────────
@@ -314,7 +322,21 @@ export async function executeFlow(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const data = (await res.json()) as { error?: string } & Partial<ExecuteFlowResponse>;
-  if (!res.ok) throw new Error(data.error || 'Erro ao enviar WhatsApp.');
+  const data = (await res.json()) as { error?: string } & Partial<ExecuteFlowResponse> & {
+    provider_accepted?: boolean;
+    outbox_durable?: boolean;
+    alert_id?: string;
+  };
+  if (!res.ok) {
+    const error = new Error(data.error || 'Erro ao enviar WhatsApp.') as Error & {
+      providerAccepted?: boolean;
+      outboxDurable?: boolean;
+      alertId?: string;
+    };
+    error.providerAccepted = data.provider_accepted;
+    error.outboxDurable = data.outbox_durable;
+    error.alertId = data.alert_id;
+    throw error;
+  }
   return data as ExecuteFlowResponse;
 }

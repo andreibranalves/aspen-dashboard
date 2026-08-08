@@ -40,6 +40,16 @@ export interface QuotationOutboxProviderOperations {
   crm?: QuotationOutboxProviderOperation;
 }
 
+export interface QuotationOutboxProviderConfig {
+  n8nUrl?: string;
+  evolutionUrl?: string;
+  crmUrl?: string;
+  n8nToken?: string;
+  evolutionToken?: string;
+  crmToken?: string;
+  fetcher?: typeof fetch;
+}
+
 export class QuotationOutboxProviderUnavailableError extends Error {
   constructor(provider: QuotationOutboxProvider) {
     super(`Adaptador de outbox não configurado: ${provider}`);
@@ -78,6 +88,83 @@ export function createQuotationOutboxProviderAdapters(
     n8n: adapter('n8n', operations.n8n),
     evolution: adapter('evolution', operations.evolution),
     crm: adapter('crm', operations.crm),
+  };
+}
+
+function configuredUrl(value: string | undefined, provider: QuotationOutboxProvider): string {
+  if (!value) throw new QuotationOutboxProviderUnavailableError(provider);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`URL do adaptador de outbox inválida: ${provider}`);
+  }
+  if (
+    (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error(`URL do adaptador de outbox insegura: ${provider}`);
+  }
+  return parsed.toString();
+}
+
+function configuredOperation(
+  provider: QuotationOutboxProvider,
+  url: string | undefined,
+  token: string | undefined,
+  fetcher: typeof fetch,
+): QuotationOutboxProviderOperation {
+  return async (context) => {
+    const endpoint = configuredUrl(url, provider);
+    const response = await fetcher(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        event_type: context.eventType,
+        provider: context.provider,
+        quotation_id: context.reference.quotationId,
+        revision_id: context.reference.revisionId,
+        business_number: context.reference.businessNumber,
+        idempotency_key: context.idempotencyKey,
+      }),
+    });
+    const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+    if (!response.ok) throw new Error(`Adaptador ${provider} rejeitou o evento (${response.status}).`);
+    const messageId = body && [body.provider_message_id, body.message_id, body.id]
+      .find((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+    return { accepted: true, providerMessageId: messageId || null };
+  };
+}
+
+/**
+ * Deployable default wiring for a small provider bridge/webhook per adapter.
+ * Only canonical references are sent; tokens stay in process environment.
+ */
+export function createConfiguredQuotationOutboxProviderAdapters(
+  config: QuotationOutboxProviderConfig,
+): Record<QuotationOutboxProvider, QuotationOutboxProviderAdapter> {
+  const fetcher = config.fetcher || fetch;
+  return createQuotationOutboxProviderAdapters({
+    n8n: configuredOperation('n8n', config.n8nUrl, config.n8nToken, fetcher),
+    evolution: configuredOperation('evolution', config.evolutionUrl, config.evolutionToken, fetcher),
+    crm: configuredOperation('crm', config.crmUrl, config.crmToken, fetcher),
+  });
+}
+
+export function quotationOutboxConfigFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): QuotationOutboxProviderConfig {
+  return {
+    n8nUrl: env.OUTBOX_N8N_URL || env.N8N_OUTBOX_WEBHOOK_URL,
+    evolutionUrl: env.OUTBOX_EVOLUTION_URL,
+    crmUrl: env.OUTBOX_CRM_URL,
+    n8nToken: env.OUTBOX_N8N_TOKEN,
+    evolutionToken: env.OUTBOX_EVOLUTION_TOKEN,
+    crmToken: env.OUTBOX_CRM_TOKEN,
   };
 }
 

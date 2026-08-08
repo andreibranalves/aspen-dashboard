@@ -164,6 +164,29 @@ test('actual migration and lifecycle paths serialize on their extracted advisory
       }),
     }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
+    insert: () => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [{
+      id: '44444444-4444-4444-8444-444444444444',
+      eventType: 'quotation.updated',
+      provider: 'crm',
+      aggregateType: 'quotation',
+      aggregateId: quotation.id,
+      payloadReference: {
+        quotationId: quotation.id,
+        revisionId: revision.id,
+        businessNumber: quotation.businessNumber,
+      },
+      idempotencyKey: 'quotation.updated:crm:lock-test',
+      status: 'pending',
+      attempts: 0,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      nextAttemptAt: quotation.updatedAt,
+      lastErrorClass: null,
+      providerMessageId: null,
+      createdAt: quotation.updatedAt,
+      updatedAt: quotation.updatedAt,
+      deliveredAt: null,
+    }] }) }) }),
   };
   const lifecycle = createPostgresQuotationLifecycleRepository(
     () => ({ transaction: async (callback: (tx: typeof lifecycleTx) => Promise<unknown>) => {

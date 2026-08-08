@@ -13,7 +13,11 @@ import {
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
-import { createPostgresQuotationOutboxRepository } from '../_db/quotation-outbox-repository.js';
+import { getDatabase } from '../_db/client.js';
+import {
+  enqueueQuotationSentEvent,
+  QuotationOutboxDurabilityError,
+} from '../_db/quotation-outbox-repository.js';
 import {
   LIVE_DEPS,
   upsertWhatsappMessages,
@@ -638,33 +642,43 @@ async function queuePostgresSentEvent(
   quotationId: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
+  const quotationUuid = firstNonEmpty(
+    payload.quotation_uuid as string | undefined,
+    payload.quotationUuid as string | undefined,
+    payload.quote_id as string | undefined,
+  );
   const revisionId = firstNonEmpty(
     payload.revision_id as string | undefined,
     payload.revisionId as string | undefined,
     payload.quote_revision_id as string | undefined,
   );
-  // Legacy Frappe callers do not carry a PostgreSQL revision yet. Keep their
-  // behavior unchanged until the PostgreSQL send path supplies this reference.
-  if (!process.env.DATABASE_URL || !quotationId || !revisionId) return;
+  // Legacy Frappe callers do not carry PostgreSQL ownership references yet.
+  const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
+  if (!postgresPath && !quotationUuid && !revisionId) return;
+  if (!quotationUuid || !revisionId || !process.env.DATABASE_URL) {
+    throw new QuotationOutboxDurabilityError(new Error('Referências PostgreSQL ausentes.'));
+  }
   try {
-    await createPostgresQuotationOutboxRepository().enqueue({
+    await enqueueQuotationSentEvent(getDatabase(), {
       eventType: 'quotation.sent',
       provider: 'crm',
-      quotationId: firstNonEmpty(
-        payload.quotation_uuid as string | undefined,
-        payload.quotationId as string | undefined,
+      quotationId: quotationUuid,
+      revisionId,
+      businessNumber: firstNonEmpty(
+        payload.business_number as string | undefined,
+        payload.businessNumber as string | undefined,
         quotationId,
       ),
-      revisionId,
-      businessNumber: quotationId,
-      idempotencyKey: `quotation.sent:crm:${quotationId}:${revisionId}`,
+      idempotencyKey: firstNonEmpty(
+        payload.idempotency_key as string | undefined,
+        payload.idempotencyKey as string | undefined,
+        `quotation.sent:crm:${quotationUuid}:${revisionId}`,
+      ),
     });
   } catch (error) {
-    // Evolution already accepted the message; do not report a false send
-    // failure or delete the saved quotation because queue persistence failed.
-    console.error(
-      `[send-whatsapp] quotation.sent outbox failed (${error instanceof Error ? error.name : typeof error})`,
-    );
+    // Evolution already accepted the message; expose tracking failure without
+    // pretending that provider delivery failed or asking an automatic retry.
+    throw new QuotationOutboxDurabilityError(error);
   }
 }
 
@@ -926,9 +940,25 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       evolution,
     });
   } catch (err) {
-    const typedErr = err as { statusCode?: number; logMessage?: string; message?: string };
+    const typedErr = err as {
+      statusCode?: number;
+      logMessage?: string;
+      message?: string;
+      providerAccepted?: boolean;
+      outboxDurable?: boolean;
+      alertId?: string;
+    };
     const code = Number.isInteger(typedErr?.statusCode) ? typedErr.statusCode! : 500;
     console.error('[send-whatsapp]', typedErr?.logMessage || typedErr?.message || err);
+    if (err instanceof QuotationOutboxDurabilityError) {
+      console.error(`[send-whatsapp] durable outbox alert ${err.alertId}`);
+      return jsonResponse(code, {
+        error: err.message,
+        provider_accepted: true,
+        outbox_durable: false,
+        alert_id: err.alertId,
+      });
+    }
     return jsonResponse(code, { error: typedErr?.message || 'Erro interno.' });
   }
 }

@@ -16,6 +16,11 @@ import { erpGetDoc, erpGetList, erpPut, createHttpError, ERPNEXT_BASE } from './
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
+import { getDatabase } from '../_db/client.js';
+import {
+  enqueueQuotationSentEvent,
+  QuotationOutboxDurabilityError,
+} from '../_db/quotation-outbox-repository.js';
 import {
   KV_KEY_MEDIA_PREFIX,
   KV_KEY_FLOWS,
@@ -406,6 +411,48 @@ async function recordSendEvent({
 
 // ── CRM Deal update ─────────────────────────────────────────────────────────
 
+async function queuePostgresSentEvent(
+  quotationId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const quotationUuid = firstNonEmpty(
+    payload.quotation_uuid,
+    payload.quotationUuid,
+    payload.quote_id,
+  );
+  const revisionId = firstNonEmpty(
+    payload.revision_id,
+    payload.revisionId,
+    payload.quote_revision_id,
+  );
+  // Legacy Frappe callers do not carry PostgreSQL ownership references yet.
+  const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
+  if (!postgresPath && !quotationUuid && !revisionId) return;
+  if (!quotationUuid || !revisionId || !process.env.DATABASE_URL) {
+    throw new QuotationOutboxDurabilityError(new Error('Referências PostgreSQL ausentes.'));
+  }
+  try {
+    await enqueueQuotationSentEvent(getDatabase(), {
+      eventType: 'quotation.sent',
+      provider: 'crm',
+      quotationId: quotationUuid,
+      revisionId,
+      businessNumber: firstNonEmpty(
+        payload.business_number,
+        payload.businessNumber,
+        quotationId,
+      ),
+      idempotencyKey: firstNonEmpty(
+        payload.idempotency_key,
+        payload.idempotencyKey,
+        `quotation.sent:crm:${quotationUuid}:${revisionId}`,
+      ),
+    });
+  } catch (error) {
+    throw new QuotationOutboxDurabilityError(error);
+  }
+}
+
 async function updateDeal(dealId: string | null, quotationId: string): Promise<void> {
   if (!dealId) return;
   try {
@@ -593,6 +640,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         const resp = await sendStep(number, steps[i]);
         evolution.push(resp);
       }
+      await queuePostgresSentEvent(quotationId, payload);
       await updateDeal(dealId, quotationId);
     }
 
@@ -635,9 +683,22 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       send_event_id: sendEventId,
     });
   } catch (err: unknown) {
-    const httpErr = err as HttpError;
+    const httpErr = err as HttpError & {
+      providerAccepted?: boolean;
+      outboxDurable?: boolean;
+      alertId?: string;
+    };
     const code = Number.isInteger(httpErr?.statusCode) ? httpErr.statusCode : 500;
     console.error('[send-whatsapp-flow]', httpErr?.logMessage || httpErr?.message || err);
+    if (err instanceof QuotationOutboxDurabilityError) {
+      console.error(`[send-whatsapp-flow] durable outbox alert ${err.alertId}`);
+      return jsonResponse(code, {
+        error: err.message,
+        provider_accepted: true,
+        outbox_durable: false,
+        alert_id: err.alertId,
+      });
+    }
     return jsonResponse(code, { error: httpErr?.message || 'Erro interno.' });
   }
 }

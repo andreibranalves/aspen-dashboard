@@ -4,14 +4,14 @@ import {
   and,
   asc,
   eq,
-  gte,
+  gt,
   isNull,
   lte,
   or,
 } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
-import { quotationOutboxEvents } from './schema.js';
+import { quoteRevisions, quotations, quotationOutboxEvents } from './schema.js';
 
 type OutboxTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 export type OutboxDatabase = AppDatabase | OutboxTransaction;
@@ -73,6 +73,35 @@ export interface QuotationOutboxRepositoryOptions {
   retryBaseMs?: number;
   retryMaxMs?: number;
   maxAttempts?: number;
+}
+
+export class QuotationOutboxIdempotencyConflictError extends Error {
+  constructor(idempotencyKey: string) {
+    super(`Chave de idempotência já está vinculada a outro evento: ${idempotencyKey}`);
+    this.name = 'QuotationOutboxIdempotencyConflictError';
+  }
+}
+
+export class QuotationOutboxOwnershipError extends Error {
+  readonly statusCode = 409;
+
+  constructor() {
+    super('A revisão não pertence ao orçamento PostgreSQL informado.');
+    this.name = 'QuotationOutboxOwnershipError';
+  }
+}
+
+export class QuotationOutboxDurabilityError extends Error {
+  readonly statusCode = 503;
+  readonly providerAccepted = true;
+  readonly outboxDurable = false;
+  readonly alertId = randomUUID();
+
+  constructor(cause?: unknown) {
+    super('Mensagem enviada, mas não foi possível registrar o efeito durável. Não repita automaticamente.');
+    this.name = 'QuotationOutboxDurabilityError';
+    if (cause instanceof Error) this.cause = cause;
+  }
 }
 
 export interface QuotationOutboxRepository {
@@ -158,12 +187,25 @@ function normalizeStatus(value: unknown): QuotationOutboxStatus {
   throw new Error('Estado do outbox inválido.');
 }
 
+function normalizePayloadReference(value: unknown): QuotationOutboxPayloadReference {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Referência canônica do outbox inválida.');
+  }
+  const reference = value as Record<string, unknown>;
+  return {
+    quotationId: canonicalText(reference.quotationId, 'Identificador canônico do orçamento'),
+    revisionId: canonicalText(reference.revisionId, 'Identificador canônico da revisão'),
+    businessNumber: canonicalText(reference.businessNumber, 'Número canônico do orçamento'),
+  };
+}
+
 function asEvent(row: QuotationOutboxRow): QuotationOutboxEvent {
   return {
     ...row,
     eventType: normalizeEventType(row.eventType),
     provider: normalizeProvider(row.provider),
     status: normalizeStatus(row.status),
+    payloadReference: normalizePayloadReference(row.payloadReference),
   };
 }
 
@@ -202,6 +244,39 @@ function errorClass(error: unknown): string {
     if (typeof code === 'string' && code.trim()) return code.trim().slice(0, 128);
   }
   return typeof error === 'string' && error.trim() ? 'ProviderError' : 'Error';
+}
+
+function sameReference(
+  existing: QuotationOutboxEvent,
+  expected: {
+    eventType: QuotationOutboxEventType;
+    provider: QuotationOutboxProvider;
+    aggregateId: string;
+    payloadReference: QuotationOutboxPayloadReference;
+  },
+): boolean {
+  return existing.eventType === expected.eventType
+    && existing.provider === expected.provider
+    && existing.aggregateId === expected.aggregateId
+    && existing.payloadReference.quotationId === expected.payloadReference.quotationId
+    && existing.payloadReference.revisionId === expected.payloadReference.revisionId
+    && existing.payloadReference.businessNumber === expected.payloadReference.businessNumber;
+}
+
+function assertSameIdempotentEvent(
+  existing: QuotationOutboxEvent,
+  expected: {
+    eventType: QuotationOutboxEventType;
+    provider: QuotationOutboxProvider;
+    aggregateId: string;
+    payloadReference: QuotationOutboxPayloadReference;
+  },
+  idempotencyKey: string,
+): QuotationOutboxEvent {
+  if (!sameReference(existing, expected)) {
+    throw new QuotationOutboxIdempotencyConflictError(idempotencyKey);
+  }
+  return existing;
 }
 
 function providerMessageId(value: string | null | undefined): string | null {
@@ -290,7 +365,52 @@ export async function enqueueQuotationOutboxEvent(
     .where(eq(quotationOutboxEvents.idempotencyKey, idempotencyKey))
     .limit(1);
   if (!existing) throw new Error('Evento idempotente não pôde ser recuperado.');
-  return asEvent(existing);
+  return assertSameIdempotentEvent(
+    asEvent(existing),
+    {
+      eventType,
+      provider,
+      aggregateId: reference.quotationId,
+      payloadReference: reference,
+    },
+    idempotencyKey,
+  );
+}
+
+/**
+ * Sent events are accepted only for a quotation/revision pair owned by the
+ * same PostgreSQL aggregate. This prevents a caller from attaching a send
+ * acknowledgement to another customer's revision or to a Frappe-only ID.
+ */
+export async function enqueueQuotationSentEvent(
+  database: OutboxDatabase,
+  input: Omit<EnqueueQuotationOutboxInput, 'eventType'> & { eventType?: 'quotation.sent' },
+): Promise<QuotationOutboxEvent> {
+  const quotationId = canonicalText(input.quotationId, 'Identificador canônico do orçamento');
+  const revisionId = canonicalText(input.revisionId, 'Identificador canônico da revisão');
+  const businessNumber = canonicalText(input.businessNumber, 'Número canônico do orçamento');
+  const [owned] = await database
+    .select({
+      quotationId: quotations.id,
+      revisionId: quoteRevisions.id,
+      businessNumber: quotations.businessNumber,
+    })
+    .from(quotations)
+    .innerJoin(quoteRevisions, eq(quoteRevisions.quotationId, quotations.id))
+    .where(and(
+      eq(quotations.id, quotationId),
+      eq(quoteRevisions.id, revisionId),
+      eq(quotations.businessNumber, businessNumber),
+    ))
+    .limit(1);
+  if (!owned) throw new QuotationOutboxOwnershipError();
+  return enqueueQuotationOutboxEvent(database, {
+    ...input,
+    eventType: 'quotation.sent',
+    quotationId: owned.quotationId,
+    revisionId: owned.revisionId,
+    businessNumber: owned.businessNumber,
+  });
 }
 
 export function createPostgresQuotationOutboxRepository(
@@ -361,7 +481,7 @@ export function createPostgresQuotationOutboxRepository(
           eq(quotationOutboxEvents.status, 'processing'),
           eq(quotationOutboxEvents.leaseOwner, leaseOwner),
           // A worker may only acknowledge while its lease is still valid.
-          or(isNull(quotationOutboxEvents.leaseExpiresAt), gte(quotationOutboxEvents.leaseExpiresAt, current)),
+          or(isNull(quotationOutboxEvents.leaseExpiresAt), gt(quotationOutboxEvents.leaseExpiresAt, current)),
         ),
       )
       .returning();
@@ -401,7 +521,7 @@ export function createPostgresQuotationOutboxRepository(
           eq(quotationOutboxEvents.id, id),
           eq(quotationOutboxEvents.status, 'processing'),
           eq(quotationOutboxEvents.leaseOwner, leaseOwner),
-          or(isNull(quotationOutboxEvents.leaseExpiresAt), gte(quotationOutboxEvents.leaseExpiresAt, current)),
+          or(isNull(quotationOutboxEvents.leaseExpiresAt), gt(quotationOutboxEvents.leaseExpiresAt, current)),
         ),
       )
       .returning();
@@ -453,7 +573,19 @@ export class InMemoryQuotationOutboxRepository implements QuotationOutboxReposit
     const reference = normalizeReference(input);
     const key = normalizeIdempotencyKey({ ...input, eventType, provider }, reference);
     const existingId = this.byKey.get(key);
-    if (existingId) return this.events.get(existingId)!;
+    if (existingId) {
+      const existing = this.events.get(existingId)!;
+      return assertSameIdempotentEvent(
+        existing,
+        {
+          eventType,
+          provider,
+          aggregateId: reference.quotationId,
+          payloadReference: reference,
+        },
+        key,
+      );
+    }
     const current = validDate(input.now, this.now());
     const id = this.idFactory();
     const event = {
@@ -482,6 +614,26 @@ export class InMemoryQuotationOutboxRepository implements QuotationOutboxReposit
 
   async enqueueInTransaction(_transaction: OutboxDatabase, input: EnqueueQuotationOutboxInput) {
     return this.enqueue(input);
+  }
+
+  /**
+   * Transaction-aware seam for aggregate tests and local probes.
+   * Failed callbacks restore both idempotency indexes and event rows.
+   */
+  async transaction<T>(callback: (transaction: OutboxDatabase) => Promise<T>): Promise<T> {
+    const events = new Map(
+      [...this.events.entries()].map(([id, event]) => [id, { ...event, payloadReference: { ...event.payloadReference } }]),
+    );
+    const byKey = new Map(this.byKey);
+    try {
+      return await callback(this as unknown as OutboxDatabase);
+    } catch (error) {
+      this.events.clear();
+      for (const [id, event] of events) this.events.set(id, event);
+      this.byKey.clear();
+      for (const [key, id] of byKey) this.byKey.set(key, id);
+      throw error;
+    }
   }
 
   async claimDueEvents({ owner, limit, leaseMs, now: requestedNow }: ClaimDueOutboxOptions) {
@@ -513,7 +665,7 @@ export class InMemoryQuotationOutboxRepository implements QuotationOutboxReposit
       !event ||
       event.status !== 'processing' ||
       event.leaseOwner !== leaseOwner ||
-      (event.leaseExpiresAt && event.leaseExpiresAt < current)
+      (event.leaseExpiresAt && event.leaseExpiresAt <= current)
     ) return null;
     event.status = 'delivered';
     event.leaseOwner = null;
@@ -532,7 +684,7 @@ export class InMemoryQuotationOutboxRepository implements QuotationOutboxReposit
       !event ||
       event.status !== 'processing' ||
       event.leaseOwner !== leaseOwner ||
-      (event.leaseExpiresAt && event.leaseExpiresAt < current)
+      (event.leaseExpiresAt && event.leaseExpiresAt <= current)
     ) return null;
     event.attempts += 1;
     const dead = event.attempts >= this.maxAttempts;

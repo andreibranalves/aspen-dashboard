@@ -1,17 +1,33 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import postgres from 'postgres';
+import { eq } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
 import {
+  enqueueQuotationSentEvent,
   InMemoryQuotationOutboxRepository,
+  QuotationOutboxDurabilityError,
+  QuotationOutboxIdempotencyConflictError,
+  QuotationOutboxOwnershipError,
   type EnqueueQuotationOutboxInput,
 } from '../../api/_db/quotation-outbox-repository.js';
 import {
+  createConfiguredQuotationOutboxProviderAdapters,
   createQuotationOutboxProviderAdapters,
   processQuotationOutbox,
 } from '../../api/_functions/quotation-outbox-worker.js';
 import { createPublicQuotationHandler } from '../../api/_functions/public-quotation.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
+import * as schema from '../../api/_db/schema.js';
+import { clients, quotations, quotationOutboxEvents } from '../../api/_db/schema.js';
+import { enqueueQuotationOutboxEvent } from '../../api/_db/quotation-outbox-repository.js';
+
+const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 const base: EnqueueQuotationOutboxInput = {
   eventType: 'quotation.created',
@@ -29,6 +45,61 @@ async function queued(options: ConstructorParameters<typeof InMemoryQuotationOut
   return repository;
 }
 
+test('PostgreSQL rollback removes aggregate and outbox together', { skip: !TEST_DATABASE_URL }, async () => {
+  const client = postgres(TEST_DATABASE_URL!, {
+    max: 1,
+    prepare: false,
+    connect_timeout: 10,
+    idle_timeout: 20,
+    onnotice: () => undefined,
+  });
+  const database = drizzle(client, { schema });
+  await migrate(database, { migrationsFolder: path.resolve('drizzle') });
+  const clientId = randomUUID();
+  const quotationId = randomUUID();
+  const revisionId = randomUUID();
+  const businessNumber = `ORC-${new Date().getUTCFullYear()}${Math.floor(Math.random() * 10_000).toString().padStart(4, '0')}`;
+  try {
+    await assert.rejects(
+      database.transaction(async (transaction) => {
+        await transaction.insert(clients).values({ id: clientId, nome: 'Atomic test', arquivado: false });
+        await transaction.insert(quotations).values({
+          id: quotationId,
+          businessNumber,
+          clientId,
+          status: 'rascunho',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await enqueueQuotationOutboxEvent(transaction, {
+          ...base,
+          quotationId,
+          revisionId,
+          businessNumber,
+          idempotencyKey: `atomic:${quotationId}`,
+        });
+        throw new Error('injected PostgreSQL transaction failure');
+      }),
+      /injected PostgreSQL transaction failure/,
+    );
+    const savedQuote = await database
+      .select()
+      .from(quotations)
+      .where(eq(quotations.id, quotationId));
+    const savedOutbox = await database
+      .select()
+      .from(quotationOutboxEvents)
+      .where(eq(quotationOutboxEvents.aggregateId, quotationId));
+    assert.equal(savedQuote.length, 0);
+    assert.equal(savedOutbox.length, 0);
+  } finally {
+    await database.delete(quotationOutboxEvents).where(eq(quotationOutboxEvents.aggregateId, quotationId)).catch(() => undefined);
+    await database.delete(quotations).where(eq(quotations.id, quotationId)).catch(() => undefined);
+    await database.delete(clients).where(eq(clients.id, clientId)).catch(() => undefined);
+    await client.end({ timeout: 5 });
+  }
+});
+
 test('quotation producer queues created event inside aggregate transaction', async () => {
   const source = await readFile(new URL('../../api/_db/quote-repository.ts', import.meta.url), 'utf8');
   const transaction = source.indexOf('database.transaction(async (tx)');
@@ -38,11 +109,15 @@ test('quotation producer queues created event inside aggregate transaction', asy
   assert.match(source.slice(enqueue, enqueue + 500), /quotationId|revisionId|businessNumber/);
 });
 
-test('outbox ignores duplicate idempotency keys and persists canonical references only', async () => {
+test('outbox ignores exact duplicate keys but rejects conflicting references', async () => {
   const repository = new InMemoryQuotationOutboxRepository();
   const first = await repository.enqueue(base);
   const second = await repository.enqueue({ ...base, now: new Date('2026-08-05T11:00:00.000Z') });
   assert.equal(first.id, second.id);
+  await assert.rejects(
+    repository.enqueue({ ...base, quotationId: 'other-quote' }),
+    QuotationOutboxIdempotencyConflictError,
+  );
   assert.equal((await repository.list()).length, 1);
   assert.deepEqual(first.payloadReference, {
     quotationId: 'quote-1',
@@ -62,6 +137,100 @@ test('lease prevents a second worker from claiming an event concurrently', async
   assert.equal(first.length, 1);
   assert.equal(second.length, 0);
   assert.equal(first[0]?.leaseOwner, 'worker-a');
+});
+
+test('durability failure identifies provider acceptance without claiming durable success', () => {
+  const error = new QuotationOutboxDurabilityError();
+  assert.equal(error.statusCode, 503);
+  assert.equal(error.providerAccepted, true);
+  assert.equal(error.outboxDurable, false);
+  assert.match(error.alertId, /^[0-9a-f-]{36}$/);
+});
+
+test('configured provider adapters post canonical references without PII', async () => {
+  let request: RequestInit | undefined;
+  const adapters = createConfiguredQuotationOutboxProviderAdapters({
+    n8nUrl: 'https://n8n.example.test/outbox',
+    evolutionUrl: 'https://evolution.example.test/outbox',
+    crmUrl: 'https://crm.example.test/outbox',
+    n8nToken: 'runtime-only-secret',
+    fetcher: async (_url, init) => {
+      request = init;
+      return new Response(JSON.stringify({ message_id: 'provider-1' }), { status: 202 });
+    },
+  });
+  const result = await adapters.n8n.deliver({
+    eventType: 'quotation.sent',
+    provider: 'n8n',
+    reference: base,
+    idempotencyKey: 'sent:quote-1:revision-1',
+  });
+  assert.deepEqual(result, { accepted: true, providerMessageId: 'provider-1' });
+  const body = JSON.parse(String(request?.body));
+  assert.equal(body.quotation_id, 'quote-1');
+  assert.equal('email' in body, false);
+  assert.equal('telefone' in body, false);
+  assert.equal(String(request?.body).includes('runtime-only-secret'), false);
+});
+
+test('quotation.sent rejects a revision not owned by the PostgreSQL quotation', async () => {
+  const database = {
+    select: () => ({
+      from: () => ({
+        innerJoin: () => ({
+          where: () => ({ limit: async () => [] }),
+        }),
+      }),
+    }),
+  } as any;
+  await assert.rejects(
+    enqueueQuotationSentEvent(database, {
+      provider: 'crm',
+      quotationId: 'quote-1',
+      revisionId: 'revision-other',
+      businessNumber: 'ORC-20260001',
+    }),
+    QuotationOutboxOwnershipError,
+  );
+});
+
+test('expired leases are reclaimable at the boundary and stale owners cannot acknowledge', async () => {
+  const repository = await queued();
+  const claimedAt = new Date('2026-08-05T10:00:00.000Z');
+  const [claimed] = await repository.claimDueEvents({ owner: 'worker-a', now: claimedAt, leaseMs: 1_000 });
+  assert.equal(
+    await repository.markDelivered(
+      claimed.id,
+      'worker-b',
+      'wrong-owner',
+      new Date('2026-08-05T10:00:00.500Z'),
+    ),
+    null,
+  );
+  const [reclaimed] = await repository.claimDueEvents({
+    owner: 'worker-b',
+    now: new Date('2026-08-05T10:00:01.000Z'),
+    leaseMs: 1_000,
+  });
+  assert.equal(reclaimed?.leaseOwner, 'worker-b');
+  assert.equal(
+    await repository.markDelivered(
+      reclaimed.id,
+      'worker-a',
+      undefined,
+      new Date('2026-08-05T10:00:01.500Z'),
+    ),
+    null,
+  );
+  assert.equal(
+    (await repository.markDelivered(
+      reclaimed.id,
+      'worker-b',
+      undefined,
+      new Date('2026-08-05T10:00:01.500Z'),
+    ))?.status,
+    'delivered',
+  );
 });
 
 test('failed delivery increments attempts and schedules exponential backoff', async () => {
@@ -89,10 +258,44 @@ test('exhausted delivery becomes observable dead-letter state', async () => {
   assert.equal(dead?.leaseOwner, null);
 });
 
-test('worker marks success only after provider accepts and never deletes saved quotation', async () => {
-  const repository = await queued();
-  const savedQuotations = new Map([['quote-1', { status: 'rascunho' }]]);
+test('worker failure preserves an aggregate created in the same transaction', async () => {
+  const repository = new InMemoryQuotationOutboxRepository();
+  const savedQuotations = new Map<string, { status: string }>();
   const seen: unknown[] = [];
+  const aggregateTransaction = async (callback: (transaction: Parameters<InMemoryQuotationOutboxRepository['enqueueInTransaction']>[0]) => Promise<void>) => {
+    const before = new Map(savedQuotations);
+    try {
+      return await repository.transaction(callback);
+    } catch (error) {
+      savedQuotations.clear();
+      for (const [id, value] of before) savedQuotations.set(id, value);
+      throw error;
+    }
+  };
+  await aggregateTransaction(async (transaction) => {
+    savedQuotations.set('quote-1', { status: 'rascunho' });
+    await repository.enqueueInTransaction(transaction, base);
+  });
+  assert.deepEqual(savedQuotations.get('quote-1'), { status: 'rascunho' });
+  await assert.rejects(
+    aggregateTransaction(async (transaction) => {
+      savedQuotations.set('quote-rollback', { status: 'rascunho' });
+      await repository.enqueueInTransaction(transaction, {
+        ...base,
+        quotationId: 'quote-rollback',
+        revisionId: 'revision-rollback',
+        idempotencyKey: 'created:quote-rollback:revision-rollback',
+      });
+      throw new Error('injected aggregate failure');
+    }),
+    /injected aggregate failure/,
+  );
+  assert.equal(savedQuotations.has('quote-rollback'), false);
+  // The outbox transaction itself must have rolled back its staged event.
+  assert.equal(
+    (await repository.list()).some((event) => event.payloadReference.quotationId === 'quote-rollback'),
+    false,
+  );
   const workerResult = await processQuotationOutbox({
     repository,
     owner: 'worker-a',
@@ -111,7 +314,7 @@ test('worker marks success only after provider accepts and never deletes saved q
     deadLettered: 0,
     leaseLost: 0,
   });
-  assert.deepEqual(savedQuotations.get('quote-1'), { status: 'rascunho' });
+  assert.deepEqual(savedQuotations, new Map([['quote-1', { status: 'rascunho' }]]));
   assert.deepEqual(seen, [{
     eventType: 'quotation.created',
     provider: 'crm',
