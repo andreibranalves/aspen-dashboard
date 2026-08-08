@@ -153,6 +153,10 @@ test('supporting scripts fail closed and emit verifiable migration artifacts', (
   assert.match(migrationCli, /expected-manifest-hash/);
   assert.match(runbook, /STAGING_DATABASE_URL/);
   assert.match(runbook, /TEST_DATABASE_URL="\$STAGING_DATABASE_URL"/);
+  assert.match(
+    runbook,
+    /env -u TEST_DATABASE_URL[\s\S]*TEST_DATABASE_URL="\$STAGING_DATABASE_URL"[\s\S]*DATABASE_URL="\$STAGING_DATABASE_URL"[\s\S]*npm run db:migrate/
+  );
   const applySection = runbook.slice(
     runbook.indexOf('Execute o apply contra a base autorizada'),
     runbook.indexOf('Se houver uma divergência de baixo risco previamente aprovada')

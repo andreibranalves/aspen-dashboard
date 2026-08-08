@@ -127,6 +127,34 @@ describe('CLI de migração Frappe', () => {
     assert.equal(repositoryPropertyReads, 0);
   });
 
+  it('rejeita manifest hash não-string sem chamar trim ou repository', async () => {
+    let repositoryPropertyReads = 0;
+    const repository = new Proxy(
+      {},
+      {
+        get() {
+          repositoryPropertyReads += 1;
+          return async () => undefined;
+        },
+      }
+    );
+    const invalidValues: unknown[] = [42, { trim: () => 'a'.repeat(64) }];
+
+    for (const expectedManifestHash of invalidValues) {
+      await assert.rejects(
+        () =>
+          runFrappeMigration({
+            mode: 'apply',
+            dataset: {},
+            expectedManifestHash: expectedManifestHash as any,
+            repository,
+          }),
+        /expected-manifest-hash|manifest.*obrigatório/i
+      );
+    }
+    assert.equal(repositoryPropertyReads, 0);
+  });
+
   it('rejeita manifest hash divergente antes de abrir o repository', async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
     const dataset = JSON.parse(

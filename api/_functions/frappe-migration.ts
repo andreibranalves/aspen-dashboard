@@ -1352,7 +1352,10 @@ function buildManifest(
 export async function runFrappeMigration(options: MigrationOptions): Promise<MigrationResult> {
   if (!options || (options.mode !== 'dry-run' && options.mode !== 'apply'))
     throw new Error('Informe exatamente --dry-run ou --apply.');
-  const expectedManifestHash = options.expectedManifestHash?.trim().toLowerCase();
+  const expectedManifestHash =
+    typeof options.expectedManifestHash === 'string'
+      ? options.expectedManifestHash.trim().toLowerCase()
+      : undefined;
   if (options.mode === 'apply' && (!expectedManifestHash || !/^[0-9a-f]{64}$/.test(expectedManifestHash)))
     throw new Error('--expected-manifest-hash é obrigatório para --apply.');
   const report = makeReport(options.mode);

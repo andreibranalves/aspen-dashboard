@@ -143,6 +143,15 @@ Confirme a presença sem imprimir o valor:
 : "${TEST_DATABASE_URL:?configure staging TEST_DATABASE_URL through the deployment secret manager}"
 ```
 
+Aplique as migrations somente na base isolada de staging, removendo qualquer `TEST_DATABASE_URL` herdada do shell:
+
+```bash
+env -u TEST_DATABASE_URL \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  npm run db:migrate
+```
+
 Execute os testes PostgreSQL com a variável já injetada no processo:
 
 ```bash
