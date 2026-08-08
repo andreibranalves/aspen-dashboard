@@ -1352,6 +1352,9 @@ function buildManifest(
 export async function runFrappeMigration(options: MigrationOptions): Promise<MigrationResult> {
   if (!options || (options.mode !== 'dry-run' && options.mode !== 'apply'))
     throw new Error('Informe exatamente --dry-run ou --apply.');
+  const expectedManifestHash = options.expectedManifestHash?.trim().toLowerCase();
+  if (options.mode === 'apply' && (!expectedManifestHash || !/^[0-9a-f]{64}$/.test(expectedManifestHash)))
+    throw new Error('--expected-manifest-hash é obrigatório para --apply.');
   const report = makeReport(options.mode);
   const source = options.source;
   // Capture cutoff before the first source read so pagination sees one dataset.
@@ -1368,11 +1371,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
 
   // ── Manifest and run tracking ─────────────────────────────────────────
   const manifestHash = computeManifestHash(dataset);
-  if (options.mode === 'apply' && options.expectedManifestHash) {
-    const expected = options.expectedManifestHash.trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(expected) || expected !== manifestHash)
-      throw new Error('Manifesto revisado não corresponde ao snapshot atual; apply bloqueado.');
-  }
+  if (options.mode === 'apply' && expectedManifestHash !== manifestHash)
+    throw new Error('Manifesto revisado não corresponde ao snapshot atual; apply bloqueado.');
   // A run is an execution identity, not a source identity. UUID avoids
   // collisions when two applies start in the same millisecond; resume still
   // reuses the persisted failed run ID.

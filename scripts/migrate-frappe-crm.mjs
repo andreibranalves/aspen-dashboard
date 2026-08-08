@@ -55,6 +55,9 @@ export function parseArgs(argv) {
   }
   if (!mode) throw new Error('Informe exatamente um modo: --dry-run ou --apply.');
   const normalizedMode = mode === 'dry-run' ? 'dry-run' : 'apply';
+  if (normalizedMode === 'apply' && !expectedManifestHash) {
+    throw new Error('--expected-manifest-hash é obrigatório para --apply.');
+  }
   if (normalizedMode === 'apply' && fixture) {
     throw new Error('--fixture só pode ser usado explicitamente com --dry-run.');
   }
@@ -89,8 +92,7 @@ function parseServiceFile(contents, serviceName) {
   return { host, port, database };
 }
 
-export function readPgServiceTarget(env = process.env) {
-  const serviceName = env.CUTOVER_PG_SERVICE?.trim();
+export function readPgServiceTarget(env = process.env, serviceName = env.CUTOVER_PG_SERVICE?.trim()) {
   const serviceFile = env.PGSERVICEFILE?.trim();
   if (!serviceName || !serviceFile) {
     throw new Error('CUTOVER_PG_SERVICE exige PGSERVICEFILE para validar o destino real.');
@@ -104,26 +106,77 @@ export function readPgServiceTarget(env = process.env) {
   return parseServiceFile(contents, serviceName);
 }
 
+function parseDatabaseTarget(rawUrl, variableName) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`${variableName} inválida para o contrato de cutover.`);
+  }
+  const database = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+  if (!url.hostname || !database) {
+    throw new Error(`${variableName} inválida para o contrato de cutover.`);
+  }
+  return {
+    host: url.hostname.toLowerCase(),
+    port: url.port || '5432',
+    database,
+  };
+}
+
+function sameDatabaseTarget(left, right) {
+  return left.host === right.host && left.port === right.port && left.database === right.database;
+}
+
+function assertDistinctDatabaseTargets(env) {
+  const configured = ['DATABASE_URL', 'TEST_DATABASE_URL', 'RESTORE_DATABASE_URL']
+    .filter((name) => env[name])
+    .map((name) => [name, parseDatabaseTarget(env[name], name)]);
+  for (let index = 0; index < configured.length; index += 1) {
+    for (let other = index + 1; other < configured.length; other += 1) {
+      const [leftName, leftTarget] = configured[index];
+      const [rightName, rightTarget] = configured[other];
+      if (sameDatabaseTarget(leftTarget, rightTarget)) {
+        throw new Error(`${leftName} e ${rightName} não podem apontar para o mesmo destino.`);
+      }
+    }
+  }
+}
+
 export function assertDatabaseContract(env = process.env) {
-  if (!env.CUTOVER_PG_SERVICE) return;
+  assertDistinctDatabaseTargets(env);
+  const serviceName = env.CUTOVER_PG_SERVICE?.trim();
+  if (!serviceName) {
+    throw new Error('CUTOVER_PG_SERVICE é obrigatório para validar o destino de apply.');
+  }
   if (!env.DATABASE_URL) {
     throw new Error('CUTOVER_PG_SERVICE exige DATABASE_URL para validar o destino.');
   }
-  const serviceTarget = readPgServiceTarget(env);
-  let url;
-  try {
-    url = new URL(env.DATABASE_URL);
-  } catch {
-    throw new Error('DATABASE_URL inválida para o contrato de cutover.');
+  if (!env.PGSERVICEFILE?.trim() || !env.PGPASSFILE?.trim()) {
+    throw new Error('CUTOVER_PG_SERVICE exige PGSERVICEFILE e PGPASSFILE protegidos.');
   }
-  const port = url.port || '5432';
-  const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
-  if (
-    url.hostname.toLowerCase() !== serviceTarget.host.toLowerCase() ||
-    port !== serviceTarget.port ||
-    database !== serviceTarget.database
-  ) {
+  const serviceTarget = readPgServiceTarget(env, serviceName);
+  const databaseTarget = parseDatabaseTarget(env.DATABASE_URL, 'DATABASE_URL');
+  if (!sameDatabaseTarget(databaseTarget, {
+    host: serviceTarget.host.toLowerCase(),
+    port: serviceTarget.port,
+    database: serviceTarget.database,
+  })) {
     throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
+  }
+  if (env.RESTORE_PG_SERVICE?.trim()) {
+    if (!env.RESTORE_DATABASE_URL) {
+      throw new Error('RESTORE_PG_SERVICE exige RESTORE_DATABASE_URL para validar o destino.');
+    }
+    const restoreServiceTarget = readPgServiceTarget(env, env.RESTORE_PG_SERVICE.trim());
+    const restoreDatabaseTarget = parseDatabaseTarget(env.RESTORE_DATABASE_URL, 'RESTORE_DATABASE_URL');
+    if (!sameDatabaseTarget(restoreDatabaseTarget, {
+      host: restoreServiceTarget.host.toLowerCase(),
+      port: restoreServiceTarget.port,
+      database: restoreServiceTarget.database,
+    })) {
+      throw new Error('RESTORE_DATABASE_URL e RESTORE_PG_SERVICE não apontam para o mesmo destino.');
+    }
   }
   return serviceTarget;
 }
@@ -151,10 +204,10 @@ async function loadFixture(pathname) {
 
 async function main() {
   const { mode, fixture, expectedManifestHash, approvedDivergences } = parseArgs(process.argv.slice(2));
-  if (mode === 'apply') assertDatabaseContract();
   if (mode === 'apply' && process.env.FRAPPE_MIGRATION_FIXTURE) {
     throw new Error('FRAPPE_MIGRATION_FIXTURE não pode ser usada com --apply; remova a variável.');
   }
+  if (mode === 'apply') assertDatabaseContract();
   // API sources are compiled by the package script before this CLI runs. The
   // explicit dynamic import keeps this standalone entrypoint ESM-only.
   const migration = await import('../api/_functions/frappe-migration.js');

@@ -150,6 +150,15 @@ test('supporting scripts fail closed and emit verifiable migration artifacts', (
   assert.match(migrationCli, /PGSERVICEFILE/);
   assert.match(migrationCli, /approvedDivergenceKeys/);
   assert.match(migrationCli, /manifest: result\.manifest/);
+  assert.match(migrationCli, /expected-manifest-hash/);
+  assert.match(runbook, /STAGING_DATABASE_URL/);
+  assert.match(runbook, /TEST_DATABASE_URL="\$STAGING_DATABASE_URL"/);
+  const applySection = runbook.slice(
+    runbook.indexOf('Execute o apply contra a base autorizada'),
+    runbook.indexOf('Se houver uma divergência de baixo risco previamente aprovada')
+  );
+  assert.match(applySection, /export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE/);
+  assert.match(applySection, /assertDatabaseContract\(process\.env\)/);
   assert.match(playwrightConfig, /process\.env\.BASE_URL/);
   assert.match(runbook, /set -euo pipefail/);
   assert.doesNotMatch(runbook, /set -eu\n/);

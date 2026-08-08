@@ -10,10 +10,19 @@ import postgres from 'postgres';
 
 import { createPostgresFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import * as schema from '../../api/_db/schema.js';
-import { runFrappeMigration } from '../../api/_functions/frappe-migration.js';
+import {
+  computeManifestHash,
+  runFrappeMigration as runFrappeMigrationImplementation,
+} from '../../api/_functions/frappe-migration.js';
 import { quotationPdfChecksum } from '../../api/_functions/lib/quotation-document-storage.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImplementation>[0]) =>
+  runFrappeMigrationImplementation(
+    options.mode === 'apply' && !options.expectedManifestHash
+      ? { ...options, expectedManifestHash: computeManifestHash(options.dataset!) }
+      : options
+  );
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',

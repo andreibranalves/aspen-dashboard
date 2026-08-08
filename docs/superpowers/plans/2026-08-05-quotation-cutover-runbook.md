@@ -63,7 +63,8 @@ Valide somente a presença das variáveis necessárias:
 
 ```bash
 : "${DATABASE_URL:?configure DATABASE_URL through the deployment secret manager}"
-: "${TEST_DATABASE_URL:?configure staging TEST_DATABASE_URL through the deployment secret manager}"
+: "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
+export TEST_DATABASE_URL="$STAGING_DATABASE_URL"
 ```
 
 A mensagem de erro acima não contém o valor da variável.
@@ -145,7 +146,10 @@ Confirme a presença sem imprimir o valor:
 Execute os testes PostgreSQL com a variável já injetada no processo:
 
 ```bash
-TEST_DATABASE_URL="$TEST_DATABASE_URL" node --test --import tsx \
+env -u TEST_DATABASE_URL \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  node --test --import tsx \
   tests/unit/frappe-migration-postgres.test.ts \
   tests/unit/quotations-postgres.test.ts \
   tests/unit/quotation-lifecycle-postgres.test.ts
@@ -323,6 +327,14 @@ if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
   exit 1
 fi
 unset FRAPPE_MIGRATION_FIXTURE
+: "${CUTOVER_PG_SERVICE:?configure the named libpq service for apply}"
+: "${PGSERVICEFILE:?configure the protected libpq service file}"
+: "${PGPASSFILE:?configure the protected libpq password file}"
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
+node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
 EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
 node scripts/migrate-frappe-crm.mjs --apply \
   --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
@@ -349,6 +361,14 @@ if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
   exit 1
 fi
 unset FRAPPE_MIGRATION_FIXTURE
+: "${CUTOVER_PG_SERVICE:?configure the named libpq service for apply}"
+: "${PGSERVICEFILE:?configure the protected libpq service file}"
+: "${PGPASSFILE:?configure the protected libpq password file}"
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
+node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
 EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
 EXPECTED_APPROVAL='SourceDoctype:source-id'
 node scripts/migrate-frappe-crm.mjs --apply \

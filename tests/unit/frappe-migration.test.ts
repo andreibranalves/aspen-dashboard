@@ -9,8 +9,9 @@ import {
   mapQuotationStatus,
   normalizeFrappeQuotation,
   normalizeHistoricalPdf,
+  computeManifestHash,
   readFrappeDataset,
-  runFrappeMigration,
+  runFrappeMigration as runFrappeMigrationImplementation,
   stableId,
   type FrappeDataset,
   type HistoricalPdfPipeline,
@@ -32,6 +33,13 @@ import {
   createFrappeQuotationNoNameFixture,
   createFrappeQuotationNoPdfMetadataFixture,
 } from '../fixtures/frappe-migration-fixtures.ts';
+
+const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImplementation>[0]) =>
+  runFrappeMigrationImplementation(
+    options.mode === 'apply' && !options.expectedManifestHash
+      ? { ...options, expectedManifestHash: computeManifestHash(options.dataset!) }
+      : options
+  );
 
 describe('migração Frappe CRM', { concurrency: 1 }, () => {
   it('pagina fonte com ordenação estável e lê todos os documentos', async () => {

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { canonicalHash } from '../../api/_functions/frappe-migration.js';
+import { canonicalHash, runFrappeMigration } from '../../api/_functions/frappe-migration.js';
 import {
   assertDatabaseContract,
   parseArgs,
@@ -22,15 +22,29 @@ describe('CLI de migração Frappe', () => {
       expectedManifestHash: null,
       approvedDivergences: [],
     });
-    assert.deepEqual(parseArgs(['--apply', '--approve-divergence', 'Quotation:QTN-1']), {
-      mode: 'apply',
-      fixture: null,
-      expectedManifestHash: null,
-      approvedDivergences: ['Quotation:QTN-1'],
-    });
+    const expectedManifestHash = 'a'.repeat(64);
+    assert.deepEqual(
+      parseArgs([
+        '--apply',
+        '--expected-manifest-hash',
+        expectedManifestHash,
+        '--approve-divergence',
+        'Quotation:QTN-1',
+      ]),
+      {
+        mode: 'apply',
+        fixture: null,
+        expectedManifestHash,
+        approvedDivergences: ['Quotation:QTN-1'],
+      }
+    );
+    assert.throws(() => parseArgs(['--apply']), /expected-manifest-hash|manifest.*obrigatório/i);
     assert.throws(() => parseArgs([]), /exatamente/);
     assert.throws(() => parseArgs(['--dry-run', '--apply']), /exatamente/);
-    assert.throws(() => parseArgs(['--apply', '--fixture', 'fixture.json']), /fixture/i);
+    assert.throws(
+      () => parseArgs(['--apply', '--expected-manifest-hash', 'a'.repeat(64), '--fixture', 'fixture.json']),
+      /fixture/i
+    );
     for (const value of [':id', 'Doctype:', 'Doctype:id:extra'])
       assert.throws(
         () => parseArgs(['--dry-run', '--approve-divergence', value]),
@@ -49,6 +63,9 @@ describe('CLI de migração Frappe', () => {
       DATABASE_URL: 'postgresql://api-user@db.example:5433/quotes',
       CUTOVER_PG_SERVICE: 'cutover-quotes',
       PGSERVICEFILE: serviceFile,
+      PGPASSFILE: path.join(directory, 'pgpass'),
+      TEST_DATABASE_URL: 'postgresql://api-user@db.example:5433/staging',
+      RESTORE_DATABASE_URL: 'postgresql://api-user@db.example:5433/restore',
     };
     try {
       assert.deepEqual(readPgServiceTarget(base), {
@@ -73,9 +90,70 @@ describe('CLI de migração Frappe', () => {
         () => assertDatabaseContract({ ...base, PGSERVICEFILE: path.join(directory, 'missing.conf') }),
         /PGSERVICEFILE/
       );
+      assert.throws(
+        () => assertDatabaseContract({ ...base, TEST_DATABASE_URL: base.DATABASE_URL }),
+        /TEST_DATABASE_URL.*mesmo destino/
+      );
+      assert.throws(
+        () => assertDatabaseContract({ ...base, RESTORE_DATABASE_URL: base.DATABASE_URL }),
+        /RESTORE_DATABASE_URL.*mesmo destino/
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('exige manifest hash de apply antes de abrir o repository', async () => {
+    let repositoryPropertyReads = 0;
+    const repository = new Proxy(
+      {},
+      {
+        get() {
+          repositoryPropertyReads += 1;
+          return async () => undefined;
+        },
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        runFrappeMigration({
+          mode: 'apply',
+          dataset: {},
+          repository,
+        }),
+      /expected-manifest-hash|manifest.*obrigatório/i
+    );
+    assert.equal(repositoryPropertyReads, 0);
+  });
+
+  it('rejeita manifest hash divergente antes de abrir o repository', async () => {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const dataset = JSON.parse(
+      readFileSync(path.resolve(root, 'tests/fixtures/frappe-migration-valid.json'), 'utf8')
+    );
+    let repositoryPropertyReads = 0;
+    const repository = new Proxy(
+      {},
+      {
+        get() {
+          repositoryPropertyReads += 1;
+          return async () => undefined;
+        },
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        runFrappeMigration({
+          mode: 'apply',
+          dataset,
+          expectedManifestHash: '0'.repeat(64),
+          repository,
+        }),
+      /Manifesto revisado não corresponde ao snapshot atual|manifest/i
+    );
+    assert.equal(repositoryPropertyReads, 0);
   });
 
   it('nunca simula apply com fixture sem DATABASE_URL', () => {
@@ -198,7 +276,12 @@ describe('CLI de migração Frappe', () => {
 
       const applyWithFixture = spawnSync(
         process.execPath,
-        ['scripts/migrate-frappe-crm.mjs', '--apply'],
+        [
+          'scripts/migrate-frappe-crm.mjs',
+          '--apply',
+          '--expected-manifest-hash',
+          'a'.repeat(64),
+        ],
         {
           cwd: root,
           env: { ...env, FRAPPE_MIGRATION_FIXTURE: 'tests/fixtures/frappe-migration-valid.json' },

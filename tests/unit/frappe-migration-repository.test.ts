@@ -3,7 +3,11 @@ import { describe, it } from 'node:test';
 
 import * as migrationRepositoryModule from '../../api/_db/frappe-migration-repository.js';
 import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
-import { runFrappeMigration, type FrappeDataset } from '../../api/_functions/frappe-migration.js';
+import {
+  computeManifestHash,
+  runFrappeMigration as runFrappeMigrationImplementation,
+  type FrappeDataset,
+} from '../../api/_functions/frappe-migration.js';
 import { templateSeedPlan } from '../../api/_db/quotation-template-migration.js';
 
 const MINIMAL_DATASET: FrappeDataset = {
@@ -14,6 +18,13 @@ const MINIMAL_DATASET: FrappeDataset = {
   leads: [],
   quotations: [],
 };
+
+const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImplementation>[0]) =>
+  runFrappeMigrationImplementation(
+    options.mode === 'apply' && !options.expectedManifestHash
+      ? { ...options, expectedManifestHash: computeManifestHash(options.dataset!) }
+      : options
+  );
 
 describe('MemoryFrappeMigrationRepository', () => {
   it('verifica todas as versões numéricas dos templates built-in', async () => {
