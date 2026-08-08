@@ -31,6 +31,24 @@ function logError(error: unknown): void {
   console.error(`[orcamento-core] create failed (${kind})`);
 }
 
+function draftResponse(result: unknown): Record<string, unknown> {
+  const payload = result as Record<string, unknown>;
+  const eventId = typeof payload.outbox_event_id === 'string' ? payload.outbox_event_id : '';
+  const eventType = typeof payload.outbox_event_type === 'string' ? payload.outbox_event_type : '';
+  const idempotencyKey =
+    typeof payload.outbox_idempotency_key === 'string' ? payload.outbox_idempotency_key : '';
+  if (!eventId || !eventType || !idempotencyKey) return payload;
+  return {
+    ...payload,
+    outbox: {
+      status: 'queued',
+      event_id: eventId,
+      event_type: eventType,
+      idempotency_key: idempotencyKey,
+    },
+  };
+}
+
 function errorResponse(error: unknown): FunctionResult {
   logError(error);
   if (
@@ -71,7 +89,7 @@ export function createCoreHandler(
         return json(503, { error: 'Não foi possível salvar o rascunho do orçamento. Tente novamente.' });
       }
       const result = await createDraft(extracted as QuoteDraftCreateInput);
-      return json(201, result as unknown as Record<string, unknown>);
+      return json(201, draftResponse(result));
     } catch (error) {
       return errorResponse(error);
     }

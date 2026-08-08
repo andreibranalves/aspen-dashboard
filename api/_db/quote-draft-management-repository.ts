@@ -30,6 +30,7 @@ import {
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
 import { snapshotFromLegacyRevision } from './quotation-template-migration.js';
+import { enqueueQuotationOutboxEvent } from './quotation-outbox-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -1467,6 +1468,15 @@ export function createPostgresQuoteDraftManagementRepository(
             .update(quotations)
             .set({ clientId: client.id, status: 'rascunho', updatedAt })
             .where(eq(quotations.id, quotation.id));
+          await enqueueQuotationOutboxEvent(tx, {
+            eventType: 'quotation.updated',
+            provider: 'crm',
+            quotationId: quotation.id,
+            revisionId: revision.id,
+            businessNumber: quotation.businessNumber,
+            idempotencyKey: `quotation.updated:crm:${quotation.id}:${revision.id}:${updatedAt.toISOString()}`,
+            now: updatedAt,
+          });
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;

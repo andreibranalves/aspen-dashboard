@@ -378,6 +378,64 @@ export const quoteRevisionItems = pgTable(
   ]
 );
 
+/**
+ * Durable boundary for quotation effects that must outlive the request that
+ * saved the aggregate.  `payloadReference` contains identifiers only; worker
+ * adapters resolve any provider-specific data from PostgreSQL at delivery
+ * time, so customer PII and provider secrets never enter the queue.
+ */
+export const quotationOutboxEvents = pgTable(
+  'quotation_outbox_events',
+  {
+    id: uuid('id').primaryKey(),
+    eventType: varchar('event_type', { length: 48 }).notNull(),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    aggregateType: varchar('aggregate_type', { length: 32 }).notNull().default('quotation'),
+    aggregateId: varchar('aggregate_id', { length: 255 }).notNull(),
+    payloadReference: jsonb('payload_reference')
+      .$type<{ quotationId: string; revisionId: string; businessNumber: string }>()
+      .notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
+    status: varchar('status', { length: 24 }).notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    leaseOwner: varchar('lease_owner', { length: 128 }),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    lastErrorClass: varchar('last_error_class', { length: 128 }),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('quotation_outbox_events_idempotency_unique').on(table.idempotencyKey),
+    index('quotation_outbox_events_due_idx').on(table.status, table.nextAttemptAt),
+    index('quotation_outbox_events_aggregate_idx').on(table.aggregateId, table.createdAt),
+    check(
+      'quotation_outbox_events_type_check',
+      sql`${table.eventType} IN ('quotation.created', 'quotation.updated', 'quotation.issued', 'quotation.sent')`
+    ),
+    check(
+      'quotation_outbox_events_provider_check',
+      sql`${table.provider} IN ('n8n', 'evolution', 'crm')`
+    ),
+    check(
+      'quotation_outbox_events_status_check',
+      sql`${table.status} IN ('pending', 'processing', 'retry', 'delivered', 'dead_letter')`
+    ),
+    check('quotation_outbox_events_attempts_check', sql`${table.attempts} >= 0`),
+    check(
+      'quotation_outbox_events_idempotency_not_blank_check',
+      sql`char_length(btrim(${table.idempotencyKey})) > 0`
+    ),
+  ]
+);
+
+// Singular aliases keep tests and repositories concise without changing the
+// SQL table name used by migrations.
+export const quotationOutbox = quotationOutboxEvents;
+export const quotationOutboxEvent = quotationOutboxEvents;
+
 /** Per-run tracking for Frappe CRM migrations.  Every apply creates one row;
  * dry-run manifests are computed in-memory only.
  */

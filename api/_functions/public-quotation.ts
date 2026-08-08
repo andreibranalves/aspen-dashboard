@@ -10,6 +10,10 @@ import {
 import { renderQuotationPdfHtml } from './lib/quotation-pdf-renderer.js';
 import { isValidPdfBuffer, quotationPdfChecksum } from './lib/quotation-document-storage.js';
 import { isCoreReadEnabled } from './orcamento-mode.js';
+import {
+  createPostgresQuotationOutboxRepository,
+  type QuotationOutboxRepository,
+} from '../_db/quotation-outbox-repository.js';
 
 const TOKEN_PREFIX = 'aspen:public-quotation:';
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -36,6 +40,7 @@ export interface PublicQuotationDependencies {
   renderPdf?: (html: string) => Promise<Buffer>;
   now?: () => number;
   token?: () => string;
+  outbox?: QuotationOutboxRepository;
 }
 
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
@@ -101,6 +106,21 @@ export function createPublicQuotationHandler(
   const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
   const now = dependencies.now || (() => Date.now());
   const makeToken = dependencies.token || (() => randomBytes(32).toString('base64url'));
+  // Unit/local preview requests may not have PostgreSQL configured; production
+  // uses the durable repository so an issued document always queues its effect.
+  const outbox = dependencies.outbox || (process.env.DATABASE_URL ? createPostgresQuotationOutboxRepository() : null);
+
+  async function recordIssued(snapshot: NonNullable<Awaited<ReturnType<typeof repository.get>>>) {
+    if (!outbox) return;
+    await outbox.enqueue({
+      eventType: 'quotation.issued',
+      provider: 'n8n',
+      quotationId: snapshot.quotation.id,
+      revisionId: snapshot.revision.id,
+      businessNumber: snapshot.quotation.businessNumber,
+      idempotencyKey: `quotation.issued:n8n:${snapshot.quotation.id}:${snapshot.revision.id}`,
+    });
+  }
 
   return async function publicQuotationHandler(event: FunctionEvent): Promise<FunctionResult> {
     try {
@@ -159,6 +179,7 @@ export function createPublicQuotationHandler(
         if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) {
           return json(503, { error: 'Não foi possível gerar o PDF do orçamento.' });
         }
+        await recordIssued(snapshot);
         const templateVersion = rendered.snapshot.templateVersion
           ? String(rendered.snapshot.templateVersion.version)
           : 'legacy';
@@ -180,6 +201,7 @@ export function createPublicQuotationHandler(
           isBase64Encoded: true,
         };
       }
+      await recordIssued(snapshot);
       return {
         statusCode: 200,
         headers: {

@@ -45,6 +45,7 @@ import {
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
 import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
+import { enqueueQuotationOutboxEvent } from './quotation-outbox-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -202,6 +203,9 @@ export interface QuoteDraftResult {
   template_version_id: string;
   secoes: QuotationSectionsSnapshot;
   created_at: string;
+  outbox_event_id?: string;
+  outbox_event_type?: 'quotation.created';
+  outbox_idempotency_key?: string;
 }
 
 export interface QuoteDraftRepository {
@@ -1017,6 +1021,19 @@ export function createPostgresQuoteDraftRepository(
           }))
         );
 
+        // This insert shares the aggregate transaction. If the outbox write
+        // fails, PostgreSQL rolls back the quotation rather than saving a
+        // quote whose CRM effect can never be observed.
+        const outboxEvent = await enqueueQuotationOutboxEvent(tx, {
+          eventType: 'quotation.created',
+          provider: 'crm',
+          quotationId,
+          revisionId,
+          businessNumber,
+          idempotencyKey: `quotation.created:crm:${quotationId}:${revisionId}`,
+          now: createdAt,
+        });
+
         const savedItems = resolvedItems.map(
           (item) =>
             ({
@@ -1078,6 +1095,9 @@ export function createPostgresQuoteDraftRepository(
           template_version_id: template.version.id || revisionMetadata.templateVersionId,
           secoes: sectionsSnapshot,
           created_at: createdAt.toISOString(),
+          outbox_event_id: outboxEvent.id,
+          outbox_event_type: 'quotation.created',
+          outbox_idempotency_key: outboxEvent.idempotencyKey,
         } satisfies QuoteDraftResult;
       });
       return result;

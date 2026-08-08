@@ -13,6 +13,7 @@ import {
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
+import { createPostgresQuotationOutboxRepository } from '../_db/quotation-outbox-repository.js';
 import {
   LIVE_DEPS,
   upsertWhatsappMessages,
@@ -633,6 +634,40 @@ async function sendStep(number: string, step: SequenceStep): Promise<unknown> {
   return sendMedia(number, step);
 }
 
+async function queuePostgresSentEvent(
+  quotationId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const revisionId = firstNonEmpty(
+    payload.revision_id as string | undefined,
+    payload.revisionId as string | undefined,
+    payload.quote_revision_id as string | undefined,
+  );
+  // Legacy Frappe callers do not carry a PostgreSQL revision yet. Keep their
+  // behavior unchanged until the PostgreSQL send path supplies this reference.
+  if (!process.env.DATABASE_URL || !quotationId || !revisionId) return;
+  try {
+    await createPostgresQuotationOutboxRepository().enqueue({
+      eventType: 'quotation.sent',
+      provider: 'crm',
+      quotationId: firstNonEmpty(
+        payload.quotation_uuid as string | undefined,
+        payload.quotationId as string | undefined,
+        quotationId,
+      ),
+      revisionId,
+      businessNumber: quotationId,
+      idempotencyKey: `quotation.sent:crm:${quotationId}:${revisionId}`,
+    });
+  } catch (error) {
+    // Evolution already accepted the message; do not report a false send
+    // failure or delete the saved quotation because queue persistence failed.
+    console.error(
+      `[send-whatsapp] quotation.sent outbox failed (${error instanceof Error ? error.name : typeof error})`,
+    );
+  }
+}
+
 async function markDealAsSent(dealId: string | null, quotationId: string): Promise<void> {
   if (!dealId) return;
   try {
@@ -830,6 +865,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
             }
           }
         }
+        await queuePostgresSentEvent(quotationId, payload);
         await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       }
 
@@ -867,6 +903,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     const evolution = dryRun ? null : await sendText(number, text);
     if (!dryRun) {
+      await queuePostgresSentEvent(quotationId, payload);
       await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       await dispatchN8n(
         {
