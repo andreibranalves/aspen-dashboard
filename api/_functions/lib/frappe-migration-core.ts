@@ -410,7 +410,7 @@ function first(record: SourceRecord, keys: string[], fallback: unknown = ''): un
   return fallback;
 }
 
-function sourceIdOf(record: SourceRecord): string {
+export function sourceIdOf(record: SourceRecord): string {
   return text(first(record, ['name', 'id', 'source_id', 'sourceId']));
 }
 

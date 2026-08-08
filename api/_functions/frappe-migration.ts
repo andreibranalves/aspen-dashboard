@@ -22,6 +22,7 @@ import {
   sanitizeReportMessage,
   canonicalApprovalKey,
   safeApprovalKey,
+  sourceIdOf,
   stableId,
   validateFrappeDataset,
   type ClientUnit,
@@ -199,10 +200,6 @@ function approvalKeyForDetail(detail: ImportDetail): string | null {
   return canonicalApprovalKey(String(detail.source_doctype || ''), String(detail.source_id || ''));
 }
 
-function sourceIdForApproval(record: SourceRecord): string {
-  return String(record.name || record.id || '').trim();
-}
-
 function validateApprovalKeysAgainstDataset(
   dataset: FrappeDataset,
   approvedKeys: string[] = []
@@ -211,7 +208,7 @@ function validateApprovalKeysAgainstDataset(
   const available = new Set<string>();
   const addRecords = (sourceDoctype: string, records: SourceRecord[] = []): void => {
     for (const record of records) {
-      const sourceId = sourceIdForApproval(record);
+      const sourceId = sourceIdOf(record);
       const key = canonicalApprovalKey(sourceDoctype, sourceId);
       if (key) available.add(key);
     }

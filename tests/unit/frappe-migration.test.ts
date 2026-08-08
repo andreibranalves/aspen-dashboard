@@ -996,6 +996,41 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(report.detalhes[0].source_id, undefined);
   });
 
+  it('faz round-trip de approval para source_id e sourceId do relatório ao apply', async () => {
+    const dataset = createFrappeMigrationFixture();
+    const customer = dataset.customers?.[0];
+    const lead = dataset.leads?.[0];
+    assert.ok(customer);
+    assert.ok(lead);
+    dataset.customers = [
+      { ...customer, name: undefined, id: undefined, source_id: 'CUSTOMER-SOURCE-ID' },
+    ];
+    dataset.leads = [{ ...lead, name: undefined, id: undefined, sourceId: 'LEAD-SOURCE-ID' }];
+
+    const repository = new MemoryFrappeMigrationRepository();
+    const firstApply = await runFrappeMigration({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+    });
+    const reportKeys = firstApply.report.clientes.detalhes
+      .filter((detail) => detail.source_doctype === 'Customer' || detail.source_doctype === 'Lead')
+      .map((detail) => `${detail.source_doctype}:${detail.source_id}`);
+    const leadKey = canonicalApprovalKey('Lead', 'LEAD-SOURCE-ID');
+    assert.ok(reportKeys.some((key) => key.startsWith('Customer:cliente-')));
+    assert.match(leadKey || '', /^Lead:cliente-[0-9a-f]{12}$/);
+
+    await runFrappeMigration({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+      approvedDivergences: [...reportKeys, leadKey || ''],
+    });
+    assert.equal(repository.writes.clients, 1);
+  });
+
   it('rejeita approval ausente antes de lease e writes no apply', async () => {
     const dataset = createFrappeMigrationFixture();
     const repository = new MemoryFrappeMigrationRepository();
