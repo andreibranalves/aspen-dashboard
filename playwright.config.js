@@ -3,15 +3,31 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 5173;
 const IS_STAGING = process.env.STAGING_E2E === '1';
-const BASE_URL = process.env.BASE_URL || process.env.STAGING_BASE_URL || `http://localhost:${PORT}`;
+
+function resolveBaseUrl() {
+  const raw = process.env.BASE_URL || process.env.STAGING_BASE_URL || `http://localhost:${PORT}`;
+  if (!IS_STAGING) return raw;
+  let parsed;
+  try {
+    parsed = new globalThis.URL(raw);
+  } catch {
+    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+  }
+  return parsed.origin;
+}
+
+const BASE_URL = resolveBaseUrl();
 
 export default defineConfig({
   testDir: './tests',
   testMatch: '**/*.spec.js',
-  fullyParallel: true,
+  fullyParallel: !IS_STAGING,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 2,
+  workers: IS_STAGING ? 1 : 2,
   reporter: [['html', { outputFolder: 'playwright-report' }], ['list']],
   timeout: 60000,
   expect: { timeout: 10000 },

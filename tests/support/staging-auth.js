@@ -4,9 +4,32 @@ const REQUIRED_STAGING_VARS = [
   'STAGING_BASE_URL',
   'E2E_USERNAME',
   'E2E_PASSWORD',
+  'STAGING_E2E_USERNAME',
   'KNOWN_POSTGRES_QUOTATION_ID',
+  'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
   'KNOWN_LEGACY_QUOTATION_ID',
+  'STAGING_EXTERNAL_PROVIDERS_DISABLED',
+  'STAGING_EGRESS_BLOCKED',
+  'STAGING_FIXTURE_RESET',
 ];
+const EXTERNAL_PROVIDER_VARS = [
+  'OUTBOX_N8N_URL',
+  'OUTBOX_EVOLUTION_URL',
+  'OUTBOX_CRM_URL',
+];
+
+function safeStagingOrigin(value) {
+  let parsed;
+  try {
+    parsed = new globalThis.URL(String(value || '').trim());
+  } catch {
+    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+  }
+  return parsed.origin;
+}
 
 export function getStagingConfig(env = process.env) {
   const missing = REQUIRED_STAGING_VARS.filter((name) => !String(env[name] || '').trim());
@@ -14,23 +37,58 @@ export function getStagingConfig(env = process.env) {
   if (missing.length) {
     throw new Error(`Staging E2E precondition missing: ${missing.join(', ')}`);
   }
+  if (String(env.STAGING_E2E_USERNAME).trim() !== String(env.E2E_USERNAME).trim()) {
+    throw new Error('Staging E2E username attestation does not match E2E_USERNAME');
+  }
+  if (env.STAGING_EXTERNAL_PROVIDERS_DISABLED !== '1') {
+    throw new Error('STAGING_EXTERNAL_PROVIDERS_DISABLED=1 is required');
+  }
+  if (env.STAGING_EGRESS_BLOCKED !== '1') {
+    throw new Error('STAGING_EGRESS_BLOCKED=1 is required');
+  }
+  if (env.STAGING_FIXTURE_RESET !== '1') {
+    throw new Error('STAGING_FIXTURE_RESET=1 is required for disposable fixture cleanup');
+  }
+  const configuredProviders = EXTERNAL_PROVIDER_VARS.filter((name) => String(env[name] || '').trim());
+  if (configuredProviders.length) {
+    throw new Error(`External provider variables must be unset: ${configuredProviders.join(', ')}`);
+  }
   return {
-    baseUrl: String(env.STAGING_BASE_URL).trim().replace(/\/$/, ''),
+    baseUrl: safeStagingOrigin(env.STAGING_BASE_URL),
     username: String(env.E2E_USERNAME).trim(),
     password: String(env.E2E_PASSWORD),
     postgresQuotationId: String(env.KNOWN_POSTGRES_QUOTATION_ID).trim(),
+    scratchQuotationId: String(env.KNOWN_POSTGRES_SCRATCH_QUOTATION_ID).trim(),
     legacyQuotationId: String(env.KNOWN_LEGACY_QUOTATION_ID).trim(),
   };
 }
 
 export function assertStagingConfig(env = process.env) {
-  const config = getStagingConfig(env);
-  assert.match(config.baseUrl, /^https?:\/\//, 'STAGING_BASE_URL must be an HTTP(S) URL');
-  return config;
+  return getStagingConfig(env);
+}
+
+export function assertSafeApiPath(path) {
+  const value = String(path || '');
+  if (/\/api\/send-whatsapp(?:-flow)?(?:[/?]|$)|(?:n8n|evolution|hubspot|salesforce)/i.test(value)) {
+    throw new Error('Staging test attempted a forbidden provider/send request');
+  }
+  return value;
+}
+
+export async function apiRequest(page, method, path, options = {}) {
+  const safePath = assertSafeApiPath(path);
+  const request = page.request;
+  const fn = request?.[method.toLowerCase()];
+  if (typeof fn !== 'function') throw new Error('Playwright API request method unavailable');
+  return fn.call(request, safePath, options);
 }
 
 export async function loginToStaging(page) {
   const config = assertStagingConfig();
+  // The application intentionally has password-only auth and no username input.
+  // The designated account is attested through x-e2e-username at the staging-only
+  // outbox inspection seam after login; the server rejects a mismatched account.
+  await page.setExtraHTTPHeaders({ 'x-e2e-username': config.username });
   await page.goto('/#/login');
   await page.getByPlaceholder('Senha de acesso').fill(config.password);
   const loginResponse = page.waitForResponse(

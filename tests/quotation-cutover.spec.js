@@ -195,7 +195,12 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: CORE_ID, cliente: authoritative.cliente, valor: authoritative.total, status: authoritative.status }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, core_mode: true, source: 'postgres' }) });
   });
   await page.context().route('**/api/quotation-preview**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/pdf', body: Buffer.from('%PDF-1.7\\n%%EOF') });
+    await route.fulfill({
+      status: 200,
+      headers: { 'X-Document-Revision': CORE_REVISION_ID },
+      contentType: 'application/pdf',
+      body: Buffer.from('%PDF-1.7\\n%%EOF'),
+    });
   });
   await page.context().route('**/api/public-quotation**', async (route) => {
     const request = route.request();
@@ -231,11 +236,30 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   await expect(page.getByText('Produto PostgreSQL')).toBeVisible();
 
   const pdfPopupPromise = page.waitForEvent('popup');
-  const pdfRequestPromise = page.context().waitForEvent('request', { predicate: (request) => request.url().includes('/api/quotation-preview') && request.url().includes('format=pdf') });
+  const pdfResponsePromise = page.context().waitForEvent('response', { predicate: (response) => response.url().includes('/api/quotation-preview') && response.url().includes('format=pdf') });
   await page.getByRole('button', { name: 'Visualizar', exact: true }).first().click();
-  const [pdfPopup, pdfRequest] = await Promise.all([pdfPopupPromise, pdfRequestPromise]);
-  expect(new globalThis.URL(pdfRequest.url()).pathname).toBe('/api/quotation-preview');
+  const [pdfPopup, pdfResponse] = await Promise.all([pdfPopupPromise, pdfResponsePromise]);
+  expect(pdfResponse.status()).toBe(200);
+  expect(pdfResponse.headers()['content-type']).toContain('application/pdf');
+  expect(pdfResponse.headers()['x-document-revision']).toBe(CORE_REVISION_ID);
   await pdfPopup.close();
+
+  const pdfResult = await page.evaluate(async () => {
+    const response = await globalThis.fetch('/api/quotation-preview?id=ORC-20260042&format=pdf');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return {
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      revision: response.headers.get('x-document-revision'),
+      head: Array.from(bytes.slice(0, 5)),
+      tail: Array.from(bytes.slice(-5)),
+    };
+  });
+  expect(pdfResult.status).toBe(200);
+  expect(pdfResult.contentType).toContain('application/pdf');
+  expect(pdfResult.revision).toBe(CORE_REVISION_ID);
+  expect(String.fromCharCode(...pdfResult.head)).toBe('%PDF-');
+  expect(String.fromCharCode(...pdfResult.tail)).toBe('%%EOF');
 
   const publicResult = await page.evaluate(async () => {
     const issued = await globalThis.fetch('/api/public-quotation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revisionId: '22222222-2222-4222-8222-222222222242' }) });

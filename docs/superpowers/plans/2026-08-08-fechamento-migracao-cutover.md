@@ -1021,10 +1021,40 @@ Expected: PASS contra `aspen_test`, sem conexão em `neondb`.
 
 ```bash
 npm run test:e2e -- tests/quotation-cutover.spec.js tests/client-core.spec.js tests/orcamento-core.spec.js tests/quotations-core.spec.js tests/quotation-lifecycle.spec.js tests/quotation-templates-core.spec.js tests/whatsapp-inbox.spec.js
-BASE_URL="$STAGING_BASE_URL" STAGING_E2E=1 npx playwright test tests/quotation-cutover-staging.spec.js --project=chromium
+: "${STAGING_BASE_URL:?configure staging origin without credentials}"
+: "${E2E_USERNAME:?configure staging test account identifier}"
+: "${E2E_PASSWORD:?configure staging password through secret manager}"
+: "${STAGING_E2E_USERNAME:?configure the staging account attestation}"
+: "${KNOWN_POSTGRES_QUOTATION_ID:?configure non-PII PostgreSQL quotation id}"
+: "${KNOWN_POSTGRES_SCRATCH_QUOTATION_ID:?configure disposable non-PII sent scratch quotation id}"
+: "${KNOWN_LEGACY_QUOTATION_ID:?configure non-PII legacy quotation id}"
+: "${STAGING_EXTERNAL_PROVIDERS_DISABLED:?set provider guard to 1}"
+: "${STAGING_EGRESS_BLOCKED:?set egress guard to 1}"
+: "${STAGING_FIXTURE_RESET:?set fixture reset attestation to 1}"
+[ "$STAGING_E2E_USERNAME" = "$E2E_USERNAME" ]
+[ "$STAGING_EXTERNAL_PROVIDERS_DISABLED" = 1 ]
+[ "$STAGING_EGRESS_BLOCKED" = 1 ]
+[ "$STAGING_FIXTURE_RESET" = 1 ]
+[ -z "${OUTBOX_N8N_URL:-}" ]
+[ -z "${OUTBOX_EVOLUTION_URL:-}" ]
+[ -z "${OUTBOX_CRM_URL:-}" ]
+BASE_URL="$STAGING_BASE_URL" \
+STAGING_E2E=1 \
+E2E_USERNAME="$E2E_USERNAME" \
+E2E_PASSWORD="$E2E_PASSWORD" \
+STAGING_E2E_USERNAME="$STAGING_E2E_USERNAME" \
+KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
+KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
+KNOWN_LEGACY_QUOTATION_ID="$KNOWN_LEGACY_QUOTATION_ID" \
+STAGING_EXTERNAL_PROVIDERS_DISABLED="$STAGING_EXTERNAL_PROVIDERS_DISABLED" \
+STAGING_EGRESS_BLOCKED="$STAGING_EGRESS_BLOCKED" \
+STAGING_FIXTURE_RESET="$STAGING_FIXTURE_RESET" \
+npx playwright test tests/quotation-cutover-staging.spec.js --project=chromium
 ```
 
 Expected: local e staging PASS.
+
+The staging run requires firewall egress evidence separately because browser listeners cannot observe server-side Frappe/provider fetches.
 
 - [ ] **Step 4: Run diagnostics.**
 

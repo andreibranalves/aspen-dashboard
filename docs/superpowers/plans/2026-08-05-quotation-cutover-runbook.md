@@ -540,13 +540,30 @@ set -euo pipefail
 : "${E2E_USERNAME:?configure the staging test username through the secret manager}"
 : "${E2E_PASSWORD:?configure the staging test password through the secret manager}"
 : "${KNOWN_POSTGRES_QUOTATION_ID:?configure a non-PII PostgreSQL quotation id}"
+: "${KNOWN_POSTGRES_SCRATCH_QUOTATION_ID:?configure a disposable non-PII sent PostgreSQL scratch quotation id}"
 : "${KNOWN_LEGACY_QUOTATION_ID:?configure a non-PII legacy quotation id}"
+: "${STAGING_E2E_USERNAME:?configure the designated account identifier in staging deployment env}"
+: "${STAGING_EXTERNAL_PROVIDERS_DISABLED:?set staging external provider guard to 1}"
+: "${STAGING_EGRESS_BLOCKED:?set staging egress guard to 1}"
+: "${STAGING_FIXTURE_RESET:?set disposable fixture cleanup attestation to 1}"
+[ "$STAGING_E2E_USERNAME" = "$E2E_USERNAME" ]
+[ "$STAGING_EXTERNAL_PROVIDERS_DISABLED" = 1 ]
+[ "$STAGING_EGRESS_BLOCKED" = 1 ]
+[ "$STAGING_FIXTURE_RESET" = 1 ]
+[ -z "${OUTBOX_N8N_URL:-}" ]
+[ -z "${OUTBOX_EVOLUTION_URL:-}" ]
+[ -z "${OUTBOX_CRM_URL:-}" ]
 BASE_URL="$STAGING_BASE_URL" \
 STAGING_E2E=1 \
 E2E_USERNAME="$E2E_USERNAME" \
 E2E_PASSWORD="$E2E_PASSWORD" \
+STAGING_E2E_USERNAME="$STAGING_E2E_USERNAME" \
 KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
+KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
 KNOWN_LEGACY_QUOTATION_ID="$KNOWN_LEGACY_QUOTATION_ID" \
+STAGING_EXTERNAL_PROVIDERS_DISABLED="$STAGING_EXTERNAL_PROVIDERS_DISABLED" \
+STAGING_EGRESS_BLOCKED="$STAGING_EGRESS_BLOCKED" \
+STAGING_FIXTURE_RESET="$STAGING_FIXTURE_RESET" \
 npx playwright test --config=playwright.config.js \
   tests/quotation-cutover-staging.spec.js \
   tests/operational-mode.spec.js \
@@ -556,9 +573,19 @@ npx playwright test --config=playwright.config.js \
 
 O comando só é válido depois do bloqueio Frappe e da confirmação de que staging aponta para a base nomeada esperada.
 
-A suíte staging falha explicitamente quando qualquer precondição ou credencial estiver ausente.
+A suíte staging falha explicitamente quando qualquer precondição, credencial, provider guard, egress guard ou fixture reset attestation estiver ausente.
+
+A aplicação usa autenticação somente por senha e não possui campo de username.
+
+`STAGING_E2E_USERNAME` é a identidade designada configurada no ambiente de staging e validada pelo endpoint de inspeção do outbox através do header de attestation.
 
 A senha é usada somente pelo formulário de login e não é salva em `storageState` ou artefato versionado.
+
+O scratch quotation é disposable, começa enviado, é usado serialmente para emissão/revisão/edição e deve ser excluído pelo teste ao final.
+
+O deployment de staging deve manter `STAGING_E2E=1`, `STAGING_E2E_USERNAME`, `STAGING_EXTERNAL_PROVIDERS_DISABLED=1` e `STAGING_EGRESS_BLOCKED=1` configurados no ambiente do servidor para habilitar a inspeção autenticada.
+
+O worker de outbox permanece desabilitado quando os três `OUTBOX_*_URL` estão ausentes; o endpoint de inspeção retorna apenas referências canônicas e exige os guards de staging.
 
 ## 9. Máquina de estados e transições
 
