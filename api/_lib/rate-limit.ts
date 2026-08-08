@@ -82,12 +82,11 @@ export async function checkRateLimitAsync(req: VercelRequestLike): Promise<boole
   if (routeName !== 'public-quotation') return localRateLimit(req);
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return false;
   const max = ROUTE_LIMITS[routeName];
-  const key = `aspen:rate-limit:${routeName}:${publicRateLimitKey(req)}`;
   try {
-    const count = Number(
-      await rateLimitKv.eval<number>(ATOMIC_INCREMENT_SCRIPT, [key], [WINDOW_SECONDS]),
-    );
-    if (!Number.isSafeInteger(count) || count < 1) throw new Error('invalid shared limiter count');
+    const key = `aspen:rate-limit:${routeName}:${publicRateLimitKey(req)}`;
+    const count = await rateLimitKv.eval<number>(ATOMIC_INCREMENT_SCRIPT, [key], [WINDOW_SECONDS]);
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 1)
+      throw new Error('invalid shared limiter count');
     return count <= max;
   } catch (error) {
     console.error(`[rate-limit] shared limiter unavailable (${error instanceof Error ? error.name : typeof error})`);
