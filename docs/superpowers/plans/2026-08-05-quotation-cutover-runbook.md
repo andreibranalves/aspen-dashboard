@@ -323,7 +323,9 @@ if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
   exit 1
 fi
 unset FRAPPE_MIGRATION_FIXTURE
+EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
 node scripts/migrate-frappe-crm.mjs --apply \
+  --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
   > "$CUTOVER_DIR/report.apply.json"
 sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha256"
 RUN_ID="$(jq -er '.manifest.runId | select(test("^[0-9a-f-]{36}$"))' "$CUTOVER_DIR/report.apply.json")"
@@ -347,8 +349,10 @@ if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
   exit 1
 fi
 unset FRAPPE_MIGRATION_FIXTURE
+EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
 EXPECTED_APPROVAL='SourceDoctype:source-id'
 node scripts/migrate-frappe-crm.mjs --apply \
+  --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
   --approve-divergence "$EXPECTED_APPROVAL" \
   > "$CUTOVER_DIR/report.apply.json"
 sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha256"
@@ -544,7 +548,25 @@ Aumente o tráfego somente se contagens, latência, erros, checksum, outbox e lo
 
 Qualquer falha do canário é uma condição de abort e inicia a seção de rollback.
 
-## 11. Política de documentos históricos, status e pedidos
+## 11. Worker de outbox e monitoramento
+
+Configure `OUTBOX_N8N_URL`, `OUTBOX_EVOLUTION_URL` e `OUTBOX_CRM_URL` como endpoints HTTPS de bridges aprovadas.
+
+Configure `OUTBOX_N8N_TOKEN`, `OUTBOX_EVOLUTION_TOKEN` e `OUTBOX_CRM_TOKEN` somente no ambiente protegido do worker.
+
+Execute uma vez ou agende com lock externo: `npm run worker:quotation-outbox`.
+
+O worker deve receber `DATABASE_URL`, as três URLs e os tokens por ambiente, nunca por argumento de processo ou arquivo versionado.
+
+O scheduler deve executar lotes curtos em intervalo menor que o próximo retry e impedir duas instâncias sem leases PostgreSQL.
+
+Monitore contagem `pending`, idade do evento mais antigo, `attempts`, `dead_letter`, `last_error_class`, provider message ID e eventos sem lease.
+
+Qualquer dead-letter, lease perdida repetidamente, bridge indisponível ou divergência entre provider acceptance e outbox deve abortar o canário e abrir incidente.
+
+No canário, injete uma falha de bridge, confirme retry/backoff e depois confirme entrega idempotente com o mesmo `idempotency_key`.
+
+## 12. Política de documentos históricos, status e pedidos
 
 A política selecionada para este corte é PDF on-demand: o PostgreSQL persiste o agregado, a revisão e a lineage, e o endpoint renderiza o PDF a partir da revisão imutável quando solicitado.
 
@@ -598,7 +620,7 @@ Ao arquivar a lineage, um operador autorizado deve purgar o payload bruto confor
 
 A retenção padrão dos dumps segue `BACKUP_RETENTION_DAYS`, com validação de restore antes da remoção.
 
-## 12. Rollback executável
+## 13. Rollback executável
 
 O rollback começa congelando criação, edição, emissão e efeitos externos do canário.
 
@@ -667,7 +689,7 @@ Nunca descarte o banco PostgreSQL para simular rollback.
 
 Nunca faça fallback automático para Frappe após um erro PostgreSQL.
 
-## 13. Evidências e encerramento
+## 14. Evidências e encerramento
 
 O corte só pode ser encerrado quando todos os artefatos abaixo estiverem no diretório protegido do corte:
 

@@ -111,8 +111,12 @@ describe('app-server authentication handoff', () => {
           })
         );
       }
-      assert.equal(publicRequests.slice(0, 20).every((response) => response.status === 401), true);
-      assert.equal(publicRequests[20].status, 429);
+      if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+        assert.equal(publicRequests.slice(0, 20).every((response) => response.status === 401), true);
+        assert.equal(publicRequests[20].status, 429);
+      } else {
+        assert.equal(publicRequests.every((response) => response.status === 429), true);
+      }
 
       const login = await fetch(`${baseUrl}/api/login`, {
         method: 'POST',

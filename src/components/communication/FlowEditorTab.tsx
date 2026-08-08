@@ -51,7 +51,7 @@ const PREVIEW_CONTEXT: Record<string, string> = {
   '(primeiro_nome)': 'Labo',
   '(numero_pedido)': 'ORC-20261289',
   '(empresa)': 'Aspen Estamparia',
-  '(link_orcamento)': 'https://orcamento.aspenestamparia.com/api/view?q=ORC-20261289',
+  '(link_orcamento)': '(link público emitido no envio)',
   '(vendedora)': 'Juliana',
   '(produto_resumo)': 'cangas',
   '(produto_adjetivo_personalizado)': 'personalizadas',

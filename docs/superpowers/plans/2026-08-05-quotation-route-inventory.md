@@ -11,7 +11,7 @@ Nenhuma linha abaixo representa uma flag, migração, documento ou outbox implem
 
 ## Paridade dos mapas
 
-`tests/unit/route-map.test.ts` lê os três mapas reais, compara conjuntos ordenados independentemente da ordem de inserção e exige 40 nomes.
+`tests/unit/route-map.test.ts` lê os três mapas reais, compara conjuntos ordenados independentemente da ordem de inserção e exige 41 nomes.
 A lista inclui as rotas de orçamento, visualização, PDF, WhatsApp e Sales Order.
 
 ## Inventário
@@ -33,7 +33,8 @@ A lista inclui as rotas de orçamento, visualização, PDF, WhatsApp e Sales Ord
 | `quotations` | GET, PUT, DELETE | sessão | PostgreSQL quotation aggregate when quote core is selected; Frappe otherwise | legacy: `Quotation`, `Lead`, `Sales Order Item`, `Sales Order`; cancel uses `frappe.client.cancel` | core: `clients`, `products`, `product_pricing_tiers`, `quotations`, `quote_revisions`, `quote_revision_items`, `quotation_templates`, `quotation_template_versions` | legacy quotation update, cancellation and deletion in Frappe | current: `CRM_OPERATIONAL_MODE=true` overrides and enables core before `CRM_CORE_QUOTES_ENABLED`; Task 3 removes override | partial; core read/update/lifecycle path exists, legacy remains |
 | `quotation-preview` | GET | sessão | PostgreSQL quotation revision snapshot and versioned template | none in core path | `quotations`, `quote_revisions`, `quote_revision_items`, `quotation_templates`, `quotation_template_versions`, `products` | optional browser PDF rendering; no remote write | current: `CRM_OPERATIONAL_MODE=true` overrides and enables core before `CRM_CORE_QUOTES_ENABLED`; Task 3 removes override | partial; PostgreSQL preview exists, replacement coverage pending |
 | `quotation-templates` | GET, POST, PUT; POST `/validate` | sessão | PostgreSQL template library | none | `quotation_templates`, `quotation_template_versions`, `app_settings`, `quote_revisions` | PostgreSQL template/version/archive writes | current: `CRM_OPERATIONAL_MODE=true` overrides and enables core before `CRM_CORE_QUOTES_ENABLED`; Task 3 removes override | partial; PostgreSQL library exists, migration/seeding is separate |
-| `view` | GET | public route classification; administrative callers still use the route directly | Frappe quotation HTML and print-format data | quotation and Lead reads through `quotation-html`/print-format helpers | none | browser-facing HTML response | none | legacy; replacement tests required |
+| `public-quotation` | POST, GET, DELETE | POST/DELETE sessão; GET token público | PostgreSQL immutable quotation/revision snapshot and versioned template | none | `quotations`, `quote_revisions`, `quote_revision_items`, `quotation_templates`, `quotation_template_versions` | KV token writes/revocation; `quotation.issued` outbox event; HTML/PDF response | `CRM_CORE_QUOTES_ENABLED` | PostgreSQL public-link boundary |
+| `view` | GET | authenticated administrative route; never public | Frappe quotation HTML and print-format data | quotation and Lead reads through `quotation-html`/print-format helpers | none | browser-facing HTML response | none | legacy; replacement tests required |
 | `pdf` | GET | sessão in Vercel catch-all; public route classification does not apply | Frappe quotation data rendered by Chromium/Puppeteer | quotation, Lead and related reads through quotation HTML helpers | none | Chromium/Puppeteer PDF generation | none | legacy; replacement tests required |
 | `send-whatsapp` | POST | sessão | Frappe quotation/contact context plus Evolution transport | `Quotation`, party doctype, `Contact`, `CRM Deal`; media may be downloaded from ERPNext | none | Evolution API text/media sends; Frappe CRM update; conversation-store persistence | `CRM_OPERATIONAL_MODE` guard | legacy; replacement tests required |
 | `send-whatsapp-flow` | POST | sessão | Frappe quotation/contact context, Vercel KV flow/event data and Evolution transport | `Quotation`, `CRM Deal`; CRM updates use ERPNext | none | Evolution API sends; Vercel KV flow/send-event writes; optional N8N webhook; Frappe CRM update | `CRM_OPERATIONAL_MODE` guard | legacy; replacement tests required |
@@ -50,8 +51,10 @@ A lista inclui as rotas de orçamento, visualização, PDF, WhatsApp e Sales Ord
 The minimum PostgreSQL quotation aggregate is not only `quotations`.
 It requires client identity, active products and pricing, revision/item snapshots, and template/version rows before a draft or preview can be accepted.
 
-`view`, `pdf`, both WhatsApp routes, and all Sales Order routes remain explicitly legacy until replacement tests cover their data source and side effects.
+`view` remains admin-protected and legacy; unauthenticated customer access uses the narrow `public-quotation` route bound to a revision token.
+`pdf`, both WhatsApp routes, and all Sales Order routes remain legacy except explicit PostgreSQL WhatsApp payloads, which must use revision snapshots and the outbox.
 The route parity test does not imply behavioral parity or migration readiness.
 
-No outbox is listed as an existing dependency.
-External effects remain direct handler effects until a later task introduces an outbox contract.
+`public-quotation` is the only unauthenticated GET quotation route and uses hashed KV tokens, expiration, revocation, shared rate limiting and immutable revisions.
+Quotation external effects use `quotation.created`, `quotation.updated`, `quotation.issued` and `quotation.sent` outbox events.
+The deployable worker is `npm run worker:quotation-outbox`; bridges use the OUTBOX_* environment variables.

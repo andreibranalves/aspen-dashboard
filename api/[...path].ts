@@ -7,7 +7,7 @@ import type {
 } from './_lib/types.js';
 import { wrapFunctionHandler } from './_lib/function-adapter.js';
 import { isAuthenticated, getRouteName } from './_lib/auth.js';
-import { checkRateLimit } from './_lib/rate-limit.js';
+import { checkRateLimitAsync } from './_lib/rate-limit.js';
 
 import { handler as crmDeals } from './_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from './_functions/crm-update-deal.js';
@@ -108,7 +108,7 @@ export default async function handler(
   }
 
   // ── Rate limit ──
-  if (!checkRateLimit(req)) {
+  if (!(await checkRateLimitAsync(req))) {
     res.status(429).json({ error: 'Muitas requisições. Aguarde um minuto.' });
     return;
   }

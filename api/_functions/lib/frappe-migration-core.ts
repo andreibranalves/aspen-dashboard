@@ -939,10 +939,12 @@ function resolveQuotationClient(
   clientLineage: Map<string, string>
 ): { clientRef: string | null; clientId: string | null } {
   const partyType = text(first(record, ['quotation_to', 'party_type'])).toLowerCase();
-  const customer = text(first(record, ['customer', 'customer_id']));
-  const lead = text(first(record, ['lead', 'lead_id']));
+  const partyName = text(first(record, ['party_name', 'party', 'customer_name']));
+  const customer = text(first(record, ['customer', 'customer_id'])) || (partyType === 'customer' ? partyName : '');
+  const lead = text(first(record, ['lead', 'lead_id'])) || (partyType === 'lead' ? partyName : '');
   let clientRef: string | null = null;
   if (partyType === 'lead' && lead) clientRef = `Lead:${lead}`;
+  else if (partyType === 'customer' && customer) clientRef = `Customer:${customer}`;
   else if (customer) clientRef = `Customer:${customer}`;
   else if (lead) clientRef = `Lead:${lead}`;
   return { clientRef, clientId: clientRef ? clientLineage.get(clientRef) || null : null };
@@ -952,12 +954,21 @@ function resolveQuotationClient(
  * Client references may embed CPF/CNPJ/e-mail when the ERP uses them as
  * source names. Reports must never echo them; keep a stable one-way token.
  */
-function reportClientRef(clientRef: string): string {
+export function reportClientRef(clientRef: string): string {
   const separator = clientRef.indexOf(':');
   const doctype = separator > 0 ? clientRef.slice(0, separator) : clientRef;
   const id = separator > 0 ? clientRef.slice(separator + 1) : '';
   if ((doctype !== 'Customer' && doctype !== 'Lead') || !id) return clientRef;
+  if (/^[0-9a-f]{12}$/i.test(id)) return `${doctype}:${id.toLowerCase()}`;
   return `${doctype}:${canonicalHash(`${doctype}:${id}`).slice(0, 12)}`;
+}
+
+export function safeApprovalKey(key: string): string {
+  const separator = key.indexOf(':');
+  if (separator <= 0) return key.trim();
+  const doctype = key.slice(0, separator).trim();
+  const safe = reportClientRef(key).slice(separator + 1);
+  return doctype === 'Customer' || doctype === 'Lead' ? `cliente:${safe}` : `${doctype}:${safe}`;
 }
 
 function parseDate(value: string | null): Date | null {
@@ -971,7 +982,12 @@ function quotationTerms(record: SourceRecord, creation: string): QuotationTerms 
   const created = parseDate(creation);
   const validTill = parseDate(text(first(record, ['valid_till', 'expiry', 'validade'])));
   if (created && validTill && validTill.getTime() > created.getTime()) {
-    const days = Math.round((validTill.getTime() - created.getTime()) / 86_400_000);
+    // Compare calendar dates rather than local-midnight offsets. Frappe date
+    // fields are date-only while creation is a timestamp, so timezone offsets
+    // must not turn a 30-day validity into 29 days.
+    const start = Date.UTC(created.getFullYear(), created.getMonth(), created.getDate());
+    const end = Date.UTC(validTill.getUTCFullYear(), validTill.getUTCMonth(), validTill.getUTCDate());
+    const days = Math.round((end - start) / 86_400_000);
     validadeDias = Math.min(365, Math.max(1, days));
   }
   return {
@@ -1722,8 +1738,23 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
 export function addDetail(report: EntityReport, detail: ImportDetail): void {
   // Keep every report path behind the same PII boundary, including callers
   // that build ImportDetail directly instead of using the migration helper.
+  const sourceDoctype = String(detail.source_doctype || '');
+  const safeClientIdentifier = (value: string | undefined): string | undefined => {
+    if (!value) return value;
+    if (value.startsWith('cliente:')) return value;
+    return `cliente:${canonicalHash(`${sourceDoctype}:${value}`).slice(0, 12)}`;
+  };
+  const sourceId =
+    (sourceDoctype === 'Customer' || sourceDoctype === 'Lead')
+      ? safeClientIdentifier(detail.source_id)
+      : detail.source_id;
   report.detalhes.push({
     ...detail,
+    source_id: sourceId,
+    local_key:
+      (sourceDoctype === 'Customer' || sourceDoctype === 'Lead')
+        ? safeClientIdentifier(detail.local_key)
+        : detail.local_key,
     mensagem: sanitizeReportMessage(detail.mensagem),
   });
   report[detail.status] += 1;
@@ -1798,13 +1829,14 @@ export interface DatasetReadSummary {
 export interface FrappeListSource {
   list(
     doctype: string,
-    options: { limit: number; start: number; order_by: string }
+    options: { limit: number; start: number; order_by: string; modified_before?: string }
   ): Promise<SourceRecord[]>;
 }
 
 export async function readFrappeDataset(
   source: FrappeListSource,
-  pageSize = 200
+  pageSize = 200,
+  sourceSnapshotAt = new Date()
 ): Promise<DatasetReadSummary> {
   const read = async (doctype: string): Promise<SourceRecord[]> => {
     const rows: SourceRecord[] = [];
@@ -1814,6 +1846,7 @@ export async function readFrappeDataset(
         limit: pageSize,
         start,
         order_by: 'creation asc, name asc',
+        modified_before: sourceSnapshotAt.toISOString(),
       });
       rows.push(...(page as SourceRecord[]));
       if (page.length < pageSize) break;

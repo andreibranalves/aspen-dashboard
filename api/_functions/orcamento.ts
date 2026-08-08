@@ -23,6 +23,13 @@ export function createHandler(
   return async (event: FunctionEvent): Promise<FunctionResult> => {
     const state = resolveEffectiveRolloutState();
     if (state === 'postgres-write') return core(event);
+    if (state === 'postgres-read-only') {
+      return {
+        statusCode: 405,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Criação de orçamento temporariamente bloqueada durante reconciliação.' }),
+      };
+    }
     return legacy(event);
   };
 }

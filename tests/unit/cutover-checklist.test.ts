@@ -37,7 +37,8 @@ test('runbook contains executable preconditions and migration phases', () => {
     '## 7. Reconciliação técnica e funcional',
     '## 8. Bloqueio de chamadas Frappe e congelamento',
     '## 10. Canário',
-    '## 12. Rollback executável',
+    '## 11. Worker de outbox e monitoramento',
+    '## 13. Rollback executável',
   ])
     assert.ok(runbook.includes(heading), `missing heading: ${heading}`);
 });

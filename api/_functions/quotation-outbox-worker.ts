@@ -273,8 +273,10 @@ async function invokeProviderWithTimeout(
       reject(new QuotationOutboxProviderTimeoutError(event.provider, timeoutMs));
     }, timeoutMs);
   });
-  const invocation = provider.deliver(contextFor(event, controller.signal));
   try {
+    // Keep synchronous adapter throws inside the finally block too, so the
+    // timeout handle is always released for custom provider seams.
+    const invocation = provider.deliver(contextFor(event, controller.signal));
     return await Promise.race([invocation, timeout]);
   } catch (error) {
     if (timedOut) throw new QuotationOutboxProviderTimeoutError(event.provider, timeoutMs);

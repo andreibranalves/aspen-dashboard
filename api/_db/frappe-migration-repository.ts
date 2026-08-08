@@ -586,10 +586,31 @@ export function createPostgresFrappeMigrationRepository(
           .limit(1);
         if (!clientRow) throw new Error('Cliente do orçamento não importado.');
         const createdAt = unit.revision.createdAt;
+        const [sourceLineage] = await tx
+          .select({ localId: frappeImportLineage.localId, sourceHash: frappeImportLineage.sourceHash })
+          .from(frappeImportLineage)
+          .where(
+            and(
+              eq(frappeImportLineage.sourceDoctype, 'Quotation'),
+              eq(frappeImportLineage.sourceId, unit.quotation.sourceId)
+            )
+          )
+          .limit(1);
+        const quotationId = sourceLineage?.localId || unit.id;
+        const [latestRevision] = await tx
+          .select({ id: quoteRevisions.id, version: quoteRevisions.version })
+          .from(quoteRevisions)
+          .where(eq(quoteRevisions.quotationId, quotationId))
+          .orderBy(desc(quoteRevisions.version))
+          .limit(1);
+        const sourceChanged = Boolean(sourceLineage && sourceLineage.sourceHash !== unit.sourceHash);
+        const revision = sourceChanged && latestRevision
+          ? { ...unit.revision, id: randomUUID(), version: latestRevision.version + 1 }
+          : unit.revision;
         await tx
           .insert(quotations)
           .values({
-            id: unit.id,
+            id: quotationId,
             businessNumber: unit.quotation.businessNumber,
             clientId,
             status: unit.quotation.status,
@@ -605,10 +626,9 @@ export function createPostgresFrappeMigrationRepository(
               updatedAt: new Date(),
             },
           });
-        const revision = unit.revision;
         const revisionMetadata = await resolveQuotationRevisionMetadata(tx, revision);
         const revisionValues = {
-          quotationId: unit.id,
+          quotationId,
           version: revision.version,
           status: revision.status,
           statusOriginal: revision.statusOriginal ?? null,
@@ -652,7 +672,7 @@ export function createPostgresFrappeMigrationRepository(
         if (unit.items.length > 0) {
           await tx.insert(quoteRevisionItems).values(
             unit.items.map((item) => ({
-              id: item.id,
+              id: sourceChanged ? randomUUID() : item.id,
               revisionId: revision.id,
               position: item.position,
               productSku: item.productSku,
@@ -1085,6 +1105,7 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
   failQuotationKey?: string;
   private readonly templatesReady: boolean;
   private readonly migrationLeaseOwners = new Map<string, string>();
+  private readonly historicalRevisions = new Map<string, Array<NonNullable<ExistingQuotation['revision']>>>();
 
   constructor(options: MemoryFrappeMigrationRepositoryOptions = {}) {
     this.state = {
@@ -1253,20 +1274,37 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     const clientId = unit.quotation.clientId;
     if (!clientId || !next.clients.some((value) => value.id === clientId))
       throw new Error('Cliente do orçamento não importado.');
+    const existingLineage = next.lineage.find(
+      (entry) => entry.sourceDoctype === 'Quotation' && entry.sourceId === unit.quotation.sourceId
+    );
+    const existingQuotation = next.quotations.find((value) => value.id === unit.id);
+    const sourceChanged = Boolean(existingLineage && existingLineage.sourceHash !== unit.sourceHash);
+    if (sourceChanged && existingQuotation?.revision) {
+      const history = this.historicalRevisions.get(unit.id) || [];
+      history.push({ ...existingQuotation.revision, createdAt: new Date(existingQuotation.revision.createdAt) });
+      this.historicalRevisions.set(unit.id, history);
+    }
+    const revision = sourceChanged && existingQuotation?.revision
+      ? {
+          ...unit.revision,
+          id: randomUUID(),
+          version: existingQuotation.revision.version + 1,
+        }
+      : unit.revision;
     const quotation: ExistingQuotation = {
-      id: unit.id,
+      id: existingQuotation?.id || unit.id,
       businessNumber: unit.quotation.businessNumber,
       clientId,
       status: unit.quotation.status,
-      createdAt: unit.revision.createdAt,
+      createdAt: revision.createdAt,
       revision: {
-        ...unit.revision,
-        id: unit.revision.id,
-        createdAt: new Date(unit.revision.createdAt),
+        ...revision,
+        id: revision.id,
+        createdAt: new Date(revision.createdAt),
       },
-      items: unit.items.map((item) => ({ ...item })),
+      items: unit.items.map((item) => ({ ...item, id: sourceChanged ? randomUUID() : item.id })),
       document: unit.document
-        ? { ...unit.document, createdAt: new Date(unit.revision.createdAt) }
+        ? { ...unit.document, createdAt: new Date(revision.createdAt) }
         : null,
     };
     const index = next.quotations.findIndex((value) => value.id === unit.id);
@@ -1287,6 +1325,13 @@ export class MemoryFrappeMigrationRepository implements FrappeMigrationRepositor
     this.state = next;
     this.writes.quotations += 1;
     this.writes.lineage += unit.lineage.length;
+  }
+
+  revisionHistory(quotationId: string): Array<NonNullable<ExistingQuotation['revision']>> {
+    return (this.historicalRevisions.get(quotationId) || []).map((revision) => ({
+      ...revision,
+      createdAt: new Date(revision.createdAt),
+    }));
   }
 
   async ensureQuotationTemplates(): Promise<{

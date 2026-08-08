@@ -98,6 +98,56 @@ function renderSnapshot(
   return { snapshot, template, html };
 }
 
+export async function issuePublicQuotationToken(
+  input: {
+    revisionId?: string;
+    quotationId?: string;
+    expiresInSeconds?: number;
+    repository?: PublicQuotationDependencies['repository'];
+    store?: Kv;
+    now?: () => number;
+    token?: () => string;
+  } = {},
+): Promise<{ token: string; expiresAt: number; revisionId: string; quotationId: string; businessNumber: string }> {
+  const repository = input.repository || createQuotationTemplateRepository();
+  const store = input.store || (kv as unknown as Kv);
+  const identifier = String(input.revisionId || input.quotationId || '').trim();
+  if (!identifier) throw new Error('Revisão do orçamento não informada.');
+  const snapshot = await repository.get(identifier);
+  if (!snapshot) throw new Error('Orçamento não encontrado.');
+  if (snapshot.revision.status === 'rascunho') throw new Error('Rascunhos não podem ser compartilhados.');
+  const now = input.now || (() => Date.now());
+  const makeToken = input.token || (() => randomBytes(32).toString('base64url'));
+  const rawToken = makeToken();
+  const expiresAt = now() + ttl(input.expiresInSeconds) * 1000;
+  await store.set(
+    key(rawToken),
+    { quotationId: snapshot.quotation.id, revisionId: snapshot.revision.id, expiresAt },
+    { ex: Math.ceil((expiresAt - now()) / 1000) },
+  );
+  return {
+    token: rawToken,
+    expiresAt,
+    revisionId: snapshot.revision.id,
+    quotationId: snapshot.quotation.id,
+    businessNumber: snapshot.quotation.businessNumber,
+  };
+}
+
+export async function renderPublicQuotationPdf(
+  revisionId: string,
+  dependencies: Pick<PublicQuotationDependencies, 'repository' | 'renderPdf'> = {},
+): Promise<Buffer> {
+  const repository = dependencies.repository || createQuotationTemplateRepository();
+  const snapshot = await repository.get(revisionId);
+  const rendered = renderSnapshot(snapshot);
+  if (!rendered || rendered.snapshot.revision.status === 'rascunho') throw new Error('Orçamento não disponível para compartilhamento.');
+  const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
+  const pdf = await renderPdf(rendered.html);
+  if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) throw new Error('Não foi possível gerar o PDF do orçamento.');
+  return pdf;
+}
+
 export function createPublicQuotationHandler(
   dependencies: PublicQuotationDependencies = {}
 ): LegacyHandler {

@@ -19,11 +19,13 @@ describe('CLI de migração Frappe', () => {
     assert.deepEqual(parseArgs(['--dry-run']), {
       mode: 'dry-run',
       fixture: null,
+      expectedManifestHash: null,
       approvedDivergences: [],
     });
     assert.deepEqual(parseArgs(['--apply', '--approve-divergence', 'Quotation:QTN-1']), {
       mode: 'apply',
       fixture: null,
+      expectedManifestHash: null,
       approvedDivergences: ['Quotation:QTN-1'],
     });
     assert.throws(() => parseArgs([]), /exatamente/);

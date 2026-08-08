@@ -66,7 +66,7 @@ They must be hardened, disabled, or hidden in the operational mode:
 | `product-activity.ts` | `/api/product-activity` | `erpGetList` | **Disable** |
 | `product-pricing.ts` | `/api/product-pricing` | `erpGetList` | *Check* — may need to be routed to core |
 | `quote-leads.ts` | `/api/quote-leads` | `erpGetList` | **Disable** (whatsapp-flow helper) |
-| `view.ts` | `/api/view` | — | **Keep** (public route, no auth) |
+| `view.ts` | `/api/view` | admin session | **Keep protected**; customer links use revision-bound `/api/public-quotation` tokens |
 | `pdf.ts` | `/api/pdf` | — | **Keep** (Puppeteer, not Frappe) |
 | `extract.ts` | `/api/extract` | — | **Disable** (AI extraction deferred; no Frappe calls but depends on OpenRouter which may not be available) |
 | `frappe-migration.ts` | `/api/frappe-migration` | `erpGetList`, `erpPut` | **Disable** (one-time, already run) |

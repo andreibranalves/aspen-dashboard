@@ -10,7 +10,7 @@ import { extname, join, normalize } from 'node:path';
 // Load env from .env using dotenv
 import 'dotenv/config';
 import { isAuthenticated } from '../api/_lib/auth.js';
-import { checkRateLimit } from '../api/_lib/rate-limit.js';
+import { checkRateLimitAsync } from '../api/_lib/rate-limit.js';
 
 if (!process.env.ERPNEXT_TOKEN) {
   console.error('ERPNEXT_TOKEN não configurado no .env');
@@ -200,7 +200,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if (!checkRateLimit(req)) {
+    if (!(await checkRateLimitAsync(req))) {
       res.writeHead(429, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Muitas requisições. Aguarde um minuto.' }));
       return;

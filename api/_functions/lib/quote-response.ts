@@ -29,13 +29,16 @@ export interface BuildQuoteResponseOptions {
   savedItems: SavedQuoteItem[];
   origem: string;
   warnings?: Array<{ code: string; message: string }>;
+  /** Only a revision-bound public URL may be emitted to customers. */
+  publicUrl?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildViewUrl(baseUrl: string, quotationId: string): string {
-  const params = new URLSearchParams({ q: quotationId });
-  return `${baseUrl}/api/view?${params.toString()}`;
+function buildViewUrl(_baseUrl: string, _quotationId: string): string {
+  // Generic /api/view is admin-protected and must never be shared as a
+  // customer link. PostgreSQL callers provide a revision-bound publicUrl.
+  return '';
 }
 
 function buildBaseUrl(event: VercelEventLike): string {
@@ -132,8 +135,10 @@ export async function buildQuoteResponse(
   } = opts;
 
   const baseUrl = buildBaseUrl(event);
-  const fullUrl = buildViewUrl(baseUrl, quotationId);
-  const shortUrl = await shortenUrl(fullUrl);
+  const fullUrl = opts.publicUrl && !/\/api\/view(?:[/?]|$)/i.test(opts.publicUrl)
+    ? opts.publicUrl
+    : buildViewUrl(baseUrl, quotationId);
+  const shortUrl = fullUrl ? await shortenUrl(fullUrl) : '';
   const printHtml = await fetchPrintHtml(quotationId, entityType, entityId, nomeCliente);
 
   const printFormat = await resolvePrintFormat(quotationId);
@@ -153,6 +158,7 @@ export async function buildQuoteResponse(
     view_url: fullUrl,
     short_url: shortUrl,
     origem,
+    ...(fullUrl ? {} : { public_link_unavailable: 'O link público requer uma revisão PostgreSQL compartilhável.' }),
   };
 
   if (warnings.length > 0) {

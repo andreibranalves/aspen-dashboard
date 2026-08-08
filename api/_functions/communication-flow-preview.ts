@@ -121,7 +121,7 @@ function getMockContext() {
   return {
     nome: 'Labo Buriti',
     quotationId: 'ORC-20261289',
-    link: 'https://orcamento.aspenestamparia.com/api/view?q=ORC-20261289',
+    link: '',
     vendorName: 'Juliana',
     empresa: 'Aspen Estamparia',
     productSummary: 'cangas',
@@ -144,7 +144,7 @@ async function resolveQuotationContext(quotationId: string): Promise<Record<stri
     return {
       nome,
       quotationId,
-      link: `https://orcamento.aspenestamparia.com/api/view?q=${encodeURIComponent(quotationId)}`,
+      link: '',
       vendorName: 'Juliana',
       empresa: 'Aspen Estamparia',
       productSummary,

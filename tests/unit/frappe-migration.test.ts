@@ -109,9 +109,9 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(second.report.produtos.erros, 1);
     assert.equal(
       repository.snapshot().products.filter((row) => row.sku === 'LNC-SED-70-30').length,
-      1
+      0
     );
-    assert.equal(repository.snapshot().products.length, 2);
+    assert.equal(repository.snapshot().products.length, 1);
 
     const duplicate = await runFrappeMigration({
       mode: 'dry-run',
@@ -156,7 +156,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       repository: itemRepository,
     });
     assert.equal(itemResult.report.produtos.divergentes, 1);
-    assert.equal(itemRepository.snapshot().products.length, 1);
+    assert.equal(itemRepository.snapshot().products.length, 0);
 
     const priceRepository = new MemoryFrappeMigrationRepository({
       state: {
@@ -184,7 +184,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       repository: priceRepository,
     });
     assert.equal(priceResult.report.produtos.divergentes, 1);
-    assert.equal(priceRepository.snapshot().products.length, 1);
+    assert.equal(priceRepository.snapshot().products.length, 0);
 
     const corruptRepository = new MemoryFrappeMigrationRepository({
       state: {
@@ -212,7 +212,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       repository: corruptRepository,
     });
     assert.equal(corruptResult.report.produtos.divergentes, 1);
-    assert.equal(corruptRepository.snapshot().products.length, 1);
+    assert.equal(corruptRepository.snapshot().products.length, 0);
 
     const clientRepository = new MemoryFrappeMigrationRepository({
       state: {
@@ -750,7 +750,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     });
     assert.equal(result.report.faixas.erros, 1);
     assert.match(result.report.faixas.detalhes[0].mensagem, /UNKNOWN-SKU/);
-    assert.equal(repository.writes.products, 1);
+    assert.equal(repository.writes.products, 0);
     assert.equal(
       repository.snapshot().lineage.some((entry) => entry.sourceId === 'PR-ORPHAN'),
       false
@@ -914,6 +914,23 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(normalized.items[0].quantidade, '10');
     assert.equal(normalized.subtotal, '120.00');
     assert.equal(normalized.total, '120.00');
+  });
+
+  it('resolve Quotation de produção por quotation_to/party_name e child items', () => {
+    const normalized = normalizeFrappeQuotation(
+      {
+        name: 'QTN-2025-00077',
+        creation: '2025-02-01 10:00:00',
+        quotation_to: 'Customer',
+        party_name: 'CUST-PROD',
+        status: 'Submitted',
+        items: [{ idx: 1, item_code: 'SKU-PROD', qty: '2', rate: '10', price_list_rate: '12', amount: '20' }],
+      },
+      new Map([['Customer:CUST-PROD', 'client-prod']]),
+    );
+    assert.equal(normalized.clientRef, 'Customer:CUST-PROD');
+    assert.equal(normalized.clientId, 'client-prod');
+    assert.equal(normalized.items[0].sku, 'SKU-PROD');
   });
 
   it('rejeita orçamentos sem ano ou sem sequência numérica no nome', () => {
@@ -1874,8 +1891,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       (dataset.customers || []).length + (dataset.leads || []).length
     );
     // Divergence counts from report
-    const approved =
-      result.report.total.criados + result.report.total.atualizados + result.report.total.ignorados;
+    const approved = result.report.total.aprovadas;
     const blocking = result.report.total.divergentes + result.report.total.erros;
     assert.equal(result.manifest.divergenceCounts.approved, approved);
     assert.equal(result.manifest.divergenceCounts.blocking, blocking);
@@ -1919,6 +1935,25 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       assert.match(entry.sourceHash, /^[0-9a-f]{64}$/);
       assert.ok(entry.importedAt instanceof Date);
     }
+  });
+
+  it('bloqueia apply quando o snapshot mudou depois do dry-run revisado', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset = createFrappeMigrationFixture();
+    const dryRun = await runFrappeMigration({ mode: 'dry-run', dataset, repository });
+    await assert.rejects(
+      () =>
+        runFrappeMigration({
+          mode: 'apply',
+          dataset: { ...dataset, quotations: [...(dataset.quotations || []), { name: 'QTN-2024-99999' }] },
+          expectedManifestHash: dryRun.manifest.manifestHash,
+          repository,
+        }),
+      /snapshot atual/
+    );
+    assert.equal(repository.writes.products, 0);
+    assert.equal(repository.writes.clients, 0);
+    assert.equal(repository.writes.quotations, 0);
   });
 
   it('dry-run com manifest determinístico: mesmo dataset produz mesmo manifestHash', async () => {
@@ -2162,6 +2197,28 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(after.sourceUpdatedAt?.toISOString(), '2024-02-02T00:00:00.000Z');
     const rerun = await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
     assert.equal(rerun.report.clientes.ignorados, 1);
+  });
+
+  it('mantém revisão anterior imutável quando a fonte do orçamento muda', async () => {
+    const repository = new MemoryFrappeMigrationRepository();
+    const dataset = createFrappeQuotationFixture();
+    await runFrappeMigration({ mode: 'apply', dataset, repository });
+    const first = repository.snapshot().quotations.find((quotation) => quotation.businessNumber === 'ORC-20240042');
+    assert.ok(first?.revision);
+    const changed = {
+      ...dataset,
+      quotations: (dataset.quotations || []).map((quotation) =>
+        quotation.name === 'QTN-2024-00042'
+          ? { ...quotation, grand_total: '999.00', modified: '2024-04-01 00:00:00' }
+          : quotation,
+      ),
+    };
+    await runFrappeMigration({ mode: 'apply', dataset: changed, repository });
+    const current = repository.snapshot().quotations.find((quotation) => quotation.businessNumber === 'ORC-20240042');
+    assert.ok(current?.revision);
+    assert.notEqual(current.revision.id, first.revision.id);
+    assert.equal(repository.revisionHistory(current.id)[0]?.id, first.revision.id);
+    assert.equal(repository.revisionHistory(current.id)[0]?.total, first.revision.total);
   });
 
   it('atualiza orçamento quando somente payload-fonte ou modified muda e converge para no-op', async () => {

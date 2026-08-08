@@ -20,6 +20,7 @@ import {
   normalizeHistoricalPdf,
   readFrappeDataset,
   sanitizeReportMessage,
+  safeApprovalKey,
   stableId,
   validateFrappeDataset,
   type ClientUnit,
@@ -105,6 +106,8 @@ export interface MigrationOptions {
   pdfPipeline?: HistoricalPdfPipeline;
   /** Explicit operator-approved divergence keys (`source_doctype:source_id`). */
   approvedDivergences?: string[];
+  /** Apply may only write the exact manifest reviewed during dry-run. */
+  expectedManifestHash?: string;
 }
 
 export interface MigrationResult {
@@ -116,22 +119,33 @@ export interface MigrationResult {
 export function createFrappeSource(): FrappeListSource {
   return {
     async list(doctype, options) {
+      const filters = options.modified_before
+        ? [['modified', '<=', options.modified_before] as [string, string, string]]
+        : undefined;
       const rows = await erpGetList(doctype, {
         fields: ['*'],
+        filters,
         limit: options.limit,
         start: options.start,
         order_by: options.order_by,
       });
-      if (doctype !== 'Pricing Rule') return rows;
-      // ERPNext list responses often omit `rate` and child rows even when
-      // fields=["*"]. Enrich every rule through the document endpoint before
-      // normalization; errors stay inside the shared safe ERP client.
+      if (doctype !== 'Pricing Rule' && doctype !== 'Quotation') return rows;
+      // ERPNext list responses omit child rows and party fields for some
+      // doctypes even with fields=["*"]. Enrich documents before normalization.
       return Promise.all(
         rows.map(async (row) => {
           const name = String(row.name || '').trim();
           if (!name) return row;
           try {
-            const full = await erpGetDoc('Pricing Rule', name, { fields: ['*'] });
+            const full = await erpGetDoc(doctype, name, { fields: ['*'] });
+            if (
+              full &&
+              options.modified_before &&
+              full.modified &&
+              new Date(String(full.modified)).getTime() > new Date(options.modified_before).getTime()
+            ) {
+              return { ...row, __migration_enrichment_error: true };
+            }
             return full ? { ...row, ...full } : row;
           } catch {
             return { ...row, __migration_enrichment_error: true };
@@ -180,11 +194,12 @@ function hasBlockingDetails(details: EntityReport['detalhes']): boolean {
 }
 
 function approveDivergences(report: ImportReport, approvedKeys: string[] = []): void {
-  const approved = new Set(approvedKeys.map((key) => String(key).trim()).filter(Boolean));
+  const approved = new Set(approvedKeys.map((key) => safeApprovalKey(String(key))).filter(Boolean));
   if (approved.size === 0) return;
   for (const entity of [report.produtos, report.faixas, report.clientes, report.orcamentos, report.documentos]) {
     for (const detail of entity.detalhes) {
-      const key = `${detail.source_doctype || ''}:${detail.source_id || ''}`;
+      const detailId = String(detail.source_id || '').replace(/^cliente:/, '');
+      const key = safeApprovalKey(`${detail.source_doctype || ''}:${detailId}`);
       if (!detail.aprovada && detail.status === 'divergentes' && approved.has(key)) {
         detail.aprovada = true;
         entity.divergentes -= 1;
@@ -1328,11 +1343,7 @@ function buildManifest(
       quotations: (dataset.quotations || []).length,
     },
     divergenceCounts: {
-      approved:
-        report.total.criados +
-        report.total.atualizados +
-        report.total.ignorados +
-        report.total.aprovadas,
+      approved: report.total.aprovadas,
       blocking: report.total.divergentes + report.total.erros,
     },
   };
@@ -1343,18 +1354,25 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     throw new Error('Informe exatamente --dry-run ou --apply.');
   const report = makeReport(options.mode);
   const source = options.source;
+  // Capture cutoff before the first source read so pagination sees one dataset.
+  const sourceSnapshotAt = new Date();
   let dataset: FrappeDataset;
   if (options.dataset != null) {
     const candidate: unknown = options.dataset;
     validateFrappeDataset(candidate);
     dataset = candidate;
-  } else if (source) dataset = (await readFrappeDataset(source, options.pageSize || 200)).dataset;
+  } else if (source)
+    dataset = (await readFrappeDataset(source, options.pageSize || 200, sourceSnapshotAt)).dataset;
   else throw new Error('Fonte Frappe não configurada.');
   validateFrappeDataset(dataset);
 
   // ── Manifest and run tracking ─────────────────────────────────────────
-  const sourceSnapshotAt = new Date();
   const manifestHash = computeManifestHash(dataset);
+  if (options.mode === 'apply' && options.expectedManifestHash) {
+    const expected = options.expectedManifestHash.trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(expected) || expected !== manifestHash)
+      throw new Error('Manifesto revisado não corresponde ao snapshot atual; apply bloqueado.');
+  }
   // A run is an execution identity, not a source identity. UUID avoids
   // collisions when two applies start in the same millisecond; resume still
   // reuses the persisted failed run ID.
@@ -1787,6 +1805,15 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     if (clientAction) plannedClientUnits.push(unit);
   }
   approveDivergences(report, options.approvedDivergences);
+  if (
+    options.mode === 'apply' &&
+    [report.produtos, report.faixas, report.clientes].some((entity) => hasBlockingDetails(entity.detalhes))
+  ) {
+    // Do not start any product/client write while a prerequisite blocker is
+    // known. Approved divergences remain scoped to their affected records.
+    await failActiveRun('markBatchFailed:dependency-preflight');
+    return failedResult();
+  }
   if (options.mode === 'apply') {
     // Each callback is deliberately awaited independently. A failed product
     // or client unit is reported and does not roll back already confirmed

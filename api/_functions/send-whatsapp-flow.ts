@@ -17,6 +17,8 @@ import { generateQuotationPdf } from './lib/quotation-pdf.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { isOperationalMode } from './operational-mode.js';
 import { getDatabase } from '../_db/client.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
+import { issuePublicQuotationToken, renderPublicQuotationPdf } from './public-quotation.js';
 import {
   deriveOpaqueQuotationOutboxIdempotencyKey,
   enqueueQuotationSentEvent,
@@ -261,7 +263,9 @@ async function sendMedia(number: string, step: Record<string, unknown>): Promise
   let media: string | undefined = step.media as string | undefined;
 
   // PDF marker
-  if (media && typeof media === 'string' && media.startsWith('__pdf__:')) {
+  if (media && typeof media === 'string' && media.startsWith('__pdf-base64__:')) {
+    media = media.slice('__pdf-base64__:'.length);
+  } else if (media && typeof media === 'string' && media.startsWith('__pdf__:')) {
     const qid = media.slice('__pdf__:'.length);
     const buffer = await fetchQuotationPdfBuffer(qid);
     media = buffer.toString('base64');
@@ -498,11 +502,13 @@ async function buildSteps(flow: Record<string, any>, context: Record<string, any
       const text = renderTemplate(rawStep.template || '', context).trim();
       if (text) steps.push({ type: 'text', text });
     } else if (rawStep.type === 'document' && rawStep.source === 'quotation_pdf') {
-      if (!pdfAdded && context.quotationId) {
+      if (!pdfAdded && context.quotationId && (!context.postgresPath || context.pdfBase64)) {
         const caption = rawStep.caption ? renderTemplate(rawStep.caption, context).trim() : '';
         steps.push({
           type: 'document',
-          media: `__pdf__:${context.quotationId}`,
+          media: context.pdfBase64
+            ? `__pdf-base64__:${context.pdfBase64}`
+            : `__pdf__:${context.quotationId}`,
           mimetype: 'application/pdf',
           fileName: `${context.quotationId}.pdf`,
           caption,
@@ -561,24 +567,50 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
 
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
+    const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
+    const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
+    const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
+    const baseUrl = `${proto}://${host}`;
+    let nome = '';
+    let telefone = '';
+    let dealId: string | null = null;
+    let items: Record<string, unknown>[] = [];
+    let link = '';
+    let pdfBase64 = '';
+    let postgresSnapshot: ReturnType<typeof quotationSnapshotViewModel> | null = null;
 
-    // Resolve quotation context
-    let nome = '',
-      telefone = '',
-      dealId: string | null = null,
-      items: Record<string, unknown>[] = [];
-    if (quotationId) {
+    if (postgresPath && quotationId && !dryRun) {
+      const revisionId = firstNonEmpty(payload.revision_id, payload.revisionId, payload.quote_revision_id);
+      if (!revisionId) throw createHttpError(400, 'Revisão PostgreSQL do orçamento não informada.');
+      const repository = createQuotationTemplateRepository();
+      const snapshot = await repository.get(revisionId);
+      if (!snapshot || snapshot.revision.id !== revisionId)
+        throw createHttpError(404, 'Orçamento PostgreSQL não encontrado.');
+      postgresSnapshot = quotationSnapshotViewModel(snapshot);
+      const publicToken = await issuePublicQuotationToken({ revisionId, repository });
+      payload.quotation_uuid = payload.quotation_uuid || publicToken.quotationId;
+      payload.revision_id = revisionId;
+      link = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(publicToken.token)}`;
+      // Render from the immutable PostgreSQL snapshot. This path never calls
+      // Frappe or the legacy print/PDF renderer.
+      if (
+        (flow.steps || []).some(
+          (step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf',
+        )
+      ) {
+        const pdf = await renderPublicQuotationPdf(revisionId, { repository });
+        pdfBase64 = pdf.toString('base64');
+      }
+      const client = (postgresSnapshot.client || {}) as unknown as Record<string, unknown>;
+      nome = firstNonEmpty(payload.nome, client.name, client.nome);
+      telefone = firstNonEmpty(payload.phone || payload.telefone, client.phone, client.telefone);
+      items = (postgresSnapshot.items || []) as Record<string, unknown>[];
+    } else if (quotationId && !postgresPath) {
       try {
         const quotation = await erpGetDoc('Quotation', quotationId) as Record<string, unknown>;
         nome = firstNonEmpty(payload.nome, quotation?.customer_name, quotation?.party_name);
-        telefone = firstNonEmpty(
-          payload.phone || payload.telefone,
-          quotation?.contact_mobile,
-          quotation?.contact_phone
-        );
+        telefone = firstNonEmpty(payload.phone || payload.telefone, quotation?.contact_mobile, quotation?.contact_phone);
         items = (quotation?.items as Record<string, unknown>[]) || [];
-
-        // CRM Deal lookup
         const deals = await erpGetList('CRM Deal', {
           filters: [['custom_quotation', '=', quotationId]],
           fields: ['name', 'mobile_no'],
@@ -588,34 +620,31 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           dealId = deals[0].name;
           telefone = firstNonEmpty(telefone, deals[0].mobile_no);
         }
+        // Legacy links cannot use the protected generic view route. Keep the
+        // legacy send behavior but omit an unsupported customer link.
       } catch {
-        // Non-fatal: use provided phone/nome
+        // Non-fatal for explicit legacy callers: use provided contact fields.
       }
     }
 
     nome = firstNonEmpty(payload.nome, nome);
     telefone = firstNonEmpty(payload.phone || payload.telefone, telefone);
-    items = payload.items || items || [];
+    items = (payload.items || items || []) as Record<string, unknown>[];
     dealId = payload.deal_id || payload.dealId || dealId;
+    if (!link) link = firstNonEmpty(payload.public_link, payload.link_orcamento, payload.short_url);
+    if (/\/api\/view(?:[/?]|$)/i.test(link)) link = '';
 
     const number = normalizePhone(telefone);
     if (!number) throw createHttpError(400, 'Telefone inválido ou ausente.');
 
-    // Build context
-    const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
-    const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
-    const baseUrl = `${proto}://${host}`;
-    const link = quotationId ? `${baseUrl}/api/view?q=${encodeURIComponent(quotationId)}` : '';
-
     const categories = detectCategories(items);
-    const productSummary = firstNonEmpty(
-      payload.product_summary,
-      productSummaryFromCategories(categories)
-    );
+    const productSummary = firstNonEmpty(payload.product_summary, productSummaryFromCategories(categories));
     const context = {
       nome,
       quotationId,
       link,
+      pdfBase64,
+      postgresPath,
       vendorName: flow.vendor_name || payload.vendedora || 'Juliana',
       productSummary,
       categories,
@@ -642,7 +671,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         evolution.push(resp);
       }
       await queuePostgresSentEvent(quotationId, payload);
-      await updateDeal(dealId, quotationId);
+      if (!postgresPath) await updateDeal(dealId, quotationId);
     }
 
     // Record send event

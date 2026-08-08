@@ -13,6 +13,7 @@ function fail(message) {
 export function parseArgs(argv) {
   let mode = null;
   let fixture = null;
+  let expectedManifestHash = null;
   const approvedDivergences = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -24,6 +25,14 @@ export function parseArgs(argv) {
     if (arg === '--fixture') {
       fixture = argv[index + 1];
       if (!fixture || fixture.startsWith('--')) throw new Error('Informe o caminho da fixture após --fixture.');
+      index += 1;
+      continue;
+    }
+    if (arg === '--expected-manifest-hash') {
+      const value = argv[index + 1];
+      if (!value || !/^[0-9a-f]{64}$/i.test(value))
+        throw new Error('Informe um manifest hash SHA-256 após --expected-manifest-hash.');
+      expectedManifestHash = value.toLowerCase();
       index += 1;
       continue;
     }
@@ -49,7 +58,7 @@ export function parseArgs(argv) {
   if (normalizedMode === 'apply' && fixture) {
     throw new Error('--fixture só pode ser usado explicitamente com --dry-run.');
   }
-  return { mode: normalizedMode, fixture, approvedDivergences };
+  return { mode: normalizedMode, fixture, expectedManifestHash, approvedDivergences };
 }
 
 function parseServiceFile(contents, serviceName) {
@@ -141,7 +150,7 @@ async function loadFixture(pathname) {
 }
 
 async function main() {
-  const { mode, fixture, approvedDivergences } = parseArgs(process.argv.slice(2));
+  const { mode, fixture, expectedManifestHash, approvedDivergences } = parseArgs(process.argv.slice(2));
   if (mode === 'apply') assertDatabaseContract();
   if (mode === 'apply' && process.env.FRAPPE_MIGRATION_FIXTURE) {
     throw new Error('FRAPPE_MIGRATION_FIXTURE não pode ser usada com --apply; remova a variável.');
@@ -167,11 +176,13 @@ async function main() {
     // PostgreSQL repository does not persist historical PDF documents.
     pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
     approvedDivergences,
+    expectedManifestHash,
   });
+  const safeApprovedDivergences = approvedDivergences.map((key) => migration.safeApprovalKey(key));
   process.stdout.write(`${JSON.stringify({
     ...result.report,
     manifest: result.manifest,
-    approvedDivergenceKeys: approvedDivergences,
+    approvedDivergenceKeys: safeApprovedDivergences,
   })}\n`);
   // Non-zero exit on blocking errors, failed batches or failed run.
   const hasBlocking = result.report.total.divergentes + result.report.total.erros > 0;
