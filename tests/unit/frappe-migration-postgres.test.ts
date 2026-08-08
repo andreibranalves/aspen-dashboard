@@ -12,6 +12,7 @@ import { createPostgresFrappeMigrationRepository } from '../../api/_db/frappe-mi
 import * as schema from '../../api/_db/schema.js';
 import {
   computeManifestHash,
+  normalizeFrappeQuotation,
   runFrappeMigration as runFrappeMigrationImplementation,
 } from '../../api/_functions/frappe-migration.js';
 import { quotationPdfChecksum } from '../../api/_functions/lib/quotation-document-storage.js';
@@ -72,6 +73,23 @@ test('PostgreSQL adapter mapeia contrato de linhagem sem banco externo', async (
   assert.equal(state.lineage[0].migrationRunId, lineageRow.migrationRunId);
   assert.equal(state.lineage[0].sourceUpdatedAt, sourceUpdatedAt);
   assert.equal(state.lineage[0].importedAt, importedAt);
+});
+
+test('PostgreSQL-shaped Quotation com enrichment falho é rejeitada antes da normalização', () => {
+  let touched = false;
+  const record = {
+    __migration_enrichment_error: true,
+    get party_name() {
+      touched = true;
+      return 'CUST-ENRICHMENT';
+    },
+    get items() {
+      touched = true;
+      return [];
+    },
+  };
+  assert.throws(() => normalizeFrappeQuotation(record, new Map()), /enrichment|enriquec/i);
+  assert.equal(touched, false);
 });
 
 test(

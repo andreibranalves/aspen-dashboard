@@ -300,7 +300,25 @@ describe('CLI de migração Frappe', () => {
       const approvedReport = JSON.parse(approved.stdout);
       assert.deepEqual(approvedReport.approvedDivergenceKeys, ['Quotation:QTN-2025-00099']);
       assert.equal(approvedReport.manifest.divergenceCounts.blocking, 0);
+      assert.equal(approvedReport.total.aprovadas, 1);
       assert.equal(approvedReport.total.detalhes[0].aprovada, true);
+
+      const unknownApproval = spawnSync(
+        process.execPath,
+        [
+          'scripts/migrate-frappe-crm.mjs',
+          '--dry-run',
+          '--fixture',
+          blockingFixture,
+          '--approve-divergence',
+          'Unknown:secret-value',
+        ],
+        { cwd: root, env, encoding: 'utf8' }
+      );
+      assert.notEqual(unknownApproval.status, 0);
+      assert.match(unknownApproval.stderr, /chave de aprovação inválida/i);
+      assert.doesNotMatch(unknownApproval.stderr, /Unknown|secret-value/);
+      assert.doesNotMatch(unknownApproval.stdout, /Unknown|secret-value/);
 
       const applyWithFixture = spawnSync(
         process.execPath,

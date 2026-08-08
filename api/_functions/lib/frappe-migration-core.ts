@@ -963,12 +963,41 @@ export function reportClientRef(clientRef: string): string {
   return `${doctype}:${canonicalHash(`${doctype}:${id}`).slice(0, 12)}`;
 }
 
+const APPROVABLE_SOURCE_DOCTYPES = new Set([
+  'Customer',
+  'Lead',
+  'Item',
+  'Pricing Rule',
+  'Item Price',
+  'Quotation',
+]);
+
+/**
+ * Build the only approval-key representation accepted by reports and CLI.
+ * Customer/Lead identifiers are always one-way hashed unless already carrying
+ * the report's opaque cliente token.
+ */
+export function canonicalApprovalKey(sourceDoctype: string, sourceId: string): string | null {
+  const doctype = text(sourceDoctype);
+  let id = text(sourceId);
+  if (!doctype || !id || !APPROVABLE_SOURCE_DOCTYPES.has(doctype)) return null;
+  if (doctype === 'Customer' || doctype === 'Lead') {
+    if (id.startsWith('cliente:')) {
+      const token = id.slice('cliente:'.length);
+      if (/^[0-9a-f]{12}$/i.test(token)) return `cliente:${token.toLowerCase()}`;
+      id = token;
+    }
+    return `cliente:${canonicalHash(`${doctype}:${id}`).slice(0, 12)}`;
+  }
+  return `${doctype}:${id}`;
+}
+
 export function safeApprovalKey(key: string): string {
   const separator = key.indexOf(':');
-  if (separator <= 0) return key.trim();
-  const doctype = key.slice(0, separator).trim();
-  const safe = reportClientRef(key).slice(separator + 1);
-  return doctype === 'Customer' || doctype === 'Lead' ? `cliente:${safe}` : `${doctype}:${safe}`;
+  if (separator <= 0) throw new Error('Chave de aprovação inválida.');
+  const canonical = canonicalApprovalKey(key.slice(0, separator), key.slice(separator + 1));
+  if (!canonical) throw new Error('Chave de aprovação inválida.');
+  return canonical;
 }
 
 function parseDate(value: string | null): Date | null {
@@ -1028,6 +1057,8 @@ export function normalizeFrappeQuotation(
   record: SourceRecord,
   clientLineage: Map<string, string>
 ): NormalizedQuotation {
+  if (record.__migration_enrichment_error === true)
+    throw new Error('Quotation não pôde ser enriquecida.');
   const sourceId = sourceIdOf(record);
   if (!sourceId) throw new Error('Quotation sem identificador legado (name).');
   const { businessNumber, year } = deriveBusinessNumber(record, sourceId);

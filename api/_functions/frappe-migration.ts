@@ -20,6 +20,7 @@ import {
   normalizeHistoricalPdf,
   readFrappeDataset,
   sanitizeReportMessage,
+  canonicalApprovalKey,
   safeApprovalKey,
   stableId,
   validateFrappeDataset,
@@ -32,6 +33,7 @@ import {
   type FrappeListSource,
   type FrappeLineageEntry,
   type HistoricalPdfRecord,
+  type ImportDetail,
   type ImportReport,
   type MigrationManifest,
   type NormalizedClient,
@@ -193,14 +195,27 @@ function hasBlockingDetails(details: EntityReport['detalhes']): boolean {
   );
 }
 
-function approveDivergences(report: ImportReport, approvedKeys: string[] = []): void {
-  const approved = new Set(approvedKeys.map((key) => safeApprovalKey(String(key))).filter(Boolean));
-  if (approved.size === 0) return;
-  for (const entity of [report.produtos, report.faixas, report.clientes, report.orcamentos, report.documentos]) {
+function approvalKeyForDetail(detail: ImportDetail): string | null {
+  return canonicalApprovalKey(String(detail.source_doctype || ''), String(detail.source_id || ''));
+}
+
+function approveDivergences(
+  report: ImportReport,
+  approvedKeys: string[] = [],
+  strict = true
+): void {
+  if (approvedKeys.length === 0) return;
+  const entities = [report.produtos, report.faixas, report.clientes, report.orcamentos, report.documentos];
+  const detailKeys = new Set(
+    entities.flatMap((entity) => entity.detalhes.map(approvalKeyForDetail).filter((key): key is string => Boolean(key)))
+  );
+  const approved = new Set(approvedKeys.map((key) => safeApprovalKey(String(key))));
+  if (strict && [...approved].some((key) => !detailKeys.has(key)))
+    throw new Error('Chave de aprovação inválida.');
+  for (const entity of entities) {
     for (const detail of entity.detalhes) {
-      const detailId = String(detail.source_id || '').replace(/^cliente:/, '');
-      const key = safeApprovalKey(`${detail.source_doctype || ''}:${detailId}`);
-      if (!detail.aprovada && detail.status === 'divergentes' && approved.has(key)) {
+      const key = approvalKeyForDetail(detail);
+      if (!detail.aprovada && detail.status === 'divergentes' && key && approved.has(key)) {
         detail.aprovada = true;
         entity.divergentes -= 1;
         entity.aprovadas += 1;
@@ -1724,7 +1739,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       );
     }
   }
-  approveDivergences(report, options.approvedDivergences);
+  approveDivergences(report, options.approvedDivergences, false);
   if (hasBlockingDetails(report.orcamentos.detalhes)) {
     await failActiveRun('markBatchFailed:quotation-preflight');
     return failedResult();
@@ -1807,7 +1822,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     });
     if (clientAction) plannedClientUnits.push(unit);
   }
-  approveDivergences(report, options.approvedDivergences);
+  approveDivergences(report, options.approvedDivergences, false);
   if (
     options.mode === 'apply' &&
     [report.produtos, report.faixas, report.clientes].some((entity) => hasBlockingDetails(entity.detalhes))

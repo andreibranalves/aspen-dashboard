@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
 import {
   buildQuotationUnits,
+  canonicalApprovalKey,
   canonicalHash,
   deriveHistoricalPdfBlobPath,
   mapQuotationStatus,
@@ -12,6 +13,7 @@ import {
   computeManifestHash,
   readFrappeDataset,
   runFrappeMigration as runFrappeMigrationImplementation,
+  safeApprovalKey,
   stableId,
   type FrappeDataset,
   type HistoricalPdfPipeline,
@@ -924,6 +926,30 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(normalized.total, '120.00');
   });
 
+  it('bloqueia Quotation cujo enrichment falhou antes de ler party ou itens', () => {
+    let touched = false;
+    const record = {
+      __migration_enrichment_error: true,
+      get quotation_to() {
+        touched = true;
+        return 'Customer';
+      },
+      get party_name() {
+        touched = true;
+        return 'CUST-ENRICHMENT';
+      },
+      get items() {
+        touched = true;
+        return [];
+      },
+    };
+    assert.throws(
+      () => normalizeFrappeQuotation(record, new Map()),
+      /enrichment|enriquec/i
+    );
+    assert.equal(touched, false);
+  });
+
   it('resolve Quotation de produção por quotation_to/party_name e child items', () => {
     const normalized = normalizeFrappeQuotation(
       {
@@ -939,6 +965,21 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(normalized.clientRef, 'Customer:CUST-PROD');
     assert.equal(normalized.clientId, 'client-prod');
     assert.equal(normalized.items[0].sku, 'SKU-PROD');
+  });
+
+  it('canonicaliza approval keys sem expor Customer/Lead e rejeita doctype desconhecido', () => {
+    const customerId = '12.345.678/0001-90';
+    const leadId = 'lead@example.com';
+    const customerKey = canonicalApprovalKey('Customer', customerId);
+    const leadKey = canonicalApprovalKey('Lead', leadId);
+    assert.match(customerKey || '', /^cliente:[0-9a-f]{12}$/);
+    assert.match(leadKey || '', /^cliente:[0-9a-f]{12}$/);
+    assert.doesNotMatch(customerKey || '', /12\.345\.678|0001-90/);
+    assert.doesNotMatch(leadKey || '', /lead@example\.com/);
+    assert.equal(canonicalApprovalKey('Customer', customerKey || ''), customerKey);
+    assert.equal(canonicalApprovalKey('Quotation', 'QTN-2025-00001'), 'Quotation:QTN-2025-00001');
+    assert.equal(canonicalApprovalKey('Unknown', 'secret-value'), null);
+    assert.throws(() => safeApprovalKey('Unknown:secret-value'), /chave de aprovação inválida/i);
   });
 
   it('rejeita orçamentos sem ano ou sem sequência numérica no nome', () => {
