@@ -5,8 +5,15 @@ import {
   handler as sendWhatsapp,
   loadPostgresSendContext,
 } from '../../api/_functions/send-whatsapp.js';
-import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
+import {
+  canonicalFlowQuotationId,
+  flowProductSummary,
+  handler as sendWhatsappFlow,
+} from '../../api/_functions/send-whatsapp-flow.js';
 import { handler as communicationFlowPreview } from '../../api/_functions/communication-flow-preview.js';
+import { normalizePostgresMediaUrl } from '../../api/_functions/lib/postgres-media.js';
+import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';
@@ -32,7 +39,7 @@ function snapshot() {
       pagamento: 'Pix',
       entrega: '30 dias',
       templatePadrao: 'padrao',
-      templateHash: 'e'.repeat(64),
+      templateHash: DEFAULT_QUOTATION_TEMPLATE.hash,
       fretePadrao: '0.00',
       frete: '0.00',
       observacoes: '',
@@ -121,7 +128,7 @@ test('send-whatsapp rejects PostgreSQL send without quotation before provider', 
   }) as typeof fetch;
   try {
     const response = await sendWhatsapp(
-      event({ source: 'postgres', dry_run: true, revision_id: revisionId, template: 'Olá' }),
+      event({ source: 'postgres', revision_id: revisionId, template: 'Olá' }),
     );
     assert.equal(response.statusCode, 400);
     assert.match(response.body || '', /Cotação PostgreSQL é obrigatória/);
@@ -135,7 +142,6 @@ test('send-whatsapp-flow rejects PostgreSQL send without quotation before provid
   const response = await sendWhatsappFlow(
     event({
       source: 'postgres',
-      dry_run: true,
       flow: { id: 'flow-1', name: 'Teste', steps: [{ type: 'text', template: 'Olá' }] },
       flow_id: 'flow-1',
       revision_id: revisionId,
@@ -205,6 +211,7 @@ test('loadPostgresSendContext returns canonical immutable revision context', asy
     repository: repositoryFor(),
     store: tokenStore,
     token: () => publicToken,
+    mediaCandidates: ['/media/reference.jpg'],
   });
   assert.equal(context.quotationUuid, quotationId);
   assert.equal(context.revisionId, revisionId);
@@ -213,5 +220,191 @@ test('loadPostgresSendContext returns canonical immutable revision context', asy
   assert.equal(context.view.client.name, 'Cliente Teste');
   assert.equal(context.view.items[0]?.item_code, 'CNG-001');
   assert.equal(context.publicLink, `https://app.test/api/public-quotation?token=${publicToken}`);
+  assert.deepEqual(context.permittedMedia, ['https://app.test/media/reference.jpg']);
   assert.equal(tokenStore.values.size, 1);
+});
+
+test('PostgreSQL media policy rejects Frappe, arbitrary, credentialed and data URLs', () => {
+  const allowed = normalizePostgresMediaUrl('/media/reference.jpg', 'https://app.test');
+  assert.equal(allowed, 'https://app.test/media/reference.jpg');
+  assert.match(
+    normalizePostgresMediaUrl('https://ASSET.public.blob.vercel-storage.com/a.jpg', 'https://app.test'),
+    /public\.blob\.vercel-storage\.com\/a\.jpg$/,
+  );
+  for (const value of [
+    'https://aspenestamparia.l.frappe.cloud/files/a.jpg',
+    'https://ASPENESTAMPARIA.L.FRAPPE.CLOUD/files/a.jpg',
+    'https://user@aspenestamparia.l.frappe.cloud/files/a.jpg',
+    '//aspenestamparia.l.frappe.cloud/files/a.jpg',
+    'https://evil.test/a.jpg',
+    'data:image/png;base64,abc',
+    'https://user@public.blob.vercel-storage.com/a.jpg',
+  ]) {
+    assert.throws(() => normalizePostgresMediaUrl(value, 'https://app.test'), /Mídia pública|Mídia Frappe/);
+  }
+});
+
+test('PostgreSQL context rejects mixed media before provider configuration', async () => {
+  const tokenStore = store();
+  await assert.rejects(
+    loadPostgresSendContext({
+      quotationId: businessNumber,
+      revisionId,
+      needPdf: false,
+      baseUrl: 'https://app.test',
+      repository: repositoryFor(),
+      store: tokenStore,
+      token: () => publicToken,
+      mediaCandidates: ['/media/a.jpg', 'https://evil.test/b.jpg'],
+    }),
+    /Mídia pública inválida/,
+  );
+  assert.equal(tokenStore.values.size, 0);
+});
+
+test('loadPostgresSendContext reports PDF preparation failure without provider access', async () => {
+  const tokenStore = store();
+  await assert.rejects(
+    loadPostgresSendContext({
+      quotationId: businessNumber,
+      revisionId,
+      needPdf: true,
+      baseUrl: 'https://app.test',
+      repository: repositoryFor(),
+      store: tokenStore,
+      token: () => publicToken,
+      renderPdf: async () => { throw new Error('synthetic PDF failure'); },
+    }),
+    /PDF do orçamento/,
+  );
+  assert.equal(tokenStore.values.size, 0);
+});
+
+test('flow PostgreSQL content and duplicate keys use canonical snapshot values', () => {
+  assert.equal(canonicalFlowQuotationId('quote-uuid', businessNumber), businessNumber);
+  assert.equal(flowProductSummary(true, 'texto adulterado', [{ item_code: 'CNG-001' }]), 'cangas');
+  assert.equal(flowProductSummary(false, 'texto legado', [{ item_code: 'CNG-001' }]), 'texto legado');
+});
+
+test('Evolution response requires explicit provider acceptance', () => {
+  assert.deepEqual(
+    normalizeEvolutionDelivery({ accepted: true, message_id: 'provider-1' }),
+    { accepted: true, providerMessageId: 'provider-1' },
+  );
+  assert.deepEqual(
+    normalizeEvolutionDelivery({ key: { id: 'provider-2' }, status: 'PENDING' }),
+    { accepted: true, providerMessageId: 'provider-2' },
+  );
+  assert.deepEqual(normalizeEvolutionDelivery({ accepted: true }), {
+    accepted: true,
+    providerMessageId: 'accepted',
+  });
+  assert.equal(normalizeEvolutionDelivery({}), null);
+});
+
+function withEvolutionEnv() {
+  const previous = {
+    baseUrl: process.env.EVOLUTION_BASE_URL,
+    apiKey: process.env.EVOLUTION_API_KEY,
+    instance: process.env.EVOLUTION_INSTANCE,
+  };
+  process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
+  process.env.EVOLUTION_API_KEY = 'test-key';
+  process.env.EVOLUTION_INSTANCE = 'test-instance';
+  return () => {
+    for (const [key, value] of Object.entries({
+      EVOLUTION_BASE_URL: previous.baseUrl,
+      EVOLUTION_API_KEY: previous.apiKey,
+      EVOLUTION_INSTANCE: previous.instance,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+}
+
+test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
+    assert.equal(response.statusCode, 200);
+    assert.equal(JSON.parse(response.body || '{}').evolution.providerMessageId, 'provider-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('legacy caller PostgreSQL references cannot enqueue quotation.sent', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/should-not-connect';
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ accepted: true, message_id: 'provider-legacy' }), { status: 200 })) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({
+      telefone: '11999990000',
+      mensagem: 'Olá',
+      quotation_uuid: quotationId,
+      revision_id: revisionId,
+      business_number: businessNumber,
+    }));
+    assert.equal(response.statusCode, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  }
+});
+
+test('non-dry endpoint rejects a successful HTTP response without provider acceptance', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response('{}', { status: 200 })) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
+    assert.equal(response.statusCode, 502);
+    assert.match(response.body || '', /provedor não confirmou/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('multi-step send exposes partial provider acceptance', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })
+      : new Response('{}', { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({
+      telefone: '11999990000',
+      sequence: {
+        delay_min_ms: 0,
+        delay_max_ms: 0,
+        steps: [
+          { type: 'text', template: 'Primeira' },
+          { type: 'text', template: 'Segunda' },
+        ],
+      },
+    }));
+    const body = JSON.parse(response.body || '{}');
+    assert.equal(response.statusCode, 502);
+    assert.equal(body.provider_accepted, true);
+    assert.equal(body.partial_send, true);
+    assert.equal(body.accepted_steps, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
 });

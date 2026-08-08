@@ -8,12 +8,13 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 // Used by the flow editor's preview panel and the pre-send confirmation dialog.
 
 import { kv } from '@vercel/kv';
-import { erpGetDoc } from './lib/erpnext.js';
+import { createHttpError, erpGetDoc } from './lib/erpnext.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
 import { isOperationalMode } from './operational-mode.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
+import { normalizePostgresMediaUrl } from './lib/postgres-media.js';
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ async function resolveQuotationContext(quotationId: string): Promise<Record<stri
 
 // ── Media resolution ───────────────────────────────────────────────────────
 
-async function resolveMediaUrls(categories: string[]) {
+async function resolveMediaUrls(categories: string[], applicationOrigin = '', postgresPath = false) {
   if (!categories.length) return [];
 
   let keys: string[] = [];
@@ -219,8 +220,16 @@ async function resolveMediaUrls(categories: string[]) {
   for (const cat of categories) {
     const assets = (byGroup[cat] || []).slice(0, 5);
     for (const asset of assets) {
+      let url = String(asset.blob_url || '').trim();
+      if (postgresPath) {
+        try {
+          url = normalizePostgresMediaUrl(url, applicationOrigin);
+        } catch {
+          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+        }
+      }
       resolved.push({
-        url: asset.blob_url,
+        url,
         caption: asset.caption || '',
         kind: asset.kind || 'image',
         product_group: asset.product_group,
@@ -317,7 +326,11 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     }
 
     // Resolve media for product_media steps
-    const mediaUrls = await resolveMediaUrls(context.categories || []);
+    const mediaUrls = await resolveMediaUrls(
+      context.categories || [],
+      applicationOrigin,
+      postgresPath,
+    );
 
     // Build preview steps
     const warnings = [];

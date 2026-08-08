@@ -35,11 +35,17 @@ import {
   upsertWhatsappMessages,
   WhatsappAttachment,
 } from './lib/whatsapp-conversations-store.js';
+import { normalizePostgresMediaUrl } from './lib/postgres-media.js';
+import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
 
 // ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
-const EVOLUTION_API_KEY = (process.env.EVOLUTION_API_KEY || '').trim();
-const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || '').trim();
+function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
+  return {
+    baseUrl: (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, ''),
+    apiKey: (process.env.EVOLUTION_API_KEY || '').trim(),
+    instance: (process.env.EVOLUTION_INSTANCE || '').trim(),
+  };
+}
 const DEFAULT_TEMPLATE =
   '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
 const DEFAULT_SEQUENCE_STEPS: SequenceStep[] = [
@@ -131,6 +137,25 @@ function toPositiveInt(value: unknown, fallback: number, min: number, max: numbe
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
   return Math.min(max, Math.max(min, Math.round(num)));
+}
+
+function collectMediaCandidates(
+  sequence: Record<string, unknown> | null,
+  payload: Record<string, unknown>,
+): unknown[] {
+  const candidates: unknown[] = [];
+  const steps = Array.isArray(sequence?.steps) ? sequence.steps as Array<Record<string, unknown>> : [];
+  for (const step of steps) {
+    if (step.media || step.url) candidates.push(step.media || step.url);
+  }
+  for (const sampleImages of [sequence?.sample_images, payload.sample_images]) {
+    if (!sampleImages || typeof sampleImages !== 'object' || Array.isArray(sampleImages)) continue;
+    for (const value of Object.values(sampleImages as Record<string, unknown>)) {
+      if (Array.isArray(value)) candidates.push(...value);
+      else if (value) candidates.push(...String(value).split(/\n|,/));
+    }
+  }
+  return candidates;
 }
 
 function publicBaseUrl(event: { headers?: Record<string, string | string[] | undefined> }): string {
@@ -250,13 +275,20 @@ function productSummaryFromCategories(categories: string[] = []): string {
 
 function normalizeSampleImages(
   sampleImages: Record<string, unknown> = {},
-  baseUrl: string
+  baseUrl: string,
+  postgresPath = false,
 ): Record<string, string[]> {
   const normalized: Record<string, string[]> = {};
   for (const [rawCategory, rawUrls] of Object.entries(sampleImages || {})) {
     const category = normalizeCategory(rawCategory);
     const urls = Array.isArray(rawUrls) ? rawUrls : String(rawUrls || '').split(/\n|,/);
-    normalized[category] = urls.map((url) => absoluteUrl(url, baseUrl)).filter(Boolean) as string[];
+    normalized[category] = urls.filter(Boolean).map((url) => {
+      try {
+        return postgresPath ? normalizePostgresMediaUrl(url, baseUrl) : absoluteUrl(url, baseUrl);
+      } catch {
+        throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+      }
+    });
   }
   return normalized;
 }
@@ -303,7 +335,8 @@ function buildSequenceSteps({
     (sequence?.sample_images as Record<string, unknown> | undefined) ||
       (payload.sample_images as Record<string, unknown> | undefined) ||
       {},
-    baseUrl
+    baseUrl,
+    context.postgresPath,
   );
   const planned: SequenceStep[] = [];
 
@@ -313,7 +346,6 @@ function buildSequenceSteps({
       for (const category of categories) {
         const urls = (sampleImages[category] || []).slice(0, maxImagesPerCategory);
         for (let i = 0; i < urls.length; i++) {
-          if (context.postgresPath && urls[i].startsWith(ERPNEXT_BASE)) continue;
           planned.push({
             type: 'image',
             media: urls[i],
@@ -329,9 +361,15 @@ function buildSequenceSteps({
 
     if (type === 'image') {
       const sourceMedia = String(rawStep.media || rawStep.url || '');
-      if (context.postgresPath && sourceMedia.startsWith(ERPNEXT_BASE)) continue;
-      const media = absoluteUrl(rawStep.media || rawStep.url, baseUrl);
-      if (!media || (context.postgresPath && media.startsWith(ERPNEXT_BASE))) continue;
+      let media = absoluteUrl(rawStep.media || rawStep.url, baseUrl);
+      if (context.postgresPath && sourceMedia) {
+        try {
+          media = normalizePostgresMediaUrl(sourceMedia, baseUrl);
+        } catch {
+          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+        }
+      }
+      if (!media) continue;
       planned.push({
         type: 'image',
         media,
@@ -365,9 +403,15 @@ function buildSequenceSteps({
 
       // For external documents: convert URL to text message instead of sendMedia
       const sourceMedia = String(rawStep.media || rawStep.url || context.pdfUrl || '');
-      if (context.postgresPath && sourceMedia.startsWith(ERPNEXT_BASE)) continue;
-      const media = absoluteUrl(rawStep.media || rawStep.url || context.pdfUrl, baseUrl);
-      if (media && !(context.postgresPath && media.startsWith(ERPNEXT_BASE))) {
+      let media = absoluteUrl(rawStep.media || rawStep.url || context.pdfUrl, baseUrl);
+      if (context.postgresPath && sourceMedia) {
+        try {
+          media = normalizePostgresMediaUrl(sourceMedia, baseUrl);
+        } catch {
+          throw createHttpError(400, 'Documento público inválido para cotação PostgreSQL.');
+        }
+      }
+      if (media) {
         const captionText = rawStep.caption ? `\n${renderTemplate(rawStep.caption, context)}` : '';
         planned.push({ type: 'text', text: `Documento: ${media}${captionText}` });
       }
@@ -556,6 +600,7 @@ type PostgresSendContext = {
   phone: string;
   publicLink: string;
   pdfBase64: string;
+  permittedMedia: string[];
 };
 
 export async function loadPostgresSendContext(input: {
@@ -569,6 +614,7 @@ export async function loadPostgresSendContext(input: {
   store?: PublicQuotationStore;
   token?: () => string;
   renderPdf?: NonNullable<PublicQuotationDependencies['renderPdf']>;
+  mediaCandidates?: unknown[];
 }): Promise<PostgresSendContext> {
   const quotationId = String(input.quotationId || '').trim();
   const revisionId = String(input.revisionId || '').trim();
@@ -598,20 +644,13 @@ export async function loadPostgresSendContext(input: {
     throw createHttpError(400, 'O telefone informado não pertence à cotação PostgreSQL.');
   }
 
-  let token;
-  try {
-    token = await issuePublicQuotationToken({
-      revisionId,
-      repository: input.repository,
-      store: input.store,
-      token: input.token,
-    });
-  } catch (error) {
-    if (error instanceof Error && /rascunho|compartilh/i.test(error.message)) {
-      throw createHttpError(409, 'A cotação não está disponível para envio.');
+  const permittedMedia = (input.mediaCandidates || []).filter(Boolean).map((candidate) => {
+    try {
+      return normalizePostgresMediaUrl(candidate, input.baseUrl);
+    } catch {
+      throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
     }
-    throw createHttpError(503, 'Não foi possível preparar o link público do orçamento.');
-  }
+  });
 
   let pdfBase64 = '';
   if (input.needPdf) {
@@ -628,6 +667,21 @@ export async function loadPostgresSendContext(input: {
     }
   }
 
+  let token;
+  try {
+    token = await issuePublicQuotationToken({
+      revisionId,
+      repository: input.repository,
+      store: input.store,
+      token: input.token,
+    });
+  } catch (error) {
+    if (error instanceof Error && /rascunho|compartilh/i.test(error.message)) {
+      throw createHttpError(409, 'A cotação não está disponível para envio.');
+    }
+    throw createHttpError(503, 'Não foi possível preparar o link público do orçamento.');
+  }
+
   return {
     snapshot,
     view,
@@ -642,16 +696,18 @@ export async function loadPostgresSendContext(input: {
     phone,
     publicLink: `${input.baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`,
     pdfBase64,
+    permittedMedia,
   };
 }
 
 // ── Evolution API ───────────────────────────────────────────────────────────
 
 function assertEvolutionConfig(): void {
+  const { baseUrl, apiKey, instance } = evolutionConfig();
   const missing: string[] = [];
-  if (!EVOLUTION_BASE_URL) missing.push('EVOLUTION_BASE_URL');
-  if (!EVOLUTION_API_KEY) missing.push('EVOLUTION_API_KEY');
-  if (!EVOLUTION_INSTANCE) missing.push('EVOLUTION_INSTANCE');
+  if (!baseUrl) missing.push('EVOLUTION_BASE_URL');
+  if (!apiKey) missing.push('EVOLUTION_API_KEY');
+  if (!instance) missing.push('EVOLUTION_INSTANCE');
   if (missing.length > 0) {
     throw createHttpError(
       500,
@@ -661,8 +717,9 @@ function assertEvolutionConfig(): void {
   }
 }
 
-async function evolutionPost(path: string, body: Record<string, unknown>): Promise<unknown> {
-  const url = `${EVOLUTION_BASE_URL}${path}`;
+async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
+  const { baseUrl, apiKey } = evolutionConfig();
+  const url = `${baseUrl}${path}`;
   let res: Response;
   let responseBody: unknown;
   try {
@@ -670,7 +727,7 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: EVOLUTION_API_KEY,
+        apikey: apiKey,
       },
       body: JSON.stringify(body),
     });
@@ -697,11 +754,16 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
     );
   }
 
-  return responseBody;
+  const delivery = normalizeEvolutionDelivery(responseBody);
+  if (!delivery) {
+    throw createHttpError(502, 'O provedor não confirmou o recebimento da mensagem.');
+  }
+  return delivery;
 }
 
-export async function sendText(number: string, text: string): Promise<unknown> {
-  return evolutionPost(`/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+export async function sendText(number: string, text: string): Promise<EvolutionDeliveryResult> {
+  const { instance } = evolutionConfig();
+  return evolutionPost(`/message/sendText/${encodeURIComponent(instance)}`, {
     number,
     text,
   });
@@ -728,14 +790,18 @@ async function fetchQuotationPdfBuffer(quotationId: string): Promise<Buffer> {
   }
 }
 
-async function sendMedia(number: string, step: SequenceStep, postgresPath = false): Promise<unknown> {
+async function sendMedia(number: string, step: SequenceStep, postgresPath = false, baseUrl = ''): Promise<EvolutionDeliveryResult> {
   // ── Quotation PDF marker ──
   let media = step.media;
   if (postgresPath && typeof media === 'string' && media.startsWith('__pdf__:')) {
     throw createHttpError(400, 'O PDF PostgreSQL precisa ser gerado a partir da revisão.');
   }
-  if (postgresPath && typeof media === 'string' && media.startsWith(ERPNEXT_BASE)) {
-    throw createHttpError(400, 'Mídia Frappe não pode ser enviada por uma cotação PostgreSQL.');
+  if (postgresPath && typeof media === 'string' && !media.startsWith('__pdf-')) {
+    try {
+      media = normalizePostgresMediaUrl(media, baseUrl);
+    } catch {
+      throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+    }
   }
   if (media && typeof media === 'string' && media.startsWith('__pdf-base64__:')) {
     media = media.slice('__pdf-base64__:'.length);
@@ -776,7 +842,8 @@ async function sendMedia(number: string, step: SequenceStep, postgresPath = fals
     }
   }
 
-  return evolutionPost(`/message/sendMedia/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+  const { instance } = evolutionConfig();
+  return evolutionPost(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     number,
     mediatype: step.type === 'document' ? 'document' : 'image',
     mimetype: step.mimetype,
@@ -786,9 +853,9 @@ async function sendMedia(number: string, step: SequenceStep, postgresPath = fals
   });
 }
 
-async function sendStep(number: string, step: SequenceStep, postgresPath = false): Promise<unknown> {
+async function sendStep(number: string, step: SequenceStep, postgresPath = false, baseUrl = ''): Promise<EvolutionDeliveryResult> {
   if (step.type === 'text') return sendText(number, step.text || '');
-  return sendMedia(number, step, postgresPath);
+  return sendMedia(number, step, postgresPath, baseUrl);
 }
 
 async function queuePostgresSentEvent(
@@ -805,9 +872,9 @@ async function queuePostgresSentEvent(
     payload.revisionId as string | undefined,
     payload.quote_revision_id as string | undefined,
   );
-  // Legacy Frappe callers do not carry PostgreSQL ownership references yet.
+  // Only a validated PostgreSQL send may create quotation.sent.
   const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
-  if (!postgresPath && !quotationUuid && !revisionId) return;
+  if (!postgresPath) return;
   if (!quotationUuid || !revisionId || !process.env.DATABASE_URL) {
     throw new QuotationOutboxDurabilityError(new Error('Referências PostgreSQL ausentes.'));
   }
@@ -892,6 +959,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     return jsonResponse(400, { error: 'JSON inválido' });
   }
 
+  let providerAcceptedCount = 0;
+  let postgresOutboxContext: { quotationId: string; payload: Record<string, unknown> } | null = null;
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
     const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
@@ -917,8 +986,6 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     if (postgresPath && !revisionId) {
       throw createHttpError(400, 'Revisão PostgreSQL do orçamento é obrigatória.');
     }
-    if (!dryRun) assertEvolutionConfig();
-
     const shouldResolveQuotation = Boolean(quotationId && (!dryRun || postgresPath));
     const resolved: ResolvedWhatsappContact = postgresPath
       ? await loadPostgresSendContext({
@@ -935,6 +1002,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           needPdf,
           baseUrl,
           repository: createQuotationTemplateRepository(),
+          mediaCandidates: collectMediaCandidates(sequenceForResolution, payload),
         })
       : shouldResolveQuotation
         ? await resolveContactFromQuotation(quotationId)
@@ -989,6 +1057,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           business_number: resolved.businessNumber,
         }
       : payload;
+    if (postgresPath) {
+      postgresOutboxContext = { quotationId: messageQuotationId, payload: outboxPayload };
+    }
     const context: TemplateContext = {
       nome,
       quotationId: messageQuotationId,
@@ -1034,12 +1105,15 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         );
       }
 
-      const evolution: unknown[] = [];
+      const evolution: EvolutionDeliveryResult[] = [];
       if (!dryRun) {
+        assertEvolutionConfig();
         for (let i = 0; i < steps.length; i++) {
           if (i > 0) await wait(randomDelay(delayMinMs, delayMaxMs));
           const step = steps[i];
-          const response = await sendStep(number, step, postgresPath);
+          const response = await sendStep(number, step, postgresPath, baseUrl);
+          if (!response.accepted) throw createHttpError(502, 'O provedor não confirmou a mensagem.');
+          providerAcceptedCount += 1;
           evolution.push(response);
 
           // Persist outbound quotation PDF message
@@ -1119,8 +1193,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       throw createHttpError(400, 'Mensagem vazia.');
     }
 
-    const evolution = dryRun ? null : await sendText(number, text);
+    let evolution: EvolutionDeliveryResult | null = null;
     if (!dryRun) {
+      assertEvolutionConfig();
+      evolution = await sendText(number, text);
+      if (!evolution.accepted) throw createHttpError(502, 'O provedor não confirmou a mensagem.');
+      providerAcceptedCount = 1;
       await queuePostgresSentEvent(messageQuotationId, outboxPayload);
       if (!postgresPath) await markDealAsSent((payload.deal_id as string) || resolved.dealId, quotationId);
       await dispatchN8n(
@@ -1160,7 +1238,42 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         error: err.message,
         provider_accepted: true,
         outbox_durable: false,
+        partial_send: providerAcceptedCount > 0,
         alert_id: err.alertId,
+      });
+    }
+    if (providerAcceptedCount > 0) {
+      if (postgresOutboxContext) {
+        try {
+          await queuePostgresSentEvent(
+            postgresOutboxContext.quotationId,
+            postgresOutboxContext.payload,
+          );
+          return jsonResponse(502, {
+            error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',
+            provider_accepted: true,
+            outbox_durable: true,
+            partial_send: true,
+            accepted_steps: providerAcceptedCount,
+          });
+        } catch (queueError) {
+          const durability = queueError as { alertId?: string; message?: string };
+          return jsonResponse(503, {
+            error: 'Parte da mensagem foi aceita, mas o rastreamento durável falhou.',
+            provider_accepted: true,
+            outbox_durable: false,
+            partial_send: true,
+            accepted_steps: providerAcceptedCount,
+            alert_id: durability.alertId,
+          });
+        }
+      }
+      return jsonResponse(502, {
+        error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',
+        provider_accepted: true,
+        outbox_durable: true,
+        partial_send: true,
+        accepted_steps: providerAcceptedCount,
       });
     }
     return jsonResponse(code, { error: typedErr?.message || 'Erro interno.' });

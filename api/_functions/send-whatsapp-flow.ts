@@ -22,6 +22,8 @@ import {
   isRevisionBoundPublicQuotationUrl,
 } from './public-quotation.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
+import { normalizePostgresMediaUrl } from './lib/postgres-media.js';
+import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
 import {
   deriveOpaqueQuotationOutboxIdempotencyKey,
   enqueueQuotationSentEvent,
@@ -33,9 +35,13 @@ import {
   KV_KEY_SEND_EVENTS_PREFIX,
 } from '../_lib/media-schema.js';
 
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').replace(/\/+$/, '');
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const EVOLUTION_INSTANCE = process.env.EVOLUTION_INSTANCE || '';
+function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
+  return {
+    baseUrl: (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, ''),
+    apiKey: (process.env.EVOLUTION_API_KEY || '').trim(),
+    instance: (process.env.EVOLUTION_INSTANCE || '').trim(),
+  };
+}
 
 const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
   CNG: 'canga',
@@ -198,13 +204,27 @@ function productSummaryFromCategories(categories: string[] = []): string {
   return `${labels.slice(0, -1).join(', ')} e ${labels.at(-1)}`;
 }
 
+export function canonicalFlowQuotationId(quotationId: string, businessNumber: string): string {
+  return businessNumber || quotationId;
+}
+
+export function flowProductSummary(
+  postgresPath: boolean,
+  callerSummary: unknown,
+  items: Record<string, unknown>[],
+): string {
+  const canonical = productSummaryFromCategories(detectCategories(items));
+  return postgresPath ? canonical : firstNonEmpty(callerSummary, canonical);
+}
+
 // ── Evolution API ──────────────────────────────────────────────────────────
 
 function assertEvolutionConfig() {
+  const { baseUrl, apiKey, instance } = evolutionConfig();
   const missing = [];
-  if (!EVOLUTION_BASE_URL) missing.push('EVOLUTION_BASE_URL');
-  if (!EVOLUTION_API_KEY) missing.push('EVOLUTION_API_KEY');
-  if (!EVOLUTION_INSTANCE) missing.push('EVOLUTION_INSTANCE');
+  if (!baseUrl) missing.push('EVOLUTION_BASE_URL');
+  if (!apiKey) missing.push('EVOLUTION_API_KEY');
+  if (!instance) missing.push('EVOLUTION_INSTANCE');
   if (missing.length > 0) {
     throw createHttpError(
       500,
@@ -214,13 +234,14 @@ function assertEvolutionConfig() {
   }
 }
 
-async function evolutionPost(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const url = `${EVOLUTION_BASE_URL}${path}`;
+async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
+  const { baseUrl, apiKey } = evolutionConfig();
+  const url = `${baseUrl}${path}`;
   let res, responseBody;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+      headers: { 'Content-Type': 'application/json', apikey: apiKey },
       body: JSON.stringify(body),
     });
     responseBody = await res.json().catch(() => null);
@@ -241,11 +262,14 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
       `Evolution ${res.status}: ${detail}`
     );
   }
-  return responseBody;
+  const delivery = normalizeEvolutionDelivery(responseBody);
+  if (!delivery) throw createHttpError(502, 'O provedor não confirmou o recebimento da mensagem.');
+  return delivery;
 }
 
-async function sendText(number: string, text: string): Promise<Record<string, unknown>> {
-  return evolutionPost(`/message/sendText/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+async function sendText(number: string, text: string): Promise<EvolutionDeliveryResult> {
+  const { instance } = evolutionConfig();
+  return evolutionPost(`/message/sendText/${encodeURIComponent(instance)}`, {
     number,
     text,
   });
@@ -262,14 +286,18 @@ async function fetchQuotationPdfBuffer(quotationId: string): Promise<Buffer> {
   }
 }
 
-async function sendMedia(number: string, step: Record<string, unknown>, postgresPath = false): Promise<Record<string, unknown>> {
+async function sendMedia(number: string, step: Record<string, unknown>, postgresPath = false, baseUrl = ''): Promise<EvolutionDeliveryResult> {
   let media: string | undefined = step.media as string | undefined;
 
   if (postgresPath && typeof media === 'string' && media.startsWith('__pdf__:')) {
     throw createHttpError(400, 'O PDF PostgreSQL precisa ser gerado a partir da revisão.');
   }
-  if (postgresPath && typeof media === 'string' && media.startsWith(ERPNEXT_BASE)) {
-    throw createHttpError(400, 'Mídia Frappe não pode ser enviada por uma cotação PostgreSQL.');
+  if (postgresPath && typeof media === 'string' && !media.startsWith('__pdf-')) {
+    try {
+      media = normalizePostgresMediaUrl(media, baseUrl);
+    } catch {
+      throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+    }
   }
 
   // PDF marker
@@ -294,7 +322,8 @@ async function sendMedia(number: string, step: Record<string, unknown>, postgres
     }
   }
 
-  return evolutionPost(`/message/sendMedia/${encodeURIComponent(EVOLUTION_INSTANCE)}`, {
+  const { instance } = evolutionConfig();
+  return evolutionPost(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     number,
     mediatype: step.type === 'document' ? 'document' : 'image',
     mimetype: step.mimetype,
@@ -304,14 +333,19 @@ async function sendMedia(number: string, step: Record<string, unknown>, postgres
   });
 }
 
-async function sendStep(number: string, step: Record<string, unknown>, postgresPath = false): Promise<Record<string, unknown>> {
+async function sendStep(number: string, step: Record<string, unknown>, postgresPath = false, baseUrl = ''): Promise<EvolutionDeliveryResult> {
   if (step.type === 'text') return sendText(number, step.text as string);
-  return sendMedia(number, step, postgresPath);
+  return sendMedia(number, step, postgresPath, baseUrl);
 }
 
 // ── Media resolution ───────────────────────────────────────────────────────
 
-async function resolveProductMedia(categories: string[], maxPerGroup = 1): Promise<Record<string, unknown>[]> {
+async function resolveProductMedia(
+  categories: string[],
+  maxPerGroup = 1,
+  postgresPath = false,
+  applicationOrigin = '',
+): Promise<Record<string, unknown>[]> {
   if (!categories.length) return [];
 
   // Scan KV for all media assets
@@ -343,9 +377,17 @@ async function resolveProductMedia(categories: string[], maxPerGroup = 1): Promi
     const normalized = normalizeCategory(cat);
     const assets = (byGroup[normalized] || []).slice(0, maxPerGroup);
     for (const asset of assets) {
+      let mediaUrl = String(asset.blob_url || '').trim();
+      if (postgresPath) {
+        try {
+          mediaUrl = normalizePostgresMediaUrl(mediaUrl, applicationOrigin);
+        } catch {
+          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+        }
+      }
       resolved.push({
         type: 'image',
-        media: asset.blob_url,
+        media: mediaUrl,
         mimetype: asset.content_type || 'image/jpeg',
         fileName: ((asset.pathname as string) || '').split('/').pop() || 'referencia.jpg',
         caption: asset.caption || '',
@@ -440,9 +482,9 @@ async function queuePostgresSentEvent(
     payload.revisionId,
     payload.quote_revision_id,
   );
-  // Legacy Frappe callers do not carry PostgreSQL ownership references yet.
+  // Only a validated PostgreSQL flow may create quotation.sent.
   const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
-  if (!postgresPath && !quotationUuid && !revisionId) return;
+  if (!postgresPath) return;
   if (!quotationUuid || !revisionId || !process.env.DATABASE_URL) {
     throw new QuotationOutboxDurabilityError(new Error('Referências PostgreSQL ausentes.'));
   }
@@ -528,7 +570,12 @@ async function buildSteps(flow: Record<string, any>, context: Record<string, any
     } else if (rawStep.type === 'product_media') {
       const maxItems =
         rawStep.max_items || context.maxMediaPerGroup || flow.max_media_per_product_group || 1;
-      const mediaSteps = await resolveProductMedia(context.categories, maxItems);
+      const mediaSteps = await resolveProductMedia(
+        context.categories,
+        maxItems,
+        context.postgresPath === true,
+        context.applicationOrigin || '',
+      );
       for (const ms of mediaSteps) steps.push(ms);
     }
   }
@@ -576,6 +623,8 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     return jsonResponse(400, { error: 'JSON inválido.' });
   }
 
+  let providerAcceptedCount = 0;
+  let postgresOutboxContext: { quotationId: string; payload: Record<string, unknown> } | null = null;
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
 
@@ -594,7 +643,6 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     const flow = await resolveFlow(flowId);
     if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
-    if (!dryRun) assertEvolutionConfig();
 
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
     const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
@@ -622,12 +670,13 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       payload.quotation_uuid = context.quotationUuid;
       payload.revision_id = context.revisionId;
       payload.business_number = context.businessNumber;
-      businessNumber = context.businessNumber;
+      businessNumber = canonicalFlowQuotationId(quotationId, context.businessNumber);
       link = context.publicLink;
       pdfBase64 = context.pdfBase64;
       nome = context.nome;
       telefone = context.telefone;
       items = context.view.items as Record<string, unknown>[];
+      postgresOutboxContext = { quotationId: businessNumber, payload };
     } else if (quotationId) {
       try {
         const quotation = await erpGetDoc('Quotation', quotationId) as Record<string, unknown>;
@@ -662,13 +711,14 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     if (!number) throw createHttpError(400, 'Telefone inválido ou ausente.');
 
     const categories = detectCategories(items);
-    const productSummary = firstNonEmpty(payload.product_summary, productSummaryFromCategories(categories));
+    const productSummary = flowProductSummary(postgresPath, payload.product_summary, items);
     const context = {
       nome,
       quotationId: businessNumber,
       link,
       pdfBase64,
       postgresPath,
+      applicationOrigin: baseUrl,
       vendorName: flow.vendor_name || payload.vendedora || 'Juliana',
       productSummary,
       categories,
@@ -681,17 +731,20 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     // Duplicate check
     let duplicateWarning = false;
-    if (quotationId && !dryRun) {
-      duplicateWarning = await checkDuplicate(quotationId, number, flowId);
+    if (businessNumber && !dryRun) {
+      duplicateWarning = await checkDuplicate(businessNumber, number, flowId);
     }
 
     // Send
-    const evolution = [];
+    const evolution: EvolutionDeliveryResult[] = [];
     if (!dryRun) {
+      assertEvolutionConfig();
       for (let i = 0; i < steps.length; i++) {
         if (i > 0)
           await wait(randomDelay(flow.delay_min_seconds * 1000, flow.delay_max_seconds * 1000));
-        const resp = await sendStep(number, steps[i], postgresPath);
+        const resp = await sendStep(number, steps[i], postgresPath, baseUrl);
+        if (!resp.accepted) throw createHttpError(502, 'O provedor não confirmou a mensagem.');
+        providerAcceptedCount += 1;
         evolution.push(resp);
       }
       await queuePostgresSentEvent(businessNumber, payload);
@@ -750,7 +803,42 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         error: err.message,
         provider_accepted: true,
         outbox_durable: false,
+        partial_send: providerAcceptedCount > 0,
         alert_id: err.alertId,
+      });
+    }
+    if (providerAcceptedCount > 0) {
+      if (postgresOutboxContext) {
+        try {
+          await queuePostgresSentEvent(
+            postgresOutboxContext.quotationId,
+            postgresOutboxContext.payload,
+          );
+          return jsonResponse(502, {
+            error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',
+            provider_accepted: true,
+            outbox_durable: true,
+            partial_send: true,
+            accepted_steps: providerAcceptedCount,
+          });
+        } catch (queueError) {
+          const durability = queueError as { alertId?: string };
+          return jsonResponse(503, {
+            error: 'Parte da mensagem foi aceita, mas o rastreamento durável falhou.',
+            provider_accepted: true,
+            outbox_durable: false,
+            partial_send: true,
+            accepted_steps: providerAcceptedCount,
+            alert_id: durability.alertId,
+          });
+        }
+      }
+      return jsonResponse(502, {
+        error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',
+        provider_accepted: true,
+        outbox_durable: true,
+        partial_send: true,
+        accepted_steps: providerAcceptedCount,
       });
     }
     return jsonResponse(code, { error: httpErr?.message || 'Erro interno.' });
