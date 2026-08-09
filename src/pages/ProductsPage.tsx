@@ -49,6 +49,12 @@ export default function ProductsPage() {
   const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
   const [coreMode, setCoreMode] = useState<boolean>(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPendingSearch = useCallback(() => {
+    if (searchTimer.current) {
+      clearTimeout(searchTimer.current);
+      searchTimer.current = null;
+    }
+  }, []);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [, navigate] = useHashRoute();
   const setTopBarActions = useSetTopBarActions();
@@ -89,23 +95,26 @@ export default function ProductsPage() {
   }, [setTopBarActions, navigate]);
 
   useEffect(() => { fetchData(search, page, limit, sort, status); }, [fetchData, search, page, limit, sort, status]);
+  useEffect(() => () => clearPendingSearch(), [clearPendingSearch]);
 
   const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearch(val);
-    if (searchTimer.current) clearTimeout(searchTimer.current);
+    clearPendingSearch();
     searchTimer.current = setTimeout(() => {
+      searchTimer.current = null;
       setPage(1);
       fetchData(val, 1, limit, sort, status);
     }, 350);
-  }, [limit, sort, status, fetchData]);
+  }, [clearPendingSearch, limit, sort, status, fetchData]);
 
   const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(e.target.value, 10);
+    clearPendingSearch();
     setLimit(newLimit);
     setPage(1);
     fetchData(search, 1, newLimit, sort, status);
-  }, [search, sort, status, fetchData]);
+  }, [clearPendingSearch, search, sort, status, fetchData]);
 
   const getPageNumbers = (): number[] => {
     if (totalPages <= 1) return [];
@@ -209,7 +218,11 @@ export default function ProductsPage() {
               <button
                 key={value}
                 type="button"
-                onClick={() => { setStatus(value); setPage(1); }}
+                onClick={() => {
+                  clearPendingSearch();
+                  setStatus(value);
+                  setPage(1);
+                }}
                 className={`rounded-full px-3 py-1.5 transition-colors ${status === value ? 'bg-primary text-white' : 'text-fg-muted hover:text-fg'}`}
               >
                 {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
@@ -226,7 +239,11 @@ export default function ProductsPage() {
           <button
             key={opt.value}
             type="button"
-            onClick={() => { setSort(opt.value); setPage(1); }}
+            onClick={() => {
+              clearPendingSearch();
+              setSort(opt.value);
+              setPage(1);
+            }}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               sort === opt.value
                 ? 'bg-primary text-white'
