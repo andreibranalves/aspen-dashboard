@@ -4,7 +4,7 @@ Status: BLOCKED_PENDING_OPERATIONAL_APPROVAL.
 
 Branch: `feature/migracao-sem-frappe`.
 
-HEAD: `5992704`.
+HEAD: `f8e6908`.
 
 ## Verified
 
