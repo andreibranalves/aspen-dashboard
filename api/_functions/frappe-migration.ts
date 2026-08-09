@@ -38,6 +38,7 @@ import {
   type ImportDetail,
   type ImportReport,
   type MigrationManifest,
+  type MigrationReconciliationExpectations,
   type NormalizedClient,
   type NormalizedPriceDocument,
   type NormalizedProduct,
@@ -1362,6 +1363,131 @@ function analyzeHistoricalPdfArchive(
   documentos.estimativa_volume = constructable;
 }
 
+function stableHashRows(rows: Array<Record<string, unknown>>, key: (row: Record<string, unknown>) => string): string {
+  return canonicalHash(rows.slice().sort((left, right) => key(left).localeCompare(key(right))));
+}
+
+function emptyReconciliationExpectations(): MigrationReconciliationExpectations {
+  const emptyHash = canonicalHash([]);
+  return {
+    counts: {
+      products: 0,
+      pricingDocuments: 0,
+      pricingTiers: 0,
+      clients: 0,
+      quotations: 0,
+      revisions: 0,
+      items: 0,
+      templates: 0,
+      templateVersions: 0,
+    },
+    hashes: {
+      products: emptyHash,
+      pricingDocuments: emptyHash,
+      pricingTiers: emptyHash,
+      clients: emptyHash,
+      quotations: emptyHash,
+      revisions: emptyHash,
+      items: emptyHash,
+      templates: emptyHash,
+      templateVersions: emptyHash,
+    },
+    statusCounts: { quotations: {}, revisions: {} },
+  };
+}
+
+function buildReconciliationExpectations(
+  productUnits: ProductUnit[],
+  clientUnits: ClientUnit[],
+  quotationUnits: QuotationUnit[]
+): MigrationReconciliationExpectations {
+  const lineageRows = (entityType: string, units: Array<{ lineage: FrappeLineageEntry[] }>) =>
+    units.flatMap((unit) =>
+      unit.lineage
+        .filter((entry) => entry.entityType === entityType)
+        .map((entry) => ({
+          sourceDoctype: entry.sourceDoctype,
+          sourceId: entry.sourceId,
+          localKey: entry.localKey,
+          canonicalHash: entry.canonicalHash,
+        }))
+    );
+  const products = lineageRows('produto', productUnits);
+  const pricingDocuments = lineageRows('faixa', productUnits);
+  const pricingTiers = productUnits.flatMap((unit) =>
+    unit.product.precos.map((tier) => ({
+      productSku: unit.product.sku,
+      minimumQuantity: tier.minimum_quantity,
+      unitPrice: tier.unit_price,
+    }))
+  );
+  const clients = lineageRows('cliente', clientUnits);
+  const quotations = lineageRows('orcamento', quotationUnits);
+  const revisions = quotationUnits.map((unit) => ({
+    id: unit.revision.id,
+    quotationId: unit.id,
+    version: unit.revision.version,
+    status: unit.revision.status,
+    templateKey: unit.revision.templatePadrao,
+    templateHash: unit.revision.templateHash,
+    itemCount: unit.items.length,
+    templateVersionPresent: true,
+    sectionsSnapshotPresent: true,
+  }));
+  const items = quotationUnits.flatMap((unit) =>
+    unit.items.map((item) => ({
+      id: item.id,
+      revisionId: unit.revision.id,
+      position: item.position,
+      productSku: item.productSku,
+      quantidade: item.quantidade,
+      precoSugerido: item.precoSugerido,
+      precoAplicado: item.precoAplicado,
+      totalLinha: item.totalLinha,
+    }))
+  );
+  const templates = [...new Map(
+    quotationUnits.map((unit) => [
+      `${unit.revision.templatePadrao}:${unit.revision.templateHash}`,
+      { key: unit.revision.templatePadrao, hash: unit.revision.templateHash },
+    ])
+  ).values()];
+  const templateVersions = templates.map((template) => ({ ...template, version: 1 }));
+  const statusCounts = (rows: Array<{ status: string }>) =>
+    rows.reduce<Record<string, number>>((counts, row) => {
+      counts[row.status] = (counts[row.status] || 0) + 1;
+      return counts;
+    }, {});
+  return {
+    counts: {
+      products: products.length,
+      pricingDocuments: pricingDocuments.length,
+      pricingTiers: pricingTiers.length,
+      clients: clients.length,
+      quotations: quotations.length,
+      revisions: revisions.length,
+      items: items.length,
+      templates: templates.length,
+      templateVersions: templateVersions.length,
+    },
+    hashes: {
+      products: stableHashRows(products, (row) => `${row.sourceDoctype}:${row.sourceId}`),
+      pricingDocuments: stableHashRows(pricingDocuments, (row) => `${row.sourceDoctype}:${row.sourceId}`),
+      pricingTiers: stableHashRows(pricingTiers, (row) => `${row.productSku}:${row.minimumQuantity}`),
+      clients: stableHashRows(clients, (row) => `${row.sourceDoctype}:${row.sourceId}`),
+      quotations: stableHashRows(quotations, (row) => `${row.sourceDoctype}:${row.sourceId}`),
+      revisions: stableHashRows(revisions, (row) => `${row.quotationId}:${row.version}`),
+      items: stableHashRows(items, (row) => `${row.revisionId}:${row.position}`),
+      templates: stableHashRows(templates, (row) => `${row.key}:${row.hash}`),
+      templateVersions: stableHashRows(templateVersions, (row) => `${row.key}:${row.version}`),
+    },
+    statusCounts: {
+      quotations: statusCounts(quotationUnits.map((unit) => ({ status: unit.quotation.status }))),
+      revisions: statusCounts(revisions),
+    },
+  };
+}
+
 function buildManifest(
   runId: string,
   provider: string,
@@ -1370,7 +1496,8 @@ function buildManifest(
   manifestHash: string,
   status: 'completed' | 'failed',
   report: ImportReport,
-  dataset: FrappeDataset
+  dataset: FrappeDataset,
+  reconciliation = emptyReconciliationExpectations()
 ): MigrationManifest {
   return {
     runId,
@@ -1385,6 +1512,7 @@ function buildManifest(
       clients: (dataset.customers || []).length + (dataset.leads || []).length,
       quotations: (dataset.quotations || []).length,
     },
+    reconciliation,
     divergenceCounts: {
       approved: report.total.aprovadas,
       blocking: report.total.divergentes + report.total.erros,
@@ -2263,7 +2391,21 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   const finalized = finalizeReport(report);
   return {
     report: finalized,
-    manifest: buildManifest(activeRunId || runId, 'frappe', options.mode, sourceSnapshotAt, manifestHash, manifestStatus, finalized, dataset),
+    manifest: buildManifest(
+      activeRunId || runId,
+      'frappe',
+      options.mode,
+      sourceSnapshotAt,
+      manifestHash,
+      manifestStatus,
+      finalized,
+      dataset,
+      buildReconciliationExpectations(
+        normalized.productUnits,
+        normalized.clientUnits,
+        builtQuotations.quotationUnits
+      )
+    ),
   };
 }
 

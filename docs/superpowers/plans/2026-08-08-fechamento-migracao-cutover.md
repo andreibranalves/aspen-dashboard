@@ -92,9 +92,10 @@ Não aceitar `FRAPPE_MIGRATION_FIXTURE` em apply.
 Atualizar o runbook para usar sempre:
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   npm run db:migrate
 ```
 
@@ -454,11 +455,15 @@ Adicionar teste que aplica source change depois do token e compara conteúdo, to
 Run with explicit target:
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   npm run db:migrate
-node --test --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  node --test --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
 ```
 
 Expected: PASS and no second draft for one quotation.
@@ -832,9 +837,10 @@ O runbook exige registrar as versões no diretório protegido do corte.
 Run somente contra `STAGING_DATABASE_URL`, com `CUTOVER_BACKUP_DIR` externo e protegido:
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/backup-crm.mjs --preflight
 ```
 
@@ -847,9 +853,10 @@ O preflight é obrigatório e aborta o backup quando capacidade está crítica o
 Run com `CUTOVER_BACKUP_DIR` externo e explícito:
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/backup-crm.mjs
 sha256sum "$BACKUP_FILE" > "$CUTOVER_DIR/backup.sha256"
 ```
@@ -863,9 +870,13 @@ Não selecionar automaticamente o backup mais recente.
 Run:
 
 ```bash
-env -u TEST_DATABASE_URL \
+RESTORE_EXPECTED_DATABASE=aspen_restore
+: "${RESTORE_PG_SERVICE:?configure the named restore service}"
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+  RESTORE_PG_SERVICE="$RESTORE_PG_SERVICE" \
+  RESTORE_EXPECTED_DATABASE=aspen_restore \
   node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE"
 ```
 
@@ -1025,11 +1036,15 @@ Expected: zero falhas, warnings existentes documentados e zero segredo detectado
 - [ ] **Step 2: Run complete PostgreSQL verification.**
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   npm run db:migrate
-node --test --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  node --test --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
 ```
 
 Expected: PASS contra `aspen_test`, sem conexão em `neondb`.

@@ -492,16 +492,17 @@ test(
       const [legacyTable] = await client.unsafe(
         "SELECT to_regclass('public.issued_documents') AS table_name"
       );
+      let legacyBusinessColumn: string | undefined;
       if (legacyTable?.table_name) {
         const columns = await client.unsafe(
           "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'issued_documents'"
         );
         const available = new Set(columns.map((row) => String(row.column_name)));
-        const businessColumn = ['business_number', 'quotation_name', 'quotation', 'quotation_id'].find(
+        legacyBusinessColumn = ['business_number', 'quotation_name', 'quotation', 'quotation_id'].find(
           (column) => available.has(column)
         );
-        assert.ok(businessColumn, 'issued_documents must expose a quotation reference');
-        const value = businessColumn === 'business_number' || businessColumn === 'quotation_name' || businessColumn === 'quotation'
+        assert.ok(legacyBusinessColumn, 'issued_documents must expose a quotation reference');
+        const value = legacyBusinessColumn === 'business_number' || legacyBusinessColumn === 'quotation_name' || legacyBusinessColumn === 'quotation'
           ? expectedBusinessNumber
           : (await client.unsafe(
               'SELECT id FROM quotations WHERE business_number = $1',
@@ -509,7 +510,7 @@ test(
             ))[0]?.id;
         assert.ok(value, 'imported quotation must exist before legacy-row check');
         const [legacyRow] = await client.unsafe(
-          `SELECT count(*)::int AS count FROM public.issued_documents WHERE ${businessColumn} = $1`,
+          `SELECT count(*)::int AS count FROM public.issued_documents WHERE ${legacyBusinessColumn} = $1`,
           [value]
         );
         assert.equal(Number(legacyRow?.count || 0), 0);
@@ -529,6 +530,19 @@ test(
       assert.equal(renderPdfCalls, 0);
       assert.equal(blobPutCalls, 0);
       assert.equal(blobs.size, 0);
+      if (legacyTable?.table_name && legacyBusinessColumn) {
+        const legacyValue = legacyBusinessColumn === 'quotation_id'
+          ? (await client.unsafe(
+              'SELECT id FROM quotations WHERE business_number = $1',
+              [expectedBusinessNumber]
+            ))[0]?.id
+          : expectedBusinessNumber;
+        const [legacyRow] = await client.unsafe(
+          `SELECT count(*)::int AS count FROM public.issued_documents WHERE ${legacyBusinessColumn} = $1`,
+          [legacyValue]
+        );
+        assert.equal(Number(legacyRow?.count || 0), 0);
+      }
     } finally {
       await client.unsafe('DELETE FROM quote_sequences WHERE year = $1 AND last_number <= $2', [
         2024,

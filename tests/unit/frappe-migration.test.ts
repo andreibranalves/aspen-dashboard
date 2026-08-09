@@ -2059,6 +2059,15 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       result.manifest.entityCounts.clients,
       (dataset.customers || []).length + (dataset.leads || []).length
     );
+    assert.equal(
+      result.manifest.reconciliation.counts.products,
+      result.report.produtos.criados + result.report.produtos.atualizados + result.report.produtos.ignorados
+    );
+    assert.match(result.manifest.reconciliation.hashes.products, /^[0-9a-f]{64}$/);
+    assert.equal(
+      result.manifest.reconciliation.counts.revisions,
+      result.manifest.reconciliation.counts.quotations
+    );
     // Divergence counts from report
     const approved = result.report.total.aprovadas;
     const blocking = result.report.total.divergentes + result.report.total.erros;
@@ -2131,6 +2140,7 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     const first = await runFrappeMigration({ mode: 'dry-run', dataset, repository });
     const second = await runFrappeMigration({ mode: 'dry-run', dataset, repository });
     assert.equal(first.manifest.manifestHash, second.manifest.manifestHash);
+    assert.deepEqual(first.manifest.reconciliation, second.manifest.reconciliation);
     // Different datasets produce different hashes
     const differentDataset = { ...dataset, items: [] };
     const third = await runFrappeMigration({ mode: 'dry-run', dataset: differentDataset, repository });

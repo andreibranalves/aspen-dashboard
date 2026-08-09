@@ -77,12 +77,15 @@ Não execute `env`, `printenv`, `set` ou comandos que imprimam `DATABASE_URL`, `
 Valide somente a presença das variáveis necessárias:
 
 ```bash
-: "${DATABASE_URL:?configure DATABASE_URL through the deployment secret manager}"
 : "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
+export CUTOVER_EXPECTED_DATABASE=aspen_test
 export TEST_DATABASE_URL="$STAGING_DATABASE_URL"
 ```
 
 A mensagem de erro acima não contém o valor da variável.
+
+Task 10 usa somente `STAGING_DATABASE_URL` e o database nomeado `aspen_test`.
+Não herde `DATABASE_URL` de produção: cada comando de migração abaixo remove a variável herdada e injeta explicitamente `DATABASE_URL="$STAGING_DATABASE_URL"`.
 
 `CUTOVER_PG_SERVICE` é a conexão nomeada usada pelo apply e por toda reconciliação PostgreSQL.
 
@@ -94,18 +97,28 @@ O contrato compara `DATABASE_URL` com host, porta e database efetivos lidos da s
 
 Não substitua essa verificação por variáveis `CUTOVER_DATABASE_*` digitadas pelo operador ou por uma leitura isolada de `current_database()`.
 
-`DATABASE_URL` é a credencial de configuração da API para o mesmo destino identificado pelo serviço nomeado; não existe uma segunda base de reconciliação.
+Durante Task 10, `DATABASE_URL` é temporariamente injetada com `STAGING_DATABASE_URL` apenas para validar o serviço e executar a operação isolada.
+Não use uma credencial de produção nesta etapa.
 
 ```bash
 set -euo pipefail
+: "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
-export CUTOVER_PG_SERVICE
+: "${PGSERVICEFILE:?configure the protected libpq service file}"
+: "${PGPASSFILE:?configure the protected libpq password file}"
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE CUTOVER_EXPECTED_DATABASE
 : "${REPO_ROOT:?configure the absolute path to the reviewed checkout}"
 cd "$REPO_ROOT"
-node --input-type=module <<'NODE'
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
+TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
+test "$TARGET_DATABASE" = aspen_test
 ```
 
 ## 3. Pré-condições executáveis
@@ -155,24 +168,30 @@ Nunca aponte testes destrutivos ou `psql` de restore para a base de produção.
 Confirme a presença sem imprimir o valor:
 
 ```bash
-: "${TEST_DATABASE_URL:?configure staging TEST_DATABASE_URL through the deployment secret manager}"
+: "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
+: "${CUTOVER_PG_SERVICE:?configure the named libpq service for staging}"
+: "${PGSERVICEFILE:?configure the protected libpq service file}"
+: "${PGPASSFILE:?configure the protected libpq password file}"
+export CUTOVER_EXPECTED_DATABASE=aspen_test
 ```
 
-Aplique as migrations somente na base isolada de staging, removendo qualquer `TEST_DATABASE_URL` herdada do shell:
+Aplique as migrations somente na base isolada de staging, removendo qualquer `DATABASE_URL` ou `TEST_DATABASE_URL` herdada do shell:
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   npm run db:migrate
 ```
 
 Execute os testes PostgreSQL com a variável já injetada no processo:
 
 ```bash
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   node --test --test-concurrency=1 --import tsx \
   tests/unit/frappe-migration-postgres.test.ts \
   tests/unit/quotations-postgres.test.ts \
@@ -191,9 +210,10 @@ for tool in pg_dump psql jq; do
 done
 chmod 600 "$CUTOVER_DIR"/*.path "$CUTOVER_DIR"/*.version
 
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/backup-crm.mjs --preflight \
   | tee "$CUTOVER_DIR/backup-preflight.log"
 chmod 600 "$CUTOVER_DIR/backup-preflight.log"
@@ -205,9 +225,10 @@ Faça o backup final com retenção configurada pelo ambiente e destino externo 
 
 ```bash
 set -euo pipefail
-env -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/backup-crm.mjs \
   | tee "$CUTOVER_DIR/backup.log"
 chmod 600 "$CUTOVER_DIR/backup.log"
@@ -237,19 +258,24 @@ Valide o dump no alvo isolado explicitamente configurado em `RESTORE_DATABASE_UR
 ```bash
 set -euo pipefail
 : "${RESTORE_DATABASE_URL:?configure an isolated restore target through the deployment secret manager}"
-if [ "${RESTORE_DATABASE_URL}" = "${DATABASE_URL:-}" ]; then
-  echo 'ABORT: restore target equals source database' >&2
-  exit 1
-fi
-env -u TEST_DATABASE_URL \
+: "${RESTORE_PG_SERVICE:?configure the named libpq service for the isolated restore target}"
+: "${PGSERVICEFILE:?configure the protected libpq service file}"
+: "${PGPASSFILE:?configure the protected libpq password file}"
+export RESTORE_EXPECTED_DATABASE=aspen_restore
+export RESTORE_PG_SERVICE PGSERVICEFILE PGPASSFILE
+RESTORE_CURRENT_DATABASE="$(psql --dbname "$RESTORE_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
+test "$RESTORE_CURRENT_DATABASE" = "$RESTORE_EXPECTED_DATABASE"
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+  RESTORE_PG_SERVICE="$RESTORE_PG_SERVICE" \
+  RESTORE_EXPECTED_DATABASE=aspen_restore \
   node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE" \
   | tee "$CUTOVER_DIR/restore-validation.log"
 chmod 600 "$CUTOVER_DIR/restore-validation.log"
 ```
 
-O script recusa validação sem `RESTORE_DATABASE_URL`, recusa a mesma identidade do source e nunca executa migration contra `DATABASE_URL`.
+O script exige `RESTORE_PG_SERVICE`/`RESTORE_EXPECTED_DATABASE`, compara a URL ao alvo nomeado, valida `current_database`, recusa a mesma identidade do source e nunca executa migration contra `DATABASE_URL`.
 
 Para uma inspeção SQL adicional no alvo isolado, use a conexão libpq nomeada e não uma URL:
 
@@ -292,7 +318,11 @@ Fixture só pode ser usada com `--dry-run`.
 set -euo pipefail
 : "${FRAPPE_MIGRATION_FIXTURE:?configure a sanitized fixture path for dry-run, or unset it for the staging source}"
 npm run build:api
-node scripts/migrate-frappe-crm.mjs --dry-run --fixture "$FRAPPE_MIGRATION_FIXTURE" \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node scripts/migrate-frappe-crm.mjs --dry-run --fixture "$FRAPPE_MIGRATION_FIXTURE" \
   > "$CUTOVER_DIR/report.dry-run.json"
 sha256sum "$CUTOVER_DIR/report.dry-run.json" | tee "$CUTOVER_DIR/report.dry-run.sha256"
 ```
@@ -302,7 +332,11 @@ Para consultar a fonte de staging em vez de uma fixture sanitizada, remova a fix
 ```bash
 set -euo pipefail
 unset FRAPPE_MIGRATION_FIXTURE
-node scripts/migrate-frappe-crm.mjs --dry-run \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node scripts/migrate-frappe-crm.mjs --dry-run \
   > "$CUTOVER_DIR/report.dry-run.json"
 sha256sum "$CUTOVER_DIR/report.dry-run.json" | tee "$CUTOVER_DIR/report.dry-run.sha256"
 ```
@@ -377,7 +411,11 @@ O delta é um novo dry-run contra o mesmo snapshot operacional ou contra a fonte
 
 ```bash
 set -euo pipefail
-node scripts/migrate-frappe-crm.mjs --dry-run \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node scripts/migrate-frappe-crm.mjs --dry-run \
   > "$CUTOVER_DIR/report.delta.json"
 sha256sum "$CUTOVER_DIR/report.delta.json" | tee "$CUTOVER_DIR/report.delta.sha256"
 ```
@@ -407,16 +445,25 @@ if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
   exit 1
 fi
 unset FRAPPE_MIGRATION_FIXTURE
+: "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for apply}"
 : "${PGSERVICEFILE:?configure the protected libpq service file}"
 : "${PGPASSFILE:?configure the protected libpq password file}"
-export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
-node --input-type=module <<'NODE'
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE CUTOVER_EXPECTED_DATABASE
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
-node scripts/migrate-frappe-crm.mjs --apply \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node scripts/migrate-frappe-crm.mjs --apply \
   --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
   > "$CUTOVER_DIR/report.apply.json"
 sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha256"
@@ -441,17 +488,26 @@ if [ -n "${FRAPPE_MIGRATION_FIXTURE:-}" ]; then
   exit 1
 fi
 unset FRAPPE_MIGRATION_FIXTURE
+: "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for apply}"
 : "${PGSERVICEFILE:?configure the protected libpq service file}"
 : "${PGPASSFILE:?configure the protected libpq password file}"
-export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
-node --input-type=module <<'NODE'
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE CUTOVER_EXPECTED_DATABASE
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
 EXPECTED_APPROVAL='SourceDoctype:opaque-source-id'
-node scripts/migrate-frappe-crm.mjs --apply \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node scripts/migrate-frappe-crm.mjs --apply \
   --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
   --approve-divergence "$EXPECTED_APPROVAL" \
   > "$CUTOVER_DIR/report.apply.json"
@@ -490,12 +546,15 @@ A reconciliação deve produzir um artefato sanitizado e falhar fechado.
 
 Ela compara o hash do dry-run, o hash do apply e o hash persistido em `frappe_migration_runs`.
 
-Também persiste contagens importadas, contagens alvo de produtos, preços, clientes, orçamentos, revisões, itens e templates, contagens por status, hashes canônicos determinísticos de lineage e revisões, validade de lineage e chaves de divergência aprovadas.
+Também compara as expectativas de origem do `MigrationManifest` com as linhas deste apply por `migration_run_id`.
+Compara contagens exatas de produtos, documentos de preço, faixas normalizadas, clientes, orçamentos, revisões, itens, templates e versões, além de hashes canônicos determinísticos de lineage, preços, revisões, itens e templates.
+Valida identidades importadas, status, `template_version_id`, `sections_snapshot`, validade de lineage e chaves de divergência aprovadas.
 
 Apply e reconciliação usam `CUTOVER_PG_SERVICE` da mesma conexão nomeada.
 
 ```bash
 set -euo pipefail
+: "${STAGING_DATABASE_URL:?configure staging STAGING_DATABASE_URL through the deployment secret manager}"
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for reconciliation}"
 : "${PGSERVICEFILE:?configure the protected libpq service file path}"
 : "${PGPASSFILE:?configure the protected libpq password file path}"
@@ -503,21 +562,27 @@ set -euo pipefail
 : "${CUTOVER_DIR:?configure the protected cutover directory}"
 : "${RUN_ID:?set the apply run id from report.apply.json}"
 : "${MANIFEST_HASH:?set the apply manifest hash from report.apply.json}"
-export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE CUTOVER_EXPECTED_DATABASE
 cd "$REPO_ROOT"
-env -u TEST_DATABASE_URL node --input-type=module <<'NODE'
+sha256sum --check "$CUTOVER_DIR/report.dry-run.sha256"
+sha256sum --check "$CUTOVER_DIR/report.apply.sha256"
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
-EXPECTED_DATABASE="$(node --input-type=module <<'NODE'
-import { readPgServiceTarget } from './scripts/migrate-frappe-crm.mjs';
-process.stdout.write(readPgServiceTarget(process.env).database);
-NODE
-)"
-test "$TARGET_DATABASE" = "$EXPECTED_DATABASE"
-node scripts/reconcile-migration.mjs \
+test "$TARGET_DATABASE" = aspen_test
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  node scripts/reconcile-migration.mjs \
   --service "$CUTOVER_PG_SERVICE" \
+  --expected-database aspen_test \
   --dry-run-report "$CUTOVER_DIR/report.dry-run.json" \
   --apply-report "$CUTOVER_DIR/report.apply.json" \
   --output "$CUTOVER_DIR/reconciliation.json"
@@ -531,9 +596,11 @@ jq -e '
   (.manifest.persistedRunHash == .manifest.applyHash) and
   (.comparison.sourceCountsMatchApply == true) and
   (.comparison.sourceReadCountsMatchManifest == true) and
-  (.comparison.targetContainsImported == true) and
+  (.comparison.targetCountsMatchExpected == true) and
+  (.comparison.expectedHashesMatchTarget == true) and
+  (.comparison.targetStatusCountsMatchExpected == true) and
   (.comparison.targetStructureValid == true) and
-  (.comparison.statusCountsConsistent == true) and
+  (.comparison.approvedDetailsValid == true) and
   (.comparison.blocking == 0) and
   (.lineage.invalid == 0) and
   (.comparison.unapprovedDivergenceKeys | length == 0) and

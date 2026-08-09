@@ -11,45 +11,100 @@ const targetCounts = {
   templates: 3,
   templateVersions: 3,
 };
+const expectedCounts = {
+  products: 2,
+  pricingDocuments: 3,
+  pricingTiers: 3,
+  clients: 1,
+  quotations: 1,
+  revisions: 2,
+  items: 3,
+  templates: 1,
+  templateVersions: 1,
+};
+const expectedHashes = Object.fromEntries(
+  Object.keys(expectedCounts).map((key) => [key, 'a'.repeat(64)])
+);
+const expected = {
+  counts: expectedCounts,
+  hashes: expectedHashes,
+  statusCounts: { quotations: { enviado: 1 }, revisions: { enviado: 2 } },
+};
+const targetImportedCounts = { ...expectedCounts };
+const targetHashes = { ...expectedHashes };
 
-test('reconciliação aprova hashes, contagens, lineage e divergências consistentes', () => {
-  const result = compareReconciliation({
+function baseInput(overrides = {}) {
+  return {
     sourceCounts: counts,
     applyCounts: counts,
     sourceReadCounts: counts,
     importedCounts: counts,
     targetCounts,
-    statusCounts: { quotations: { enviado: 1 }, revisions: { enviado: 2 } },
+    targetImportedCounts,
+    expected,
+    targetHashes,
+    statusCounts: expected.statusCounts,
+    targetStatusCounts: expected.statusCounts,
     sourceManifestHash: 'a'.repeat(64),
     applyManifestHash: 'a'.repeat(64),
     persistedManifestHash: 'a'.repeat(64),
     sourceApprovedDivergenceKeys: [],
     applyApprovedDivergenceKeys: [],
+    approvedDetailsValid: true,
     unapprovedDivergenceKeys: [],
     blocking: 0,
     lineageInvalid: 0,
-  });
+    ...overrides,
+  };
+}
+
+test('reconciliação aprova hashes, contagens, lineage e divergências consistentes', () => {
+  const result = compareReconciliation(baseInput());
   assert.equal(result.passed, true);
 });
 
-test('reconciliação rejeita hash ou divergência inconsistente', () => {
-  const result = compareReconciliation({
-    sourceCounts: counts,
-    applyCounts: { ...counts, quotations: 0 },
-    sourceReadCounts: counts,
-    importedCounts: counts,
-    targetCounts,
-    statusCounts: { quotations: { enviado: 1 }, revisions: { enviado: 2 } },
-    sourceManifestHash: 'a'.repeat(64),
-    applyManifestHash: 'b'.repeat(64),
-    persistedManifestHash: 'b'.repeat(64),
-    sourceApprovedDivergenceKeys: [],
-    applyApprovedDivergenceKeys: [],
-    unapprovedDivergenceKeys: ['Quotation:opaque-id'],
-    blocking: 1,
-    lineageInvalid: 1,
-  });
+test('reconciliação aceita aprovação explícita adicionada somente no apply', () => {
+  const result = compareReconciliation(
+    baseInput({
+      applyApprovedDivergenceKeys: ['Quotation:opaque-id'],
+      approvedDetailsValid: true,
+    })
+  );
+  assert.equal(result.passed, true);
+  assert.equal(result.approvedKeysMatch, true);
+});
+
+test('reconciliação rejeita aprovação sem detalhe aprovado ou divergência não aprovada', () => {
+  const withoutApprovedDetail = compareReconciliation(
+    baseInput({
+      applyApprovedDivergenceKeys: ['Quotation:opaque-id'],
+      approvedDetailsValid: false,
+    })
+  );
+  assert.equal(withoutApprovedDetail.passed, false);
+  assert.equal(withoutApprovedDetail.approvedDetailsValid, false);
+
+  const unapproved = compareReconciliation(
+    baseInput({ unapprovedDivergenceKeys: ['Quotation:opaque-id'], blocking: 1 })
+  );
+  assert.equal(unapproved.passed, false);
+  assert.deepEqual(unapproved.unapprovedDivergenceKeys, ['Quotation:opaque-id']);
+});
+
+test('reconciliação rejeita hash, identidade ou contagem target inconsistente', () => {
+  const result = compareReconciliation(
+    baseInput({
+      applyCounts: { ...counts, quotations: 0 },
+      applyManifestHash: 'b'.repeat(64),
+      persistedManifestHash: 'b'.repeat(64),
+      targetImportedCounts: { ...targetImportedCounts, quotations: 0 },
+      targetHashes: { ...targetHashes, quotations: 'b'.repeat(64) },
+      lineageInvalid: 1,
+    })
+  );
   assert.equal(result.passed, false);
   assert.equal(result.manifestHashesMatch, false);
-  assert.deepEqual(result.unapprovedDivergenceKeys, ['Quotation:opaque-id']);
+  assert.equal(result.targetCountsMatchExpected, false);
+  assert.equal(result.expectedHashesMatchTarget, false);
+  assert.equal(result.lineageInvalid, 1);
 });

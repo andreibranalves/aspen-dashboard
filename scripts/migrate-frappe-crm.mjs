@@ -186,6 +186,9 @@ export function assertDatabaseContract(env = process.env) {
     throw new Error('CUTOVER_PG_SERVICE exige PGSERVICEFILE e PGPASSFILE protegidos.');
   }
   const serviceTarget = readPgServiceTarget(env, serviceName);
+  const expectedDatabase = env.CUTOVER_EXPECTED_DATABASE?.trim();
+  if (expectedDatabase && serviceTarget.database !== expectedDatabase)
+    throw new Error('CUTOVER_EXPECTED_DATABASE não corresponde ao serviço PostgreSQL nomeado.');
   const databaseTarget = parseDatabaseTarget(env.DATABASE_URL, 'DATABASE_URL');
   if (!sameDatabaseTarget(databaseTarget, {
     host: serviceTarget.host.toLowerCase(),

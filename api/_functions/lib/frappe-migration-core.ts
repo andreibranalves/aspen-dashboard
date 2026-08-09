@@ -1899,6 +1899,35 @@ export async function readFrappeDataset(
   };
 }
 
+export interface MigrationReconciliationExpectations {
+  counts: {
+    products: number;
+    pricingDocuments: number;
+    pricingTiers: number;
+    clients: number;
+    quotations: number;
+    revisions: number;
+    items: number;
+    templates: number;
+    templateVersions: number;
+  };
+  hashes: {
+    products: string;
+    pricingDocuments: string;
+    pricingTiers: string;
+    clients: string;
+    quotations: string;
+    revisions: string;
+    items: string;
+    templates: string;
+    templateVersions: string;
+  };
+  statusCounts: {
+    quotations: Record<string, number>;
+    revisions: Record<string, number>;
+  };
+}
+
 export interface MigrationManifest {
   runId: string;
   provider: string;
@@ -1912,6 +1941,8 @@ export interface MigrationManifest {
     clients: number;
     quotations: number;
   };
+  /** Source-derived expectations for executable target reconciliation. */
+  reconciliation: MigrationReconciliationExpectations;
   divergenceCounts: {
     approved: number;
     blocking: number;

@@ -465,6 +465,11 @@ describe('CLI de migração Frappe', () => {
         database: 'quotes',
       });
       assert.doesNotThrow(() => assertDatabaseContract(base));
+      assert.doesNotThrow(() => assertDatabaseContract({ ...base, CUTOVER_EXPECTED_DATABASE: 'quotes' }));
+      assert.throws(
+        () => assertDatabaseContract({ ...base, CUTOVER_EXPECTED_DATABASE: 'aspen_test' }),
+        /CUTOVER_EXPECTED_DATABASE/
+      );
       assert.throws(
         () => assertDatabaseContract({ ...base, DATABASE_URL: 'postgresql://api-user@other.example:5433/quotes' }),
         /mesmo destino/
