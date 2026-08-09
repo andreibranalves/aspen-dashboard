@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +9,8 @@ import {
   parseConnectionUrl,
   postgresEnv,
   exceedsMegabyteQuota,
+  ensureBackupDirectory,
+  resolveBackupDirectory,
 } from '../../scripts/backup-crm.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
@@ -21,6 +23,23 @@ function run(args: string[], env: NodeJS.ProcessEnv) {
     encoding: 'utf8',
   });
 }
+
+test('explicit backup destination is outside checkout and mode 0700', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'backup-crm-secure-'));
+  try {
+    const configured = resolveBackupDirectory({ CUTOVER_BACKUP_DIR: directory });
+    assert.equal(configured, directory);
+    const ensured = ensureBackupDirectory({ CUTOVER_BACKUP_DIR: directory });
+    assert.equal(ensured, directory);
+    assert.equal(statSync(directory).mode & 0o777, 0o700);
+    assert.throws(
+      () => resolveBackupDirectory({ CUTOVER_BACKUP_DIR: path.join(root, 'backups') }),
+      /fora do checkout/
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('restore validation requires both source and isolated target URLs', () => {
   const withoutSource = { ...process.env };

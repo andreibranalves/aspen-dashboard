@@ -415,20 +415,25 @@ test(
     const sequence = 2000 + Math.floor(Math.random() * 8000);
     const quotationId = `QTN-2024-${String(sequence).padStart(5, '0')}`;
     const expectedBusinessNumber = `ORC-2024${String(sequence).padStart(4, '0')}`;
-    const PDF = Buffer.from(['%PDF-1.7', 'conteudo-arquivado', '%%EOF'].join('\n') + '\n');
     const blobs = new Map<string, Buffer>();
+    let fetchHtmlCalls = 0;
+    let renderPdfCalls = 0;
+    let blobPutCalls = 0;
     const pipeline = {
       async fetchHtml(): Promise<string> {
-        return '<html><body>orçamento histórico</body></html>';
+        fetchHtmlCalls += 1;
+        throw new Error('historical PDF fetch must not run for PostgreSQL on-demand policy');
       },
       async renderPdf(): Promise<Buffer> {
-        return PDF;
+        renderPdfCalls += 1;
+        throw new Error('historical PDF render must not run for PostgreSQL on-demand policy');
       },
       blobs: {
         async list(prefix: string): Promise<string[]> {
           return [...blobs.keys()].filter((pathname) => pathname.startsWith(prefix));
         },
         async put(pathname: string, buffer: Buffer) {
+          blobPutCalls += 1;
           blobs.set(pathname, buffer);
           return {
             pathname,
@@ -480,7 +485,35 @@ test(
       // The injected pipeline must remain unused by migration apply.
       assert.equal(first.report.documentos.lidos, 0);
       assert.equal(first.report.documentos.atualizados, 0);
+      assert.equal(fetchHtmlCalls, 0);
+      assert.equal(renderPdfCalls, 0);
+      assert.equal(blobPutCalls, 0);
       assert.equal(blobs.size, 0);
+      const [legacyTable] = await client.unsafe(
+        "SELECT to_regclass('public.issued_documents') AS table_name"
+      );
+      if (legacyTable?.table_name) {
+        const columns = await client.unsafe(
+          "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'issued_documents'"
+        );
+        const available = new Set(columns.map((row) => String(row.column_name)));
+        const businessColumn = ['business_number', 'quotation_name', 'quotation', 'quotation_id'].find(
+          (column) => available.has(column)
+        );
+        assert.ok(businessColumn, 'issued_documents must expose a quotation reference');
+        const value = businessColumn === 'business_number' || businessColumn === 'quotation_name' || businessColumn === 'quotation'
+          ? expectedBusinessNumber
+          : (await client.unsafe(
+              'SELECT id FROM quotations WHERE business_number = $1',
+              [expectedBusinessNumber]
+            ))[0]?.id;
+        assert.ok(value, 'imported quotation must exist before legacy-row check');
+        const [legacyRow] = await client.unsafe(
+          `SELECT count(*)::int AS count FROM public.issued_documents WHERE ${businessColumn} = $1`,
+          [value]
+        );
+        assert.equal(Number(legacyRow?.count || 0), 0);
+      }
 
       // Rerun remains idempotent without creating an archived-document row.
       const rerun = await runFrappeMigration({
@@ -492,6 +525,9 @@ test(
       assert.equal(rerun.report.orcamentos.ignorados, 1);
       assert.equal(rerun.report.documentos.ignorados, 0);
       assert.equal(rerun.report.documentos.atualizados, 0);
+      assert.equal(fetchHtmlCalls, 0);
+      assert.equal(renderPdfCalls, 0);
+      assert.equal(blobPutCalls, 0);
       assert.equal(blobs.size, 0);
     } finally {
       await client.unsafe('DELETE FROM quote_sequences WHERE year = $1 AND last_number <= $2', [

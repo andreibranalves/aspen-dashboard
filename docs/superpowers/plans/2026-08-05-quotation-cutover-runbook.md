@@ -47,12 +47,27 @@ Use um diretório de trabalho fora do repositório para manifests, dumps e logs 
 ```bash
 set -euo pipefail
 umask 077
+export REPO_ROOT="${REPO_ROOT:-$(pwd -P)}"
 export CUTOVER_DIR="${CUTOVER_DIR:-$HOME/aspen-cutover-$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$CUTOVER_DIR"
+chmod 700 "$CUTOVER_DIR"
+CUTOVER_REAL="$(realpath "$CUTOVER_DIR")"
+case "$CUTOVER_REAL" in
+  "$REPO_ROOT"|"$REPO_ROOT"/*) echo 'ABORT: CUTOVER_DIR must be outside the checkout' >&2; exit 1 ;;
+esac
+test "$(stat -c '%a' "$CUTOVER_DIR")" = 700
+export CUTOVER_BACKUP_DIR="${CUTOVER_BACKUP_DIR:-$CUTOVER_DIR/backups}"
+mkdir -p "$CUTOVER_BACKUP_DIR"
+chmod 700 "$CUTOVER_BACKUP_DIR"
+BACKUP_REAL="$(realpath "$CUTOVER_BACKUP_DIR")"
+case "$BACKUP_REAL" in
+  "$REPO_ROOT"|"$REPO_ROOT"/*) echo 'ABORT: backup destination must be outside the checkout' >&2; exit 1 ;;
+esac
+test "$(stat -c '%a' "$CUTOVER_BACKUP_DIR")" = 700
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for the apply database}"
 : "${PGSERVICEFILE:?configure a protected libpq service file path}"
 : "${PGPASSFILE:?configure a protected libpq password file path}"
-export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE CUTOVER_BACKUP_DIR
 ```
 
 Não use `set -x` durante este procedimento.
@@ -166,11 +181,37 @@ env -u TEST_DATABASE_URL \
 
 Se `TEST_DATABASE_URL` não estiver disponível, marque os testes como não executados e não alegue rollback transacional, `SKIP LOCKED` ou ownership PostgreSQL validado.
 
-Faça o backup final com retenção configurada pelo ambiente:
+Antes do backup, valide as ferramentas e execute o preflight no alvo explícito de staging:
 
 ```bash
 set -euo pipefail
-node scripts/backup-crm.mjs | tee "$CUTOVER_DIR/backup.log"
+for tool in pg_dump psql jq; do
+  command -v "$tool" > "$CUTOVER_DIR/$tool.path"
+  "$tool" --version | tee "$CUTOVER_DIR/$tool.version"
+done
+chmod 600 "$CUTOVER_DIR"/*.path "$CUTOVER_DIR"/*.version
+
+env -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  node scripts/backup-crm.mjs --preflight \
+  | tee "$CUTOVER_DIR/backup-preflight.log"
+chmod 600 "$CUTOVER_DIR/backup-preflight.log"
+```
+
+Abort if any tool is missing, the preflight reports `CRÍTICO`, or the destination mode changes.
+
+Faça o backup final com retenção configurada pelo ambiente e destino externo explícito:
+
+```bash
+set -euo pipefail
+env -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  node scripts/backup-crm.mjs \
+  | tee "$CUTOVER_DIR/backup.log"
+chmod 600 "$CUTOVER_DIR/backup.log"
+test "$(stat -c '%a' "$CUTOVER_BACKUP_DIR")" = 700
 ```
 
 Copie manualmente o caminho exato impresso pelo comando para `BACKUP_FILE`.
@@ -180,8 +221,15 @@ Não selecione automaticamente o arquivo mais recente.
 ```bash
 set -euo pipefail
 : "${BACKUP_FILE:?set the exact backup path printed by the backup command}"
+BACKUP_FILE="$(realpath "$BACKUP_FILE")"
+case "$BACKUP_FILE" in
+  "$REPO_ROOT"|"$REPO_ROOT"/*) echo 'ABORT: backup file is inside checkout' >&2; exit 1 ;;
+esac
 test -f "$BACKUP_FILE"
+test "$(dirname "$BACKUP_FILE")" = "$(realpath "$CUTOVER_BACKUP_DIR")"
+test "$(stat -c '%a' "$BACKUP_FILE")" = 600
 sha256sum "$BACKUP_FILE" | tee "$CUTOVER_DIR/backup.sha256"
+chmod 600 "$CUTOVER_DIR/backup.sha256"
 ```
 
 Valide o dump no alvo isolado explicitamente configurado em `RESTORE_DATABASE_URL`:
@@ -193,8 +241,12 @@ if [ "${RESTORE_DATABASE_URL}" = "${DATABASE_URL:-}" ]; then
   echo 'ABORT: restore target equals source database' >&2
   exit 1
 fi
-node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE" \
+env -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+  node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE" \
   | tee "$CUTOVER_DIR/restore-validation.log"
+chmod 600 "$CUTOVER_DIR/restore-validation.log"
 ```
 
 O script recusa validação sem `RESTORE_DATABASE_URL`, recusa a mesma identidade do source e nunca executa migration contra `DATABASE_URL`.
@@ -434,62 +486,68 @@ Para retomar um run falho, corrija a causa, preserve o mesmo manifest e faça no
 
 ## 7. Reconciliação técnica e funcional
 
-Capture contagens e invariantes sem selecionar dados pessoais.
+A reconciliação deve produzir um artefato sanitizado e falhar fechado.
 
-Apply e reconciliação devem usar `CUTOVER_PG_SERVICE` da mesma conexão nomeada.
+Ela compara o hash do dry-run, o hash do apply e o hash persistido em `frappe_migration_runs`.
 
-Valide o serviço efetivo e compare o database da conexão ativa com a configuração lida de `PGSERVICEFILE`.
+Também persiste contagens importadas, contagens alvo de produtos, preços, clientes, orçamentos, revisões, itens e templates, contagens por status, hashes canônicos determinísticos de lineage e revisões, validade de lineage e chaves de divergência aprovadas.
+
+Apply e reconciliação usam `CUTOVER_PG_SERVICE` da mesma conexão nomeada.
 
 ```bash
 set -euo pipefail
 : "${CUTOVER_PG_SERVICE:?configure the named libpq service for reconciliation}"
-export CUTOVER_PG_SERVICE
+: "${PGSERVICEFILE:?configure the protected libpq service file path}"
+: "${PGPASSFILE:?configure the protected libpq password file path}"
 : "${REPO_ROOT:?configure the absolute path to the reviewed checkout}"
+: "${CUTOVER_DIR:?configure the protected cutover directory}"
+: "${RUN_ID:?set the apply run id from report.apply.json}"
+: "${MANIFEST_HASH:?set the apply manifest hash from report.apply.json}"
+export CUTOVER_PG_SERVICE PGSERVICEFILE PGPASSFILE
 cd "$REPO_ROOT"
-node --input-type=module <<'NODE'
+env -u TEST_DATABASE_URL node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
-EXPECTED_DATABASE="$(cd "$REPO_ROOT" && node --input-type=module <<'NODE'
+EXPECTED_DATABASE="$(node --input-type=module <<'NODE'
 import { readPgServiceTarget } from './scripts/migrate-frappe-crm.mjs';
 process.stdout.write(readPgServiceTarget(process.env).database);
 NODE
 )"
-printf '%s\n' "$TARGET_DATABASE" | tee "$CUTOVER_DIR/reconciliation-target.txt"
 test "$TARGET_DATABASE" = "$EXPECTED_DATABASE"
-psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 <<'SQL' | tee "$CUTOVER_DIR/reconciliation.txt"
-SELECT 'duplicate_business_number' AS check_name, count(*) AS failures
-FROM (
-  SELECT business_number
-  FROM quotations
-  GROUP BY business_number
-  HAVING count(*) > 1
-) duplicates;
-
-SELECT 'missing_revision_snapshot' AS check_name, count(*) AS failures
-FROM quote_revisions
-WHERE template_version_id IS NULL OR sections_snapshot IS NULL;
-
-SELECT 'invalid_lineage' AS check_name, count(*) AS failures
-FROM frappe_import_lineage
-WHERE lineage_status <> 'verified';
-
-SELECT 'pending_order_linkage' AS check_name, count(*) AS records
-FROM quote_revisions
-WHERE order_pending = true;
-SQL
+node scripts/reconcile-migration.mjs \
+  --service "$CUTOVER_PG_SERVICE" \
+  --dry-run-report "$CUTOVER_DIR/report.dry-run.json" \
+  --apply-report "$CUTOVER_DIR/report.apply.json" \
+  --output "$CUTOVER_DIR/reconciliation.json"
+sha256sum "$CUTOVER_DIR/reconciliation.json" > "$CUTOVER_DIR/reconciliation.sha256"
+chmod 600 "$CUTOVER_DIR/reconciliation.json" "$CUTOVER_DIR/reconciliation.sha256"
+sha256sum --check "$CUTOVER_DIR/reconciliation.sha256"
+jq -e '
+  (.status == "passed") and
+  (.manifest.sourceHash | test("^[0-9a-f]{64}$")) and
+  (.manifest.applyHash | test("^[0-9a-f]{64}$")) and
+  (.manifest.persistedRunHash == .manifest.applyHash) and
+  (.comparison.sourceCountsMatchApply == true) and
+  (.comparison.sourceReadCountsMatchManifest == true) and
+  (.comparison.targetContainsImported == true) and
+  (.comparison.targetStructureValid == true) and
+  (.comparison.statusCountsConsistent == true) and
+  (.comparison.blocking == 0) and
+  (.lineage.invalid == 0) and
+  (.comparison.unapprovedDivergenceKeys | length == 0) and
+  (.approvedDivergenceKeys | type == "array")
+' "$CUTOVER_DIR/reconciliation.json"
 ```
 
-A consulta de `pending_order_linkage` é informativa, mas cada linha precisa de reconciliação contra a origem antes do canário.
+O comando consulta somente hashes, contagens e invariantes para a saída.
 
-Confirme que a contagem de quotations, revisões, itens, templates e documentos bate com o manifest aprovado.
+Payloads brutos, identificadores de clientes e dados de contato não são persistidos no artefato.
 
-Confirme que cada business number é único e que cada revisão aponta para uma versão de template e um snapshot imutável.
+Qualquer mismatch de manifest, contagem lida, contagem alvo, hash canônico, status, lineage ou aprovação encerra o comando com código diferente de zero.
 
-Confirme que nenhum relatório ou resposta operacional serializa `legacy_payload`.
-
-Confirme que o checksum e o tamanho do PDF renderizado sob demanda correspondem ao resultado retornado pela mesma revisão imutável.
+Um status `pending`, uma lineage inválida, divergência não aprovada ou `blocking > 0` bloqueia o canário.
 
 Execute os testes de documento, link público, outbox, rotas e rollback antes do canário:
 

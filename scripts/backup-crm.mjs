@@ -14,11 +14,13 @@ import { execFileSync } from 'node:child_process';
 import {
   readdirSync,
   statSync,
+  statfsSync,
   unlinkSync,
   mkdirSync,
   existsSync,
   readFileSync,
   writeFileSync,
+  chmodSync,
 } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -26,7 +28,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
 const PROJECT_ROOT = resolve(__dirname, '..');
-const BACKUPS_DIR = resolve(PROJECT_ROOT, 'backups');
+const DEFAULT_BACKUPS_DIR = resolve(PROJECT_ROOT, 'backups');
 const BACKUP_PREFIX = 'backup-';
 const BACKUP_SUFFIX = '.sql';
 
@@ -163,16 +165,40 @@ function command(file, args, options = {}) {
   });
 }
 
-function ensureBackupsDir() {
-  if (!existsSync(BACKUPS_DIR)) mkdirSync(BACKUPS_DIR, { recursive: true });
+export function resolveBackupDirectory(env = process.env) {
+  const configured = env.CUTOVER_BACKUP_DIR || env.BACKUP_DIR;
+  const directory = resolve(configured || DEFAULT_BACKUPS_DIR);
+  if (configured && directory.startsWith(`${PROJECT_ROOT}/`)) {
+    throw new Error('BACKUP_DIR deve apontar para um diretório fora do checkout.');
+  }
+  if (configured && directory === PROJECT_ROOT) {
+    throw new Error('BACKUP_DIR deve apontar para um diretório fora do checkout.');
+  }
+  return directory;
+}
+
+function assertMode(filepath, expected, label) {
+  const actual = statSync(filepath).mode & 0o777;
+  if (actual !== expected) {
+    throw new Error(`${label} deve ter permissão ${expected.toString(8)}.`);
+  }
+}
+
+export function ensureBackupDirectory(env = process.env) {
+  const directory = resolveBackupDirectory(env);
+  if (!existsSync(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  if (!statSync(directory).isDirectory()) throw new Error('BACKUP_DIR deve ser um diretório.');
+  chmodSync(directory, 0o700);
+  assertMode(directory, 0o700, 'Diretório de backup');
+  return directory;
 }
 
 function runBackup() {
   const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
-  ensureBackupsDir();
+  const backupsDir = ensureBackupDirectory();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `backup-${timestamp}.sql`;
-  const filepath = join(BACKUPS_DIR, filename);
+  const filename = `${BACKUP_PREFIX}${timestamp}${BACKUP_SUFFIX}`;
+  const filepath = join(backupsDir, filename);
   stdout(`Iniciando backup: ${filename}`);
   try {
     const output = command(
@@ -180,13 +206,15 @@ function runBackup() {
       ['--no-owner', '--no-acl', '--clean', '--if-exists', '--format=plain'],
       { env: postgresEnv(connection) }
     );
-    writeFileSync(filepath, output);
+    writeFileSync(filepath, output, { mode: 0o600 });
+    chmodSync(filepath, 0o600);
+    assertMode(filepath, 0o600, 'Arquivo de backup');
     const stat = statSync(filepath);
     stdout('Backup concluído com sucesso.');
     stdout(`  Arquivo: ${filepath}`);
     stdout(`  Tamanho: ${stat.size} bytes`);
     stdout(`  Timestamp: ${new Date().toISOString()}`);
-    retentionCleanup();
+    retentionCleanup(backupsDir);
   } catch (error) {
     throw new Error(
       `Falha ao executar pg_dump: ${error instanceof Error ? error.message : String(error)}`,
@@ -195,11 +223,11 @@ function runBackup() {
   }
 }
 
-function retentionCleanup() {
+function retentionCleanup(backupsDir = ensureBackupDirectory()) {
   const retentionDays = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
   const now = Date.now();
   const cutoff = now - retentionDays * 24 * 60 * 60 * 1000;
-  const resolvedDir = resolve(BACKUPS_DIR);
+  const resolvedDir = resolve(backupsDir);
   stdout(`Retenção: ${retentionDays} dias. Verificando arquivos antigos...`);
   let files;
   try {
@@ -289,11 +317,19 @@ export function exceedsMegabyteQuota(bytes, maxMegabytes) {
 
 async function runPreflight() {
   const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
+  const backupDir = ensureBackupDirectory();
+  const retentionDays = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
+  const filesystem = statfsSync(backupDir);
+  const freeBytes = filesystem.bavail * filesystem.bsize;
+  const retainedBackups = readdirSync(backupDir).filter(
+    (file) => file.startsWith(BACKUP_PREFIX) && file.endsWith(BACKUP_SUFFIX)
+  ).length;
   const env = postgresEnv(connection);
   const maxDbSizeMb = parseInt(process.env.PREFLIGHT_MAX_DB_SIZE_MB || '512', 10);
   const maxBlobSizeMb = parseInt(process.env.PREFLIGHT_MAX_BLOB_SIZE_MB || '512', 10);
   const maxConnections = parseInt(process.env.PREFLIGHT_MAX_CONNECTIONS || '100', 10);
   let hasCritical = false;
+  if (freeBytes <= 0) hasCritical = true;
   const results = [];
   for (const [metric, query, quota, criticalWhen] of [
     ['Tamanho do banco', 'SELECT pg_database_size(current_database());', maxDbSizeMb, (value) => exceedsMegabyteQuota(value, maxDbSizeMb)],
@@ -341,6 +377,18 @@ async function runPreflight() {
       results.push({ metric: 'Armazenamento de blobs', value: 'ERRO', quota: `${maxBlobSizeMb} MB`, status: 'AVISO' });
     }
   }
+  results.push({
+    metric: 'Espaço livre no destino',
+    value: `${(freeBytes / (1024 * 1024)).toFixed(2)} MB`,
+    quota: 'N/A',
+    status: freeBytes > 0 ? 'OK' : 'CRÍTICO',
+  });
+  results.push({
+    metric: 'Inventário de backups',
+    value: `${retainedBackups} arquivo(s)`,
+    quota: `${retentionDays} dias`,
+    status: 'OK',
+  });
   results.push({ metric: 'Transferência mensal', value: 'N/A', quota: '1000 MB', status: 'AVISO - não mensurável antes de operação' });
   stdout('\nPREFLIGHT DE CAPACIDADE\n');
   for (const result of results) stdout(`${result.status} ${result.metric}: ${result.value} / ${result.quota}`);

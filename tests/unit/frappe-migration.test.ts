@@ -6,6 +6,7 @@ import {
   addDetail,
   buildQuotationUnits,
   canonicalApprovalKey,
+  canonicalDecimal,
   canonicalHash,
   deriveHistoricalPdfBlobPath,
   emptyEntityReport,
@@ -46,6 +47,12 @@ const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImpleme
   );
 
 describe('migração Frappe CRM', { concurrency: 1 }, () => {
+  it('canonicaliza decimais sem perder zeros significativos', () => {
+    assert.equal(canonicalDecimal('30.000'), '30');
+    assert.equal(canonicalDecimal('00030.0500'), '30.05');
+    assert.equal(canonicalDecimal('0.0100'), '0.01');
+  });
+
   it('pagina fonte com ordenação estável e lê todos os documentos', async () => {
     const calls: Array<{ doctype: string; start: number; order_by: string; modified_before?: string }> = [];
     const source = {
@@ -1906,7 +1913,9 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     );
   });
 
-  it('aplica arquivamento de PDFs históricos e é idempotente na reexecução', async () => {
+  // The following historical-PDF cases exercise only the legacy Memory pipeline;
+  // PostgreSQL intentionally has no historical PDF row.
+  it('Memory legacy arquiva PDFs históricos e é idempotente na reexecução', async () => {
     const repository = new MemoryFrappeMigrationRepository();
     const { pipeline, state } = createFakePdfPipeline(() => PDF_A);
     const first = await runFrappeMigration({

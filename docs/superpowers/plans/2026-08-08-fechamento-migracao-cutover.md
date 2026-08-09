@@ -824,37 +824,53 @@ jq --version
 
 Expected: versões presentes antes de qualquer backup.
 
+O host operacional deve falhar fechado se qualquer ferramenta estiver ausente.
+O runbook exige registrar as versões no diretório protegido do corte.
+
 - [ ] **Step 2: Run backup preflight.**
 
-Run com `DATABASE_URL` via secret manager:
+Run somente contra `STAGING_DATABASE_URL`, com `CUTOVER_BACKUP_DIR` externo e protegido:
 
 ```bash
-node scripts/backup-crm.mjs --preflight
+env -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  node scripts/backup-crm.mjs --preflight
 ```
 
 Registrar capacidade, tamanho, conexões, retenção e espaço de destino sem imprimir URL.
+O preflight é obrigatório e aborta o backup quando capacidade está crítica ou o destino não tem modo 0700.
+
 
 - [ ] **Step 3: Create and checksum backup.**
 
-Run:
+Run com `CUTOVER_BACKUP_DIR` externo e explícito:
 
 ```bash
-node scripts/backup-crm.mjs
-sha256sum backups/backup-*.sql > "$CUTOVER_DIR/backup.sha256"
+env -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
+  node scripts/backup-crm.mjs
+sha256sum "$BACKUP_FILE" > "$CUTOVER_DIR/backup.sha256"
 ```
 
-Confirmar que o arquivo está fora do Git e tem permissão restrita.
+Confirmar diretório 0700, arquivo 0600 e arquivo fora do checkout.
+Não selecionar automaticamente o backup mais recente.
+
 
 - [ ] **Step 4: Restore into `aspen_restore`.**
 
 Run:
 
 ```bash
-RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
-node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE"
+env -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
+  node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE"
 ```
 
-Confirmar tabelas, migrations, contagens e um registro sintético de verificação.
+Confirmar tabelas, migrations, contagens e um registro sintético de verificação no destino isolado.
+
 
 - [ ] **Step 5: Run dry-run, apply and reconciliation on `aspen_test`.**
 
@@ -868,7 +884,8 @@ Persistir:
 - reconciliação por doctype e status;
 - divergências aprovadas.
 
-Abortar se `blocking > 0`, se manifest mudar ou se a identidade do banco divergir.
+Abortar se `blocking > 0`, se manifest mudar, se a identidade do banco divergir ou se a reconciliação não produzir `reconciliation.json` e seu checksum fora do checkout.
+Usar o comando executável da seção 7 do runbook para persistir hashes, contagens, statuses, lineage, revisões e divergências aprovadas.
 
 - [ ] **Step 6: Run tests and commit documentation.**
 
