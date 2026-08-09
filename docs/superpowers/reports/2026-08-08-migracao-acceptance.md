@@ -1,0 +1,54 @@
+# Acceptance Report - Migração PostgreSQL
+
+Status: BLOCKED_PENDING_OPERATIONAL_APPROVAL.
+
+Branch: `feature/migracao-sem-frappe`.
+
+HEAD: `5992704`.
+
+## Verified
+
+- PostgreSQL migrations applied to named staging database `aspen_test`.
+- Seven serial PostgreSQL integration tests passed with zero skips.
+- Thirty backup, restore-guard, preflight and checklist tests passed with zero skips.
+- Backup preflight passed with 8.70 MB database size and 9 active connections.
+- Backup was written outside the checkout to a mode `0700` directory.
+- Exact backup file mode was `0600` and its SHA-256 checksum passed `sha256sum --check`.
+- Restore validation passed against named `aspen_restore`.
+- Restore counts were products 5, clients 30, quotations 4, revisions 7, items 7 and lineage 39.
+- Synthetic isolated restore probe returned count 1 and left no persistent probe row.
+- Synthetic direct dataset apply plus dry-run/apply reconciliation passed against `aspen_test`.
+- Synthetic reconciliation verified source-keyed products, pricing documents, pricing tiers, client identity hash and lineage hash.
+- Local Playwright passed 9 tests across cutover, operational-mode and lifecycle flows.
+- Full unit suite passed 661 tests with 13 database-dependent skips when database variables were explicitly unset.
+- Type-check, API build, production build, Tailwind check, Drizzle check and whitespace check passed.
+- ESLint reported zero errors and 199 pre-existing warnings.
+- Targeted LSP diagnostics reported no errors for changed scripts and tests.
+- Rollout flags remained `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
+- No production deployment, provider delivery, Frappe source read or real Frappe CLI apply was executed.
+
+## Evidence
+
+Protected operational artifacts remain outside the repository under the cutover evidence directory.
+
+Artifacts include tool versions, preflight output, backup checksum, restore validation, restore identity counts, synthetic reconciliation reports and checksums.
+
+Reports contain no database URLs, credentials, raw payloads or customer PII.
+
+## Pending gates
+
+- Real anonymized Frappe snapshot dry-run and approved real apply.
+- Reconciliation against the approved real apply report.
+- Real staging Playwright with staging credentials.
+- Staging Frappe egress deny evidence.
+- Staging PostgreSQL canary and exercised rollback.
+- Production canary, deployment and rollback window approval.
+- Final merge approval after the pending operational gates.
+
+## Decision
+
+Per explicit operator decision, canary and rollback remain blocked.
+
+Keep the rollout flags on the legacy state until all pending gates receive explicit approval and evidence.
+
+Do not merge or cut over production based only on the synthetic reconciliation.
