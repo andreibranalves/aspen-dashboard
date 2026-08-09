@@ -978,6 +978,22 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(normalized.items[0].sku, 'SKU-PROD');
   });
 
+  it('resolve Quotation por nome exibido quando não há ID Customer explícito', () => {
+    const normalized = normalizeFrappeQuotation(
+      {
+        name: 'QTN-2025-00078',
+        creation: '2025-02-02 10:00:00',
+        quotation_to: 'Customer',
+        party_name: 'Cliente Exibido',
+        status: 'Submitted',
+        items: [{ idx: 1, item_code: 'SKU-DISPLAY', qty: '2', rate: '10', price_list_rate: '10', amount: '20' }],
+      },
+      new Map([['name:cliente exibido', 'client-display']]),
+    );
+    assert.equal(normalized.clientRef, 'Customer:Cliente Exibido');
+    assert.equal(normalized.clientId, 'client-display');
+  });
+
   it('canonicaliza approval keys sem expor Customer/Lead e rejeita doctype desconhecido', () => {
     const customerId = '12.345.678/0001-90';
     const leadId = 'lead@example.com';

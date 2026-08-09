@@ -947,7 +947,11 @@ function resolveQuotationClient(
   else if (partyType === 'customer' && customer) clientRef = `Customer:${customer}`;
   else if (customer) clientRef = `Customer:${customer}`;
   else if (lead) clientRef = `Lead:${lead}`;
-  return { clientRef, clientId: clientRef ? clientLineage.get(clientRef) || null : null };
+  const clientId = clientRef
+    ? clientLineage.get(clientRef) ||
+      (partyName ? clientLineage.get(`name:${partyName.toLowerCase()}`) || null : null)
+    : null;
+  return { clientRef, clientId };
 }
 
 /**

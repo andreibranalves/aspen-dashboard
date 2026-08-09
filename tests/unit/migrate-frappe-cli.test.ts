@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 
 import { canonicalHash, runFrappeMigration } from '../../api/_functions/frappe-migration.js';
 import {
+  normalizeFrappeDataset,
+  type FrappeDataset,
+} from '../../api/_functions/lib/frappe-migration-core.ts';
+import {
   assertDatabaseContract,
   parseArgs,
   readPgServiceTarget,
@@ -194,6 +198,22 @@ describe('CLI de migração Frappe', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('preserva ambiguidade de identidade entre Customer e Lead após anonimização', () => {
+    const raw: FrappeDataset = {
+      items: [],
+      customers: [{ name: 'CUST-SAME-NAME', customer_name: 'Pessoa Compartilhada', email_id: 'customer@example.test' }],
+      leads: [{ name: 'LEAD-SAME-NAME', lead_name: 'Pessoa Compartilhada', email_id: 'lead@example.test' }],
+      quotations: [],
+    };
+    const anonymized = anonymizeSnapshot(raw, 'identity-salt') as FrappeDataset;
+    const rawUnits = normalizeFrappeDataset(raw).clientUnits;
+    const anonymizedUnits = normalizeFrappeDataset(anonymized).clientUnits;
+    assert.equal(rawUnits.length, 1);
+    assert.equal(rawUnits[0]?.conflicts.length > 0, true);
+    assert.equal(anonymizedUnits.length, rawUnits.length);
+    assert.equal(anonymizedUnits[0]?.conflicts.length > 0, true);
   });
 
   it('preserva aliases camelCase, title fallback e números de quotation sem colisão', () => {

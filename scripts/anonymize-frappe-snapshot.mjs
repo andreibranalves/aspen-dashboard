@@ -60,6 +60,10 @@ function isOmittedKey(key) {
   return OMIT_KEYS.test(keyName(key));
 }
 
+function clientIdentityScope(kind) {
+  return kind === 'customer' || kind === 'lead' ? 'client' : kind;
+}
+
 function hash(salt, scope, value) {
   return createHash('sha256').update(`${salt}\0${scope}\0${value}`).digest('hex');
 }
@@ -211,6 +215,7 @@ function sanitizePrimitive(key, value, kind, context, arrayIndex = '') {
   if (value === null || typeof value === 'boolean') return value;
   const canonical = keyName(key);
   const scope = `${kind}.${canonical}${arrayIndex === '' ? '' : `.array.${arrayIndex}`}`;
+  const identityScope = clientIdentityScope(kind);
   const original = text(value);
   if (!original) return typeof value === 'string' ? '' : value;
 
@@ -229,14 +234,15 @@ function sanitizePrimitive(key, value, kind, context, arrayIndex = '') {
   if (canonical === 'customer_name' && kind === 'quotation') return mapped(context.maps.customerRef, value, context.salt, 'customer-reference', 'CUST');
   if (hasAlias(PRESERVED_STRING_KEYS, key) || hasAlias(DATE_KEYS, key) || hasAlias(NUMERIC_KEYS, key)) return value;
   if (HASH_KEYS.test(canonical) && /^[0-9a-f]{64}$/i.test(original)) return value;
-  if (EMAIL_KEYS.test(canonical)) return `${hash(context.salt, `${kind}-email`, original).slice(0, 12)}@example.invalid`;
-  if (PHONE_KEYS.test(canonical)) return `11${digits(context.salt, `${kind}-phone`, original, 9)}`;
+  if (EMAIL_KEYS.test(canonical)) return `${hash(context.salt, `${identityScope}-email`, original).slice(0, 12)}@example.invalid`;
+  if (PHONE_KEYS.test(canonical)) return `11${digits(context.salt, `${identityScope}-phone`, original, 9)}`;
   if (canonical === 'uf' || canonical === 'state' || canonical === 'province') return 'SP';
   if (canonical === 'pincode' || canonical === 'postal_code' || canonical === 'zip' || canonical === 'cep') return digits(context.salt, `${kind}-postal`, original, 8);
-  if (DOCUMENT_KEYS.test(canonical)) return digits(context.salt, `${kind}-document`, original, canonical.includes('cpf') ? 11 : 14);
-  if (ADDRESS_KEYS.test(canonical)) return `Endereço Teste ${hash(context.salt, `${kind}-address`, original).slice(0, 10).toUpperCase()}`;
+  if (DOCUMENT_KEYS.test(canonical)) return digits(context.salt, `${identityScope}-document`, original, canonical.includes('cpf') ? 11 : 14);
+  if (ADDRESS_KEYS.test(canonical)) return `Endereço Teste ${hash(context.salt, `${identityScope}-address`, original).slice(0, 10).toUpperCase()}`;
   if (canonical === 'customer_name' || canonical === 'lead_name' || canonical === 'contact_name' || canonical === 'full_name') {
-    return `${kind === 'lead' ? 'Lead' : 'Cliente'} Teste ${hash(context.salt, `${kind}-name`, original).slice(0, 10).toUpperCase()}`;
+    const label = kind === 'lead-quotation' ? 'Lead' : 'Cliente';
+    return `${label} Teste ${hash(context.salt, `${identityScope}-name`, original).slice(0, 10).toUpperCase()}`;
   }
   if (canonical === 'item_name' || canonical === 'nome') return `Produto ${hash(context.salt, `${kind}-name`, original).slice(0, 10).toUpperCase()}`;
   if ((canonical === 'title' || canonical === 'rule_title') && kind === 'pricingRule') {
@@ -251,7 +257,7 @@ function sanitizePrimitive(key, value, kind, context, arrayIndex = '') {
     return `${mapped(context.maps.itemRef, base, context.salt, 'item-reference', 'ITEM')}${suffix}`;
   }
   if (canonical === 'description' || canonical === 'descricao' || canonical === 'notes' || canonical === 'observacoes' || canonical === 'terms' || canonical === 'remarks' || canonical === 'subject' || canonical === 'title' || canonical === 'rule_title') {
-    return `Texto sanitizado ${hash(context.salt, `${kind}-${canonical}`, original).slice(0, 10).toUpperCase()}`;
+    return `Texto sanitizado ${hash(context.salt, `${identityScope}-${canonical}`, original).slice(0, 10).toUpperCase()}`;
   }
   if (typeof value === 'number') return token(context.salt, scope, original, 'NUM');
   return token(context.salt, scope, original, 'VAL');
