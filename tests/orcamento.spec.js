@@ -299,6 +299,11 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await page.getByLabel('Modelo HTML').selectOption('minimalista');
     await page.getByRole('button', { name: 'Criar orçamento' }).click();
     await expect.poll(() => quoteRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
+    const quotationLink = page.getByRole('link', { name: 'Abrir orçamento' });
+    await expect(quotationLink).toBeVisible();
+    await expect(quotationLink).toHaveAttribute('href', '/api/view?q=ORC-20260001');
+    await expect(quotationLink).toHaveAttribute('target', '_blank');
+    await expect(quotationLink.getByRole('button')).toHaveCount(0);
   });
 
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {

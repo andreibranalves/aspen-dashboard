@@ -4,6 +4,11 @@ import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { stdin, stderr, stdout } from 'node:process';
 import { pathToFileURL } from 'node:url';
 
+/**
+ * @typedef {import('node:stream').Readable & { isTTY?: boolean, setRawMode?: (enabled: boolean) => void }} PasswordInput
+ * @typedef {import('node:stream').Writable} PasswordOutput
+ */
+
 // This is intentionally self-contained so first-time credential setup does not
 // require generated API JavaScript. These are the fixed `scrypt:v1` parameters
 // accepted by api/_lib/password.ts; the unit test verifies cross-module output.
@@ -52,6 +57,7 @@ function trimTerminalNewline(value) {
   return value.endsWith('\r\n') ? value.slice(0, -2) : value.endsWith('\n') ? value.slice(0, -1) : value;
 }
 
+/** @param {PasswordInput} input */
 function readPipedPassword(input) {
   return new Promise((resolve, reject) => {
     let password = '';
@@ -69,7 +75,11 @@ function readPipedPassword(input) {
   });
 }
 
-/** Read a terminal password in raw mode so entered characters are never echoed. */
+/**
+ * Read a terminal password in raw mode so entered characters are never echoed.
+ * @param {PasswordInput} [input]
+ * @param {PasswordOutput} [promptOutput]
+ */
 export function readPassword(input = stdin, promptOutput = stderr) {
   if (!input.isTTY) return readPipedPassword(input);
 
@@ -80,7 +90,7 @@ export function readPassword(input = stdin, promptOutput = stderr) {
     const cleanup = () => {
       input.off('data', onData);
       input.off('error', onError);
-      input.setRawMode(false);
+      input.setRawMode?.(false);
       input.pause();
     };
     const finish = (value) => {
@@ -117,13 +127,16 @@ export function readPassword(input = stdin, promptOutput = stderr) {
       }
     };
 
-    input.setRawMode(true);
+    input.setRawMode?.(true);
     input.resume();
     input.on('data', onData);
     input.once('error', onError);
   });
 }
 
+/**
+ * @param {{ input?: PasswordInput, output?: PasswordOutput, promptOutput?: PasswordOutput }} [options]
+ */
 export async function main({ input = stdin, output = stdout, promptOutput = stderr } = {}) {
   const password = await readPassword(input, promptOutput);
   if (password === null) return 130;

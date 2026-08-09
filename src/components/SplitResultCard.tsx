@@ -546,17 +546,25 @@ export default function SplitResultCard({
 
         {isDone ? (
           <>
-            <a
-              href={viewUrl || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={!viewUrl ? 'pointer-events-none' : undefined}
-            >
-              <Button size="sm" variant="secondary" disabled={!viewUrl}>
+            {viewUrl ? (
+              <a
+                href={viewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+              >
                 <FileText size={13} />
                 Abrir orçamento
-              </Button>
-            </a>
+              </a>
+            ) : (
+              <span
+                aria-disabled="true"
+                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg opacity-40"
+              >
+                <FileText size={13} />
+                Abrir orçamento
+              </span>
+            )}
             <Button
               size="sm"
               disabled={waStatus?.state === 'sending'}

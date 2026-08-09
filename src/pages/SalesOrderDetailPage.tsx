@@ -135,10 +135,9 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
               href={`https://aspenestamparia.l.frappe.cloud/app/sales-order/${data.id}`}
               target="_blank"
               rel="noopener noreferrer"
+              className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line bg-transparent px-3 text-xs font-medium transition-all duration-200 hover:bg-primary/5 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
             >
-              <Button variant="outline" size="sm">
-                <ExternalLink size={14} /> Abrir no ERPNext
-              </Button>
+              <ExternalLink size={14} /> Abrir no ERPNext
             </a>
             {/* Link to source quotation */}
             {data.source_quotation && (
@@ -249,10 +248,9 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             href={`https://aspenestamparia.l.frappe.cloud/app/sales-order/${data.id}`}
             target="_blank"
             rel="noopener noreferrer"
+            className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-primary px-3 text-xs font-medium text-on-solid transition-all duration-200 hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
           >
-            <Button size="sm">
-              <ExternalLink size={14} /> Abrir no ERPNext
-            </Button>
+            <ExternalLink size={14} /> Abrir no ERPNext
           </a>
         </div>
       </div>

@@ -36,6 +36,8 @@ const DETAIL = {
   observacoes: null,
 };
 
+/** @typedef {typeof DETAIL & { id?: string, nome?: string, archived?: boolean, updated?: boolean }} ClientDetail */
+
 test.describe('Clientes unificados — core', () => {
   test('exibe Cliente sem Lead e permite abrir detalhe', async ({ page }) => {
     await page.route('**/api/leads-clients**', async (route) => {
@@ -68,6 +70,7 @@ test.describe('Clientes unificados — core', () => {
 
   test('cria, pesquisa, edita, arquiva, filtra arquivados e restaura sem terminologia Lead', async ({ page }) => {
     let rows = [{ ...CLIENT }];
+    /** @type {Map<string, ClientDetail>} */
     const details = new Map([[CLIENT.id, { ...DETAIL }]]);
 
     await page.route('**/api/leads-clients**', async (route) => {
@@ -92,7 +95,7 @@ test.describe('Clientes unificados — core', () => {
       }
       const url = new globalThis.URL(request.url());
       if (request.method() === 'DELETE') {
-        const id = url.searchParams.get('id');
+        const id = url.searchParams.get('id') || '';
         rows = rows.map((row) => row.id === id ? { ...row, arquivado: true, status: 'archived' } : row);
         const detail = details.get(id);
         if (detail) details.set(id, { ...detail, arquivado: true, archived: true, status: 'archived' });
@@ -108,8 +111,15 @@ test.describe('Clientes unificados — core', () => {
     await page.route('**/api/client-detail**', async (route) => {
       const request = route.request();
       const url = new globalThis.URL(request.url());
-      const id = url.searchParams.get('name');
-      const current = details.get(id) || { ...DETAIL, id, name: id };
+      const id = url.searchParams.get('name') || '';
+      const current = details.get(id) || {
+        ...DETAIL,
+        id,
+        name: id,
+        display_name: id,
+        nome: DETAIL.display_name,
+        archived: false,
+      };
       if (request.method() === 'PATCH' || request.method() === 'PUT') {
         const body = request.postDataJSON();
         const notes = Object.prototype.hasOwnProperty.call(body, 'notes')
@@ -208,8 +218,10 @@ test.describe('Clientes unificados — core', () => {
 
   test('lista permanece neutra enquanto o modo core está pendente', async ({ page }) => {
     await page.addInitScript(() => globalThis.localStorage.clear());
-    let release;
-    const pending = new Promise((resolve) => { release = resolve; });
+    /** @type {() => void} */
+    let release = () => {};
+    /** @type {Promise<void>} */
+    const pending = new Promise((resolve) => { release = () => resolve(); });
     const initialRequests = [];
     await page.route('**/api/leads-clients**', async (route) => {
       initialRequests.push(route.request().url());
@@ -317,8 +329,10 @@ test.describe('Clientes unificados — core', () => {
     let createdNotes = null;
     let editedNotes = null;
     let createPersisted = false;
-    let createdPost = null;
-    let createdPatch = null;
+    /** @type {{ nome: string, email: string, telefone: string }} */
+    let createdPost = { nome: '', email: '', telefone: '' };
+    /** @type {{ person_type: string, tax_id: string, endereco: { endereco: string }, empresa?: string, origem?: string, contribuinte?: string, inscricao_estadual?: string }} */
+    let createdPatch = { person_type: '', tax_id: '', endereco: { endereco: '' } };
 
     await page.route('**/api/leads-clients**', async (route) => {
       const request = route.request();

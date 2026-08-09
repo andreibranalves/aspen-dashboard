@@ -1,20 +1,32 @@
 import assert from 'node:assert/strict';
 import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/whatsappFlows.ts';
 
+for (const key of [
+  'CRM_OPERATIONAL_MODE',
+  'CRM_CORE_QUOTES_ENABLED',
+  'CRM_QUOTES_ROLLOUT_STATE',
+  'N8N_WEBHOOK_URL',
+  'N8N_WEBHOOK_ENABLED',
+]) delete process.env[key];
 process.env.EVOLUTION_BASE_URL = 'https://evolution.example.test';
 process.env.EVOLUTION_API_KEY = 'test-key';
 process.env.EVOLUTION_INSTANCE = 'Ursinho';
 
+function parseJson(body) {
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    throw new Error('Resposta JSON inválida do handler WhatsApp.', { cause: error });
+  }
+}
+
 const calls = [];
 globalThis.fetch = async (url, options = {}) => {
-  calls.push({ url: String(url), body: JSON.parse(options.body || '{}') });
-  return {
-    ok: true,
+  calls.push({ url: String(url), body: parseJson(options.body || '{}') });
+  return new globalThis.Response(JSON.stringify({ ok: true, id: `msg-${calls.length}` }), {
     status: 200,
-    async json() {
-      return { ok: true, id: `msg-${calls.length}` };
-    },
-  };
+    headers: { 'content-type': 'application/json' },
+  });
 };
 
 const { handler } = await import('../api/_functions/send-whatsapp.js?test=' + Date.now());
@@ -60,7 +72,7 @@ const res = await handler({
 });
 
 assert.equal(res.statusCode, 200);
-const body = JSON.parse(res.body);
+const body = parseJson(res.body);
 assert.equal(body.success, true);
 assert.equal(body.dry_run, true);
 assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
@@ -75,13 +87,15 @@ assert.equal(body.delay_max_ms, 20);
 
 console.log('whatsapp sequence dry-run ok');
 
-// ── Test A: First-contact flow (DEFAULT_WA_FLOWS[0]) dry-run ───────────────
+// ── Test A: First-contact flow dry-run ─────────────────────────────────────
 
 calls.length = 0;
 
+const firstContactFlow = DEFAULT_WA_FLOWS.find((flow) => flow.id === 'email-first-contact');
+assert.ok(firstContactFlow, 'fluxo email-first-contact ausente');
 const firstContactPayload = {
   ...basePayload,
-  whatsapp_sequence: flowToSequencePayload(DEFAULT_WA_FLOWS[0]),
+  whatsapp_sequence: flowToSequencePayload(firstContactFlow),
 };
 
 const resA = await handler({
@@ -92,7 +106,7 @@ const resA = await handler({
 });
 
 assert.equal(resA.statusCode, 200);
-const bodyA = JSON.parse(resA.body);
+const bodyA = parseJson(resA.body);
 assert.equal(bodyA.success, true);
 assert.equal(bodyA.dry_run, true);
 assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
@@ -108,13 +122,15 @@ assert.equal(bodyA.delay_max_ms, 8000);
 
 console.log('whatsapp first-contact flow dry-run ok');
 
-// ── Test B: Already-talking flow (DEFAULT_WA_FLOWS[1]) dry-run ────────────
+// ── Test B: Already-talking flow dry-run ───────────────────────────────────
 
 calls.length = 0;
 
+const alreadyTalkingFlow = DEFAULT_WA_FLOWS.find((flow) => flow.id === 'already-talking');
+assert.ok(alreadyTalkingFlow, 'fluxo already-talking ausente');
 const alreadyTalkingPayload = {
   ...basePayload,
-  whatsapp_sequence: flowToSequencePayload(DEFAULT_WA_FLOWS[1]),
+  whatsapp_sequence: flowToSequencePayload(alreadyTalkingFlow),
   pdf_url: 'https://example.test/orcamento.pdf',
 };
 
@@ -126,16 +142,15 @@ const resB = await handler({
 });
 
 assert.equal(resB.statusCode, 200);
-const bodyB = JSON.parse(resB.body);
+const bodyB = parseJson(resB.body);
 assert.equal(bodyB.success, true);
 assert.equal(bodyB.dry_run, true);
 assert.equal(calls.length, 0, 'dry_run não deve chamar a Evolution API');
 assert.equal(bodyB.number, '5521999999999');
 
-// 1 text step (document converted to text/link)
-assert.equal(bodyB.steps.length, 1);
-assert.deepEqual(bodyB.steps.map(s => s.type), ['text']);
-// No document step since PDF is now sent as link
+// Greeting plus the configured quotation PDF document.
+assert.equal(bodyB.steps.length, 2);
+assert.deepEqual(bodyB.steps.map(s => s.type), ['text', 'document']);
 assert.equal(bodyB.delay_min_ms, 1000);
 assert.equal(bodyB.delay_max_ms, 2000);
 

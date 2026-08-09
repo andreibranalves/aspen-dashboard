@@ -1853,10 +1853,13 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
               <Button onClick={handleDuplicate} variant="outline" size="sm" disabled={duplicating}>
                 <Copy size={14} /> {duplicating ? 'Duplicando…' : 'Duplicar'}
               </Button>
-              <a href={quotationViewUrl} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm">
-                  <FileText size={14} /> Visualizar
-                </Button>
+              <a
+                href={quotationViewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line bg-transparent px-3 text-xs font-medium transition-all duration-200 hover:bg-primary/5 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+              >
+                <FileText size={14} /> Visualizar
               </a>
               <span className="text-xs text-fg-muted">Link público indisponível para esta cotação legada.</span>
               <div className="flex-1" />
