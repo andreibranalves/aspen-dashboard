@@ -166,13 +166,14 @@ function psqlEnvironment(env = process.env) {
 function query(service, sql, variables = {}, env = process.env) {
   const args = ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', `service=${service}`];
   for (const [key, value] of Object.entries(variables)) args.push(`--set=${key}=${value}`);
-  args.push('--command', sql);
+  args.push('--file', '-');
   try {
     return execFileSync('psql', args, {
       env: psqlEnvironment(env),
       encoding: 'utf8',
+      input: `${sql}\n`,
       maxBuffer: 64 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
   } catch {
     fail('Consulta PostgreSQL de reconciliação falhou.');

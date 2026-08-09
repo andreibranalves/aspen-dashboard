@@ -487,8 +487,14 @@ MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))
 jq -e '.manifest.mode == "apply" and .manifest.status == "completed" and (.approvedDivergenceKeys | length == 0) and .manifest.divergenceCounts.blocking == 0' "$CUTOVER_DIR/report.apply.json"
 psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
   --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
-  -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
-  > "$CUTOVER_DIR/manifest.apply.persisted.json"
+  --file - > "$CUTOVER_DIR/manifest.apply.persisted.json" <<'SQL'
+SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status)
+FROM frappe_migration_runs
+WHERE id = :'run_id'::uuid
+  AND manifest_hash = :'manifest_hash'
+  AND mode = 'apply'
+  AND status = 'completed';
+SQL
 sha256sum "$CUTOVER_DIR/manifest.apply.persisted.json" > "$CUTOVER_DIR/manifest.apply.persisted.sha256"
 sha256sum --check "$CUTOVER_DIR/manifest.apply.persisted.sha256"
 jq -e --arg run_id "$RUN_ID" --arg manifest_hash "$MANIFEST_HASH" '(.runId == $run_id) and (.manifestHash == $manifest_hash) and (.status == "completed")' "$CUTOVER_DIR/manifest.apply.persisted.json"
@@ -537,8 +543,14 @@ jq -e --arg expected "$EXPECTED_APPROVAL" '
 ' "$CUTOVER_DIR/report.apply.json"
 psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
   --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
-  -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
-  > "$CUTOVER_DIR/manifest.apply.persisted.json"
+  --file - > "$CUTOVER_DIR/manifest.apply.persisted.json" <<'SQL'
+SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status)
+FROM frappe_migration_runs
+WHERE id = :'run_id'::uuid
+  AND manifest_hash = :'manifest_hash'
+  AND mode = 'apply'
+  AND status = 'completed';
+SQL
 sha256sum "$CUTOVER_DIR/manifest.apply.persisted.json" > "$CUTOVER_DIR/manifest.apply.persisted.sha256"
 sha256sum --check "$CUTOVER_DIR/manifest.apply.persisted.sha256"
 jq -e --arg run_id "$RUN_ID" --arg manifest_hash "$MANIFEST_HASH" '(.runId == $run_id) and (.manifestHash == $manifest_hash) and (.status == "completed")' "$CUTOVER_DIR/manifest.apply.persisted.json"

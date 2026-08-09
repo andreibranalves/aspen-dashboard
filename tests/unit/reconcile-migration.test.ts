@@ -1,7 +1,29 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { compareReconciliation } from '../../scripts/reconcile-migration.mjs';
+
+const reconcileSource = readFileSync(new URL('../../scripts/reconcile-migration.mjs', import.meta.url), 'utf8');
+const cutoverRunbook = readFileSync(
+  new URL('../../docs/superpowers/plans/2026-08-05-quotation-cutover-runbook.md', import.meta.url),
+  'utf8'
+);
+
+test('reconciliação envia SQL por stdin para expandir variáveis psql com segurança', () => {
+  assert.match(reconcileSource, /args\.push\('--file', '-'\)/);
+  assert.match(reconcileSource, /input: `\$\{sql\}\\n`/);
+  assert.doesNotMatch(reconcileSource, /args\.push\('--command', sql\)/);
+
+  const persistedQueries = cutoverRunbook.match(
+    /--variable=run_id="\$RUN_ID"[\s\S]{0,450}/g
+  ) || [];
+  assert.equal(persistedQueries.length, 2);
+  for (const query of persistedQueries) {
+    assert.doesNotMatch(query, /--command|(?:^|\s)-c\s/);
+    assert.match(query, /--file -[\s\S]*<<'SQL'/);
+  }
+});
 
 const counts = { products: 2, pricingTiers: 3, clients: 1, quotations: 1 };
 const targetCounts = {
