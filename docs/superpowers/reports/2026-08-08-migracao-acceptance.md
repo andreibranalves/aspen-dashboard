@@ -4,7 +4,7 @@ Status: BLOCKED_PENDING_OPERATIONAL_APPROVAL.
 
 Branch: `master`.
 
-HEAD: `e685459`.
+HEAD: `322fe49`.
 
 ## Verified
 
@@ -20,9 +20,10 @@ HEAD: `e685459`.
 - Synthetic direct dataset apply plus dry-run/apply reconciliation passed against `aspen_test`.
 - Synthetic reconciliation verified source-keyed products, pricing documents, pricing tiers, client identity hash and lineage hash.
 - Local Playwright passed the impacted operational, quotation, cutover and lifecycle flows.
-- Local Playwright passed 57 local tests when the staging spec was excluded.
-- Full unit suite passed 665 tests with 13 database-dependent skips when database variables were explicitly unset.
-- Operational mode keeps `/auto` available for OpenRouter extraction and PostgreSQL CRM quotation creation.
+- Local Playwright passed 57 local tests when the staging spec was excluded; the operational-mode test is a UI contract test with mocked API boundaries.
+- Direct unit coverage verifies the OpenRouter request/response contract and PostgreSQL quotation handler routing; database-backed PostgreSQL suites cover persistence when staging variables are supplied.
+- Full unit suite passed 668 tests with 13 database-dependent skips when database variables were explicitly unset.
+- Operational mode keeps `/auto` available for OpenRouter extraction and PostgreSQL CRM quotation creation; live provider and staging evidence remain pending.
 - Type-check, API build, production build, Tailwind check, Drizzle check and whitespace check passed.
 - ESLint reported zero errors and 199 pre-existing warnings.
 - Targeted LSP diagnostics reported no errors for changed scripts and tests.
