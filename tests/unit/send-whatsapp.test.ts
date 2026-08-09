@@ -218,8 +218,12 @@ test('loadPostgresSendContext returns canonical immutable revision context', asy
   assert.equal(context.revisionId, revisionId);
   assert.equal(context.businessNumber, businessNumber);
   assert.equal(context.phone, '5511999990000');
-  assert.equal(context.view.client.name, 'Cliente Teste');
-  assert.equal(context.view.items[0]?.item_code, 'CNG-001');
+  const view = context.view as {
+    client: { name?: string };
+    items: Array<{ item_code?: string }>;
+  };
+  assert.equal(view.client.name, 'Cliente Teste');
+  assert.equal(view.items[0]?.item_code, 'CNG-001');
   assert.equal(context.publicLink, `https://app.test/api/public-quotation?token=${publicToken}`);
   assert.deepEqual(context.permittedMedia, ['https://app.test/media/reference.jpg']);
   assert.equal(tokenStore.values.size, 1);
@@ -316,15 +320,18 @@ function withEvolutionEnv() {
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
+    n8nUrl: process.env.N8N_WEBHOOK_URL,
   };
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
+  delete process.env.N8N_WEBHOOK_URL;
   return () => {
     for (const [key, value] of Object.entries({
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
+      N8N_WEBHOOK_URL: previous.n8nUrl,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -379,7 +386,9 @@ test('PostgreSQL endpoint enqueues only after provider acceptance', async () => 
         repository: repositoryFor(),
         store: store(),
         token: () => publicToken,
-        enqueueSentEvent: async (quotationId, payload) => queued.push({ quotationId, payload }),
+        enqueueSentEvent: async (quotationId, payload) => {
+          queued.push({ quotationId, payload });
+        },
       },
     );
     assert.equal(response.statusCode, 200);
@@ -516,7 +525,9 @@ test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key
           return true;
         },
         recordSendEvent: async () => 'synthetic-flow-event',
-        enqueueSentEvent: async (_id, payload) => queued.push(payload),
+        enqueueSentEvent: async (_id, payload) => {
+          queued.push(payload);
+        },
       },
     );
     const body = JSON.parse(response.body || '{}');

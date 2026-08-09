@@ -1,9 +1,23 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 // ── isOperationalMode ──────────────────────────────────────────────────────
 
 import { isOperationalMode } from '../../api/_functions/operational-mode.js';
+
+const ROLLOUT_ENV_KEYS = [
+  'CRM_OPERATIONAL_MODE',
+  'CRM_CORE_PRODUCTS_ENABLED',
+  'CRM_CORE_QUOTES_ENABLED',
+  'CRM_CORE_CLIENTS_ENABLED',
+  'CRM_QUOTES_ROLLOUT_STATE',
+] as const;
+function clearRolloutEnv() {
+  for (const key of ROLLOUT_ENV_KEYS) delete process.env[key];
+}
+
+beforeEach(clearRolloutEnv);
+afterEach(clearRolloutEnv);
 
 describe('isOperationalMode', () => {
   const original = process.env.CRM_OPERATIONAL_MODE;

@@ -2,10 +2,20 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { URL } from 'node:url';
 
-import { createHandler, handler as _handler } from '../../api/_functions/typebot-lead-capture.js';
+import { createHandler } from '../../api/_functions/typebot-lead-capture.js';
+import { erpGetList, erpPost, erpPut } from '../../api/_functions/lib/erpnext.js';
+import { sendMetaLeadEvent } from '../../api/_functions/lib/meta-capi.js';
 
 type HandlerResult = { statusCode: number; body: string };
-const handler = _handler as (event: unknown) => Promise<HandlerResult>;
+const handler = createHandler({
+  erpGetList,
+  erpPost,
+  erpPut,
+  upsertQuoteLead: async () => {
+    throw new Error('KV indisponível');
+  },
+  sendMetaLeadEvent,
+}) as (event: unknown) => Promise<HandlerResult>;
 type FetchCall = { url: string; options: RequestInit };
 
 const ORIGINAL_ENV = {
@@ -15,6 +25,10 @@ const ORIGINAL_ENV = {
   CRM_OPERATIONAL_MODE: process.env.CRM_OPERATIONAL_MODE,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
+const skippedMetaLeadEvent = async () => ({
+  sent: false as const,
+  reason: 'missing_token' as const,
+});
 
 function parseBody(result: HandlerResult) {
   return JSON.parse(result.body);
@@ -71,6 +85,7 @@ function buildEvent({
   return {
     httpMethod: method,
     headers,
+    queryStringParameters: {},
     body: typeof body === 'string' ? body : JSON.stringify(body),
   };
 }
@@ -264,8 +279,8 @@ describe('typebot-lead-capture handler', () => {
     delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
-      calls.push({ url: url as string, options: options as RequestInit });
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
+      calls.push({ url: url as string, options });
       const method = options.method || 'GET';
       if (method === 'GET') return jsonResponse({ data: [] });
       if (method === 'POST') {
@@ -319,8 +334,8 @@ describe('typebot-lead-capture handler', () => {
     delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
-      calls.push({ url: url as string, options: options as RequestInit });
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
+      calls.push({ url: url as string, options });
       const method = options.method || 'GET';
       const parsedUrl = new URL(url as string);
       if (method === 'GET' && parsedUrl.searchParams.get('filters')) {
@@ -438,8 +453,8 @@ describe('typebot-lead-capture handler', () => {
     delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
-      calls.push({ url: url as string, options: options as RequestInit });
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
+      calls.push({ url: url as string, options });
       const method = options.method || 'GET';
       if (method === 'GET') return jsonResponse({ data: [] });
       if (method === 'POST') return jsonResponse({ data: { name: 'LEAD-ATTR' } });
@@ -498,8 +513,8 @@ describe('typebot-lead-capture handler', () => {
     delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
-      calls.push({ url: url as string, options: options as RequestInit });
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
+      calls.push({ url: url as string, options });
       const method = options.method || 'GET';
       const parsedUrl = new URL(url as string);
       if (method === 'GET' && parsedUrl.searchParams.get('filters')) {
@@ -559,8 +574,8 @@ describe('typebot-lead-capture handler', () => {
     delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: FetchCall[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
-      calls.push({ url: url as string, options: options as RequestInit });
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
+      calls.push({ url: url as string, options });
       const method = options.method || 'GET';
       if (method === 'GET') {
         return jsonResponse({
@@ -656,8 +671,8 @@ describe('typebot-lead-capture handler', () => {
     delete process.env.META_CAPI_ACCESS_TOKEN;
 
     const calls: { url: string; options: RequestInit }[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
-      calls.push({ url: url as string, options: options as RequestInit });
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
+      calls.push({ url: url as string, options });
       const method = (options.method || 'GET') as string;
       if (method === 'GET') return jsonResponse({ data: [] });
       if (method === 'POST') {
@@ -762,7 +777,7 @@ describe('typebot-lead-capture handler', () => {
           updatedAt: '2026-06-29T12:00:00.000Z',
         };
       },
-      sendMetaLeadEvent: async () => ({ skipped: true }),
+      sendMetaLeadEvent: skippedMetaLeadEvent,
     });
 
     const result = await h(
@@ -775,7 +790,7 @@ describe('typebot-lead-capture handler', () => {
         },
       })
     );
-    const body = JSON.parse(result.body);
+    const body = JSON.parse(result.body || '{}');
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.quote_lead.id, 'quote_lead_1');
@@ -797,7 +812,7 @@ describe('typebot-lead-capture handler', () => {
         writes += 1;
         throw new Error('dry_run should not write');
       },
-      sendMetaLeadEvent: async () => ({ skipped: true }),
+      sendMetaLeadEvent: skippedMetaLeadEvent,
     });
 
     const result = await h(
@@ -810,7 +825,7 @@ describe('typebot-lead-capture handler', () => {
         },
       })
     );
-    const body = JSON.parse(result.body);
+    const body = JSON.parse(result.body || '{}');
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.quote_lead, null);
@@ -828,7 +843,7 @@ describe('typebot-lead-capture handler', () => {
       upsertQuoteLead: async () => {
         throw new Error('KV indisponível');
       },
-      sendMetaLeadEvent: async () => ({ skipped: true }),
+      sendMetaLeadEvent: skippedMetaLeadEvent,
     });
 
     const result = await h(
@@ -840,7 +855,7 @@ describe('typebot-lead-capture handler', () => {
         },
       })
     );
-    const body = JSON.parse(result.body);
+    const body = JSON.parse(result.body || '{}');
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.lead_id, 'CRM-LEAD-0001');
@@ -872,7 +887,7 @@ describe('typebot-lead-capture handler', () => {
           updatedAt: '2026-07-01T12:00:00.000Z',
         };
       },
-      sendMetaLeadEvent: async () => ({ skipped: true }),
+      sendMetaLeadEvent: skippedMetaLeadEvent,
     });
 
     const result = await h(
@@ -899,7 +914,7 @@ describe('typebot-lead-capture handler', () => {
       })
     );
 
-    const body = JSON.parse(result.body);
+    const body = JSON.parse(result.body || '{}');
     assert.equal(result.statusCode, 200);
     assert.equal(body.quote_lead.id, 'quote_lead_attr');
     assert.equal(quoteLeadWrites.length, 1);
