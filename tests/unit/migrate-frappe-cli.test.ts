@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { canonicalHash, runFrappeMigration } from '../../api/_functions/frappe-migration.js';
+import { hashDiscardEntries } from '../../api/_functions/lib/migration-discard.ts';
 import {
   normalizeFrappeDataset,
   type FrappeDataset,
@@ -813,6 +814,7 @@ describe('CLI de migração Frappe', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'frappe-discard-cli-'));
     const fixturePath = path.join(directory, 'fixture.json');
     const reportPath = path.join(directory, 'report.json');
+    const tamperedReportPath = path.join(directory, 'tampered-report.json');
     const outputPath = path.join(directory, 'discard.json');
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
     writeFileSync(
@@ -853,6 +855,36 @@ describe('CLI de migração Frappe', () => {
       const dependent = planEntries.find((entry: { key: string }) => entry.key === 'Quotation:QTN-2025-00002');
       assert.ok(dependent);
       assert.ok(dependent.depends_on.some((key: string) => key.startsWith('Pricing Rule:')));
+      writeFileSync(
+        tamperedReportPath,
+        JSON.stringify({
+          ...report,
+          manifest: {
+            ...report.manifest,
+            discardPlan: {
+              ...report.manifest.discardPlan,
+              sourceManifestHash: 'f'.repeat(64),
+            },
+          },
+        })
+      );
+      const tampered = spawnSync(
+        process.execPath,
+        [
+          'scripts/create-migration-discard-manifest.mjs',
+          '--report',
+          tamperedReportPath,
+          '--snapshot-manifest-hash',
+          report.manifest.manifestHash,
+          '--output',
+          path.join(directory, 'tampered-discard.json'),
+        ],
+        { cwd: root, env, encoding: 'utf8' }
+      );
+      assert.notEqual(tampered.status, 0);
+      assert.match(tampered.stderr, /hash|diverge/i);
+      assert.doesNotMatch(tampered.stderr, /CUST-AMB|Pessoa Ambigua|SKU-BLOCKED/);
+
       const generated = spawnSync(
         process.execPath,
         [
@@ -894,6 +926,144 @@ describe('CLI de migração Frappe', () => {
       assert.notEqual(existing.status, 0);
       assert.match(existing.stderr, /já existe/);
       assert.doesNotMatch(existing.stderr, /CUST-AMB|Pessoa Ambigua|SKU-BLOCKED/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('recusa manifestos no checkout, inclusive por pais symlinkados', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'frappe-discard-paths-'));
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const reportPath = path.join(directory, 'missing-report.json');
+    const directPath = path.join(root, '.discard-manifest-inside-checkout-test.json');
+    const symlinkParent = path.join(directory, 'checkout-link');
+    const symlinkPath = path.join(symlinkParent, 'discard.json');
+    const hash = 'a'.repeat(64);
+    const env = { ...process.env, DATABASE_URL: '', TEST_DATABASE_URL: '' };
+    const generate = (outputPath: string) => spawnSync(
+      process.execPath,
+      [
+        'scripts/create-migration-discard-manifest.mjs',
+        '--report',
+        reportPath,
+        '--snapshot-manifest-hash',
+        hash,
+        '--output',
+        outputPath,
+      ],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    const load = (manifestPath: string) => spawnSync(
+      process.execPath,
+      ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--discard-manifest', manifestPath],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    try {
+      const directGenerator = generate(directPath);
+      assert.notEqual(directGenerator.status, 0);
+      assert.match(directGenerator.stderr, /checkout/i);
+      assert.doesNotMatch(directGenerator.stderr, /inside-checkout-test/);
+
+      const directLoader = load(directPath);
+      assert.notEqual(directLoader.status, 0);
+      assert.match(directLoader.stderr, /checkout/i);
+      assert.doesNotMatch(directLoader.stderr, /inside-checkout-test/);
+
+      symlinkSync(root, symlinkParent, 'dir');
+      const symlinkGenerator = generate(symlinkPath);
+      assert.notEqual(symlinkGenerator.status, 0);
+      assert.match(symlinkGenerator.stderr, /checkout/i);
+      assert.doesNotMatch(symlinkGenerator.stderr, /checkout-link/);
+
+      const symlinkLoader = load(symlinkPath);
+      assert.notEqual(symlinkLoader.status, 0);
+      assert.match(symlinkLoader.stderr, /checkout/i);
+      assert.doesNotMatch(symlinkLoader.stderr, /checkout-link/);
+    } finally {
+      rmSync(directPath, { force: true });
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('falha com segurança para JSON, schema, hash e chave inválidos do manifesto', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'frappe-discard-invalid-'));
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const env = { ...process.env, DATABASE_URL: '', TEST_DATABASE_URL: '' };
+    const load = (manifestPath: string, fixture = false) => spawnSync(
+      process.execPath,
+      [
+        'scripts/migrate-frappe-crm.mjs',
+        '--dry-run',
+        ...(fixture ? ['--fixture', 'tests/fixtures/frappe-migration-valid.json'] : []),
+        '--discard-manifest',
+        manifestPath,
+      ],
+      { cwd: root, env, encoding: 'utf8' }
+    );
+    const malformedPath = path.join(directory, 'malformed.json');
+    const schemaPath = path.join(directory, 'schema.json');
+    const stalePath = path.join(directory, 'stale.json');
+    const unknownPath = path.join(directory, 'unknown.json');
+    try {
+      writeFileSync(malformedPath, '{');
+      const malformed = load(malformedPath);
+      assert.notEqual(malformed.status, 0);
+      assert.match(malformed.stderr, /JSON malformado/i);
+      assert.doesNotMatch(malformed.stderr, /raw-secret|Pessoa/);
+
+      writeFileSync(schemaPath, JSON.stringify({ schemaVersion: 99 }));
+      const schema = load(schemaPath);
+      assert.notEqual(schema.status, 0);
+      assert.match(schema.stderr, /schema inválido/i);
+      assert.doesNotMatch(schema.stderr, /raw-secret|Pessoa/);
+
+      const dryRun = spawnSync(
+        process.execPath,
+        ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--fixture', 'tests/fixtures/frappe-migration-valid.json'],
+        { cwd: root, env, encoding: 'utf8' }
+      );
+      assert.ok(dryRun.stdout.trim(), dryRun.stderr);
+      const dryRunReport = JSON.parse(dryRun.stdout);
+      const currentHash = dryRunReport.manifest.manifestHash as string;
+      const staleHash = `${currentHash[0] === 'a' ? 'b' : 'a'}${currentHash.slice(1)}`;
+      writeFileSync(
+        stalePath,
+        JSON.stringify({
+          schemaVersion: 1,
+          policy: 'discard-all-blockers',
+          sourceManifestHash: staleHash,
+          dryRunReportHash: 'b'.repeat(64),
+          entries: [],
+          closureHash: hashDiscardEntries([]),
+        })
+      );
+      const stale = load(stalePath, true);
+      assert.notEqual(stale.status, 0);
+      assert.match(stale.stderr, /snapshot|sourceManifestHash|hash/i);
+      assert.doesNotMatch(stale.stderr, /raw-secret|Pessoa/);
+
+      writeFileSync(
+        unknownPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          policy: 'discard-all-blockers',
+          sourceManifestHash: 'a'.repeat(64),
+          dryRunReportHash: 'b'.repeat(64),
+          entries: [{
+            key: 'Unknown:raw-secret',
+            source_doctype: 'Item',
+            source_id: 'raw-secret',
+            entity: 'produto',
+            reason: 'ambiguous-pricing',
+            depends_on: [],
+          }],
+          closureHash: 'c'.repeat(64),
+        })
+      );
+      const unknown = load(unknownPath);
+      assert.notEqual(unknown.status, 0);
+      assert.match(unknown.stderr, /chave|origem/i);
+      assert.doesNotMatch(unknown.stderr, /raw-secret/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

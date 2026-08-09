@@ -5,6 +5,7 @@ import { chmod, link, open, readFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { parseDiscardManifest } from '../api/_functions/lib/migration-discard.js';
+import { assertOutsideCheckout } from './lib/checkout-path.mjs';
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/i;
 
@@ -98,6 +99,7 @@ function importReportFromCli(value) {
   return report;
 }
 
+// Consume only the redacted dry-run projection; its source and closure hashes bind it to that snapshot.
 function projectionFromReport(value, sourceManifestHash) {
   if (!isRecord(value) || !isRecord(value.manifest))
     throw new Error('Relatório dry-run inválido: manifesto ausente.');
@@ -155,7 +157,7 @@ function countEntries(entries) {
 }
 
 async function writeProtected(pathname, contents) {
-  const output = resolve(pathname);
+  const output = await assertOutsideCheckout(pathname, 'Arquivo de saída do manifesto de descarte');
   const temporary = `${output}.${process.pid}.${randomUUID()}.tmp`;
   let handle;
   try {
@@ -181,6 +183,7 @@ async function writeProtected(pathname, contents) {
 export async function createDiscardManifest({ reportPath, snapshotManifestHash, outputPath }) {
   if (!HASH_PATTERN.test(String(snapshotManifestHash || '')))
     throw new Error('Hash do snapshot deve ser SHA-256.');
+  await assertOutsideCheckout(outputPath, 'Arquivo de saída do manifesto de descarte');
   const reportValue = await readReport(reportPath);
   const sourceManifestHash = String(snapshotManifestHash).toLowerCase();
   const projection = projectionFromReport(reportValue, sourceManifestHash);

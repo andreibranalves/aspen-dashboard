@@ -5,6 +5,8 @@ import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { assertOutsideCheckout } from './lib/checkout-path.mjs';
+
 function safeCliMessage(error) {
   const message = error instanceof Error ? error.message : '';
   const safePrefixes = [
@@ -255,9 +257,10 @@ function assertFixtureObject(value) {
 }
 
 async function loadDiscardManifest(pathname) {
+  const absolute = await assertOutsideCheckout(pathname, 'Arquivo de manifesto de descarte');
   let contents;
   try {
-    contents = await readFile(resolve(pathname), 'utf8');
+    contents = await readFile(absolute, 'utf8');
   } catch (error) {
     throw new Error('Arquivo de manifesto de descarte não pôde ser lido.', { cause: error });
   }
