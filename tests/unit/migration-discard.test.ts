@@ -239,4 +239,53 @@ describe('migration discard manifest', () => {
     assert.match(entry.key, /^Customer:cliente-[0-9a-f]{12}$/);
     assert.doesNotMatch(entry.key, /C1/);
   });
+
+  it('rejects raw Customer/Lead identifiers without echoing them', () => {
+    const valid = manifestFor(buildDiscardPlan(graph()));
+    const client = valid.entries.find((entry) => entry.entity === 'cliente');
+    assert.ok(client);
+    const rawKey = {
+      ...client,
+      key: 'Customer:C1',
+      source_doctype: 'Customer',
+      source_id: 'C1',
+    };
+    assert.throws(
+      () => parseDiscardManifest({ ...valid, entries: valid.entries.map((entry) => entry === client ? rawKey : entry) }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /chave|origem|opac/i);
+        assert.doesNotMatch(error.message, /C1/);
+        return true;
+      }
+    );
+  });
+
+  it('rejects an entity/doctyp mismatch in a tampered manifest', () => {
+    const valid = manifestFor(buildDiscardPlan(graph()));
+    const client = valid.entries.find((entry) => entry.entity === 'cliente');
+    assert.ok(client);
+    assert.throws(
+      () => parseDiscardManifest({
+        ...valid,
+        entries: valid.entries.map((entry) => entry === client ? { ...entry, entity: 'produto' } : entry),
+      }),
+      /entidade|origem|doctype/i
+    );
+  });
+
+  it('hashes entries with fixed fields and locale-independent ordering', () => {
+    const valid = manifestFor(buildDiscardPlan(graph()));
+    const entry = valid.entries[0];
+    const reordered = {
+      depends_on: [...entry.depends_on].reverse(),
+      reason: entry.reason,
+      entity: entry.entity,
+      source_id: entry.source_id,
+      source_doctype: entry.source_doctype,
+      key: entry.key,
+    };
+    assert.equal(hashDiscardEntries([entry]), hashDiscardEntries([reordered]));
+    assert.equal(hashDiscardEntries(valid.entries), hashDiscardEntries(valid.entries.slice().reverse()));
+  });
 });

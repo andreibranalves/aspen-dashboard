@@ -54,6 +54,13 @@ const REASONS = new Set<DiscardReason>([
   'discarded-dependency',
 ]);
 const ENTITIES = new Set<DiscardEntity>(['produto', 'faixa', 'cliente', 'orcamento']);
+const OPAQUE_CLIENT_SOURCE_ID = /^cliente-[0-9a-f]{12}$/i;
+const ENTITY_DOCTYPES: Record<DiscardEntity, ReadonlySet<string>> = {
+  produto: new Set(['Item']),
+  faixa: new Set(['Pricing Rule', 'Item Price']),
+  cliente: new Set(['Customer', 'Lead']),
+  orcamento: new Set(['Quotation']),
+};
 
 function fail(message: string): never {
   throw new Error(`Manifesto de descarte inválido: ${message}`);
@@ -65,7 +72,7 @@ function text(value: unknown): string {
 
 function sourceParts(value: string): [string, string] {
   const parts = value.split(':');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) fail(`chave de origem inválida (${value}).`);
+  if (parts.length !== 2 || !parts[0] || !parts[1]) fail('chave de origem inválida.');
   return [parts[0], parts[1]];
 }
 
@@ -73,8 +80,26 @@ function canonicalSourceKey(value: string): string {
   try {
     return safeApprovalKey(value);
   } catch {
-    fail(`chave de origem inválida (${value}).`);
+    fail('chave de origem inválida.');
   }
+}
+
+function canonicalManifestKey(value: string): string {
+  const [sourceDoctype, sourceId] = sourceParts(value);
+  const canonical = canonicalSourceKey(value);
+  const [canonicalDoctype, canonicalId] = sourceParts(canonical);
+  if (sourceDoctype !== canonicalDoctype || sourceId !== canonicalId) fail('chave de origem inválida.');
+  if ((sourceDoctype === 'Customer' || sourceDoctype === 'Lead') && !OPAQUE_CLIENT_SOURCE_ID.test(sourceId))
+    fail('chave de cliente deve usar identificador opaco.');
+  return canonical;
+}
+
+function assertEntitySource(entity: DiscardEntity, sourceDoctype: string): void {
+  if (!ENTITY_DOCTYPES[entity].has(sourceDoctype)) fail('entidade não corresponde ao source_doctype.');
+}
+
+function stableCompare(left: string, right: string): number {
+  return left === right ? 0 : left < right ? -1 : 1;
 }
 
 function entryFromKey(
@@ -91,7 +116,7 @@ function entryFromKey(
     source_id,
     entity,
     reason,
-    depends_on: [...new Set([...dependsOn].map(canonicalSourceKey))].sort(),
+    depends_on: [...new Set([...dependsOn].map(canonicalSourceKey))].sort(stableCompare),
   };
 }
 
@@ -104,15 +129,17 @@ function normalizeEntry(value: unknown): DiscardEntry {
   const entity = text(input.entity) as DiscardEntity;
   const reason = text(input.reason) as DiscardReason;
   if (!key || !sourceDoctype || !sourceId) fail('entrada exige key, source_doctype e source_id.');
-  if (!ENTITIES.has(entity)) fail(`entidade desconhecida (${entity}).`);
-  if (!REASONS.has(reason)) fail(`reason desconhecida (${reason}).`);
-  const canonical = canonicalSourceKey(key);
+  if (!ENTITIES.has(entity)) fail('entidade desconhecida.');
+  if (!REASONS.has(reason)) fail('reason desconhecida.');
+  assertEntitySource(entity, sourceDoctype);
+  const canonical = canonicalManifestKey(key);
   const expected = canonicalApprovalKey(sourceDoctype, sourceId);
-  if (!expected || expected !== canonical) fail(`key não corresponde à origem (${key}).`);
+  if (!expected || expected !== canonical || sourceParts(canonical)[0] !== sourceDoctype || sourceParts(canonical)[1] !== sourceId)
+    fail('key não corresponde à origem.');
   if (!Array.isArray(input.depends_on) || input.depends_on.some((item) => typeof item !== 'string'))
     fail('depends_on deve ser uma lista de chaves.');
-  const dependsOn = [...new Set(input.depends_on.map(canonicalSourceKey))].sort();
-  if (dependsOn.includes(canonical)) fail(`entrada depende de si mesma (${canonical}).`);
+  const dependsOn = [...new Set(input.depends_on.map(canonicalManifestKey))].sort(stableCompare);
+  if (dependsOn.includes(canonical)) fail('entrada depende de si mesma.');
   return {
     key: canonical,
     source_doctype: sourceDoctype,
@@ -126,10 +153,14 @@ function normalizeEntry(value: unknown): DiscardEntry {
 function canonicalEntries(entries: Iterable<DiscardEntry>): DiscardEntry[] {
   return [...entries]
     .map((entry) => ({
-      ...entry,
-      depends_on: [...new Set(entry.depends_on.map(canonicalSourceKey))].sort(),
+      key: entry.key,
+      source_doctype: entry.source_doctype,
+      source_id: entry.source_id,
+      entity: entry.entity,
+      reason: entry.reason,
+      depends_on: [...new Set(entry.depends_on.map(canonicalSourceKey))].sort(stableCompare),
     }))
-    .sort((left, right) => left.key.localeCompare(right.key));
+    .sort((left, right) => stableCompare(left.key, right.key));
 }
 
 export function hashDiscardEntries(entries: Iterable<DiscardEntry>): string {
