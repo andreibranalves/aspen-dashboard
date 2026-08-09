@@ -2,9 +2,9 @@
 
 Status: BLOCKED_PENDING_OPERATIONAL_APPROVAL.
 
-Branch: `feature/migracao-sem-frappe`.
+Branch: `master`.
 
-HEAD: `f8e6908`.
+HEAD: `c86d7f6`.
 
 ## Verified
 
@@ -19,8 +19,10 @@ HEAD: `f8e6908`.
 - Synthetic isolated restore probe returned count 1 and left no persistent probe row.
 - Synthetic direct dataset apply plus dry-run/apply reconciliation passed against `aspen_test`.
 - Synthetic reconciliation verified source-keyed products, pricing documents, pricing tiers, client identity hash and lineage hash.
-- Local Playwright passed 9 tests across cutover, operational-mode and lifecycle flows.
-- Full unit suite passed 661 tests with 13 database-dependent skips when database variables were explicitly unset.
+- Local Playwright passed the impacted operational, quotation, cutover and lifecycle flows.
+- Local Playwright passed 57 local tests when the staging spec was excluded.
+- Full unit suite passed 665 tests with 13 database-dependent skips when database variables were explicitly unset.
+- Operational mode keeps `/auto` available for OpenRouter extraction and PostgreSQL CRM quotation creation.
 - Type-check, API build, production build, Tailwind check, Drizzle check and whitespace check passed.
 - ESLint reported zero errors and 199 pre-existing warnings.
 - Targeted LSP diagnostics reported no errors for changed scripts and tests.
@@ -44,12 +46,12 @@ Reports contain no database URLs, credentials, raw payloads or customer PII.
 - Staging Frappe egress deny evidence.
 - Staging PostgreSQL canary and exercised rollback.
 - Production canary, deployment and rollback window approval.
-- Final merge approval after the pending operational gates.
+- Final operational acceptance after the pending staging and cutover gates.
 
 ## Decision
 
-Per explicit operator decision, canary and rollback remain blocked.
+The migration code is merged locally in `master`, but operational acceptance remains blocked until the pending gates receive explicit approval and evidence.
 
 Keep the rollout flags on the legacy state until all pending gates receive explicit approval and evidence.
 
-Do not merge or cut over production based only on the synthetic reconciliation.
+Do not cut over production based only on the synthetic reconciliation.
