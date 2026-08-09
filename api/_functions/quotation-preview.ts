@@ -103,6 +103,7 @@ export function createQuotationPreviewHandler(
             'Content-Length': String(pdf.length),
             'Cache-Control': 'private, no-store',
             'X-Content-Type-Options': 'nosniff',
+            'X-Document-Revision': snapshot.revision.id,
             'X-Quotation-Template-Key': template.key,
             'X-Quotation-Template-Version': snapshot.templateVersion
               ? String(snapshot.templateVersion.version)

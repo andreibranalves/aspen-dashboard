@@ -523,6 +523,7 @@ test('preview selects draft template_version_id through repository join and rend
     const pdf = await handler(event({ id: snapshot.quotation.businessNumber, format: 'pdf', template_version_id: selectedVersionId }));
     assert.equal(pdf.statusCode, 200);
     assert.equal(pdf.isBase64Encoded, true);
+    assert.equal(pdf.headers['X-Document-Revision'], snapshot.revision.id);
 
     await assert.rejects(
       () => readQuotationTemplateSnapshot(

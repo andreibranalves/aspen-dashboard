@@ -185,9 +185,12 @@ test.describe('quotation cutover staging', () => {
       mainError = error;
     }
 
-    if (scratchDetail) {
+    {
       try {
-        const aggregateId = scratchDetail.quotation_uuid || scratchDetail.quote_id || scratchDetail.id;
+        // Always use the declared disposable scratch ID; detail fields only refine
+        // the outbox aggregate identity for that same fixture.
+        const aggregateId =
+          scratchDetail?.quotation_uuid || scratchDetail?.quote_id || scratchDetail?.id || CONFIG.scratchQuotationId;
         const purge = await apiRequest(
           page,
           'DELETE',

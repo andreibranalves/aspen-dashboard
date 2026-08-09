@@ -4,19 +4,27 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = 5173;
 const IS_STAGING = process.env.STAGING_E2E === '1';
 
-function resolveBaseUrl() {
-  const raw = process.env.BASE_URL || process.env.STAGING_BASE_URL || `http://localhost:${PORT}`;
-  if (!IS_STAGING) return raw;
+function parseOrigin(value, label) {
   let parsed;
   try {
-    parsed = new globalThis.URL(raw);
+    parsed = new globalThis.URL(String(value || '').trim());
   } catch {
-    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+    throw new Error(`${label} must be a valid HTTP(S) origin without credentials`);
   }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
-    throw new Error('STAGING_BASE_URL must be a valid HTTP(S) origin without credentials');
+    throw new Error(`${label} must be a valid HTTP(S) origin without credentials`);
   }
   return parsed.origin;
+}
+
+function resolveBaseUrl() {
+  if (!IS_STAGING) return process.env.BASE_URL || process.env.STAGING_BASE_URL || `http://localhost:${PORT}`;
+  const stagingOrigin = parseOrigin(process.env.STAGING_BASE_URL, 'STAGING_BASE_URL');
+  const configuredBaseOrigin = parseOrigin(process.env.BASE_URL || stagingOrigin, 'BASE_URL');
+  if (configuredBaseOrigin !== stagingOrigin) {
+    throw new Error('BASE_URL must match STAGING_BASE_URL during staging E2E');
+  }
+  return stagingOrigin;
 }
 
 const BASE_URL = resolveBaseUrl();

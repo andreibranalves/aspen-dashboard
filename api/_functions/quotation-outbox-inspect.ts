@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 
 import { getDatabase } from '../_db/client.js';
 import { quotationOutboxEvents } from '../_db/schema.js';
+import { isProductionEnvironment } from '../_lib/auth.js';
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 
 function json(statusCode: number, body: Record<string, unknown>): FunctionResult {
@@ -20,7 +21,7 @@ const EXTERNAL_PROVIDER_ENV_VARS = [
 ] as const;
 
 function enabled(): boolean {
-  const productionDeployment = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const productionDeployment = isProductionEnvironment(process.env);
   return (
     !productionDeployment &&
     process.env.STAGING_E2E === '1' &&

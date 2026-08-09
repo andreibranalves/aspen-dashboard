@@ -68,16 +68,26 @@ export function assertStagingConfig(env = process.env) {
   return getStagingConfig(env);
 }
 
+function effectiveStagingOrigin(env = process.env) {
+  if (env.STAGING_E2E !== '1') return null;
+  const stagingOrigin = safeStagingOrigin(env.STAGING_BASE_URL);
+  const configuredBaseOrigin = safeStagingOrigin(env.BASE_URL || stagingOrigin);
+  if (configuredBaseOrigin !== stagingOrigin) {
+    throw new Error('BASE_URL must match STAGING_BASE_URL during staging E2E');
+  }
+  return stagingOrigin;
+}
+
 export function assertSafeApiPath(path) {
   const value = String(path || '');
+  const expectedOrigin = effectiveStagingOrigin();
   let parsed;
   try {
-    parsed = new globalThis.URL(value, process.env.STAGING_BASE_URL || 'http://staging.invalid');
+    parsed = new globalThis.URL(value, expectedOrigin || process.env.BASE_URL || 'http://staging.invalid');
   } catch {
     throw new Error('Staging test attempted an invalid API URL');
   }
-  const expectedOrigin = process.env.STAGING_BASE_URL ? safeStagingOrigin(process.env.STAGING_BASE_URL) : null;
-  if (expectedOrigin && parsed.origin !== expectedOrigin) {
+  if (parsed.username || parsed.password || (expectedOrigin && parsed.origin !== expectedOrigin)) {
     throw new Error('Staging test attempted an API request outside the staging origin');
   }
   if (
@@ -87,7 +97,7 @@ export function assertSafeApiPath(path) {
   ) {
     throw new Error('Staging test attempted a forbidden provider/send request');
   }
-  return value;
+  return expectedOrigin ? parsed.href : value;
 }
 
 export async function apiRequest(page, method, path, options = {}) {
