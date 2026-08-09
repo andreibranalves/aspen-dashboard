@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
   compareReconciliation,
   expectedReconciliation,
   findExcludedTargetDependencyKeys,
+  query,
+  runTargetQueries,
 } from '../../scripts/reconcile-migration.mjs';
 import {
   hashDiscardEntries,
@@ -31,6 +35,121 @@ test('reconciliação envia SQL por stdin para expandir variáveis psql com segu
   for (const query of persistedQueries) {
     assert.doesNotMatch(query, /--command|(?:^|\s)-c\s/);
     assert.match(query, /--file -[\s\S]*<<'SQL'/);
+  }
+});
+
+function createFakePsql(options: {
+  fail?: boolean;
+  revisions?: string;
+  items?: string;
+  templates?: string;
+} = {}) {
+  const directory = mkdtempSync(join(tmpdir(), 'reconcile-migration-'));
+  const script = join(directory, 'psql');
+  const argsFile = join(directory, 'args');
+  const inputFile = join(directory, 'input');
+  writeFileSync(
+    script,
+    `#!/bin/sh
+printf '%s\\n' "$@" > "$PSQL_ARGS_FILE"
+input=$(cat)
+printf '%s\\n' "$input" >> "$PSQL_INPUT_FILE"
+printf '%s\\n' '---query---' >> "$PSQL_INPUT_FILE"
+if [ "$PSQL_FAIL" = "1" ]; then exit 1; fi
+case "$input" in
+  *"FROM quote_revisions r"*) printf '%s\\n' "$PSQL_REVISIONS" ;;
+  *"FROM quote_revision_items"*) printf '%s\\n' "$PSQL_ITEMS" ;;
+  *"FROM quotation_templates t"*) printf '%s\\n' "$PSQL_TEMPLATES" ;;
+  *) printf '%s\\n' '[]' ;;
+esac
+`
+  );
+  chmodSync(script, 0o700);
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: `${directory}:${process.env.PATH || ''}`,
+    PSQL_ARGS_FILE: argsFile,
+    PSQL_INPUT_FILE: inputFile,
+    PSQL_FAIL: options.fail ? '1' : '0',
+    PSQL_REVISIONS: options.revisions || '[]',
+    PSQL_ITEMS: options.items || '[]',
+    PSQL_TEMPLATES: options.templates || '[]',
+  };
+  return {
+    env,
+    argsFile,
+    inputFile,
+    cleanup: () => rmSync(directory, { recursive: true, force: true }),
+  };
+}
+
+test('reconciliação falha fechada quando psql retorna erro e ativa ON_ERROR_STOP', () => {
+  const fake = createFakePsql({ fail: true });
+  try {
+    assert.throws(
+      () => query('isolated', 'SELECT raw-revision-id;', {}, fake.env),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, 'Consulta PostgreSQL de reconciliação falhou.');
+        assert.doesNotMatch(error.message, /raw-revision-id/);
+        return true;
+      }
+    );
+    const args = readFileSync(fake.argsFile, 'utf8').trim().split('\n');
+    assert.ok(args.includes('--set=ON_ERROR_STOP=1'));
+    assert.ok(args.includes('--file'));
+    assert.ok(args.includes('-'));
+  } finally {
+    fake.cleanup();
+  }
+});
+
+test('reconciliação preserva projeções não vazias de revisões, itens e templates', () => {
+  const revision = { id: 'revision-1', quotationId: 'quotation-1', version: 1 };
+  const item = { id: 'item-1', revisionId: 'revision-1', productSku: 'SKU-1' };
+  const template = { key: 'template-1', hash: 'a'.repeat(64), version: 1 };
+  const fake = createFakePsql({
+    revisions: JSON.stringify([revision]),
+    items: JSON.stringify([item]),
+    templates: JSON.stringify([template]),
+  });
+  try {
+    const target = runTargetQueries('isolated', fake.env);
+    assert.deepEqual(target.revisions, [revision]);
+    assert.deepEqual(target.items, [item]);
+    assert.deepEqual(target.templates, [template]);
+
+    const revisionQuery = readFileSync(fake.inputFile, 'utf8')
+      .split('---query---')
+      .find((sql) => sql.includes('FROM quote_revisions r'));
+    assert.ok(revisionQuery);
+    for (const column of [
+      'id',
+      'quotation_id',
+      'version',
+      'status',
+      'status_original',
+      'order_linkage',
+      'order_pending',
+      'validade_dias',
+      'pagamento',
+      'entrega',
+      'frete_padrao',
+      'frete',
+      'observacoes',
+      'prazo_producao',
+      'template_padrao',
+      'template_hash',
+      'sections_snapshot',
+      'subtotal',
+      'total',
+    ]) {
+      assert.ok(revisionQuery.includes(`r.${column}`));
+    }
+    assert.match(revisionQuery, /'quotationId', r\.quotation_id/);
+    assert.match(revisionQuery, /'templateVersionKey', tv_template\.key/);
+  } finally {
+    fake.cleanup();
   }
 });
 

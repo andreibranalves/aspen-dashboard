@@ -283,8 +283,8 @@ function psqlEnvironment(env = process.env) {
   return result;
 }
 
-function query(service, sql, variables = {}, env = process.env) {
-  const args = ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', `service=${service}`];
+export function query(service, sql, variables = {}, env = process.env) {
+  const args = ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--set=ON_ERROR_STOP=1', '--dbname', `service=${service}`];
   for (const [key, value] of Object.entries(variables)) args.push(`--set=${key}=${value}`);
   args.push('--file', '-');
   try {
@@ -935,7 +935,7 @@ export function compareReconciliation(input) {
   };
 }
 
-function runTargetQueries(service, env) {
+export function runTargetQueries(service, env) {
   const allLineage = queryJson(
     service,
     `SELECT COALESCE(json_agg(json_build_object(
@@ -992,19 +992,19 @@ function runTargetQueries(service, env) {
   const revisions = queryJson(
     service,
     `SELECT COALESCE(json_agg(json_build_object(
-      'id', id::text, 'quotationId', quotation_id::text, 'version', version,
-      'status', status, 'statusOriginal', status_original, 'orderLinkage', order_linkage,
-      'orderPending', order_pending, 'validadeDias', validade_dias, 'pagamento', pagamento,
-      'entrega', entrega, 'fretePadrao', frete_padrao::text, 'frete', frete::text,
-      'observacoes', observacoes, 'prazoProducao', prazo_producao,
-      'templateKey', template_padrao, 'templateHash', template_hash,
+      'id', r.id::text, 'quotationId', r.quotation_id::text, 'version', r.version,
+      'status', r.status, 'statusOriginal', r.status_original, 'orderLinkage', r.order_linkage,
+      'orderPending', r.order_pending, 'validadeDias', r.validade_dias, 'pagamento', r.pagamento,
+      'entrega', r.entrega, 'fretePadrao', r.frete_padrao::text, 'frete', r.frete::text,
+      'observacoes', r.observacoes, 'prazoProducao', r.prazo_producao,
+      'templateKey', r.template_padrao, 'templateHash', r.template_hash,
       'templateVersionKey', tv_template.key,
       'templateVersionHash', tv.source_hash,
       'templateVersion', tv.version,
-      'sectionsSnapshot', sections_snapshot,
-      'subtotal', subtotal::text, 'total', total::text,
+      'sectionsSnapshot', r.sections_snapshot,
+      'subtotal', r.subtotal::text, 'total', r.total::text,
       'itemCount', (SELECT count(*) FROM quote_revision_items i WHERE i.revision_id = r.id)
-    ) ORDER BY quotation_id, version), '[]'::json)::text
+    ) ORDER BY r.quotation_id, r.version), '[]'::json)::text
     FROM quote_revisions r
     LEFT JOIN quotation_template_versions tv ON tv.id = r.template_version_id
     LEFT JOIN quotation_templates tv_template ON tv_template.id = tv.template_id`,
