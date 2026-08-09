@@ -62,6 +62,28 @@ test('migration lease connection disables idle reaping without changing app defa
   }
 });
 
+test(
+  'PostgreSQL migration lease keeps its advisory-lock session past the idle timeout',
+  { skip: !TEST_DATABASE_URL, timeout: 35_000 },
+  async () => {
+    const connection = createMigrationDatabaseConnection(TEST_DATABASE_URL!);
+    const repository = createPostgresFrappeMigrationRepository(() => connection.db);
+    const manifestHash = `lease-idle-timeout-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const ownerId = 'lease-idle-timeout-test';
+    try {
+      await repository.acquireMigrationLease(manifestHash, ownerId);
+      const [before] = await connection.client.unsafe('SELECT pg_backend_pid() AS pid');
+      assert.ok(before?.pid, 'lease must acquire a PostgreSQL backend session');
+      await new Promise((resolve) => setTimeout(resolve, 21_000));
+      const [after] = await connection.client.unsafe('SELECT pg_backend_pid() AS pid');
+      assert.equal(after?.pid, before.pid);
+      await repository.releaseMigrationLease(manifestHash, ownerId);
+    } finally {
+      await connection.client.end({ timeout: 5 });
+    }
+  }
+);
+
 test('PostgreSQL adapter mapeia contrato de linhagem sem banco externo', async () => {
   const sourceUpdatedAt = new Date('2024-01-05T03:04:05.000Z');
   const importedAt = new Date('2024-01-06T03:04:05.000Z');
@@ -162,7 +184,7 @@ test(
         .from(schema.frappeImportLineage)
         .where(eq(schema.frappeImportLineage.sourceId, customerId));
       assert.equal(clientLineageRows.length, 1);
-      assert.match(String(clientLineageRows[0].legacyPayload?.customer_name || ''), /^Cliente PG lineage /);
+      assert.match(clientLineageRows[0].legacyPayload?.customer_name || '', /^Cliente PG lineage /);
       assert.equal((await repository.loadState()).lineage.some((entry) => 'legacyPayload' in entry), false);
       // PostgreSQL numeric columns return fixed scales (30.000), while the
       // source normalizer emits canonical decimals (30); the rerun remains a

@@ -11,3 +11,6 @@ No staging, source, or database writes were performed.
 Validation passed for focused migration tests, API build, type-check, touched-file lint, and `git diff --check`.
 
 Integration PostgreSQL tests remained skipped because `TEST_DATABASE_URL` was not configured.
+
+Added a conditional PostgreSQL integration regression test that acquires a session advisory lease through the public repository interface, waits 21 seconds, verifies the backend session remains unchanged, and releases the lease without data writes.
+The test has a bounded 35-second timeout and closes its migration connection cleanly.
