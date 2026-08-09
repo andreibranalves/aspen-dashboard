@@ -206,7 +206,10 @@ function assertNamedServiceDatabase(service, label) {
 
 function assertCutoverServiceTarget(connection) {
   const service = readCutoverServiceTarget();
-  if (!service) return;
+  if (!service)
+    throw new Error(
+      'CUTOVER_PG_SERVICE, CUTOVER_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.'
+    );
   if (
     service.target.host.toLowerCase() !== connection.host.toLowerCase() ||
     service.target.port !== connection.port ||

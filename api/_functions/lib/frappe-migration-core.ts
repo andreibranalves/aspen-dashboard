@@ -1938,6 +1938,14 @@ export interface MigrationReconciliationExpectations {
     quotations: Array<{ sourceId: string; status: string; allowedStatuses: string[] }>;
     revisions: Array<{ sourceId: string; status: string; allowedStatuses: string[] }>;
   };
+  revisionExpectations: Array<{
+    sourceId: string;
+    templateVersionKey: string;
+    templateVersionHash: string;
+    templateVersion: number;
+    sectionsSnapshotHash: string;
+  }>;
+  rows: Record<string, Array<Record<string, unknown>>>;
 }
 
 export interface MigrationManifest {

@@ -99,11 +99,13 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   PGSERVICEFILE="$PGSERVICEFILE" \
   PGPASSFILE="$PGPASSFILE" \
-  node --input-type=module <<'NODE'
+  sh -eu <<'SH'
+node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
-  npm run db:migrate
+npm run db:migrate
+SH
 ```
 
 Para apply, o comando deve exportar `CUTOVER_PG_SERVICE`, `PGSERVICEFILE` e `PGPASSFILE` no mesmo bloco que chama `assertDatabaseContract`.
@@ -468,14 +470,16 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   PGSERVICEFILE="$PGSERVICEFILE" \
   PGPASSFILE="$PGPASSFILE" \
-  node --input-type=module <<'NODE'
+  sh -eu <<'SH'
+node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
-  npm run db:migrate
+npm run db:migrate
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
+SH
 ```
 
 Expected: PASS and no second draft for one quotation.
@@ -683,17 +687,13 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   PGSERVICEFILE="$PGSERVICEFILE" \
   PGPASSFILE="$PGPASSFILE" \
-  node --input-type=module <<'NODE'
+  sh -eu <<'SH'
+node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
-env -u DATABASE_URL -u TEST_DATABASE_URL \
-  DATABASE_URL="$STAGING_DATABASE_URL" \
-  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
-  CUTOVER_EXPECTED_DATABASE=aspen_test \
-  PGSERVICEFILE="$PGSERVICEFILE" \
-  PGPASSFILE="$PGPASSFILE" \
-  node scripts/migrate-frappe-crm.mjs --dry-run > "$CUTOVER_DIR/report.dry-run.json"
+node scripts/migrate-frappe-crm.mjs --dry-run > "$CUTOVER_DIR/report.dry-run.json"
+SH
 ```
 
 Para o teste fixture, usar fixture anonimizado somente em dry-run.
@@ -711,8 +711,14 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   PGSERVICEFILE="$PGSERVICEFILE" \
   PGPASSFILE="$PGPASSFILE" \
-  node scripts/migrate-frappe-crm.mjs --apply \
-    --expected-manifest-hash "$EXPECTED_MANIFEST_HASH"
+  sh -eu <<'SH'
+node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
+node scripts/migrate-frappe-crm.mjs --apply \
+  --expected-manifest-hash "$EXPECTED_MANIFEST_HASH"
+SH
 ```
 
 Confirmar que fixture é rejeitada em apply, hash alterado é rejeitado e nenhuma escrita ocorre após mismatch.
@@ -918,6 +924,8 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
   RESTORE_PG_SERVICE="$RESTORE_PG_SERVICE" \
   RESTORE_EXPECTED_DATABASE=aspen_restore \
   PRODUCTION_DATABASE_URL="$PRODUCTION_DATABASE_URL" \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
   node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE"
 ```
 
@@ -1083,14 +1091,16 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   PGSERVICEFILE="$PGSERVICEFILE" \
   PGPASSFILE="$PGPASSFILE" \
-  node --input-type=module <<'NODE'
+  sh -eu <<'SH'
+node --input-type=module <<'NODE'
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
-  npm run db:migrate
+npm run db:migrate
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
+SH
 ```
 
 Expected: PASS contra `aspen_test`, sem conexão em `neondb`.

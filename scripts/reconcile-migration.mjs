@@ -247,11 +247,106 @@ function expectedReconciliation(manifest, label) {
       ? [...new Set(row.allowedStatuses.map(String))].sort()
       : [String(row.status)],
   })) : []);
+  const revisionExpectations = Array.isArray(reconciliation.revisionExpectations)
+    ? reconciliation.revisionExpectations.map((row) => ({
+        sourceId: String(row.sourceId),
+        templateVersionKey: String(row.templateVersionKey),
+        templateVersionHash: validHash(row.templateVersionHash, `${label} template hash`),
+        templateVersion: Number(row.templateVersion),
+        sectionsSnapshotHash: validHash(row.sectionsSnapshotHash, `${label} sections hash`),
+      }))
+    : [];
   const statusRows = {
     quotations: parseStatusRows(reconciliation.statusRows?.quotations),
     revisions: parseStatusRows(reconciliation.statusRows?.revisions),
   };
-  return { keys, counts, hashes, statusCounts, statusRows };
+  const rows = {};
+  for (const key of [...COUNT_KEYS, 'lineage']) {
+    if (!Array.isArray(reconciliation.rows?.[key])) fail(`${label} com linhas inválidas: ${key}.`);
+    rows[key] = reconciliation.rows[key].map((row) => ({ ...row }));
+  }
+  return { keys, counts, hashes, statusCounts, statusRows, revisionExpectations, rows };
+}
+
+function expectedWithoutApproved(expected, approvedKeys) {
+  const approved = new Set(stableKeys(approvedKeys));
+  if (approved.size === 0) return expected;
+  const approvedSource = (doctype, sourceId) => approved.has(`${doctype}:${sourceId}`);
+  const productRows = expected.rows.products.filter(
+    (row) => !approvedSource(String(row.sourceDoctype || 'Item'), String(row.sourceId))
+  );
+  const productSkus = new Set(productRows.map((row) => String(row.sku)));
+  const pricingDocuments = expected.rows.pricingDocuments.filter(
+    (row) => !approvedSource(String(row.sourceDoctype), String(row.sourceId)) && productSkus.has(String(row.localKey))
+  );
+  const pricingTiers = expected.rows.pricingTiers.filter((row) => productSkus.has(String(row.productSku)));
+  const clients = expected.rows.clients.filter(
+    (row) => !Array.isArray(row.sourceKeys) || !row.sourceKeys.some((key) => approved.has(String(key)))
+  );
+  const quotations = expected.rows.quotations.filter(
+    (row) => !approvedSource(String(row.sourceDoctype || 'Quotation'), String(row.sourceId))
+  );
+  const quotationSourceIds = new Set(quotations.map((row) => String(row.sourceId)));
+  const revisions = expected.rows.revisions.filter((row) => quotationSourceIds.has(String(row.sourceId)));
+  const items = expected.rows.items.filter((row) => quotationSourceIds.has(String(row.sourceId)));
+  const revisionExpectations = expected.revisionExpectations.filter((row) => quotationSourceIds.has(row.sourceId));
+  const templates = expected.rows.templates.filter((row) =>
+    revisions.some((revision) => `${revision.templateVersionKey}:${revision.templateVersionHash}` === `${row.key}:${row.hash}`)
+  );
+  const templateVersions = expected.rows.templateVersions.filter((row) =>
+    templates.some((template) => `${template.key}:${template.hash}` === `${row.key}:${row.hash}`)
+  );
+  const lineage = expected.rows.lineage.filter(
+    (row) => !approvedSource(String(row.sourceDoctype), String(row.sourceId))
+  );
+  const rows = {
+    products: productRows,
+    pricingDocuments,
+    pricingTiers,
+    clients,
+    quotations,
+    revisions,
+    items,
+    templates,
+    templateVersions,
+    lineage,
+  };
+  const statusRows = {
+    quotations: expected.statusRows.quotations.filter((row) => quotationSourceIds.has(row.sourceId)),
+    revisions: expected.statusRows.revisions.filter((row) => quotationSourceIds.has(row.sourceId)),
+  };
+  const counts = {
+    products: productRows.length,
+    pricingDocuments: pricingDocuments.length,
+    pricingTiers: pricingTiers.length,
+    clients: clients.length,
+    quotations: quotations.length,
+    revisions: revisions.length,
+    items: items.length,
+    templates: templates.length,
+    templateVersions: templateVersions.length,
+  };
+  const keys = {
+    products: expected.keys.products.filter((key) => !approved.has(key)),
+    pricingDocuments: expected.keys.pricingDocuments.filter((key) => !approved.has(key)),
+    pricingTiers: pricingTiers.map((row) => `${row.productSku}:${row.minimumQuantity}`).sort(),
+    clients: expected.keys.clients.filter((key) => !approved.has(key)),
+    quotations: expected.keys.quotations.filter((key) => !approved.has(key)),
+  };
+  const hashes = targetHashes(rows);
+  return {
+    ...expected,
+    keys,
+    counts,
+    hashes,
+    statusCounts: {
+      quotations: statusCounts(statusRows.quotations),
+      revisions: statusCounts(statusRows.revisions),
+    },
+    statusRows,
+    revisionExpectations,
+    rows,
+  };
 }
 
 function safeLineageSourceId(row) {
@@ -285,91 +380,119 @@ function selectedLineageRows(allRows, expected) {
 
 function productProjection(lineage, product) {
   return {
+    sourceDoctype: lineage.sourceDoctype,
     sourceId: lineage.sourceId,
     sku: product.sku,
-    nome: product.nome,
-    descricao: product.descricao,
-    unidade: product.unidade,
-    categoria: product.categoria,
-    marca: product.marca,
-    ativo: product.ativo,
-    precoBase: product.precoBase,
+    identityHash: hash({
+      sku: product.sku,
+      nome: product.nome,
+      descricao: product.descricao,
+      unidade: product.unidade,
+      categoria: product.categoria,
+      marca: product.marca,
+      ativo: product.ativo,
+      precoBase: product.precoBase,
+    }),
   };
 }
 
 function clientProjection(lineages, client) {
+  const address =
+    client.endereco === null &&
+    client.numero === null &&
+    client.bairro === null &&
+    client.complemento === null &&
+    client.municipio === null &&
+    client.uf === null &&
+    client.cep === null
+      ? null
+      : {
+          endereco: client.endereco,
+          numero: client.numero,
+          bairro: client.bairro,
+          complemento: client.complemento,
+          municipio: client.municipio,
+          uf: client.uf,
+          cep: client.cep,
+        };
   return {
+    sourceKeys: lineages.map((lineage) => `${lineage.sourceDoctype}:${safeLineageSourceId(lineage)}`).sort(),
     sourceIds: lineages.map(safeLineageSourceId).sort(),
-    nome: client.nome,
-    documento: client.documento,
-    email: client.email,
-    telefone: client.telefone,
-    notes: client.notes,
-    address:
-      client.endereco === null &&
-      client.numero === null &&
-      client.bairro === null &&
-      client.complemento === null &&
-      client.municipio === null &&
-      client.uf === null &&
-      client.cep === null
-        ? null
-        : {
-            endereco: client.endereco,
-            numero: client.numero,
-            bairro: client.bairro,
-            complemento: client.complemento,
-            municipio: client.municipio,
-            uf: client.uf,
-            cep: client.cep,
-          },
-    arquivado: client.arquivado,
+    // Keep PII out of the persisted artifact while still comparing the full
+    // target identity against the source-derived opaque hash.
+    identityHash: hash({
+      nome: client.nome,
+      documento: client.documento,
+      email: client.email,
+      telefone: client.telefone,
+      notes: client.notes,
+      address,
+      arquivado: client.arquivado,
+    }),
   };
 }
 
-function quotationProjection(lineage, quotation, status) {
+function quotationProjection(lineage, quotation) {
   return {
+    sourceDoctype: lineage.sourceDoctype,
     sourceId: lineage.sourceId,
     id: quotation.id,
-    businessNumber: quotation.businessNumber,
-    clientId: quotation.clientId,
-    status,
+    identityHash: hash({
+      id: quotation.id,
+      businessNumber: quotation.businessNumber,
+      clientId: quotation.clientId,
+    }),
   };
 }
 
 function revisionProjection(sourceId, revision, status) {
+  const templateVersionKey = revision.templateVersionKey;
+  const templateVersionHash = revision.templateVersionHash;
+  const templateVersion = Number(revision.templateVersion);
+  const sectionsSnapshotHash = hash(revision.sectionsSnapshot);
   return {
     sourceId,
-    status,
-    statusOriginal: revision.statusOriginal,
-    orderLinkage: revision.orderLinkage,
-    orderPending: revision.orderPending,
-    validadeDias: Number(revision.validadeDias),
-    pagamento: revision.pagamento,
-    entrega: revision.entrega,
-    fretePadrao: canonicalDecimal(revision.fretePadrao),
-    frete: canonicalDecimal(revision.frete),
-    observacoes: revision.observacoes,
-    prazoProducao: revision.prazoProducao,
     templateKey: revision.templateKey,
     templateHash: revision.templateHash,
-    templateVersionPresent: Boolean(revision.templateVersionPresent),
-    sectionsSnapshotPresent: Boolean(revision.sectionsSnapshotPresent),
-    subtotal: canonicalDecimal(revision.subtotal),
-    total: canonicalDecimal(revision.total),
-    itemCount: Number(revision.itemCount),
+    templateVersionKey,
+    templateVersionHash,
+    templateVersion,
+    sectionsSnapshotHash,
+    identityHash: hash({
+      statusOriginal: revision.statusOriginal,
+      orderLinkage: revision.orderLinkage,
+      orderPending: revision.orderPending,
+      validadeDias: Number(revision.validadeDias),
+      pagamento: revision.pagamento,
+      entrega: revision.entrega,
+      fretePadrao: canonicalDecimal(revision.fretePadrao),
+      frete: canonicalDecimal(revision.frete),
+      observacoes: revision.observacoes,
+      prazoProducao: revision.prazoProducao,
+      templateKey: revision.templateKey,
+      templateHash: revision.templateHash,
+      templateVersionKey,
+      templateVersionHash,
+      templateVersion,
+      sectionsSnapshotHash,
+      subtotal: canonicalDecimal(revision.subtotal),
+      total: canonicalDecimal(revision.total),
+      itemCount: Number(revision.itemCount),
+    }),
   };
 }
 
 function itemProjection(sourceId, item) {
+  const position = Number(item.position);
+  const productSku = item.productSku;
+  const quantidade = canonicalDecimal(item.quantidade);
+  const precoSugerido = canonicalDecimal(item.precoSugerido);
+  const precoAplicado = canonicalDecimal(item.precoAplicado);
+  const totalLinha = canonicalDecimal(item.totalLinha);
   return {
     sourceId,
-    position: Number(item.position),
-    productSku: item.productSku,
-    quantidade: canonicalDecimal(item.quantidade),
-    precoSugerido: canonicalDecimal(item.precoSugerido),
-    precoAplicado: canonicalDecimal(item.precoAplicado),
-    totalLinha: canonicalDecimal(item.totalLinha),
+    position,
+    identityHash: hash({ position, productSku, quantidade, precoSugerido, precoAplicado, totalLinha }),
   };
 }
 
@@ -409,6 +532,20 @@ function statusCounts(rows) {
   }, {});
 }
 
+function statusRowsMatchAllowed(actualRows, expectedRows) {
+  if (!Array.isArray(actualRows) || !Array.isArray(expectedRows) || actualRows.length !== expectedRows.length)
+    return false;
+  const expectedBySource = new Map(expectedRows.map((row) => [row.sourceId, row]));
+  const actualSources = new Set(actualRows.map((row) => row.sourceId));
+  if (expectedBySource.size !== expectedRows.length || actualSources.size !== actualRows.length)
+    return false;
+  return actualRows.every((row) => {
+    const expected = expectedBySource.get(row.sourceId);
+    const allowed = expected?.allowedStatuses || [expected?.status];
+    return Boolean(expected && allowed.includes(row.status));
+  });
+}
+
 export function compareReconciliation({
   sourceCounts,
   applyCounts,
@@ -417,6 +554,7 @@ export function compareReconciliation({
   targetImportedCounts,
   expected,
   targetStatusCounts,
+  targetStatusRows,
   sourceManifestHash,
   applyManifestHash,
   persistedManifestHash,
@@ -450,10 +588,10 @@ export function compareReconciliation({
   const targetStructureValid = Object.values(actualCounts).every(
     (count) => Number.isInteger(count) && count >= 0
   );
-  const targetStatusCountsMatchExpected = sameJson(
-    targetStatusCounts,
-    expectedValues.statusCounts || {}
-  );
+  const targetStatusRowsMatchExpected = targetStatusRows && expectedValues.statusRows
+    ? statusRowsMatchAllowed(targetStatusRows.quotations, expectedValues.statusRows.quotations) &&
+      statusRowsMatchAllowed(targetStatusRows.revisions, expectedValues.statusRows.revisions)
+    : sameJson(targetStatusCounts, expectedValues.statusCounts || {});
   const hashesMatch = expectedHashesMatchTarget ??
     (targetHashes && expectedValues.hashes ? sameJson(targetHashes, expectedValues.hashes) : true);
   const unapproved = stableKeys(unapprovedDivergenceKeys);
@@ -472,7 +610,7 @@ export function compareReconciliation({
     targetCountsMatchExpected &&
     targetStructureValid &&
     hashesMatch &&
-    targetStatusCountsMatchExpected;
+    targetStatusRowsMatchExpected;
   return {
     passed,
     sourceCountsMatchApply,
@@ -484,7 +622,9 @@ export function compareReconciliation({
     targetCountsMatchExpected,
     targetStructureValid,
     expectedHashesMatchTarget: hashesMatch,
-    targetStatusCountsMatchExpected,
+    targetStatusRowsMatchExpected,
+    // Backward-compatible field for existing evidence consumers.
+    targetStatusCountsMatchExpected: targetStatusRowsMatchExpected,
     blocking,
     lineageInvalid,
     missingIdentities,
@@ -557,11 +697,16 @@ function runTargetQueries(service, env) {
       'entrega', entrega, 'fretePadrao', frete_padrao::text, 'frete', frete::text,
       'observacoes', observacoes, 'prazoProducao', prazo_producao,
       'templateKey', template_padrao, 'templateHash', template_hash,
-      'templateVersionPresent', template_version_id IS NOT NULL,
-      'sectionsSnapshotPresent', sections_snapshot IS NOT NULL,
+      'templateVersionKey', tv_template.key,
+      'templateVersionHash', tv.source_hash,
+      'templateVersion', tv.version,
+      'sectionsSnapshot', sections_snapshot,
       'subtotal', subtotal::text, 'total', total::text,
       'itemCount', (SELECT count(*) FROM quote_revision_items i WHERE i.revision_id = r.id)
-    ) ORDER BY quotation_id, version), '[]'::json)::text FROM quote_revisions r`,
+    ) ORDER BY quotation_id, version), '[]'::json)::text
+    FROM quote_revisions r
+    LEFT JOIN quotation_template_versions tv ON tv.id = r.template_version_id
+    LEFT JOIN quotation_templates tv_template ON tv_template.id = tv.template_id`,
     {},
     env
   );
@@ -616,6 +761,8 @@ export function runReconciliation(args, env = process.env) {
   const sourceExpected = expectedReconciliation(dryRun.manifest, 'Dry-run');
   const applyExpected = expectedReconciliation(apply.manifest, 'Apply');
   if (!sameJson(sourceExpected, applyExpected)) fail('Expectativas de reconciliação dry-run/apply divergentes.');
+  const approvedApply = stableKeys(apply.approvedDivergenceKeys);
+  const comparisonExpected = expectedWithoutApproved(applyExpected, approvedApply);
   const runId = apply?.manifest?.runId;
   if (typeof runId !== 'string' || !UUID_PATTERN.test(runId)) fail('Run ID do apply inválido.');
   if (dryRun?.manifest?.mode !== 'dry-run' || dryRun?.manifest?.status !== 'completed')
@@ -651,7 +798,7 @@ export function runReconciliation(args, env = process.env) {
     quotations: Number(apply.orcamentos?.lidos || 0),
   };
   const target = runTargetQueries(service, env);
-  const selection = selectedLineageRows(target.allLineage, applyExpected);
+  const selection = selectedLineageRows(target.allLineage, comparisonExpected);
   const lineageByEntity = {
     products: selection.selected.filter((row) => row.entityType === 'produto'),
     pricingDocuments: selection.selected.filter((row) => row.entityType === 'faixa'),
@@ -694,7 +841,6 @@ export function runReconciliation(args, env = process.env) {
     clients.push(clientProjection(lineages, client));
   }
   const quotationById = new Map(target.quotations.map((row) => [row.id, row]));
-  const expectedStatusBySource = new Map(applyExpected.statusRows.quotations.map((row) => [row.sourceId, row.status]));
   const quotations = [];
   for (const lineage of lineageByEntity.quotations) {
     const quotation = quotationById.get(lineage.localId);
@@ -702,21 +848,21 @@ export function runReconciliation(args, env = process.env) {
       missingIdentities += 1;
       continue;
     }
-    const expectedStatus = expectedStatusBySource.get(lineage.sourceId);
-    const comparableStatus =
-      quotation.status === 'rascunho' && lineage.migrationRunId === runId && expectedStatus && expectedStatus !== 'rascunho'
-        ? expectedStatus
-        : quotation.status;
-    quotations.push(quotationProjection(lineage, quotation, comparableStatus));
+    // Compare the persisted status. A draft append is accepted by the
+    // per-source allowedStatuses check below, never by rewriting target data.
+    quotations.push(quotationProjection(lineage, quotation));
   }
   const latestRevisionByQuote = new Map();
   for (const revision of target.revisions) {
     const prior = latestRevisionByQuote.get(revision.quotationId);
     if (!prior || Number(revision.version) > Number(prior.version)) latestRevisionByQuote.set(revision.quotationId, revision);
   }
-  const expectedRevisionStatusBySource = new Map(applyExpected.statusRows.revisions.map((row) => [row.sourceId, row.status]));
+  const expectedRevisionBySource = new Map(
+    comparisonExpected.revisionExpectations.map((row) => [row.sourceId, row])
+  );
   const revisions = [];
   const selectedRevisionIds = new Set();
+  const sourceIdByRevisionId = new Map();
   let missingSnapshots = 0;
   for (const lineage of lineageByEntity.quotations) {
     const revision = latestRevisionByQuote.get(lineage.localId);
@@ -724,18 +870,23 @@ export function runReconciliation(args, env = process.env) {
       missingIdentities += 1;
       continue;
     }
-    if (!revision.templateVersionPresent || !revision.sectionsSnapshotPresent) missingSnapshots += 1;
-    const expectedStatus = expectedRevisionStatusBySource.get(lineage.sourceId);
-    const comparableStatus =
-      revision.status === 'rascunho' && lineage.migrationRunId === runId && expectedStatus && expectedStatus !== 'rascunho'
-        ? expectedStatus
-        : revision.status;
-    revisions.push(revisionProjection(lineage.sourceId, revision, comparableStatus));
+    const expectedRevision = expectedRevisionBySource.get(lineage.sourceId);
+    if (
+      !revision.templateVersionKey ||
+      !revision.templateVersionHash ||
+      !Number.isInteger(Number(revision.templateVersion)) ||
+      !revision.sectionsSnapshot ||
+      !expectedRevision ||
+      revision.templateVersionKey !== expectedRevision.templateVersionKey ||
+      revision.templateVersionHash !== expectedRevision.templateVersionHash ||
+      Number(revision.templateVersion) !== Number(expectedRevision.templateVersion) ||
+      hash(revision.sectionsSnapshot) !== expectedRevision.sectionsSnapshotHash
+    )
+      missingSnapshots += 1;
+    revisions.push(revisionProjection(lineage.sourceId, revision, revision.status));
     selectedRevisionIds.add(revision.id);
+    sourceIdByRevisionId.set(revision.id, lineage.sourceId);
   }
-  const sourceIdByRevisionId = new Map(revisions.map((row, index) => [
-    [...selectedRevisionIds][index], row.sourceId,
-  ]));
   const items = target.items
     .filter((item) => selectedRevisionIds.has(item.revisionId))
     .map((item) => itemProjection(sourceIdByRevisionId.get(item.revisionId), item));
@@ -752,7 +903,7 @@ export function runReconciliation(args, env = process.env) {
   const lineage = selection.selected.map((row) => ({
     sourceDoctype: row.sourceDoctype,
     sourceId: safeLineageSourceId(row),
-    localKey: row.localKey,
+    localKey: row.entityType === 'cliente' ? hash(row.localKey) : row.localKey,
     canonicalHash: row.canonicalHash,
     sourceHash: row.sourceHash,
   }));
@@ -776,8 +927,14 @@ export function runReconciliation(args, env = process.env) {
   });
   const targetCounts = countRows({ products, pricingDocuments: lineageByEntity.pricingDocuments, pricingTiers, clients, quotations, revisions, items, templates, templateVersions });
   const targetStatusRows = {
-    quotations: quotations.map((row) => ({ sourceId: row.sourceId, status: row.status })),
-    revisions: revisions.map((row) => ({ sourceId: row.sourceId, status: row.status })),
+    quotations: lineageByEntity.quotations.map((lineage) => ({
+      sourceId: lineage.sourceId,
+      status: quotationById.get(lineage.localId)?.status,
+    })),
+    revisions: lineageByEntity.quotations.map((lineage) => ({
+      sourceId: lineage.sourceId,
+      status: latestRevisionByQuote.get(lineage.localId)?.status,
+    })),
   };
   const targetStatusCounts = {
     quotations: statusCounts(targetStatusRows.quotations),
@@ -792,7 +949,6 @@ export function runReconciliation(args, env = process.env) {
   ).length;
   const duplicateKeys = selection.duplicate;
   const approvedSource = stableKeys(dryRun.approvedDivergenceKeys);
-  const approvedApply = stableKeys(apply.approvedDivergenceKeys);
   const approvedDetails = (apply?.total?.detalhes || []).filter((detail) => detail?.aprovada === true);
   const approvedDetailsValid = approvedApply.every((key) =>
     approvedDetails.some((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}` === key)
@@ -802,7 +958,7 @@ export function runReconciliation(args, env = process.env) {
     .map((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}`)
     .filter((key) => key !== ':');
   const blocking = Number(apply?.manifest?.divergenceCounts?.blocking || 0);
-  const expected = applyExpected;
+  const expected = comparisonExpected;
   const comparison = compareReconciliation({
     sourceCounts,
     applyCounts,
@@ -810,6 +966,7 @@ export function runReconciliation(args, env = process.env) {
     targetCounts,
     expected,
     targetStatusCounts,
+    targetStatusRows,
     sourceManifestHash,
     applyManifestHash,
     persistedManifestHash,

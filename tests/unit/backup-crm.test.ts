@@ -41,6 +41,18 @@ test('explicit backup destination is outside checkout and mode 0700', () => {
   }
 });
 
+test('backup preflight exige serviço nomeado e identidade esperada', () => {
+  const env = {
+    ...process.env,
+    DATABASE_URL: 'postgresql://source-user@staging.test:5433/aspen_test',
+  };
+  for (const key of ['CUTOVER_PG_SERVICE', 'CUTOVER_EXPECTED_DATABASE', 'PGSERVICEFILE', 'PGPASSFILE'])
+    delete env[key];
+  const result = run(['--preflight'], env);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /CUTOVER_PG_SERVICE/);
+});
+
 test('backup preflight rejects a source URL that is not the named staging service', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'backup-cutover-'));
   const serviceFile = path.join(directory, 'pg_service.conf');

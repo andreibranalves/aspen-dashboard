@@ -1403,6 +1403,19 @@ function emptyReconciliationExpectations(): MigrationReconciliationExpectations 
     },
     statusCounts: { quotations: {}, revisions: {} },
     statusRows: { quotations: [], revisions: [] },
+    revisionExpectations: [],
+    rows: {
+      products: [],
+      pricingDocuments: [],
+      pricingTiers: [],
+      clients: [],
+      quotations: [],
+      revisions: [],
+      items: [],
+      templates: [],
+      templateVersions: [],
+      lineage: [],
+    },
   };
 }
 
@@ -1427,21 +1440,26 @@ function buildReconciliationExpectations(
         .map((entry) => ({
           sourceDoctype: entry.sourceDoctype,
           sourceId: safeSourceId(entry),
-          localKey: entry.localKey,
+          localKey:
+            entry.entityType === 'cliente' ? canonicalHash(entry.localKey) : entry.localKey,
           canonicalHash: entry.canonicalHash,
           sourceHash: entry.sourceHash,
         }))
     );
   const products = productUnits.map((unit) => ({
+    sourceDoctype: 'Item',
     sourceId: unit.product.sourceId,
     sku: unit.product.sku,
-    nome: unit.product.nome,
-    descricao: unit.product.descricao,
-    unidade: unit.product.unidade,
-    categoria: unit.product.categoria,
-    marca: unit.product.marca,
-    ativo: unit.product.ativo,
-    precoBase: unit.product.precoBase,
+    identityHash: canonicalHash({
+      sku: unit.product.sku,
+      nome: unit.product.nome,
+      descricao: unit.product.descricao,
+      unidade: unit.product.unidade,
+      categoria: unit.product.categoria,
+      marca: unit.product.marca,
+      ativo: unit.product.ativo,
+      precoBase: unit.product.precoBase,
+    }),
   }));
   const pricingDocuments = lineageRows('faixa', productUnits);
   const pricingTiers = productUnits.flatMap((unit) =>
@@ -1452,6 +1470,10 @@ function buildReconciliationExpectations(
     }))
   );
   const clients = clientUnits.map((unit) => ({
+    sourceKeys: unit.lineage
+      .filter((entry) => entry.entityType === 'cliente')
+      .map((entry) => `${entry.sourceDoctype}:${safeSourceId(entry)}`)
+      .sort(),
     sourceIds: unit.lineage
       .filter((entry) => entry.entityType === 'cliente')
       .map((entry) => safeSourceId(entry))
@@ -1469,44 +1491,57 @@ function buildReconciliationExpectations(
     }),
   }));
   const quotations = quotationUnits.map((unit) => ({
+    sourceDoctype: 'Quotation',
     sourceId: unit.quotation.sourceId,
     id: unit.id,
-    businessNumber: unit.quotation.businessNumber,
-    clientId: unit.quotation.clientId,
-    status: unit.quotation.status,
+    identityHash: canonicalHash({
+      id: unit.id,
+      businessNumber: unit.quotation.businessNumber,
+      clientId: unit.quotation.clientId,
+    }),
   }));
   const revisions = quotationUnits.map((unit) => ({
     sourceId: unit.quotation.sourceId,
-    status: unit.revision.status,
-    statusOriginal: unit.revision.statusOriginal ?? null,
-    orderLinkage: unit.revision.orderLinkage ?? null,
-    orderPending: unit.revision.orderPending === true,
-    validadeDias: unit.revision.validadeDias,
-    pagamento: unit.revision.pagamento,
-    entrega: unit.revision.entrega,
-    fretePadrao: canonicalDecimal(unit.revision.fretePadrao),
-    frete: canonicalDecimal(unit.revision.frete),
-    observacoes: unit.revision.observacoes,
-    prazoProducao: unit.revision.prazoProducao,
     templateKey: unit.revision.templatePadrao,
     templateHash: unit.revision.templateHash,
     templateVersionKey: unit.revision.templatePadrao,
     templateVersionHash: unit.revision.templateHash,
     templateVersion: 1,
     sectionsSnapshotHash: canonicalHash(snapshotFromLegacyRevision(unit.revision)),
-    subtotal: canonicalDecimal(unit.revision.subtotal),
-    total: canonicalDecimal(unit.revision.total),
-    itemCount: unit.items.length,
+    identityHash: canonicalHash({
+      statusOriginal: unit.revision.statusOriginal ?? null,
+      orderLinkage: unit.revision.orderLinkage ?? null,
+      orderPending: unit.revision.orderPending === true,
+      validadeDias: unit.revision.validadeDias,
+      pagamento: unit.revision.pagamento,
+      entrega: unit.revision.entrega,
+      fretePadrao: canonicalDecimal(unit.revision.fretePadrao),
+      frete: canonicalDecimal(unit.revision.frete),
+      observacoes: unit.revision.observacoes,
+      prazoProducao: unit.revision.prazoProducao,
+      templateKey: unit.revision.templatePadrao,
+      templateHash: unit.revision.templateHash,
+      templateVersionKey: unit.revision.templatePadrao,
+      templateVersionHash: unit.revision.templateHash,
+      templateVersion: 1,
+      sectionsSnapshotHash: canonicalHash(snapshotFromLegacyRevision(unit.revision)),
+      subtotal: canonicalDecimal(unit.revision.subtotal),
+      total: canonicalDecimal(unit.revision.total),
+      itemCount: unit.items.length,
+    }),
   }));
   const items = quotationUnits.flatMap((unit) =>
     unit.items.map((item) => ({
       sourceId: unit.quotation.sourceId,
       position: item.position,
-      productSku: item.productSku,
-      quantidade: item.quantidade,
-      precoSugerido: item.precoSugerido,
-      precoAplicado: item.precoAplicado,
-      totalLinha: item.totalLinha,
+      identityHash: canonicalHash({
+        position: item.position,
+        productSku: item.productSku,
+        quantidade: item.quantidade,
+        precoSugerido: item.precoSugerido,
+        precoAplicado: item.precoAplicado,
+        totalLinha: item.totalLinha,
+      }),
     }))
   );
   const templates = [...new Map(
@@ -1566,19 +1601,38 @@ function buildReconciliationExpectations(
     },
     statusCounts: {
       quotations: statusCounts(quotationUnits.map((unit) => ({ status: unit.quotation.status }))),
-      revisions: statusCounts(revisions),
+      revisions: statusCounts(quotationUnits.map((unit) => ({ status: unit.revision.status }))),
     },
     statusRows: {
-      quotations: quotations.map((row) => ({
-        sourceId: row.sourceId,
-        status: row.status,
-        allowedStatuses: allowedStatuses(row.status),
+      quotations: quotationUnits.map((unit) => ({
+        sourceId: unit.quotation.sourceId,
+        status: unit.quotation.status,
+        allowedStatuses: allowedStatuses(unit.quotation.status),
       })),
-      revisions: revisions.map((row) => ({
-        sourceId: row.sourceId,
-        status: row.status,
-        allowedStatuses: allowedStatuses(row.status),
+      revisions: quotationUnits.map((unit) => ({
+        sourceId: unit.quotation.sourceId,
+        status: unit.revision.status,
+        allowedStatuses: allowedStatuses(unit.revision.status),
       })),
+    },
+    revisionExpectations: revisions.map((row) => ({
+      sourceId: row.sourceId,
+      templateVersionKey: row.templateVersionKey,
+      templateVersionHash: row.templateVersionHash,
+      templateVersion: row.templateVersion,
+      sectionsSnapshotHash: row.sectionsSnapshotHash,
+    })),
+    rows: {
+      products,
+      pricingDocuments,
+      pricingTiers,
+      clients,
+      quotations,
+      revisions,
+      items,
+      templates,
+      templateVersions,
+      lineage,
     },
   };
 }
