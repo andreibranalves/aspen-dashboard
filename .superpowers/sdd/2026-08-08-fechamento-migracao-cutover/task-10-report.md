@@ -524,3 +524,92 @@ Status: DONE_WITH_CONCERNS.
   "manualNotes": "No sensitive values were emitted. No real Frappe source read or apply was executed."
 }
 ```
+
+## Fix Round 6 / Operational Verification
+
+Status: VERIFIED_WITH_GATES.
+
+- PostgreSQL clients provisioned locally under `/tmp/aspen-pg-client` only: `pg_dump`/`psql` 18.4 and `jq` 1.8.1.
+- Named staging service verified `current_database=aspen_test`; migrations applied with `npm run db:migrate`.
+- Explicit serial staging PostgreSQL command passed: 7 passed, 0 skipped.
+- Explicit staging backup/preflight suite passed: 30 passed, 0 skipped.
+- Preflight reported no critical metrics: database 9.02 MB and 14 active connections.
+- External backup directory is outside checkout with mode `0700`; exact dump has mode `0600` and 233167 bytes.
+- Exact checksum file `backup-r5.sha256` passed `sha256sum --check`.
+- Explicit `RESTORE_DATABASE_URL` mapped to named `aspen_restore` with source and production identity guards.
+- Restore validation passed: products 5, clients 30, quotations 4, revisions 7, revision items 7, lineage 39.
+- Synthetic temporary-table restore probe returned count 1.
+- Sanitized restore identity artifact and checksum persisted outside the repository.
+- Synthetic direct dataset apply, not a Frappe read or CLI fixture apply, plus dry-run/apply report reconciliation against `aspen_test` passed source-keyed product, pricing document/tier, client identity hash, and lineage hash checks.
+- Synthetic reconciliation artifact and reports use mode `0600` in a mode `0700` directory outside the repository; cleanup completed.
+- Reconciliation was not run against a real Frappe apply report.
+- No production or real Frappe data was used, and no secrets were logged.
+- Production, canary, rollback, deployment, and egress blocking remain gated.
+
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "Appended only the requested sanitized Fix Round 6 operational verification section."
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "Records exact tool, staging, backup, restore, synthetic reconciliation, cleanup, and gated-scope evidence without secrets, URLs, PII, or raw payloads."
+    }
+  ],
+  "changedFiles": [
+    ".superpowers/sdd/2026-08-08-fechamento-migracao-cutover/task-10-report.md"
+  ],
+  "testsAddedOrUpdated": [],
+  "commandsRun": [
+    {
+      "command": "npm run db:migrate",
+      "result": "passed",
+      "summary": "Migrations applied to the named aspen_test staging target."
+    },
+    {
+      "command": "serial staging PostgreSQL integration command",
+      "result": "passed",
+      "summary": "7 passed, 0 skipped."
+    },
+    {
+      "command": "explicit staging backup/preflight suite",
+      "result": "passed",
+      "summary": "30 passed, 0 skipped."
+    },
+    {
+      "command": "sha256sum --check backup-r5.sha256",
+      "result": "passed",
+      "summary": "Exact external dump checksum verified."
+    },
+    {
+      "command": "backup-crm.mjs --validate --file exact-backup",
+      "result": "passed",
+      "summary": "Restore validation passed against named aspen_restore with expected table counts."
+    },
+    {
+      "command": "synthetic direct apply plus dry-run/apply reconciliation",
+      "result": "passed",
+      "summary": "Source-keyed projections, hashes, artifact permissions, and cleanup verified on aspen_test."
+    }
+  ],
+  "validationOutput": [
+    "No critical preflight metrics were reported.",
+    "Restore synthetic probe returned count 1.",
+    "Reconciliation artifact and reports were persisted outside the repository with restrictive permissions."
+  ],
+  "residualRisks": [
+    "Real Frappe apply report reconciliation remains gated.",
+    "Production, canary, rollback, deployment, and egress blocking remain unexecuted pending explicit approval."
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "Adds only sanitized Fix Round 6 operational evidence to the Task 10 report.",
+  "reviewFindings": [
+    "none"
+  ],
+  "manualNotes": "No production or real Frappe data was used. No secrets were logged."
+}
+```
