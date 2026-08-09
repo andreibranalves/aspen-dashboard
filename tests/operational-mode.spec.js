@@ -7,6 +7,23 @@ import { test, expect } from '@playwright/test';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 
 test.describe('Operational mode navigation gating', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('**/api/settings**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ operational_mode: true }),
+      });
+    });
+    await page.route('**/api/quotation-templates**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ templates: [], default_key: 'padrao' }),
+      });
+    });
+  });
+
   test.describe('sidebar shows only operational items', () => {
     test('hides deferred nav items in operational mode', async ({ page }) => {
       // Navigate to the app
@@ -71,7 +88,7 @@ test.describe('Operational mode navigation gating', () => {
       await page.waitForTimeout(1000);
       
       // Should show the operational mode section
-      await expect(page.getByText('Modo Operacional')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Modo Operacional' })).toBeVisible();
     });
   });
 });
