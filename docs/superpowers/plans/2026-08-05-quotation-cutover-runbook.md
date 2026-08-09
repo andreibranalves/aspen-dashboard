@@ -158,7 +158,7 @@ Execute os testes PostgreSQL com a variável já injetada no processo:
 env -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
-  node --test --import tsx \
+  node --test --test-concurrency=1 --import tsx \
   tests/unit/frappe-migration-postgres.test.ts \
   tests/unit/quotations-postgres.test.ts \
   tests/unit/quotation-lifecycle-postgres.test.ts

@@ -163,11 +163,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       .from(quotationTemplates)
       .where(eq(quotationTemplates.key, 'minimalista'))
       .limit(1);
+    const currentBeforeMinimal = await managementGet(draft.quotation_name);
+    assert.ok(currentBeforeMinimal);
     await db.update(quotationTemplates).set({ archived: true }).where(eq(quotationTemplates.key, 'minimalista'));
     try {
       await assert.rejects(
         () => managementUpdate(draft.quotation_name, {
-          concurrency_token: before.concurrency_token,
+          concurrency_token: currentBeforeMinimal.concurrency_token,
           template_key: 'minimalista',
           items: [{ item_code: sku, qty: '30.000' }],
         }),
@@ -198,10 +200,12 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(before.frete_padrao, explicitSettings.fretePadrao);
     assert.equal(before.pagamento, explicitSettings.pagamento);
     assert.equal(before.items[0].suggested_unit_price, '9.00');
+    const currentBeforeMalformed = await managementGet(draft.quotation_name);
+    assert.ok(currentBeforeMalformed);
     for (const malformedBase of [null, 'invalid', []]) {
       await assert.rejects(
         () => managementUpdate(draft.quotation_name, {
-          concurrency_token: before.concurrency_token,
+          concurrency_token: currentBeforeMalformed.concurrency_token,
           secoes: { base: malformedBase },
           items: [{ item_code: sku, qty: '30.000' }],
         }),
@@ -241,8 +245,10 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(restored.secoes);
     assert.deepEqual(restored.secoes.pagamento.current, restored.secoes.pagamento.base);
     assert.deepEqual(restored.secoes.condicoes_gerais.current, restored.secoes.condicoes_gerais.base);
+    const currentBeforeUpdate = await managementGet(draft.quotation_name);
+    assert.ok(currentBeforeUpdate);
     const updated = await managementUpdate(draft.quotation_name, {
-      concurrency_token: before.concurrency_token,
+      concurrency_token: currentBeforeUpdate.concurrency_token,
       client_id: secondClientId,
       items: [{ item_code: sku, qty: '30.000', rate: '10.00', manual_rate: true }],
       validade_dias: 1,
@@ -264,7 +270,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const alternateTemplate = getQuotationTemplate('minimalista')!;
     assert.equal(updated.template_key, alternateTemplate.key);
     assert.equal(updated.template_hash, alternateTemplate.hash);
-    assert.notEqual(updated.concurrency_token, before.concurrency_token);
+    assert.notEqual(updated.concurrency_token, currentBeforeUpdate.concurrency_token);
     assert.ok(updated.updated_at > laterBefore.updated_at);
 
     const ownIds = new Set([draft.quotation_name, laterDraft.quotation_name]);
@@ -281,7 +287,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.deepEqual(await ownOrder('valid_till desc'), [laterDraft.quotation_name, draft.quotation_name]);
 
     await assert.rejects(
-      () => managementUpdate(draft.quotation_name, { concurrency_token: before.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
+      () => managementUpdate(draft.quotation_name, { concurrency_token: currentBeforeUpdate.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
       (error: unknown) => error instanceof QuoteManagementConflictError,
     );
     await db.update(quotations).set({ status: 'enviado' }).where(eq(quotations.id, updated.quotation_uuid));

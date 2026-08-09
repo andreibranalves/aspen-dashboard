@@ -1416,7 +1416,7 @@ function decimal(value: string): { integer: bigint; scale: number } {
   return { integer: BigInt(`${integer}${fraction}`), scale: fraction.length };
 }
 
-function canonicalDecimal(value: string): string {
+export function canonicalDecimal(value: string): string {
   const parsed = decimal(value);
   const base = parsed.integer.toString().padStart(parsed.scale + 1, '0');
   if (parsed.scale === 0) return base;

@@ -6,6 +6,7 @@ import {
   buildClientUnits,
   buildProductUnits,
   buildQuotationUnits,
+  canonicalDecimal,
   canonicalHash,
   computeManifestHash,
   deriveHistoricalPdfBlobPath,
@@ -310,12 +311,35 @@ function productCurrentIdentity(product: ExistingProduct): Record<string, unknow
   };
 }
 
+function canonicalPricingValue(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
+  const text = String(value);
+  try {
+    return canonicalDecimal(text);
+  } catch {
+    return text;
+  }
+}
+
+function canonicalPricingIdentity(value: {
+  preco_base: unknown;
+  precos?: Array<{ minimum_quantity?: unknown; unit_price?: unknown }>;
+}): Record<string, unknown> {
+  return {
+    preco_base: canonicalPricingValue(value.preco_base),
+    precos: (value.precos || []).map((tier) => ({
+      minimum_quantity: canonicalPricingValue(tier.minimum_quantity),
+      unit_price: canonicalPricingValue(tier.unit_price),
+    })),
+  };
+}
+
 function pricingIdentity(unit: ProductUnit): Record<string, unknown> {
-  return { preco_base: unit.pricing.preco_base, precos: unit.pricing.precos };
+  return canonicalPricingIdentity(unit.pricing);
 }
 
 function currentPricingIdentity(product: ExistingProduct): Record<string, unknown> {
-  return { preco_base: product.precoBase || null, precos: product.precos || [] };
+  return canonicalPricingIdentity({ preco_base: product.precoBase, precos: product.precos });
 }
 
 function clientIdentity(client: NormalizedClient): Record<string, unknown> {

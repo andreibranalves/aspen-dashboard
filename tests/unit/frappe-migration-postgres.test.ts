@@ -133,6 +133,9 @@ test(
       assert.equal(clientLineageRows.length, 1);
       assert.match(clientLineageRows[0].legacyPayload?.customer_name || '', /^Cliente PG lineage /);
       assert.equal((await repository.loadState()).lineage.some((entry) => 'legacyPayload' in entry), false);
+      // PostgreSQL numeric columns return fixed scales (30.000), while the
+      // source normalizer emits canonical decimals (30); the rerun remains a
+      // no-op rather than being misclassified as an update.
       const rerun = await runFrappeMigration({ mode: 'apply', dataset, repository });
       assert.equal(rerun.report.produtos.ignorados, 1);
       assert.equal(rerun.report.faixas.ignorados, 1);
@@ -393,7 +396,7 @@ test(
 );
 
 test(
-  'PostgreSQL arquivamento histórico substitui o placeholder por um PDF real de forma idempotente',
+  'PostgreSQL mantém PDF histórico on-demand sem linha de documento arquivado',
   { skip: !TEST_DATABASE_URL },
   async () => {
     const client = postgres(TEST_DATABASE_URL!, {
@@ -473,15 +476,13 @@ test(
         pdfPipeline: pipeline,
       });
       assert.equal(first.report.orcamentos.criados, 1);
-      assert.equal(first.report.documentos.lidos, 1);
-      assert.equal(first.report.documentos.atualizados, 1);
-      // issuedDocuments check removed (#no-pdf-html-only)
+      // Historical PDF rows were removed in the on-demand document policy.
+      // The injected pipeline must remain unused by migration apply.
+      assert.equal(first.report.documentos.lidos, 0);
+      assert.equal(first.report.documentos.atualizados, 0);
+      assert.equal(blobs.size, 0);
 
-      // listIssuedDocumentPdfPlaceholders removed (#no-pdf-html-only)
-
-      // Rerun: the deterministic blob already exists with a matching checksum,
-      // so the run reports the document as already archived without touching
-      // the store or the row again.
+      // Rerun remains idempotent without creating an archived-document row.
       const rerun = await runFrappeMigration({
         mode: 'apply',
         dataset,
@@ -489,10 +490,9 @@ test(
         pdfPipeline: pipeline,
       });
       assert.equal(rerun.report.orcamentos.ignorados, 1);
-      assert.equal(rerun.report.documentos.ignorados, 1);
+      assert.equal(rerun.report.documentos.ignorados, 0);
       assert.equal(rerun.report.documentos.atualizados, 0);
-      assert.equal(blobs.size, 1);
-      // issuedDocuments check removed (#no-pdf-html-only)
+      assert.equal(blobs.size, 0);
     } finally {
       await client.unsafe('DELETE FROM quote_sequences WHERE year = $1 AND last_number <= $2', [
         2024,

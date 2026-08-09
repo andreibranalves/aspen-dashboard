@@ -108,10 +108,18 @@ test(
       const management = createPostgresQuoteDraftManagementRepository(() => db, {
         now: () => new Date('2026-07-02T12:00:00.000Z'),
       });
+      const draftDetail = await management.get!(draft.quotation_name);
+      assert.ok(draftDetail);
+      assert.equal(draftDetail.status_canonical, 'rascunho');
+      // New drafts remain editable until an explicit status transition.
+      // The lifecycle repository only handles commercial transitions from an
+      // already-issued revision. Seed that boundary explicitly; draft creation
+      // itself must remain rascunho.
+      await db.update(quotations).set({ status: 'enviado' }).where(eq(quotations.id, draft.quotation_uuid));
+      await db.update(quoteRevisions).set({ status: 'enviado' }).where(eq(quoteRevisions.id, draft.revision_id));
       const sent = await management.get!(draft.quotation_name);
       assert.ok(sent);
       assert.equal(sent.status_canonical, 'enviado');
-      // issued_document removed (#no-pdf-html-only)
       const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
         now: () => new Date('2026-07-03T12:00:00.000Z'),
       });
