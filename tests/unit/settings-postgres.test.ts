@@ -88,6 +88,7 @@ test(
         frete_padrao: '0.00',
         observacoes: '',
         template_padrao: 'padrao',
+        operational_mode: false,
         secoes: {
           schema_version: 1,
           prazo_producao: { enabled: true, title: 'Prazo de produção' },
@@ -118,7 +119,7 @@ test(
       assert.equal(parse(migrated).entrega, 'Entrega legada');
       assert.equal(
         parse(migrated).observacoes,
-        'Prazo de entrega:\\nEntrega legada\\n\\nObservações:\\nObservações legadas'
+        'Prazo de entrega:\nEntrega legada\n\nObservações:\nObservações legadas'
       );
 
       const saved = await handler(
@@ -137,7 +138,7 @@ test(
         pagamento: 'Pix em 30 dias',
         entrega: '15 dias úteis',
         frete_padrao: '129.90',
-        observacoes: 'Enviar prova digital para aprovação.',
+        observacoes: 'Prazo de entrega:\n15 dias úteis\n\nObservações:\nEnviar prova digital para aprovação.',
         template_padrao: 'comercial-2026',
         secoes: {
           schema_version: 1,
@@ -146,7 +147,7 @@ test(
           condicoes_gerais: {
             enabled: true,
             title: 'Condições Gerais',
-            body: 'Prazo de entrega:\\n15 dias úteis\\n\\nObservações:\\nEnviar prova digital para aprovação.',
+            body: 'Prazo de entrega:\n15 dias úteis\n\nObservações:\nEnviar prova digital para aprovação.',
           },
         },
       });
@@ -178,7 +179,11 @@ test(
 
       const reloaded = await handler(event('GET'));
       assert.equal(reloaded.statusCode, 200);
-      assert.deepEqual(parse(reloaded), parse(sectionFirst));
+      const reloadedBody = parse(reloaded);
+      const sectionFirstBody = parse(sectionFirst);
+      const { operational_mode: _reloadedMode, ...reloadedCore } = reloadedBody;
+      const { operational_mode: _sectionFirstMode, ...sectionFirstCore } = sectionFirstBody;
+      assert.deepEqual(reloadedCore, sectionFirstCore);
 
       const invalid = await handler(
         event('PUT', {

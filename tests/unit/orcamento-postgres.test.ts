@@ -13,7 +13,16 @@ import {
   QuoteDraftInputError,
   QuoteDraftRepositoryError,
 } from '../../api/_db/quote-repository.js';
-import { clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quoteSequences, quotations } from '../../api/_db/schema.js';
+import {
+  appSettings,
+  clients,
+  productPricingTiers,
+  products,
+  quoteRevisionItems,
+  quoteRevisions,
+  quoteSequences,
+  quotations,
+} from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -43,6 +52,10 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
 
   try {
     await migrate(db, { migrationsFolder });
+    await db
+      .update(appSettings)
+      .set({ templatePadrao: 'padrao' })
+      .where(eq(appSettings.singletonId, 1));
 
     // This test intentionally uses fixed client IDs/documents so its
     // aggregate can be removed narrowly when the same dedicated database is
