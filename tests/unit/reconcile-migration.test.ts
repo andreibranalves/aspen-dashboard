@@ -67,6 +67,8 @@ function baseInput(overrides = {}) {
     targetHashes,
     statusCounts: expected.statusCounts,
     targetStatusCounts: expected.statusCounts,
+    targetStatusRows: undefined,
+    expectedHashesMatchTarget: undefined,
     sourceManifestHash: 'a'.repeat(64),
     applyManifestHash: 'a'.repeat(64),
     persistedManifestHash: 'a'.repeat(64),

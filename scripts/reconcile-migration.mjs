@@ -561,31 +561,33 @@ function statusRowsMatchAllowed(actualRows, expectedRows) {
   });
 }
 
-export function compareReconciliation({
-  sourceCounts,
-  applyCounts,
-  sourceReadCounts,
-  targetCounts,
-  targetImportedCounts,
-  expected,
-  targetStatusCounts,
-  targetStatusRows,
-  sourceManifestHash,
-  applyManifestHash,
-  persistedManifestHash,
-  sourceApprovedDivergenceKeys = [],
-  applyApprovedDivergenceKeys = [],
-  approvedDetailsValid = true,
-  unapprovedDivergenceKeys = [],
-  blocking,
-  lineageInvalid,
-  missingIdentities = 0,
-  extraImportedRows = 0,
-  missingSnapshots = 0,
-  approvedMissingKeys = [],
-  targetHashes,
-  expectedHashesMatchTarget,
-}) {
+/** @param {any} input */
+export function compareReconciliation(input) {
+  const {
+    sourceCounts,
+    applyCounts,
+    sourceReadCounts,
+    targetCounts,
+    targetImportedCounts,
+    expected,
+    targetStatusCounts,
+    targetStatusRows,
+    sourceManifestHash,
+    applyManifestHash,
+    persistedManifestHash,
+    sourceApprovedDivergenceKeys = [],
+    applyApprovedDivergenceKeys = [],
+    approvedDetailsValid = true,
+    unapprovedDivergenceKeys = [],
+    blocking,
+    lineageInvalid,
+    missingIdentities = 0,
+    extraImportedRows = 0,
+    missingSnapshots = 0,
+    approvedMissingKeys = [],
+    targetHashes,
+    expectedHashesMatchTarget,
+  } = input;
   const actualCounts = targetImportedCounts || targetCounts;
   const expectedValues = expected || { counts: actualCounts, hashes: null, statusCounts: targetStatusCounts };
   const sourceCountsMatchApply = sameJson(sourceCounts, applyCounts);
