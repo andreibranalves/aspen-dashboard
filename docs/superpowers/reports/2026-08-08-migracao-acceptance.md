@@ -9,7 +9,8 @@ HEAD: local `master` worktree.
 ## Verified
 
 - PostgreSQL migrations applied to named staging database `aspen_test`.
-- Seven serial PostgreSQL integration tests passed with zero skips.
+- Six PostgreSQL integration suites passed serially with zero skips against the named test database.
+- Seven serial PostgreSQL integration tests passed with zero skips in the prior acceptance run.
 - Thirty backup, restore-guard, preflight and checklist tests passed with zero skips.
 - Backup preflight passed with 8.70 MB database size and 9 active connections.
 - Backup was written outside the checkout to a mode `0700` directory.
