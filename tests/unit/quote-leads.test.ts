@@ -32,13 +32,42 @@ function parse(result: { body?: string }) {
 }
 
 const ORIGINAL_INGEST_TOKEN = process.env.QUOTE_LEADS_INGEST_TOKEN;
+const ORIGINAL_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
 
 afterEach(() => {
   if (ORIGINAL_INGEST_TOKEN === undefined) delete process.env.QUOTE_LEADS_INGEST_TOKEN;
   else process.env.QUOTE_LEADS_INGEST_TOKEN = ORIGINAL_INGEST_TOKEN;
+  if (ORIGINAL_OPERATIONAL_MODE === undefined) delete process.env.CRM_OPERATIONAL_MODE;
+  else process.env.CRM_OPERATIONAL_MODE = ORIGINAL_OPERATIONAL_MODE;
 });
 
 describe('quote-leads handler', () => {
+  it('stays available in operational mode because it uses the CRM lead store', async () => {
+    process.env.CRM_OPERATIONAL_MODE = 'true';
+    const result = await createHandler(
+      createMemoryDeps([
+        {
+          id: 'quote_lead_1',
+          nome: 'Cliente Operacional',
+          email: 'cliente@example.com',
+          telefone: '5511978086811',
+          pedidoTexto: 'Produto: lenço',
+          source: 'typebot',
+          status: 'new',
+          createdAt: '2026-06-29T11:00:00.000Z',
+          updatedAt: '2026-06-29T11:00:00.000Z',
+        },
+      ])
+    )({
+      httpMethod: 'GET',
+      queryStringParameters: { limit: '5' },
+    } as any);
+    const body = parse(result);
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(body.data[0].nome, 'Cliente Operacional');
+  });
+
   it('retorna leads novos com texto pronto para textarea', async () => {
     const handler = createHandler(
       createMemoryDeps([

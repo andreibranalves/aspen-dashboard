@@ -60,12 +60,12 @@ describe('feature flag override via operational mode', () => {
     assert.equal(isProductsCoreEnabled(), true);
   });
 
-  it('quotes core NOT enabled by operational mode alone (flag is isolated)', () => {
+  it('quotes core enabled when operational mode is on', () => {
     savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     process.env.CRM_OPERATIONAL_MODE = 'true';
     delete process.env.CRM_CORE_QUOTES_ENABLED;
-    assert.equal(isCoreQuotesEnabled(), false);
+    assert.equal(isCoreQuotesEnabled(), true);
   });
 
   it('clients core enabled when operational mode is on', () => {
@@ -92,12 +92,12 @@ describe('feature flag override via operational mode', () => {
     assert.equal(isCoreQuotesEnabled(), true);
   });
 
-  it('quotes core disabled when own flag is unset', () => {
+  it('quotes core enabled when operational mode overrides a false flag', () => {
     savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     process.env.CRM_OPERATIONAL_MODE = 'true';
-    delete process.env.CRM_CORE_QUOTES_ENABLED;
-    assert.equal(isCoreQuotesEnabled(), false);
+    process.env.CRM_CORE_QUOTES_ENABLED = 'false';
+    assert.equal(isCoreQuotesEnabled(), true);
   });
 
   it('quotes core disabled for invalid flag values', () => {
@@ -163,18 +163,32 @@ describe('resolveEffectiveRolloutState precedence matrix', () => {
   const savedVars: Record<string, string | undefined> = {};
 
   afterEach(() => {
-    for (const key of ['CRM_CORE_QUOTES_ENABLED', 'CRM_QUOTES_ROLLOUT_STATE']) {
+    for (const key of ['CRM_OPERATIONAL_MODE', 'CRM_CORE_QUOTES_ENABLED', 'CRM_QUOTES_ROLLOUT_STATE']) {
       if (savedVars[key] === undefined) delete process.env[key];
       else process.env[key] = savedVars[key];
     }
   });
 
   it('flag=false + any state -> legacy', () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    delete process.env.CRM_OPERATIONAL_MODE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'false';
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
     assert.equal(resolveEffectiveRolloutState(), 'legacy');
+  });
+
+  it('operational mode forces postgres-write regardless of quote flags', () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_OPERATIONAL_MODE = 'true';
+    process.env.CRM_CORE_QUOTES_ENABLED = 'false';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
+    assert.equal(resolveEffectiveRolloutState(), 'postgres-write');
+    assert.equal(isCoreReadEnabled(), true);
+    assert.equal(isCoreWriteEnabled(), true);
   });
 
   it('flag=true + unset state -> postgres-write', () => {
@@ -260,15 +274,34 @@ describe('orcamento dispatch uses rollout state', () => {
   const savedVars: Record<string, string | undefined> = {};
 
   afterEach(() => {
-    for (const key of ['CRM_CORE_QUOTES_ENABLED', 'CRM_QUOTES_ROLLOUT_STATE']) {
+    for (const key of ['CRM_OPERATIONAL_MODE', 'CRM_CORE_QUOTES_ENABLED', 'CRM_QUOTES_ROLLOUT_STATE']) {
       if (savedVars[key] === undefined) delete process.env[key];
       else process.env[key] = savedVars[key];
     }
   });
 
-  it('postgres-write dispatches to core handler', async () => {
+  it('operational mode dispatches to core handler', async () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_OPERATIONAL_MODE = 'true';
+    process.env.CRM_CORE_QUOTES_ENABLED = 'false';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
+    let called = false;
+    const { createHandler } = await import('../../api/_functions/orcamento.js');
+    const handler = createHandler({
+      core: async () => { called = true; return { statusCode: 201, body: '{}' }; },
+      legacy: async () => { throw new Error('legacy should not be called in operational mode'); },
+    });
+    await handler({ httpMethod: 'POST', headers: {}, queryStringParameters: {}, body: '{}' } as any);
+    assert.equal(called, true);
+  });
+
+  it('postgres-write dispatches to core handler', async () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
+    savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
+    delete process.env.CRM_OPERATIONAL_MODE;
     process.env.CRM_CORE_QUOTES_ENABLED = 'true';
     process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
     let called = false;
@@ -901,7 +934,7 @@ describe('operational-status handler', () => {
 
 // ── Quotations handler: CRM_OPERATIONAL_MODE=true without quotes flag ─────
 
-describe('quotations handler with operational mode and no quotes flag', () => {
+describe('quotation handlers in operational mode', () => {
   const savedVars: Record<string, string | undefined> = {};
 
   afterEach(() => {
@@ -911,29 +944,24 @@ describe('quotations handler with operational mode and no quotes flag', () => {
     }
   });
 
-  it('routes to legacy handler when CRM_OPERATIONAL_MODE=true and CRM_CORE_QUOTES_ENABLED absent', async () => {
+  it('routes quotations to core when operational mode is active', async () => {
     savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
     process.env.CRM_OPERATIONAL_MODE = 'true';
-    delete process.env.CRM_CORE_QUOTES_ENABLED;
-    delete process.env.CRM_QUOTES_ROLLOUT_STATE;
+    process.env.CRM_CORE_QUOTES_ENABLED = 'false';
+    process.env.CRM_QUOTES_ROLLOUT_STATE = 'legacy';
     const { createHandler } = await import('../../api/_functions/quotations.js');
     let coreCalled = false;
-    let legacyCalled = false;
     const handler = createHandler({
       core: async () => { coreCalled = true; return { statusCode: 200, body: '{}' }; },
-      legacy: async () => { legacyCalled = true; return { statusCode: 200, body: '{}' }; },
+      legacy: async () => { throw new Error('legacy should not be called in operational mode'); },
     });
-    await handler({
-      httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'X' }, body: '{}',
-    } as any);
-    // CRM_OPERATIONAL_MODE does NOT override quotes; flag absent -> legacy
-    assert.equal(coreCalled, false, 'core handler must not be called when quotes flag is absent');
-    assert.equal(legacyCalled, true, 'legacy handler must be called when quotes flag is absent');
+    await handler({ httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'X' }, body: '{}' } as any);
+    assert.equal(coreCalled, true);
   });
 
-  it('returns 404 for preview when CRM_OPERATIONAL_MODE=true and flag absent', async () => {
+  it('keeps quotation preview available through the core repository', async () => {
     savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
@@ -941,14 +969,14 @@ describe('quotations handler with operational mode and no quotes flag', () => {
     delete process.env.CRM_CORE_QUOTES_ENABLED;
     delete process.env.CRM_QUOTES_ROLLOUT_STATE;
     const { createQuotationPreviewHandler } = await import('../../api/_functions/quotation-preview.js');
-    const handler = createQuotationPreviewHandler({});
+    const handler = createQuotationPreviewHandler({ repository: { get: async () => null } });
     const result = await handler({
       httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'X' }, body: '{}',
     } as any);
     assert.equal(result.statusCode, 404);
   });
 
-  it('returns 404 for templates when CRM_OPERATIONAL_MODE=true and flag absent', async () => {
+  it('keeps quotation templates available through the core repository', async () => {
     savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
     savedVars.CRM_QUOTES_ROLLOUT_STATE = process.env.CRM_QUOTES_ROLLOUT_STATE;
@@ -962,7 +990,7 @@ describe('quotations handler with operational mode and no quotes flag', () => {
       httpMethod: 'GET', headers: {}, queryStringParameters: {}, body: '{}',
       url: '/api/quotation-templates',
     } as any);
-    assert.equal(result.statusCode, 404);
+    assert.equal(result.statusCode, 200);
   });
 });
 

@@ -27,7 +27,6 @@ const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
 // Routes hidden in operational mode (Frappe-dependent)
 const HIDDEN_ROUTES = new Set([
-  '/auto',
   '/dashboard',
   '/pre-orcamentos',
   '/sales-orders',
@@ -74,7 +73,7 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
   // Unknown route in operational mode -> redirect to /manual
   if (
     operationalMode &&
-    !['/quotations', '/products', '/leads', '/settings', '/manual'].includes(route) &&
+    !['/auto', '/quotations', '/products', '/leads', '/settings', '/manual'].includes(route) &&
     !route.startsWith('/quotations/') &&
     !route.startsWith('/products/') &&
     !route.startsWith('/leads/')

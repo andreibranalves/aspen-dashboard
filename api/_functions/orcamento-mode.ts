@@ -1,11 +1,9 @@
 /**
- * Quote-draft rollout switch. Only the exact string `true` enables the
- * PostgreSQL aggregate; every other value remains on the preserved Frappe
- * implementation. CRM_OPERATIONAL_MODE does NOT control this flag - quotes
- * have independent rollout control.
+ * Quote-draft rollout switch. Operational mode is the post-Frappe cutoff and
+ * therefore forces the PostgreSQL quote aggregate on.
  */
 export function isCoreQuotesEnabled(): boolean {
-  return process.env.CRM_CORE_QUOTES_ENABLED === 'true';
+  return process.env.CRM_OPERATIONAL_MODE === 'true' || process.env.CRM_CORE_QUOTES_ENABLED === 'true';
 }
 
 export type QuoteRolloutState = 'legacy' | 'postgres-write' | 'postgres-read-only' | 'rollback-compatible';
@@ -26,35 +24,34 @@ export function getQuoteRolloutState(): QuoteRolloutState {
   return 'legacy';
 }
 
-/** True when the quote subsystem has moved beyond legacy Frappe. */
+/** True when the effective quote subsystem has moved beyond legacy Frappe. */
 export function isQuoteEndpointEnabled(): boolean {
-  return getQuoteRolloutState() !== 'legacy';
+  return resolveEffectiveRolloutState() !== 'legacy';
 }
 
 // ── Precedence-aware dispatch helpers ────────────────────────────────────────
 //
-// Precedence matrix (CRM_CORE_QUOTES_ENABLED x CRM_QUOTES_ROLLOUT_STATE):
+// Precedence matrix (CRM_OPERATIONAL_MODE, CRM_CORE_QUOTES_ENABLED x CRM_QUOTES_ROLLOUT_STATE):
 //
-// | Flag    | Rollout state     | Effective state   |
-// |---------|-------------------|--------------------|
-// | false   | any               | legacy             |
-// | true    | unset             | postgres-write     |
-// | true    | legacy            | legacy (explicit)  |
-// | true    | postgres-write    | postgres-write     |
-// | true    | postgres-read-only| postgres-read-only |
-// | true    | rollback-compat.  | rollback-compat.   |
+// | Operational | Flag    | Rollout state     | Effective state   |
+// |-------------|---------|-------------------|-------------------|
+// | true        | any     | any               | postgres-write    |
+// | false       | false   | any               | legacy            |
+// | false       | true    | unset             | postgres-write    |
+// | false       | true    | legacy            | legacy            |
+// | false       | true    | postgres-write    | postgres-write    |
+// | false       | true    | postgres-read-only| postgres-read-only|
+// | false       | true    | rollback-compat.  | rollback-compatible|
 //
-// CRM_CORE_QUOTES_ENABLED is the master switch. CRM_QUOTES_ROLLOUT_STATE
-// selects the migration phase when the flag is on.
-// Explicit legacy state is always preserved, even when flag is on - this
-// allows an operator to keep quotes on Frappe while other subsystems advance.
+// CRM_OPERATIONAL_MODE is the master post-Frappe cutoff. The individual
+// quote flag and rollout state remain available for gradual rollout testing.
 
 /**
- * Resolves the effective rollout state combining both env vars.
- * CRM_CORE_QUOTES_ENABLED=false always returns 'legacy' regardless
- * of CRM_QUOTES_ROLLOUT_STATE.
+ * Resolves the effective rollout state combining the operational cutoff and
+ * gradual quote rollout variables.
  */
 export function resolveEffectiveRolloutState(): QuoteRolloutState {
+  if (process.env.CRM_OPERATIONAL_MODE === 'true') return 'postgres-write';
   if (!isCoreQuotesEnabled()) return 'legacy';
   const raw = process.env.CRM_QUOTES_ROLLOUT_STATE;
   // Flag on + unset state -> postgres-write (default migration phase)

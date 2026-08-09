@@ -2,32 +2,38 @@
 
 **Data:** 2026-08-04
 
-## Problema
+## Decisão
 
-A tela `/auto` (AutoQuotePage) não está acessível no modo operacional por dois motivos:
+A tela `/auto` permanece disponível no modo operacional.
 
-1. `OPERATIONAL_NAV_SECTIONS` no Sidebar não inclui link para `/auto`
-2. Handler `POST /api/extract` retorna 503 em modo operacional
+Ela mantém a extração por IA e grava o orçamento no CRM PostgreSQL interno.
 
-## Solução
+O Frappe não participa do fluxo quando `CRM_OPERATIONAL_MODE=true`.
 
-### 1. Remover bloqueio do /api/extract
+## Fluxo
 
-- **Arquivo:** `api/_functions/extract.ts` linha ~297
-- **Ação:** Remover guard `if (isOperationalMode()) return 503...`
-- **Risco:** Nenhum. O endpoint já valida `OPENROUTER_API_KEY` independentemente.
+1. `POST /api/extract` envia texto ou imagem ao OpenRouter.
+2. `POST /api/pricing-lookup` resolve preços no catálogo PostgreSQL.
+3. `POST /api/orcamento` grava cliente, itens, template, revisão e outbox no PostgreSQL.
+4. `GET /api/quotations` e `GET /api/quotation-templates` usam os repositórios PostgreSQL.
+5. `GET/PATCH /api/quote-leads` usa o armazenamento próprio de leads.
 
-### 2. Adicionar /auto no sidebar operacional
+## Rollout
 
-- **Arquivo:** `src/components/layout/Sidebar.tsx` ~linha 75
-- **Ação:** Adicionar `{ hash: '/auto', label: 'Auto', icon: Sparkles }` em `OPERATIONAL_NAV_SECTIONS`
+`CRM_OPERATIONAL_MODE=true` força o domínio de orçamentos para `postgres-write`.
 
-### Pré-requisito
+A rota `/auto` fica fora da lista de rotas ocultas e aparece na navegação operacional.
 
-- `OPENROUTER_API_KEY` já configurada no `.env` ✓
+O modo operacional continua ocultando telas e handlers que ainda dependem de Frappe ou de provedores externos não migrados.
 
-## Impacto
+## Segurança
 
-- Nenhuma quebra de API existente
-- Nenhuma mudança de schema
-- Testes existentes continuam passando (nenhum testa o guard do extract)
+A extração valida a entrada e exige `OPENROUTER_API_KEY` no runtime.
+
+O core PostgreSQL não faz fallback silencioso para Frappe quando falha.
+
+As flags permanecem desligadas por padrão no `.env.example`.
+
+## Cobertura
+
+Os testes verificam que o modo operacional expõe `/auto`, mantém a rota sem redirecionamento e percorre extração, precificação e criação de orçamento com respostas PostgreSQL.

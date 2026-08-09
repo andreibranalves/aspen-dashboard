@@ -58,6 +58,8 @@ const MOCK_LEADS_LIST = {
     },
   ],
   pagination: { page: 1, limit: 50, total: 2, total_pages: 1 },
+  core_mode: false,
+  source: 'frappe',
 };
 
 const MOCK_LEAD_DETAIL = {
@@ -161,6 +163,20 @@ async function setupApiMocks(page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ success: true, data: [] }),
+    });
+  });
+
+  await page.route('**/api/quote-leads**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        data: MOCK_WHATSAPP_LEADS.data.map((lead) => ({
+          ...lead,
+          pedidoTexto: lead.resumo,
+        })),
+      }),
     });
   });
 
@@ -341,8 +357,10 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
-    await page.getByRole('button', { name: /^WhatsApp$/i }).click();
-    await page.getByText('Maria WhatsApp').click();
+    await page.getByRole('button', { name: /^Leads$/i }).click();
+    const quoteLead = page.getByRole('button').filter({ hasText: 'Maria WhatsApp' });
+    await expect(quoteLead).toBeVisible();
+    await quoteLead.click();
 
     const textarea = page.locator('textarea').first();
     await expect(textarea).toHaveValue(MOCK_WHATSAPP_LEADS.data[0].texto);

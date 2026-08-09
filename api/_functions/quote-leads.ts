@@ -6,7 +6,6 @@ import type {
   LegacyHandler,
 } from '../_lib/types.js';
 import { createHttpError } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
 import {
   listQuoteLeads,
   updateQuoteLead,
@@ -115,10 +114,4 @@ export function createHandler(deps?: QuoteLeadStoreDeps): LegacyHandler {
   };
 }
 
-async function guardedHandler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'quote-leads não está disponível no modo operacional.' }) };
-  }
-  return createHandler()(event);
-}
-export const handler: LegacyHandler = guardedHandler;
+export const handler: LegacyHandler = createHandler();

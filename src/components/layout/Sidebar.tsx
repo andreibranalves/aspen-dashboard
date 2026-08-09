@@ -59,7 +59,10 @@ const NAV_SECTIONS: NavSection[] = [
 const OPERATIONAL_NAV_SECTIONS: NavSection[] = [
   {
     title: 'Operacional',
-    items: [{ hash: '/manual', label: 'Novo Orçamento', icon: FileText }],
+    items: [
+      { hash: '/auto', label: 'Auto', icon: Sparkles },
+      { hash: '/manual', label: 'Novo Orçamento', icon: FileText },
+    ],
   },
   {
     title: 'Cadastros',
