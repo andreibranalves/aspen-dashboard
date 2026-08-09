@@ -23,7 +23,10 @@ import {
   type ExistingLineage,
 } from '../../api/_functions/frappe-migration.js';
 import * as migrationRepositoryModule from '../../api/_db/frappe-migration-repository.js';
-import { MemoryFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
+import {
+  MemoryFrappeMigrationRepository,
+  stableClientUuid,
+} from '../../api/_db/frappe-migration-repository.js';
 import {
   isValidPdfBuffer,
   quotationPdfChecksum,
@@ -115,6 +118,17 @@ function discardManifestFor(dataset: FrappeDataset, dryRun: Awaited<ReturnType<t
   });
 }
 
+class ReleaseAfterUnlockFailureRepository extends MemoryFrappeMigrationRepository {
+  private failRelease = true;
+
+  async releaseMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
+    if (!this.failRelease) return super.releaseMigrationLease(manifestHash, ownerId);
+    this.failRelease = false;
+    await super.releaseMigrationLease(manifestHash, ownerId);
+    throw new Error('Falha transitória ao confirmar liberação do lease.');
+  }
+}
+
 describe('migração Frappe CRM', { concurrency: 1 }, () => {
   it('canonicaliza decimais sem perder zeros significativos', () => {
     assert.equal(canonicalDecimal('30.000'), '30');
@@ -156,6 +170,13 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     const applied = await runFrappeMigration({ mode: 'apply', dataset, repository });
     assert.equal(applied.report.produtos.criados, 2);
     assert.equal(applied.report.clientes.criados, 1);
+    assert.deepEqual(applied.manifest.exclusionCounts, {
+      produtos: applied.report.produtos.excluidos,
+      faixas: applied.report.faixas.excluidos,
+      clientes: applied.report.clientes.excluidos,
+      orcamentos: applied.report.orcamentos.excluidos,
+      documentos: applied.report.documentos.excluidos,
+    });
     const rerun = await runFrappeMigration({ mode: 'apply', dataset, repository });
     assert.equal(rerun.report.produtos.ignorados, 2);
     assert.equal(rerun.report.clientes.ignorados, 1);
@@ -209,6 +230,82 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(applied.manifest.discardManifestHash, discardManifest.closureHash);
     assert.deepEqual(applied.manifest.discardPlan, dryRun.manifest.discardPlan);
     assert.doesNotMatch(JSON.stringify(applied.manifest.discardPlan), /source_doctype|source_id|legacy_payload/i);
+  });
+
+  it('fecha contagens do descarte na retomada com checkpoints completos', async () => {
+    const fullDataset = createDiscardIntegrationFixture();
+    const dataset: FrappeDataset = {
+      ...fullDataset,
+      items: fullDataset.items.slice(0, 1),
+      pricingRules: fullDataset.pricingRules?.slice(0, 2),
+      customers: fullDataset.customers?.slice(0, 2),
+      quotations: fullDataset.quotations?.slice(0, 2).map((quotation, index) =>
+        index === 1 ? { ...quotation, customer: 'CUST-AMB-B' } : quotation
+      ),
+    };
+    const normalized = normalizeFrappeDataset(dataset);
+    const seededLineage = [...normalized.productUnits, ...normalized.clientUnits].flatMap((unit) =>
+      unit.lineage.map((entry) => {
+        const localKey = entry.entityType === 'cliente' ? stableClientUuid(entry.localKey) : entry.localKey;
+        return {
+          ...entry,
+          localId: localKey,
+          localKey,
+          migrationRunId: null,
+          importedAt: null,
+          lineageStatus: 'verified' as const,
+        };
+      })
+    );
+    const repository = new ReleaseAfterUnlockFailureRepository({
+      state: {
+        products: normalized.productUnits.map((unit) => ({ ...unit.product, precos: unit.pricing.precos })),
+        clients: normalized.clientUnits.map((unit) => ({
+          ...unit.client,
+          id: stableClientUuid(unit.client.localKey),
+        })),
+        quotations: [],
+        lineage: seededLineage,
+        sequences: {},
+      },
+    });
+    const dryRun = await runFrappeMigration({ mode: 'dry-run', dataset, repository });
+    const discardManifest = discardManifestFor(dataset, dryRun);
+    const first = await runFrappeMigration({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+      discardManifest,
+    });
+
+    assert.equal(first.manifest.status, 'failed');
+    assert.ok(repository.batches.every((batch) => batch.status === 'completed'));
+
+    const resumed = await runFrappeMigration({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+      discardManifest,
+    });
+    assert.equal(resumed.manifest.status, 'completed');
+    assert.deepEqual(
+      {
+        produtos: resumed.report.produtos.excluidos,
+        faixas: resumed.report.faixas.excluidos,
+        clientes: resumed.report.clientes.excluidos,
+        orcamentos: resumed.report.orcamentos.excluidos,
+      },
+      { produtos: 0, faixas: 0, clientes: 0, orcamentos: 0 }
+    );
+    assert.deepEqual(resumed.manifest.exclusionCounts, {
+      produtos: 1,
+      faixas: 2,
+      clientes: 2,
+      orcamentos: 2,
+      documentos: 0,
+    });
   });
 
   it('rejeita dryRunReportHash adulterado antes de qualquer write', async () => {

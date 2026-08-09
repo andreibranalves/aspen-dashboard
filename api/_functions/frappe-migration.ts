@@ -1685,6 +1685,31 @@ function buildManifest(
   discardManifest?: DiscardManifest,
   discardPlan?: DiscardPlan
 ): MigrationManifest {
+  const exclusionCounts = discardManifest && discardPlan
+    ? [...discardPlan.entries.values()].reduce(
+        (counts, entry) => {
+          if (entry.entity === 'produto') counts.produtos += 1;
+          else if (entry.entity === 'faixa') counts.faixas += 1;
+          else if (entry.entity === 'cliente') counts.clientes += 1;
+          else if (entry.entity === 'orcamento') counts.orcamentos += 1;
+          return counts;
+        },
+        {
+          produtos: 0,
+          faixas: 0,
+          clientes: 0,
+          orcamentos: 0,
+          documentos: report.documentos.excluidos,
+        }
+      )
+    : {
+        produtos: report.produtos.excluidos,
+        faixas: report.faixas.excluidos,
+        clientes: report.clientes.excluidos,
+        orcamentos: report.orcamentos.excluidos,
+        documentos: report.documentos.excluidos,
+      };
+
   return {
     runId,
     provider,
@@ -1718,13 +1743,7 @@ function buildManifest(
           },
         }
       : {}),
-    exclusionCounts: {
-      produtos: report.produtos.excluidos,
-      faixas: report.faixas.excluidos,
-      clientes: report.clientes.excluidos,
-      orcamentos: report.orcamentos.excluidos,
-      documentos: report.documentos.excluidos,
-    },
+    exclusionCounts,
   };
 }
 
