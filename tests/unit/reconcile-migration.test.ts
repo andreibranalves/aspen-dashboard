@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { compareReconciliation } from '../../scripts/reconcile-migration.mjs';
+import {
+  compareReconciliation,
+  expectedReconciliation,
+} from '../../scripts/reconcile-migration.mjs';
+import {
+  hashDiscardEntries,
+  type DiscardEntry,
+} from '../../api/_functions/lib/migration-discard.ts';
 
 const reconcileSource = readFileSync(new URL('../../scripts/reconcile-migration.mjs', import.meta.url), 'utf8');
 const cutoverRunbook = readFileSync(
@@ -54,6 +61,8 @@ const expected = {
 };
 const targetImportedCounts = { ...expectedCounts };
 const targetHashes = { ...expectedHashes };
+const exclusionCounts = { produtos: 1, faixas: 1, clientes: 0, orcamentos: 1, documentos: 0 };
+const exclusionClosureHash = 'b'.repeat(64);
 
 function baseInput(overrides = {}) {
   return {
@@ -184,4 +193,121 @@ test('reconciliação rejeita hash, identidade ou contagem target inconsistente'
   assert.equal(result.targetCountsMatchExpected, false);
   assert.equal(result.expectedHashesMatchTarget, false);
   assert.equal(result.lineageInvalid, 1);
+});
+
+function exclusionInput(overrides = {}) {
+  return baseInput({
+    expected: { ...expected, exclusionCounts, exclusionClosureHash },
+    expectedExclusionCounts: exclusionCounts,
+    actualExclusionCounts: exclusionCounts,
+    expectedExclusionClosureHash: exclusionClosureHash,
+    actualExclusionClosureHash: exclusionClosureHash,
+    targetExcludedLineageKeys: [],
+    targetExcludedDependencyKeys: [],
+    ...overrides,
+  });
+}
+
+test('reconciliação aprova projeções graváveis e closure de descarte exatos', () => {
+  const result = compareReconciliation(exclusionInput());
+  assert.equal(result.passed, true);
+  assert.equal(result.excludedRowsMatch, true);
+  assert.equal(result.excludedClosureHashMatch, true);
+  assert.deepEqual(result.unapprovedExclusionKeys, []);
+});
+
+test('reconciliação rejeita lineage target para orçamento excluído', () => {
+  const result = compareReconciliation(
+    exclusionInput({ targetExcludedLineageKeys: ['Quotation:discarded'] })
+  );
+  assert.equal(result.passed, false);
+  assert.equal(result.excludedRowsMatch, false);
+  assert.deepEqual(result.unapprovedExclusionKeys, ['Quotation:discarded']);
+});
+
+test('reconciliação rejeita dependência de SKU excluído em orçamento target', () => {
+  const result = compareReconciliation(
+    exclusionInput({ targetExcludedDependencyKeys: ['Item:discarded'] })
+  );
+  assert.equal(result.passed, false);
+  assert.equal(result.excludedRowsMatch, false);
+  assert.deepEqual(result.unapprovedExclusionKeys, ['Item:discarded']);
+});
+
+test('reconciliação rejeita contagem ou hash da closure de descarte divergente', () => {
+  const wrongCount = compareReconciliation(
+    exclusionInput({ actualExclusionCounts: { ...exclusionCounts, orcamentos: 0 } })
+  );
+  assert.equal(wrongCount.passed, false);
+  assert.equal(wrongCount.excludedRowsMatch, false);
+
+  const wrongHash = compareReconciliation(
+    exclusionInput({ actualExclusionClosureHash: 'c'.repeat(64) })
+  );
+  assert.equal(wrongHash.passed, false);
+  assert.equal(wrongHash.excludedClosureHashMatch, false);
+});
+
+test('reconciliação mantém bloqueio para divergência não resolvida', () => {
+  const result = compareReconciliation(
+    exclusionInput({ unapprovedDivergenceKeys: ['Quotation:unresolved'], blocking: 1 })
+  );
+  assert.equal(result.passed, false);
+  assert.deepEqual(result.unapprovedDivergenceKeys, ['Quotation:unresolved']);
+});
+
+test('expectedReconciliation valida contagens e closure exata sem expor a closure', () => {
+  const entries: DiscardEntry[] = [    {
+      key: 'Item:excluded',
+      source_doctype: 'Item',
+      source_id: 'excluded',
+      entity: 'produto',
+      reason: 'ambiguous-pricing',
+      depends_on: [],
+    },
+    {
+      key: 'Quotation:excluded',
+      source_doctype: 'Quotation',
+      source_id: 'excluded',
+      entity: 'orcamento',
+      reason: 'discarded-dependency',
+      depends_on: ['Item:excluded'],
+    },
+  ];
+  const closureHash = hashDiscardEntries(entries);
+  const rows = {
+    products: [{ sourceDoctype: 'Item', sourceId: 'excluded', sku: 'SKU-EXCLUDED' }],
+    pricingDocuments: [],
+    pricingTiers: [],
+    clients: [],
+    quotations: [{ sourceDoctype: 'Quotation', sourceId: 'excluded' }],
+    revisions: [],
+    items: [],
+    templates: [],
+    templateVersions: [],
+    lineage: [],
+  };
+  const manifest = {
+    manifestHash: 'd'.repeat(64),
+    discardManifestHash: null,
+    discardPlan: {
+      sourceManifestHash: 'd'.repeat(64),
+      closureHash,
+      entries: entries.map(({ key, entity, reason, depends_on }) => ({ key, entity, reason, depends_on })),
+    },
+    exclusionCounts: { produtos: 0, faixas: 0, clientes: 0, orcamentos: 0, documentos: 0 },
+    reconciliation: {
+      keys: { products: ['Item:excluded'], pricingDocuments: [], pricingTiers: [], clients: [], quotations: ['Quotation:excluded'] },
+      counts: expectedCounts,
+      hashes: { ...expectedHashes, lineage: 'a'.repeat(64) },
+      statusCounts: { quotations: {}, revisions: {} },
+      statusRows: { quotations: [], revisions: [] },
+      revisionExpectations: [],
+      rows,
+    },
+  };
+  const result = expectedReconciliation(manifest, 'fixture');
+  assert.deepEqual(result.exclusionClosure.counts, { produtos: 1, faixas: 0, clientes: 0, orcamentos: 1, documentos: 0 });
+  assert.equal(result.exclusionClosure.closureHash, closureHash);
+  assert.equal(result.exclusionClosure.entries.length, 2);
 });

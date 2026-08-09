@@ -415,6 +415,36 @@ Para Customer e Lead, `source_id` é sempre um token opaco no formato `cliente-<
 
 Não use `--approve-divergence` para contornar duplicata, perda financeira, órfão, PDF atual inválido ou falha de segurança.
 
+### Manifesto protegido de descarte
+
+Gere o manifesto de descarte somente a partir do report dry-run protegido e nunca edite suas entradas manualmente.
+
+```bash
+set -euo pipefail
+: "${CUTOVER_DIR:?configure the protected cutover directory}"
+: "${SNAPSHOT_MANIFEST_HASH:?set the reviewed dry-run manifest hash}"
+test "$(stat -c '%a' "$CUTOVER_DIR")" = 700
+node scripts/create-migration-discard-manifest.mjs \
+  --report "$CUTOVER_DIR/report.dry-run.json" \
+  --snapshot-manifest-hash "$SNAPSHOT_MANIFEST_HASH" \
+  --output "$CUTOVER_DIR/discard.json" \
+  > "$CUTOVER_DIR/discard.create.json"
+chmod 600 "$CUTOVER_DIR/discard.json" "$CUTOVER_DIR/discard.create.json"
+sha256sum "$CUTOVER_DIR/discard.json" | tee "$CUTOVER_DIR/discard.sha256"
+chmod 600 "$CUTOVER_DIR/discard.sha256"
+sha256sum --check "$CUTOVER_DIR/discard.sha256"
+```
+
+O hash do snapshot e o checksum canônico do report dry-run vinculam o manifesto à mesma leitura protegida da fonte.
+
+Antes de qualquer escrita, execute um dry-run com `--discard-manifest` e confirme que o hash da closure, as contagens de exclusão e a ausência de divergências bloqueantes permanecem exatos.
+
+A closure inclui cada blocker e todos os clientes, produtos, faixas e orçamentos que dependem dele.
+
+Uma dependência ausente, uma entrada extra, uma contagem diferente ou uma closure hash diferente aborta antes do apply.
+
+Os registros excluídos não são apagados do Frappe; o descarte apenas impede sua escrita no PostgreSQL e deve permanecer explícito no report.
+
 ## 6. Ordem de dependências e apply
 
 Aplique somente depois de templates, produtos, preços, clientes e leads passarem pela reconciliação.
@@ -477,11 +507,17 @@ import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 EXPECTED_MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.dry-run.json")"
+jq -e --arg expected "$EXPECTED_MANIFEST_HASH" '
+  (.manifest.manifestHash == $expected) and
+  (.manifest.discardPlan.closureHash | test("^[0-9a-f]{64}$")) and
+  (.manifest.exclusionCounts | type == "object")
+' "$CUTOVER_DIR/report.dry-run.json"
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/migrate-frappe-crm.mjs --apply \
   --expected-manifest-hash "$EXPECTED_MANIFEST_HASH" \
+  --discard-manifest "$CUTOVER_DIR/discard.json" \
   > "$CUTOVER_DIR/report.apply.json"
 sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha256"
 RUN_ID="$(jq -er '.manifest.runId | select(test("^[0-9a-f-]{36}$"))' "$CUTOVER_DIR/report.apply.json")"
@@ -631,6 +667,9 @@ jq -e '
   (.comparison.expectedHashesMatchTarget == true) and
   (.comparison.targetStatusCountsMatchExpected == true) and
   (.comparison.targetStructureValid == true) and
+  (.comparison.excludedRowsMatch == true) and
+  (.comparison.excludedClosureHashMatch == true) and
+  (.comparison.unapprovedExclusionKeys | length == 0) and
   (.comparison.approvedDetailsValid == true) and
   (.comparison.blocking == 0) and
   (.lineage.invalid == 0) and

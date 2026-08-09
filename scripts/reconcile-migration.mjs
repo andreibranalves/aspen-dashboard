@@ -32,6 +32,26 @@ const COUNT_KEYS = [
   'templateVersions',
 ];
 const HASH_KEYS = [...COUNT_KEYS, 'lineage'];
+const EXCLUSION_COUNT_KEYS = ['produtos', 'faixas', 'clientes', 'orcamentos', 'documentos'];
+const EXCLUSION_ENTITY_FIELDS = {
+  produto: 'produtos',
+  faixa: 'faixas',
+  cliente: 'clientes',
+  orcamento: 'orcamentos',
+};
+const EXCLUSION_ENTITY_DOCTYPES = {
+  produto: new Set(['Item']),
+  faixa: new Set(['Pricing Rule', 'Item Price']),
+  cliente: new Set(['Customer', 'Lead']),
+  orcamento: new Set(['Quotation']),
+};
+const EXCLUSION_REASONS = new Set([
+  'ambiguous-client',
+  'ambiguous-pricing',
+  'invalid-quotation-price',
+  'discarded-dependency',
+]);
+const EMPTY_CLOSURE_HASH = createHash('sha256').update('').digest('hex');
 
 function fail(message) {
   throw new Error(message);
@@ -144,6 +164,87 @@ function stableKeys(values) {
   return [...new Set(Array.isArray(values) ? values : [])].sort();
 }
 
+function exclusionCounts(value, label) {
+  const counts = {};
+  for (const key of EXCLUSION_COUNT_KEYS) {
+    if (!Number.isInteger(value?.[key]) || value[key] < 0)
+      fail(`${label} com contagem de exclusão inválida.`);
+    counts[key] = value[key];
+  }
+  return counts;
+}
+
+function parseExclusionEntry(value, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    fail(`${label} com closure inválida.`);
+  const key = typeof value.key === 'string' ? value.key.trim() : '';
+  const parts = key.split(':');
+  const entity = typeof value.entity === 'string' ? value.entity.trim() : '';
+  const reason = typeof value.reason === 'string' ? value.reason.trim() : '';
+  if (!key || parts.length !== 2 || !parts[0] || !parts[1] || !EXCLUSION_ENTITY_FIELDS[entity] ||
+      !EXCLUSION_ENTITY_DOCTYPES[entity].has(parts[0]) || !EXCLUSION_REASONS.has(reason))
+    fail(`${label} com closure inválida.`);
+  if (!Array.isArray(value.depends_on) || value.depends_on.some((dependency) => typeof dependency !== 'string'))
+    fail(`${label} com closure inválida.`);
+  const dependsOn = stableKeys(value.depends_on.map((dependency) => dependency.trim()));
+  if (dependsOn.some((dependency) => {
+    const dependencyParts = dependency.split(':');
+    return dependencyParts.length !== 2 || !dependencyParts[0] || !dependencyParts[1];
+  }))
+    fail(`${label} com closure inválida.`);
+  return {
+    key,
+    source_doctype: parts[0],
+    source_id: parts[1],
+    entity,
+    reason,
+    depends_on: dependsOn,
+  };
+}
+
+function exclusionClosureHash(entries) {
+  return createHash('sha256')
+    .update(entries
+      .slice()
+      .sort((left, right) => left.key === right.key ? 0 : left.key < right.key ? -1 : 1)
+      .map((entry) => JSON.stringify(entry))
+      .join('\n'))
+    .digest('hex');
+}
+
+function expectedExclusionClosure(manifest, label) {
+  const plan = manifest?.discardPlan;
+  const planEntries = plan === undefined ? [] : plan?.entries;
+  if (plan !== undefined && (!plan || typeof plan !== 'object' || !Array.isArray(planEntries)))
+    fail(`${label} com closure inválida.`);
+  const entries = Array.isArray(planEntries)
+    ? planEntries.map((entry) => parseExclusionEntry(entry, label))
+    : [];
+  const keys = new Set(entries.map((entry) => entry.key));
+  if (keys.size !== entries.length || entries.some((entry) => entry.depends_on.some((dependency) => !keys.has(dependency))))
+    fail(`${label} com closure inválida.`);
+  const computedHash = exclusionClosureHash(entries);
+  const planHash = plan === undefined ? null : validHash(plan.closureHash, `${label} hash da closure`);
+  if (planHash !== null && planHash !== computedHash)
+    fail(`${label} com closure inválida.`);
+  if (plan && validHash(plan.sourceManifestHash, `${label} hash da closure`) !== manifest.manifestHash)
+    fail(`${label} com closure inválida.`);
+  const persistedHash = manifest?.discardManifestHash;
+  if (persistedHash !== null && persistedHash !== undefined && typeof persistedHash !== 'string')
+    fail(`${label} hash da closure inválido.`);
+  const manifestHash = persistedHash ? validHash(persistedHash, `${label} hash da closure`) : null;
+  if (manifestHash !== null && planHash !== null && manifestHash !== planHash)
+    fail(`${label} com closure inválida.`);
+  const counts = Object.fromEntries(EXCLUSION_COUNT_KEYS.map((key) => [key, 0]));
+  for (const entry of entries) counts[EXCLUSION_ENTITY_FIELDS[entry.entity]] += 1;
+  return {
+    entries,
+    keys: stableKeys(entries.map((entry) => entry.key)),
+    closureHash: planHash || manifestHash || EMPTY_CLOSURE_HASH,
+    counts,
+  };
+}
+
 function canonicalDecimal(value) {
   const normalized = String(value ?? '').trim().replace(',', '.');
   if (!/^\d+(?:\.\d+)?$/.test(normalized)) fail('Valor numérico PostgreSQL inválido.');
@@ -220,7 +321,7 @@ function writeArtifact(filepath, artifact) {
   }
 }
 
-function expectedReconciliation(manifest, label) {
+export function expectedReconciliation(manifest, label) {
   const reconciliation = manifest?.reconciliation;
   if (!reconciliation || typeof reconciliation !== 'object')
     fail(`${label} sem expectativas de reconciliação.`);
@@ -266,7 +367,19 @@ function expectedReconciliation(manifest, label) {
     if (!Array.isArray(reconciliation.rows?.[key])) fail(`${label} com linhas inválidas: ${key}.`);
     rows[key] = reconciliation.rows[key].map((row) => ({ ...row }));
   }
-  return { keys, counts, hashes, statusCounts, statusRows, revisionExpectations, rows };
+  const exclusionCountsValue = exclusionCounts(manifest.exclusionCounts, label);
+  const exclusionClosure = expectedExclusionClosure(manifest, label);
+  return {
+    keys,
+    counts,
+    hashes,
+    statusCounts,
+    statusRows,
+    revisionExpectations,
+    rows,
+    exclusionCounts: exclusionCountsValue,
+    exclusionClosure,
+  };
 }
 
 function expectedWithoutApproved(expected, approvedKeys) {
@@ -351,6 +464,71 @@ function expectedWithoutApproved(expected, approvedKeys) {
   };
 }
 
+function expectedWithoutExcluded(expected, excludedKeys) {
+  const excluded = new Set(stableKeys(excludedKeys));
+  if (excluded.size === 0) return expected;
+  const sourceExcluded = (row, fallback) =>
+    excluded.has(`${String(row.sourceDoctype || fallback)}:${String(row.sourceId)}`);
+  const productRows = expected.rows.products.filter((row) => !sourceExcluded(row, 'Item'));
+  const excludedSkus = new Set(expected.rows.products
+    .filter((row) => sourceExcluded(row, 'Item'))
+    .map((row) => String(row.sku)));
+  const pricingDocuments = expected.rows.pricingDocuments.filter((row) => !sourceExcluded(row));
+  const pricingTiers = expected.rows.pricingTiers.filter((row) => !excludedSkus.has(String(row.productSku)));
+  const clients = expected.rows.clients.filter(
+    (row) => !Array.isArray(row.sourceKeys) || !row.sourceKeys.some((key) => excluded.has(String(key)))
+  );
+  const quotations = expected.rows.quotations.filter((row) => !sourceExcluded(row, 'Quotation'));
+  const quotationSourceIds = new Set(quotations.map((row) => String(row.sourceId)));
+  const revisions = expected.rows.revisions.filter((row) => quotationSourceIds.has(String(row.sourceId)));
+  const items = expected.rows.items.filter((row) => quotationSourceIds.has(String(row.sourceId)));
+  const revisionExpectations = expected.revisionExpectations.filter((row) => quotationSourceIds.has(row.sourceId));
+  const templates = expected.rows.templates.filter((row) =>
+    revisions.some((revision) => `${revision.templateVersionKey}:${revision.templateVersionHash}` === `${row.key}:${row.hash}`)
+  );
+  const templateVersions = expected.rows.templateVersions.filter((row) =>
+    templates.some((template) => `${template.key}:${template.hash}` === `${row.key}:${row.hash}`)
+  );
+  const lineage = expected.rows.lineage.filter((row) => !sourceExcluded(row));
+  const rows = {
+    products: productRows,
+    pricingDocuments,
+    pricingTiers,
+    clients,
+    quotations,
+    revisions,
+    items,
+    templates,
+    templateVersions,
+    lineage,
+  };
+  const statusRows = {
+    quotations: expected.statusRows.quotations.filter((row) => quotationSourceIds.has(row.sourceId)),
+    revisions: expected.statusRows.revisions.filter((row) => quotationSourceIds.has(row.sourceId)),
+  };
+  const counts = countRows(rows);
+  const keys = {
+    products: expected.keys.products.filter((key) => !excluded.has(key)),
+    pricingDocuments: expected.keys.pricingDocuments.filter((key) => !excluded.has(key)),
+    pricingTiers: pricingTiers.map((row) => `${row.productSku}:${row.minimumQuantity}`).sort(),
+    clients: expected.keys.clients.filter((key) => !excluded.has(key)),
+    quotations: expected.keys.quotations.filter((key) => !excluded.has(key)),
+  };
+  return {
+    ...expected,
+    keys,
+    counts,
+    hashes: targetHashes(rows),
+    statusCounts: {
+      quotations: statusCounts(statusRows.quotations),
+      revisions: statusCounts(statusRows.revisions),
+    },
+    statusRows,
+    revisionExpectations,
+    rows,
+  };
+}
+
 function safeLineageSourceId(row) {
   if (row.sourceDoctype !== 'Customer' && row.sourceDoctype !== 'Lead') return String(row.sourceId);
   const value = String(row.sourceId);
@@ -360,6 +538,13 @@ function safeLineageSourceId(row) {
 
 function sourceKey(row) {
   return `${row.sourceDoctype}:${safeLineageSourceId(row)}`;
+}
+
+function artifactSourceKey(value) {
+  const source = String(value);
+  const separator = source.indexOf(':');
+  if (separator < 1) return `source:opaque-${hash(source).slice(0, 12)}`;
+  return `${source.slice(0, separator)}:opaque-${hash(source).slice(0, 12)}`;
 }
 
 function selectedLineageRows(allRows, expected) {
@@ -587,6 +772,22 @@ export function compareReconciliation(input) {
     approvedMissingKeys = [],
     targetHashes,
     expectedHashesMatchTarget,
+    expectedExclusionCounts,
+    actualExclusionCounts,
+    targetExclusionCounts,
+    sourceExclusionClosureHash,
+    applyExclusionClosureHash,
+    expectedExclusionClosureHash,
+    actualExclusionClosureHash,
+    targetExclusionClosureHash,
+    targetExcludedLineageKeys,
+    targetExcludedDependencyKeys,
+    excludedLineageKeys,
+    excludedDependencyKeys,
+    unapprovedExclusionKeys: inputUnapprovedExclusionKeys = [],
+    missingExclusionKeys = [],
+    excludedRows,
+    targetExcludedRows,
   } = input;
   const actualCounts = targetImportedCounts || targetCounts;
   const expectedValues = expected || { counts: actualCounts, hashes: null, statusCounts: targetStatusCounts };
@@ -612,6 +813,47 @@ export function compareReconciliation(input) {
     : sameJson(targetStatusCounts, expectedValues.statusCounts || {});
   const hashesMatch = expectedHashesMatchTarget ??
     (targetHashes && expectedValues.hashes ? sameJson(targetHashes, expectedValues.hashes) : true);
+  const expectedExclusions = expectedExclusionCounts || expectedValues.exclusionCounts;
+  const actualExclusions = actualExclusionCounts || targetExclusionCounts || input.exclusionCounts;
+  const exclusionContract = Boolean(
+    expectedExclusions || actualExclusions || expectedExclusionClosureHash || actualExclusionClosureHash ||
+    sourceExclusionClosureHash || applyExclusionClosureHash || input.excludedClosureHash ||
+    targetExcludedLineageKeys || targetExcludedDependencyKeys || excludedLineageKeys || excludedDependencyKeys ||
+    excludedRows || targetExcludedRows || inputUnapprovedExclusionKeys.length || missingExclusionKeys.length
+  );
+  const expectedExclusionValues = expectedExclusions || Object.fromEntries(EXCLUSION_COUNT_KEYS.map((key) => [key, 0]));
+  const actualExclusionValues = actualExclusions || expectedExclusionValues;
+  const excludedCountsMatch = !exclusionContract || sameJson(expectedExclusionValues, actualExclusionValues);
+  const expectedClosureHash = expectedExclusionClosureHash || sourceExclusionClosureHash ||
+    expectedValues.exclusionClosureHash || expectedValues.exclusionClosure?.closureHash || null;
+  const actualClosureHash = actualExclusionClosureHash || applyExclusionClosureHash ||
+    input.excludedClosureHash || targetExclusionClosureHash || expectedClosureHash;
+  const excludedClosureHashMatch = !exclusionContract ||
+    (!expectedClosureHash && !actualClosureHash) || expectedClosureHash === actualClosureHash;
+  const rowViolations = [
+    ...(Array.isArray(targetExcludedLineageKeys) ? targetExcludedLineageKeys : []),
+    ...(Array.isArray(excludedLineageKeys) ? excludedLineageKeys : []),
+    ...(Array.isArray(excludedRows?.lineage) ? excludedRows.lineage : []),
+    ...(Array.isArray(excludedRows?.lineageKeys) ? excludedRows.lineageKeys : []),
+    ...(Array.isArray(targetExcludedRows?.lineage) ? targetExcludedRows.lineage : []),
+    ...(Array.isArray(targetExcludedRows?.lineageKeys) ? targetExcludedRows.lineageKeys : []),
+  ];
+  const dependencyViolations = [
+    ...(Array.isArray(targetExcludedDependencyKeys) ? targetExcludedDependencyKeys : []),
+    ...(Array.isArray(excludedDependencyKeys) ? excludedDependencyKeys : []),
+    ...(Array.isArray(excludedRows?.dependencies) ? excludedRows.dependencies : []),
+    ...(Array.isArray(excludedRows?.dependencyKeys) ? excludedRows.dependencyKeys : []),
+    ...(Array.isArray(targetExcludedRows?.dependencies) ? targetExcludedRows.dependencies : []),
+    ...(Array.isArray(targetExcludedRows?.dependencyKeys) ? targetExcludedRows.dependencyKeys : []),
+  ];
+  const unapprovedExclusions = stableKeys([
+    ...inputUnapprovedExclusionKeys,
+    ...missingExclusionKeys,
+    ...rowViolations,
+    ...dependencyViolations,
+  ]);
+  const excludedRowsMatch = !exclusionContract ||
+    (excludedCountsMatch && rowViolations.length === 0 && dependencyViolations.length === 0 && missingExclusionKeys.length === 0);
   const unapproved = stableKeys(unapprovedDivergenceKeys);
   const passed =
     sourceCountsMatchApply &&
@@ -628,7 +870,10 @@ export function compareReconciliation(input) {
     targetCountsMatchExpected &&
     targetStructureValid &&
     hashesMatch &&
-    targetStatusRowsMatchExpected;
+    targetStatusRowsMatchExpected &&
+    excludedRowsMatch &&
+    excludedClosureHashMatch &&
+    unapprovedExclusions.length === 0;
   return {
     passed,
     sourceCountsMatchApply,
@@ -650,6 +895,9 @@ export function compareReconciliation(input) {
     missingSnapshots,
     approvedMissingKeys: stableKeys(approvedMissingKeys),
     unapprovedDivergenceKeys: unapproved,
+    excludedRowsMatch,
+    excludedClosureHashMatch,
+    unapprovedExclusionKeys: unapprovedExclusions,
   };
 }
 
@@ -779,9 +1027,20 @@ export function runReconciliation(args, env = process.env) {
   const apply = readJson(args.applyReport, 'Report apply');
   const sourceManifestHash = validHash(dryRun?.manifest?.manifestHash, 'Hash do dry-run');
   const applyManifestHash = validHash(apply?.manifest?.manifestHash, 'Hash do apply');
-  const sourceExpected = expectedReconciliation(dryRun.manifest, 'Dry-run');
+  const sourceExpectedRaw = expectedReconciliation(dryRun.manifest, 'Dry-run');
   const applyExpected = expectedReconciliation(apply.manifest, 'Apply');
-  if (!sameJson(sourceExpected, applyExpected)) fail('Expectativas de reconciliação dry-run/apply divergentes.');
+  const sourceExpected = expectedWithoutExcluded(
+    sourceExpectedRaw,
+    sourceExpectedRaw.exclusionClosure.keys
+  );
+  const comparableExpected = (value) => {
+    const projection = { ...value };
+    delete projection.exclusionCounts;
+    delete projection.exclusionClosure;
+    return projection;
+  };
+  if (!sameJson(comparableExpected(sourceExpected), comparableExpected(applyExpected)))
+    fail('Expectativas de reconciliação dry-run/apply divergentes.');
   const approvedApply = stableKeys(apply.approvedDivergenceKeys);
   const runId = apply?.manifest?.runId;
   if (typeof runId !== 'string' || !UUID_PATTERN.test(runId)) fail('Run ID do apply inválido.');
@@ -818,6 +1077,13 @@ export function runReconciliation(args, env = process.env) {
     quotations: Number(apply.orcamentos?.lidos || 0),
   };
   const target = runTargetQueries(service, env);
+  const exclusionClosure = sourceExpectedRaw.exclusionClosure;
+  const excludedProductSkus = new Set(sourceExpectedRaw.rows.products
+    .filter((row) => exclusionClosure.keys.includes(`${row.sourceDoctype || 'Item'}:${row.sourceId}`))
+    .map((row) => String(row.sku)));
+  const targetExcludedLineageKeys = stableKeys(target.allLineage
+    .filter((row) => exclusionClosure.keys.includes(sourceKey(row)))
+    .map(sourceKey));
   const fullSelection = selectedLineageRows(target.allLineage, applyExpected);
   const expectedSourceKeys = new Set([
     ...applyExpected.keys.products,
@@ -922,9 +1188,11 @@ export function runReconciliation(args, env = process.env) {
     selectedRevisionIds.add(revision.id);
     sourceIdByRevisionId.set(revision.id, lineage.sourceId);
   }
-  const items = target.items
-    .filter((item) => selectedRevisionIds.has(item.revisionId))
-    .map((item) => itemProjection(sourceIdByRevisionId.get(item.revisionId), item));
+  const selectedTargetItems = target.items.filter((item) => selectedRevisionIds.has(item.revisionId));
+  const items = selectedTargetItems.map((item) => itemProjection(sourceIdByRevisionId.get(item.revisionId), item));
+  const targetExcludedDependencyKeys = stableKeys(selectedTargetItems
+    .filter((item) => excludedProductSkus.has(String(item.productSku)))
+    .map((item) => `dependency:${hash(String(item.productSku))}`));
   const templatePairs = new Set(revisions.map((row) => `${row.templateKey}:${row.templateHash}`));
   const templates = target.templates
     .filter((row) => templatePairs.has(`${row.key}:${row.hash}`))
@@ -1019,6 +1287,10 @@ export function runReconciliation(args, env = process.env) {
     .filter((detail) => detail?.status === 'divergentes' && detail?.aprovada !== true)
     .map((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}`)
     .filter((key) => key !== ':');
+  const unapprovedExclusionKeys = (apply?.total?.detalhes || [])
+    .filter((detail) => detail?.status === 'excluidos')
+    .map((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}`)
+    .filter((key) => key !== ':' && !exclusionClosure.keys.includes(key));
   const blocking = Number(apply?.manifest?.divergenceCounts?.blocking || 0);
   const expected = comparisonExpected;
   const comparison = compareReconciliation({
@@ -1043,7 +1315,20 @@ export function runReconciliation(args, env = process.env) {
     missingSnapshots,
     approvedMissingKeys,
     expectedHashesMatchTarget: sameJson(actualHashes, effectiveExpectedHashes),
+    expectedExclusionCounts: exclusionClosure.counts,
+    actualExclusionCounts: applyExpected.exclusionCounts,
+    sourceExclusionClosureHash: exclusionClosure.closureHash,
+    applyExclusionClosureHash: applyExpected.exclusionClosure.closureHash,
+    targetExcludedLineageKeys,
+    targetExcludedDependencyKeys,
+    unapprovedExclusionKeys,
   });
+  const artifactComparison = {
+    ...comparison,
+    approvedMissingKeys: comparison.approvedMissingKeys.map(artifactSourceKey),
+    unapprovedDivergenceKeys: comparison.unapprovedDivergenceKeys.map(artifactSourceKey),
+    unapprovedExclusionKeys: comparison.unapprovedExclusionKeys.map(artifactSourceKey),
+  };
   const artifact = {
     schemaVersion: 3,
     status: comparison.passed ? 'passed' : 'failed',
@@ -1058,18 +1343,23 @@ export function runReconciliation(args, env = process.env) {
       counts: expected.counts,
       hashes: expected.hashes,
       statusCounts: expected.statusCounts,
+      exclusionCounts: expected.exclusionCounts,
+      exclusionClosureHash: exclusionClosure.closureHash,
+      exclusionClosureCounts: exclusionClosure.counts,
     },
     target: {
       counts: targetCounts,
       hashes: actualHashes,
       statusCounts: targetStatusCounts,
+      exclusionCounts: applyExpected.exclusionCounts,
+      exclusionClosureHash: applyExpected.exclusionClosure.closureHash,
       lineageRows: lineage.length,
       actualRevisionStatuses: statusCounts(target.revisions.filter((row) => selectedRevisionIds.has(row.id))),
     },
     lineage: { selected: lineage.length, invalid: lineageInvalid },
-    approvedDivergenceKeys: approvedApply,
-    approvedMissingKeys: stableKeys(approvedMissingKeys),
-    comparison,
+    approvedDivergenceKeys: approvedApply.map(artifactSourceKey),
+    approvedMissingKeys: stableKeys(approvedMissingKeys).map(artifactSourceKey),
+    comparison: artifactComparison,
   };
   writeArtifact(output, artifact);
   if (!comparison.passed) fail('Reconciliação PostgreSQL falhou; artefato persistido para revisão.');
