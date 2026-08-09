@@ -8,6 +8,10 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { eq, sql } from 'drizzle-orm';
 import postgres from 'postgres';
 
+import {
+  createDatabaseConnection,
+  createMigrationDatabaseConnection,
+} from '../../api/_db/client.js';
 import { createPostgresFrappeMigrationRepository } from '../../api/_db/frappe-migration-repository.js';
 import * as schema from '../../api/_db/schema.js';
 import {
@@ -30,6 +34,33 @@ const migrationsFolder = path.resolve(
   '..',
   'drizzle'
 );
+
+test('migration lease connection disables idle reaping without changing app defaults', async () => {
+  const appConnection = createDatabaseConnection('postgresql://localhost/aspen_test');
+  const connection = createMigrationDatabaseConnection('postgresql://localhost/aspen_test');
+  try {
+    assert.equal(appConnection.client.options.idle_timeout, 20);
+    assert.equal(connection.client.options.idle_timeout, 0);
+    const executed: unknown[] = [];
+    const results = [{ acquired: true }, { released: true }];
+    const db = connection.db as typeof connection.db & {
+      execute: (query: unknown) => Promise<unknown>;
+    };
+    db.execute = async (query) => {
+      executed.push(query);
+      return [results.shift()];
+    };
+    const repository = createPostgresFrappeMigrationRepository(() => db);
+    await repository.acquireMigrationLease('lease-contract-test', 'owner');
+    await repository.releaseMigrationLease('lease-contract-test', 'owner');
+    assert.equal(executed.length, 2);
+  } finally {
+    await Promise.all([
+      appConnection.client.end({ timeout: 5 }),
+      connection.client.end({ timeout: 5 }),
+    ]);
+  }
+});
 
 test('PostgreSQL adapter mapeia contrato de linhagem sem banco externo', async () => {
   const sourceUpdatedAt = new Date('2024-01-05T03:04:05.000Z');
@@ -131,7 +162,7 @@ test(
         .from(schema.frappeImportLineage)
         .where(eq(schema.frappeImportLineage.sourceId, customerId));
       assert.equal(clientLineageRows.length, 1);
-      assert.match(clientLineageRows[0].legacyPayload?.customer_name || '', /^Cliente PG lineage /);
+      assert.match(String(clientLineageRows[0].legacyPayload?.customer_name || ''), /^Cliente PG lineage /);
       assert.equal((await repository.loadState()).lineage.some((entry) => 'legacyPayload' in entry), false);
       // PostgreSQL numeric columns return fixed scales (30.000), while the
       // source normalizer emits canonical decimals (30); the rerun remains a

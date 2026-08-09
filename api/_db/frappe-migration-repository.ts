@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getMigrationDatabase, type AppDatabase } from './client.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 import { templateSeedPlan } from './quotation-template-migration.js';
@@ -336,7 +336,7 @@ function sourcePayload(value: unknown): SourceRecord {
 }
 
 export function createPostgresFrappeMigrationRepository(
-  getDb: DatabaseProvider = getDatabase
+  getDb: DatabaseProvider = getMigrationDatabase
 ): FrappeMigrationRepository {
   return {
     async acquireMigrationLease(manifestHash: string, ownerId: string): Promise<void> {
