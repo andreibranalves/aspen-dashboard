@@ -1682,7 +1682,8 @@ function buildManifest(
   report: ImportReport,
   dataset: FrappeDataset,
   reconciliation = emptyReconciliationExpectations(),
-  discardManifest?: DiscardManifest
+  discardManifest?: DiscardManifest,
+  discardPlan?: DiscardPlan
 ): MigrationManifest {
   return {
     runId,
@@ -1703,6 +1704,20 @@ function buildManifest(
       blocking: report.total.divergentes + report.total.erros,
     },
     discardManifestHash: discardManifest?.closureHash || null,
+    ...(mode === 'dry-run' && discardPlan
+      ? {
+          discardPlan: {
+            sourceManifestHash: manifestHash,
+            closureHash: discardPlan.closureHash,
+            entries: [...discardPlan.entries.values()].map(({ key, entity, reason, depends_on }) => ({
+              key,
+              entity,
+              reason,
+              depends_on: [...depends_on],
+            })),
+          },
+        }
+      : {}),
     exclusionCounts: {
       produtos: report.produtos.excluidos,
       faixas: report.faixas.excluidos,
@@ -1868,7 +1883,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         finalized,
         dataset,
         undefined,
-        options.discardManifest
+        options.discardManifest,
+        sourceDiscard.plan
       ),
     };
   };
@@ -2761,7 +2777,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         builtQuotations.quotationUnits,
         discardPlan
       ),
-      options.discardManifest
+      options.discardManifest,
+      sourceDiscard.plan
     ),
   };
 }

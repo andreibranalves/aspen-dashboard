@@ -29,8 +29,13 @@ function safeCliMessage(error) {
     'Dataset Frappe inválido',
     'Chave de aprovação inválida',
     'Manifesto revisado',
+    'Manifesto de descarte',
+    'Informe o caminho do manifesto de descarte',
     'Fonte Frappe',
     'Arquivo de fixture Frappe',
+    'Arquivo de manifesto de descarte',
+    'Manifesto de descarte inválido',
+    'Manifesto de descarte:'
   ];
   return safePrefixes.some((prefix) => message.startsWith(prefix)) ? message : 'Falha ao processar migração Frappe.';
 }
@@ -44,6 +49,7 @@ export function parseArgs(argv) {
   let mode = null;
   let fixture = null;
   let expectedManifestHash = null;
+  let discardManifestPath = null;
   const approvedDivergences = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -63,6 +69,13 @@ export function parseArgs(argv) {
       if (!value || !/^[0-9a-f]{64}$/i.test(value))
         throw new Error('Informe um manifest hash SHA-256 após --expected-manifest-hash.');
       expectedManifestHash = value.toLowerCase();
+      index += 1;
+      continue;
+    }
+    if (arg === '--discard-manifest') {
+      discardManifestPath = argv[index + 1];
+      if (!discardManifestPath || discardManifestPath.startsWith('--'))
+        throw new Error('Informe o caminho do manifesto de descarte após --discard-manifest.');
       index += 1;
       continue;
     }
@@ -91,7 +104,13 @@ export function parseArgs(argv) {
   if (normalizedMode === 'apply' && fixture) {
     throw new Error('--fixture só pode ser usado explicitamente com --dry-run.');
   }
-  return { mode: normalizedMode, fixture, expectedManifestHash, approvedDivergences };
+  return {
+    mode: normalizedMode,
+    fixture,
+    expectedManifestHash,
+    discardManifestPath,
+    approvedDivergences,
+  };
 }
 
 function parseServiceFile(contents, serviceName) {
@@ -235,6 +254,35 @@ function assertFixtureObject(value) {
   return value;
 }
 
+async function loadDiscardManifest(pathname) {
+  let contents;
+  try {
+    contents = await readFile(resolve(pathname), 'utf8');
+  } catch (error) {
+    throw new Error('Arquivo de manifesto de descarte não pôde ser lido.', { cause: error });
+  }
+  let value;
+  try {
+    value = JSON.parse(contents);
+  } catch (error) {
+    throw new Error('Manifesto de descarte inválido: JSON malformado.', { cause: error });
+  }
+  try {
+    const module = await import('../api/_functions/lib/migration-discard.js');
+    return module.parseDiscardManifest(value);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const category = /schemaVersion|policy/i.test(message)
+      ? 'schema inválido'
+      : /hash/i.test(message)
+        ? 'hash inválido'
+        : /chave|origem/i.test(message)
+          ? 'chave inválida'
+          : 'validação rejeitada';
+    throw new Error(`Manifesto de descarte inválido: ${category}.`, { cause: error });
+  }
+}
+
 async function loadFixture(pathname) {
   const absolute = resolve(pathname);
   if (extname(absolute).toLowerCase() === '.json') {
@@ -265,7 +313,16 @@ async function loadFixture(pathname) {
 }
 
 async function main() {
-  const { mode, fixture, expectedManifestHash, approvedDivergences } = parseArgs(process.argv.slice(2));
+  const {
+    mode,
+    fixture,
+    expectedManifestHash,
+    discardManifestPath,
+    approvedDivergences,
+  } = parseArgs(process.argv.slice(2));
+  const discardManifest = discardManifestPath
+    ? await loadDiscardManifest(discardManifestPath)
+    : undefined;
   if (mode === 'apply' && process.env.FRAPPE_MIGRATION_FIXTURE) {
     throw new Error('FRAPPE_MIGRATION_FIXTURE não pode ser usada com --apply; remova a variável.');
   }
@@ -292,6 +349,7 @@ async function main() {
     pdfPipeline: mode === 'apply' ? migration.createDefaultHistoricalPdfPipeline() : undefined,
     approvedDivergences,
     expectedManifestHash,
+    discardManifest,
   });
   const safeApprovedDivergences = [...new Set(approvedDivergences.map((key) => migration.safeApprovalKey(key)))];
   process.stdout.write(`${JSON.stringify({

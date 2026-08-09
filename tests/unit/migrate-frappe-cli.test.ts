@@ -25,6 +25,7 @@ describe('CLI de migração Frappe', () => {
       mode: 'dry-run',
       fixture: null,
       expectedManifestHash: null,
+      discardManifestPath: null,
       approvedDivergences: [],
     });
     const expectedManifestHash = 'a'.repeat(64);
@@ -40,10 +41,21 @@ describe('CLI de migração Frappe', () => {
         mode: 'apply',
         fixture: null,
         expectedManifestHash,
+        discardManifestPath: null,
         approvedDivergences: ['Quotation:QTN-1'],
       }
     );
     assert.throws(() => parseArgs(['--apply']), /expected-manifest-hash|manifest.*obrigatório/i);
+    assert.deepEqual(
+      parseArgs(['--dry-run', '--discard-manifest', '/tmp/discard.json']),
+      {
+        mode: 'dry-run',
+        fixture: null,
+        expectedManifestHash: null,
+        discardManifestPath: '/tmp/discard.json',
+        approvedDivergences: [],
+      }
+    );
     assert.throws(() => parseArgs([]), /exatamente/);
     assert.throws(() => parseArgs(['--dry-run', '--apply']), /exatamente/);
     assert.throws(
@@ -525,7 +537,7 @@ describe('CLI de migração Frappe', () => {
 
   it('exige manifest hash de apply antes de abrir o repository', async () => {
     let repositoryPropertyReads = 0;
-    const repository = new Proxy(
+    const repository: any = new Proxy(
       {},
       {
         get() {
@@ -539,7 +551,7 @@ describe('CLI de migração Frappe', () => {
       () =>
         runFrappeMigration({
           mode: 'apply',
-          dataset: {},
+          dataset: { items: [] },
           repository,
         }),
       /expected-manifest-hash|manifest.*obrigatório/i
@@ -549,7 +561,7 @@ describe('CLI de migração Frappe', () => {
 
   it('rejeita manifest hash não-string sem chamar trim ou repository', async () => {
     let repositoryPropertyReads = 0;
-    const repository = new Proxy(
+    const repository: any = new Proxy(
       {},
       {
         get() {
@@ -565,7 +577,7 @@ describe('CLI de migração Frappe', () => {
         () =>
           runFrappeMigration({
             mode: 'apply',
-            dataset: {},
+            dataset: { items: [] },
             expectedManifestHash: expectedManifestHash as any,
             repository,
           }),
@@ -581,7 +593,7 @@ describe('CLI de migração Frappe', () => {
       readFileSync(path.resolve(root, 'tests/fixtures/frappe-migration-valid.json'), 'utf8')
     );
     let repositoryPropertyReads = 0;
-    const repository = new Proxy(
+    const repository: any = new Proxy(
       {},
       {
         get() {
@@ -794,6 +806,96 @@ describe('CLI de migração Frappe', () => {
       assert.match(applyWithFixture.stderr, /FRAPPE_MIGRATION_FIXTURE|fixture/i);
     } finally {
       rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('gera manifesto protegido a partir do plano redigido do dry-run', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'frappe-discard-cli-'));
+    const fixturePath = path.join(directory, 'fixture.json');
+    const reportPath = path.join(directory, 'report.json');
+    const outputPath = path.join(directory, 'discard.json');
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+    writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        items: [
+          { name: 'ITEM-BLOCKED', item_code: 'SKU-BLOCKED', item_name: 'Produto bloqueado' },
+          { name: 'ITEM-KEEP', item_code: 'SKU-KEEP', item_name: 'Produto mantido' },
+        ],
+        pricingRules: [
+          { name: 'PR-BLOCKED-A', item_code: 'SKU-BLOCKED', min_qty: 10, price_list_rate: '10.00' },
+          { name: 'PR-BLOCKED-B', item_code: 'SKU-BLOCKED', min_qty: 10, price_list_rate: '9.00' },
+          { name: 'PR-KEEP', item_code: 'SKU-KEEP', min_qty: 10, price_list_rate: '8.00' },
+        ],
+        customers: [
+          { name: 'CUST-AMB-A', customer_name: 'Pessoa Ambigua' },
+          { name: 'CUST-AMB-B', customer_name: 'Pessoa Ambigua' },
+          { name: 'CUST-KEEP', customer_name: 'Pessoa Mantida', tax_id: '12345678901' },
+        ],
+        quotations: [
+          { name: 'QTN-2025-00001', quotation_to: 'Customer', customer: 'CUST-AMB-A', status: 'Draft', items: [{ item_code: 'SKU-BLOCKED', qty: 1, rate: '10', amount: '10' }] },
+          { name: 'QTN-2025-00002', quotation_to: 'Customer', customer: 'CUST-KEEP', status: 'Draft', items: [{ item_code: 'SKU-BLOCKED', qty: 1, rate: '10', amount: '10' }] },
+          { name: 'QTN-2025-00003', quotation_to: 'Customer', customer: 'CUST-KEEP', status: 'Draft', items: [{ item_code: 'SKU-KEEP', qty: 1, rate: '8', amount: '8' }] },
+        ],
+      })
+    );
+    const env = { ...process.env, DATABASE_URL: '', TEST_DATABASE_URL: '' };
+    try {
+      const dryRun = spawnSync(
+        process.execPath,
+        ['scripts/migrate-frappe-crm.mjs', '--dry-run', '--fixture', fixturePath],
+        { cwd: root, env, encoding: 'utf8' }
+      );
+      assert.equal(dryRun.status, 1, dryRun.stderr);
+      writeFileSync(reportPath, dryRun.stdout);
+      const report = JSON.parse(dryRun.stdout);
+      const planEntries = report.manifest.discardPlan.entries;
+      const dependent = planEntries.find((entry: { key: string }) => entry.key === 'Quotation:QTN-2025-00002');
+      assert.ok(dependent);
+      assert.ok(dependent.depends_on.some((key: string) => key.startsWith('Pricing Rule:')));
+      const generated = spawnSync(
+        process.execPath,
+        [
+          'scripts/create-migration-discard-manifest.mjs',
+          '--report',
+          reportPath,
+          '--snapshot-manifest-hash',
+          report.manifest.manifestHash,
+          '--output',
+          outputPath,
+        ],
+        { cwd: root, env, encoding: 'utf8' }
+      );
+      assert.equal(generated.status, 0, generated.stderr);
+      assert.doesNotMatch(generated.stdout, /CUST-AMB|Pessoa Ambigua|SKU-BLOCKED|secret/i);
+      assert.deepEqual(JSON.parse(generated.stdout).counts, {
+        total: 7,
+        produtos: 1,
+        faixas: 2,
+        clientes: 2,
+        orcamentos: 2,
+      });
+      assert.equal(statSync(outputPath).mode & 0o777, 0o600);
+      assert.equal(JSON.parse(readFileSync(outputPath, 'utf8')).entries.length, planEntries.length);
+
+      const existing = spawnSync(
+        process.execPath,
+        [
+          'scripts/create-migration-discard-manifest.mjs',
+          '--report',
+          reportPath,
+          '--snapshot-manifest-hash',
+          report.manifest.manifestHash,
+          '--output',
+          outputPath,
+        ],
+        { cwd: root, env, encoding: 'utf8' }
+      );
+      assert.notEqual(existing.status, 0);
+      assert.match(existing.stderr, /já existe/);
+      assert.doesNotMatch(existing.stderr, /CUST-AMB|Pessoa Ambigua|SKU-BLOCKED/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

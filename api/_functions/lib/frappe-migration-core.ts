@@ -1979,6 +1979,17 @@ export interface MigrationManifest {
     blocking: number;
   };
   discardManifestHash: string | null;
+  /** Redacted dry-run projection used to create the protected discard manifest. */
+  discardPlan?: {
+    sourceManifestHash: string;
+    closureHash: string;
+    entries: Array<{
+      key: string;
+      entity: 'produto' | 'faixa' | 'cliente' | 'orcamento';
+      reason: string;
+      depends_on: string[];
+    }>;
+  };
   exclusionCounts: {
     produtos: number;
     faixas: number;
