@@ -75,3 +75,11 @@ No source-system, production, staging, or PostgreSQL writes were performed.
   "manualNotes": "No source-system or database write was performed."
 }
 ```
+
+## Fix round 2
+
+- Apply manifests now include the same opaque, hash-bound discard-plan projection as dry-run manifests.
+- Reconciliation rejects non-zero exclusion counts when no discard plan is present instead of trusting supplied counts.
+- Added regressions for missing-plan rejection and valid apply projection.
+- Focused reconciliation and migration tests, API build, type-check, lint, and diff-check passed.
+- No source-system, PostgreSQL, staging, or production writes were performed.
