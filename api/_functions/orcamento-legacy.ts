@@ -102,7 +102,9 @@ export function createLegacyHandler(
       );
 
       // ── Fire-and-forget webhook to n8n automation engine ──
-      const n8nUrl = process.env.N8N_WEBHOOK_URL;
+      const n8nUrl = process.env.N8N_WEBHOOK_ENABLED === 'true'
+        ? process.env.N8N_WEBHOOK_URL
+        : undefined;
       if (n8nUrl) {
         const webhookPayload = {
           event: 'quotation_created',

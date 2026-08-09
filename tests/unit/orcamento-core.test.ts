@@ -262,6 +262,41 @@ test('legacy boundary promotes displayed rates without mutating the request', as
   assert.equal(originalItems[0].manual_rate, false);
 });
 
+test('legacy quote skips N8N unless explicitly enabled', async () => {
+  const previousUrl = process.env.N8N_WEBHOOK_URL;
+  const previousEnabled = process.env.N8N_WEBHOOK_ENABLED;
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  process.env.N8N_WEBHOOK_URL = 'https://n8n.test/webhook';
+  delete process.env.N8N_WEBHOOK_ENABLED;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    return new Response('{}', { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const handler = createLegacyHandler({
+      runQuotePipeline: async () => ({
+        success: true,
+        quotation_id: 'QUO-0001',
+        deal_id: 'DEAL-0001',
+        cliente: 'Cliente legado',
+        pdf_url: 'https://example.test/quote.pdf',
+      }),
+    });
+    const result = await handler(event({ extracted: { items: [{ item_code: 'AUTO-1', qty: 1 }] } }));
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(requests, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousUrl === undefined) delete process.env.N8N_WEBHOOK_URL;
+    else process.env.N8N_WEBHOOK_URL = previousUrl;
+    if (previousEnabled === undefined) delete process.env.N8N_WEBHOOK_ENABLED;
+    else process.env.N8N_WEBHOOK_ENABLED = previousEnabled;
+  }
+});
+
 test('quote rollout uses exact flag and never falls back after a core failure', async () => {
   const prevOperational = process.env.CRM_OPERATIONAL_MODE;
   delete process.env.CRM_OPERATIONAL_MODE;
