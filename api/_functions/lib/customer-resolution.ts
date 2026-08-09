@@ -4,6 +4,7 @@
 
 import { createHttpError, erpGetList, erpGetDoc, erpPost, erpPut } from './erpnext.js';
 import { normalizeCnpj, hasMinimumAddressForErp, buildAddressPayload } from './client-metadata.js';
+import { normalizeClientEmail } from '../client-schema.js';
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -57,7 +58,12 @@ export async function resolveParty(opts: ResolvePartyOptions): Promise<ResolvePa
   const { nome, email, telefone, cnpj, origem, utmSourceExists } = opts;
   const nomeCliente = sanitizeName(nome);
   const phoneFormatted = formatPhone(telefone);
-  const emailNormalized = email?.trim().toLowerCase() || '';
+  let emailNormalized: string;
+  try {
+    emailNormalized = normalizeClientEmail(email) || '';
+  } catch (error) {
+    throw createHttpError(400, error instanceof Error ? error.message : 'E-mail inválido.');
+  }
 
   let entityId = '';
   let entityType: 'Customer' | 'Lead' = 'Customer';
