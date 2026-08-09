@@ -4,7 +4,7 @@ Status: BLOCKED_PENDING_OPERATIONAL_APPROVAL.
 
 Branch: `master`.
 
-HEAD: `68886c8`.
+HEAD: local `master` worktree.
 
 ## Verified
 
