@@ -2,7 +2,7 @@
 // Used for local testing without Vercel CLI auth.
 // Start: node scripts/dev-api-server.mjs
 
-import './load-env.mjs';
+import './load-env-side-effect.mjs';
 import { createServer } from 'node:http';
 
 // Import all handlers

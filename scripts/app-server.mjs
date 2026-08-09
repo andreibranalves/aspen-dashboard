@@ -7,8 +7,8 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 
-// Load env from .env using dotenv
-import 'dotenv/config';
+// Load local config before API handlers are evaluated.
+import './load-env-side-effect.mjs';
 import { isAuthenticated } from '../api/_lib/auth.js';
 import { checkRateLimitAsync } from '../api/_lib/rate-limit.js';
 
