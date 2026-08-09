@@ -21,8 +21,10 @@ import {
   mkdirSync,
   existsSync,
   readFileSync,
-  writeFileSync,
   chmodSync,
+  closeSync,
+  openSync,
+  writeSync,
 } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -126,13 +128,7 @@ export function connectionIdentity(connection) {
     .join('|');
 }
 
-function readNamedServiceTarget() {
-  const serviceName = process.env.RESTORE_PG_SERVICE?.trim();
-  const serviceFile = process.env.PGSERVICEFILE?.trim();
-  const expectedDatabase = process.env.RESTORE_EXPECTED_DATABASE?.trim();
-  if (!serviceName && !expectedDatabase) return null;
-  if (!serviceName || !serviceFile || !expectedDatabase)
-    throw new Error('RESTORE_PG_SERVICE, RESTORE_EXPECTED_DATABASE e PGSERVICEFILE são obrigatórios.');
+function readServiceTarget(serviceName, serviceFile, expectedDatabase, label) {
   let active = false;
   const values = {};
   try {
@@ -156,12 +152,69 @@ function readNamedServiceTarget() {
     database: values.dbname || values.database,
   };
   if (values.hostaddr && values.hostaddr !== target.host)
-    throw new Error('RESTORE_PG_SERVICE não pode sobrescrever host com hostaddr.');
-  if (!target.host || !target.database)
-    throw new Error('RESTORE_PG_SERVICE não informa host e database.');
-  if (target.database !== expectedDatabase)
-    throw new Error('RESTORE_EXPECTED_DATABASE não corresponde ao serviço de restore.');
+    throw new Error(`${label} não pode sobrescrever host com hostaddr.`);
+  if (!target.host || !target.database) throw new Error(`${label} não informa host e database.`);
+  if (expectedDatabase && target.database !== expectedDatabase)
+    throw new Error(`Database esperado não corresponde a ${label}.`);
   return { name: serviceName, file: serviceFile, expectedDatabase, target };
+}
+
+function serviceEnvironment(service) {
+  const serviceEnv = { ...process.env };
+  for (const key of Object.keys(serviceEnv)) {
+    if (key.startsWith('PG')) delete serviceEnv[key];
+  }
+  delete serviceEnv.DATABASE_URL;
+  delete serviceEnv.RESTORE_DATABASE_URL;
+  delete serviceEnv.TEST_DATABASE_URL;
+  serviceEnv.PGSERVICEFILE = service.file;
+  serviceEnv.PGSERVICE = service.name;
+  if (process.env.PGPASSFILE) serviceEnv.PGPASSFILE = process.env.PGPASSFILE;
+  return serviceEnv;
+}
+
+function readNamedServiceTarget() {
+  const serviceName = process.env.RESTORE_PG_SERVICE?.trim();
+  const serviceFile = process.env.PGSERVICEFILE?.trim();
+  const passFile = process.env.PGPASSFILE?.trim();
+  const expectedDatabase = process.env.RESTORE_EXPECTED_DATABASE?.trim();
+  if (!serviceName && !expectedDatabase) return null;
+  if (!serviceName || !serviceFile || !passFile || !expectedDatabase)
+    throw new Error('RESTORE_PG_SERVICE, RESTORE_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
+  return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'RESTORE_PG_SERVICE');
+}
+
+function readCutoverServiceTarget() {
+  const serviceName = process.env.CUTOVER_PG_SERVICE?.trim();
+  const serviceFile = process.env.PGSERVICEFILE?.trim();
+  const passFile = process.env.PGPASSFILE?.trim();
+  const expectedDatabase = process.env.CUTOVER_EXPECTED_DATABASE?.trim();
+  if (!serviceName && !expectedDatabase) return null;
+  if (!serviceName || !serviceFile || !passFile || !expectedDatabase)
+    throw new Error('CUTOVER_PG_SERVICE, CUTOVER_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
+  return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'CUTOVER_PG_SERVICE');
+}
+
+function assertNamedServiceDatabase(service, label) {
+  const current = command(
+    'psql',
+    ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', service.name, '--command', 'SELECT current_database();'],
+    { env: serviceEnvironment(service) }
+  ).trim();
+  if (current !== service.expectedDatabase) throw new Error(`${label} apontou para database inesperado.`);
+}
+
+function assertCutoverServiceTarget(connection) {
+  const service = readCutoverServiceTarget();
+  if (!service) return;
+  if (
+    service.target.host.toLowerCase() !== connection.host.toLowerCase() ||
+    service.target.port !== connection.port ||
+    service.target.database !== connection.database
+  ) {
+    throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
+  }
+  assertNamedServiceDatabase(service, 'CUTOVER_PG_SERVICE');
 }
 
 function assertRestoreServiceTarget(restore) {
@@ -174,27 +227,18 @@ function assertRestoreServiceTarget(restore) {
   ) {
     throw new Error('RESTORE_DATABASE_URL e RESTORE_PG_SERVICE não apontam para o mesmo destino.');
   }
-  const serviceEnv = { ...process.env };
-  for (const key of Object.keys(serviceEnv)) {
-    if (key.startsWith('PG')) delete serviceEnv[key];
-  }
-  delete serviceEnv.DATABASE_URL;
-  delete serviceEnv.RESTORE_DATABASE_URL;
-  delete serviceEnv.TEST_DATABASE_URL;
-  serviceEnv.PGSERVICEFILE = service.file;
-  if (process.env.PGPASSFILE) serviceEnv.PGPASSFILE = process.env.PGPASSFILE;
-  const current = command(
-    'psql',
-    ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', service.name, '--command', 'SELECT current_database();'],
-    { env: serviceEnv }
-  ).trim();
-  if (current !== service.expectedDatabase)
-    throw new Error('RESTORE_PG_SERVICE apontou para database inesperado.');
+  assertNamedServiceDatabase(service, 'RESTORE_PG_SERVICE');
 }
 
 function assertRestoreTargetIsDistinct(source, restore) {
   if (connectionIdentity(source) === connectionIdentity(restore)) {
     throw new Error('RESTORE_DATABASE_URL deve apontar para um alvo isolado diferente de DATABASE_URL.');
+  }
+  const productionUrl = process.env.PRODUCTION_DATABASE_URL?.trim();
+  if (productionUrl) {
+    const production = parseConnectionUrl(productionUrl, 'PRODUCTION_DATABASE_URL');
+    if (connectionIdentity(production) === connectionIdentity(restore))
+      throw new Error('RESTORE_DATABASE_URL não pode apontar para a base ativa.');
   }
 }
 
@@ -277,8 +321,30 @@ export function ensureBackupDirectory(env = process.env) {
   return directory;
 }
 
+function writeExclusive(filepath, content) {
+  let descriptor;
+  let created = false;
+  try {
+    descriptor = openSync(filepath, 'wx', 0o600);
+    created = true;
+    writeSync(descriptor, content);
+  } catch {
+    if (created) {
+      try {
+        unlinkSync(filepath);
+      } catch {
+        // Keep the original failure boundary sanitized.
+      }
+    }
+    throw new Error('Arquivo de backup já existe ou não pôde ser criado com segurança.');
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
 function runBackup() {
   const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
+  assertCutoverServiceTarget(connection);
   const backupsDir = ensureBackupDirectory();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `${BACKUP_PREFIX}${timestamp}${BACKUP_SUFFIX}`;
@@ -290,7 +356,7 @@ function runBackup() {
       ['--no-owner', '--no-acl', '--clean', '--if-exists', '--format=plain'],
       { env: postgresEnv(connection) }
     );
-    writeFileSync(filepath, output, { mode: 0o600 });
+    writeExclusive(filepath, output);
     chmodSync(filepath, 0o600);
     assertMode(filepath, 0o600, 'Arquivo de backup');
     const stat = statSync(filepath);
@@ -341,9 +407,10 @@ function runValidate(dumpFile) {
   assertRestoreTargetIsDistinct(source, restore);
   assertRestoreServiceTarget(restore);
   const filepath = resolve(dumpFile);
-  if (!existsSync(filepath) || !statSync(filepath).isFile()) {
-    throw new Error('Arquivo de dump não encontrado.');
-  }
+  if (!existsSync(filepath)) throw new Error('Arquivo de dump não encontrado.');
+  const dumpStat = lstatSync(filepath);
+  if (!dumpStat.isFile() || dumpStat.isSymbolicLink())
+    throw new Error('Arquivo de dump deve ser regular e não pode ser link simbólico.');
   const targetEnv = postgresEnv(restore);
   stdout('Validando dump explícito no alvo RESTORE_DATABASE_URL.');
   command(
@@ -404,6 +471,7 @@ export function exceedsMegabyteQuota(bytes, maxMegabytes) {
 
 async function runPreflight() {
   const connection = parseConnectionUrl(connectionUrl('DATABASE_URL'));
+  assertCutoverServiceTarget(connection);
   const backupDir = ensureBackupDirectory();
   const retentionDays = parseInt(process.env.BACKUP_RETENTION_DAYS || '30', 10);
   const filesystem = statfsSync(backupDir);

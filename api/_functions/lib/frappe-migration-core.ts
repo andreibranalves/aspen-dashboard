@@ -1900,6 +1900,13 @@ export async function readFrappeDataset(
 }
 
 export interface MigrationReconciliationExpectations {
+  keys: {
+    products: string[];
+    pricingDocuments: string[];
+    pricingTiers: string[];
+    clients: string[];
+    quotations: string[];
+  };
   counts: {
     products: number;
     pricingDocuments: number;
@@ -1921,10 +1928,15 @@ export interface MigrationReconciliationExpectations {
     items: string;
     templates: string;
     templateVersions: string;
+    lineage: string;
   };
   statusCounts: {
     quotations: Record<string, number>;
     revisions: Record<string, number>;
+  };
+  statusRows: {
+    quotations: Array<{ sourceId: string; status: string }>;
+    revisions: Array<{ sourceId: string; status: string }>;
   };
 }
 

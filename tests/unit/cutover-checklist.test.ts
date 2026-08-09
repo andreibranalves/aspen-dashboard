@@ -155,7 +155,7 @@ test('supporting scripts fail closed and emit verifiable migration artifacts', (
   assert.match(runbook, /TEST_DATABASE_URL="\$STAGING_DATABASE_URL"/);
   assert.match(
     runbook,
-    /env -u DATABASE_URL -u TEST_DATABASE_URL[\s\S]*TEST_DATABASE_URL="\$STAGING_DATABASE_URL"[\s\S]*DATABASE_URL="\$STAGING_DATABASE_URL"[\s\S]*npm run db:migrate/
+    /env -u DATABASE_URL -u TEST_DATABASE_URL[\s\S]*DATABASE_URL="\$STAGING_DATABASE_URL"[\s\S]*CUTOVER_EXPECTED_DATABASE=aspen_test[\s\S]*npm run db:migrate/
   );
   const applySection = runbook.slice(
     runbook.indexOf('Execute o apply contra a base autorizada'),

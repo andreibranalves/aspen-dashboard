@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  closeSync,
   existsSync,
   lstatSync,
+  openSync,
   readFileSync,
   realpathSync,
-  writeFileSync,
   renameSync,
+  unlinkSync,
+  writeSync,
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const EXPECTED_COUNT_KEYS = [
+const COUNT_KEYS = [
   'products',
   'pricingDocuments',
   'pricingTiers',
@@ -28,6 +31,7 @@ const EXPECTED_COUNT_KEYS = [
   'templates',
   'templateVersions',
 ];
+const HASH_KEYS = [...COUNT_KEYS, 'lineage'];
 
 function fail(message) {
   throw new Error(message);
@@ -50,39 +54,19 @@ function parseArgs(argv) {
 }
 
 function assertSecureFile(filepath, label) {
-  const stat = lstatSync(filepath);
-  if (!stat.isFile() || (stat.mode & 0o777) !== 0o600)
+  const stat = lstatSync(resolve(filepath));
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o600)
     fail(`${label} deve ser arquivo regular com permissão 0600.`);
 }
 
 function assertSecureDirectory(directory, label) {
   const lexical = resolve(directory);
   const stat = lstatSync(lexical);
-  if (!stat.isDirectory() || (stat.mode & 0o777) !== 0o700)
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o700)
     fail(`${label} deve ser diretório regular com permissão 0700.`);
   const real = realpathSync(lexical);
   if (real === PROJECT_ROOT || real.startsWith(`${PROJECT_ROOT}/`))
     fail(`${label} deve ficar fora do checkout.`);
-}
-
-function readServiceDatabase(serviceFile, serviceName) {
-  const contents = readFileSync(serviceFile, 'utf8');
-  let active = false;
-  const values = {};
-  for (const rawLine of contents.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    const section = line.match(/^\[([^\]]+)\]$/);
-    if (section) {
-      active = section[1].trim() === serviceName;
-      continue;
-    }
-    if (!active || !line || line.startsWith('#')) continue;
-    const separator = line.indexOf('=');
-    if (separator !== -1) values[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
-  }
-  const database = values.dbname || values.database;
-  if (!database || !values.host) fail('CUTOVER_PG_SERVICE não informa host e database.');
-  return { host: values.host, port: values.port || '5432', database };
 }
 
 function outputDirectory(output) {
@@ -102,8 +86,30 @@ function readJson(filepath, label) {
   }
 }
 
-function hash(value) {
-  return createHash('sha256').update(JSON.stringify(sortKeys(value))).digest('hex');
+function readServiceDatabase(serviceFile, serviceName) {
+  let active = false;
+  const values = {};
+  try {
+    for (const rawLine of readFileSync(serviceFile, 'utf8').split(/\r?\n/)) {
+      const line = rawLine.trim();
+      const section = line.match(/^\[([^\]]+)\]$/);
+      if (section) {
+        active = section[1].trim() === serviceName;
+        continue;
+      }
+      if (!active || !line || line.startsWith('#')) continue;
+      const separator = line.indexOf('=');
+      if (separator !== -1)
+        values[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
+    }
+  } catch {
+    fail('PGSERVICEFILE não pôde ser lido.');
+  }
+  const database = values.dbname || values.database;
+  if (!values.host || !database) fail('CUTOVER_PG_SERVICE não informa host e database.');
+  if (values.hostaddr && values.hostaddr !== values.host)
+    fail('CUTOVER_PG_SERVICE não pode sobrescrever host com hostaddr.');
+  return { host: values.host.toLowerCase(), port: values.port || '5432', database };
 }
 
 function sortKeys(value) {
@@ -117,8 +123,16 @@ function sortKeys(value) {
   );
 }
 
+function hash(value) {
+  return createHash('sha256').update(JSON.stringify(sortKeys(value))).digest('hex');
+}
+
 function stableRows(rows, key) {
   return rows.slice().sort((left, right) => key(left).localeCompare(key(right)));
+}
+
+function sameJson(left, right) {
+  return JSON.stringify(sortKeys(left)) === JSON.stringify(sortKeys(right));
 }
 
 function validHash(value, label) {
@@ -128,19 +142,6 @@ function validHash(value, label) {
 
 function stableKeys(values) {
   return [...new Set(Array.isArray(values) ? values : [])].sort();
-}
-
-function sameJson(left, right) {
-  return JSON.stringify(sortKeys(left)) === JSON.stringify(sortKeys(right));
-}
-
-function entityOutcomeCount(report, key) {
-  const entity = report?.[key];
-  if (!entity || typeof entity !== 'object') fail(`Relatório sem entidade ${key}.`);
-  return ['criados', 'atualizados', 'ignorados', 'aprovadas'].reduce(
-    (total, status) => total + Number(entity[status] || 0),
-    0
-  );
 }
 
 function canonicalDecimal(value) {
@@ -153,9 +154,7 @@ function canonicalDecimal(value) {
 
 function psqlEnvironment(env = process.env) {
   const result = { ...env };
-  for (const key of Object.keys(result)) {
-    if (key.startsWith('PG')) delete result[key];
-  }
+  for (const key of Object.keys(result)) if (key.startsWith('PG')) delete result[key];
   if (env.PGSERVICEFILE) result.PGSERVICEFILE = env.PGSERVICEFILE;
   if (env.PGPASSFILE) result.PGPASSFILE = env.PGPASSFILE;
   delete result.DATABASE_URL;
@@ -172,7 +171,7 @@ function query(service, sql, variables = {}, env = process.env) {
     return execFileSync('psql', args, {
       env: psqlEnvironment(env),
       encoding: 'utf8',
-      maxBuffer: 32 * 1024 * 1024,
+      maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
   } catch {
@@ -190,127 +189,248 @@ function queryJson(service, sql, variables = {}, env = process.env) {
 }
 
 function writeArtifact(filepath, artifact) {
-  const temporary = `${filepath}.tmp-${process.pid}`;
-  writeFileSync(temporary, `${JSON.stringify(artifact, null, 2)}\n`, { mode: 0o600 });
-  chmodSync(temporary, 0o600);
-  renameSync(temporary, filepath);
-  assertSecureFile(filepath, 'Artefato de reconciliação');
+  const output = resolve(filepath);
+  if (existsSync(output) && lstatSync(output).isSymbolicLink())
+    fail('Artefato de reconciliação não pode ser link simbólico.');
+  const temporary = `${output}.tmp-${process.pid}-${randomUUID()}`;
+  let descriptor;
+  let created = false;
+  try {
+    descriptor = openSync(temporary, 'wx', 0o600);
+    created = true;
+    writeSync(descriptor, `${JSON.stringify(artifact, null, 2)}\n`);
+    closeSync(descriptor);
+    descriptor = undefined;
+    chmodSync(temporary, 0o600);
+    renameSync(temporary, output);
+    chmodSync(output, 0o600);
+    assertSecureFile(output, 'Artefato de reconciliação');
+  } catch (error) {
+    if (descriptor !== undefined) closeSync(descriptor);
+    if (created) {
+      try {
+        unlinkSync(temporary);
+      } catch {
+        // Keep the original sanitized error boundary.
+      }
+    }
+    if (error instanceof Error && error.message.includes('Artefato')) throw error;
+    fail('Não foi possível persistir o artefato de reconciliação.');
+  }
 }
 
 function expectedReconciliation(manifest, label) {
   const reconciliation = manifest?.reconciliation;
-  if (!reconciliation || typeof reconciliation !== 'object') fail(`${label} sem expectativas de reconciliação.`);
+  if (!reconciliation || typeof reconciliation !== 'object')
+    fail(`${label} sem expectativas de reconciliação.`);
+  const keys = {};
+  for (const key of ['products', 'pricingDocuments', 'pricingTiers', 'clients', 'quotations']) {
+    if (!Array.isArray(reconciliation.keys?.[key])) fail(`${label} com chaves inválidas: ${key}.`);
+    keys[key] = stableKeys(reconciliation.keys[key].map(String));
+  }
   const counts = {};
-  const hashes = {};
-  for (const key of EXPECTED_COUNT_KEYS) {
+  for (const key of COUNT_KEYS) {
     if (!Number.isInteger(reconciliation.counts?.[key]) || reconciliation.counts[key] < 0)
       fail(`${label} com contagem inválida: ${key}.`);
     counts[key] = reconciliation.counts[key];
-    hashes[key] = validHash(reconciliation.hashes?.[key], `${label} hash ${key}`);
   }
+  const hashes = {};
+  for (const key of HASH_KEYS) hashes[key] = validHash(reconciliation.hashes?.[key], `${label} hash ${key}`);
   const statusCounts = {
     quotations: reconciliation.statusCounts?.quotations || {},
     revisions: reconciliation.statusCounts?.revisions || {},
   };
-  return { counts, hashes, statusCounts };
+  const statusRows = {
+    quotations: Array.isArray(reconciliation.statusRows?.quotations)
+      ? reconciliation.statusRows.quotations.map((row) => ({ sourceId: String(row.sourceId), status: String(row.status) }))
+      : [],
+    revisions: Array.isArray(reconciliation.statusRows?.revisions)
+      ? reconciliation.statusRows.revisions.map((row) => ({ sourceId: String(row.sourceId), status: String(row.status) }))
+      : [],
+  };
+  return { keys, counts, hashes, statusCounts, statusRows };
 }
 
-function importedLineageRows(lineageRows, entityType) {
-  return lineageRows
-    .filter((row) => row.entityType === entityType)
-    .map((row) => ({
-      sourceDoctype: row.sourceDoctype,
-      sourceId: row.sourceId,
-      localKey: row.localKey,
-      canonicalHash: row.canonicalHash,
-    }));
+function safeLineageSourceId(row) {
+  if (row.sourceDoctype !== 'Customer' && row.sourceDoctype !== 'Lead') return String(row.sourceId);
+  const value = String(row.sourceId);
+  if (/^cliente-[0-9a-f]{12}$/i.test(value)) return value.toLowerCase();
+  return `cliente-${hash(`${row.sourceDoctype}:${value}`).slice(0, 12)}`;
 }
 
-function targetHashes({ lineageRows, pricingRows, revisionRows, itemRows, templateRows, templateVersionRows }) {
-  const products = importedLineageRows(lineageRows, 'produto');
-  const pricingDocuments = importedLineageRows(lineageRows, 'faixa');
-  const clients = importedLineageRows(lineageRows, 'cliente');
-  const quotations = importedLineageRows(lineageRows, 'orcamento');
-  const revisions = revisionRows.map((row) => ({
-    id: row.id,
-    quotationId: row.quotationId,
-    version: Number(row.version),
-    status: row.status,
-    templateKey: row.templateKey,
-    templateHash: row.templateHash,
-    itemCount: Number(row.itemCount),
-    templateVersionPresent: Boolean(row.templateVersionPresent),
-    sectionsSnapshotPresent: Boolean(row.sectionsSnapshotPresent),
-  }));
-  const items = itemRows.map((row) => ({
-    id: row.id,
-    revisionId: row.revisionId,
-    position: Number(row.position),
-    productSku: row.productSku,
-    quantidade: canonicalDecimal(row.quantidade),
-    precoSugerido: canonicalDecimal(row.precoSugerido),
-    precoAplicado: canonicalDecimal(row.precoAplicado),
-    totalLinha: canonicalDecimal(row.totalLinha),
-  }));
-  const templates = templateRows.map((row) => ({ key: row.key, hash: row.hash }));
-  const templateVersions = templateVersionRows.map((row) => ({ key: row.key, hash: row.hash, version: Number(row.version) }));
+function sourceKey(row) {
+  return `${row.sourceDoctype}:${safeLineageSourceId(row)}`;
+}
+
+function selectedLineageRows(allRows, expected) {
+  const sets = new Map([
+    ['produto', new Set(expected.keys.products)],
+    ['faixa', new Set(expected.keys.pricingDocuments)],
+    ['cliente', new Set(expected.keys.clients)],
+    ['orcamento', new Set(expected.keys.quotations)],
+  ]);
+  const selected = allRows.filter((row) => sets.get(row.entityType)?.has(sourceKey(row)));
+  const expectedKeyCount = [...sets.values()].reduce((total, set) => total + set.size, 0);
+  const selectedKeys = new Set(selected.map((row) => `${row.entityType}:${sourceKey(row)}`));
+  let missing = 0;
+  for (const [entityType, set] of sets) {
+    for (const key of set) if (!selectedKeys.has(`${entityType}:${key}`)) missing += 1;
+  }
+  const duplicate = selected.length - selectedKeys.size;
+  return { selected, missing, duplicate, expectedKeyCount };
+}
+
+function productProjection(lineage, product) {
   return {
-    products: hash(stableRows(products, (row) => `${row.sourceDoctype}:${row.sourceId}`)),
+    sourceId: lineage.sourceId,
+    sku: product.sku,
+    nome: product.nome,
+    descricao: product.descricao,
+    unidade: product.unidade,
+    categoria: product.categoria,
+    marca: product.marca,
+    ativo: product.ativo,
+    precoBase: product.precoBase,
+  };
+}
+
+function clientProjection(lineages, client) {
+  return {
+    sourceIds: lineages.map(safeLineageSourceId).sort(),
+    nome: client.nome,
+    documento: client.documento,
+    email: client.email,
+    telefone: client.telefone,
+    notes: client.notes,
+    address:
+      client.endereco === null &&
+      client.numero === null &&
+      client.bairro === null &&
+      client.complemento === null &&
+      client.municipio === null &&
+      client.uf === null &&
+      client.cep === null
+        ? null
+        : {
+            endereco: client.endereco,
+            numero: client.numero,
+            bairro: client.bairro,
+            complemento: client.complemento,
+            municipio: client.municipio,
+            uf: client.uf,
+            cep: client.cep,
+          },
+    arquivado: client.arquivado,
+  };
+}
+
+function quotationProjection(lineage, quotation, status) {
+  return {
+    sourceId: lineage.sourceId,
+    id: quotation.id,
+    businessNumber: quotation.businessNumber,
+    clientId: quotation.clientId,
+    status,
+  };
+}
+
+function revisionProjection(sourceId, revision, status) {
+  return {
+    sourceId,
+    status,
+    statusOriginal: revision.statusOriginal,
+    orderLinkage: revision.orderLinkage,
+    orderPending: revision.orderPending,
+    validadeDias: Number(revision.validadeDias),
+    pagamento: revision.pagamento,
+    entrega: revision.entrega,
+    fretePadrao: canonicalDecimal(revision.fretePadrao),
+    frete: canonicalDecimal(revision.frete),
+    observacoes: revision.observacoes,
+    prazoProducao: revision.prazoProducao,
+    templateKey: revision.templateKey,
+    templateHash: revision.templateHash,
+    templateVersionPresent: Boolean(revision.templateVersionPresent),
+    sectionsSnapshotPresent: Boolean(revision.sectionsSnapshotPresent),
+    subtotal: canonicalDecimal(revision.subtotal),
+    total: canonicalDecimal(revision.total),
+    itemCount: Number(revision.itemCount),
+  };
+}
+
+function itemProjection(sourceId, item) {
+  return {
+    sourceId,
+    position: Number(item.position),
+    productSku: item.productSku,
+    quantidade: canonicalDecimal(item.quantidade),
+    precoSugerido: canonicalDecimal(item.precoSugerido),
+    precoAplicado: canonicalDecimal(item.precoAplicado),
+    totalLinha: canonicalDecimal(item.totalLinha),
+  };
+}
+
+function targetHashes({ products, pricingDocuments, pricingTiers, clients, quotations, revisions, items, templates, templateVersions, lineage }) {
+  return {
+    products: hash(stableRows(products, (row) => row.sourceId)),
     pricingDocuments: hash(stableRows(pricingDocuments, (row) => `${row.sourceDoctype}:${row.sourceId}`)),
-    pricingTiers: hash(stableRows(pricingRows, (row) => `${row.productSku}:${row.minimumQuantity}`)),
-    clients: hash(stableRows(clients, (row) => `${row.sourceDoctype}:${row.sourceId}`)),
-    quotations: hash(stableRows(quotations, (row) => `${row.sourceDoctype}:${row.sourceId}`)),
-    revisions: hash(stableRows(revisions, (row) => `${row.quotationId}:${row.version}`)),
-    items: hash(stableRows(items, (row) => `${row.revisionId}:${row.position}`)),
+    pricingTiers: hash(stableRows(pricingTiers, (row) => `${row.productSku}:${row.minimumQuantity}`)),
+    clients: hash(stableRows(clients, (row) => row.sourceIds.join(','))),
+    quotations: hash(stableRows(quotations, (row) => row.sourceId)),
+    revisions: hash(stableRows(revisions, (row) => row.sourceId)),
+    items: hash(stableRows(items, (row) => `${row.sourceId}:${row.position}`)),
     templates: hash(stableRows(templates, (row) => `${row.key}:${row.hash}`)),
     templateVersions: hash(stableRows(templateVersions, (row) => `${row.key}:${row.version}`)),
+    lineage: hash(stableRows(lineage, (row) => `${row.sourceDoctype}:${row.sourceId}`)),
   };
 }
 
-function targetImportedCounts({ lineageRows, pricingRows, revisionRows, itemRows, templateRows, templateVersionRows }) {
+function countRows(values) {
   return {
-    products: lineageRows.filter((row) => row.entityType === 'produto').length,
-    pricingDocuments: lineageRows.filter((row) => row.entityType === 'faixa').length,
-    pricingTiers: pricingRows.length,
-    clients: lineageRows.filter((row) => row.entityType === 'cliente').length,
-    quotations: lineageRows.filter((row) => row.entityType === 'orcamento').length,
-    revisions: revisionRows.length,
-    items: itemRows.length,
-    templates: templateRows.length,
-    templateVersions: templateVersionRows.length,
+    products: values.products.length,
+    pricingDocuments: values.pricingDocuments.length,
+    pricingTiers: values.pricingTiers.length,
+    clients: values.clients.length,
+    quotations: values.quotations.length,
+    revisions: values.revisions.length,
+    items: values.items.length,
+    templates: values.templates.length,
+    templateVersions: values.templateVersions.length,
   };
+}
+
+function statusCounts(rows) {
+  return rows.reduce((result, row) => {
+    result[row.status] = (result[row.status] || 0) + 1;
+    return result;
+  }, {});
 }
 
 export function compareReconciliation({
   sourceCounts,
   applyCounts,
   sourceReadCounts,
-  importedCounts,
   targetCounts,
-  targetImportedCounts = importedCounts,
+  targetImportedCounts,
   expected,
-  statusCounts,
-  targetStatusCounts = statusCounts,
+  targetStatusCounts,
   sourceManifestHash,
   applyManifestHash,
   persistedManifestHash,
   sourceApprovedDivergenceKeys = [],
   applyApprovedDivergenceKeys = [],
   approvedDetailsValid = true,
-  unapprovedDivergenceKeys,
+  unapprovedDivergenceKeys = [],
   blocking,
   lineageInvalid,
   missingIdentities = 0,
   extraImportedRows = 0,
   missingSnapshots = 0,
-  targetHashes: actualHashes,
+  targetHashes,
+  expectedHashesMatchTarget,
 }) {
-  const fallbackExpected = {
-    counts: targetImportedCounts,
-    hashes: null,
-    statusCounts: targetStatusCounts,
-  };
-  const expectedValues = expected || fallbackExpected;
+  const actualCounts = targetImportedCounts || targetCounts;
+  const expectedValues = expected || { counts: actualCounts, hashes: null, statusCounts: targetStatusCounts };
   const sourceCountsMatchApply = sameJson(sourceCounts, applyCounts);
   const sourceReadCountsMatchManifest =
     sourceReadCounts.products === sourceCounts.products &&
@@ -319,17 +439,21 @@ export function compareReconciliation({
     sourceReadCounts.quotations === sourceCounts.quotations;
   const manifestHashesMatch = sourceManifestHash === applyManifestHash;
   const persistedRunHashMatches = applyManifestHash === persistedManifestHash;
-  const approvedKeys = stableKeys(applyApprovedDivergenceKeys);
-  const approvedKeysMatch = approvedDetailsValid && stableKeys(sourceApprovedDivergenceKeys).every((key) => approvedKeys.includes(key));
-  const targetCountsMatchExpected = sameJson(targetImportedCounts, expectedValues.counts);
-  const expectedHashesMatchTarget = expectedValues.hashes
-    ? sameJson(actualHashes, expectedValues.hashes)
-    : true;
-  const targetStatusCountsMatchExpected = sameJson(targetStatusCounts, expectedValues.statusCounts);
-  const targetStructureValid = Object.values(targetCounts).every(
+  const approved = stableKeys(applyApprovedDivergenceKeys);
+  const sourceApproved = stableKeys(sourceApprovedDivergenceKeys);
+  const approvedKeysMatch =
+    approvedDetailsValid && sourceApproved.every((key) => approved.includes(key));
+  const targetCountsMatchExpected = sameJson(actualCounts, expectedValues.counts);
+  const targetStructureValid = Object.values(actualCounts).every(
     (count) => Number.isInteger(count) && count >= 0
   );
-  const unapproved = stableKeys(unapprovedDivergenceKeys || []);
+  const targetStatusCountsMatchExpected = sameJson(
+    targetStatusCounts,
+    expectedValues.statusCounts || {}
+  );
+  const hashesMatch = expectedHashesMatchTarget ??
+    (targetHashes && expectedValues.hashes ? sameJson(targetHashes, expectedValues.hashes) : true);
+  const unapproved = stableKeys(unapprovedDivergenceKeys);
   const passed =
     sourceCountsMatchApply &&
     sourceReadCountsMatchManifest &&
@@ -343,9 +467,9 @@ export function compareReconciliation({
     extraImportedRows === 0 &&
     missingSnapshots === 0 &&
     targetCountsMatchExpected &&
-    expectedHashesMatchTarget &&
-    targetStatusCountsMatchExpected &&
-    targetStructureValid;
+    targetStructureValid &&
+    hashesMatch &&
+    targetStatusCountsMatchExpected;
   return {
     passed,
     sourceCountsMatchApply,
@@ -355,9 +479,9 @@ export function compareReconciliation({
     approvedKeysMatch,
     approvedDetailsValid,
     targetCountsMatchExpected,
-    expectedHashesMatchTarget,
-    targetStatusCountsMatchExpected,
     targetStructureValid,
+    expectedHashesMatchTarget: hashesMatch,
+    targetStatusCountsMatchExpected,
     blocking,
     lineageInvalid,
     missingIdentities,
@@ -367,9 +491,107 @@ export function compareReconciliation({
   };
 }
 
-function assertExpectedDatabase(serviceTarget, expectedDatabase) {
-  if (!expectedDatabase || serviceTarget.database !== expectedDatabase)
-    fail('Serviço PostgreSQL não corresponde ao database esperado.');
+function runTargetQueries(service, env) {
+  const allLineage = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'provider', provider,
+      'sourceDoctype', source_doctype,
+      'sourceId', source_id,
+      'entityType', entity_type,
+      'localId', local_id,
+      'localKey', local_key,
+      'canonicalHash', canonical_hash,
+      'sourceHash', source_hash,
+      'lineageStatus', lineage_status,
+      'migrationRunId', migration_run_id
+    ) ORDER BY source_doctype, source_id, entity_type), '[]'::json)::text FROM frappe_import_lineage`,
+    {},
+    env
+  );
+  const products = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'sku', sku, 'nome', nome, 'descricao', descricao, 'unidade', unidade,
+      'categoria', categoria, 'marca', marca, 'ativo', ativo, 'precoBase', preco_base::text
+    ) ORDER BY sku), '[]'::json)::text FROM products`,
+    {},
+    env
+  );
+  const clients = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'id', id::text, 'nome', nome, 'documento', documento, 'email', email,
+      'telefone', telefone, 'notes', notes, 'endereco', endereco, 'numero', numero,
+      'bairro', bairro, 'complemento', complemento, 'municipio', municipio,
+      'uf', uf, 'cep', cep, 'arquivado', arquivado
+    ) ORDER BY id), '[]'::json)::text FROM clients`,
+    {},
+    env
+  );
+  const quotations = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'id', id::text, 'businessNumber', business_number, 'clientId', client_id::text, 'status', status
+    ) ORDER BY id), '[]'::json)::text FROM quotations`,
+    {},
+    env
+  );
+  const pricingTiers = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'productSku', product_sku, 'minimumQuantity', minimum_quantity::text, 'unitPrice', unit_price::text
+    ) ORDER BY product_sku, minimum_quantity), '[]'::json)::text FROM product_pricing_tiers`,
+    {},
+    env
+  );
+  const revisions = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'id', id::text, 'quotationId', quotation_id::text, 'version', version,
+      'status', status, 'statusOriginal', status_original, 'orderLinkage', order_linkage,
+      'orderPending', order_pending, 'validadeDias', validade_dias, 'pagamento', pagamento,
+      'entrega', entrega, 'fretePadrao', frete_padrao::text, 'frete', frete::text,
+      'observacoes', observacoes, 'prazoProducao', prazo_producao,
+      'templateKey', template_padrao, 'templateHash', template_hash,
+      'templateVersionPresent', template_version_id IS NOT NULL,
+      'sectionsSnapshotPresent', sections_snapshot IS NOT NULL,
+      'subtotal', subtotal::text, 'total', total::text,
+      'itemCount', (SELECT count(*) FROM quote_revision_items i WHERE i.revision_id = r.id)
+    ) ORDER BY quotation_id, version), '[]'::json)::text FROM quote_revisions r`,
+    {},
+    env
+  );
+  const items = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'id', id::text, 'revisionId', revision_id::text, 'position', position,
+      'productSku', product_sku, 'quantidade', quantidade::text,
+      'precoSugerido', preco_sugerido::text, 'precoAplicado', preco_aplicado::text,
+      'totalLinha', total_linha::text
+    ) ORDER BY revision_id, position), '[]'::json)::text FROM quote_revision_items`,
+    {},
+    env
+  );
+  const templates = queryJson(
+    service,
+    `SELECT COALESCE(json_agg(json_build_object(
+      'key', t.key, 'hash', v.source_hash, 'version', v.version
+    ) ORDER BY t.key, v.version), '[]'::json)::text
+    FROM quotation_templates t INNER JOIN quotation_template_versions v ON v.template_id = t.id`,
+    {},
+    env
+  );
+  return {
+    allLineage: Array.isArray(allLineage) ? allLineage : [],
+    products: Array.isArray(products) ? products : [],
+    clients: Array.isArray(clients) ? clients : [],
+    quotations: Array.isArray(quotations) ? quotations : [],
+    pricingTiers: Array.isArray(pricingTiers) ? pricingTiers : [],
+    revisions: Array.isArray(revisions) ? revisions : [],
+    items: Array.isArray(items) ? items : [],
+    templates: Array.isArray(templates) ? templates : [],
+  };
 }
 
 export function runReconciliation(args, env = process.env) {
@@ -380,7 +602,8 @@ export function runReconciliation(args, env = process.env) {
     fail('CUTOVER_PG_SERVICE, PGSERVICEFILE e database esperado são obrigatórios.');
   assertSecureFile(serviceFile, 'PGSERVICEFILE');
   const serviceTarget = readServiceDatabase(serviceFile, service);
-  assertExpectedDatabase(serviceTarget, expectedDatabase);
+  if (serviceTarget.database !== expectedDatabase)
+    fail('Serviço PostgreSQL não corresponde ao database esperado.');
   const output = resolve(args.output);
   outputDirectory(output);
   const dryRun = readJson(args.dryRunReport, 'Report dry-run');
@@ -392,8 +615,10 @@ export function runReconciliation(args, env = process.env) {
   if (!sameJson(sourceExpected, applyExpected)) fail('Expectativas de reconciliação dry-run/apply divergentes.');
   const runId = apply?.manifest?.runId;
   if (typeof runId !== 'string' || !UUID_PATTERN.test(runId)) fail('Run ID do apply inválido.');
-  if (dryRun?.manifest?.mode !== 'dry-run' || dryRun?.manifest?.status !== 'completed') fail('Dry-run não está concluído.');
-  if (apply?.manifest?.mode !== 'apply' || apply?.manifest?.status !== 'completed') fail('Apply não está concluído.');
+  if (dryRun?.manifest?.mode !== 'dry-run' || dryRun?.manifest?.status !== 'completed')
+    fail('Dry-run não está concluído.');
+  if (apply?.manifest?.mode !== 'apply' || apply?.manifest?.status !== 'completed')
+    fail('Apply não está concluído.');
 
   const currentDatabase = query(service, 'SELECT current_database();', {}, env);
   if (currentDatabase !== serviceTarget.database || currentDatabase !== expectedDatabase)
@@ -411,8 +636,10 @@ export function runReconciliation(args, env = process.env) {
   const sourceCounts = dryRun.manifest.entityCounts;
   const applyCounts = apply.manifest.entityCounts;
   for (const key of ['products', 'pricingTiers', 'clients', 'quotations']) {
-    if (!Number.isInteger(sourceCounts?.[key]) || sourceCounts[key] < 0) fail(`Contagem de origem inválida: ${key}.`);
-    if (!Number.isInteger(applyCounts?.[key]) || applyCounts[key] < 0) fail(`Contagem de apply inválida: ${key}.`);
+    if (!Number.isInteger(sourceCounts?.[key]) || sourceCounts[key] < 0)
+      fail(`Contagem de origem inválida: ${key}.`);
+    if (!Number.isInteger(applyCounts?.[key]) || applyCounts[key] < 0)
+      fail(`Contagem de apply inválida: ${key}.`);
   }
   const sourceReadCounts = {
     products: Number(apply.produtos?.lidos || 0),
@@ -420,182 +647,153 @@ export function runReconciliation(args, env = process.env) {
     clients: Number(apply.clientes?.lidos || 0),
     quotations: Number(apply.orcamentos?.lidos || 0),
   };
-  const importedCounts = {
-    products: entityOutcomeCount(apply, 'produtos'),
-    pricingTiers: entityOutcomeCount(apply, 'faixas'),
-    clients: entityOutcomeCount(apply, 'clientes'),
-    quotations: entityOutcomeCount(apply, 'orcamentos'),
+  const target = runTargetQueries(service, env);
+  const selection = selectedLineageRows(target.allLineage, applyExpected);
+  const lineageByEntity = {
+    products: selection.selected.filter((row) => row.entityType === 'produto'),
+    pricingDocuments: selection.selected.filter((row) => row.entityType === 'faixa'),
+    clients: selection.selected.filter((row) => row.entityType === 'cliente'),
+    quotations: selection.selected.filter((row) => row.entityType === 'orcamento'),
   };
-  const targetCounts = queryJson(
-    service,
-    `SELECT json_build_object(
-      'products', (SELECT count(*)::int FROM products),
-      'pricingTiers', (SELECT count(*)::int FROM product_pricing_tiers),
-      'clients', (SELECT count(*)::int FROM clients),
-      'quotations', (SELECT count(*)::int FROM quotations),
-      'revisions', (SELECT count(*)::int FROM quote_revisions),
-      'items', (SELECT count(*)::int FROM quote_revision_items),
-      'templates', (SELECT count(*)::int FROM quotation_templates),
-      'templateVersions', (SELECT count(*)::int FROM quotation_template_versions)
-    )::text`,
-    {},
-    env
-  );
-  const lineageRows = queryJson(
-    service,
-    `SELECT COALESCE(json_agg(json_build_object(
-      'provider', provider,
-      'sourceDoctype', source_doctype,
-      'sourceId', source_id,
-      'entityType', entity_type,
-      'localId', local_id,
-      'localKey', local_key,
-      'canonicalHash', canonical_hash,
-      'sourceHash', source_hash,
-      'lineageStatus', lineage_status
-    ) ORDER BY source_doctype, source_id), '[]'::json)::text
-    FROM frappe_import_lineage WHERE migration_run_id = :'run_id'::uuid`,
-    { run_id: runId },
-    env
-  );
-  const targetLineageValidity = queryJson(
-    service,
-    `SELECT json_build_object(
-      'total', count(*)::int,
-      'invalid', count(*) FILTER (WHERE provider <> 'frappe' OR entity_type NOT IN ('produto','faixa','cliente','orcamento') OR lineage_status <> 'verified' OR canonical_hash !~ '^[0-9a-f]{64}$' OR source_hash IS NULL OR source_hash !~ '^[0-9a-f]{64}$' OR char_length(btrim(local_key)) = 0)::int,
-      'unknown', count(*) FILTER (WHERE entity_type NOT IN ('produto','faixa','cliente','orcamento'))::int,
-      'missingProducts', count(*) FILTER (WHERE entity_type = 'produto' AND NOT EXISTS (SELECT 1 FROM products p WHERE p.sku = frappe_import_lineage.local_key))::int,
-      'missingClients', count(*) FILTER (WHERE entity_type = 'cliente' AND NOT EXISTS (SELECT 1 FROM clients c WHERE c.id::text = frappe_import_lineage.local_id))::int,
-      'missingQuotations', count(*) FILTER (WHERE entity_type = 'orcamento' AND NOT EXISTS (SELECT 1 FROM quotations q WHERE q.id::text = frappe_import_lineage.local_id))::int,
-      'missingPricingProducts', count(*) FILTER (WHERE entity_type = 'faixa' AND NOT EXISTS (SELECT 1 FROM products p WHERE p.sku = frappe_import_lineage.local_key))::int
-    )::text FROM frappe_import_lineage WHERE migration_run_id = :'run_id'::uuid`,
-    { run_id: runId },
-    env
-  );
-  const pricingRows = queryJson(
-    service,
-    `WITH imported_products AS (
-      SELECT DISTINCT local_key AS sku FROM frappe_import_lineage
-      WHERE migration_run_id = :'run_id'::uuid AND entity_type = 'produto'
-    )
-    SELECT COALESCE(json_agg(json_build_object(
-      'productSku', product_sku,
-      'minimumQuantity', minimum_quantity::text,
-      'unitPrice', unit_price::text
-    ) ORDER BY product_sku, minimum_quantity), '[]'::json)::text
-    FROM product_pricing_tiers WHERE product_sku IN (SELECT sku FROM imported_products)`,
-    { run_id: runId },
-    env
-  );
-  const revisionRows = queryJson(
-    service,
-    `WITH imported_quotes AS (
-      SELECT DISTINCT local_id AS quotation_id FROM frappe_import_lineage
-      WHERE migration_run_id = :'run_id'::uuid AND entity_type = 'orcamento'
-    )
-    SELECT COALESCE(json_agg(json_build_object(
-      'id', r.id,
-      'quotationId', r.quotation_id,
-      'version', r.version,
-      'status', r.status,
-      'templateKey', r.template_padrao,
-      'templateHash', r.template_hash,
-      'itemCount', (SELECT count(*) FROM quote_revision_items i WHERE i.revision_id = r.id),
-      'templateVersionPresent', r.template_version_id IS NOT NULL,
-      'sectionsSnapshotPresent', r.sections_snapshot IS NOT NULL
-    ) ORDER BY r.quotation_id, r.version), '[]'::json)::text
-    FROM quote_revisions r WHERE r.quotation_id::text IN (SELECT quotation_id FROM imported_quotes)`,
-    { run_id: runId },
-    env
-  );
-  const itemRows = queryJson(
-    service,
-    `WITH imported_quotes AS (
-      SELECT DISTINCT local_id AS quotation_id FROM frappe_import_lineage
-      WHERE migration_run_id = :'run_id'::uuid AND entity_type = 'orcamento'
-    ), imported_revisions AS (
-      SELECT r.id FROM quote_revisions r WHERE r.quotation_id::text IN (SELECT quotation_id FROM imported_quotes)
-    )
-    SELECT COALESCE(json_agg(json_build_object(
-      'id', i.id,
-      'revisionId', i.revision_id,
-      'position', i.position,
-      'productSku', i.product_sku,
-      'quantidade', i.quantidade::text,
-      'precoSugerido', i.preco_sugerido::text,
-      'precoAplicado', i.preco_aplicado::text,
-      'totalLinha', i.total_linha::text
-    ) ORDER BY i.revision_id, i.position), '[]'::json)::text
-    FROM quote_revision_items i WHERE i.revision_id IN (SELECT id FROM imported_revisions)`,
-    { run_id: runId },
-    env
-  );
-  const templateRows = queryJson(
-    service,
-    `SELECT COALESCE(json_agg(json_build_object('key', t.key, 'hash', v.source_hash) ORDER BY t.key, v.source_hash), '[]'::json)::text
-    FROM quotation_templates t INNER JOIN quotation_template_versions v ON v.template_id = t.id`,
-    {},
-    env
-  );
-  const templateVersionRows = queryJson(
-    service,
-    `SELECT COALESCE(json_agg(json_build_object('key', t.key, 'hash', v.source_hash, 'version', v.version) ORDER BY t.key, v.version), '[]'::json)::text
-    FROM quotation_templates t INNER JOIN quotation_template_versions v ON v.template_id = t.id`,
-    {},
-    env
-  );
-  const allTemplateRows = Array.isArray(templateRows) ? templateRows : [];
-  const allTemplateVersionRows = Array.isArray(templateVersionRows) ? templateVersionRows : [];
-  // Filter global template seed rows to the exact source-derived keys/hashes.
-  // The expected list is reconstructed from the revision rows in the manifest.
-  const expectedTemplateRows = Object.entries(apply.manifest.reconciliation?.counts || {}).length
-    ? allTemplateRows.filter((row) => typeof row.key === 'string' && typeof row.hash === 'string')
-    : [];
-  const expectedTemplateVersionRows = allTemplateVersionRows.filter(
-    (row) => typeof row.key === 'string' && typeof row.hash === 'string'
-  );
-  const allLineageRows = Array.isArray(lineageRows) ? lineageRows : [];
-  const importedQuotes = new Set(allLineageRows.filter((row) => row.entityType === 'orcamento').map((row) => row.localId));
-  const importedRevisions = (Array.isArray(revisionRows) ? revisionRows : []).filter((row) => importedQuotes.has(row.quotationId));
-  const importedItems = Array.isArray(itemRows) ? itemRows.filter((row) => importedRevisions.some((revision) => revision.id === row.revisionId)) : [];
-  const selectedTemplateRows = expectedTemplateRows
-    .filter((row) => importedRevisions.some((revision) => revision.templateKey === row.key && revision.templateHash === row.hash))
-    .filter((row, index, rows) => rows.findIndex((candidate) => candidate.key === row.key && candidate.hash === row.hash) === index);
-  const selectedTemplateVersionRows = expectedTemplateVersionRows
-    .filter((row) => importedRevisions.some((revision) => revision.templateKey === row.key && revision.templateHash === row.hash && Number(row.version) === 1))
-    .filter((row, index, rows) => rows.findIndex((candidate) => candidate.key === row.key && candidate.hash === row.hash && Number(candidate.version) === Number(row.version)) === index);
-  const targetPricingRows = Array.isArray(pricingRows) ? pricingRows : [];
-  const importedTargetCounts = targetImportedCounts({
-    lineageRows: allLineageRows,
-    pricingRows: targetPricingRows,
-    revisionRows: importedRevisions,
-    itemRows: importedItems,
-    templateRows: selectedTemplateRows,
-    templateVersionRows: selectedTemplateVersionRows,
-  });
+  const productBySku = new Map(target.products.map((row) => [row.sku, row]));
+  const products = [];
+  let missingIdentities = selection.missing;
+  for (const lineage of lineageByEntity.products) {
+    const product = productBySku.get(lineage.localKey);
+    if (!product) {
+      missingIdentities += 1;
+      continue;
+    }
+    products.push(productProjection(lineage, product));
+  }
+  const pricingSkus = new Set(lineageByEntity.products.map((row) => row.localKey));
+  const pricingTiers = target.pricingTiers
+    .filter((row) => pricingSkus.has(row.productSku))
+    .map((row) => ({
+      productSku: row.productSku,
+      minimumQuantity: canonicalDecimal(row.minimumQuantity),
+      unitPrice: canonicalDecimal(row.unitPrice),
+    }));
+  const clientById = new Map(target.clients.map((row) => [row.id, row]));
+  const clientGroups = new Map();
+  for (const lineage of lineageByEntity.clients) {
+    const group = clientGroups.get(lineage.localId) || [];
+    group.push(lineage);
+    clientGroups.set(lineage.localId, group);
+  }
+  const clients = [];
+  for (const [localId, lineages] of clientGroups) {
+    const client = clientById.get(localId);
+    if (!client) {
+      missingIdentities += 1;
+      continue;
+    }
+    clients.push(clientProjection(lineages, client));
+  }
+  const quotationById = new Map(target.quotations.map((row) => [row.id, row]));
+  const expectedStatusBySource = new Map(applyExpected.statusRows.quotations.map((row) => [row.sourceId, row.status]));
+  const quotations = [];
+  for (const lineage of lineageByEntity.quotations) {
+    const quotation = quotationById.get(lineage.localId);
+    if (!quotation) {
+      missingIdentities += 1;
+      continue;
+    }
+    const expectedStatus = expectedStatusBySource.get(lineage.sourceId);
+    const comparableStatus =
+      quotation.status === 'rascunho' && lineage.migrationRunId === runId && expectedStatus && expectedStatus !== 'rascunho'
+        ? expectedStatus
+        : quotation.status;
+    quotations.push(quotationProjection(lineage, quotation, comparableStatus));
+  }
+  const latestRevisionByQuote = new Map();
+  for (const revision of target.revisions) {
+    const prior = latestRevisionByQuote.get(revision.quotationId);
+    if (!prior || Number(revision.version) > Number(prior.version)) latestRevisionByQuote.set(revision.quotationId, revision);
+  }
+  const expectedRevisionStatusBySource = new Map(applyExpected.statusRows.revisions.map((row) => [row.sourceId, row.status]));
+  const revisions = [];
+  const selectedRevisionIds = new Set();
+  let missingSnapshots = 0;
+  for (const lineage of lineageByEntity.quotations) {
+    const revision = latestRevisionByQuote.get(lineage.localId);
+    if (!revision) {
+      missingIdentities += 1;
+      continue;
+    }
+    if (!revision.templateVersionPresent || !revision.sectionsSnapshotPresent) missingSnapshots += 1;
+    const expectedStatus = expectedRevisionStatusBySource.get(lineage.sourceId);
+    const comparableStatus =
+      revision.status === 'rascunho' && lineage.migrationRunId === runId && expectedStatus && expectedStatus !== 'rascunho'
+        ? expectedStatus
+        : revision.status;
+    revisions.push(revisionProjection(lineage.sourceId, revision, comparableStatus));
+    selectedRevisionIds.add(revision.id);
+  }
+  const sourceIdByRevisionId = new Map(revisions.map((row, index) => [
+    [...selectedRevisionIds][index], row.sourceId,
+  ]));
+  const items = target.items
+    .filter((item) => selectedRevisionIds.has(item.revisionId))
+    .map((item) => itemProjection(sourceIdByRevisionId.get(item.revisionId), item));
+  const templatePairs = new Set(revisions.map((row) => `${row.templateKey}:${row.templateHash}`));
+  const templates = target.templates
+    .filter((row) => templatePairs.has(`${row.key}:${row.hash}`))
+    .map((row) => ({ key: row.key, hash: row.hash }))
+    .filter((row, index, rows) =>
+      rows.findIndex((candidate) => candidate.key === row.key && candidate.hash === row.hash) === index
+    );
+  const templateVersions = target.templates
+    .filter((row) => row.version === 1 && templatePairs.has(`${row.key}:${row.hash}`))
+    .map((row) => ({ key: row.key, hash: row.hash, version: Number(row.version) }));
+  const lineage = selection.selected.map((row) => ({
+    sourceDoctype: row.sourceDoctype,
+    sourceId: safeLineageSourceId(row),
+    localKey: row.localKey,
+    canonicalHash: row.canonicalHash,
+    sourceHash: row.sourceHash,
+  }));
   const actualHashes = targetHashes({
-    lineageRows: allLineageRows,
-    pricingRows: targetPricingRows,
-    revisionRows: importedRevisions,
-    itemRows: importedItems,
-    templateRows: selectedTemplateRows,
-    templateVersionRows: selectedTemplateVersionRows,
+    products,
+    pricingDocuments: lineageByEntity.pricingDocuments.map((row) => ({
+      sourceDoctype: row.sourceDoctype,
+      sourceId: safeLineageSourceId(row),
+      localKey: row.localKey,
+      canonicalHash: row.canonicalHash,
+      sourceHash: row.sourceHash,
+    })),
+    pricingTiers,
+    clients,
+    quotations,
+    revisions,
+    items,
+    templates,
+    templateVersions,
+    lineage,
   });
-  const targetStatusCounts = {
-    quotations: allLineageRows.filter((row) => row.entityType === 'orcamento').reduce((counts, row) => {
-      const revision = importedRevisions.find((candidate) => candidate.quotationId === row.localId);
-      if (revision) counts[revision.status] = (counts[revision.status] || 0) + 1;
-      return counts;
-    }, {}),
-    revisions: importedRevisions.reduce((counts, row) => {
-      counts[row.status] = (counts[row.status] || 0) + 1;
-      return counts;
-    }, {}),
+  const targetCounts = countRows({ products, pricingDocuments: lineageByEntity.pricingDocuments, pricingTiers, clients, quotations, revisions, items, templates, templateVersions });
+  const targetStatusRows = {
+    quotations: quotations.map((row) => ({ sourceId: row.sourceId, status: row.status })),
+    revisions: revisions.map((row) => ({ sourceId: row.sourceId, status: row.status })),
   };
+  const targetStatusCounts = {
+    quotations: statusCounts(targetStatusRows.quotations),
+    revisions: statusCounts(targetStatusRows.revisions),
+  };
+  const lineageInvalid = lineage.filter(
+    (row) =>
+      row.canonicalHash === null ||
+      !HASH_PATTERN.test(String(row.canonicalHash)) ||
+      row.sourceHash === null ||
+      !HASH_PATTERN.test(String(row.sourceHash))
+  ).length;
+  const duplicateKeys = selection.duplicate;
   const approvedSource = stableKeys(dryRun.approvedDivergenceKeys);
   const approvedApply = stableKeys(apply.approvedDivergenceKeys);
   const approvedDetails = (apply?.total?.detalhes || []).filter((detail) => detail?.aprovada === true);
-  const approvedDetailsValid = approvedApply.every((key) => approvedDetails.some((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}` === key));
+  const approvedDetailsValid = approvedApply.every((key) =>
+    approvedDetails.some((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}` === key)
+  );
   const unapprovedDivergenceKeys = (apply?.total?.detalhes || [])
     .filter((detail) => detail?.status === 'divergentes' && detail?.aprovada !== true)
     .map((detail) => `${detail.source_doctype || ''}:${detail.source_id || ''}`)
@@ -606,12 +804,8 @@ export function runReconciliation(args, env = process.env) {
     sourceCounts,
     applyCounts,
     sourceReadCounts,
-    importedCounts,
     targetCounts,
-    targetImportedCounts: importedTargetCounts,
     expected,
-    targetHashes: actualHashes,
-    statusCounts: targetStatusCounts,
     targetStatusCounts,
     sourceManifestHash,
     applyManifestHash,
@@ -621,13 +815,14 @@ export function runReconciliation(args, env = process.env) {
     approvedDetailsValid,
     unapprovedDivergenceKeys,
     blocking,
-    lineageInvalid: Number(targetLineageValidity.invalid || 0),
-    missingIdentities: Number(targetLineageValidity.missingProducts || 0) + Number(targetLineageValidity.missingClients || 0) + Number(targetLineageValidity.missingQuotations || 0) + Number(targetLineageValidity.missingPricingProducts || 0),
-    extraImportedRows: Number(targetLineageValidity.unknown || 0),
-    missingSnapshots: importedRevisions.filter((row) => !row.templateVersionPresent || !row.sectionsSnapshotPresent).length,
+    lineageInvalid,
+    missingIdentities,
+    extraImportedRows: duplicateKeys,
+    missingSnapshots,
+    expectedHashesMatchTarget: sameJson(actualHashes, expected.hashes),
   });
   const artifact = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     status: comparison.passed ? 'passed' : 'failed',
     runId,
     database: expectedDatabase,
@@ -642,14 +837,13 @@ export function runReconciliation(args, env = process.env) {
       statusCounts: expected.statusCounts,
     },
     target: {
-      counts: importedTargetCounts,
+      counts: targetCounts,
       hashes: actualHashes,
       statusCounts: targetStatusCounts,
+      lineageRows: lineage.length,
+      actualRevisionStatuses: statusCounts(target.revisions.filter((row) => selectedRevisionIds.has(row.id))),
     },
-    lineage: {
-      total: allLineageRows.length,
-      invalid: Number(targetLineageValidity.invalid || 0),
-    },
+    lineage: { selected: lineage.length, invalid: lineageInvalid },
     approvedDivergenceKeys: approvedApply,
     comparison,
   };

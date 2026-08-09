@@ -1370,6 +1370,13 @@ function stableHashRows(rows: Array<Record<string, unknown>>, key: (row: Record<
 function emptyReconciliationExpectations(): MigrationReconciliationExpectations {
   const emptyHash = canonicalHash([]);
   return {
+    keys: {
+      products: [],
+      pricingDocuments: [],
+      pricingTiers: [],
+      clients: [],
+      quotations: [],
+    },
     counts: {
       products: 0,
       pricingDocuments: 0,
@@ -1391,53 +1398,128 @@ function emptyReconciliationExpectations(): MigrationReconciliationExpectations 
       items: emptyHash,
       templates: emptyHash,
       templateVersions: emptyHash,
+      lineage: emptyHash,
     },
     statusCounts: { quotations: {}, revisions: {} },
+    statusRows: { quotations: [], revisions: [] },
   };
 }
 
 function buildReconciliationExpectations(
-  productUnits: ProductUnit[],
-  clientUnits: ClientUnit[],
-  quotationUnits: QuotationUnit[]
+  productUnitsInput: ProductUnit[],
+  clientUnitsInput: ClientUnit[],
+  quotationUnitsInput: QuotationUnit[],
+  report?: ImportReport
 ): MigrationReconciliationExpectations {
+  const entityReports = report
+    ? {
+        Item: report.produtos,
+        'Pricing Rule': report.faixas,
+        'Item Price': report.faixas,
+        Customer: report.clientes,
+        Lead: report.clientes,
+        Quotation: report.orcamentos,
+      }
+    : undefined;
+  const reportSourceId = (sourceDoctype: string, sourceId: string): string =>
+    sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
+      ? safeApprovalKey(`${sourceDoctype}:${sourceId}`).split(':')[1]
+      : sourceId;
+  const isWritable = (sourceDoctype: string, sourceId: string): boolean => {
+    const details = entityReports?.[sourceDoctype as keyof typeof entityReports]?.detalhes || [];
+    const safeId = reportSourceId(sourceDoctype, sourceId);
+    return !details.some(
+      (detail) =>
+        detail.source_id === safeId &&
+        (detail.status === 'divergentes' || detail.status === 'erros')
+    );
+  };
+  const productUnits = productUnitsInput.filter((unit) =>
+    unit.lineage.every((entry) => isWritable(entry.sourceDoctype, entry.sourceId))
+  );
+  const clientUnits = clientUnitsInput.filter((unit) =>
+    unit.lineage.every((entry) => isWritable(entry.sourceDoctype, entry.sourceId))
+  );
+  const quotationUnits = quotationUnitsInput.filter((unit) =>
+    unit.lineage.every((entry) => isWritable(entry.sourceDoctype, entry.sourceId))
+  );
+  const safeSourceId = (entry: FrappeLineageEntry): string =>
+    reportSourceId(entry.sourceDoctype, entry.sourceId);
   const lineageRows = (entityType: string, units: Array<{ lineage: FrappeLineageEntry[] }>) =>
     units.flatMap((unit) =>
       unit.lineage
         .filter((entry) => entry.entityType === entityType)
         .map((entry) => ({
           sourceDoctype: entry.sourceDoctype,
-          sourceId: entry.sourceId,
+          sourceId: safeSourceId(entry),
           localKey: entry.localKey,
           canonicalHash: entry.canonicalHash,
+          sourceHash: entry.sourceHash,
         }))
     );
-  const products = lineageRows('produto', productUnits);
+  const products = productUnits.map((unit) => ({
+    sourceId: unit.product.sourceId,
+    sku: unit.product.sku,
+    nome: unit.product.nome,
+    descricao: unit.product.descricao,
+    unidade: unit.product.unidade,
+    categoria: unit.product.categoria,
+    marca: unit.product.marca,
+    ativo: unit.product.ativo,
+    precoBase: unit.product.precoBase,
+  }));
   const pricingDocuments = lineageRows('faixa', productUnits);
   const pricingTiers = productUnits.flatMap((unit) =>
     unit.product.precos.map((tier) => ({
       productSku: unit.product.sku,
-      minimumQuantity: tier.minimum_quantity,
-      unitPrice: tier.unit_price,
+      minimumQuantity: canonicalDecimal(String(tier.minimum_quantity)),
+      unitPrice: canonicalDecimal(String(tier.unit_price)),
     }))
   );
-  const clients = lineageRows('cliente', clientUnits);
-  const quotations = lineageRows('orcamento', quotationUnits);
+  const clients = clientUnits.map((unit) => ({
+    sourceIds: unit.lineage
+      .filter((entry) => entry.entityType === 'cliente')
+      .map((entry) => safeSourceId(entry))
+      .sort(),
+    nome: unit.client.nome,
+    documento: unit.client.documento,
+    email: unit.client.email,
+    telefone: unit.client.telefone,
+    notes: unit.client.notes,
+    address: unit.client.address,
+    arquivado: false,
+  }));
+  const quotations = quotationUnits.map((unit) => ({
+    sourceId: unit.quotation.sourceId,
+    id: unit.id,
+    businessNumber: unit.quotation.businessNumber,
+    clientId: unit.quotation.clientId,
+    status: unit.quotation.status,
+  }));
   const revisions = quotationUnits.map((unit) => ({
-    id: unit.revision.id,
-    quotationId: unit.id,
-    version: unit.revision.version,
+    sourceId: unit.quotation.sourceId,
     status: unit.revision.status,
+    statusOriginal: unit.revision.statusOriginal ?? null,
+    orderLinkage: unit.revision.orderLinkage ?? null,
+    orderPending: unit.revision.orderPending === true,
+    validadeDias: unit.revision.validadeDias,
+    pagamento: unit.revision.pagamento,
+    entrega: unit.revision.entrega,
+    fretePadrao: canonicalDecimal(unit.revision.fretePadrao),
+    frete: canonicalDecimal(unit.revision.frete),
+    observacoes: unit.revision.observacoes,
+    prazoProducao: unit.revision.prazoProducao,
     templateKey: unit.revision.templatePadrao,
     templateHash: unit.revision.templateHash,
-    itemCount: unit.items.length,
     templateVersionPresent: true,
     sectionsSnapshotPresent: true,
+    subtotal: canonicalDecimal(unit.revision.subtotal),
+    total: canonicalDecimal(unit.revision.total),
+    itemCount: unit.items.length,
   }));
   const items = quotationUnits.flatMap((unit) =>
     unit.items.map((item) => ({
-      id: item.id,
-      revisionId: unit.revision.id,
+      sourceId: unit.quotation.sourceId,
       position: item.position,
       productSku: item.productSku,
       quantidade: item.quantidade,
@@ -1458,7 +1540,24 @@ function buildReconciliationExpectations(
       counts[row.status] = (counts[row.status] || 0) + 1;
       return counts;
     }, {});
+  const productKeys = lineageRows('produto', productUnits).map((row) => `${row.sourceDoctype}:${row.sourceId}`);
+  const pricingDocumentKeys = pricingDocuments.map((row) => `${row.sourceDoctype}:${row.sourceId}`);
+  const clientKeys = lineageRows('cliente', clientUnits).map((row) => `${row.sourceDoctype}:${row.sourceId}`);
+  const quotationKeys = lineageRows('orcamento', quotationUnits).map((row) => `${row.sourceDoctype}:${row.sourceId}`);
+  const lineage = [
+    ...lineageRows('produto', productUnits),
+    ...pricingDocuments,
+    ...lineageRows('cliente', clientUnits),
+    ...lineageRows('orcamento', quotationUnits),
+  ];
   return {
+    keys: {
+      products: productKeys.sort(),
+      pricingDocuments: pricingDocumentKeys.sort(),
+      pricingTiers: pricingTiers.map((row) => `${row.productSku}:${row.minimumQuantity}`).sort(),
+      clients: clientKeys.sort(),
+      quotations: quotationKeys.sort(),
+    },
     counts: {
       products: products.length,
       pricingDocuments: pricingDocuments.length,
@@ -1471,19 +1570,24 @@ function buildReconciliationExpectations(
       templateVersions: templateVersions.length,
     },
     hashes: {
-      products: stableHashRows(products, (row) => `${row.sourceDoctype}:${row.sourceId}`),
+      products: stableHashRows(products, (row) => String(row.sourceId)),
       pricingDocuments: stableHashRows(pricingDocuments, (row) => `${row.sourceDoctype}:${row.sourceId}`),
       pricingTiers: stableHashRows(pricingTiers, (row) => `${row.productSku}:${row.minimumQuantity}`),
-      clients: stableHashRows(clients, (row) => `${row.sourceDoctype}:${row.sourceId}`),
-      quotations: stableHashRows(quotations, (row) => `${row.sourceDoctype}:${row.sourceId}`),
-      revisions: stableHashRows(revisions, (row) => `${row.quotationId}:${row.version}`),
-      items: stableHashRows(items, (row) => `${row.revisionId}:${row.position}`),
+      clients: stableHashRows(clients, (row) => (Array.isArray(row.sourceIds) ? row.sourceIds.join(',') : '')),
+      quotations: stableHashRows(quotations, (row) => String(row.sourceId)),
+      revisions: stableHashRows(revisions, (row) => String(row.sourceId)),
+      items: stableHashRows(items, (row) => `${row.sourceId}:${row.position}`),
       templates: stableHashRows(templates, (row) => `${row.key}:${row.hash}`),
       templateVersions: stableHashRows(templateVersions, (row) => `${row.key}:${row.version}`),
+      lineage: stableHashRows(lineage, (row) => `${row.sourceDoctype}:${row.sourceId}`),
     },
     statusCounts: {
       quotations: statusCounts(quotationUnits.map((unit) => ({ status: unit.quotation.status }))),
       revisions: statusCounts(revisions),
+    },
+    statusRows: {
+      quotations: quotations.map((row) => ({ sourceId: row.sourceId, status: row.status })),
+      revisions: revisions.map((row) => ({ sourceId: row.sourceId, status: row.status })),
     },
   };
 }
@@ -2403,7 +2507,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       buildReconciliationExpectations(
         normalized.productUnits,
         normalized.clientUnits,
-        builtQuotations.quotationUnits
+        builtQuotations.quotationUnits,
+        finalized
       )
     ),
   };

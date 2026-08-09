@@ -23,8 +23,9 @@
 - Nenhum CRM externo será integrado nesta fase.
 - N8N e Evolution permanecem sem configuração e sem envio real.
 - Apply exige manifest aprovado, cutoff de origem, identidade PostgreSQL correta e ausência de fixture.
-- `TEST_DATABASE_URL`, `RESTORE_DATABASE_URL` e `DATABASE_URL` sempre apontam para destinos distintos quando usados em testes operacionais.
-- Comandos Drizzle devem carregar o alvo isolado em `STAGING_DATABASE_URL` a partir do secret manager e definir explicitamente `TEST_DATABASE_URL="$STAGING_DATABASE_URL"` e `DATABASE_URL="$STAGING_DATABASE_URL"`; nunca confiar em variável herdada do shell.
+- `TEST_DATABASE_URL`, `RESTORE_DATABASE_URL` e `DATABASE_URL` nunca são definidos para o mesmo processo, exceto no comando de testes PostgreSQL que usa somente `TEST_DATABASE_URL`.
+- Comandos Drizzle e CLI de migração carregam o alvo isolado em `STAGING_DATABASE_URL` a partir do secret manager e definem somente `DATABASE_URL="$STAGING_DATABASE_URL"`; nunca confiam em variável herdada do shell.
+- Todo comando operacional de staging valida `CUTOVER_PG_SERVICE` e `CUTOVER_EXPECTED_DATABASE=aspen_test`.
 - Cada task termina com teste focado e commit independente.
 
 ---
@@ -93,9 +94,15 @@ Atualizar o runbook para usar sempre:
 
 ```bash
 env -u DATABASE_URL -u TEST_DATABASE_URL \
-  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
+  node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
   npm run db:migrate
 ```
 
@@ -456,14 +463,19 @@ Run with explicit target:
 
 ```bash
 env -u DATABASE_URL -u TEST_DATABASE_URL \
-  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
+  node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
   npm run db:migrate
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  DATABASE_URL="$STAGING_DATABASE_URL" \
-  node --test --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
+  node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
 ```
 
 Expected: PASS and no second draft for one quotation.
@@ -665,8 +677,23 @@ Registrar somente `sourceSnapshotAt` e hashes no manifest.
 Run:
 
 ```bash
-unset FRAPPE_MIGRATION_FIXTURE
-node scripts/migrate-frappe-crm.mjs --dry-run > "$CUTOVER_DIR/report.dry-run.json"
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
+  node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
+env -u DATABASE_URL -u TEST_DATABASE_URL \
+  DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
+  node scripts/migrate-frappe-crm.mjs --dry-run > "$CUTOVER_DIR/report.dry-run.json"
 ```
 
 Para o teste fixture, usar fixture anonimizado somente em dry-run.
@@ -678,9 +705,12 @@ Confirmar `manifestHash`, `sourceSnapshotAt`, `migrationRunId`, contagens e dive
 Run:
 
 ```bash
-env -u TEST_DATABASE_URL \
-  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
+env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
+  CUTOVER_EXPECTED_DATABASE=aspen_test \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
   node scripts/migrate-frappe-crm.mjs --apply \
     --expected-manifest-hash "$EXPECTED_MANIFEST_HASH"
 ```
@@ -811,9 +841,9 @@ git commit -m "test: cover quotation cutover in Playwright"
 - Test: `tests/unit/backup.test.ts`
 
 **Interfaces:**
-- `RESTORE_DATABASE_URL` nunca pode ser igual à identidade de `DATABASE_URL`.
-- `backup-crm.mjs --validate --file <dump>` restaura somente no alvo explicitamente nomeado.
-- Reconciliação compara contagens, hashes, lineage, revisões e divergências aprovadas.
+- `RESTORE_DATABASE_URL` nunca pode ser igual à identidade de `DATABASE_URL` ou de `PRODUCTION_DATABASE_URL`.
+- `backup-crm.mjs --validate --file <dump>` exige `RESTORE_PG_SERVICE`, `RESTORE_EXPECTED_DATABASE=aspen_restore`, mapeamento host/porta/database e `current_database()` do serviço nomeado.
+- Reconciliação compara contagens, hashes, lineage, revisões finais, itens, templates, status e divergências aprovadas por identidade de origem.
 
 - [ ] **Step 1: Provision required client tools.**
 
@@ -834,11 +864,14 @@ O runbook exige registrar as versões no diretório protegido do corte.
 
 - [ ] **Step 2: Run backup preflight.**
 
-Run somente contra `STAGING_DATABASE_URL`, com `CUTOVER_BACKUP_DIR` externo e protegido:
+Run somente contra `STAGING_DATABASE_URL`, com serviço nomeado, `CUTOVER_BACKUP_DIR` externo e protegido:
 
 ```bash
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
   CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/backup-crm.mjs --preflight
@@ -850,15 +883,19 @@ O preflight é obrigatório e aborta o backup quando capacidade está crítica o
 
 - [ ] **Step 3: Create and checksum backup.**
 
-Run com `CUTOVER_BACKUP_DIR` externo e explícito:
+Run com serviço nomeado, `CUTOVER_BACKUP_DIR` externo e explícito:
 
 ```bash
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
   CUTOVER_BACKUP_DIR="$CUTOVER_BACKUP_DIR" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
   node scripts/backup-crm.mjs
 sha256sum "$BACKUP_FILE" > "$CUTOVER_DIR/backup.sha256"
+sha256sum --check "$CUTOVER_DIR/backup.sha256"
 ```
 
 Confirmar diretório 0700, arquivo 0600 e arquivo fora do checkout.
@@ -870,13 +907,17 @@ Não selecionar automaticamente o backup mais recente.
 Run:
 
 ```bash
-RESTORE_EXPECTED_DATABASE=aspen_restore
+: "${RESTORE_DATABASE_URL:?configure isolated restore target}"
 : "${RESTORE_PG_SERVICE:?configure the named restore service}"
+: "${PRODUCTION_DATABASE_URL:?configure active production identity}"
+: "${PGSERVICEFILE:?configure protected PGSERVICEFILE}"
+: "${PGPASSFILE:?configure protected PGPASSFILE}"
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
   RESTORE_PG_SERVICE="$RESTORE_PG_SERVICE" \
   RESTORE_EXPECTED_DATABASE=aspen_restore \
+  PRODUCTION_DATABASE_URL="$PRODUCTION_DATABASE_URL" \
   node scripts/backup-crm.mjs --validate --file "$BACKUP_FILE"
 ```
 
@@ -1037,14 +1078,19 @@ Expected: zero falhas, warnings existentes documentados e zero segredo detectado
 
 ```bash
 env -u DATABASE_URL -u TEST_DATABASE_URL \
-  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   DATABASE_URL="$STAGING_DATABASE_URL" \
+  CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
+  PGSERVICEFILE="$PGSERVICEFILE" \
+  PGPASSFILE="$PGPASSFILE" \
+  node --input-type=module <<'NODE'
+import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
+assertDatabaseContract(process.env);
+NODE
   npm run db:migrate
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  DATABASE_URL="$STAGING_DATABASE_URL" \
-  node --test --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
+  node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
 ```
 
 Expected: PASS contra `aspen_test`, sem conexão em `neondb`.

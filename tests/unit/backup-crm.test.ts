@@ -41,6 +41,26 @@ test('explicit backup destination is outside checkout and mode 0700', () => {
   }
 });
 
+test('backup preflight rejects a source URL that is not the named staging service', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'backup-cutover-'));
+  const serviceFile = path.join(directory, 'pg_service.conf');
+  writeFileSync(serviceFile, '[staging]\nhost=staging.test\nport=5433\ndbname=aspen_test\n');
+  try {
+    const result = run(['--preflight'], {
+      ...process.env,
+      DATABASE_URL: 'postgresql://source-user@other.test:5433/aspen_test',
+      CUTOVER_PG_SERVICE: 'staging',
+      CUTOVER_EXPECTED_DATABASE: 'aspen_test',
+      PGSERVICEFILE: serviceFile,
+      PGPASSFILE: serviceFile,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /mesmo destino/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('restore validation requires both source and isolated target URLs', () => {
   const withoutSource = { ...process.env };
   delete withoutSource.DATABASE_URL;
@@ -71,10 +91,35 @@ test('restore validation enforces named isolated service identity', () => {
       RESTORE_PG_SERVICE: 'restore',
       RESTORE_EXPECTED_DATABASE: 'aspen_restore',
       PGSERVICEFILE: serviceFile,
+      PGPASSFILE: serviceFile,
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /mesmo destino/);
     assert.doesNotMatch(result.stderr, /other\\.test/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('restore validation rejects a named restore target matching active production', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'backup-production-'));
+  const serviceFile = path.join(directory, 'pg_service.conf');
+  const dump = path.join(directory, 'backup.sql');
+  writeFileSync(serviceFile, '[restore]\nhost=restore.test\nport=5433\ndbname=aspen_restore\n');
+  writeFileSync(dump, '-- isolated test dump\\n');
+  try {
+    const result = run(['--validate', '--file', dump], {
+      ...process.env,
+      DATABASE_URL: 'postgresql://source-user@source.test:5433/aspen_test',
+      RESTORE_DATABASE_URL: 'postgresql://restore-user@restore.test:5433/aspen_restore',
+      PRODUCTION_DATABASE_URL: 'postgresql://prod-user@restore.test:5433/aspen_restore',
+      RESTORE_PG_SERVICE: 'restore',
+      RESTORE_EXPECTED_DATABASE: 'aspen_restore',
+      PGSERVICEFILE: serviceFile,
+      PGPASSFILE: serviceFile,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /base ativa/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
