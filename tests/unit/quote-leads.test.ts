@@ -42,6 +42,15 @@ afterEach(() => {
 });
 
 describe('quote-leads handler', () => {
+  it('retorna erro JSON em português para método não suportado', async () => {
+    const result = await createHandler(createMemoryDeps())({
+      httpMethod: 'DELETE',
+    } as any);
+
+    assert.equal(result.statusCode, 405);
+    assert.equal(parse(result).error, 'Método não permitido.');
+  });
+
   it('stays available in operational mode because it uses the CRM lead store', async () => {
     process.env.CRM_OPERATIONAL_MODE = 'true';
     const result = await createHandler(

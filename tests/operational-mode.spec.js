@@ -1,7 +1,8 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
-// These E2E tests verify operational navigation and the AI PostgreSQL quote path.
+// These E2E tests verify operational navigation and the Auto UI contract.
+// Backend OpenRouter/PostgreSQL behavior is covered by direct unit and database tests.
 // They mock CRM_OPERATIONAL_MODE=true through /api/settings.
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
@@ -83,7 +84,7 @@ test.describe('Operational mode navigation gating', () => {
       expect(page.url()).toContain('#/manual');
     });
 
-    test('Auto extracts and creates a PostgreSQL quotation', async ({ page }) => {
+    test('Auto preserves the extraction-to-quotation PostgreSQL UI contract', async ({ page }) => {
       /** @type {any} */
       let quoteRequest = null;
       await page.route('**/api/quotations**', async (route) => {

@@ -103,7 +103,7 @@ export function createHandler(deps?: QuoteLeadStoreDeps): LegacyHandler {
         return jsonResponse(200, { success: true, data });
       }
 
-      return jsonResponse(405, { error: 'Method Not Allowed' });
+      return jsonResponse(405, { error: 'Método não permitido.' });
     } catch (err: any) {
       const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
       console.error('[quote-leads]', err?.logMessage || err?.message || err);

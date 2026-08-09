@@ -101,7 +101,9 @@ describe('feature flag override via operational mode', () => {
   });
 
   it('quotes core disabled for invalid flag values', () => {
+    savedVars.CRM_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
     savedVars.CRM_CORE_QUOTES_ENABLED = process.env.CRM_CORE_QUOTES_ENABLED;
+    process.env.CRM_OPERATIONAL_MODE = 'false';
     for (const value of ['1', 'TRUE', 'yes', '']) {
       process.env.CRM_CORE_QUOTES_ENABLED = value;
       assert.equal(isCoreQuotesEnabled(), false, `expected false for "${value}"`);

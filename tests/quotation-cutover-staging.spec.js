@@ -225,7 +225,9 @@ test.describe('quotation cutover staging', () => {
       }
     }
     if (mainError && cleanupError) {
-      throw new Error('Staging flow and fixture cleanup both failed');
+      throw Object.assign(new Error('Staging flow and fixture cleanup both failed'), {
+        cause: [mainError, cleanupError],
+      });
     }
     if (mainError) throw mainError;
     if (cleanupError) throw cleanupError;

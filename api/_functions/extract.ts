@@ -348,7 +348,11 @@ async function extractWithOpenRouter(
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+    return {
+      statusCode: 405,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Método não permitido.' }),
+    };
   }
 
   let payload: Record<string, unknown>;
