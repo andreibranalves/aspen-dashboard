@@ -478,7 +478,7 @@ NODE
 npm run db:migrate
 export TEST_DATABASE_URL="$STAGING_DATABASE_URL"
 export CUTOVER_PG_SERVICE CUTOVER_EXPECTED_DATABASE=aspen_test PGSERVICEFILE PGPASSFILE
-test "$(psql --dbname "$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
+test "$(psql --dbname "service=$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
 node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
 SH
 ```
@@ -1100,7 +1100,7 @@ NODE
 npm run db:migrate
 export TEST_DATABASE_URL="$STAGING_DATABASE_URL"
 export CUTOVER_PG_SERVICE CUTOVER_EXPECTED_DATABASE=aspen_test PGSERVICEFILE PGPASSFILE
-test "$(psql --dbname "$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
+test "$(psql --dbname "service=$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
 node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
 SH
 ```

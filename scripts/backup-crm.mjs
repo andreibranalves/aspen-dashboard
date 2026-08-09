@@ -197,7 +197,7 @@ function readCutoverServiceTarget() {
 function assertNamedServiceDatabase(service, label) {
   const current = command(
     'psql',
-    ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', service.name, '--command', 'SELECT current_database();'],
+    ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', `service=${service.name}`, '--command', 'SELECT current_database();'],
     { env: serviceEnvironment(service) }
   ).trim();
   if (current !== service.expectedDatabase) throw new Error(`${label} apontou para database inesperado.`);

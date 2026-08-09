@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -15,6 +15,9 @@ import {
 
 const root = path.resolve(import.meta.dirname, '../..');
 const script = path.join(root, 'scripts/backup-crm.mjs');
+const reconcileScript = path.join(root, 'scripts/reconcile-migration.mjs');
+const backupSource = readFileSync(script, 'utf8');
+const reconcileSource = readFileSync(reconcileScript, 'utf8');
 
 function run(args: string[], env: NodeJS.ProcessEnv) {
   return spawnSync(process.execPath, [script, ...args], {
@@ -23,6 +26,13 @@ function run(args: string[], env: NodeJS.ProcessEnv) {
     encoding: 'utf8',
   });
 }
+
+test('named psql service calls use libpq service syntax', () => {
+  assert.match(backupSource, /'--dbname', `service=\$\{service\.name\}`/);
+  assert.match(reconcileSource, /'--dbname', `service=\$\{service\}`/);
+  assert.doesNotMatch(backupSource, /'--dbname', service\.name/);
+  assert.doesNotMatch(reconcileSource, /'--dbname', service/);
+});
 
 test('explicit backup destination is outside checkout and mode 0700', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'backup-crm-secure-'));

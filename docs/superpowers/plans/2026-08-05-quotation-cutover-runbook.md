@@ -115,7 +115,7 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
-TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
+TARGET_DATABASE="$(psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
 test "$TARGET_DATABASE" = aspen_test
 
 assert_staging_target() {
@@ -278,7 +278,7 @@ set -euo pipefail
 : "${PGPASSFILE:?configure the protected libpq password file}"
 export RESTORE_EXPECTED_DATABASE=aspen_restore
 export RESTORE_PG_SERVICE PGSERVICEFILE PGPASSFILE PRODUCTION_DATABASE_URL
-RESTORE_CURRENT_DATABASE="$(psql --dbname "$RESTORE_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
+RESTORE_CURRENT_DATABASE="$(psql --dbname "service=$RESTORE_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
 test "$RESTORE_CURRENT_DATABASE" = "$RESTORE_EXPECTED_DATABASE"
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
@@ -298,7 +298,7 @@ Para uma inspeção SQL adicional no alvo isolado, use a conexão libpq nomeada 
 ```bash
 set -euo pipefail
 : "${RESTORE_PG_SERVICE:?configure the named libpq service for the isolated restore target}"
-psql --dbname "$RESTORE_PG_SERVICE" --set=ON_ERROR_STOP=1 --command 'SELECT current_database();' > "$CUTOVER_DIR/restore-target.txt"
+psql --dbname "service=$RESTORE_PG_SERVICE" --set=ON_ERROR_STOP=1 --command 'SELECT current_database();' > "$CUTOVER_DIR/restore-target.txt"
 ```
 
 Leia a base restaurada e confirme tabelas, contagens e um registro de teste antes de descartar o destino isolado.
@@ -485,7 +485,7 @@ sha256sum "$CUTOVER_DIR/report.apply.json" | tee "$CUTOVER_DIR/report.apply.sha2
 RUN_ID="$(jq -er '.manifest.runId | select(test("^[0-9a-f-]{36}$"))' "$CUTOVER_DIR/report.apply.json")"
 MANIFEST_HASH="$(jq -er '.manifest.manifestHash | select(test("^[0-9a-f]{64}$"))' "$CUTOVER_DIR/report.apply.json")"
 jq -e '.manifest.mode == "apply" and .manifest.status == "completed" and (.approvedDivergenceKeys | length == 0) and .manifest.divergenceCounts.blocking == 0' "$CUTOVER_DIR/report.apply.json"
-psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
   --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
   -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
   > "$CUTOVER_DIR/manifest.apply.persisted.json"
@@ -535,7 +535,7 @@ jq -e --arg expected "$EXPECTED_APPROVAL" '
   (.approvedDivergenceKeys == [$expected]) and
   (.total.detalhes | map(select(((.source_doctype // "") + ":" + (.source_id // "")) == $expected and .aprovada == true)) | length > 0)
 ' "$CUTOVER_DIR/report.apply.json"
-psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
   --variable=run_id="$RUN_ID" --variable=manifest_hash="$MANIFEST_HASH" \
   -c "SELECT json_build_object('runId', id, 'provider', provider, 'mode', mode, 'sourceSnapshotAt', source_snapshot_at, 'manifestHash', manifest_hash, 'status', status) FROM frappe_migration_runs WHERE id = :'run_id'::uuid AND manifest_hash = :'manifest_hash' AND mode = 'apply' AND status = 'completed'" \
   > "$CUTOVER_DIR/manifest.apply.persisted.json"
@@ -592,7 +592,7 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
 import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
-TARGET_DATABASE="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
+TARGET_DATABASE="$(psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align --command 'SELECT current_database();')"
 test "$TARGET_DATABASE" = aspen_test
 env -u DATABASE_URL -u TEST_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
@@ -890,7 +890,7 @@ set -euo pipefail
 : "${KNOWN_LEGACY_QUOTATION_ID:?configure a non-PII legacy quotation id for rollback read verification}"
 : "${APP_ORIGIN:?configure the staging origin without credentials in the URL}"
 : "${APP_CURL_CONFIG:?configure a protected curl config with staging authentication}"
-PG_COUNT="$(psql --dbname "$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
+PG_COUNT="$(psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
   --variable=quotation_id="$KNOWN_POSTGRES_QUOTATION_ID" \
   --command "SELECT count(*) FROM quotations WHERE id = :'quotation_id'::uuid;")"
 test "$PG_COUNT" = '1'

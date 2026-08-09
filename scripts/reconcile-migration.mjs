@@ -164,7 +164,7 @@ function psqlEnvironment(env = process.env) {
 }
 
 function query(service, sql, variables = {}, env = process.env) {
-  const args = ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', service];
+  const args = ['--no-psqlrc', '--quiet', '--tuples-only', '--no-align', '--dbname', `service=${service}`];
   for (const [key, value] of Object.entries(variables)) args.push(`--set=${key}=${value}`);
   args.push('--command', sql);
   try {
