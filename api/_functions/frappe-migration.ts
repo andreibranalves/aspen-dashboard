@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   addDetail,
+  addExcluded,
   buildClientUnits,
   buildProductUnits,
   buildQuotationUnits,
@@ -47,6 +48,13 @@ import {
   type QuotationUnit,
   type SourceRecord,
 } from './lib/frappe-migration-core.js';
+import {
+  buildDiscardPlan,
+  validateDiscardManifest,
+  type DiscardManifest,
+  type DiscardPlan,
+  type DiscardReason,
+} from './lib/migration-discard.js';
 import {
   createPostgresFrappeMigrationRepository,
   stableClientUuid,
@@ -112,6 +120,8 @@ export interface MigrationOptions {
   pdfPipeline?: HistoricalPdfPipeline;
   /** Explicit operator-approved divergence keys (`source_doctype:source_id`). */
   approvedDivergences?: string[];
+  /** Explicit snapshot-bound exclusions. */
+  discardManifest?: DiscardManifest;
   /** Apply may only write the exact manifest reviewed during dry-run. */
   expectedManifestHash?: string;
 }
@@ -1659,7 +1669,8 @@ function buildManifest(
   status: 'completed' | 'failed',
   report: ImportReport,
   dataset: FrappeDataset,
-  reconciliation = emptyReconciliationExpectations()
+  reconciliation = emptyReconciliationExpectations(),
+  discardManifest?: DiscardManifest
 ): MigrationManifest {
   return {
     runId,
@@ -1679,6 +1690,62 @@ function buildManifest(
       approved: report.total.aprovadas,
       blocking: report.total.divergentes + report.total.erros,
     },
+    discardManifestHash: discardManifest?.closureHash || null,
+    exclusionCounts: {
+      produtos: report.produtos.excluidos,
+      faixas: report.faixas.excluidos,
+      clientes: report.clientes.excluidos,
+      orcamentos: report.orcamentos.excluidos,
+      documentos: report.documentos.excluidos,
+    },
+  };
+}
+
+function buildSourceDiscardPlan(
+  dataset: FrappeDataset,
+  normalized: ReturnType<typeof normalizeSafely>
+): { plan: DiscardPlan; quotations: NormalizedQuotation[]; clientLineage: Map<string, string> } {
+  const clientKeys = new Map<string, ClientUnit>();
+  const clientLineage = new Map<string, string>();
+  for (const unit of normalized.clientUnits) {
+    for (const entry of unit.lineage) {
+      const key = `${entry.sourceDoctype}:${entry.sourceId}`;
+      clientKeys.set(key, unit);
+      clientLineage.set(key, unit.client.localKey);
+    }
+  }
+  const quotations: NormalizedQuotation[] = [];
+  for (const record of uniqueSourceRecords(dataset.quotations || [])) {
+    try {
+      quotations.push(normalizeFrappeQuotation(record, clientLineage));
+    } catch {
+      // The regular migration path records the source normalization error.
+    }
+  }
+  const quotationIssues = buildQuotationUnits(
+    quotations,
+    clientLineage,
+    { clients: [], products: [] },
+    new Set(normalized.products.map((product) => product.sku))
+  );
+  const quotationIssueKeys = new Map<string, DiscardReason>();
+  for (const issue of quotationIssues.issues) {
+    if (
+      issue.source_doctype === 'Quotation' &&
+      /preço|quantidade|total da linha|fora do catálogo/i.test(issue.mensagem)
+    )
+      quotationIssueKeys.set(`Quotation:${issue.source_id}`, 'invalid-quotation-price');
+  }
+  return {
+    plan: buildDiscardPlan({
+      clientUnits: normalized.clientUnits,
+      productUnits: normalized.productUnits,
+      quotations,
+      clientKeys,
+      quotationIssueKeys,
+    }),
+    quotations,
+    clientLineage,
   };
 }
 
@@ -1727,7 +1794,21 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     lineagePayloads.set(recordKey(client.sourceDoctype, client.sourceId), client.source);
   attachUnitLineagePayloads(normalized.productUnits, lineagePayloads);
   attachUnitLineagePayloads(normalized.clientUnits, lineagePayloads);
+  const sourceDiscard = buildSourceDiscardPlan(dataset, normalized);
+  const discardPlan = options.discardManifest ? sourceDiscard.plan : undefined;
+  if (options.discardManifest) {
+    validateDiscardManifest(options.discardManifest, {
+      sourceManifestHash: manifestHash,
+      dryRunReportHash: options.discardManifest.dryRunReportHash,
+      requiredKeys: new Set(sourceDiscard.plan.entries.keys()),
+    });
+  }
   const repository = options.repository || createPostgresFrappeMigrationRepository();
+  const discardEntryFor = (sourceDoctype: string, sourceId: string) => {
+    if (!discardPlan) return undefined;
+    const key = canonicalApprovalKey(sourceDoctype, sourceId);
+    return key ? discardPlan.entries.get(key) : undefined;
+  };
 
   // In apply mode, persist the run row before any entity writes.
   // Dry-run never touches the database.
@@ -1764,7 +1845,9 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         manifestHash,
         'failed',
         finalized,
-        dataset
+        dataset,
+        undefined,
+        options.discardManifest
       ),
     };
   };
@@ -2031,6 +2114,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   for (const record of uniqueSourceRecords(dataset.quotations || [])) {
     try {
       const quotation = normalizeFrappeQuotation(record, preflightClientLineage);
+      if (discardEntryFor('Quotation', quotation.sourceId)) continue;
       const status = mapQuotationStatus(quotation.statusSource);
       if (!status.known)
         add(
@@ -2084,6 +2168,40 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     if (productIndex < productStart) continue;
     const productCheckpoint = checkpoint(report.produtos);
     const pricingCheckpoint = checkpoint(report.faixas);
+    const productExclusion = discardEntryFor('Item', unit.product.sourceId);
+    if (productExclusion) {
+      addExcluded(report.produtos, {
+        source_doctype: 'Item',
+        source_id: unit.product.sourceId,
+        local_key: unit.product.sku,
+        mensagem: 'Produto excluído pelo manifesto de descarte.',
+      });
+      for (const entry of unit.lineage.filter((item) => item.entityType === 'faixa'))
+        addExcluded(report.faixas, {
+          source_doctype: entry.sourceDoctype,
+          source_id: entry.sourceId,
+          local_key: entry.localKey,
+          mensagem: 'Faixa excluída pelo manifesto de descarte.',
+        });
+      sealCheckpoint(productCheckpoint);
+      sealCheckpoint(pricingCheckpoint);
+      const nextFaixaCursor =
+        faixaCursor + unit.lineage.filter((entry) => entry.entityType === 'faixa').length;
+      writes.push({
+        phase: 'produtos',
+        cursor: productIndex + 1,
+        blocked: false,
+        faixaCursor: nextFaixaCursor,
+        run: async () => undefined,
+        checkpoints: [productCheckpoint, pricingCheckpoint],
+        sourceDoctype: 'Item',
+        sourceId: unit.product.sourceId,
+        localKey: unit.product.sku,
+        pricingSources: [],
+      });
+      faixaCursor = nextFaixaCursor;
+      continue;
+    }
     const action = processProductUnit(
       unit,
       state,
@@ -2125,6 +2243,29 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   for (const [clientIndex, unit] of normalized.clientUnits.entries()) {
     if (clientIndex < clientStart) continue;
     const clientCheckpoint = checkpoint(report.clientes);
+    const clientExcluded = unit.lineage.some((entry) => discardEntryFor(entry.sourceDoctype, entry.sourceId));
+    if (clientExcluded) {
+      for (const entry of unit.lineage)
+        addExcluded(report.clientes, {
+          source_doctype: entry.sourceDoctype,
+          source_id: entry.sourceId,
+          local_key: unit.client.localKey,
+          mensagem: 'Cliente excluído pelo manifesto de descarte.',
+        });
+      sealCheckpoint(clientCheckpoint);
+      writes.push({
+        phase: 'clientes',
+        cursor: clientIndex + 1,
+        blocked: false,
+        run: async () => undefined,
+        checkpoints: [clientCheckpoint],
+        sourceDoctype: unit.client.sourceDoctype,
+        sourceId: unit.client.sourceId,
+        localKey: unit.client.localKey,
+        pricingSources: [],
+      });
+      continue;
+    }
     const clientAction = processClientUnit(unit, state, report);
     sealCheckpoint(clientCheckpoint);
     const blocked = hasBlockingDetails(clientCheckpoint.addedDetails);
@@ -2347,7 +2488,16 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     },
     knownProducts
   );
-  for (const issue of builtQuotations.issues) addDetail(report.orcamentos, issue);
+  for (const issue of builtQuotations.issues) {
+    if (issue.source_id && discardEntryFor('Quotation', issue.source_id))
+      addExcluded(report.orcamentos, {
+        source_doctype: issue.source_doctype,
+        source_id: issue.source_id,
+        local_key: issue.local_key,
+        mensagem: 'Orçamento excluído pelo manifesto de descarte.',
+      });
+    else addDetail(report.orcamentos, issue);
+  }
   for (const unit of builtQuotations.quotationUnits)
     for (const entry of unit.lineage) attachLineagePayload(entry, unit.quotation.source);
   // Inject activeRunId into quotation lineage entries.
@@ -2359,6 +2509,28 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
   for (const [quotationIndex, unit] of builtQuotations.quotationUnits.entries()) {
     if (quotationIndex < quotationStart) continue;
     const quotationCheckpoint = checkpoint(report.orcamentos);
+    const quotationExcluded = discardEntryFor('Quotation', unit.quotation.sourceId);
+    if (quotationExcluded) {
+      addExcluded(report.orcamentos, {
+        source_doctype: 'Quotation',
+        source_id: unit.quotation.sourceId,
+        local_key: unit.quotation.businessNumber,
+        mensagem: 'Orçamento excluído pelo manifesto de descarte.',
+      });
+      sealCheckpoint(quotationCheckpoint);
+      writes.push({
+        phase: 'orcamentos',
+        cursor: quotationIndex + 1,
+        blocked: false,
+        run: async () => undefined,
+        checkpoints: [quotationCheckpoint],
+        sourceDoctype: 'Quotation',
+        sourceId: unit.quotation.sourceId,
+        localKey: unit.quotation.businessNumber,
+        pricingSources: [],
+      });
+      continue;
+    }
     const quotationAction = processQuotationUnit(unit, quotationState, report);
     sealCheckpoint(quotationCheckpoint);
     const blocked = hasBlockingDetails(quotationCheckpoint.addedDetails);
@@ -2566,7 +2738,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
         normalized.productUnits,
         normalized.clientUnits,
         builtQuotations.quotationUnits
-      )
+      ),
+      options.discardManifest
     ),
   };
 }

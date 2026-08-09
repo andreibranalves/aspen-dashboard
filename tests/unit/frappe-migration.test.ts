@@ -28,6 +28,12 @@ import {
   isValidPdfBuffer,
   quotationPdfChecksum,
 } from '../../api/_functions/lib/quotation-document-storage.js';
+import { normalizeFrappeDataset } from '../../api/_functions/lib/frappe-migration-core.ts';
+import {
+  buildDiscardPlan,
+  hashDiscardEntries,
+  parseDiscardManifest,
+} from '../../api/_functions/lib/migration-discard.ts';
 import { LEGACY_PRICING_FIXTURES } from '../fixtures/legacy-pricing-fixtures.ts';
 import {
   createFrappeDuplicateFixture,
@@ -45,6 +51,69 @@ const runFrappeMigration = (options: Parameters<typeof runFrappeMigrationImpleme
       ? { ...options, expectedManifestHash: computeManifestHash(options.dataset!) }
       : options
   );
+
+function createDiscardIntegrationFixture(): FrappeDataset {
+  return {
+    items: [
+      { name: 'ITEM-BLOCKED', item_code: 'SKU-BLOCKED', item_name: 'Produto bloqueado', stock_uom: 'Und' },
+      { name: 'ITEM-KEEP', item_code: 'SKU-KEEP', item_name: 'Produto mantido', stock_uom: 'Und' },
+    ],
+    pricingRules: [
+      { name: 'PR-BLOCKED-A', item_code: 'SKU-BLOCKED', min_qty: 10, price_list_rate: '10.00' },
+      { name: 'PR-BLOCKED-B', item_code: 'SKU-BLOCKED', min_qty: 10, price_list_rate: '9.00' },
+      { name: 'PR-KEEP', item_code: 'SKU-KEEP', min_qty: 10, price_list_rate: '8.00' },
+    ],
+    customers: [
+      { name: 'CUST-AMB-A', customer_name: 'Pessoa Ambígua' },
+      { name: 'CUST-AMB-B', customer_name: 'Pessoa Ambígua' },
+      { name: 'CUST-KEEP', customer_name: 'Pessoa Mantida', tax_id: '12345678901' },
+    ],
+    quotations: [
+      {
+        name: 'QTN-2025-00001', creation: '2025-01-01 10:00:00', quotation_to: 'Customer', customer: 'CUST-AMB-A', status: 'Draft',
+        items: [{ idx: 1, item_code: 'SKU-BLOCKED', qty: '1', rate: '10.00', price_list_rate: '10.00', amount: '10.00' }],
+      },
+      {
+        name: 'QTN-2025-00002', creation: '2025-01-02 10:00:00', quotation_to: 'Customer', customer: 'CUST-KEEP', status: 'Draft',
+        items: [{ idx: 1, item_code: 'SKU-BLOCKED', qty: '1', rate: '10.00', price_list_rate: '10.00', amount: '10.00' }],
+      },
+      {
+        name: 'QTN-2025-00003', creation: '2025-01-03 10:00:00', quotation_to: 'Customer', customer: 'CUST-KEEP', status: 'Draft',
+        items: [{ idx: 1, item_code: 'SKU-KEEP', qty: '1', rate: '8.00', price_list_rate: '8.00', amount: '8.00' }],
+      },
+    ],
+  };
+}
+
+function discardManifestFor(dataset: FrappeDataset, dryRun: Awaited<ReturnType<typeof runFrappeMigrationImplementation>>) {
+  const normalized = normalizeFrappeDataset(dataset);
+  const clientKeys = new Map<string, (typeof normalized.clientUnits)[number]>();
+  const clientLineage = new Map<string, string>();
+  for (const unit of normalized.clientUnits) {
+    for (const entry of unit.lineage) {
+      const key = `${entry.sourceDoctype}:${entry.sourceId}`;
+      clientKeys.set(key, unit);
+      clientLineage.set(key, unit.client.localKey);
+    }
+  }
+  const quotations = (dataset.quotations || []).map((record) => normalizeFrappeQuotation(record, clientLineage));
+  const plan = buildDiscardPlan({
+    clientUnits: normalized.clientUnits,
+    productUnits: normalized.productUnits,
+    quotations,
+    clientKeys,
+    quotationIssueKeys: new Map(),
+  });
+  const entries = [...plan.entries.values()];
+  return parseDiscardManifest({
+    schemaVersion: 1,
+    policy: 'discard-all-blockers',
+    sourceManifestHash: dryRun.manifest.manifestHash,
+    dryRunReportHash: canonicalHash(dryRun.report),
+    entries,
+    closureHash: hashDiscardEntries(entries),
+  });
+}
 
 describe('migração Frappe CRM', { concurrency: 1 }, () => {
   it('canonicaliza decimais sem perder zeros significativos', () => {
@@ -95,6 +164,55 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
       repository.snapshot().lineage.filter((row) => row.entityType === 'cliente').length,
       2
     );
+  });
+
+  it('aplica descarte validado sem gravar unidades bloqueadas ou dependentes', async () => {
+    const dataset = createDiscardIntegrationFixture();
+    const previewRepository = new MemoryFrappeMigrationRepository();
+    const dryRun = await runFrappeMigration({ mode: 'dry-run', dataset, repository: previewRepository });
+    assert.equal(dryRun.manifest.status, 'failed');
+    assert.ok(dryRun.report.clientes.divergentes > 0);
+    assert.equal(previewRepository.writes.products, 0);
+    const discardManifest = discardManifestFor(dataset, dryRun);
+    const repository = new MemoryFrappeMigrationRepository();
+    const applied = await runFrappeMigration({
+      mode: 'apply',
+      dataset,
+      repository,
+      expectedManifestHash: computeManifestHash(dataset),
+      discardManifest,
+    });
+    assert.equal(applied.manifest.status, 'completed');
+    assert.equal(applied.report.total.divergentes, 0);
+    assert.equal(applied.report.total.erros, 0);
+    assert.equal(applied.report.clientes.excluidos, 2);
+    assert.equal(applied.report.produtos.excluidos, 1);
+    assert.equal(applied.report.faixas.excluidos, 2);
+    assert.equal(applied.report.orcamentos.excluidos, 2);
+    assert.equal(repository.writes.products, 1);
+    assert.equal(repository.writes.clients, 1);
+    assert.equal(repository.writes.quotations, 1);
+    assert.equal(applied.manifest.reconciliation.keys.quotations.length, 1);
+    assert.equal(applied.manifest.discardManifestHash, discardManifest.closureHash);
+  });
+
+  it('rejeita manifesto de descarte stale antes de qualquer write', async () => {
+    const dataset = createDiscardIntegrationFixture();
+    const preview = await runFrappeMigration({ mode: 'dry-run', dataset, repository: new MemoryFrappeMigrationRepository() });
+    const discardManifest = discardManifestFor(dataset, preview);
+    const repository = new MemoryFrappeMigrationRepository();
+    await assert.rejects(
+      () => runFrappeMigration({
+        mode: 'apply',
+        dataset,
+        repository,
+        expectedManifestHash: computeManifestHash(dataset),
+        discardManifest: { ...discardManifest, sourceManifestHash: 'f'.repeat(64) },
+      }),
+      /sourceManifestHash|descarte|snapshot/i
+    );
+    assert.deepEqual(repository.writes, { products: 0, clients: 0, quotations: 0, lineage: 0, documents: 0 });
+    assert.equal(repository.runs.length, 0);
   });
 
   it('separa atualização, divergência, entrada inválida e retomada após falha', async () => {

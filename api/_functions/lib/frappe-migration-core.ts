@@ -21,6 +21,7 @@ export const IMPORT_STATUSES = [
   'atualizados',
   'ignorados',
   'aprovadas',
+  'excluidos',
   'divergentes',
   'erros',
   'estimativa_volume',
@@ -297,6 +298,7 @@ export interface EntityReport {
   atualizados: number;
   ignorados: number;
   aprovadas: number;
+  excluidos: number;
   divergentes: number;
   erros: number;
   estimativa_volume: number;
@@ -1743,6 +1745,7 @@ export function emptyEntityReport(): EntityReport {
     atualizados: 0,
     ignorados: 0,
     aprovadas: 0,
+    excluidos: 0,
     divergentes: 0,
     erros: 0,
     estimativa_volume: 0,
@@ -1768,6 +1771,10 @@ export function makeReport(modo: 'dry-run' | 'apply'): ImportReport {
     total,
     entities: { produtos, faixas, clientes, orcamentos, documentos },
   };
+}
+
+export function addExcluded(report: EntityReport, detail: Omit<ImportDetail, 'status'>): void {
+  addDetail(report, { ...detail, status: 'excluidos' });
 }
 
 export function addDetail(report: EntityReport, detail: ImportDetail): void {
@@ -1970,6 +1977,14 @@ export interface MigrationManifest {
   divergenceCounts: {
     approved: number;
     blocking: number;
+  };
+  discardManifestHash: string | null;
+  exclusionCounts: {
+    produtos: number;
+    faixas: number;
+    clientes: number;
+    orcamentos: number;
+    documentos: number;
   };
 }
 
