@@ -196,7 +196,9 @@ env -u DATABASE_URL -u TEST_DATABASE_URL \
 Execute os testes PostgreSQL com a variável já injetada no processo:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+assert_staging_target
+test "$(psql --dbname "service=$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
   node --test --test-concurrency=1 --import tsx \
   tests/unit/frappe-migration-postgres.test.ts \

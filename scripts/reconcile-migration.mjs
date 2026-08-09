@@ -764,10 +764,12 @@ function runTargetQueries(service, env) {
 export function runReconciliation(args, env = process.env) {
   const service = (args.service || env.CUTOVER_PG_SERVICE || '').trim();
   const serviceFile = (env.PGSERVICEFILE || '').trim();
+  const passFile = (env.PGPASSFILE || '').trim();
   const expectedDatabase = (args.expectedDatabase || env.CUTOVER_EXPECTED_DATABASE || '').trim();
-  if (!service || !serviceFile || !expectedDatabase)
-    fail('CUTOVER_PG_SERVICE, PGSERVICEFILE e database esperado são obrigatórios.');
+  if (!service || !serviceFile || !passFile || !expectedDatabase)
+    fail('CUTOVER_PG_SERVICE, PGSERVICEFILE, PGPASSFILE e database esperado são obrigatórios.');
   assertSecureFile(serviceFile, 'PGSERVICEFILE');
+  assertSecureFile(passFile, 'PGPASSFILE');
   const serviceTarget = readServiceDatabase(serviceFile, service);
   if (serviceTarget.database !== expectedDatabase)
     fail('Serviço PostgreSQL não corresponde ao database esperado.');
@@ -998,8 +1000,10 @@ export function runReconciliation(args, env = process.env) {
     quotations: statusCounts(targetStatusRows.quotations),
     revisions: statusCounts(targetStatusRows.revisions),
   };
-  const lineageInvalid = lineage.filter(
+  const lineageInvalid = selection.selected.filter(
     (row) =>
+      row.provider !== 'frappe' ||
+      row.lineageStatus !== 'verified' ||
       row.canonicalHash === null ||
       !HASH_PATTERN.test(String(row.canonicalHash)) ||
       row.sourceHash === null ||

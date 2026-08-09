@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -67,6 +67,7 @@ test('backup preflight rejects a source URL that is not the named staging servic
   const directory = mkdtempSync(path.join(tmpdir(), 'backup-cutover-'));
   const serviceFile = path.join(directory, 'pg_service.conf');
   writeFileSync(serviceFile, '[staging]\nhost=staging.test\nport=5433\ndbname=aspen_test\n');
+  chmodSync(serviceFile, 0o600);
   try {
     const result = run(['--preflight'], {
       ...process.env,
@@ -122,6 +123,7 @@ test('restore validation enforces named isolated service identity', () => {
   const serviceFile = path.join(directory, 'pg_service.conf');
   const dump = path.join(directory, 'backup.sql');
   writeFileSync(serviceFile, '[restore]\nhost=restore.test\nport=5433\ndbname=aspen_restore\n');
+  chmodSync(serviceFile, 0o600);
   writeFileSync(dump, '-- isolated test dump\\n');
   try {
     const result = run(['--validate', '--file', dump], {
@@ -147,6 +149,7 @@ test('restore validation rejects a named restore target matching active producti
   const serviceFile = path.join(directory, 'pg_service.conf');
   const dump = path.join(directory, 'backup.sql');
   writeFileSync(serviceFile, '[restore]\nhost=restore.test\nport=5433\ndbname=aspen_restore\n');
+  chmodSync(serviceFile, 0o600);
   writeFileSync(dump, '-- isolated test dump\\n');
   try {
     const result = run(['--validate', '--file', dump], {
@@ -167,7 +170,7 @@ test('restore validation rejects a named restore target matching active producti
 });
 
 test('restore validation refuses implicit newest-backup selection', () => {
-  const env = { ...process.env, RESTORE_DATABASE_URL: 'postgresql://restore.test/isolated' };
+  const env: NodeJS.ProcessEnv = { ...process.env, RESTORE_DATABASE_URL: 'postgresql://restore.test/isolated' };
   delete env.DATABASE_URL;
   const result = run(['--validate'], env);
   assert.notEqual(result.status, 0);

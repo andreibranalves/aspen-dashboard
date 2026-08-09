@@ -613,3 +613,15 @@ Status: VERIFIED_WITH_GATES.
   "manualNotes": "No production or real Frappe data was used. No secrets were logged."
 }
 ```
+
+## Fix Round 7 - hardening evidence
+
+- Named restore validation now executes dump and integrity queries through the verified `RESTORE_PG_SERVICE`; Drizzle migrations retain the already-verified restore URL only as its required connection input.
+- Backup, restore, and reconciliation service files require regular mode `0600`; operational backup requires an explicit external directory and rejects an existing directory without mode `0700`.
+- Reconciliation rejects lineage rows whose provider or status is not verified.
+- PostgreSQL 18 named-service syntax and stdin variable expansion were verified against the local client.
+- Focused backup/reconciliation/checklist tests: 26 passed.
+- Staging preflight: passed; named target `aspen_test`, 8.70 MB database, 9 active connections.
+- Named restore validation: passed; `aspen_restore` counts remained products 5, clients 30, quotations 4, revisions 7, items 7, lineage 39.
+- Synthetic source-keyed dry-run/apply reconciliation: passed after cleanup.
+- Real Frappe apply/reconciliation, canary, rollback, production, deployment, and egress block remain intentionally gated.

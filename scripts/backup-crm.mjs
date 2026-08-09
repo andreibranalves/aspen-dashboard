@@ -32,7 +32,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
 const PROJECT_ROOT = resolve(__dirname, '..');
-const DEFAULT_BACKUPS_DIR = resolve(PROJECT_ROOT, 'backups');
 const BACKUP_PREFIX = 'backup-';
 const BACKUP_SUFFIX = '.sql';
 
@@ -173,6 +172,12 @@ function serviceEnvironment(service) {
   return serviceEnv;
 }
 
+function assertProtectedFile(filepath, label) {
+  const stat = lstatSync(resolve(filepath));
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o600)
+    throw new Error(`${label} deve ser arquivo regular com permissão 0600.`);
+}
+
 function readNamedServiceTarget() {
   const serviceName = process.env.RESTORE_PG_SERVICE?.trim();
   const serviceFile = process.env.PGSERVICEFILE?.trim();
@@ -180,6 +185,8 @@ function readNamedServiceTarget() {
   const expectedDatabase = process.env.RESTORE_EXPECTED_DATABASE?.trim();
   if (!serviceName || !serviceFile || !passFile || !expectedDatabase)
     throw new Error('RESTORE_PG_SERVICE, RESTORE_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
+  assertProtectedFile(serviceFile, 'PGSERVICEFILE');
+  assertProtectedFile(passFile, 'PGPASSFILE');
   return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'RESTORE_PG_SERVICE');
 }
 
@@ -191,6 +198,8 @@ function readCutoverServiceTarget() {
   if (!serviceName && !expectedDatabase) return null;
   if (!serviceName || !serviceFile || !passFile || !expectedDatabase)
     throw new Error('CUTOVER_PG_SERVICE, CUTOVER_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
+  assertProtectedFile(serviceFile, 'PGSERVICEFILE');
+  assertProtectedFile(passFile, 'PGPASSFILE');
   return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'CUTOVER_PG_SERVICE');
 }
 
@@ -229,6 +238,7 @@ function assertRestoreServiceTarget(restore) {
     throw new Error('RESTORE_DATABASE_URL e RESTORE_PG_SERVICE não apontam para o mesmo destino.');
   }
   assertNamedServiceDatabase(service, 'RESTORE_PG_SERVICE');
+  return service;
 }
 
 function assertRestoreTargetIsDistinct(source, restore) {
@@ -284,7 +294,8 @@ function command(file, args, options = {}) {
 
 export function resolveBackupDirectory(env = process.env) {
   const configured = env.CUTOVER_BACKUP_DIR || env.BACKUP_DIR;
-  const directory = resolve(configured || DEFAULT_BACKUPS_DIR);
+  if (!configured) throw new Error('CUTOVER_BACKUP_DIR ou BACKUP_DIR externo é obrigatório.');
+  const directory = resolve(configured);
   if (configured) {
     if (directory === PROJECT_ROOT || directory.startsWith(`${PROJECT_ROOT}/`))
       throw new Error('BACKUP_DIR deve apontar para um diretório fora do checkout.');
@@ -311,13 +322,9 @@ export function ensureBackupDirectory(env = process.env) {
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true, mode: 0o700 });
   const stat = lstatSync(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('BACKUP_DIR deve ser um diretório regular.');
-  const configured = env.CUTOVER_BACKUP_DIR || env.BACKUP_DIR;
-  if (configured) {
-    const real = realpathSync(directory);
-    if (real === PROJECT_ROOT || real.startsWith(`${PROJECT_ROOT}/`))
-      throw new Error('BACKUP_DIR deve apontar para um diretório fora do checkout.');
-  }
-  chmodSync(directory, 0o700);
+  const real = realpathSync(directory);
+  if (real === PROJECT_ROOT || real.startsWith(`${PROJECT_ROOT}/`))
+    throw new Error('BACKUP_DIR deve apontar para um diretório fora do checkout.');
   assertMode(directory, 0o700, 'Diretório de backup');
   return directory;
 }
@@ -406,17 +413,17 @@ function runValidate(dumpFile) {
   const source = parseConnectionUrl(connectionUrl('DATABASE_URL'), 'DATABASE_URL');
   const restore = parseConnectionUrl(connectionUrl('RESTORE_DATABASE_URL'), 'RESTORE_DATABASE_URL');
   assertRestoreTargetIsDistinct(source, restore);
-  assertRestoreServiceTarget(restore);
+  const restoreService = assertRestoreServiceTarget(restore);
   const filepath = resolve(dumpFile);
   if (!existsSync(filepath)) throw new Error('Arquivo de dump não encontrado.');
   const dumpStat = lstatSync(filepath);
   if (!dumpStat.isFile() || dumpStat.isSymbolicLink())
     throw new Error('Arquivo de dump deve ser regular e não pode ser link simbólico.');
-  const targetEnv = postgresEnv(restore);
-  stdout('Validando dump explícito no alvo RESTORE_DATABASE_URL.');
+  const targetEnv = serviceEnvironment(restoreService);
+  stdout('Validando dump explícito no alvo RESTORE_PG_SERVICE.');
   command(
     'psql',
-    ['--no-psqlrc', '--quiet', '--set=ON_ERROR_STOP=1', '--dbname', restore.database, '--file', filepath],
+    ['--no-psqlrc', '--quiet', '--set=ON_ERROR_STOP=1', '--dbname', `service=${restoreService.name}`, '--file', filepath],
     { env: targetEnv }
   );
   stdout('Dump restaurado no alvo isolado.');
@@ -450,7 +457,7 @@ function runValidate(dumpFile) {
           '--tuples-only',
           '--no-align',
           '--dbname',
-          restore.database,
+          `service=${restoreService.name}`,
           '--command',
           `SELECT count(*) FROM ${table};`,
         ],
