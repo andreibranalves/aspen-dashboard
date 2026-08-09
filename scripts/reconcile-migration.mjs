@@ -445,7 +445,7 @@ function quotationProjection(lineage, quotation) {
   };
 }
 
-function revisionProjection(sourceId, revision, status) {
+function revisionProjection(sourceId, revision) {
   const templateVersionKey = revision.templateVersionKey;
   const templateVersionHash = revision.templateVersionHash;
   const templateVersion = Number(revision.templateVersion);
@@ -883,7 +883,7 @@ export function runReconciliation(args, env = process.env) {
       hash(revision.sectionsSnapshot) !== expectedRevision.sectionsSnapshotHash
     )
       missingSnapshots += 1;
-    revisions.push(revisionProjection(lineage.sourceId, revision, revision.status));
+    revisions.push(revisionProjection(lineage.sourceId, revision));
     selectedRevisionIds.add(revision.id);
     sourceIdByRevisionId.set(revision.id, lineage.sourceId);
   }
