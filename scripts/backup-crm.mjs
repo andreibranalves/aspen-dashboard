@@ -178,7 +178,6 @@ function readNamedServiceTarget() {
   const serviceFile = process.env.PGSERVICEFILE?.trim();
   const passFile = process.env.PGPASSFILE?.trim();
   const expectedDatabase = process.env.RESTORE_EXPECTED_DATABASE?.trim();
-  if (!serviceName && !expectedDatabase) return null;
   if (!serviceName || !serviceFile || !passFile || !expectedDatabase)
     throw new Error('RESTORE_PG_SERVICE, RESTORE_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
   return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'RESTORE_PG_SERVICE');
@@ -222,7 +221,6 @@ function assertCutoverServiceTarget(connection) {
 
 function assertRestoreServiceTarget(restore) {
   const service = readNamedServiceTarget();
-  if (!service) return;
   if (
     service.target.host.toLowerCase() !== restore.host.toLowerCase() ||
     service.target.port !== restore.port ||
@@ -238,11 +236,11 @@ function assertRestoreTargetIsDistinct(source, restore) {
     throw new Error('RESTORE_DATABASE_URL deve apontar para um alvo isolado diferente de DATABASE_URL.');
   }
   const productionUrl = process.env.PRODUCTION_DATABASE_URL?.trim();
-  if (productionUrl) {
-    const production = parseConnectionUrl(productionUrl, 'PRODUCTION_DATABASE_URL');
-    if (connectionIdentity(production) === connectionIdentity(restore))
-      throw new Error('RESTORE_DATABASE_URL não pode apontar para a base ativa.');
-  }
+  if (!productionUrl)
+    throw new Error('PRODUCTION_DATABASE_URL é obrigatória para validar o alvo de restore.');
+  const production = parseConnectionUrl(productionUrl, 'PRODUCTION_DATABASE_URL');
+  if (connectionIdentity(production) === connectionIdentity(restore))
+    throw new Error('RESTORE_DATABASE_URL não pode apontar para a base ativa.');
 }
 
 export function postgresEnv(connection, database = connection.database, inheritedEnv = process.env) {

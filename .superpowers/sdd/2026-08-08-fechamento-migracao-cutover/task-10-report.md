@@ -424,3 +424,103 @@ Status: DONE_WITH_CONCERNS.
   "manualNotes": "No real Frappe source read, apply, production, deployment, canary or rollback was executed."
 }
 ```
+
+## Fix Round 5 report
+
+Status: DONE_WITH_CONCERNS.
+
+### Changes
+
+- Lineage aggregate hashes now exclude target-assigned client local keys while preserving source identity, canonical hash, source hash, and local-row existence checks.
+- Revision expectations include an explicit append-effective identity hash with `orderLinkage=null` and `orderPending=false`.
+- Reconciliation accepts `rascunho` only when the persisted latest revision has `version > 1` and the source status is non-draft.
+- Revision hash comparison switches to the append-effective projection only for that proven immutable append; version 1 remains exact.
+- Approved divergence filtering now removes only the exact missing approved source key.
+- Written approved rows remain in target projections and are compared normally.
+- Missing approved keys are persisted in the reconciliation artifact.
+- Unapproved missing identities still fail reconciliation.
+- Migration apply now requires `CUTOVER_EXPECTED_DATABASE` whenever a named service is used.
+- Backup, preflight, and restore commands require named services and expected database identities.
+- Restore validation now requires `PRODUCTION_DATABASE_URL` and rejects restore targets matching it.
+- Closure-plan staging/test blocks clear inherited `RESTORE_DATABASE_URL` and assert the named staging database before tests.
+
+### Validation
+
+- `node --test --import tsx tests/unit/migrate-frappe-cli.test.ts tests/unit/backup-crm.test.ts tests/unit/reconcile-migration.test.ts tests/unit/frappe-migration.test.ts`: 94 passed.
+- `npm run test:unit`: 659 passed, 13 expected database-dependent skips.
+- `npm run build:api`: passed.
+- `npm run type-check`: passed.
+- `npx drizzle-kit check`: passed.
+- `npm run lint`: 0 errors, 199 pre-existing warnings.
+- `npm run build`: passed.
+- `git diff --check`: passed.
+- Staging PostgreSQL tests were not rerun because temporary PostgreSQL clients were unavailable after the workstation crash.
+- No real Frappe source read, CLI apply, production, canary, rollback, or live reconciliation was executed.
+
+```acceptance-report
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "satisfied",
+      "evidence": "Round 5 closes the seven reviewed blockers with source-safe lineage hashes, append-aware exact projections, narrow approved-key handling, mandatory target guards, and explicit closure-plan environments."
+    },
+    {
+      "id": "criterion-2",
+      "status": "satisfied",
+      "evidence": "Focused tests, full unit tests, API build, type-check, Drizzle check, production build, lint, and diff checks passed; staging/live gates remain honestly unexecuted."
+    }
+  ],
+  "changedFiles": [
+    "api/_functions/frappe-migration.ts",
+    "docs/superpowers/plans/2026-08-08-fechamento-migracao-cutover.md",
+    "scripts/backup-crm.mjs",
+    "scripts/migrate-frappe-crm.mjs",
+    "scripts/reconcile-migration.mjs",
+    "tests/unit/backup-crm.test.ts",
+    "tests/unit/migrate-frappe-cli.test.ts",
+    "tests/unit/reconcile-migration.test.ts"
+  ],
+  "testsAddedOrUpdated": [
+    "tests/unit/backup-crm.test.ts",
+    "tests/unit/migrate-frappe-cli.test.ts",
+    "tests/unit/reconcile-migration.test.ts"
+  ],
+  "commandsRun": [
+    {
+      "command": "node --test --import tsx tests/unit/migrate-frappe-cli.test.ts tests/unit/backup-crm.test.ts tests/unit/reconcile-migration.test.ts tests/unit/frappe-migration.test.ts",
+      "result": "passed",
+      "summary": "94 passed."
+    },
+    {
+      "command": "npm run test:unit",
+      "result": "passed",
+      "summary": "659 passed and 13 skipped."
+    },
+    {
+      "command": "npm run build:api && npm run type-check && npx drizzle-kit check && npm run lint && npm run build && git diff --check",
+      "result": "passed",
+      "summary": "Builds, type-check, schema check, lint, production build, and whitespace check passed."
+    },
+    {
+      "command": "env -u DATABASE_URL -u TEST_DATABASE_URL TEST_DATABASE_URL=STAGING_DATABASE_URL node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts",
+      "result": "not-run",
+      "summary": "Temporary PostgreSQL clients were unavailable after workstation crash."
+    }
+  ],
+  "validationOutput": [
+    "Client lineage hashes no longer depend on target-assigned UUIDs.",
+    "Append-aware tests reject version-1 drafts and accept only proven version-greater-than-one draft appends.",
+    "Approved missing keys are explicit artifact data, while written approved rows remain comparable.",
+    "Named staging and restore guards are mandatory in executable scripts and closure commands."
+  ],
+  "residualRisks": [
+    "Live staging PostgreSQL reconciliation remains unexecuted until temporary clients and an approved apply report are available.",
+    "Staging Playwright, firewall/egress evidence, canary, and rollback remain operational gates."
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "Round 5 closes client lineage, immutable append, approved divergence, target identity, restore, and closure environment blockers.",
+  "reviewFindings": [],
+  "manualNotes": "No sensitive values were emitted. No real Frappe source read or apply was executed."
+}
+```

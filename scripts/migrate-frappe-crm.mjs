@@ -187,7 +187,9 @@ export function assertDatabaseContract(env = process.env) {
   }
   const serviceTarget = readPgServiceTarget(env, serviceName);
   const expectedDatabase = env.CUTOVER_EXPECTED_DATABASE?.trim();
-  if (expectedDatabase && serviceTarget.database !== expectedDatabase)
+  if (!expectedDatabase)
+    throw new Error('CUTOVER_EXPECTED_DATABASE é obrigatório para o serviço PostgreSQL nomeado.');
+  if (serviceTarget.database !== expectedDatabase)
     throw new Error('CUTOVER_EXPECTED_DATABASE não corresponde ao serviço PostgreSQL nomeado.');
   const databaseTarget = parseDatabaseTarget(env.DATABASE_URL, 'DATABASE_URL');
   if (!sameDatabaseTarget(databaseTarget, {

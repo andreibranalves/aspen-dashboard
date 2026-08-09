@@ -89,6 +89,24 @@ test('restore validation requires both source and isolated target URLs', () => {
   assert.match(restoreResult.stderr, /RESTORE_DATABASE_URL/);
 });
 
+test('restore validation exige serviço nomeado e identidade ativa', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'backup-restore-required-'));
+  const dump = path.join(directory, 'backup.sql');
+  writeFileSync(dump, '-- isolated test dump\n');
+  try {
+    const result = run(['--validate', '--file', dump], {
+      ...process.env,
+      DATABASE_URL: 'postgresql://source-user@source.test:5433/aspen_test',
+      RESTORE_DATABASE_URL: 'postgresql://restore-user@restore.test:5433/aspen_restore',
+      PRODUCTION_DATABASE_URL: 'postgresql://prod-user@prod.test:5433/aspen_prod',
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /RESTORE_PG_SERVICE/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('restore validation enforces named isolated service identity', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'backup-service-'));
   const serviceFile = path.join(directory, 'pg_service.conf');
@@ -100,6 +118,7 @@ test('restore validation enforces named isolated service identity', () => {
       ...process.env,
       DATABASE_URL: 'postgresql://source-user@source.test:5433/aspen_test',
       RESTORE_DATABASE_URL: 'postgresql://restore-user@other.test:5433/aspen_restore',
+      PRODUCTION_DATABASE_URL: 'postgresql://prod-user@prod.test:5433/aspen_prod',
       RESTORE_PG_SERVICE: 'restore',
       RESTORE_EXPECTED_DATABASE: 'aspen_restore',
       PGSERVICEFILE: serviceFile,

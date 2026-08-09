@@ -1500,36 +1500,45 @@ function buildReconciliationExpectations(
       clientId: unit.quotation.clientId,
     }),
   }));
-  const revisions = quotationUnits.map((unit) => ({
-    sourceId: unit.quotation.sourceId,
-    templateKey: unit.revision.templatePadrao,
-    templateHash: unit.revision.templateHash,
-    templateVersionKey: unit.revision.templatePadrao,
-    templateVersionHash: unit.revision.templateHash,
-    templateVersion: 1,
-    sectionsSnapshotHash: canonicalHash(snapshotFromLegacyRevision(unit.revision)),
-    identityHash: canonicalHash({
-      statusOriginal: unit.revision.statusOriginal ?? null,
-      orderLinkage: unit.revision.orderLinkage ?? null,
-      orderPending: unit.revision.orderPending === true,
-      validadeDias: unit.revision.validadeDias,
-      pagamento: unit.revision.pagamento,
-      entrega: unit.revision.entrega,
-      fretePadrao: canonicalDecimal(unit.revision.fretePadrao),
-      frete: canonicalDecimal(unit.revision.frete),
-      observacoes: unit.revision.observacoes,
-      prazoProducao: unit.revision.prazoProducao,
+  const revisions = quotationUnits.map((unit) => {
+    const sectionsSnapshotHash = canonicalHash(snapshotFromLegacyRevision(unit.revision));
+    const revisionIdentity = (orderLinkage: string | null, orderPending: boolean): string =>
+      canonicalHash({
+        statusOriginal: unit.revision.statusOriginal ?? null,
+        orderLinkage,
+        orderPending,
+        validadeDias: unit.revision.validadeDias,
+        pagamento: unit.revision.pagamento,
+        entrega: unit.revision.entrega,
+        fretePadrao: canonicalDecimal(unit.revision.fretePadrao),
+        frete: canonicalDecimal(unit.revision.frete),
+        observacoes: unit.revision.observacoes,
+        prazoProducao: unit.revision.prazoProducao,
+        templateKey: unit.revision.templatePadrao,
+        templateHash: unit.revision.templateHash,
+        templateVersionKey: unit.revision.templatePadrao,
+        templateVersionHash: unit.revision.templateHash,
+        templateVersion: 1,
+        sectionsSnapshotHash,
+        subtotal: canonicalDecimal(unit.revision.subtotal),
+        total: canonicalDecimal(unit.revision.total),
+        itemCount: unit.items.length,
+      });
+    return {
+      sourceId: unit.quotation.sourceId,
       templateKey: unit.revision.templatePadrao,
       templateHash: unit.revision.templateHash,
       templateVersionKey: unit.revision.templatePadrao,
       templateVersionHash: unit.revision.templateHash,
       templateVersion: 1,
-      sectionsSnapshotHash: canonicalHash(snapshotFromLegacyRevision(unit.revision)),
-      subtotal: canonicalDecimal(unit.revision.subtotal),
-      total: canonicalDecimal(unit.revision.total),
-      itemCount: unit.items.length,
-    }),
-  }));
+      sectionsSnapshotHash,
+      identityHash: revisionIdentity(
+        unit.revision.orderLinkage ?? null,
+        unit.revision.orderPending === true
+      ),
+      appendIdentityHash: revisionIdentity(null, false),
+    };
+  });
   const items = quotationUnits.flatMap((unit) =>
     unit.items.map((item) => ({
       sourceId: unit.quotation.sourceId,
@@ -1551,8 +1560,7 @@ function buildReconciliationExpectations(
     ])
   ).values()];
   const templateVersions = templates.map((template) => ({ ...template, version: 1 }));
-  const allowedStatuses = (status: string): string[] =>
-    status === 'rascunho' ? ['rascunho'] : [status, 'rascunho'];
+  const allowedStatuses = (status: string): string[] => [status];
   const statusCounts = (rows: Array<{ status: string }>) =>
     rows.reduce<Record<string, number>>((counts, row) => {
       counts[row.status] = (counts[row.status] || 0) + 1;
@@ -1597,7 +1605,12 @@ function buildReconciliationExpectations(
       items: stableHashRows(items, (row) => `${row.sourceId}:${row.position}`),
       templates: stableHashRows(templates, (row) => `${row.key}:${row.hash}`),
       templateVersions: stableHashRows(templateVersions, (row) => `${row.key}:${row.version}`),
-      lineage: stableHashRows(lineage, (row) => `${row.sourceDoctype}:${row.sourceId}`),
+      // localKey is target-assigned for clients (UUID relink), so it cannot
+      // participate in a source-vs-target aggregate hash.
+      lineage: stableHashRows(
+        lineage.map(({ localKey: _localKey, ...row }) => row),
+        (row) => `${row.sourceDoctype}:${row.sourceId}`
+      ),
     },
     statusCounts: {
       quotations: statusCounts(quotationUnits.map((unit) => ({ status: unit.quotation.status }))),

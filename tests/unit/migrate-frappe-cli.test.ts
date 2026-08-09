@@ -455,6 +455,7 @@ describe('CLI de migração Frappe', () => {
       CUTOVER_PG_SERVICE: 'cutover-quotes',
       PGSERVICEFILE: serviceFile,
       PGPASSFILE: path.join(directory, 'pgpass'),
+      CUTOVER_EXPECTED_DATABASE: 'quotes',
       TEST_DATABASE_URL: 'postgresql://api-user@db.example:5433/staging',
       RESTORE_DATABASE_URL: 'postgresql://api-user@db.example:5433/restore',
     };
@@ -465,7 +466,10 @@ describe('CLI de migração Frappe', () => {
         database: 'quotes',
       });
       assert.doesNotThrow(() => assertDatabaseContract(base));
-      assert.doesNotThrow(() => assertDatabaseContract({ ...base, CUTOVER_EXPECTED_DATABASE: 'quotes' }));
+      assert.throws(
+        () => assertDatabaseContract({ ...base, CUTOVER_EXPECTED_DATABASE: undefined }),
+        /CUTOVER_EXPECTED_DATABASE.*obrigatório/
+      );
       assert.throws(
         () => assertDatabaseContract({ ...base, CUTOVER_EXPECTED_DATABASE: 'aspen_test' }),
         /CUTOVER_EXPECTED_DATABASE/

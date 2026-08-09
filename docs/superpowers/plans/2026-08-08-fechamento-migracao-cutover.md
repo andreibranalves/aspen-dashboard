@@ -93,7 +93,7 @@ Não aceitar `FRAPPE_MIGRATION_FIXTURE` em apply.
 Atualizar o runbook para usar sempre:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
@@ -464,7 +464,7 @@ Adicionar teste que aplica source change depois do token e compara conteúdo, to
 Run with explicit target:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
@@ -476,9 +476,10 @@ import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 npm run db:migrate
-env -u DATABASE_URL -u TEST_DATABASE_URL \
-  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
+export TEST_DATABASE_URL="$STAGING_DATABASE_URL"
+export CUTOVER_PG_SERVICE CUTOVER_EXPECTED_DATABASE=aspen_test PGSERVICEFILE PGPASSFILE
+test "$(psql --dbname "$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
+node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-repository.test.ts tests/unit/public-quotation.test.ts tests/unit/quotation-lifecycle-postgres.test.ts
 SH
 ```
 
@@ -681,7 +682,7 @@ Registrar somente `sourceSnapshotAt` e hashes no manifest.
 Run:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
@@ -705,7 +706,7 @@ Confirmar `manifestHash`, `sourceSnapshotAt`, `migrationRunId`, contagens e dive
 Run:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
@@ -873,7 +874,7 @@ O runbook exige registrar as versões no diretório protegido do corte.
 Run somente contra `STAGING_DATABASE_URL`, com serviço nomeado, `CUTOVER_BACKUP_DIR` externo e protegido:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   PGSERVICEFILE="$PGSERVICEFILE" \
@@ -892,7 +893,7 @@ O preflight é obrigatório e aborta o backup quando capacidade está crítica o
 Run com serviço nomeado, `CUTOVER_BACKUP_DIR` externo e explícito:
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   PGSERVICEFILE="$PGSERVICEFILE" \
@@ -918,7 +919,7 @@ Run:
 : "${PRODUCTION_DATABASE_URL:?configure active production identity}"
 : "${PGSERVICEFILE:?configure protected PGSERVICEFILE}"
 : "${PGPASSFILE:?configure protected PGPASSFILE}"
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   RESTORE_DATABASE_URL="$RESTORE_DATABASE_URL" \
   RESTORE_PG_SERVICE="$RESTORE_PG_SERVICE" \
@@ -1085,7 +1086,7 @@ Expected: zero falhas, warnings existentes documentados e zero segredo detectado
 - [ ] **Step 2: Run complete PostgreSQL verification.**
 
 ```bash
-env -u DATABASE_URL -u TEST_DATABASE_URL \
+env -u DATABASE_URL -u TEST_DATABASE_URL -u RESTORE_DATABASE_URL \
   DATABASE_URL="$STAGING_DATABASE_URL" \
   CUTOVER_PG_SERVICE="$CUTOVER_PG_SERVICE" \
   CUTOVER_EXPECTED_DATABASE=aspen_test \
@@ -1097,9 +1098,10 @@ import { assertDatabaseContract } from './scripts/migrate-frappe-crm.mjs';
 assertDatabaseContract(process.env);
 NODE
 npm run db:migrate
-env -u DATABASE_URL -u TEST_DATABASE_URL \
-  TEST_DATABASE_URL="$STAGING_DATABASE_URL" \
-  node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
+export TEST_DATABASE_URL="$STAGING_DATABASE_URL"
+export CUTOVER_PG_SERVICE CUTOVER_EXPECTED_DATABASE=aspen_test PGSERVICEFILE PGPASSFILE
+test "$(psql --dbname "$CUTOVER_PG_SERVICE" --tuples-only --no-align --command 'SELECT current_database();' | tr -d '[:space:]')" = aspen_test
+node --test --test-concurrency=1 --import tsx tests/unit/frappe-migration-postgres.test.ts tests/unit/orcamento-postgres.test.ts tests/unit/quotations-postgres.test.ts tests/unit/quotation-lifecycle-postgres.test.ts tests/unit/frappe-migration-repository.test.ts
 SH
 ```
 

@@ -95,10 +95,10 @@ test('reconciliação aceita draft append permitido sem mascarar status target',
   const expectedWithStatuses = {
     ...expected,
     statusRows: {
-      quotations: [{ sourceId: 'quotation-1', status: 'enviado', allowedStatuses: ['enviado', 'rascunho'] }],
+      quotations: [{ sourceId: 'quotation-1', status: 'enviado', allowedStatuses: ['enviado'] }],
       revisions: [
-        { sourceId: 'quotation-1', status: 'enviado', allowedStatuses: ['enviado', 'rascunho'] },
-        { sourceId: 'quotation-2', status: 'enviado', allowedStatuses: ['enviado', 'rascunho'] },
+        { sourceId: 'quotation-1', status: 'enviado', allowedStatuses: ['enviado'] },
+        { sourceId: 'quotation-2', status: 'enviado', allowedStatuses: ['enviado'] },
       ],
     },
   };
@@ -106,10 +106,10 @@ test('reconciliação aceita draft append permitido sem mascarar status target',
     baseInput({
       expected: expectedWithStatuses,
       targetStatusRows: {
-        quotations: [{ sourceId: 'quotation-1', status: 'rascunho' }],
+        quotations: [{ sourceId: 'quotation-1', status: 'rascunho', version: 2 }],
         revisions: [
-          { sourceId: 'quotation-1', status: 'rascunho' },
-          { sourceId: 'quotation-2', status: 'enviado' },
+          { sourceId: 'quotation-1', status: 'rascunho', version: 2 },
+          { sourceId: 'quotation-2', status: 'enviado', version: 1 },
         ],
       },
       targetStatusCounts: { quotations: { rascunho: 1 }, revisions: { rascunho: 1, enviado: 1 } },
@@ -120,10 +120,10 @@ test('reconciliação aceita draft append permitido sem mascarar status target',
     baseInput({
       expected: expectedWithStatuses,
       targetStatusRows: {
-        quotations: [{ sourceId: 'quotation-1', status: 'perdido' }],
+        quotations: [{ sourceId: 'quotation-1', status: 'rascunho', version: 1 }],
         revisions: [
-          { sourceId: 'quotation-1', status: 'rascunho' },
-          { sourceId: 'quotation-2', status: 'enviado' },
+          { sourceId: 'quotation-1', status: 'rascunho', version: 1 },
+          { sourceId: 'quotation-2', status: 'enviado', version: 1 },
         ],
       },
       targetStatusCounts: { quotations: { perdido: 1 }, revisions: { rascunho: 1, enviado: 1 } },
@@ -131,6 +131,17 @@ test('reconciliação aceita draft append permitido sem mascarar status target',
   );
   assert.equal(wrongStatus.passed, false);
   assert.equal(wrongStatus.targetStatusRowsMatchExpected, false);
+});
+
+test('reconciliação permite ausência somente da chave aprovada', () => {
+  const approvedProduct = compareReconciliation(
+    baseInput({ approvedMissingKeys: ['Item:opaque-product'] })
+  );
+  assert.equal(approvedProduct.passed, true);
+  assert.deepEqual(approvedProduct.approvedMissingKeys, ['Item:opaque-product']);
+
+  const missingWithoutApproval = compareReconciliation(baseInput({ missingIdentities: 1 }));
+  assert.equal(missingWithoutApproval.passed, false);
 });
 
 test('reconciliação rejeita hash, identidade ou contagem target inconsistente', () => {
