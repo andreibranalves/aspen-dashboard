@@ -410,19 +410,21 @@ test('fake bridge failures drive worker retry and dead-letter', async () => {
 });
 
 test('fake bridge timeout retries and releases the lease', async () => {
-  const bridge = await createFakeOutboxBridge({ mode: 'timeout', delayMs: 50 });
+  const bridge = await createFakeOutboxBridge({ mode: 'timeout', delayMs: 200 });
   try {
     const repository = await queued({ maxAttempts: 2 });
     const processing = processQuotationOutbox({
       repository,
       owner: 'worker-a',
       configuredProviders: ['crm'],
-      providerTimeoutMs: 5,
-      leaseMs: 100,
+      providerTimeoutMs: 50,
+      leaseMs: 500,
       now: () => new Date('2026-08-05T10:00:01.000Z'),
       adapters: createConfiguredQuotationOutboxProviderAdapters({ crmUrl: `${bridge.url}/events` }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    const deadline = Date.now() + 1000;
+    while (bridge.requests.length === 0 && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 5));
     const result = await processing;
     assert.deepEqual(result, { claimed: 1, delivered: 0, retried: 1, deadLettered: 0, leaseLost: 0 });
     const [event] = await repository.list();
