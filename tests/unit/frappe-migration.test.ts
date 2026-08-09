@@ -193,7 +193,61 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.equal(repository.writes.clients, 1);
     assert.equal(repository.writes.quotations, 1);
     assert.equal(applied.manifest.reconciliation.keys.quotations.length, 1);
+    assert.equal(applied.manifest.reconciliation.counts.products, 1);
+    assert.equal(applied.manifest.reconciliation.counts.pricingDocuments, 1);
+    assert.equal(applied.manifest.reconciliation.counts.pricingTiers, 1);
+    assert.equal(applied.manifest.reconciliation.counts.clients, 1);
+    assert.equal(applied.manifest.reconciliation.counts.quotations, 1);
+    assert.equal(applied.manifest.reconciliation.counts.revisions, 1);
+    assert.equal(applied.manifest.reconciliation.counts.items, 1);
+    assert.equal(applied.manifest.reconciliation.counts.templates, 1);
+    assert.equal(applied.manifest.reconciliation.counts.templateVersions, 1);
+    assert.equal(applied.manifest.reconciliation.rows.lineage.length, 4);
+    assert.deepEqual(applied.manifest.reconciliation.keys.products, ['Item:ITEM-KEEP']);
+    assert.deepEqual(applied.manifest.reconciliation.keys.pricingDocuments, ['Pricing Rule:PR-KEEP']);
+    assert.deepEqual(applied.manifest.reconciliation.keys.quotations, ['Quotation:QTN-2025-00003']);
     assert.equal(applied.manifest.discardManifestHash, discardManifest.closureHash);
+  });
+
+  it('rejeita dryRunReportHash adulterado antes de qualquer write', async () => {
+    const dataset = createDiscardIntegrationFixture();
+    const preview = await runFrappeMigration({ mode: 'dry-run', dataset, repository: new MemoryFrappeMigrationRepository() });
+    const discardManifest = discardManifestFor(dataset, preview);
+    const repository = new MemoryFrappeMigrationRepository();
+    await assert.rejects(
+      () => runFrappeMigration({
+        mode: 'apply',
+        dataset,
+        repository,
+        expectedManifestHash: computeManifestHash(dataset),
+        discardManifest: { ...discardManifest, dryRunReportHash: 'f'.repeat(64) },
+      }),
+      /dryRunReportHash|descarte|hash/i
+    );
+    assert.deepEqual(repository.writes, { products: 0, clients: 0, quotations: 0, lineage: 0, documents: 0 });
+    assert.equal(repository.runs.length, 0);
+  });
+
+  it('rejeita closureHash adulterado em relação ao plano atual antes de qualquer write', async () => {
+    const dataset = createDiscardIntegrationFixture();
+    const preview = await runFrappeMigration({ mode: 'dry-run', dataset, repository: new MemoryFrappeMigrationRepository() });
+    const discardManifest = discardManifestFor(dataset, preview);
+    const entries = discardManifest.entries.map((entry, index) =>
+      index === 0 ? { ...entry, reason: 'discarded-dependency' as const } : entry
+    );
+    const repository = new MemoryFrappeMigrationRepository();
+    await assert.rejects(
+      () => runFrappeMigration({
+        mode: 'apply',
+        dataset,
+        repository,
+        expectedManifestHash: computeManifestHash(dataset),
+        discardManifest: { ...discardManifest, entries, closureHash: hashDiscardEntries(entries) },
+      }),
+      /closureHash|plano|descarte/i
+    );
+    assert.deepEqual(repository.writes, { products: 0, clients: 0, quotations: 0, lineage: 0, documents: 0 });
+    assert.equal(repository.runs.length, 0);
   });
 
   it('rejeita manifesto de descarte stale antes de qualquer write', async () => {

@@ -1432,11 +1432,23 @@ function emptyReconciliationExpectations(): MigrationReconciliationExpectations 
 function buildReconciliationExpectations(
   productUnits: ProductUnit[],
   clientUnits: ClientUnit[],
-  quotationUnits: QuotationUnit[]
+  quotationUnits: QuotationUnit[],
+  discardPlan?: DiscardPlan
 ): MigrationReconciliationExpectations {
-  // Expectations describe the source candidates, not only the rows that the
-  // report happened to mark as writable. Approved divergences are still
-  // applied; unapproved blockers fail the run before reconciliation.
+  // Expectations describe only units that can be written. Excluded units and
+  // every collection derived from them must stay outside reconciliation.
+  const isExcluded = (unit: { lineage: FrappeLineageEntry[] }): boolean =>
+    Boolean(
+      discardPlan &&
+        unit.lineage.some((entry) => {
+          const key = canonicalApprovalKey(entry.sourceDoctype, entry.sourceId);
+          return key ? discardPlan.entries.has(key) : false;
+        })
+    );
+  productUnits = productUnits.filter((unit) => !isExcluded(unit));
+  clientUnits = clientUnits.filter((unit) => !isExcluded(unit));
+  quotationUnits = quotationUnits.filter((unit) => !isExcluded(unit));
+
   const reportSourceId = (sourceDoctype: string, sourceId: string): string =>
     sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
       ? safeApprovalKey(`${sourceDoctype}:${sourceId}`).split(':')[1]
@@ -1794,16 +1806,25 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
     lineagePayloads.set(recordKey(client.sourceDoctype, client.sourceId), client.source);
   attachUnitLineagePayloads(normalized.productUnits, lineagePayloads);
   attachUnitLineagePayloads(normalized.clientUnits, lineagePayloads);
+  const repository = options.repository || createPostgresFrappeMigrationRepository();
   const sourceDiscard = buildSourceDiscardPlan(dataset, normalized);
   const discardPlan = options.discardManifest ? sourceDiscard.plan : undefined;
   if (options.discardManifest) {
+    const currentDryRun = await runFrappeMigration({
+      mode: 'dry-run',
+      dataset,
+      pageSize: options.pageSize,
+      repository,
+      approvedDivergences: options.approvedDivergences,
+    });
     validateDiscardManifest(options.discardManifest, {
       sourceManifestHash: manifestHash,
-      dryRunReportHash: options.discardManifest.dryRunReportHash,
+      dryRunReportHash: canonicalHash(currentDryRun.report),
       requiredKeys: new Set(sourceDiscard.plan.entries.keys()),
     });
+    if (options.discardManifest.closureHash.trim().toLowerCase() !== sourceDiscard.plan.closureHash)
+      throw new Error('Manifesto de descarte closureHash não corresponde ao plano atual.');
   }
-  const repository = options.repository || createPostgresFrappeMigrationRepository();
   const discardEntryFor = (sourceDoctype: string, sourceId: string) => {
     if (!discardPlan) return undefined;
     const key = canonicalApprovalKey(sourceDoctype, sourceId);
@@ -2737,7 +2758,8 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       buildReconciliationExpectations(
         normalized.productUnits,
         normalized.clientUnits,
-        builtQuotations.quotationUnits
+        builtQuotations.quotationUnits,
+        discardPlan
       ),
       options.discardManifest
     ),
