@@ -15,13 +15,17 @@ test.describe.configure({ mode: 'serial' });
 test.describe('quotation cutover staging', () => {
   test.beforeEach(async ({ page }) => {
     const requests = [];
-    page.__cutoverRequests = requests;
+    /** @type {any} */
+    const testPage = page;
+    testPage.__cutoverRequests = requests;
     page.on('request', (request) => requests.push(request.url()));
     await loginToStaging(page);
   });
 
   test.afterEach(async ({ page }) => {
-    assertNoForbiddenEgress(page.__cutoverRequests || []);
+    /** @type {any} */
+    const testPage = page;
+    assertNoForbiddenEgress(testPage.__cutoverRequests || []);
   });
 
   test('opens the PostgreSQL quotation from the list and binds PDF to its revision', async ({ page, browser }) => {
@@ -221,7 +225,7 @@ test.describe('quotation cutover staging', () => {
       }
     }
     if (mainError && cleanupError) {
-      throw new AggregateError([mainError, cleanupError], 'Staging flow and fixture cleanup both failed');
+      throw new Error('Staging flow and fixture cleanup both failed');
     }
     if (mainError) throw mainError;
     if (cleanupError) throw cleanupError;

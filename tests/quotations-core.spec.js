@@ -90,7 +90,7 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
   await expect(page.getByLabel('Pagamento do orçamento')).toHaveValue('À vista');
   await page.getByLabel('Pagamento do orçamento').fill('30 dias');
   await page.getByLabel('Frete do orçamento').fill('1.25');
-  await page.locator('textarea').fill('Alteração local');
+  await page.getByLabel('Observações do orçamento').fill('Alteração local');
   await page.getByLabel('Preço aplicado SKU-1').fill('10.00');
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText('Salvo.')).toBeVisible();
@@ -103,7 +103,7 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
   expect(lastPutPayload.items[0].rate).toBe('10.00');
   await expect(page.getByText('R$ 101,25')).toBeVisible();
   await expect(page.getByText('R$ 1,00')).toBeVisible();
-  await expect(page.getByText('30 dias')).toBeVisible();
+  await expect(page.getByText('30 dias').first()).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText(/alterado por outro usuário/i)).toBeVisible();

@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import type { Readable } from 'node:stream';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -29,10 +31,9 @@ async function getAvailablePort(): Promise<number> {
   return port;
 }
 
-async function waitForServer(
-  url: string,
-  appServer: ChildProcessWithoutNullStreams
-): Promise<Response> {
+type AppServerProcess = ChildProcessByStdio<null, Readable, Readable>;
+
+async function waitForServer(url: string, appServer: AppServerProcess): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < 80; attempt += 1) {
     if (appServer.exitCode !== null) {
@@ -50,7 +51,7 @@ async function waitForServer(
   throw lastError instanceof Error ? lastError : new Error('Tempo esgotado ao iniciar app-server.');
 }
 
-async function stopServer(appServer: ChildProcessWithoutNullStreams): Promise<void> {
+async function stopServer(appServer: AppServerProcess): Promise<void> {
   if (appServer.exitCode !== null) return;
 
   const exited = once(appServer, 'exit');
@@ -81,6 +82,8 @@ describe('app-server authentication handoff', () => {
         CRM_QUOTES_ROLLOUT_STATE: 'postgres-read-only',
         ERPNEXT_TOKEN: 'app-server-test-token',
         DATABASE_URL: '',
+        KV_REST_API_URL: '',
+        KV_REST_API_TOKEN: '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -104,19 +107,15 @@ describe('app-server authentication handoff', () => {
       assert.equal(genericView.status, 401);
 
       const publicRequests: Response[] = [];
+      const publicToken = `invalid-${randomBytes(12).toString('hex')}`;
       for (let attempt = 0; attempt < 21; attempt += 1) {
         publicRequests.push(
-          await fetch(`${baseUrl}/api/public-quotation?token=invalid-token`, {
+          await fetch(`${baseUrl}/api/public-quotation?token=${encodeURIComponent(publicToken)}`, {
             headers: { 'x-forwarded-for': '198.51.100.42' },
           })
         );
       }
-      if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-        assert.equal(publicRequests.slice(0, 20).every((response) => response.status === 401), true);
-        assert.equal(publicRequests[20].status, 429);
-      } else {
-        assert.equal(publicRequests.every((response) => response.status === 429), true);
-      }
+      assert.equal(publicRequests.every((response) => response.status === 429), true);
 
       const login = await fetch(`${baseUrl}/api/login`, {
         method: 'POST',

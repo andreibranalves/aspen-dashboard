@@ -13,7 +13,9 @@ function product(sku, nome, ativo = true) {
     criado_em: '2026-01-01T00:00:00.000Z',
     atualizado_em: '2026-01-01T00:00:00.000Z',
     arquivado_em: ativo ? null : '2026-01-01T00:00:00.000Z',
-    preco_minimo: null,
+    preco_base: /** @type {string | null} */ (null),
+    precos: /** @type {Array<{minimum_quantity: string, unit_price: string}>} */ ([]),
+    preco_minimo: /** @type {string | null} */ (null),
     pricing_available: false,
   };
 }

@@ -58,7 +58,7 @@ test('public quotation rate limit models atomic increment and conditional TTL un
   let activeEvaluations = 0;
   let maxActiveEvaluations = 0;
 
-  rateLimitKv.eval = async (script, keys, args) => {
+  rateLimitKv.eval = (async (script, keys, args) => {
     calls.push({ script, keys, args });
     assert.equal(keys.length, 1);
     assert.deepEqual(args, [60]);
@@ -80,7 +80,7 @@ test('public quotation rate limit models atomic increment and conditional TTL un
     }
     buckets.set(key, bucket);
     return bucket.count;
-  };
+  }) as typeof rateLimitKv.eval;
 
   try {
     const results = await Promise.all(
