@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
   compareReconciliation,
   expectedReconciliation,
+  findExcludedTargetDependencyKeys,
 } from '../../scripts/reconcile-migration.mjs';
 import {
   hashDiscardEntries,
@@ -63,6 +65,52 @@ const targetImportedCounts = { ...expectedCounts };
 const targetHashes = { ...expectedHashes };
 const exclusionCounts = { produtos: 1, faixas: 1, clientes: 0, orcamentos: 1, documentos: 0 };
 const exclusionClosureHash = 'b'.repeat(64);
+const emptyReconciliationCounts = Object.fromEntries(
+  ['products', 'pricingDocuments', 'pricingTiers', 'clients', 'quotations', 'revisions', 'items', 'templates', 'templateVersions']
+    .map((key) => [key, 0])
+);
+const emptyReconciliationHashes = Object.fromEntries(
+  Object.keys(emptyReconciliationCounts).concat('lineage').map((key) => [key, 'a'.repeat(64)])
+);
+const emptyReconciliationRows = {
+  products: [],
+  pricingDocuments: [],
+  pricingTiers: [],
+  clients: [],
+  quotations: [],
+  revisions: [],
+  items: [],
+  templates: [],
+  templateVersions: [],
+  lineage: [],
+};
+
+function closureManifest(entries, counts) {
+  const manifestHash = 'd'.repeat(64);
+  return {
+    manifestHash,
+    discardManifestHash: null,
+    discardPlan: {
+      sourceManifestHash: manifestHash,
+      closureHash: hashDiscardEntries(entries),
+      entries: entries.map(({ key, entity, reason, depends_on }) => ({ key, entity, reason, depends_on })),
+    },
+    exclusionCounts: counts,
+    reconciliation: {
+      keys: { products: [], pricingDocuments: [], pricingTiers: [], clients: [], quotations: [] },
+      counts: emptyReconciliationCounts,
+      hashes: emptyReconciliationHashes,
+      statusCounts: { quotations: {}, revisions: {} },
+      statusRows: { quotations: [], revisions: [] },
+      revisionExpectations: [],
+      rows: emptyReconciliationRows,
+    },
+  };
+}
+
+function dependencyKey(sku) {
+  return `dependency:${createHash('sha256').update(JSON.stringify(sku)).digest('hex')}`;
+}
 
 function baseInput(overrides = {}) {
   return {
@@ -256,8 +304,150 @@ test('reconciliação mantém bloqueio para divergência não resolvida', () => 
   assert.deepEqual(result.unapprovedDivergenceKeys, ['Quotation:unresolved']);
 });
 
+test('expectedReconciliation rejeita contagens de exclusão adulteradas', () => {
+  const entries: DiscardEntry[] = [
+    {
+      key: 'Item:excluded',
+      source_doctype: 'Item',
+      source_id: 'excluded',
+      entity: 'produto',
+      reason: 'ambiguous-pricing',
+      depends_on: [],
+    },
+    {
+      key: 'Quotation:excluded',
+      source_doctype: 'Quotation',
+      source_id: 'excluded',
+      entity: 'orcamento',
+      reason: 'discarded-dependency',
+      depends_on: ['Item:excluded'],
+    },
+  ];
+  const manifest = closureManifest(entries, {
+    produtos: 0,
+    faixas: 0,
+    clientes: 0,
+    orcamentos: 0,
+    documentos: 0,
+  });
+  assert.throws(
+    () => expectedReconciliation(manifest, 'fixture'),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /contag|closure/i);
+      assert.doesNotMatch(error.message, /excluded/);
+      return true;
+    }
+  );
+});
+
+test('expectedReconciliation rejeita IDs Customer/Lead crus em chaves e dependências', () => {
+  const rawKeyEntries: DiscardEntry[] = [
+    {
+      key: 'Customer:raw-customer',
+      source_doctype: 'Customer',
+      source_id: 'raw-customer',
+      entity: 'cliente',
+      reason: 'ambiguous-client',
+      depends_on: [],
+    },
+  ];
+  const rawKeyManifest = closureManifest(rawKeyEntries, {
+    produtos: 0,
+    faixas: 0,
+    clientes: 1,
+    orcamentos: 0,
+    documentos: 0,
+  });
+  assert.throws(
+    () => expectedReconciliation(rawKeyManifest, 'fixture'),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /chave|closure|origem/i);
+      assert.doesNotMatch(error.message, /raw-customer/);
+      return true;
+    }
+  );
+
+  const rawDependencyEntries: DiscardEntry[] = [
+    {
+      key: 'Customer:cliente-0123456789ab',
+      source_doctype: 'Customer',
+      source_id: 'cliente-0123456789ab',
+      entity: 'cliente',
+      reason: 'ambiguous-client',
+      depends_on: ['Lead:raw-lead'],
+    },
+    {
+      key: 'Lead:raw-lead',
+      source_doctype: 'Lead',
+      source_id: 'raw-lead',
+      entity: 'cliente',
+      reason: 'ambiguous-client',
+      depends_on: [],
+    },
+  ];
+  const rawDependencyManifest = closureManifest(rawDependencyEntries, {
+    produtos: 0,
+    faixas: 0,
+    clientes: 2,
+    orcamentos: 0,
+    documentos: 0,
+  });
+  assert.throws(
+    () => expectedReconciliation(rawDependencyManifest, 'fixture'),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /chave|closure|origem/i);
+      assert.doesNotMatch(error.message, /raw-lead/);
+      return true;
+    }
+  );
+
+  const validEntries: DiscardEntry[] = [
+    {
+      key: 'Customer:cliente-0123456789ab',
+      source_doctype: 'Customer',
+      source_id: 'cliente-0123456789ab',
+      entity: 'cliente',
+      reason: 'ambiguous-client',
+      depends_on: ['Item:opaque-item'],
+    },
+    {
+      key: 'Item:opaque-item',
+      source_doctype: 'Item',
+      source_id: 'opaque-item',
+      entity: 'produto',
+      reason: 'ambiguous-pricing',
+      depends_on: [],
+    },
+  ];
+  assert.doesNotThrow(() => expectedReconciliation(closureManifest(validEntries, {
+    produtos: 1,
+    faixas: 0,
+    clientes: 1,
+    orcamentos: 0,
+    documentos: 0,
+  }), 'fixture'));
+});
+
+test('reconciliação procura SKU excluído em todas as quotations target', () => {
+  assert.deepEqual(
+    findExcludedTargetDependencyKeys(
+      {
+        quotations: [{ id: 'quotation-outside-lineage' }],
+        revisions: [{ id: 'revision-outside-lineage', quotationId: 'quotation-outside-lineage' }],
+        items: [{ revisionId: 'revision-outside-lineage', productSku: 'SKU-EXCLUDED' }],
+      },
+      new Set(['SKU-EXCLUDED'])
+    ),
+    [dependencyKey('SKU-EXCLUDED')]
+  );
+});
+
 test('expectedReconciliation valida contagens e closure exata sem expor a closure', () => {
-  const entries: DiscardEntry[] = [    {
+  const entries: DiscardEntry[] = [
+    {
       key: 'Item:excluded',
       source_doctype: 'Item',
       source_id: 'excluded',
@@ -295,7 +485,7 @@ test('expectedReconciliation valida contagens e closure exata sem expor a closur
       closureHash,
       entries: entries.map(({ key, entity, reason, depends_on }) => ({ key, entity, reason, depends_on })),
     },
-    exclusionCounts: { produtos: 0, faixas: 0, clientes: 0, orcamentos: 0, documentos: 0 },
+    exclusionCounts: { produtos: 1, faixas: 0, clientes: 0, orcamentos: 1, documentos: 0 },
     reconciliation: {
       keys: { products: ['Item:excluded'], pricingDocuments: [], pricingTiers: [], clients: [], quotations: ['Quotation:excluded'] },
       counts: expectedCounts,

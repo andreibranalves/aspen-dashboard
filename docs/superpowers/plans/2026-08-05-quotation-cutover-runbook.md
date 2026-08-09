@@ -435,7 +435,9 @@ chmod 600 "$CUTOVER_DIR/discard.sha256"
 sha256sum --check "$CUTOVER_DIR/discard.sha256"
 ```
 
-O hash do snapshot e o checksum canônico do report dry-run vinculam o manifesto à mesma leitura protegida da fonte.
+`report.dry-run.sha256` é o checksum SHA-256 dos bytes do arquivo para integridade do artefato.
+O campo `dryRunReportHash` gravado em `discard.json` é outro valor: o checksum SHA-256 canônico do report lógico, calculado após remover `manifest` e `approvedDivergenceKeys` e ordenar suas chaves.
+`sourceManifestHash` vincula o manifesto ao snapshot; não compare o checksum de bytes com o checksum canônico do report.
 
 Antes de qualquer escrita, execute um dry-run com `--discard-manifest` e confirme que o hash da closure, as contagens de exclusão e a ausência de divergências bloqueantes permanecem exatos.
 

@@ -45,6 +45,8 @@ const EXCLUSION_ENTITY_DOCTYPES = {
   cliente: new Set(['Customer', 'Lead']),
   orcamento: new Set(['Quotation']),
 };
+const EXCLUSION_SOURCE_DOCTYPES = new Set(['Item', 'Pricing Rule', 'Item Price', 'Customer', 'Lead', 'Quotation']);
+const OPAQUE_CLIENT_SOURCE_ID = /^cliente-[0-9a-f]{12}$/;
 const EXCLUSION_REASONS = new Set([
   'ambiguous-client',
   'ambiguous-pricing',
@@ -174,28 +176,40 @@ function exclusionCounts(value, label) {
   return counts;
 }
 
+function exclusionSourceKey(value, label) {
+  const key = typeof value === 'string' ? value.trim() : '';
+  const parts = key.split(':');
+  const sourceDoctype = parts[0] || '';
+  const sourceId = parts[1] || '';
+  if (
+    parts.length !== 2 ||
+    !EXCLUSION_SOURCE_DOCTYPES.has(sourceDoctype) ||
+    !sourceId ||
+    sourceId.trim() !== sourceId ||
+    ((sourceDoctype === 'Customer' || sourceDoctype === 'Lead') && !OPAQUE_CLIENT_SOURCE_ID.test(sourceId))
+  )
+    fail(`${label} com closure inválida.`);
+  return `${sourceDoctype}:${sourceId}`;
+}
+
 function parseExclusionEntry(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     fail(`${label} com closure inválida.`);
-  const key = typeof value.key === 'string' ? value.key.trim() : '';
-  const parts = key.split(':');
+  const key = exclusionSourceKey(value.key, label);
+  const [sourceDoctype, sourceId] = key.split(':');
   const entity = typeof value.entity === 'string' ? value.entity.trim() : '';
   const reason = typeof value.reason === 'string' ? value.reason.trim() : '';
-  if (!key || parts.length !== 2 || !parts[0] || !parts[1] || !EXCLUSION_ENTITY_FIELDS[entity] ||
-      !EXCLUSION_ENTITY_DOCTYPES[entity].has(parts[0]) || !EXCLUSION_REASONS.has(reason))
+  if (!EXCLUSION_ENTITY_FIELDS[entity] ||
+      !EXCLUSION_ENTITY_DOCTYPES[entity].has(sourceDoctype) || !EXCLUSION_REASONS.has(reason))
     fail(`${label} com closure inválida.`);
   if (!Array.isArray(value.depends_on) || value.depends_on.some((dependency) => typeof dependency !== 'string'))
     fail(`${label} com closure inválida.`);
-  const dependsOn = stableKeys(value.depends_on.map((dependency) => dependency.trim()));
-  if (dependsOn.some((dependency) => {
-    const dependencyParts = dependency.split(':');
-    return dependencyParts.length !== 2 || !dependencyParts[0] || !dependencyParts[1];
-  }))
-    fail(`${label} com closure inválida.`);
+  const dependsOn = stableKeys(value.depends_on.map((dependency) => exclusionSourceKey(dependency, label)));
+  if (dependsOn.includes(key)) fail(`${label} com closure inválida.`);
   return {
     key,
-    source_doctype: parts[0],
-    source_id: parts[1],
+    source_doctype: sourceDoctype,
+    source_id: sourceId,
     entity,
     reason,
     depends_on: dependsOn,
@@ -237,11 +251,14 @@ function expectedExclusionClosure(manifest, label) {
     fail(`${label} com closure inválida.`);
   const counts = Object.fromEntries(EXCLUSION_COUNT_KEYS.map((key) => [key, 0]));
   for (const entry of entries) counts[EXCLUSION_ENTITY_FIELDS[entry.entity]] += 1;
+  const suppliedCounts = exclusionCounts(manifest.exclusionCounts, label);
+  if (plan !== undefined && !sameJson(suppliedCounts, counts))
+    fail(`${label} com contagens de exclusão divergentes.`);
   return {
     entries,
     keys: stableKeys(entries.map((entry) => entry.key)),
     closureHash: planHash || manifestHash || EMPTY_CLOSURE_HASH,
-    counts,
+    counts: plan === undefined ? suppliedCounts : counts,
   };
 }
 
@@ -746,6 +763,21 @@ function statusRowsMatchAllowed(actualRows, expectedRows) {
   });
 }
 
+export function findExcludedTargetDependencyKeys(target, excludedProductSkus) {
+  const quotations = Array.isArray(target?.quotations) ? target.quotations : [];
+  const quotationIds = new Set(quotations.map((quotation) => String(quotation.id)));
+  const revisions = Array.isArray(target?.revisions) ? target.revisions : [];
+  const revisionIds = new Set(
+    revisions
+      .filter((revision) => quotationIds.has(String(revision.quotationId)))
+      .map((revision) => String(revision.id))
+  );
+  const items = Array.isArray(target?.items) ? target.items : [];
+  return stableKeys(items
+    .filter((item) => revisionIds.has(String(item.revisionId)) && excludedProductSkus.has(String(item.productSku)))
+    .map((item) => `dependency:${hash(String(item.productSku))}`));
+}
+
 /** @param {any} input */
 export function compareReconciliation(input) {
   const {
@@ -1190,9 +1222,7 @@ export function runReconciliation(args, env = process.env) {
   }
   const selectedTargetItems = target.items.filter((item) => selectedRevisionIds.has(item.revisionId));
   const items = selectedTargetItems.map((item) => itemProjection(sourceIdByRevisionId.get(item.revisionId), item));
-  const targetExcludedDependencyKeys = stableKeys(selectedTargetItems
-    .filter((item) => excludedProductSkus.has(String(item.productSku)))
-    .map((item) => `dependency:${hash(String(item.productSku))}`));
+  const targetExcludedDependencyKeys = findExcludedTargetDependencyKeys(target, excludedProductSkus);
   const templatePairs = new Set(revisions.map((row) => `${row.templateKey}:${row.templateHash}`));
   const templates = target.templates
     .filter((row) => templatePairs.has(`${row.key}:${row.hash}`))
