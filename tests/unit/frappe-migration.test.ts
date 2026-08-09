@@ -207,6 +207,8 @@ describe('migração Frappe CRM', { concurrency: 1 }, () => {
     assert.deepEqual(applied.manifest.reconciliation.keys.pricingDocuments, ['Pricing Rule:PR-KEEP']);
     assert.deepEqual(applied.manifest.reconciliation.keys.quotations, ['Quotation:QTN-2025-00003']);
     assert.equal(applied.manifest.discardManifestHash, discardManifest.closureHash);
+    assert.deepEqual(applied.manifest.discardPlan, dryRun.manifest.discardPlan);
+    assert.doesNotMatch(JSON.stringify(applied.manifest.discardPlan), /source_doctype|source_id|legacy_payload/i);
   });
 
   it('rejeita dryRunReportHash adulterado antes de qualquer write', async () => {

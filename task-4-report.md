@@ -159,3 +159,33 @@ npm run lint
 - The PostgreSQL lease uses session advisory locks and relies on the existing `postgres.js` `max: 1` pool configuration so acquire and release stay on one session.
 - No PostgreSQL concurrency evidence was produced in this run.
 - No global migration lock is used; leases are keyed by manifest, so unrelated manifests can proceed independently.
+
+## Fix Round 5
+
+### Corrections
+
+- Reconciliation now rejects any non-zero exclusion count when the manifest lacks a discard-plan projection.
+- All-zero exclusion counts remain valid for ordinary manifests without a discard plan.
+- Apply manifests now include the same redacted discard-plan projection as dry-run manifests.
+- The projection contains closure-bound keys, entities, reasons, and dependencies only, without source payload fields.
+
+### Tests and checks
+
+```text
+TZ=UTC node --test --import tsx tests/unit/reconcile-migration.test.ts tests/unit/frappe-migration.test.ts tests/unit/migration-discard.test.ts
+# 94 tests, 94 passed, 0 failed, 0 skipped
+
+npm run build:api
+# passed: tsc -p api/tsconfig.api.json
+
+npm run type-check
+# passed: tsc -p api/tsconfig.api.json --noEmit
+
+npm run lint
+# 0 errors; 199 non-blocking warnings
+
+git diff --check
+# passed
+```
+
+No source-system, database, staging, or production writes were performed.

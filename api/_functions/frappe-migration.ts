@@ -1704,7 +1704,7 @@ function buildManifest(
       blocking: report.total.divergentes + report.total.erros,
     },
     discardManifestHash: discardManifest?.closureHash || null,
-    ...(mode === 'dry-run' && discardPlan
+    ...(discardPlan
       ? {
           discardPlan: {
             sourceManifestHash: manifestHash,

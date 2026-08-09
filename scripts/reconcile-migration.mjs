@@ -252,6 +252,8 @@ function expectedExclusionClosure(manifest, label) {
   const counts = Object.fromEntries(EXCLUSION_COUNT_KEYS.map((key) => [key, 0]));
   for (const entry of entries) counts[EXCLUSION_ENTITY_FIELDS[entry.entity]] += 1;
   const suppliedCounts = exclusionCounts(manifest.exclusionCounts, label);
+  if (plan === undefined && Object.values(suppliedCounts).some((count) => count > 0))
+    fail(`${label} com contagens de exclusão sem plano de descarte.`);
   if (plan !== undefined && !sameJson(suppliedCounts, counts))
     fail(`${label} com contagens de exclusão divergentes.`);
   return {

@@ -341,6 +341,31 @@ test('expectedReconciliation rejeita contagens de exclusão adulteradas', () => 
   );
 });
 
+test('expectedReconciliation rejeita contagens não-zero sem plano de descarte', () => {
+  const manifest = closureManifest(
+    [
+      {
+        key: 'Item:excluded',
+        source_doctype: 'Item',
+        source_id: 'excluded',
+        entity: 'produto',
+        reason: 'ambiguous-pricing',
+        depends_on: [],
+      },
+    ],
+    { produtos: 1, faixas: 0, clientes: 0, orcamentos: 0, documentos: 0 }
+  );
+  const manifestWithoutPlan = { ...manifest, discardPlan: undefined };
+  assert.throws(
+    () => expectedReconciliation(manifestWithoutPlan, 'fixture'),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /plano|exclusão/i);
+      return true;
+    }
+  );
+});
+
 test('expectedReconciliation rejeita IDs Customer/Lead crus em chaves e dependências', () => {
   const rawKeyEntries: DiscardEntry[] = [
     {
