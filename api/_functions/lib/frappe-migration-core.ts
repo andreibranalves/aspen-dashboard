@@ -1935,8 +1935,8 @@ export interface MigrationReconciliationExpectations {
     revisions: Record<string, number>;
   };
   statusRows: {
-    quotations: Array<{ sourceId: string; status: string }>;
-    revisions: Array<{ sourceId: string; status: string }>;
+    quotations: Array<{ sourceId: string; status: string; allowedStatuses: string[] }>;
+    revisions: Array<{ sourceId: string; status: string; allowedStatuses: string[] }>;
   };
 }
 

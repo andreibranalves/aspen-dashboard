@@ -54,6 +54,7 @@ import {
   type FrappeMigrationState,
   type IssuedDocumentPdfPlaceholder,
 } from '../_db/frappe-migration-repository.js';
+import { snapshotFromLegacyRevision } from '../_db/quotation-template-migration.js';
 import { erpGetDoc, erpGetList, ERPNEXT_TOKEN } from './lib/erpnext.js';
 import {
   isValidPdfBuffer,
@@ -1406,43 +1407,17 @@ function emptyReconciliationExpectations(): MigrationReconciliationExpectations 
 }
 
 function buildReconciliationExpectations(
-  productUnitsInput: ProductUnit[],
-  clientUnitsInput: ClientUnit[],
-  quotationUnitsInput: QuotationUnit[],
-  report?: ImportReport
+  productUnits: ProductUnit[],
+  clientUnits: ClientUnit[],
+  quotationUnits: QuotationUnit[]
 ): MigrationReconciliationExpectations {
-  const entityReports = report
-    ? {
-        Item: report.produtos,
-        'Pricing Rule': report.faixas,
-        'Item Price': report.faixas,
-        Customer: report.clientes,
-        Lead: report.clientes,
-        Quotation: report.orcamentos,
-      }
-    : undefined;
+  // Expectations describe the source candidates, not only the rows that the
+  // report happened to mark as writable. Approved divergences are still
+  // applied; unapproved blockers fail the run before reconciliation.
   const reportSourceId = (sourceDoctype: string, sourceId: string): string =>
     sourceDoctype === 'Customer' || sourceDoctype === 'Lead'
       ? safeApprovalKey(`${sourceDoctype}:${sourceId}`).split(':')[1]
       : sourceId;
-  const isWritable = (sourceDoctype: string, sourceId: string): boolean => {
-    const details = entityReports?.[sourceDoctype as keyof typeof entityReports]?.detalhes || [];
-    const safeId = reportSourceId(sourceDoctype, sourceId);
-    return !details.some(
-      (detail) =>
-        detail.source_id === safeId &&
-        (detail.status === 'divergentes' || detail.status === 'erros')
-    );
-  };
-  const productUnits = productUnitsInput.filter((unit) =>
-    unit.lineage.every((entry) => isWritable(entry.sourceDoctype, entry.sourceId))
-  );
-  const clientUnits = clientUnitsInput.filter((unit) =>
-    unit.lineage.every((entry) => isWritable(entry.sourceDoctype, entry.sourceId))
-  );
-  const quotationUnits = quotationUnitsInput.filter((unit) =>
-    unit.lineage.every((entry) => isWritable(entry.sourceDoctype, entry.sourceId))
-  );
   const safeSourceId = (entry: FrappeLineageEntry): string =>
     reportSourceId(entry.sourceDoctype, entry.sourceId);
   const lineageRows = (entityType: string, units: Array<{ lineage: FrappeLineageEntry[] }>) =>
@@ -1481,13 +1456,17 @@ function buildReconciliationExpectations(
       .filter((entry) => entry.entityType === 'cliente')
       .map((entry) => safeSourceId(entry))
       .sort(),
-    nome: unit.client.nome,
-    documento: unit.client.documento,
-    email: unit.client.email,
-    telefone: unit.client.telefone,
-    notes: unit.client.notes,
-    address: unit.client.address,
-    arquivado: false,
+    // Keep the expected identity opaque. The target-side reconciler hashes
+    // the same projection without serializing its PII-bearing fields.
+    identityHash: canonicalHash({
+      nome: unit.client.nome,
+      documento: unit.client.documento,
+      email: unit.client.email,
+      telefone: unit.client.telefone,
+      notes: unit.client.notes,
+      address: unit.client.address,
+      arquivado: false,
+    }),
   }));
   const quotations = quotationUnits.map((unit) => ({
     sourceId: unit.quotation.sourceId,
@@ -1511,8 +1490,10 @@ function buildReconciliationExpectations(
     prazoProducao: unit.revision.prazoProducao,
     templateKey: unit.revision.templatePadrao,
     templateHash: unit.revision.templateHash,
-    templateVersionPresent: true,
-    sectionsSnapshotPresent: true,
+    templateVersionKey: unit.revision.templatePadrao,
+    templateVersionHash: unit.revision.templateHash,
+    templateVersion: 1,
+    sectionsSnapshotHash: canonicalHash(snapshotFromLegacyRevision(unit.revision)),
     subtotal: canonicalDecimal(unit.revision.subtotal),
     total: canonicalDecimal(unit.revision.total),
     itemCount: unit.items.length,
@@ -1535,6 +1516,8 @@ function buildReconciliationExpectations(
     ])
   ).values()];
   const templateVersions = templates.map((template) => ({ ...template, version: 1 }));
+  const allowedStatuses = (status: string): string[] =>
+    status === 'rascunho' ? ['rascunho'] : [status, 'rascunho'];
   const statusCounts = (rows: Array<{ status: string }>) =>
     rows.reduce<Record<string, number>>((counts, row) => {
       counts[row.status] = (counts[row.status] || 0) + 1;
@@ -1586,8 +1569,16 @@ function buildReconciliationExpectations(
       revisions: statusCounts(revisions),
     },
     statusRows: {
-      quotations: quotations.map((row) => ({ sourceId: row.sourceId, status: row.status })),
-      revisions: revisions.map((row) => ({ sourceId: row.sourceId, status: row.status })),
+      quotations: quotations.map((row) => ({
+        sourceId: row.sourceId,
+        status: row.status,
+        allowedStatuses: allowedStatuses(row.status),
+      })),
+      revisions: revisions.map((row) => ({
+        sourceId: row.sourceId,
+        status: row.status,
+        allowedStatuses: allowedStatuses(row.status),
+      })),
     },
   };
 }
@@ -2507,8 +2498,7 @@ export async function runFrappeMigration(options: MigrationOptions): Promise<Mig
       buildReconciliationExpectations(
         normalized.productUnits,
         normalized.clientUnits,
-        builtQuotations.quotationUnits,
-        finalized
+        builtQuotations.quotationUnits
       )
     ),
   };

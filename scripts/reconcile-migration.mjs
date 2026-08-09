@@ -240,13 +240,16 @@ function expectedReconciliation(manifest, label) {
     quotations: reconciliation.statusCounts?.quotations || {},
     revisions: reconciliation.statusCounts?.revisions || {},
   };
+  const parseStatusRows = (rows) => (Array.isArray(rows) ? rows.map((row) => ({
+    sourceId: String(row.sourceId),
+    status: String(row.status),
+    allowedStatuses: Array.isArray(row.allowedStatuses)
+      ? [...new Set(row.allowedStatuses.map(String))].sort()
+      : [String(row.status)],
+  })) : []);
   const statusRows = {
-    quotations: Array.isArray(reconciliation.statusRows?.quotations)
-      ? reconciliation.statusRows.quotations.map((row) => ({ sourceId: String(row.sourceId), status: String(row.status) }))
-      : [],
-    revisions: Array.isArray(reconciliation.statusRows?.revisions)
-      ? reconciliation.statusRows.revisions.map((row) => ({ sourceId: String(row.sourceId), status: String(row.status) }))
-      : [],
+    quotations: parseStatusRows(reconciliation.statusRows?.quotations),
+    revisions: parseStatusRows(reconciliation.statusRows?.revisions),
   };
   return { keys, counts, hashes, statusCounts, statusRows };
 }
