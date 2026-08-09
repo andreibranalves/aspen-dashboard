@@ -204,8 +204,21 @@ function cloneSections<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function parseSections(value: unknown): QuotationSectionsSnapshot | null {
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as QuotationSectionsSnapshot)
+    : null;
+}
+
 function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
-  const existing = data.secoes || data.sections_snapshot;
+  const existing = parseSections(data.secoes) || parseSections(data.sections_snapshot);
   if (existing) return cloneSections(existing);
   const current: QuotationSectionsSettings = {
     ...cloneSections(DEFAULT_SECTIONS),

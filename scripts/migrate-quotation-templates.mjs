@@ -60,12 +60,14 @@ export async function runQuotationTemplateMigration(sql, {
       const existing = parseQuotationSections(settings.quotation_sections);
       const shouldSeedLegacySections = migrationModule.isEmptyQuotationSections(existing);
     if (shouldSeedLegacySections) {
-      await sql`update app_settings set quotation_sections = ${JSON.stringify(sections)}::jsonb where singleton_id = 1`;
+      await sql`update app_settings set quotation_sections = ${sql.json(sections)}::jsonb where singleton_id = 1`;
     }
   }
 
   const revisions = await sql`select id, template_padrao, template_hash, pagamento, entrega, observacoes, prazo_producao, template_version_id, sections_snapshot from quote_revisions`;
-    const alreadyComplete = revisions.filter((row) => row.template_version_id && row.sections_snapshot).length;
+    const alreadyComplete = revisions.filter(
+      (row) => row.template_version_id && row.sections_snapshot && typeof row.sections_snapshot !== 'string',
+    ).length;
     const versionIds = await sql`select v.id, t.key, v.source_hash from quotation_template_versions v join quotation_templates t on t.id = v.template_id`;
     const versionsByKeyHash = new Map(versionIds.map((row) => [`${row.key}:${row.source_hash}`, row.id]));
     for (const revision of revisions) {
@@ -73,8 +75,11 @@ export async function runQuotationTemplateMigration(sql, {
       if (!versionId) {
         throw new Error(`Versão de template ausente: chave ${revision.template_padrao}, hash ${revision.template_hash}.`);
       }
-      const snapshot = revision.sections_snapshot || migrationModule.snapshotFromLegacyRevision(revision);
-      await sql`update quote_revisions set template_version_id = ${versionId}::uuid, sections_snapshot = ${JSON.stringify(snapshot)}::jsonb where id = ${revision.id}::uuid`;
+      const parsedSnapshot = parseQuotationSections(revision.sections_snapshot);
+      const snapshot = parsedSnapshot && typeof parsedSnapshot === 'object'
+        ? parsedSnapshot
+        : migrationModule.snapshotFromLegacyRevision(revision);
+      await sql`update quote_revisions set template_version_id = ${versionId}::uuid, sections_snapshot = ${sql.json(snapshot)}::jsonb where id = ${revision.id}::uuid`;
     }
     const missing = await sql`select template_padrao, template_hash from quote_revisions where template_version_id is null or sections_snapshot is null`;
     if (missing.length) throw new Error(`Revisões incompletas: ${missing.map((row) => `${row.template_padrao}:${row.template_hash}`).join(', ')}`);

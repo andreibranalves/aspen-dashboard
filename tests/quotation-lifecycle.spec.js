@@ -97,6 +97,32 @@ async function routeTemplates(page) {
   });
 }
 
+test('core quotation detail accepts JSON-string section snapshots from PostgreSQL', async ({ page }) => {
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash }] }),
+    });
+  });
+  await page.route('**/api/quotations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.get('id')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(detail({ secoes: JSON.stringify(detail().secoes) })),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
+});
+
 test('core lifecycle marks sent quotations and creates a revision from issued history', async ({
   page,
 }) => {

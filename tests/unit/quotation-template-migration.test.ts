@@ -48,6 +48,53 @@ test('invalid quotation sections values are treated as empty', () => {
   }
 });
 
+test('migration passes JSONB values as objects instead of JSON strings', async () => {
+  const jsonValues: unknown[] = [];
+  const hash = 'a'.repeat(64);
+  const sql = Object.assign(
+    async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.raw.join(' ');
+      if (query.includes('insert into quotation_templates')) return [{ id: '11111111-1111-4111-8111-111111111111' }];
+      if (query.includes('insert into quotation_template_versions')) return [];
+      if (query.includes('select * from app_settings')) {
+        return [{ singleton_id: 1, quotation_sections: null, pagamento: 'Pix', entrega: '5 dias', observacoes: 'Aprovar arte' }];
+      }
+      if (query.includes('select id, template_padrao')) {
+        return [{ id: '22222222-2222-4222-8222-222222222222', template_padrao: 'padrao', template_hash: hash, pagamento: 'Pix', entrega: '5 dias', observacoes: 'Aprovar arte', prazo_producao: '', template_version_id: null, sections_snapshot: null }];
+      }
+      if (query.includes('select v.id')) return [{ id: '33333333-3333-4333-8333-333333333333', key: 'padrao', source_hash: hash }];
+      return [];
+    },
+  );
+  sql.json = (value: unknown) => {
+    jsonValues.push(value);
+    return value;
+  };
+
+  await runQuotationTemplateMigration(sql as never, {
+    acquireLock: async () => undefined,
+    migration: {
+      templateSeedPlan: () => [{ key: 'padrao', name: 'Padrão', version: 1, source: '<html></html>', source_hash: hash }],
+      isEmptyQuotationSections: () => true,
+      legacySettingsSections: () => ({
+        schema_version: 1,
+        prazo_producao: { enabled: true, title: 'Prazo de produção' },
+        pagamento: { enabled: true, title: 'Pagamento', body: 'Pix' },
+        condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: 'Aprovar arte' },
+      }),
+      snapshotFromLegacyRevision: () => ({
+        schema_version: 1,
+        prazo_producao: { base: { enabled: true, title: 'Prazo de produção' }, current: { enabled: true, title: 'Prazo de produção' } },
+        pagamento: { base: { enabled: true, title: 'Pagamento', body: 'Pix' }, current: { enabled: true, title: 'Pagamento', body: 'Pix' } },
+        condicoes_gerais: { base: { enabled: true, title: 'Condições Gerais', body: 'Aprovar arte' }, current: { enabled: true, title: 'Condições Gerais', body: 'Aprovar arte' } },
+      }),
+    },
+  });
+
+  assert.equal(jsonValues.length, 2);
+  for (const value of jsonValues) assert.equal(typeof value, 'object');
+});
+
 function extractAdvisoryLockKey(queryOrStrings: unknown, values: unknown[] = []): bigint {
   if (typeof queryOrStrings === 'object' && queryOrStrings !== null && 'queryChunks' in queryOrStrings) {
     const chunks = (queryOrStrings as { queryChunks?: unknown[] }).queryChunks || [];
