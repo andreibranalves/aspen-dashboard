@@ -1,6 +1,6 @@
 # Acceptance Report - Migração PostgreSQL
 
-Status: `BLOCKED_PENDING_OPERATIONAL_APPROVAL`.
+Status: `CANARY_PASSED_ROLLBACK_COMPLETE`.
 
 Branch: `fix/migration-customer-lineage`.
 
@@ -22,6 +22,7 @@ Branch: `fix/migration-customer-lineage`.
 - `npm run check` passed, including lint, type-check, Tailwind validation, API build and frontend production build.
 - ESLint reported 0 errors and 199 warnings.
 - Targeted LSP diagnostics reported no errors for the changed modules and tests.
+- Draft-to-sent emission was corrected in commit `adf7a67` with a focused regression test; the canary then verified the live production-target transition.
 - A dedicated Hostinger KVM 1 now serves the self-hosted staging API through the existing Traefik HTTPS endpoint.
 - Evolution containers are stopped and their Docker project and volumes remain preserved for explicit later restoration.
 - Host and Docker-forwarded egress use a persisted default-deny nftables policy.
@@ -36,7 +37,15 @@ Branch: `fix/migration-customer-lineage`.
 - The final Preview deployment remains in the legacy rollout state.
 - Preview SSO protection is enabled for all previews and production deployment URLs.
 - N8N, Evolution and outbox provider URL variables are absent from Preview and VPS staging.
-- No Production deployment, production canary, provider delivery or Frappe CLI apply was executed.
+- A production-target canary deployment used commit `adf7a67`; its temporary project alias was restored before completion.
+- The canary used one synthetic non-financial quotation and passed login, PostgreSQL create, emission, detail read, PDF rendering, public link issue/read/revoke and revision creation.
+- The PDF passed `%PDF-`, `%%EOF`, size and revision-binding checks; its checksum is stored only in the protected external evidence.
+- The Production outbox inspection route correctly failed closed with 404 in a Production environment.
+- A protected direct database probe observed 3 pending canary outbox events with no external delivery.
+- Canary cleanup removed the synthetic quotation and 9 orphan outbox events; a follow-up query found zero remaining canary orphans.
+- The previous Production deployment and all four Production aliases were restored after the canary.
+- Production rollout flags remain `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
+- No provider delivery, Frappe CLI apply or full Production cutover was executed.
 - No secrets, raw payloads, Customer or Lead identifiers were written to this report.
 
 ## Operational findings
@@ -48,11 +57,10 @@ Branch: `fix/migration-customer-lineage`.
 - The VPS uses the bundled `@sparticuz/chromium` binary with the required Linux shared libraries and does not depend on a system browser.
 - The rollback-compatible read was intentionally executed before egress lockdown because the final staging policy must deny Frappe.
 
-## Pending gates
+## Remaining decision
 
-- Obtain explicit operational approval for the canary and rollback window.
-- Define the production canary owner, success criteria, abort thresholds and rollback trigger.
-- Execute any production canary only after approval, without changing Frappe or enabling external providers.
+- Full Production cutover remains intentionally unexecuted.
+- A separate approval is required before leaving Production in `postgres-write` or changing the current legacy aliases.
 
 ## Decision
 
@@ -60,8 +68,8 @@ Migration data, backup, restore and PostgreSQL reconciliation are verified.
 
 Staging PostgreSQL canary, PDF flow, provider isolation and controlled rollback-read scenarios are verified.
 
-Real staging egress enforcement is now evidenced by a persisted VPS firewall and a blocked Frappe TCP probe.
+Real staging egress enforcement is evidenced by a persisted VPS firewall and a blocked Frappe TCP probe.
 
-Acceptance remains blocked only until operational approval for the production canary and rollback window exists.
+The approved production-target canary passed and rolled back cleanly without changing the live Production state.
 
-Keep Evolution stopped, keep Preview in the legacy rollout state and keep Production unchanged until that approval is recorded.
+Keep Evolution stopped, keep Preview in the legacy rollout state and keep Production in the restored legacy state until a separate full-cutover approval.

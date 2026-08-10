@@ -15,9 +15,9 @@
 - Tasks 1 through 9: complete in the predecessor migration worktrees with focused reviews recorded in their SDD ledgers.
 - Task 10: complete for real migration apply, backup, restore and reconciliation.
 - Task 11: staging PostgreSQL canary and controlled rollback-read scenarios complete.
-- Task 11: independent Frappe egress-deny evidence and operational approval remain open.
+- Task 11: independent Frappe egress-deny evidence and operational approval complete.
 - Task 12: acceptance report updated with real migration, restore, reconciliation and staging evidence.
-- Production canary remains intentionally unexecuted.
+- Production-target canary passed and rollback restored the previous Production aliases and legacy flags.
 
 ## Preflight
 
@@ -84,7 +84,7 @@ Task 10: implementation and operational hardening complete through commit `59927
 
 Task 10 residual gate: real Frappe apply/reconciliation remains intentionally blocked.
 
-Task 11: blocked by explicit decision to not execute canary or rollback.
+Task 11: production-target canary and rollback complete; full cutover remains intentionally unexecuted.
 
 Task 12: acceptance report created with verified evidence and pending-gate decision.
 
@@ -103,4 +103,7 @@ Task 12: acceptance report created with verified evidence and pending-gate decis
 - PostgreSQL and KV probes pass while Frappe TCP probe is blocked.
 - Egress policy survives service restart and controlled VPS reboot.
 - Core staging E2E passes 2 tests after reboot and disposable fixture cleanup returns zero rows.
-- Acceptance now remains blocked only for operational approval of the production canary and rollback window.
+- Production-target canary passed one synthetic non-financial quotation through create, emission, PDF, public link, outbox and revision paths.
+- Canary cleanup removed the quotation and 9 orphan outbox rows; verification found zero remaining canary orphans.
+- Previous Production deployment and aliases restored; Production flags remain `false` and `legacy`.
+- Full Production cutover remains intentionally unexecuted and requires separate approval.
