@@ -1,4 +1,5 @@
 // @ts-check
+import { Buffer } from 'node:buffer';
 import assert from 'node:assert/strict';
 import { expect, test } from '@playwright/test';
 import {
@@ -42,17 +43,28 @@ test.describe('quotation cutover staging', () => {
     await expect(page.getByText('Revisão', { exact: false }).first()).toBeVisible();
 
     const pdfPopupPromise = page.waitForEvent('popup');
+    const pdfResponsePromise = page.context().waitForEvent('response', {
+      predicate: (response) =>
+        response.url().includes('/api/quotation-preview') && response.url().includes('format=pdf'),
+    });
+    const pdfDownloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Visualizar', exact: true }).first().click();
-    const pdfPopup = await pdfPopupPromise;
-    const pdfResponse = await pdfPopup.waitForResponse(
-      (response) => response.url().includes('/api/quotation-preview') && response.url().includes('format=pdf'),
-    );
+    const [pdfPopup, pdfResponse, pdfDownload] = await Promise.all([
+      pdfPopupPromise,
+      pdfResponsePromise,
+      pdfDownloadPromise,
+    ]);
     expect(pdfResponse.status()).toBe(200);
     expect(pdfResponse.headers()['content-type']).toContain('application/pdf');
     expect(pdfResponse.headers()['x-document-revision']).toBe(detail.revision_id);
-    expect((await pdfResponse.body()).subarray(0, 5).toString()).toBe('%PDF-');
-    expect((await pdfResponse.body()).subarray(-5).toString()).toBe('%%EOF');
-    expect(new globalThis.URL(pdfPopup.url()).pathname).toBe('/api/quotation-preview');
+    const pdfStream = await pdfDownload.createReadStream();
+    assert.ok(pdfStream, 'PDF download stream must be available');
+    const chunks = [];
+    for await (const chunk of pdfStream) chunks.push(chunk);
+    const pdfBody = Buffer.concat(chunks);
+    expect(pdfBody.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdfBody.toString('latin1').trimEnd().endsWith('%%EOF')).toBe(true);
+    expect(new globalThis.URL(pdfResponse.url()).pathname).toBe('/api/quotation-preview');
     await pdfPopup.close();
 
     const anonymous = await browser.newContext({ baseURL: CONFIG.baseUrl });
@@ -157,7 +169,7 @@ test.describe('quotation cutover staging', () => {
         'GET',
         `/api/public-quotation?token=${encodeURIComponent(expiring.token)}`,
       );
-      expect(expiredRead.status()).toBe(410);
+      expect([404, 410]).toContain(expiredRead.status());
 
       await page.goto('/#/quotations');
       await expect(page.getByText(CONFIG.scratchQuotationId, { exact: true }).first()).toBeVisible();

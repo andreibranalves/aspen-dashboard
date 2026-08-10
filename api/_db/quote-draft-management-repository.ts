@@ -1363,20 +1363,26 @@ export function createPostgresQuoteDraftManagementRepository(
           const totalCents = subtotalCents + freightCents;
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
-          const pagamento = sectionsSnapshot
-            ? sectionsSnapshot.pagamento.current.body
-            : inputText(input.pagamento, 'Pagamento', 500, revision.pagamento);
-          const entrega = sectionsSnapshot
-            ? ''
-            : inputText(input.entrega, 'Entrega', 500, revision.entrega);
-          const observacoes = sectionsSnapshot
-            ? sectionsSnapshot.condicoes_gerais.current.body
-            : inputText(
+          const pagamento = hasOwn(input, 'pagamento')
+            ? inputText(input.pagamento, 'Pagamento', 500, revision.pagamento)
+            : sectionsSnapshot
+              ? sectionsSnapshot.pagamento.current.body
+              : revision.pagamento;
+          const entrega = hasOwn(input, 'entrega')
+            ? inputText(input.entrega, 'Entrega', 500, revision.entrega)
+            : sectionsSnapshot
+              ? ''
+              : revision.entrega;
+          const observacoes = hasOwn(input, 'observacoes') || hasOwn(input, 'notes')
+            ? inputText(
                 firstDefined(input, ['observacoes', 'notes']),
                 'Observações',
                 4000,
                 revision.observacoes
-              );
+              )
+            : sectionsSnapshot
+              ? sectionsSnapshot.condicoes_gerais.current.body
+              : revision.observacoes;
           const prazoProducao = inputText(
             input.prazo_producao,
             'Prazo de produção',

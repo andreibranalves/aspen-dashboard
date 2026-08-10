@@ -21,7 +21,9 @@ const EXTERNAL_PROVIDER_ENV_VARS = [
 ] as const;
 
 function enabled(): boolean {
-  const productionDeployment = isProductionEnvironment(process.env);
+  const productionDeployment = process.env.VERCEL_ENV
+    ? process.env.VERCEL_ENV === 'production'
+    : isProductionEnvironment(process.env);
   return (
     !productionDeployment &&
     process.env.STAGING_E2E === '1' &&

@@ -216,15 +216,18 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     const sectionOverride = await managementUpdate(laterDraft.quotation_name, {
       concurrency_token: laterBefore.concurrency_token,
       items: [{ item_code: sku, qty: '30.000' }],
+      pagamento: 'Legacy pagamento',
+      entrega: 'Legacy entrega',
+      observacoes: 'Legacy observações',
       secoes: {
         pagamento: { enabled: true, title: 'Pagamento', body: 'Seção pagamento' },
         condicoes_gerais: { enabled: true, title: 'Condições', body: 'Seção condição' },
         prazo_producao: { enabled: false, title: 'Prazo de produção' },
       },
     });
-    assert.equal(sectionOverride.pagamento, 'Seção pagamento');
-    assert.equal(sectionOverride.observacoes, 'Seção condição');
-    assert.equal(sectionOverride.entrega, '');
+    assert.equal(sectionOverride.pagamento, 'Legacy pagamento');
+    assert.equal(sectionOverride.observacoes, 'Legacy observações');
+    assert.equal(sectionOverride.entrega, 'Legacy entrega');
     assert.equal(sectionOverride.prazo_producao, '');
     assert.ok(sectionOverride.secoes);
     assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);
@@ -275,7 +278,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
 
     const ownIds = new Set([draft.quotation_name, laterDraft.quotation_name]);
     const ownOrder = async (orderBy?: string) => {
-      const listed = await managementList({ limit: 200, orderBy });
+      const listed = await managementList({ limit: 200, orderBy, search: 'Cliente de gerenciamento' });
       return listed.rows.filter((row) => ownIds.has(row.id)).map((row) => row.id);
     };
     assert.deepEqual(await ownOrder(), [laterDraft.quotation_name, draft.quotation_name]);
