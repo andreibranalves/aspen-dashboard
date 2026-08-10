@@ -1,59 +1,62 @@
 # Acceptance Report - Migração PostgreSQL
 
-Status: BLOCKED_PENDING_OPERATIONAL_APPROVAL.
+Status: `BLOCKED_PENDING_OPERATIONAL_APPROVAL`.
 
-Branch: `master`.
+Branch: `fix/migration-customer-lineage`.
 
-HEAD: local `master` worktree.
+Implementation commits: `1ab4e6e` and `290cb91`.
 
 ## Verified
 
-- PostgreSQL migrations applied to named staging database `aspen_test`.
-- Six PostgreSQL integration suites passed serially with zero skips against the named test database.
-- Seven serial PostgreSQL integration tests passed with zero skips in the prior acceptance run.
-- Thirty backup, restore-guard, preflight and checklist tests passed with zero skips.
-- Backup preflight passed with 8.70 MB database size and 9 active connections.
-- Backup was written outside the checkout to a mode `0700` directory.
-- Exact backup file mode was `0600` and its SHA-256 checksum passed `sha256sum --check`.
-- Restore validation passed against named `aspen_restore`.
-- Restore counts were products 5, clients 30, quotations 4, revisions 7, items 7 and lineage 39.
-- Synthetic isolated restore probe returned count 1 and left no persistent probe row.
-- Synthetic direct dataset apply plus dry-run/apply reconciliation passed against `aspen_test`.
-- Synthetic reconciliation verified source-keyed products, pricing documents, pricing tiers, client identity hash and lineage hash.
-- Local Playwright passed the impacted operational, quotation, cutover and lifecycle flows.
-- Local Playwright passed 57 local tests when the staging spec was excluded; the operational-mode test is a UI contract test with mocked API boundaries.
-- Direct unit coverage verifies the OpenRouter request/response contract and PostgreSQL quotation handler routing; database-backed PostgreSQL suites cover persistence when staging variables are supplied.
-- Full unit suite passed 668 tests with 13 database-dependent skips when database variables were explicitly unset.
-- Operational mode keeps `/auto` available for OpenRouter extraction and PostgreSQL CRM quotation creation; live provider and staging evidence remain pending.
-- Type-check, API build, production build, Tailwind check, Drizzle check and whitespace check passed.
-- ESLint reported zero errors and 199 pre-existing warnings.
-- Targeted LSP diagnostics reported no errors for changed scripts and tests.
-- Final scoped review of commit `5992704` returned PASS with no concrete blockers.
-- Rollout flags remained `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
-- No production deployment, provider delivery, Frappe source read or real Frappe CLI apply was executed.
+- PostgreSQL migration apply completed against the isolated `aspen_test` database with zero blockers and zero errors.
+- Final target reconciliation passed with matching source, apply and persisted-run hashes.
+- Reconciliation artifact: `/home/andrei/.local/share/aspen-dashboard/cutover-20260808/reconciliation-v5/reconciliation.json`.
+- Reconciliation artifact SHA-256: `c33300742ce68f00079f0b97bf749b16ff7778157183b16e4fc01900b240f450`.
+- Final reconciled counts were 56 products, 302 pricing tiers, 470 clients, 513 quotations, 513 revisions, 1462 items, 1 template and 1 template version.
+- Exact exclusion closure was 5 products, 55 pricing documents, 155 clients, 162 quotations and 0 documents.
+- Reconciliation selected 1349 lineage rows with zero invalid lineage, missing identities or extra imported rows.
+- Backup and restore validation passed against the isolated `aspen_restore` database.
+- Restore validation confirmed accessible products, clients, quotations, revisions, items and lineage tables.
+- Restore counts were 5 products, 30 clients, 4 quotations, 7 revisions, 7 items and 39 lineage rows.
+- Synthetic restore probe completed and left no persistent probe row.
+- PostgreSQL draft-management integration passed against `aspen_test` with the section and legacy-field synchronization assertions.
+- Full unit suite passed 672 tests with 13 database-dependent skips when database variables were unset.
+- `npm run check` passed, including lint, type-check, Tailwind validation, API build and frontend production build.
+- ESLint reported 0 errors and 199 warnings.
+- Targeted LSP diagnostics reported no errors for the changed modules and tests.
+- Staging PostgreSQL canary scenarios passed in the guarded Preview deployment: PostgreSQL detail, PDF download, public-link issue/read/revoke/expiry, outbox inspection and revision editing.
+- Core-mode staging log: `/home/andrei/.local/share/aspen-dashboard/cutover-20260808/staging-e2e-core-review-final.log`.
+- Rollback-compatible legacy-read scenario passed in a separate guarded Preview deployment.
+- Rollback staging log: `/home/andrei/.local/share/aspen-dashboard/cutover-20260808/staging-e2e-rollback-review-final.log`.
+- The final Preview deployment was restored to the legacy rollout state.
+- Preview SSO protection is enabled for all previews and production deployment URLs.
+- N8N, Evolution and outbox provider variables are absent from Preview.
+- No production deployment, production canary, provider delivery or Frappe CLI apply was executed.
+- No secrets, raw payloads, Customer or Lead identifiers were written to this report.
 
-## Evidence
+## Operational findings
 
-Protected operational artifacts remain outside the repository under the cutover evidence directory.
-
-Artifacts include tool versions, preflight output, backup checksum, restore validation, restore identity counts, synthetic reconciliation reports and checksums.
-
-Reports contain no database URLs, credentials, raw payloads or customer PII.
+- The staging PDF assertion now observes the browser download and binds response headers and bytes to the revision.
+- PostgreSQL quote edits now keep dedicated legacy fields and editable section snapshots synchronized.
+- The staging outbox inspection endpoint allows only canonical Preview deployments and fails closed for production, unknown Vercel environments and production-like local execution.
+- A KV token can return either 410 while its expired record remains or 404 after KV eviction; the E2E test proves the token first worked and accepts both safe terminal responses.
+- The `STAGING_EGRESS_BLOCKED=1` variable and provider guards were present during the tests.
+- Independent firewall or DNS evidence proving that Frappe egress is blocked was not produced.
+- The rollback-compatible read therefore exercised the approved legacy GET path in a separate temporary rollback deployment, not a network-deny proof.
 
 ## Pending gates
 
-- Real anonymized Frappe snapshot dry-run and approved real apply.
-- Reconciliation against the approved real apply report.
-- Real staging Playwright with staging credentials.
-- Staging Frappe egress deny evidence.
-- Staging PostgreSQL canary and exercised rollback.
-- Production canary, deployment and rollback window approval.
-- Final operational acceptance after the pending staging and cutover gates.
+- Apply and archive an independent staging firewall or DNS deny rule for the Frappe domain.
+- Repeat the PostgreSQL-only staging regression after that deny rule is active.
+- Obtain explicit operational approval for the canary and rollback window.
+- Execute any production canary only after approval, without changing Frappe or enabling external providers.
 
 ## Decision
 
-The migration code is merged locally in `master`, but operational acceptance remains blocked until the pending gates receive explicit approval and evidence.
+Migration data, backup, restore and PostgreSQL reconciliation are verified.
 
-Keep the rollout flags on the legacy state until all pending gates receive explicit approval and evidence.
+Staging PostgreSQL canary and controlled rollback-read scenarios are verified.
 
-Do not cut over production based only on the synthetic reconciliation.
+Acceptance remains blocked until independent Frappe egress-deny evidence and operational approval exist.
+
+Keep Preview in the legacy rollout state and keep Production unchanged until those gates are approved.

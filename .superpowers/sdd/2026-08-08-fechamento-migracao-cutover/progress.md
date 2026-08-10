@@ -12,19 +12,12 @@
 
 ## Task status
 
-- Task 1: fix round 1/5 (2 addressed, 0 open; commits ff6d9a4..16ceb1a)
-- Task 1: complete (commits 68e074e..16ceb1a, review pending)
-- Task 2: pending
-- Task 3: pending
-- Task 4: pending
-- Task 5: pending
-- Task 6: pending
-- Task 7: pending
-- Task 8: pending
-- Task 9: pending
-- Task 10: pending
-- Task 11: pending
-- Task 12: pending
+- Tasks 1 through 9: complete in the predecessor migration worktrees with focused reviews recorded in their SDD ledgers.
+- Task 10: complete for real migration apply, backup, restore and reconciliation.
+- Task 11: staging PostgreSQL canary and controlled rollback-read scenarios complete.
+- Task 11: independent Frappe egress-deny evidence and operational approval remain open.
+- Task 12: acceptance report updated with real migration, restore, reconciliation and staging evidence.
+- Production canary remains intentionally unexecuted.
 
 ## Preflight
 
@@ -94,3 +87,15 @@ Task 10 residual gate: real Frappe apply/reconciliation remains intentionally bl
 Task 11: blocked by explicit decision to not execute canary or rollback.
 
 Task 12: acceptance report created with verified evidence and pending-gate decision.
+
+## Final operational closure
+
+- Real apply completed against isolated `aspen_test` with zero blockers and zero errors.
+- Backup and restore validation passed against isolated `aspen_restore`.
+- Reconciliation v5 passed with matching hashes, expected closure counts and zero invalid lineage.
+- PostgreSQL draft-management integration passed with synchronized legacy fields and section snapshots.
+- Core-mode staging E2E passed for detail, PDF, public link, outbox and revision edit.
+- Rollback-compatible legacy-read E2E passed in a separate temporary rollback deployment.
+- Preview was restored to legacy rollout with SSO protection enabled.
+- N8N, Evolution and outbox provider variables were removed from Preview.
+- Frappe firewall or DNS deny evidence remains missing, so acceptance remains blocked pending external operational approval.
