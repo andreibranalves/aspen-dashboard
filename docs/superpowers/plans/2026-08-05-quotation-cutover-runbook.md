@@ -939,14 +939,20 @@ Mude primeiro para compatibilidade, mantendo a flag mestre ligada:
 
 Não use somente `CRM_CORE_QUOTES_ENABLED=false` para rollback depois de qualquer escrita PostgreSQL.
 
+### Gate separado: leitura legacy no deployment `rollback-compatible`
+
+Este gate não pertence à suíte final de staging com egress Frappe bloqueado.
+
+Execute-o somente contra o deployment `rollback-compatible`, com Frappe em modo somente leitura e configuração de autenticação protegida.
+
 Valide registros conhecidos sem imprimir payloads ou credenciais:
 
 ```bash
 set -euo pipefail
 : "${KNOWN_POSTGRES_QUOTATION_ID:?configure a non-PII PostgreSQL quotation id for rollback read verification}"
 : "${KNOWN_LEGACY_QUOTATION_ID:?configure a non-PII legacy quotation id for rollback read verification}"
-: "${APP_ORIGIN:?configure the staging origin without credentials in the URL}"
-: "${APP_CURL_CONFIG:?configure a protected curl config with staging authentication}"
+: "${APP_ORIGIN:?configure the rollback deployment origin without credentials in the URL}"
+: "${APP_CURL_CONFIG:?configure a protected curl config with rollback authentication}"
 PG_COUNT="$(psql --dbname "service=$CUTOVER_PG_SERVICE" --set=ON_ERROR_STOP=1 --tuples-only --no-align \
   --variable=quotation_id="$KNOWN_POSTGRES_QUOTATION_ID" \
   --command "SELECT count(*) FROM quotations WHERE id = :'quotation_id'::uuid;")"
@@ -958,7 +964,9 @@ curl --fail --silent --show-error --config "$APP_CURL_CONFIG" \
 jq -e 'type == "object" and length > 0' "$CUTOVER_DIR/rollback-legacy-read.json"
 ```
 
-The PostgreSQL query and the authenticated legacy route read are both required evidence.
+The PostgreSQL query and the authenticated legacy route read are both required evidence for the rollback gate.
+
+A successful response from final staging with egress blocked is not expected and must not be obtained by relaxing the staging firewall.
 
 Execute the rollback write-route contract without mutating a live record:
 

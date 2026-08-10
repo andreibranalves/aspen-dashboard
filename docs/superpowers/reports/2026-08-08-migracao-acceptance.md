@@ -31,9 +31,9 @@ Branch: `fix/migration-customer-lineage`.
 - Frappe TCP connectivity failed from the staging container with the policy active.
 - The egress service is enabled, active after Docker restart and active after a controlled VPS reboot.
 - The final firewall, dependency inventory, probe and E2E evidence is outside the checkout under `/home/andrei/.local/share/aspen-dashboard/cutover-20260808/vps-staging-egress-v1/`.
-- Core staging E2E passed 2 tests after reboot, covering PostgreSQL detail, PDF download, public-link issue/read/revoke/expiry, outbox inspection and revision editing.
+- Final staging E2E intentionally excluded the legacy read and passed 2 PostgreSQL tests after reboot, covering PostgreSQL detail, PDF download, public-link issue/read/revoke/expiry, outbox inspection and revision editing.
 - The disposable PostgreSQL fixture returned to zero rows after the E2E run.
-- The rollback-compatible Frappe read scenario was previously passed in a separate temporary deployment before the final deny policy.
+- The rollback-compatible legacy-read gate passed in a separate temporary deployment before egress lockdown, with evidence in protected `staging-e2e-rollback-id-v3.log`.
 - The final Preview deployment remains in the legacy rollout state.
 - Preview SSO protection is enabled for all previews and production deployment URLs.
 - N8N, Evolution and outbox provider URL variables are absent from Preview and VPS staging.

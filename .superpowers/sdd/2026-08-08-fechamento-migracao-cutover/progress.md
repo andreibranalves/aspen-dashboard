@@ -95,15 +95,15 @@ Task 12: acceptance report updated with verified evidence and full-cutover closu
 - Backup and restore validation passed against isolated `aspen_restore`.
 - Reconciliation v5 passed with matching hashes, expected closure counts and zero invalid lineage.
 - PostgreSQL draft-management integration passed with synchronized legacy fields and section snapshots.
-- Core-mode staging E2E passed for detail, PDF, public link, outbox and revision edit.
-- Rollback-compatible legacy-read E2E passed in a separate temporary rollback deployment.
+- Final staging E2E excludes legacy reads and passed 2 PostgreSQL tests for detail, PDF, public link, outbox and revision edit.
+- Rollback-compatible legacy-read gate passed in a separate temporary deployment; evidence is protected in `staging-e2e-rollback-id-v3.log`.
 - Preview was restored to legacy rollout with SSO protection enabled.
 - N8N, Evolution and outbox provider variables were removed from Preview.
 - Hostinger KVM 1 staging API is deployed behind Traefik with Evolution stopped and preserved.
 - Persisted host and Docker egress policy has input, output and forward `drop` chains.
 - PostgreSQL and KV probes pass while Frappe TCP probe is blocked.
 - Egress policy survives service restart and controlled VPS reboot.
-- Core staging E2E passes 2 tests after reboot and disposable fixture cleanup returns zero rows.
+- Final staging E2E passes 2 tests after reboot and disposable fixture cleanup returns zero rows.
 - Production-target canary passed one synthetic non-financial quotation through create, emission, PDF, public link, outbox and revision paths.
 - Canary cleanup removed the quotation, 3 synthetic clients and 9 orphan outbox rows; verification found zero remaining canary records.
 - Previous Production deployment remained available as the rollback target.
