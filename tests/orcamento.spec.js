@@ -315,9 +315,13 @@ test.describe('Auto Quote — Fluxo Principal', () => {
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
+    const customItemName = 'Lenço 100 x 100 cm';
+    await page.getByRole('button', { name: 'Editar' }).click();
+    await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
     await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
     await page.getByLabel('Modelo HTML').selectOption('minimalista');
     await page.getByRole('button', { name: 'Criar orçamento' }).click();
+    await expect.poll(() => quoteRequest?.extracted?.items?.[0]?.item_name, { timeout: 10000 }).toBe(customItemName);
     await expect.poll(() => quoteRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
     const quotationLink = page.getByRole('link', { name: 'Abrir orçamento' });
     await expect(quotationLink).toBeVisible();

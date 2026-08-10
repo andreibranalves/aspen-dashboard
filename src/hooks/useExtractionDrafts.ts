@@ -70,8 +70,9 @@ export function useExtractionDrafts() {
         const rate = Number(res.items[i].rate);
         if (!next[di].edited.items[ii]._rateManual && Number.isFinite(rate) && rate > 0) {
           next[di].edited.items[ii].rate = rate;
-          next[di].edited.items[ii].item_name =
-            res.items[i].item_name || next[di].edited.items[ii].item_name;
+        }
+        if (!next[di].edited.items[ii].item_name && res.items[i].item_name) {
+          next[di].edited.items[ii].item_name = res.items[i].item_name;
         }
       }
       return next;
