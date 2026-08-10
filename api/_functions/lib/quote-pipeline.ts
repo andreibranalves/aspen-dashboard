@@ -25,6 +25,21 @@ async function localGetRate(itemCode: string, qty: number): Promise<number> {
   return getRate(itemCode, qty, ERPNEXT_BASE, ERPNEXT_TOKEN || '') as Promise<number>;
 }
 
+function normalizeItemName(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') {
+    throw createHttpError(400, 'Nome exibido no orçamento deve ser texto.');
+  }
+  const normalized = value.trim();
+  if (normalized.length > 255) {
+    throw createHttpError(
+      400,
+      'Nome exibido no orçamento deve ter no máximo 255 caracteres.'
+    );
+  }
+  return normalized;
+}
+
 // ── Pipeline ─────────────────────────────────────────────────────────────────
 
 export interface ExtractedData {
@@ -121,7 +136,7 @@ export async function runQuotePipeline(
     _rateManual?: boolean;
   }> = (extracted.items || []).map((item) => ({
     item_code: item.item_code,
-    item_name: item.item_name?.trim() || '',
+    item_name: normalizeItemName(item.item_name),
     qty: item.qty,
     rate: item.rate || 0,
     manual_rate: item.manual_rate === true,

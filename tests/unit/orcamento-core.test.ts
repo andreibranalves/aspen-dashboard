@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { createHandler } from '../../api/_functions/orcamento.js';
 import { createCoreHandler } from '../../api/_functions/orcamento-core.js';
 import { createLegacyHandler } from '../../api/_functions/orcamento-legacy.js';
+import { runQuotePipeline } from '../../api/_functions/lib/quote-pipeline.js';
 import {
   QuoteDraftInputError,
   readSelectedTemplate,
@@ -261,6 +262,79 @@ test('legacy boundary promotes displayed rates without mutating the request', as
     { item_code: 'INVALID-QTY', qty: 0, rate: '3.00', manual_rate: false },
   ]);
   assert.equal(originalItems[0].manual_rate, false);
+});
+
+test('legacy pipeline validates and sends the trimmed display name to Frappe', async () => {
+  const originalFetch = globalThis.fetch;
+  const previousN8nEnabled = process.env.N8N_WEBHOOK_ENABLED;
+  const previousN8nUrl = process.env.N8N_WEBHOOK_URL;
+  const quotationPayloads: Array<Record<string, unknown>> = [];
+  const jsonResponse = (data: unknown) =>
+    new Response(JSON.stringify({ data }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  delete process.env.N8N_WEBHOOK_ENABLED;
+  delete process.env.N8N_WEBHOOK_URL;
+  globalThis.fetch = (async (input: RequestInfo | URL, options: RequestInit = {}) => {
+    const url = new URL(String(input));
+    const path = decodeURIComponent(url.pathname);
+    const method = options.method || 'GET';
+    if (method === 'GET' && path.endsWith('/CRM Lead Source')) return jsonResponse([]);
+    if (method === 'GET' && path.endsWith('/UTM Source')) return jsonResponse([{ name: 'Google Ads' }]);
+    if (method === 'GET' && path.includes('/CRM Deal')) return jsonResponse([]);
+    if (method === 'GET' && path.includes('/Quotation/')) {
+      return jsonResponse({ items: [{ item_code: 'SKU-1', qty: 30, rate: 10 }] });
+    }
+    if (method === 'GET' && path.includes('/printview')) {
+      return new Response('<html><head></head><body></body></html>', { status: 200 });
+    }
+    if (method === 'POST' && path.endsWith('/Lead')) return jsonResponse({ name: 'LEAD-1' });
+    if (method === 'POST' && path.endsWith('/Contact')) return jsonResponse({ name: 'CONTACT-1' });
+    if (method === 'POST' && path.endsWith('/Quotation')) {
+      quotationPayloads.push(JSON.parse(String(options.body)) as Record<string, unknown>);
+      return jsonResponse({ name: `QTN-${quotationPayloads.length}` });
+    }
+    if (method === 'POST' && path.endsWith('/CRM Deal')) return jsonResponse({ name: 'DEAL-1' });
+    throw new Error(`Unexpected Frappe request: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const handler = createLegacyHandler({ runQuotePipeline });
+  const call = (item_name: unknown) =>
+    handler(event({
+      extracted: {
+        nome: 'Cliente legado',
+        origem: 'Google Ads',
+        items: [{ item_code: 'SKU-1', item_name, qty: 30, rate: 10, manual_rate: true }],
+      },
+    }));
+
+  try {
+    const trimmed = await call('  Lenço 100 x 100 cm  ');
+    assert.equal(trimmed.statusCode, 200);
+    const trimmedItems = quotationPayloads[0]?.items as Array<Record<string, unknown>>;
+    assert.equal(trimmedItems[0]?.item_name, 'Lenço 100 x 100 cm');
+
+    const maximum = 'M'.repeat(255);
+    const maximumResult = await call(maximum);
+    assert.equal(maximumResult.statusCode, 200);
+    const maximumItems = quotationPayloads[1]?.items as Array<Record<string, unknown>>;
+    assert.equal(maximumItems[0]?.item_name, maximum);
+
+    const tooLong = await call('N'.repeat(256));
+    assert.equal(tooLong.statusCode, 400);
+    assert.equal(quotationPayloads.length, 2);
+
+    const invalidType = await call(123);
+    assert.equal(invalidType.statusCode, 400);
+    assert.equal(quotationPayloads.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousN8nEnabled === undefined) delete process.env.N8N_WEBHOOK_ENABLED;
+    else process.env.N8N_WEBHOOK_ENABLED = previousN8nEnabled;
+    if (previousN8nUrl === undefined) delete process.env.N8N_WEBHOOK_URL;
+    else process.env.N8N_WEBHOOK_URL = previousN8nUrl;
+  }
 });
 
 test('legacy quote skips N8N unless explicitly enabled', async () => {
