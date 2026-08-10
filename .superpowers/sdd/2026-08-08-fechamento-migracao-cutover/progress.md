@@ -98,4 +98,9 @@ Task 12: acceptance report created with verified evidence and pending-gate decis
 - Rollback-compatible legacy-read E2E passed in a separate temporary rollback deployment.
 - Preview was restored to legacy rollout with SSO protection enabled.
 - N8N, Evolution and outbox provider variables were removed from Preview.
-- Frappe firewall or DNS deny evidence remains missing, so acceptance remains blocked pending external operational approval.
+- Hostinger KVM 1 staging API is deployed behind Traefik with Evolution stopped and preserved.
+- Persisted host and Docker egress policy has input, output and forward `drop` chains.
+- PostgreSQL and KV probes pass while Frappe TCP probe is blocked.
+- Egress policy survives service restart and controlled VPS reboot.
+- Core staging E2E passes 2 tests after reboot and disposable fixture cleanup returns zero rows.
+- Acceptance now remains blocked only for operational approval of the production canary and rollback window.

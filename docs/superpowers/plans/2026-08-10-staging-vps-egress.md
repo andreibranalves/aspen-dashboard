@@ -113,9 +113,9 @@ Write the source under `/opt/aspen-staging/app` and record the Git commit hash s
 
 - [ ] **Step 5: Create the Docker build and Compose definition**
 
-Use a `node:22-bookworm-slim` build stage with `/opt/aspen-staging` as context, copy `app/package*.json` before `npm ci`, then copy `app/` before running `npm run build` and `npm prune --omit=dev`.
+Use a `node:22-bookworm-slim` build stage with `/opt/aspen-staging` as context, install the Chromium shared libraries and fonts without installing a system browser, copy `app/package*.json` before `npm ci`, then copy `app/` before running `npm run build` and `npm prune --omit=dev`.
 
-Run the final container as a non-root user with `PORT=8888`, `NODE_ENV=production` and `XDG_CONFIG_HOME=/etc`.
+Run the final container as a non-root user with `PORT=8888`, `NODE_ENV=production` and `XDG_CONFIG_HOME=/etc`, allowing the application to use its bundled `@sparticuz/chromium` executable.
 
 Use `network_mode: host` so the host egress policy covers the app container and the existing host-network Traefik can reach `127.0.0.1:8888` through its file provider.
 
