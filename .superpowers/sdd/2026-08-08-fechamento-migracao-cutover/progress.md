@@ -104,6 +104,6 @@ Task 12: acceptance report created with verified evidence and pending-gate decis
 - Egress policy survives service restart and controlled VPS reboot.
 - Core staging E2E passes 2 tests after reboot and disposable fixture cleanup returns zero rows.
 - Production-target canary passed one synthetic non-financial quotation through create, emission, PDF, public link, outbox and revision paths.
-- Canary cleanup removed the quotation and 9 orphan outbox rows; verification found zero remaining canary orphans.
+- Canary cleanup removed the quotation, 3 synthetic clients and 9 orphan outbox rows; verification found zero remaining canary records.
 - Previous Production deployment and aliases restored; Production flags remain `false` and `legacy`.
 - Full Production cutover remains intentionally unexecuted and requires separate approval.

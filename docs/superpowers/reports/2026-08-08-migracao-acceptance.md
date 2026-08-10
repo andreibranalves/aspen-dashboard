@@ -42,7 +42,7 @@ Branch: `fix/migration-customer-lineage`.
 - The PDF passed `%PDF-`, `%%EOF`, size and revision-binding checks; its checksum is stored only in the protected external evidence.
 - The Production outbox inspection route correctly failed closed with 404 in a Production environment.
 - A protected direct database probe observed 3 pending canary outbox events with no external delivery.
-- Canary cleanup removed the synthetic quotation and 9 orphan outbox events; a follow-up query found zero remaining canary orphans.
+- Canary cleanup removed the synthetic quotation, 3 synthetic clients and 9 orphan outbox events; follow-up queries found zero remaining canary records.
 - The previous Production deployment and all four Production aliases were restored after the canary.
 - Production rollout flags remain `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
 - No provider delivery, Frappe CLI apply or full Production cutover was executed.
