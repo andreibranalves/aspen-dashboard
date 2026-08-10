@@ -1068,6 +1068,7 @@ function normalizeUpdateItems(
   input: unknown
 ): Array<{
   sku: string;
+  itemName: string;
   quantityScaled: bigint;
   quantity: string;
   rate: unknown;
@@ -1082,6 +1083,11 @@ function normalizeUpdateItems(
     if (typeof skuValue !== 'string' || !skuValue.trim()) {
       throw new QuoteManagementInputError(`SKU do item ${index + 1} é obrigatório.`);
     }
+    const itemName = inputText(
+      firstDefined(raw, ['item_name', 'nome']),
+      'Nome exibido no orçamento',
+      255,
+    );
     let quantityScaled: bigint;
     try {
       quantityScaled = parseQuantityScaled(
@@ -1105,6 +1111,7 @@ function normalizeUpdateItems(
     }
     return {
       sku: skuValue.trim(),
+      itemName,
       quantityScaled,
       quantity: `${quantityScaled / 1000n}.${(quantityScaled % 1000n).toString().padStart(3, '0')}`,
       rate,
@@ -1283,6 +1290,7 @@ export function createPostgresQuoteDraftManagementRepository(
             position: number;
             product: typeof products.$inferSelect;
             quantity: string;
+            itemName: string;
             resolution: PricingResolution;
             appliedCents: bigint;
             differenceCents: bigint;
@@ -1347,6 +1355,7 @@ export function createPostgresQuoteDraftManagementRepository(
               position: index,
               product,
               quantity: item.quantity,
+              itemName: item.itemName,
               resolution,
               appliedCents,
               differenceCents,
@@ -1460,7 +1469,7 @@ export function createPostgresQuoteDraftManagementRepository(
               productSku: item.product.sku,
               quantidade: item.quantity,
               produtoSku: item.product.sku,
-              produtoNome: item.product.nome,
+              produtoNome: item.itemName || item.product.nome,
               produtoDescricao: item.product.descricao,
               produtoUnidade: item.product.unidade,
               produtoCategoria: item.product.categoria,

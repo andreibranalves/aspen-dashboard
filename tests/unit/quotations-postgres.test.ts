@@ -253,10 +253,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.deepEqual(restored.secoes.condicoes_gerais.current, restored.secoes.condicoes_gerais.base);
     const currentBeforeUpdate = await managementGet(draft.quotation_name);
     assert.ok(currentBeforeUpdate);
+    const customItemName = 'Lenço 100 x 100 cm';
     const updated = await managementUpdate(draft.quotation_name, {
       concurrency_token: currentBeforeUpdate.concurrency_token,
       client_id: secondClientId,
-      items: [{ item_code: sku, qty: '30.000', rate: '10.00', manual_rate: true }],
+      items: [{ item_code: sku, item_name: customItemName, qty: '30.000', rate: '10.00', manual_rate: true }],
       validade_dias: 1,
       pagamento: '30 dias',
       entrega: '10 dias',
@@ -269,6 +270,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(updated.items[0].suggested_unit_price, '9.00');
     assert.equal(updated.items[0].applied_unit_price, '10.00');
     assert.equal(updated.items[0].price_difference, '1.00');
+    assert.equal(updated.items[0].nome, customItemName);
     assert.equal(updated.subtotal, '300.00');
     assert.equal(updated.total, '301.25');
     assert.equal(updated.client_id, secondClientId);
@@ -353,11 +355,13 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.equal(revision?.clienteNome, 'Segundo cliente de gerenciamento');
     assert.equal(revision?.clienteEmail, 'management-second@example.com');
     assert.equal(item?.precoAplicado, '10.00');
+    assert.equal(item?.produtoNome, customItemName);
 
     const snapshotRepository = createQuotationTemplateRepository(() => db);
     const beforeSnapshot = await snapshotRepository.get(updated.quotation_name);
     assert.ok(beforeSnapshot);
     const beforeHtml = renderQuotationTemplate(alternateTemplate, quotationSnapshotViewModel(beforeSnapshot));
+    assert.match(beforeHtml, /Lenço 100 x 100 cm/);
     await db.update(products).set({ nome: 'Produto alterado depois' }).where(eq(products.sku, sku));
     await db.update(clients).set({ nome: 'Cliente alterado depois' }).where(eq(clients.id, secondClientId));
     await db.update(appSettings).set({ templatePadrao: 'minimalista' }).where(eq(appSettings.singletonId, 1));

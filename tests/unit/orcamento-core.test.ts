@@ -108,7 +108,7 @@ test('quote core validates the envelope and annotates successful drafts', async 
         schema_version: 1,
         pagamento: { enabled: true, title: 'Pagamento', body: 'PIX' },
       },
-      items: [{ item_code: 'SKU-1', qty: '30.000', rate: '9.00', manual_rate: false }],
+      items: [{ item_code: 'SKU-1', item_name: 'Lenço 100 x 100 cm', qty: '30.000', rate: '9.00', manual_rate: false }],
     },
   }));
   assert.equal(result.statusCode, 201);
@@ -121,6 +121,7 @@ test('quote core validates the envelope and annotates successful drafts', async 
   const receivedItems = received?.items as Array<Record<string, unknown>>;
   assert.equal(receivedItems[0]?.rate, '9.00');
   assert.equal(receivedItems[0]?.manual_rate, false);
+  assert.equal(receivedItems[0]?.item_name, 'Lenço 100 x 100 cm');
 });
 
 const settings = {

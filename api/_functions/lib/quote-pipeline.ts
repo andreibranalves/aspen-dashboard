@@ -37,6 +37,7 @@ export interface ExtractedData {
   endereco?: Record<string, unknown>;
   items: Array<{
     item_code: string;
+    item_name?: string;
     qty: number;
     rate?: number;
     manual_rate?: boolean;
@@ -113,12 +114,14 @@ export async function runQuotePipeline(
   // ── 2. Price items ──
   let items: Array<{
     item_code: string;
+    item_name?: string;
     qty: number;
     rate: number;
     manual_rate?: boolean;
     _rateManual?: boolean;
   }> = (extracted.items || []).map((item) => ({
     item_code: item.item_code,
+    item_name: item.item_name?.trim() || '',
     qty: item.qty,
     rate: item.rate || 0,
     manual_rate: item.manual_rate === true,
@@ -143,7 +146,13 @@ export async function runQuotePipeline(
   items = items.map(({ manual_rate, ...item }) => ({
     ...item,
     _rateManual: manual_rate,
-  })) as Array<{ item_code: string; qty: number; rate: number; _rateManual?: boolean }>;
+  })) as Array<{
+    item_code: string;
+    item_name?: string;
+    qty: number;
+    rate: number;
+    _rateManual?: boolean;
+  }>;
 
   // ── 3. Resolve address ──
   const addrResult = await resolveAddress({
