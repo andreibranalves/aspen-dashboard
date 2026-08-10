@@ -213,10 +213,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       );
     }
     const storedBase = JSON.parse(JSON.stringify(laterBefore.secoes));
+    const longPagamento = 'P'.repeat(4000);
     const sectionOverride = await managementUpdate(laterDraft.quotation_name, {
       concurrency_token: laterBefore.concurrency_token,
       items: [{ item_code: sku, qty: '30.000' }],
-      pagamento: 'Legacy pagamento',
+      pagamento: longPagamento,
       entrega: 'Legacy entrega',
       observacoes: 'Legacy observações',
       secoes: {
@@ -225,9 +226,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         prazo_producao: { enabled: false, title: 'Prazo de produção' },
       },
     });
-    assert.equal(sectionOverride.pagamento, 'Legacy pagamento');
+    assert.equal(sectionOverride.pagamento, longPagamento);
     assert.equal(sectionOverride.observacoes, 'Legacy observações');
     assert.equal(sectionOverride.entrega, 'Legacy entrega');
+    assert.equal(sectionOverride.secoes?.pagamento.current.body, longPagamento);
+    assert.equal(sectionOverride.secoes?.condicoes_gerais.current.body, 'Legacy observações');
     assert.equal(sectionOverride.prazo_producao, '');
     assert.ok(sectionOverride.secoes);
     assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);

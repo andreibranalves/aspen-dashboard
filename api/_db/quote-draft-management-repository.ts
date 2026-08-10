@@ -1364,7 +1364,7 @@ export function createPostgresQuoteDraftManagementRepository(
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
           const pagamento = hasOwn(input, 'pagamento')
-            ? inputText(input.pagamento, 'Pagamento', 500, revision.pagamento)
+            ? inputText(input.pagamento, 'Pagamento', 4000, revision.pagamento)
             : sectionsSnapshot
               ? sectionsSnapshot.pagamento.current.body
               : revision.pagamento;
@@ -1401,6 +1401,10 @@ export function createPostgresQuoteDraftManagementRepository(
           // disabling the section clears its legacy mirror; enabling preserves
           // the existing duration because the section has no body field.
           if (sectionsSnapshot) {
+            if (hasOwn(input, 'pagamento')) revisionSections.pagamento.current.body = pagamento;
+            if (hasOwn(input, 'observacoes') || hasOwn(input, 'notes')) {
+              revisionSections.condicoes_gerais.current.body = observacoes;
+            }
             revisionSections.prazo_producao.current.enabled = hasDedicatedPrazo
               ? Boolean(prazoProducao)
               : Boolean(prazoProducao) && sectionsSnapshot.prazo_producao.current.enabled;

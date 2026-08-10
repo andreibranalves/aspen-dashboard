@@ -163,6 +163,13 @@ test.describe('quotation cutover staging', () => {
       });
       expect(expiringResponse.status()).toBe(201);
       const expiring = await expiringResponse.json();
+      const expiringRead = await apiRequest(
+        page,
+        'GET',
+        `/api/public-quotation?token=${encodeURIComponent(expiring.token)}`,
+      );
+      expect(expiringRead.status()).toBe(200);
+      expect(expiringRead.headers()['x-document-revision']).toBe(scratchDetail.revision_id);
       await page.waitForTimeout(1500);
       const expiredRead = await apiRequest(
         page,

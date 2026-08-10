@@ -21,11 +21,12 @@ const EXTERNAL_PROVIDER_ENV_VARS = [
 ] as const;
 
 function enabled(): boolean {
-  const productionDeployment = process.env.VERCEL_ENV
-    ? process.env.VERCEL_ENV === 'production'
+  const vercelEnvironment = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  const nonPreviewDeployment = vercelEnvironment
+    ? vercelEnvironment !== 'preview'
     : isProductionEnvironment(process.env);
   return (
-    !productionDeployment &&
+    !nonPreviewDeployment &&
     process.env.STAGING_E2E === '1' &&
     process.env.STAGING_EXTERNAL_PROVIDERS_DISABLED === '1' &&
     process.env.STAGING_EGRESS_BLOCKED === '1' &&
