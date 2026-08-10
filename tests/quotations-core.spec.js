@@ -109,3 +109,39 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
   await expect(page.getByText(/alterado por outro usuário/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Recarregar' })).toBeVisible();
 });
+
+test('pré-seleciona o modelo padrão em rascunho já existente', async ({ page }) => {
+  await page.route('**/api/settings**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
+  });
+  await page.route('**/api/leads-clients**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], core_mode: true }) });
+  });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        default_key: 'simples',
+        templates: [
+          { key: 'frappe', name: 'Frappe (Original)', is_default: false, current_version_id: '55555555-5555-4555-8555-555555555555', current_version: 1 },
+          { key: 'simples', name: 'Simples', is_default: true, current_version_id: '66666666-6666-4666-8666-666666666666', current_version: 1 },
+        ],
+      }),
+    });
+  });
+  await page.route('**/api/quotations?id=*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(detail({
+        template_key: 'frappe',
+        template_padrao: 'frappe',
+        template_version_id: '55555555-5555-4555-8555-555555555555',
+      })),
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('simples');
+});

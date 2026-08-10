@@ -322,20 +322,29 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
 
   useEffect(() => {
     let active = true;
-    apiGet<{ templates?: QuotationTemplateMetadata[]; data?: QuotationTemplateMetadata[] }>(
-      '/quotation-templates'
-    )
+    apiGet<{
+      templates?: QuotationTemplateMetadata[];
+      data?: QuotationTemplateMetadata[];
+      default_key?: string;
+    }>('/quotation-templates')
       .then((result) => {
         if (!active) return;
         const available = result.templates || result.data || [];
+        const fallback =
+          available.find((template) => template.key === result.default_key && !template.archived) ||
+          available.find((template) => template.is_default && !template.archived) ||
+          available.find((template) => !template.archived) ||
+          available[0];
+        const persisted = initialData.template_key || initialData.template_padrao || '';
         setTemplates(available);
-        const persisted = data.template_key || data.template_padrao || '';
-        if (persisted && available.some((template) => template.key === persisted)) {
+        if (initialData.status_canonical === 'rascunho' && fallback) {
+          setSelectedTemplate(fallback.key);
+          setSelectedVersionId(fallback.current_version_id || '');
+        } else if (persisted && available.some((template) => template.key === persisted)) {
           setSelectedTemplate(persisted);
           const current = available.find((template) => template.key === persisted);
-          setSelectedVersionId(data.template_version_id || current?.current_version_id || '');
-        } else if (available.length > 0) {
-          const fallback = available.find((template) => template.is_default && !template.archived) || available.find((template) => !template.archived) || available[0];
+          setSelectedVersionId(initialData.template_version_id || current?.current_version_id || '');
+        } else if (fallback) {
           setSelectedTemplate(fallback.key);
           setSelectedVersionId(fallback.current_version_id || '');
         }
@@ -350,7 +359,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     return () => {
       active = false;
     };
-  }, [data.template_key, data.template_padrao]);
+  }, [initialData.id, initialData.status_canonical, initialData.template_key, initialData.template_padrao]);
 
   const searchClients = useCallback(async (term: string) => {
     if (term.trim().length < 2) {
