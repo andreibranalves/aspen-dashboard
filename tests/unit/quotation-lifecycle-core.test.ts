@@ -44,12 +44,12 @@ test('core lifecycle actions forward canonical status and revision payloads', as
     },
   };
   const handler = createCoreHandler({
-    lifecycleRepository: lifecycle,
+    lifecycleRepository: lifecycle as any,
     repository: {
       list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
       get: async () => detail,
       update: async () => detail,
-    },
+    } as any,
   });
 
   const statusResponse = await handler(event('POST', detail.id, {
@@ -70,17 +70,49 @@ test('core lifecycle actions forward canonical status and revision payloads', as
   assert.deepEqual(calls.map((call) => call[0]), ['set_status', 'create_revision']);
 });
 
+test('core lifecycle emits a draft before sharing or revising it', async () => {
+  let call: unknown[] | undefined;
+  const handler = createCoreHandler({
+    lifecycleRepository: {
+      setStatus: async (id: string, input: unknown) => {
+        call = [id, input];
+        return { ...detail, status: 'Enviado', status_canonical: 'enviado' };
+      },
+      createRevision: async () => detail,
+    } as any,
+    repository: {
+      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
+      get: async () => detail,
+      update: async () => detail,
+    } as any,
+  });
+
+  const response = await handler(event('POST', detail.id, {
+    action: 'set_status',
+    status: 'enviado',
+    concurrency_token: detail.concurrency_token,
+  }));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body || '{}').status_canonical, 'enviado');
+  assert.deepEqual(call, [detail.id, {
+    action: 'set_status',
+    status: 'enviado',
+    concurrency_token: detail.concurrency_token,
+  }]);
+});
+
 test('core lifecycle rejects invalid actions and preserves 409 conflicts', async () => {
   const handler = createCoreHandler({
     lifecycleRepository: {
       setStatus: async () => { throw new QuoteManagementConflictError('Token desatualizado.'); },
       createRevision: async () => detail,
-    },
+    } as any,
     repository: {
       list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
       get: async () => detail,
       update: async () => detail,
-    },
+    } as any,
   });
 
   const invalid = await handler(event('POST', detail.id, { action: 'set_status', status: 'vencido', concurrency_token: 't' }));
@@ -95,12 +127,12 @@ test('core list accepts trimmed/case-insensitive legacy aliases and rejects unkn
   const handler = createCoreHandler({
     repository: {
       list: async (options) => {
-        calls.push(options.status || '');
+        calls.push(options?.status || '');
         return { rows: [], total: 0, page: 1, limit: 50, statusSummary: {} };
       },
       get: async () => detail,
       update: async () => detail,
-    },
+    } as any,
   });
   const aliases = [
     ' Draft ',

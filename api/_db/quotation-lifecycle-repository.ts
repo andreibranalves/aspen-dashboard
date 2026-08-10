@@ -26,7 +26,7 @@ const ISSUED_STATES = new Set(['enviado', 'aprovado', 'perdido']);
 export type QuotationCommercialStatus = 'rascunho' | 'enviado' | 'aprovado' | 'perdido';
 
 export interface SetQuotationStatusInput {
-  status: 'aprovado' | 'perdido';
+  status: 'enviado' | 'aprovado' | 'perdido';
   concurrency_token: unknown;
   concurrencyToken?: unknown;
 }
@@ -135,9 +135,9 @@ function assertToken(quotation: typeof quotations.$inferSelect, token: string): 
   }
 }
 
-function assertStatusInput(status: unknown): asserts status is 'aprovado' | 'perdido' {
-  if (status !== 'aprovado' && status !== 'perdido') {
-    throw new QuoteManagementInputError('Status inválido. Use "aprovado" ou "perdido".');
+function assertStatusInput(status: unknown): asserts status is 'enviado' | 'aprovado' | 'perdido' {
+  if (status !== 'enviado' && status !== 'aprovado' && status !== 'perdido') {
+    throw new QuoteManagementInputError('Status inválido. Use "enviado", "aprovado" ou "perdido".');
   }
 }
 
@@ -174,12 +174,21 @@ export function createPostgresQuotationLifecycleRepository(
           await acquireWriteLock(tx);
           const quotation = await lockedQuotation(tx, id);
           assertToken(quotation, token);
-          if (quotation.status !== 'enviado') {
-            throw new QuoteManagementConflictError('Somente orçamentos enviados podem ser marcados como aprovados ou perdidos.');
-          }
           const revision = await latestRevision(tx, quotation.id);
-          if (!revision || revision.status !== 'enviado') {
-            throw new QuoteManagementConflictError('A revisão enviada não está mais disponível para alteração comercial.');
+          if (!revision) {
+            throw new QuoteManagementConflictError('A revisão atual do orçamento não está disponível.');
+          }
+          if (status === 'enviado') {
+            if (quotation.status !== 'rascunho' || revision.status !== 'rascunho') {
+              throw new QuoteManagementConflictError('Somente rascunhos podem ser emitidos.');
+            }
+          } else {
+            if (quotation.status !== 'enviado') {
+              throw new QuoteManagementConflictError('Somente orçamentos enviados podem ser marcados como aprovados ou perdidos.');
+            }
+            if (revision.status !== 'enviado') {
+              throw new QuoteManagementConflictError('A revisão enviada não está mais disponível para alteração comercial.');
+            }
           }
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
