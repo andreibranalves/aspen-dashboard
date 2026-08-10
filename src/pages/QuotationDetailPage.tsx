@@ -603,12 +603,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   }, [data.id, draftEditable, selectedVersionId]);
   const emitir = useCallback(async () => {
     if (!confirm(`Emitir orçamento ${data.id}? Após emissão não poderá ser editado.`)) return;
+    const token = data.concurrency_token || data.version_token || data.updated_at;
+    if (!token) {
+      setConflict('Token de concorrência ausente. Recarregue o orçamento antes de emitir.');
+      return;
+    }
     setIssuing(true);
     setMessage('');
+    setConflict('');
     try {
       await apiPost(`/quotations?id=${encodeURIComponent(data.id)}`, {
         action: 'set_status',
         status: 'enviado',
+        concurrency_token: token,
       });
       setMessage('Orçamento emitido.');
       await onReload();
@@ -617,7 +624,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     } finally {
       setIssuing(false);
     }
-  }, [data.id, onReload]);
+  }, [data.concurrency_token, data.id, data.updated_at, data.version_token, onReload]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido') => {

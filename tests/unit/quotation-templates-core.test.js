@@ -277,6 +277,24 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
   assert.notEqual(standard, alternate);
 });
 
+test('quotation display removes zero padding without changing raw quantity', () => {
+  const model = quotationSnapshotViewModel({
+    ...snapshot,
+    items: [
+      { ...snapshot.items[0], quantidade: '200.000' },
+      { ...snapshot.items[1], quantidade: '200.500' },
+    ],
+  });
+  const integerItem = model.items.find((item) => item.sku === 'SKU-B');
+  const fractionalItem = model.items.find((item) => item.sku === 'SKU-A');
+  assert.equal(integerItem?.quantity, '200');
+  assert.equal(fractionalItem?.quantity, '200.5');
+  assert.equal(integerItem?.qty, '200.000');
+  const html = renderQuotationTemplate(DEFAULT_QUOTATION_TEMPLATE, model);
+  assert.match(html, />200<\/td>/);
+  assert.doesNotMatch(html, />200\.000<\/td>/);
+});
+
 test('legacy template resolution requires exact key and hash', () => {
   assert.equal(resolveQuotationTemplate('padrao', DEFAULT_QUOTATION_TEMPLATE.hash).key, 'padrao');
   assert.throws(
@@ -983,6 +1001,18 @@ test('exact historical Frappe source/hash accepts missing display.total', () => 
   const model = quotationSnapshotViewModel(snapshot);
   const html = renderQuotationTemplate(frappe, model);
   assert.ok(html.length > 100, 'frappe renders substantial HTML');
+});
+
+test('persisted historical Frappe version keeps trusted provenance', () => {
+  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
+  assert.ok(frappe, 'frappe template exists');
+  const persisted = quotationTemplateFromVersion({
+    source: frappe.source,
+    sourceHash: frappe.hash,
+    template: { key: frappe.key, name: frappe.name },
+  });
+  const html = renderQuotationTemplate(persisted, quotationSnapshotViewModel(snapshot));
+  assert.ok(html.length > 100, 'persisted Frappe renders substantial HTML');
 });
 
 test('new source missing display.total is rejected', () => {

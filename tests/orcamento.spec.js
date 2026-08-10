@@ -33,10 +33,14 @@ const MOCK_ORCAMENTO = {
   success: true,
   quotation_id: 'ORC-20260001',
   quotation_name: 'ORC-20260001',
+  quotation_uuid: '11111111-1111-4111-8111-111111111101',
+  revision_id: '22222222-2222-4222-8222-222222222201',
+  revision_number: 1,
   deal_id: 'CRM-DEAL-2026-00001',
   customer_id: 'CUST-001',
   customer_new: true,
-  print_url: '/api/view?q=ORC-20260001',
+  core_mode: true,
+  source: 'postgres',
 };
 
 const MOCK_LEADS_LIST = {
@@ -125,6 +129,14 @@ const MOCK_WHATSAPP_LEADS = {
 // ── Helpers ──
 
 async function setupApiMocks(page) {
+  await page.route('**/api/settings**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ operational_mode: false }),
+    });
+  });
+
   await page.route('**/api/quotation-templates**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -146,6 +158,14 @@ async function setupApiMocks(page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(MOCK_ORCAMENTO),
+    });
+  });
+
+  await page.route('**/api/pricing-lookup**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, items: [] }),
     });
   });
 
@@ -301,7 +321,7 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect.poll(() => quoteRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
     const quotationLink = page.getByRole('link', { name: 'Abrir orçamento' });
     await expect(quotationLink).toBeVisible();
-    await expect(quotationLink).toHaveAttribute('href', '/api/view?q=ORC-20260001');
+    await expect(quotationLink).toHaveAttribute('href', '/#/quotations/ORC-20260001');
     await expect(quotationLink).toHaveAttribute('target', '_blank');
     await expect(quotationLink.getByRole('button')).toHaveCount(0);
   });

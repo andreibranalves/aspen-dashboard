@@ -873,8 +873,12 @@ export default function AutoQuotePage() {
               {visibleDrafts.map((draft, displayIdx) => {
                 const isError = draft.status === 'error';
                 const isProcessing = draft.status === 'processing';
-                const relativeViewUrl = draft.result?.data?.quotation_id
-                  ? buildQuotationViewUrl(String(draft.result.data.quotation_id))
+                const resultData = draft.result?.data;
+                const quotationId = resultData?.quotation_id ? String(resultData.quotation_id) : '';
+                const relativeViewUrl = quotationId
+                  ? resultData?.core_mode === true || resultData?.source === 'postgres'
+                    ? `/#/quotations/${encodeURIComponent(quotationId)}`
+                    : buildQuotationViewUrl(quotationId)
                   : '';
 
                 if (isError) {

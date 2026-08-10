@@ -461,6 +461,14 @@ export function quotationTemplateFromVersion(version: {
   sourceHash: string;
   template?: { key: string; name: string };
 }): QuotationTemplate {
+  // Persisted copies of the immutable historical Frappe source retain its trusted compatibility path.
+  if (
+    version.template?.key === FRAPPE_TEMPLATE.key &&
+    version.source === FRAPPE_TEMPLATE.source &&
+    version.sourceHash === FRAPPE_TEMPLATE.hash
+  ) {
+    return FRAPPE_TEMPLATE;
+  }
   return {
     key: version.template?.key || 'persisted',
     name: version.template?.name || 'Template persistido',

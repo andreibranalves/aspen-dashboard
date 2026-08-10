@@ -86,6 +86,14 @@ function detail(overrides = {}) {
 }
 
 async function routeTemplates(page) {
+  await page.route('**/api/settings**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ operational_mode: false }),
+    });
+  });
+
   await page.route('**/api/quotation-templates**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -98,6 +106,13 @@ async function routeTemplates(page) {
 }
 
 test('core quotation detail accepts JSON-string section snapshots from PostgreSQL', async ({ page }) => {
+  await page.route('**/api/settings**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ operational_mode: false }),
+    });
+  });
   await page.route('**/api/quotation-templates**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -120,7 +135,53 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+  const itemRow = page.locator('tr').filter({ hasText: 'Produto lifecycle' }).first();
+  await expect(itemRow.getByText('10', { exact: true })).toBeVisible();
+  await expect(itemRow.getByText('10.000', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
+});
+
+test('core lifecycle emission forwards the concurrency token', async ({ page }) => {
+  let authoritative = detail({ status: 'Rascunho', status_canonical: 'rascunho' });
+  let postPayload;
+  await page.route('**/api/quotations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.get('id')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(authoritative),
+      });
+      return;
+    }
+    if (request.method() === 'POST') {
+      postPayload = request.postDataJSON();
+      const validEmission =
+        postPayload.action === 'set_status' &&
+        postPayload.status === 'enviado' &&
+        postPayload.concurrency_token === token;
+      if (validEmission) authoritative = detail({ status: 'Enviado', status_canonical: 'enviado' });
+      await route.fulfill({
+        status: validEmission ? 200 : 400,
+        contentType: 'application/json',
+        body: JSON.stringify(validEmission ? authoritative : { error: 'Token de concorrência obrigatório.' }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+  await routeTemplates(page);
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByText('Rascunho', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Emitir orçamento' }).click();
+  await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
+  expect(postPayload).toMatchObject({
+    action: 'set_status',
+    status: 'enviado',
+    concurrency_token: token,
+  });
 });
 
 test('core lifecycle marks sent quotations and creates a revision from issued history', async ({

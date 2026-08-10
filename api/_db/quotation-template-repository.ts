@@ -181,6 +181,13 @@ function nullable(value: unknown): string {
   return value == null ? '' : String(value);
 }
 
+function formatQuantityForDisplay(value: string): string {
+  const match = /^([+-]?\d+)(?:\.(\d+))?$/.exec(value.trim());
+  if (!match) return value;
+  const fraction = (match[2] || '').replace(/0+$/, '');
+  return fraction ? `${match[1]}.${fraction}` : match[1];
+}
+
 /** Convert the immutable database snapshot into the template-facing model. */
 export function quotationSnapshotViewModel(
   snapshot: QuotationTemplateSnapshot
@@ -216,7 +223,7 @@ export function quotationSnapshotViewModel(
         marca: item.produtoMarca || '',
         qty: quantity,
         quantidade: quantity,
-        quantity,
+        quantity: formatQuantityForDisplay(quantity),
         price_source: item.precoFonte,
         preco_fonte: item.precoFonte,
         tier_minimum: nullable(item.precoMinimoFaixa),
