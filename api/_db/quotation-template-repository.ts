@@ -188,6 +188,81 @@ function formatQuantityForDisplay(value: string): string {
   return fraction ? `${match[1]}.${fraction}` : match[1];
 }
 
+const COMPARISON_BRACKETS = [
+  { minimum: 30, label: '30 - 99' },
+  { minimum: 100, label: '100 - 299' },
+  { minimum: 300, label: '300 - 499' },
+  { minimum: 500, label: '500 - 999' },
+  { minimum: 1000, label: '1000+' },
+] as const;
+
+type ComparisonItem = {
+  item_code?: string | null;
+  name: string;
+  description: string;
+  position: number;
+  qty: string;
+  tier_minimum: string;
+  unit_price: string;
+  display: { unit_price: string };
+};
+
+type ComparisonPrice = { display: string; available: boolean };
+
+type ComparisonGroup = {
+  position: number;
+  name: string;
+  description: string;
+  prices: Map<number, ComparisonPrice>;
+};
+
+function comparisonMinimum(tier: string, quantity: string): number {
+  const explicit = Number(tier);
+  if (COMPARISON_BRACKETS.some((bracket) => bracket.minimum === explicit)) return explicit;
+  const value = Number(quantity);
+  if (value >= 1000) return 1000;
+  if (value >= 500) return 500;
+  if (value >= 300) return 300;
+  if (value >= 100) return 100;
+  return 30;
+}
+
+function buildComparison(items: ComparisonItem[]) {
+  const groups = new Map<string, ComparisonGroup>();
+  const visible = new Set<number>();
+
+  for (const item of items) {
+    const minimum = comparisonMinimum(item.tier_minimum, item.qty);
+    const key = `${item.item_code || item.name}\u0000${item.description}`;
+    const group = groups.get(key) || {
+      position: item.position,
+      name: item.name,
+      description: item.description,
+      prices: new Map<number, ComparisonPrice>(),
+    };
+    visible.add(minimum);
+    group.prices.set(minimum, {
+      display: item.display.unit_price,
+      available: Boolean(item.unit_price),
+    });
+    groups.set(key, group);
+  }
+
+  const brackets = COMPARISON_BRACKETS.filter((bracket) => visible.has(bracket.minimum));
+  const products = [...groups.values()]
+    .sort((left, right) => left.position - right.position)
+    .map((group, index) => ({
+      position: index + 1,
+      name: group.name,
+      description: group.description,
+      prices: brackets.map(
+        (bracket) => group.prices.get(bracket.minimum) || { display: '', available: false }
+      ),
+    }));
+
+  return { brackets, products };
+}
+
 /** Convert the immutable database snapshot into the template-facing model. */
 export function quotationSnapshotViewModel(
   snapshot: QuotationTemplateSnapshot
@@ -295,6 +370,7 @@ export function quotationSnapshotViewModel(
     client_snapshot: client,
     items,
     items_snapshot: items,
+    comparison: buildComparison(items),
     terms: {
       pagamento: revision.pagamento,
       entrega: revision.entrega,
