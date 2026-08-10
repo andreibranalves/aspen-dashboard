@@ -1,6 +1,6 @@
 # Acceptance Report - Migração PostgreSQL
 
-Status: `FULL_CUTOVER_ABORTED_AUTH_GATE`.
+Status: `FULL_CUTOVER_COMPLETE`.
 
 Branch: `fix/migration-customer-lineage`.
 
@@ -44,16 +44,21 @@ Branch: `fix/migration-customer-lineage`.
 - A protected direct database probe observed 3 pending canary outbox events with no external delivery.
 - Canary cleanup removed the synthetic quotation, 3 synthetic clients and 9 orphan outbox events; follow-up queries found zero remaining canary records.
 - The previous Production deployment and all four Production aliases were restored after the canary.
-- Production rollout flags remain `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
-- No provider delivery or full Production alias promotion was executed.
+- The earlier canary rollback restored Production flags to `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy` before the full cutover.
+- No external provider delivery was executed; outbox inspection remained fail-closed.
 - No secrets, raw payloads, Customer or Lead identifiers were written to this report.
 - A protected Production backup was created and restore-validated before schema/data changes; checksum evidence is under `/home/andrei/.local/share/aspen-dashboard/cutover-20260808/production-cutover-v1/`.
 - Production schema migrations, Frappe read-only apply and reconciliation completed with manifest hash `de133fee0c37541df522b6ad60cb78b356572abd4dae6c16d599ae1d086153f3` and zero blockers.
 - Production reconciliation passed with zero invalid lineage, matching hashes/counts/statuses and the approved exclusion closure.
 - Two pre-existing stale `Lead` lineage rows inside the approved closure were removed; their two client rows were preserved and no quotation referenced them.
-- The full-cutover direct deployment was not promoted: authenticated API probing returned `401` before canary creation, so no Production write-mode traffic was served.
-- Temporary write-mode deployments were removed, Vercel SSO and automation-bypass protection were restored, and aliases remained on the previous Production deployment.
-- Production flags were restored to `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
+- An earlier full-cutover attempt was aborted at the authentication gate after `401`; its temporary deployment and bypass were removed without serving write-mode traffic.
+- The Production password hash was rotated under explicit approval; the password was not written to evidence or source control.
+- The final isolated write-mode deployment passed the authenticated canary: login `200`, create `201`, detail `200`, emission `200`, PDF `200` with `%PDF-`/`%%EOF` and revision binding, public issue/read/revoke, outbox fail-closed `404`, revision creation `200`, deletion and zero residues.
+- The same authenticated canary passed through the live Production alias after promotion.
+- All four Production aliases point to the same `READY` deployment and returned HTTP `200`.
+- Production flags are now `CRM_CORE_QUOTES_ENABLED=true` and `CRM_QUOTES_ROLLOUT_STATE=postgres-write`.
+- Evolution, N8N and outbox provider variables remain absent; Vercel SSO protection is unchanged and the temporary automation bypass is disabled.
+- Final post-canary database counts match the pre-canary baseline, with zero invalid lineage and zero synthetic canary clients or quotations.
 
 ## Operational findings
 
@@ -64,11 +69,10 @@ Branch: `fix/migration-customer-lineage`.
 - The VPS uses the bundled `@sparticuz/chromium` binary with the required Linux shared libraries and does not depend on a system browser.
 - The rollback-compatible read was intentionally executed before egress lockdown because the final staging policy must deny Frappe.
 
-## Remaining decision
+## Post-cutover follow-up
 
-- Full Production cutover remains intentionally unexecuted; PostgreSQL data is migrated and reconciled, but the live aliases still serve legacy mode.
-- Provide a designated authenticated Production canary session through the secret manager or run the direct canary manually; do not paste the password into chat.
-- After authentication is available, rerun the direct canary and promote the final write-mode deployment.
+- Monitor Production errors, quotation outbox pending rows and PDF/public-link flows.
+- Keep the previous `READY` deployment available for immediate rollback if any gate fails.
 
 ## Decision
 
@@ -80,6 +84,6 @@ Real staging egress enforcement is evidenced by a persisted VPS firewall and a b
 
 The approved production-target canary passed and rolled back cleanly without changing the live Production state.
 
-The subsequent full-cutover attempt migrated and reconciled PostgreSQL but aborted before alias promotion at the authentication gate.
+The subsequent full-cutover attempt was retried after explicit authentication rotation and completed the direct and live authenticated canaries.
 
-Keep Evolution stopped, keep Preview in the legacy rollout state and keep Production in the restored legacy state until the authenticated canary passes.
+Keep Evolution stopped, keep Preview in the legacy rollout state and keep Production in `postgres-write` until operational monitoring confirms stability.
