@@ -7,7 +7,6 @@ const REQUIRED_STAGING_VARS = [
   'STAGING_E2E_USERNAME',
   'KNOWN_POSTGRES_QUOTATION_ID',
   'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
-  'KNOWN_LEGACY_QUOTATION_ID',
   'STAGING_EXTERNAL_PROVIDERS_DISABLED',
   'STAGING_EGRESS_BLOCKED',
   'STAGING_FIXTURE_RESET',
@@ -60,7 +59,6 @@ export function getStagingConfig(env = process.env) {
     password: String(env.E2E_PASSWORD),
     postgresQuotationId: String(env.KNOWN_POSTGRES_QUOTATION_ID).trim(),
     scratchQuotationId: String(env.KNOWN_POSTGRES_SCRATCH_QUOTATION_ID).trim(),
-    legacyQuotationId: String(env.KNOWN_LEGACY_QUOTATION_ID).trim(),
   };
 }
 

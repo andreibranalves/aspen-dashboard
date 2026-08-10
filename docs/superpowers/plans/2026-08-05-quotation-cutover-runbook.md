@@ -738,7 +738,6 @@ set -euo pipefail
 : "${E2E_PASSWORD:?configure the staging test password through the secret manager}"
 : "${KNOWN_POSTGRES_QUOTATION_ID:?configure a non-PII PostgreSQL quotation id}"
 : "${KNOWN_POSTGRES_SCRATCH_QUOTATION_ID:?configure a disposable non-PII sent PostgreSQL scratch quotation id}"
-: "${KNOWN_LEGACY_QUOTATION_ID:?configure a non-PII legacy quotation id}"
 : "${STAGING_E2E_USERNAME:?configure the designated account identifier in staging deployment env}"
 : "${STAGING_EXTERNAL_PROVIDERS_DISABLED:?set staging external provider guard to 1}"
 : "${STAGING_EGRESS_BLOCKED:?set staging egress guard to 1}"
@@ -758,7 +757,6 @@ E2E_PASSWORD="$E2E_PASSWORD" \
 STAGING_E2E_USERNAME="$STAGING_E2E_USERNAME" \
 KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
 KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
-KNOWN_LEGACY_QUOTATION_ID="$KNOWN_LEGACY_QUOTATION_ID" \
 STAGING_EXTERNAL_PROVIDERS_DISABLED="$STAGING_EXTERNAL_PROVIDERS_DISABLED" \
 STAGING_EGRESS_BLOCKED="$STAGING_EGRESS_BLOCKED" \
 STAGING_FIXTURE_RESET="$STAGING_FIXTURE_RESET" \
@@ -768,6 +766,10 @@ npx playwright test --config=playwright.config.js \
   tests/quotations-core.spec.js \
   tests/quotation-lifecycle.spec.js
 ```
+
+Essa suíte final de staging não executa leitura legacy.
+
+A leitura legacy é um gate separado do deployment `rollback-compatible`, descrito na seção de rollback abaixo.
 
 O comando só é válido depois do bloqueio Frappe e da confirmação de que staging aponta para a base nomeada esperada.
 

@@ -252,15 +252,6 @@ test.describe('quotation cutover staging', () => {
     if (cleanupError) throw cleanupError;
   });
 
-  test('opens a known legacy quotation for rollback-compatible read', async ({ page }) => {
-    const response = await apiRequest(page, 'GET', quotationPath(CONFIG.legacyQuotationId));
-    expect(response.status()).toBe(200);
-    const legacy = await response.json();
-    expect(legacy.id || legacy.quotation_id).toBe(CONFIG.legacyQuotationId);
-
-    await page.goto(`/#/quotations/${encodeURIComponent(CONFIG.legacyQuotationId)}`);
-    await expect(page.getByText(CONFIG.legacyQuotationId, { exact: true }).first()).toBeVisible();
-  });
 });
 
 function quotationPath(id) {
