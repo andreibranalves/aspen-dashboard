@@ -11,8 +11,6 @@ import {
 import {
   formatQuotationCurrency,
   formatQuotationDate,
-  resolveQuotationTemplate,
-  type QuotationTemplate,
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { toSafeMultilineHtml } from './quotation-content.js';
