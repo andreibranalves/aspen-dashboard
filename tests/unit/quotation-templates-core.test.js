@@ -118,6 +118,57 @@ const snapshot = {
   ],
 };
 
+const comparisonSnapshot = {
+  ...snapshot,
+  items: [
+    {
+      ...snapshot.items[0],
+      position: 1,
+      produtoSku: 'SKU-A',
+      productSku: 'SKU-A',
+      produtoNome: 'Camiseta',
+      produtoDescricao: 'Algodão',
+      precoMinimoFaixa: '30',
+      precoAplicado: '10.00',
+      totalLinha: '300.00',
+    },
+    {
+      ...snapshot.items[1],
+      position: 2,
+      produtoSku: 'SKU-A',
+      productSku: 'SKU-A',
+      produtoNome: 'Camiseta',
+      produtoDescricao: 'Algodão',
+      precoMinimoFaixa: '100',
+      precoAplicado: '8.00',
+      totalLinha: '800.00',
+    },
+    {
+      ...snapshot.items[1],
+      position: 3,
+      produtoSku: 'SKU-A',
+      productSku: 'SKU-A',
+      produtoNome: 'Camiseta',
+      produtoDescricao: 'Algodão',
+      precoMinimoFaixa: '100',
+      precoAplicado: '7.50',
+      totalLinha: '750.00',
+    },
+    {
+      ...snapshot.items[1],
+      position: 4,
+      produtoSku: 'SKU-B',
+      productSku: 'SKU-B',
+      produtoNome: 'Caneca',
+      produtoDescricao: '',
+      precoMinimoFaixa: null,
+      quantidade: '500.000',
+      precoAplicado: '5.00',
+      totalLinha: '2500.00',
+    },
+  ],
+};
+
 function event(query = {}) {
   return { httpMethod: 'GET', headers: {}, queryStringParameters: query, body: '' };
 }
@@ -275,6 +326,26 @@ test('snapshot model renders client, ordered loop, terms, totals and escaped inp
   assert.match(standard, /&lt;b&gt;Cliente&lt;\/b&gt;/);
   assert.match(standard, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.notEqual(standard, alternate);
+});
+
+test('snapshot model builds the saved comparison matrix by tier', () => {
+  const comparison = quotationSnapshotViewModel(comparisonSnapshot).comparison;
+
+  assert.deepEqual(
+    comparison.brackets.map(({ minimum, label }) => ({ minimum, label })),
+    [
+      { minimum: 30, label: '30 - 99' },
+      { minimum: 100, label: '100 - 299' },
+      { minimum: 500, label: '500 - 999' },
+    ]
+  );
+  assert.deepEqual(comparison.products.map(({ name, description }) => ({ name, description })), [
+    { name: 'Camiseta', description: 'Algodão' },
+    { name: 'Caneca', description: '' },
+  ]);
+  assert.equal(comparison.products[0].prices[1].display, 'R$ 7,50');
+  assert.equal(comparison.products[0].prices[1].available, true);
+  assert.equal(comparison.products[1].prices[0].available, false);
 });
 
 test('quotation display removes zero padding without changing raw quantity', () => {
