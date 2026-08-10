@@ -16,8 +16,9 @@
 - Task 10: complete for real migration apply, backup, restore and reconciliation.
 - Task 11: staging PostgreSQL canary and controlled rollback-read scenarios complete.
 - Task 11: independent Frappe egress-deny evidence and operational approval complete.
-- Task 12: acceptance report updated with real migration, restore, reconciliation and staging evidence.
+- Task 12: acceptance report updated with migration, restore, reconciliation, staging and cutover-attempt evidence.
 - Production-target canary passed and rollback restored the previous Production aliases and legacy flags.
+- Production database apply and reconciliation completed; alias promotion aborted at the authenticated canary gate.
 
 ## Preflight
 
@@ -84,9 +85,9 @@ Task 10: implementation and operational hardening complete through commit `59927
 
 Task 10 residual gate: real Frappe apply/reconciliation remains intentionally blocked.
 
-Task 11: production-target canary and rollback complete; full cutover remains intentionally unexecuted.
+Task 11: production-target canary and rollback complete; full cutover database apply/reconciliation complete, alias promotion blocked by authentication.
 
-Task 12: acceptance report created with verified evidence and pending-gate decision.
+Task 12: acceptance report updated with verified evidence and authentication follow-up.
 
 ## Final operational closure
 
@@ -106,4 +107,7 @@ Task 12: acceptance report created with verified evidence and pending-gate decis
 - Production-target canary passed one synthetic non-financial quotation through create, emission, PDF, public link, outbox and revision paths.
 - Canary cleanup removed the quotation, 3 synthetic clients and 9 orphan outbox rows; verification found zero remaining canary records.
 - Previous Production deployment and aliases restored; Production flags remain `false` and `legacy`.
-- Full Production cutover remains intentionally unexecuted and requires separate approval.
+- Production database apply and reconciliation passed with zero blockers; two stale lineage rows inside the approved closure were removed while clients were preserved.
+- Full Production cutover remains intentionally unexecuted because the direct authenticated canary returned 401 before creation.
+- Production aliases and flags were restored; temporary deployments and Vercel automation bypass were removed.
+- Rerun authenticated canary, then promote write-mode deployment.

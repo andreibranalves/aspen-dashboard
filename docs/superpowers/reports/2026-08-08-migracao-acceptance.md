@@ -1,6 +1,6 @@
 # Acceptance Report - Migração PostgreSQL
 
-Status: `CANARY_PASSED_ROLLBACK_COMPLETE`.
+Status: `FULL_CUTOVER_ABORTED_AUTH_GATE`.
 
 Branch: `fix/migration-customer-lineage`.
 
@@ -45,8 +45,15 @@ Branch: `fix/migration-customer-lineage`.
 - Canary cleanup removed the synthetic quotation, 3 synthetic clients and 9 orphan outbox events; follow-up queries found zero remaining canary records.
 - The previous Production deployment and all four Production aliases were restored after the canary.
 - Production rollout flags remain `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
-- No provider delivery, Frappe CLI apply or full Production cutover was executed.
+- No provider delivery or full Production alias promotion was executed.
 - No secrets, raw payloads, Customer or Lead identifiers were written to this report.
+- A protected Production backup was created and restore-validated before schema/data changes; checksum evidence is under `/home/andrei/.local/share/aspen-dashboard/cutover-20260808/production-cutover-v1/`.
+- Production schema migrations, Frappe read-only apply and reconciliation completed with manifest hash `de133fee0c37541df522b6ad60cb78b356572abd4dae6c16d599ae1d086153f3` and zero blockers.
+- Production reconciliation passed with zero invalid lineage, matching hashes/counts/statuses and the approved exclusion closure.
+- Two pre-existing stale `Lead` lineage rows inside the approved closure were removed; their two client rows were preserved and no quotation referenced them.
+- The full-cutover direct deployment was not promoted: authenticated API probing returned `401` before canary creation, so no Production write-mode traffic was served.
+- Temporary write-mode deployments were removed, Vercel SSO and automation-bypass protection were restored, and aliases remained on the previous Production deployment.
+- Production flags were restored to `CRM_CORE_QUOTES_ENABLED=false` and `CRM_QUOTES_ROLLOUT_STATE=legacy`.
 
 ## Operational findings
 
@@ -59,8 +66,9 @@ Branch: `fix/migration-customer-lineage`.
 
 ## Remaining decision
 
-- Full Production cutover remains intentionally unexecuted.
-- A separate approval is required before leaving Production in `postgres-write` or changing the current legacy aliases.
+- Full Production cutover remains intentionally unexecuted; PostgreSQL data is migrated and reconciled, but the live aliases still serve legacy mode.
+- Provide a designated authenticated Production canary session through the secret manager or run the direct canary manually; do not paste the password into chat.
+- After authentication is available, rerun the direct canary and promote the final write-mode deployment.
 
 ## Decision
 
@@ -72,4 +80,6 @@ Real staging egress enforcement is evidenced by a persisted VPS firewall and a b
 
 The approved production-target canary passed and rolled back cleanly without changing the live Production state.
 
-Keep Evolution stopped, keep Preview in the legacy rollout state and keep Production in the restored legacy state until a separate full-cutover approval.
+The subsequent full-cutover attempt migrated and reconciled PostgreSQL but aborted before alias promotion at the authentication gate.
+
+Keep Evolution stopped, keep Preview in the legacy rollout state and keep Production in the restored legacy state until the authenticated canary passes.
