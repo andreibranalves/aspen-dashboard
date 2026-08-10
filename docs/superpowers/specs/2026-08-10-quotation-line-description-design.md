@@ -42,11 +42,11 @@ No draft de `/auto`, `DraftItem.item_name` já acompanha os itens.
 
 A tabela de itens passará a editá-lo diretamente, sem chamar busca de produto ou recálculo de preço.
 
-Ao criar o orçamento, o campo seguirá no payload de itens já enviado pelo fluxo atual.
+Ao criar o orçamento, o fluxo incluirá `item_name` no payload de itens.
 
-Na edição de orçamento salvo, o editor usará o mesmo `item_name` na linha local e o incluirá no `PUT /api/quotations`.
+Na edição de orçamento salvo, o editor enviará o mesmo `item_name` no `PUT /api/quotations`.
 
-A API já aceita e persiste `item_name` na linha da Quotation, sem escrever no cadastro de Item.
+Os fluxos core e legacy persistirão `item_name` na linha do orçamento, sem escrever no cadastro de Item.
 
 Preview e documento reutilizam os itens persistidos, logo exibem a descrição salva.
 
