@@ -964,9 +964,29 @@ test('deterministic preview fixture renders the standard template with every nes
   assert.match(rendered, /Entrega:/);
 });
 
-test('all three built-in templates render without error', () => {
+test('comparativo template is registered and renders the saved matrix', () => {
+  const template = getQuotationTemplate('comparativo');
+  assert.ok(template);
+  assert.equal(template.name, 'Comparativo por faixa');
+
+  const model = quotationSnapshotViewModel(comparisonSnapshot);
+  const html = renderQuotationTemplate(template, model);
+  assert.match(html, /30 - 99/);
+  assert.match(html, /100 - 299/);
+  assert.match(html, /R\$ 7,50/);
+  assert.match(html, /Camiseta/);
+  assert.doesNotMatch(template.source, /\{%|%\}|\bfrappe\b|\bdoc\./i);
+});
+
+test('comparativo source satisfies the new-template contract', () => {
+  const template = getQuotationTemplate('comparativo');
+  assert.ok(template);
+  validateQuotationSource(template.source, template.key);
+});
+
+test('all built-in templates render without error', () => {
   const model = quotationSnapshotViewModel(snapshot);
-  for (const key of ['padrao', 'minimalista', 'frappe']) {
+  for (const key of ['padrao', 'minimalista', 'frappe', 'comparativo']) {
     const tmpl = getQuotationTemplate(key);
     assert.ok(tmpl, `template ${key} should exist`);
     const html = renderQuotationTemplate(tmpl, model);
