@@ -947,6 +947,8 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
     color: var(--text);
     font-size: 13px;
     line-height: 1.6;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   @page {

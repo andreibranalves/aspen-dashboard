@@ -996,6 +996,8 @@ test('simples template is registered with fixed commercial sections', () => {
   assert.match(html, /Formas de pagamento: PIX, boleto bancário e transferência/);
   assert.match(template.source, /counter-increment: simple-item/);
   assert.match(template.source, /counter\(simple-item\)/);
+  assert.match(template.source, /-webkit-print-color-adjust:\s*exact/);
+  assert.match(template.source, /print-color-adjust:\s*exact/);
   assert.doesNotMatch(template.source, /\{\{position\}\}\./);
   assert.doesNotMatch(template.source, /\{%|%\}|\\bfrappe\\b|\\bdoc\\./i);
   assert.doesNotMatch(template.source, /terms\./i);
