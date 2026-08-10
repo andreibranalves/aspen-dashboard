@@ -984,9 +984,32 @@ test('comparativo source satisfies the new-template contract', () => {
   validateQuotationSource(template.source, template.key);
 });
 
+test('simples template is registered with fixed commercial sections', () => {
+  const template = getQuotationTemplate('simples');
+  assert.ok(template);
+  assert.equal(template.name, 'Simples');
+
+  const model = quotationSnapshotViewModel(snapshot);
+  const html = renderQuotationTemplate(template, model);
+  assert.match(html, /15 a 20 dias úteis após confirmação do pagamento e aprovação da arte/);
+  assert.match(html, /Dados para pagamento/);
+  assert.match(html, /Formas de pagamento: PIX, boleto bancário e transferência/);
+  assert.match(template.source, /counter-increment: simple-item/);
+  assert.match(template.source, /counter\(simple-item\)/);
+  assert.doesNotMatch(template.source, /\{\{position\}\}\./);
+  assert.doesNotMatch(template.source, /\{%|%\}|\\bfrappe\\b|\\bdoc\\./i);
+  assert.doesNotMatch(template.source, /terms\./i);
+});
+
+test('simples source satisfies the new-template contract', () => {
+  const template = getQuotationTemplate('simples');
+  assert.ok(template);
+  validateQuotationSource(template.source, template.key);
+});
+
 test('all built-in templates render without error', () => {
   const model = quotationSnapshotViewModel(snapshot);
-  for (const key of ['padrao', 'minimalista', 'frappe', 'comparativo']) {
+  for (const key of ['padrao', 'minimalista', 'frappe', 'comparativo', 'simples']) {
     const tmpl = getQuotationTemplate(key);
     assert.ok(tmpl, `template ${key} should exist`);
     const html = renderQuotationTemplate(tmpl, model);

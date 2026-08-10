@@ -132,6 +132,9 @@ test('built-in seed plan is stable and idempotent by key and hash', () => {
   const comparative = plan.find((item) => item.key === 'comparativo');
   assert.ok(comparative);
   assert.equal(comparative.name, 'Comparativo por faixa');
+  const simple = plan.find((item) => item.key === 'simples');
+  assert.ok(simple);
+  assert.equal(simple.name, 'Simples');
   assert.equal(plan.filter((item) => item.key === 'padrao').length, 1);
   for (const item of plan) assert.match(item.source_hash, /^[0-9a-f]{64}$/);
   assert.deepEqual(templateSeedPlan(), plan);
