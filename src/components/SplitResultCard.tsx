@@ -139,7 +139,7 @@ export default function SplitResultCard({
       selectProduct(draft.index, ii, product);
       setItemSearchTerms((prev) => ({
         ...prev,
-        [ii]: String(product.nome || product.item_name || product.sku),
+        [ii]: product.sku,
       }));
       setItemResults((prev) => ({ ...prev, [ii]: [] }));
       setActiveSearchIdx(null);
@@ -184,10 +184,10 @@ export default function SplitResultCard({
 
   function toggleEditing() {
     if (!editing) {
-      // Pre-fill search terms with existing item names
+      // Pre-fill search terms with existing item codes
       const terms: Record<number, string> = {};
       items.forEach((item, ii) => {
-        if (item.item_code) terms[ii] = item.item_name || item.item_code;
+        if (item.item_code) terms[ii] = item.item_code;
       });
       setItemSearchTerms(terms);
       if (!draft.edited.origem) {
@@ -364,9 +364,7 @@ export default function SplitResultCard({
                 const searching = itemSearching[ii] || false;
                 const showDropdown = activeSearchIdx === ii && results.length > 0;
                 const searchValue =
-                  itemSearchTerms[ii] !== undefined
-                    ? itemSearchTerms[ii]
-                    : item.item_name || item.item_code || '';
+                  itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : item.item_code || '';
 
                 return (
                   <tr key={ii} className="border-b border-line last:border-b-0 hover:bg-surface/30">
@@ -424,6 +422,19 @@ export default function SplitResultCard({
                               ))}
                             </div>
                           )}
+                          <label className="mt-1 block space-y-1">
+                            <span className="text-[10px] font-medium text-fg-muted">
+                              Nome exibido no orçamento
+                            </span>
+                            <Input
+                              aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
+                              className="h-7 text-xs"
+                              value={item.item_name || ''}
+                              onChange={(event) =>
+                                onUpdateItem(draft.index, ii, 'item_name', event.target.value)
+                              }
+                            />
+                          </label>
                         </div>
                       ) : (
                         <span className="block truncate font-medium text-fg">

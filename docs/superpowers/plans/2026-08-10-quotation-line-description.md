@@ -332,8 +332,8 @@ git commit -m "feat(quotation): edit saved item names"
 
 **Files:**
 
-- Modify: `docs/superpowers/specs/2026-08-10-quotation-line-description-design.md`
-- Modify: `docs/superpowers/plans/2026-08-10-quotation-line-description.md`
+- Verify: `docs/superpowers/specs/2026-08-10-quotation-line-description-design.md`
+- Verify: `docs/superpowers/plans/2026-08-10-quotation-line-description.md`
 
 **Interfaces:**
 
@@ -369,13 +369,11 @@ npm run build
 
 Expected: todos os comandos aprovados, com testes PostgreSQL explicitamente ignorados apenas sem banco de teste configurado.
 
-- [ ] **Step 4: Verificar diff final e commit de documentação**
+- [ ] **Step 4: Verificar diff final**
 
 ```bash
 git diff --check
 git status --short
-git add docs/superpowers/specs/2026-08-10-quotation-line-description-design.md docs/superpowers/plans/2026-08-10-quotation-line-description.md
-git commit -m "docs(quotation): plan line description"
 ```
 
-Expected: apenas documentos do recurso são incluídos neste commit.
+Expected: nenhum arquivo alheio ao recurso aparece no diff.

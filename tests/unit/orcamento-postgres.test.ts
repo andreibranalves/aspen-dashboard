@@ -118,10 +118,11 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
     assert.equal(concurrent[0].items[0].line_total, '270.01');
     assert.equal(concurrent[0].subtotal, '270.01');
 
+    const customItemName = 'Lenço 100 x 100 cm';
     const manual = await repository.createDraft({
       client_id: existingClientId,
       items: [
-        { item_code: sku, qty: '30.001', manual_rate: true, rate: '10.00' },
+        { item_code: sku, item_name: customItemName, qty: '30.001', manual_rate: true, rate: '10.00' },
         { item_code: sku, qty: '1.001', manual_rate: true, rate: '2.50' },
       ],
       frete: '1.25',
@@ -133,6 +134,7 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
     assert.equal(manual.items[0].suggested_unit_price, '9.00');
     assert.equal(manual.items[0].applied_unit_price, '10.00');
     assert.equal(manual.items[0].price_difference, '1.00');
+    assert.equal(manual.items[0].nome, customItemName);
 
     // Mutating source rows after creation must not change persisted snapshots.
     await db.update(products).set({
@@ -150,7 +152,7 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
     const itemRows = await db.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, manual.revision_id));
     assert.equal(revisionRow[0]?.clienteNome, 'Cliente snapshot original');
     assert.equal(revisionRow[0]?.clienteNotas, 'Nota original');
-    assert.equal(itemRows[0]?.produtoNome, 'Produto snapshot original');
+    assert.equal(itemRows[0]?.produtoNome, customItemName);
     assert.equal(itemRows[0]?.produtoDescricao, 'Descrição original');
     assert.equal(itemRows[0]?.produtoUnidade, 'Und');
     assert.equal(itemRows[0]?.quantidade, '30.001');
@@ -246,6 +248,12 @@ test('PostgreSQL quote drafts reserve sequential numbers and roll back every wri
       assert.equal((await db.select().from(quoteRevisions)).length, boundaryCounts.revisions);
       assert.equal((await db.select().from(quoteRevisionItems)).length, boundaryCounts.items);
     };
+
+    await assertBoundaryRejects({
+      client_id: existingClientId,
+      items: [{ item_code: sku, item_name: 'N'.repeat(256), qty: '1.000' }],
+      frete: '0.00',
+    }, /Nome exibido no orçamento/);
 
     // Quantity and manual unit price are individually valid, but their rounded
     // line total would exceed numeric(20,2).

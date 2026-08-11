@@ -517,6 +517,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           client_id: clientId,
           items: items.map((item) => ({
             item_code: item.sku || item.item_code,
+            item_name: item.item_name,
             qty: item.qty,
             rate: item.applied_unit_price,
             manual_rate: item.manual_rate,
@@ -1046,7 +1047,28 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                         item.sku
                       )}
                     </TableCell>
-                    <TableCell>{item.nome || item.item_name || item.sku}</TableCell>
+                    <TableCell>
+                      {editing ? (
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-medium text-fg-muted">
+                            Nome exibido no orçamento
+                          </span>
+                          <Input
+                            aria-label={`Nome exibido no orçamento ${item.sku}`}
+                            className="h-8 text-sm"
+                            value={item.item_name}
+                            onChange={(event) =>
+                              updateItem(item._key, {
+                                item_name: event.target.value,
+                                nome: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                      ) : (
+                        item.nome || item.item_name || item.sku
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">
                       {editing ? (
                         <Input

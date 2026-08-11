@@ -99,6 +99,7 @@ export class QuoteDraftRepositoryError extends Error {
 export interface QuoteDraftItemInput {
   item_code?: unknown;
   sku?: unknown;
+  item_name?: unknown;
   qty?: unknown;
   rate?: unknown;
   manual_rate?: unknown;
@@ -220,6 +221,7 @@ export interface QuoteDraftRepositoryOptions {
 
 interface NormalizedItem {
   sku: string;
+  itemName: string;
   quantityScaled: bigint;
   quantity: string;
   rate: unknown;
@@ -397,6 +399,11 @@ function normalizeItems(input: unknown): NormalizedItem[] {
     if (typeof skuValue !== 'string' || !skuValue.trim()) {
       throw new QuoteDraftInputError(`SKU do item ${index + 1} é obrigatório.`);
     }
+    const itemName = inputText(
+      firstDefined(raw, ['item_name', 'nome']),
+      'Nome exibido no orçamento',
+      255,
+    );
     let quantityScaled: bigint;
     try {
       quantityScaled = parseQuantityScaled(raw.qty, `Quantidade do item ${index + 1}`);
@@ -410,6 +417,7 @@ function normalizeItems(input: unknown): NormalizedItem[] {
     }
     return {
       sku: skuValue.trim(),
+      itemName,
       quantityScaled,
       quantity: formatQuantity(quantityScaled),
       rate: raw.rate,
@@ -593,7 +601,7 @@ function itemSnapshot(
     sku: product.sku,
     qty,
     quantidade: qty,
-    nome: product.nome,
+    nome: row.produtoNome || product.nome,
     descricao: product.descricao,
     unidade: product.unidade,
     categoria: product.categoria ?? null,
@@ -889,6 +897,7 @@ export function createPostgresQuoteDraftRepository(
           id: string;
           position: number;
           quantity: string;
+          itemName: string;
           product: typeof products.$inferSelect;
           resolution: PricingResolution;
           appliedCents: bigint;
@@ -932,6 +941,7 @@ export function createPostgresQuoteDraftRepository(
             id: idFactory(),
             position: index,
             quantity: item.quantity,
+            itemName: item.itemName,
             product: priced.product,
             resolution,
             appliedCents,
@@ -1006,7 +1016,7 @@ export function createPostgresQuoteDraftRepository(
             productSku: item.product.sku,
             quantidade: item.quantity,
             produtoSku: item.product.sku,
-            produtoNome: item.product.nome,
+            produtoNome: item.itemName || item.product.nome,
             produtoDescricao: item.product.descricao,
             produtoUnidade: item.product.unidade,
             produtoCategoria: item.product.categoria,
@@ -1043,7 +1053,7 @@ export function createPostgresQuoteDraftRepository(
               sku: item.product.sku,
               qty: item.quantity,
               quantidade: item.quantity,
-              nome: item.product.nome,
+              nome: item.itemName || item.product.nome,
               descricao: item.product.descricao,
               unidade: item.product.unidade,
               categoria: item.product.categoria ?? null,

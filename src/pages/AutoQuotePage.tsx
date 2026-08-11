@@ -280,6 +280,7 @@ export default function AutoQuotePage() {
             .filter((it) => it.item_code && it.qty > 0)
             .map((it) => ({
               item_code: it.item_code,
+              item_name: it.item_name || '',
               qty: it.qty,
               rate: it.rate,
               manual_rate: it._rateManual === true,

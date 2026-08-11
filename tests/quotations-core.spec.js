@@ -36,6 +36,7 @@ function detail(overrides = {}) {
 }
 
 test('core quotations list/search/open/edit and surface optimistic conflicts', async ({ page }) => {
+  const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;
   let lastPutPayload;
   let authoritative = detail();
@@ -61,7 +62,7 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
           valor: '101.25',
           concurrency_token: '2026-07-01T12:01:00.000Z',
           updated_at: '2026-07-01T12:01:00.000Z',
-          items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto core', item_name: 'Produto core', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '10.00', price_difference: '1.00', line_total: '100.00', manual_rate: true }],
+          items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: lastPutPayload.items[0].item_name, item_name: lastPutPayload.items[0].item_name, qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '10.00', price_difference: '1.00', line_total: '100.00', manual_rate: true }],
         });
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
       }
@@ -88,6 +89,7 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
   await page.getByRole('button', { name: 'Cancelar' }).click();
   await page.getByRole('button', { name: /Editar/ }).click();
   await expect(page.getByLabel('Pagamento do orçamento')).toHaveValue('À vista');
+  await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
   await page.getByLabel('Pagamento do orçamento').fill('30 dias');
   await page.getByLabel('Frete do orçamento').fill('1.25');
   await page.getByLabel('Observações do orçamento').fill('Alteração local');
@@ -101,9 +103,11 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
   expect(lastPutPayload.observacoes).toBe('Alteração local');
   expect(lastPutPayload.items[0].manual_rate).toBe(true);
   expect(lastPutPayload.items[0].rate).toBe('10.00');
+  expect(lastPutPayload.items[0].item_name).toBe(customItemName);
   await expect(page.getByText('R$ 101,25')).toBeVisible();
   await expect(page.getByText('R$ 1,00')).toBeVisible();
   await expect(page.getByText('30 dias').first()).toBeVisible();
+  await expect(page.getByText(customItemName)).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByRole('button', { name: /Salvar/ }).click();
   await expect(page.getByText(/alterado por outro usuário/i)).toBeVisible();
