@@ -114,6 +114,8 @@ export default function AutoQuotePage() {
         available.some((template) => template.id === current) ? current : ''
       );
     } catch {
+      setOrderTemplates([]);
+      setOrderTemplateId('');
       setOrderTemplatesError('Não foi possível carregar os templates de pedido.');
     } finally {
       setOrderTemplatesLoading(false);

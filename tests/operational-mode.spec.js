@@ -316,6 +316,8 @@ test.describe('Operational mode navigation gating', () => {
             items: [
               { item_code: 'SKU-A', rate: 10, item_name: 'Produto A' },
               { item_code: 'SKU-B', rate: 12, item_name: 'Produto B' },
+              { item_code: 'SKU-A', rate: 10, item_name: 'Produto A' },
+              { item_code: 'SKU-B', rate: 12, item_name: 'Produto B' },
             ],
           }),
         });
@@ -331,8 +333,20 @@ test.describe('Operational mode navigation gating', () => {
         .fill('Andrei B. andrei@gmail.com 21999999999 300 e 500 unidades');
       await page.getByRole('button', { name: /Extrair/i }).click();
       await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible();
+      const itemRows = page.locator('table tbody tr');
+      await expect(itemRows).toHaveCount(4);
+      await expect(itemRows.nth(0)).toContainText('Produto A');
+      await expect(itemRows.nth(0)).toContainText('300');
+      await expect(itemRows.nth(1)).toContainText('Produto B');
+      await expect(itemRows.nth(1)).toContainText('300');
+      await expect(itemRows.nth(2)).toContainText('Produto A');
+      await expect(itemRows.nth(2)).toContainText('500');
+      await expect(itemRows.nth(3)).toContainText('Produto B');
+      await expect(itemRows.nth(3)).toContainText('500');
       expect(extractRequest?.orderTemplateId).toBe('pack-id');
       expect(extractRequest?.text).toContain('300 e 500 unidades');
+      expect(extractRequest).not.toHaveProperty('skus');
+      expect(extractRequest).not.toHaveProperty('templateSkus');
       await page.getByRole('button', { name: 'Limpar', exact: true }).click();
       await expect(templateSelect).toHaveValue('');
     });
@@ -340,9 +354,23 @@ test.describe('Operational mode navigation gating', () => {
     test('creates an order template from the manager catalog search', async ({ page }) => {
       /** @type {any} */
       let createRequest = null;
+      /** @type {any} */
+      let createdTemplate = null;
       await page.route('**/api/order-templates', async (route) => {
         if (route.request().method() === 'POST') {
           createRequest = route.request().postDataJSON();
+          createdTemplate = {
+            id: 'new-pack-id',
+            name: createRequest.name,
+            archived: false,
+            items: createRequest.skus.map((sku, position) => ({
+              sku,
+              name: sku === 'LNC-A' ? 'Lenço A' : 'Lenço B',
+              position,
+            })),
+            created_at: '2026-08-11T00:00:00.000Z',
+            updated_at: '2026-08-11T00:00:00.000Z',
+          };
           await route.fulfill({
             status: 201,
             contentType: 'application/json',
@@ -353,7 +381,7 @@ test.describe('Operational mode navigation gating', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: [] }),
+          body: JSON.stringify({ data: createdTemplate ? [createdTemplate] : [] }),
         });
       });
       await page.route('**/api/products**', async (route) => {
@@ -379,13 +407,242 @@ test.describe('Operational mode navigation gating', () => {
       await dialog.getByLabel('Buscar produto').fill('LNC');
       await expect(dialog.getByRole('button', { name: /LNC-A/ })).toBeVisible();
       await expect(dialog.getByRole('button', { name: /LNC-SEM-PRECO/ })).not.toBeVisible();
-      await dialog.getByRole('button', { name: /LNC-A/ }).click();
+      await dialog.getByRole('button', { name: 'Adicionar produto LNC-A' }).click();
       await dialog.getByLabel('Buscar produto').fill('LNC');
-      await dialog.getByRole('button', { name: /LNC-B/ }).click();
+      await dialog.getByRole('button', { name: 'Adicionar produto LNC-A' }).click();
+      await expect(dialog.getByLabel('SKU selecionado LNC-A')).toHaveCount(1);
+      await dialog.getByLabel('Buscar produto').fill('LNC');
+      await dialog.getByRole('button', { name: 'Adicionar produto LNC-B' }).click();
       await dialog.getByRole('button', { name: 'Salvar' }).click();
       await expect
         .poll(() => createRequest)
         .toEqual({ name: 'Todos os lenços', skus: ['LNC-A', 'LNC-B'] });
+      await expect(dialog.getByRole('button', { name: 'Novo template' })).toBeVisible();
+      await expect(dialog.getByText('Todos os lenços')).toBeVisible();
+    });
+
+    test('preserves manager form after a save failure', async ({ page }) => {
+      await page.route('**/api/order-templates', async (route) => {
+        if (route.request().method() === 'POST') {
+          await route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Nome duplicado.' }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/products**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [{ sku: 'SKU-A', nome: 'Produto A', pricing_available: true }],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      await page.getByRole('button', { name: 'Gerenciar' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Novo template' }).click();
+      await dialog.getByLabel('Nome').fill('Template preservado');
+      await dialog.getByLabel('Buscar produto').fill('SKU');
+      await dialog.getByRole('button', { name: 'Adicionar produto SKU-A' }).click();
+      await dialog.getByRole('button', { name: 'Salvar' }).click();
+      await expect(dialog.getByText('Nome duplicado.')).toBeVisible();
+      await expect(dialog.getByLabel('Nome')).toHaveValue('Template preservado');
+      await expect(dialog.getByLabel('SKU selecionado SKU-A')).toHaveCount(1);
+      await expect(dialog.getByRole('button', { name: 'Salvar' })).toBeEnabled();
+    });
+
+    test('updates, archives, and reloads the manager list after each mutation', async ({
+      page,
+    }) => {
+      /** @type {any} */
+      let templates = [
+        {
+          id: 'pack-id',
+          name: 'Pack original',
+          archived: false,
+          items: [{ sku: 'SKU-A', name: 'Produto A', position: 0 }],
+          created_at: '2026-08-11T00:00:00.000Z',
+          updated_at: '2026-08-11T00:00:00.000Z',
+        },
+      ];
+      /** @type {any} */
+      let updateRequest = null;
+      let deleteCount = 0;
+      await page.route('**/api/order-templates**', async (route) => {
+        const method = route.request().method();
+        if (method === 'PUT') {
+          updateRequest = route.request().postDataJSON();
+          templates = [{ ...templates[0], name: updateRequest.name }];
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ id: 'pack-id' }),
+          });
+          return;
+        }
+        if (method === 'DELETE') {
+          deleteCount += 1;
+          await page.waitForTimeout(100);
+          templates = [];
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ archived: true }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: templates }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      await page.getByRole('button', { name: 'Gerenciar' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Editar' }).click();
+      await dialog.getByLabel('Nome').fill('Pack atualizado');
+      await dialog.getByRole('button', { name: 'Salvar' }).click();
+      await expect.poll(() => updateRequest).toEqual({ name: 'Pack atualizado', skus: ['SKU-A'] });
+      await expect(dialog.getByRole('button', { name: 'Novo template' })).toBeVisible();
+      await expect(dialog.getByText('Pack atualizado')).toBeVisible();
+
+      await dialog.getByRole('button', { name: 'Arquivar Pack atualizado' }).click();
+      await expect(page.getByText(/Arquivar “Pack atualizado”/)).toBeVisible();
+      await page.getByRole('button', { name: 'Arquivar', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Arquivar', exact: true })).not.toBeVisible();
+      await expect.poll(() => deleteCount).toBe(1);
+      await expect(dialog.getByText('Nenhum template criado')).toBeVisible();
+    });
+
+    test('closes the manager with Escape or backdrop and restores focus', async ({ page }) => {
+      await page.goto(`${BASE_URL}/#/auto`);
+      const managerButton = page.getByRole('button', { name: 'Gerenciar' });
+      await managerButton.click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(dialog).not.toBeVisible();
+      await expect(managerButton).toBeFocused();
+
+      await managerButton.click();
+      await expect(dialog).toBeVisible();
+      await page.getByTestId('order-template-manager-backdrop').click({ position: { x: 2, y: 2 } });
+      await expect(dialog).not.toBeVisible();
+      await expect(managerButton).toBeFocused();
+    });
+
+    test('clears a stale selected template after reload failure', async ({ page }) => {
+      let reloadFailed = false;
+      /** @type {any} */
+      let extractRequest = null;
+      await page.route('**/api/order-templates**', async (route) => {
+        if (route.request().method() === 'PUT') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ id: 'pack-id' }),
+          });
+          return;
+        }
+        if (reloadFailed) {
+          await route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'Falha' }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'pack-id',
+                name: 'Pack de produtos',
+                archived: false,
+                items: [{ sku: 'SKU-A', name: 'Produto A', position: 0 }],
+                created_at: '2026-08-11T00:00:00.000Z',
+                updated_at: '2026-08-11T00:00:00.000Z',
+              },
+            ],
+          }),
+        });
+      });
+      await page.route('**/api/quotations**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/quote-leads**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/communication-flows**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ flows: [] }),
+        });
+      });
+      await page.route('**/api/extract', async (route) => {
+        extractRequest = route.request().postDataJSON();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            orders: [{ nome: 'Cliente', items: [{ item_code: 'SKU-A', qty: 30 }] }],
+          }),
+        });
+      });
+      await page.route('**/api/pricing-lookup', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            items: [{ item_code: 'SKU-A', rate: 10, item_name: 'Produto A' }],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      const templateSelect = page.getByLabel('Template de pedido');
+      await templateSelect.selectOption('pack-id');
+      await page.getByRole('button', { name: 'Gerenciar' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Editar' }).click();
+      await dialog.getByLabel('Nome').fill('Pack atualizado');
+      reloadFailed = true;
+      await dialog.getByRole('button', { name: 'Salvar' }).click();
+      await expect(
+        page.getByText('Não foi possível carregar os templates de pedido.')
+      ).toBeVisible();
+      await expect(templateSelect).toHaveValue('');
+      await expect(templateSelect.locator('option')).toHaveCount(1);
+      await dialog.getByRole('button', { name: 'Fechar' }).click();
+      await expect(templateSelect.locator('option')).toHaveCount(1);
+      await page.locator('textarea').first().fill('Cliente 30 unidades');
+      await page.getByRole('button', { name: /Extrair/i }).click();
+      await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible();
+      expect(extractRequest).not.toHaveProperty('orderTemplateId');
     });
 
     test('keeps Auto usable when order-template loading fails', async ({ page }) => {

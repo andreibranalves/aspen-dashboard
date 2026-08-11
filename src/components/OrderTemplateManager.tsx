@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Archive, ChevronDown, ChevronUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -45,8 +45,49 @@ export default function OrderTemplateManager({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<OrderTemplate | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const archiveTargetRef = useRef<OrderTemplate | null>(null);
+  const operationRef = useRef(false);
 
   const editing = editingId !== null;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    archiveTargetRef.current = archiveTarget;
+  }, [archiveTarget]);
+
+  useEffect(() => {
+    if (!open) {
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
+      return;
+    }
+
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (operationRef.current) return;
+      if (archiveTargetRef.current) {
+        setArchiveTarget(null);
+        return;
+      }
+      onCloseRef.current();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const frame = window.requestAnimationFrame(() => dialogRef.current?.focus());
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -58,6 +99,7 @@ export default function OrderTemplateManager({
     setError(null);
     setSaving(false);
     setArchiveTarget(null);
+    operationRef.current = false;
   }, [open]);
 
   useEffect(() => {
@@ -149,6 +191,8 @@ export default function OrderTemplateManager({
       setError('Adicione pelo menos um produto.');
       return;
     }
+    if (operationRef.current) return;
+    operationRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -160,22 +204,26 @@ export default function OrderTemplateManager({
     } catch (err) {
       setError((err as Error).message || 'Não foi possível salvar o template.');
     } finally {
+      operationRef.current = false;
       setSaving(false);
     }
   };
 
   const archive = async () => {
-    if (!archiveTarget) return;
+    const target = archiveTarget;
+    if (!target || operationRef.current) return;
+    operationRef.current = true;
     setSaving(true);
+    setArchiveTarget(null);
     setError(null);
     try {
-      await archiveOrderTemplate(archiveTarget.id);
-      setArchiveTarget(null);
+      await archiveOrderTemplate(target.id);
       await onChanged();
-      if (editingId === archiveTarget.id) cancelEdit(true);
+      if (editingId === target.id) cancelEdit(true);
     } catch (err) {
       setError((err as Error).message || 'Não foi possível arquivar o template.');
     } finally {
+      operationRef.current = false;
       setSaving(false);
     }
   };
@@ -183,19 +231,19 @@ export default function OrderTemplateManager({
   return (
     <>
       <div
+        data-testid="order-template-manager-backdrop"
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-6"
-        onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !saving) onClose();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && !saving && !archiveTarget) onClose();
+        onClick={(event) => {
+          if (event.target === event.currentTarget && !saving && !operationRef.current) onClose();
         }}
       >
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="order-template-manager-title"
-          className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:max-h-[calc(100vh-3rem)]"
+          tabIndex={-1}
+          className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl focus:outline-none sm:max-h-[calc(100vh-3rem)]"
         >
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
             <div>
@@ -330,6 +378,7 @@ export default function OrderTemplateManager({
                             <button
                               key={product.sku}
                               type="button"
+                              aria-label={`Adicionar produto ${product.sku}`}
                               onClick={() => addProduct(product)}
                               className="flex w-full min-w-0 items-start gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-muted"
                             >
@@ -361,6 +410,7 @@ export default function OrderTemplateManager({
                     selectedItems.map((item, index) => (
                       <div
                         key={item.sku}
+                        aria-label={`SKU selecionado ${item.sku}`}
                         className="flex min-w-0 items-center gap-2 rounded-lg border border-line px-3 py-2"
                       >
                         <span className="w-6 shrink-0 text-center text-xs text-fg-muted">
@@ -425,7 +475,7 @@ export default function OrderTemplateManager({
         title="Arquivar template"
         message={`Arquivar “${archiveTarget?.name || ''}”? Ele deixará de aparecer no seletor.`}
         confirmLabel="Arquivar"
-        onCancel={() => !saving && setArchiveTarget(null)}
+        onCancel={() => !operationRef.current && setArchiveTarget(null)}
         onConfirm={archive}
       />
     </>
