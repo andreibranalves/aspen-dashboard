@@ -39,6 +39,7 @@ import { handler as products } from '../api/_functions/products.js';
 import { handler as quoteLeads } from '../api/_functions/quote-leads.js';
 import { handler as quotations } from '../api/_functions/quotations.js';
 import { handler as quotationTemplates } from '../api/_functions/quotation-templates.js';
+import { handler as orderTemplates } from '../api/_functions/order-templates.js';
 import { handler as quotationPreview } from '../api/_functions/quotation-preview.js';
 import { handler as publicQuotation } from '../api/_functions/public-quotation.js';
 import { handler as quotationOutboxInspect } from '../api/_functions/quotation-outbox-inspect.js';
@@ -84,6 +85,7 @@ const ROUTES = {
   'quote-leads': quoteLeads,
   quotations,
   'quotation-templates': quotationTemplates,
+  'order-templates': orderTemplates,
   'quotation-preview': quotationPreview,
   'public-quotation': publicQuotation,
   'quotation-outbox-inspect': quotationOutboxInspect,

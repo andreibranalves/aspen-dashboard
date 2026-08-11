@@ -30,6 +30,7 @@ import { handler as products } from './_functions/products.js';
 import { handler as quoteLeads } from './_functions/quote-leads.js';
 import { handler as quotations } from './_functions/quotations.js';
 import { handler as quotationTemplates } from './_functions/quotation-templates.js';
+import { handler as orderTemplates } from './_functions/order-templates.js';
 import { handler as quotationPreview } from './_functions/quotation-preview.js';
 import { handler as publicQuotation } from './_functions/public-quotation.js';
 import { handler as quotationOutboxInspect } from './_functions/quotation-outbox-inspect.js';
@@ -76,6 +77,7 @@ const ROUTES: Record<string, HandlerFunction> = {
   'quote-leads': quoteLeads,
   quotations,
   'quotation-templates': quotationTemplates,
+  'order-templates': orderTemplates,
   'quotation-preview': quotationPreview,
   'public-quotation': publicQuotation,
   'quotation-outbox-inspect': quotationOutboxInspect,
