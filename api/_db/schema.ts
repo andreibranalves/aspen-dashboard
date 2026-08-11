@@ -134,6 +134,44 @@ export const products = pgTable(
  * quantities round-trip as strings without becoming the source of truth in
  * JavaScript.
  */
+export const orderTemplates = pgTable(
+  'order_templates',
+  {
+    id: uuid('id').primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    archived: boolean('archived').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check('order_templates_name_not_blank_check', sql`char_length(btrim(${table.name})) > 0`),
+    uniqueIndex('order_templates_active_name_unique')
+      .on(sql`lower(btrim(${table.name}))`)
+      .where(sql`${table.archived} = false`),
+  ]
+);
+
+export const orderTemplateItems = pgTable(
+  'order_template_items',
+  {
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => orderTemplates.id, { onDelete: 'cascade' }),
+    sku: varchar('sku', { length: 120 })
+      .notNull()
+      .references(() => products.sku, { onDelete: 'restrict' }),
+    position: integer('position').notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.templateId, table.sku],
+      name: 'order_template_items_pkey',
+    }),
+    uniqueIndex('order_template_items_position_unique').on(table.templateId, table.position),
+    check('order_template_items_position_non_negative_check', sql`${table.position} >= 0`),
+  ]
+);
+
 export const productPricingTiers = pgTable(
   'product_pricing_tiers',
   {
@@ -482,10 +520,7 @@ export const frappeMigrationBatches = pgTable(
     attemptCount: integer('attempt_count').notNull().default(0),
   },
   (table) => [
-    uniqueIndex('frappe_migration_batches_run_entity_unique').on(
-      table.runId,
-      table.entityType
-    ),
+    uniqueIndex('frappe_migration_batches_run_entity_unique').on(table.runId, table.entityType),
     check(
       'frappe_migration_batches_entity_type_check',
       sql`${table.entityType} IN ('produtos', 'faixas', 'clientes', 'orcamentos', 'documentos')`
@@ -495,7 +530,10 @@ export const frappeMigrationBatches = pgTable(
       sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`
     ),
     check('frappe_migration_batches_checkpoint_non_negative_check', sql`${table.checkpoint} >= 0`),
-    check('frappe_migration_batches_attempt_count_non_negative_check', sql`${table.attemptCount} >= 0`),
+    check(
+      'frappe_migration_batches_attempt_count_non_negative_check',
+      sql`${table.attemptCount} >= 0`
+    ),
   ]
 );
 
@@ -519,12 +557,10 @@ export const frappeImportLineage = pgTable(
     sourceHash: varchar('source_hash', { length: 64 }),
     /** Rows from before migration 0014 are explicitly legacy-unverified and
      * block no-op reuse until a source re-import reconciles their payload. */
-    lineageStatus: varchar('lineage_status', { length: 24 })
-      .notNull()
-      .default('legacy-unverified'),
+    lineageStatus: varchar('lineage_status', { length: 24 }).notNull().default('legacy-unverified'),
     /** Denormalized business number (ORC-YYYYNNNN) from the source quotation.
- * Stored here for cross-run lineage queries by business number without
- * joining to the quotations table.  NULL for non-quotation lineage. */
+     * Stored here for cross-run lineage queries by business number without
+     * joining to the quotations table.  NULL for non-quotation lineage. */
     businessNumber: varchar('business_number', { length: 16 }),
     /** Raw Frappe document for audit/replay.  Intentionally JSONB; must
      * NEVER be serialized in reports, manifests, logs or API responses.
@@ -532,9 +568,7 @@ export const frappeImportLineage = pgTable(
      * when lineage is archived. */
     legacyPayload: jsonb('legacy_payload').$type<Record<string, unknown>>().notNull(),
     /** FK to the migration run that created/updated this lineage entry. */
-    migrationRunId: uuid('migration_run_id').references(
-      () => frappeMigrationRuns.id
-    ),
+    migrationRunId: uuid('migration_run_id').references(() => frappeMigrationRuns.id),
     /** Last-modified timestamp reported by the Frappe source document. */
     sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }),
     /** When this lineage entry was first written or last updated locally. */
@@ -552,10 +586,7 @@ export const frappeImportLineage = pgTable(
     index('frappe_import_lineage_entity_local_idx').on(table.entityType, table.localKey),
     index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
     index('frappe_import_lineage_run_idx').on(table.migrationRunId),
-    check(
-      'frappe_import_lineage_provider_check',
-      sql`char_length(btrim(${table.provider})) > 0`
-    ),
+    check('frappe_import_lineage_provider_check', sql`char_length(btrim(${table.provider})) > 0`),
     check(
       'frappe_import_lineage_source_doctype_check',
       sql`char_length(btrim(${table.sourceDoctype})) > 0`
