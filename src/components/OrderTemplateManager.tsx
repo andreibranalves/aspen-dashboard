@@ -30,6 +30,14 @@ function selectedFromTemplate(template: OrderTemplate): SelectedItem[] {
     .map(({ sku, name }) => ({ sku, name }));
 }
 
+function focusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  );
+}
+
 export default function OrderTemplateManager({
   open,
   templates,
@@ -46,6 +54,7 @@ export default function OrderTemplateManager({
   const [error, setError] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<OrderTemplate | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const archiveTargetRef = useRef<OrderTemplate | null>(null);
@@ -72,6 +81,28 @@ export default function OrderTemplateManager({
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab' && !archiveTargetRef.current) {
+        const dialog = dialogRef.current;
+        if (!dialog) return;
+        const focusable = focusableElements(dialog);
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        const active = document.activeElement;
+        if (!first || !last) {
+          event.preventDefault();
+          dialog.focus();
+        } else if (
+          event.shiftKey &&
+          (active === dialog || active === first || !dialog.contains(active))
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
       if (event.key !== 'Escape') return;
       event.preventDefault();
       if (operationRef.current) return;
@@ -88,6 +119,12 @@ export default function OrderTemplateManager({
       window.cancelAnimationFrame(frame);
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || editingId === null) return;
+    const frame = window.requestAnimationFrame(() => nameInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingId, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -133,6 +170,7 @@ export default function OrderTemplateManager({
   if (!open) return null;
 
   const startCreate = () => {
+    if (operationRef.current || saving) return;
     setEditingId('new');
     setName('');
     setSelectedItems([]);
@@ -142,6 +180,7 @@ export default function OrderTemplateManager({
   };
 
   const startEdit = (template: OrderTemplate) => {
+    if (operationRef.current || saving) return;
     setEditingId(template.id);
     setName(template.name);
     setSelectedItems(selectedFromTemplate(template));
@@ -280,7 +319,7 @@ export default function OrderTemplateManager({
                       ? `${templates.length} template${templates.length === 1 ? '' : 's'}`
                       : 'Nenhum template criado'}
                   </p>
-                  <Button type="button" size="sm" onClick={startCreate}>
+                  <Button type="button" size="sm" onClick={startCreate} disabled={saving}>
                     <Plus size={14} />
                     Novo template
                   </Button>
@@ -302,6 +341,7 @@ export default function OrderTemplateManager({
                         variant="outline"
                         size="sm"
                         onClick={() => startEdit(template)}
+                        disabled={saving}
                       >
                         <Pencil size={13} />
                         Editar
@@ -311,7 +351,8 @@ export default function OrderTemplateManager({
                         variant="ghost"
                         size="sm"
                         aria-label={`Arquivar ${template.name}`}
-                        onClick={() => setArchiveTarget(template)}
+                        onClick={() => !operationRef.current && setArchiveTarget(template)}
+                        disabled={saving}
                       >
                         <Archive size={13} />
                       </Button>
@@ -339,6 +380,7 @@ export default function OrderTemplateManager({
                 <label className="block text-sm font-medium text-fg">
                   Nome
                   <Input
+                    ref={nameInputRef}
                     aria-label="Nome"
                     value={name}
                     onChange={(event) => setName(event.target.value)}

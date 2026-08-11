@@ -291,6 +291,11 @@ export function createOrderTemplateRepository(
             .for('update')
             .limit(1);
           if (!template) throw new OrderTemplateNotFoundError('Template de pedido não encontrado.');
+          if (template.archived) {
+            throw new OrderTemplateConflictError(
+              'Não é possível editar um template de pedido arquivado.'
+            );
+          }
 
           await validateProducts(tx, normalized.skus);
           await tx

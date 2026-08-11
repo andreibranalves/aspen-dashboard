@@ -16,6 +16,18 @@ function event(method: string, body: unknown) {
   };
 }
 
+const template = {
+  id: 'pack-id',
+  name: 'Pack',
+  archived: false,
+  created_at: '2026-08-11T00:00:00.000Z',
+  updated_at: '2026-08-11T00:00:00.000Z',
+  items: [
+    { sku: 'SKU-A', name: 'A', position: 0 },
+    { sku: 'SKU-B', name: 'B', position: 1 },
+  ],
+};
+
 test('extract rejects unsupported methods with a Portuguese JSON error', async () => {
   const result = await handler(event('GET', {}));
 
@@ -27,17 +39,6 @@ test('extract rejects unsupported methods with a Portuguese JSON error', async (
 test('extract with a selected template expands quantities and ignores model SKUs', async () => {
   let lookedUpId = '';
   let extractedTemplate: unknown;
-  const template = {
-    id: 'pack-id',
-    name: 'Pack',
-    archived: false,
-    created_at: '2026-08-11T00:00:00.000Z',
-    updated_at: '2026-08-11T00:00:00.000Z',
-    items: [
-      { sku: 'SKU-A', name: 'A', position: 0 },
-      { sku: 'SKU-B', name: 'B', position: 1 },
-    ],
-  };
   const selectedHandler = createExtractHandler({
     orderTemplates: {
       getForExtraction: async (id: string) => {
@@ -75,6 +76,28 @@ test('extract with a selected template expands quantities and ignores model SKUs
     { item_code: 'SKU-A', qty: 500 },
     { item_code: 'SKU-B', qty: 500 },
   ]);
+});
+
+test('extract returns 422 instead of inventing a quantity from a boolean', async () => {
+  const selectedHandler = createExtractHandler({
+    orderTemplates: { getForExtraction: async () => template },
+    extractOrders: async () => [
+      {
+        nome: 'Cliente',
+        items: [{ item_code: 'MODEL-SKU', qty: true as unknown as number }],
+      },
+    ],
+  });
+
+  const result = await selectedHandler(
+    event('POST', { text: 'Cliente sem quantidade válida.', orderTemplateId: 'pack-id' })
+  );
+
+  assert.equal(result.statusCode, 422);
+  assert.equal(
+    JSON.parse(result.body || '').error,
+    'Nenhuma quantidade válida identificada para o template.'
+  );
 });
 
 test('extract returns public errors for missing or archived templates', async () => {

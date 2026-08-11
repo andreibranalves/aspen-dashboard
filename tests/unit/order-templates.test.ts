@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  createOrderTemplateRepository,
   normalizeOrderTemplateInput,
   OrderTemplateConflictError,
   OrderTemplateInputError,
@@ -80,6 +81,11 @@ class MemoryOrderTemplateRepository implements OrderTemplateRepository {
   async update(id: string, input: { name: string; skus: string[] }): Promise<{ id: string }> {
     const record = this.records.find((candidate) => candidate.id === id);
     if (!record) throw new Error('Template de pedido não encontrado.');
+    if (record.archived) {
+      throw new OrderTemplateConflictError(
+        'Não é possível editar um template de pedido arquivado.'
+      );
+    }
     const normalized = normalizeOrderTemplateInput(input);
     if (
       this.records.some(
@@ -182,7 +188,7 @@ describe('memory order template repository contract', () => {
     );
   });
 
-  it('rejects missing or archived templates during extraction', async () => {
+  it('rejects updates and extraction for archived templates', async () => {
     const repository = new MemoryOrderTemplateRepository(products);
     await assert.rejects(
       repository.getForExtraction('missing'),
@@ -190,6 +196,13 @@ describe('memory order template repository contract', () => {
     );
     const { id } = await repository.create({ name: 'Pack', skus: ['LNC-A'] });
     await repository.archive(id);
+    await assert.rejects(
+      repository.update(id, { name: 'Pack alterado', skus: ['LNC-B'] }),
+      (error: unknown) =>
+        error instanceof OrderTemplateConflictError &&
+        error.statusCode === 409 &&
+        /template de pedido arquivado/.test(error.message)
+    );
     await assert.rejects(
       repository.getForExtraction(id),
       /template de pedido selecionado foi arquivado/
@@ -210,6 +223,42 @@ function event(method: string, query: Record<string, string> = {}, body?: unknow
 function parseBody(result: { body?: string }): Record<string, unknown> {
   return JSON.parse(result.body || '{}') as Record<string, unknown>;
 }
+
+describe('PostgreSQL order template repository', () => {
+  it('rejects an archived template before replacing its items', async () => {
+    const archivedTemplate = {
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'Pack arquivado',
+      archived: true,
+      createdAt: new Date('2026-08-11T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-11T00:00:00.000Z'),
+    };
+    const transaction = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({ limit: async () => [archivedTemplate] }),
+          }),
+        }),
+      }),
+    };
+    const repository = createOrderTemplateRepository(
+      () =>
+        ({
+          transaction: async (callback: (tx: typeof transaction) => Promise<unknown>) =>
+            callback(transaction),
+        }) as never
+    );
+
+    await assert.rejects(
+      repository.update(archivedTemplate.id, { name: 'Pack alterado', skus: ['LNC-A'] }),
+      (error: unknown) =>
+        error instanceof OrderTemplateConflictError &&
+        error.statusCode === 409 &&
+        /template de pedido arquivado/.test(error.message)
+    );
+  });
+});
 
 describe('order templates HTTP handler', () => {
   it('routes GET, POST, PUT, and DELETE through the repository', async () => {

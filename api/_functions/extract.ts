@@ -226,6 +226,16 @@ interface Order {
   items: OrderItem[];
 }
 
+function parseTemplateQuantity(value: unknown): number | null {
+  const quantity =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && /^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value.trim())
+        ? Number(value.trim())
+        : NaN;
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : null;
+}
+
 export function applyOrderTemplate(
   orders: Order[],
   template: Pick<OrderTemplateRecord, 'items'>
@@ -240,8 +250,8 @@ export function applyOrderTemplate(
     const quantities: number[] = [];
     const seen = new Set<number>();
     for (const item of Array.isArray(order.items) ? order.items : []) {
-      const quantity = Number(item?.qty);
-      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      const quantity = parseTemplateQuantity(item?.qty);
+      if (quantity === null) continue;
       const normalized = quantity < 30 ? 30 : quantity;
       if (seen.has(normalized)) continue;
       seen.add(normalized);

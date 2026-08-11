@@ -223,23 +223,44 @@ describe('applyOrderTemplate()', () => {
     ]);
   });
 
-  it('aplica mínimo de 30 e rejeita pedidos sem quantidade válida', () => {
+  it('aplica mínimo de 30 e aceita string numérica estrita', () => {
     const belowMinimum = applyOrderTemplate(
-      [{ nome: 'Cliente', items: [{ item_code: 'IGNORAR', qty: 10 }] }],
+      [
+        {
+          nome: 'Cliente',
+          items: [
+            { item_code: 'IGNORAR', qty: 10 },
+            { item_code: 'IGNORAR', qty: '45.5' as unknown as number },
+          ],
+        },
+      ],
       template
     );
     assert.deepEqual(belowMinimum[0].items, [
       { item_code: 'SKU-A', qty: 30 },
       { item_code: 'SKU-B', qty: 30 },
+      { item_code: 'SKU-A', qty: 45.5 },
+      { item_code: 'SKU-B', qty: 45.5 },
     ]);
+  });
 
-    assert.throws(
-      () =>
-        applyOrderTemplate(
-          [{ nome: 'Cliente', items: [{ item_code: 'IGNORAR', qty: NaN }] }],
-          template
-        ),
-      /Nenhuma quantidade válida identificada para o template/
-    );
+  it('rejeita booleanos e valores malformados sem inventar quantidade', () => {
+    const malformed: unknown[] = [true, false, null, '', '30un', [], {}, NaN, Infinity];
+    for (const qty of malformed) {
+      assert.throws(
+        () =>
+          applyOrderTemplate(
+            [
+              {
+                nome: 'Cliente',
+                items: [{ item_code: 'IGNORAR', qty: qty as number }],
+              },
+            ],
+            template
+          ),
+        /Nenhuma quantidade válida identificada para o template/,
+        `qty=${String(qty)}`
+      );
+    }
   });
 });

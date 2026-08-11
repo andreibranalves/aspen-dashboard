@@ -478,6 +478,11 @@ test.describe('Operational mode navigation gating', () => {
       /** @type {any} */
       let updateRequest = null;
       let deleteCount = 0;
+      /** @type {() => void} */
+      let releaseDelete = () => {};
+      const deleteReleased = new Promise((resolve) => {
+        releaseDelete = resolve;
+      });
       await page.route('**/api/order-templates**', async (route) => {
         const method = route.request().method();
         if (method === 'PUT') {
@@ -492,7 +497,7 @@ test.describe('Operational mode navigation gating', () => {
         }
         if (method === 'DELETE') {
           deleteCount += 1;
-          await page.waitForTimeout(100);
+          await deleteReleased;
           templates = [];
           await route.fulfill({
             status: 200,
@@ -523,7 +528,51 @@ test.describe('Operational mode navigation gating', () => {
       await page.getByRole('button', { name: 'Arquivar', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Arquivar', exact: true })).not.toBeVisible();
       await expect.poll(() => deleteCount).toBe(1);
+      await expect(dialog.getByRole('button', { name: 'Novo template' })).toBeDisabled();
+      await expect(dialog.getByRole('button', { name: 'Editar' })).toBeDisabled();
+      await expect(dialog.getByRole('button', { name: 'Arquivar Pack atualizado' })).toBeDisabled();
+      releaseDelete();
       await expect(dialog.getByText('Nenhum template criado')).toBeVisible();
+    });
+
+    test('traps keyboard focus and focuses the name on create and edit transitions', async ({
+      page,
+    }) => {
+      await page.route('**/api/order-templates**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'pack-id',
+                name: 'Pack acessível',
+                archived: false,
+                items: [{ sku: 'SKU-A', name: 'Produto A', position: 0 }],
+                created_at: '2026-08-11T00:00:00.000Z',
+                updated_at: '2026-08-11T00:00:00.000Z',
+              },
+            ],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      await page.getByRole('button', { name: 'Gerenciar' }).click();
+      const dialog = page.getByRole('dialog');
+      const close = dialog.getByRole('button', { name: 'Fechar' });
+      const archive = dialog.getByRole('button', { name: 'Arquivar Pack acessível' });
+      await expect(dialog).toBeFocused();
+      await page.keyboard.press('Shift+Tab');
+      await expect(archive).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(close).toBeFocused();
+
+      await dialog.getByRole('button', { name: 'Novo template' }).click();
+      await expect(dialog.getByLabel('Nome')).toBeFocused();
+      await dialog.getByRole('button', { name: 'Cancelar' }).first().click();
+      await dialog.getByRole('button', { name: 'Editar' }).click();
+      await expect(dialog.getByLabel('Nome')).toBeFocused();
     });
 
     test('closes the manager with Escape or backdrop and restores focus', async ({ page }) => {
