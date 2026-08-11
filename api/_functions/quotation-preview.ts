@@ -91,12 +91,14 @@ function parseDraftPreview(event: FunctionEvent): DraftPreviewInput {
   const items = (Array.isArray(extracted.items) ? extracted.items : []).flatMap((value) => {
     if (!isRecord(value)) return [];
     const itemCode = String(value.item_code || '').trim();
-    const qty = value.qty == null ? Number.NaN : Number(value.qty);
-    const rate = value.rate == null ? Number.NaN : Number(value.rate);
+    const qty = value.qty;
+    const rate = value.rate;
     if (
       !itemCode ||
+      typeof qty !== 'number' ||
       !Number.isFinite(qty) ||
       qty <= 0 ||
+      typeof rate !== 'number' ||
       !Number.isFinite(rate) ||
       rate < 0
     ) {

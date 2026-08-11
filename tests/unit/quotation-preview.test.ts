@@ -64,6 +64,38 @@ test('rejects draft preview without a client name', async () => {
   assert.match(response.body || '', /nome do cliente/i);
 });
 
+test('rejects non-number quantity and rate values', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+  });
+  const malformedValues: unknown[] = ['', false, [], null, {}];
+  for (const field of ['qty', 'rate'] as const) {
+    for (const malformed of malformedValues) {
+      const response = await handler(
+        post({
+          extracted: {
+            ...extracted,
+            items: [{ ...extracted.items[0], [field]: malformed }],
+          },
+        })
+      );
+      assert.equal(response.statusCode, 400, `${field}=${String(malformed)}`);
+      assert.match(response.body || '', /item válido/i);
+    }
+  }
+});
+
+test('rejects draft preview with an invalid template', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => null,
+  });
+  const response = await handler(post({ extracted }));
+  assert.equal(response.statusCode, 400);
+  assert.match(response.body || '', /template do orçamento inválido/i);
+});
+
 test('rejects draft preview without valid items', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
