@@ -46,6 +46,31 @@ interface WaStatus {
   message?: string;
 }
 
+function buildQuotePayload(draft: Draft) {
+  return {
+    extracted: {
+      nome: draft.edited.nome,
+      email: draft.edited.email || null,
+      telefone: draft.edited.telefone || null,
+      urgente: draft.edited.urgente,
+      origem: draft.edited.origem || undefined,
+      cnpj: draft.edited.cnpj || undefined,
+      endereco: draft.edited.endereco || undefined,
+      items: draft.edited.items
+        .filter((item) => item.item_code && item.qty > 0)
+        .map((item) => ({
+          item_code: item.item_code,
+          item_name: item.item_name || '',
+          qty: item.qty,
+          rate: item.rate,
+          manual_rate: item._rateManual === true,
+        })),
+      prazo_producao: draft.edited.prazo_producao || undefined,
+      ...(draft.edited.template_key ? { template_key: draft.edited.template_key } : {}),
+    },
+  };
+}
+
 export default function AutoQuotePage() {
   // ── Helpers ──
 
@@ -267,28 +292,7 @@ export default function AutoQuotePage() {
         });
       });
       if (!draft) return;
-      const payload = {
-        extracted: {
-          nome: draft.edited.nome,
-          email: draft.edited.email || null,
-          telefone: draft.edited.telefone || null,
-          urgente: draft.edited.urgente,
-          origem: draft.edited.origem || undefined,
-          cnpj: draft.edited.cnpj || undefined,
-          endereco: draft.edited.endereco || undefined,
-          items: draft.edited.items
-            .filter((it) => it.item_code && it.qty > 0)
-            .map((it) => ({
-              item_code: it.item_code,
-              item_name: it.item_name || '',
-              qty: it.qty,
-              rate: it.rate,
-              manual_rate: it._rateManual === true,
-            })),
-          prazo_producao: draft.edited.prazo_producao || undefined,
-          ...(draft.edited.template_key ? { template_key: draft.edited.template_key } : {}),
-        },
-      };
+      const payload = buildQuotePayload(draft);
       try {
         const res = await apiPost<Record<string, unknown>>('/orcamento', payload);
         setDrafts((prev) => {
@@ -330,6 +334,27 @@ export default function AutoQuotePage() {
       }
     },
     [loadHistory, loadQuoteLeads, selectedQuoteLeadId]
+  );
+
+  const previewSingleQuote = useCallback(
+    (draftIndex: number) => {
+      const draft = drafts.find((candidate) => candidate.index === draftIndex);
+      if (!draft) return;
+      const form = document.createElement('form');
+      const payload = document.createElement('input');
+      form.method = 'POST';
+      form.action = '/api/quotation-preview';
+      form.target = '_blank';
+      form.style.display = 'none';
+      payload.type = 'hidden';
+      payload.name = 'payload';
+      payload.value = JSON.stringify(buildQuotePayload(draft));
+      form.append(payload);
+      document.body.append(form);
+      form.submit();
+      form.remove();
+    },
+    [drafts]
   );
 
   // ── Load history item: fetch detail and format as text ──
@@ -915,6 +940,7 @@ export default function AutoQuotePage() {
                     selectProduct={selectProduct}
                     onRefetchPricing={refetchDraftPricing}
                     onCreateQuote={createSingleQuote}
+                    onPreviewQuote={previewSingleQuote}
                     viewUrl={relativeViewUrl}
                     waStatus={waStatusByDraft[draft.index]}
                     waFlows={waFlows}

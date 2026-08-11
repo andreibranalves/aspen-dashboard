@@ -1,4 +1,5 @@
 // @ts-check
+/* global URLSearchParams */
 import { test, expect } from '@playwright/test';
 
 // These E2E tests verify operational navigation and the Auto UI contract.
@@ -87,6 +88,8 @@ test.describe('Operational mode navigation gating', () => {
     test('Auto preserves the extraction-to-quotation PostgreSQL UI contract', async ({ page }) => {
       /** @type {any} */
       let quoteRequest = null;
+      /** @type {any} */
+      let previewPayload = null;
       await page.route('**/api/quotations**', async (route) => {
         await route.fulfill({
           status: 200,
@@ -129,6 +132,15 @@ test.describe('Operational mode navigation gating', () => {
           }),
         });
       });
+      await page.context().route('**/api/quotation-preview', async (route) => {
+        const form = new URLSearchParams(route.request().postData() || '');
+        previewPayload = JSON.parse(form.get('payload') || '{}');
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: '<!doctype html><html><body>Cliente Core - Produto Core</body></html>',
+        });
+      });
       await page.route('**/api/orcamento', async (route) => {
         quoteRequest = route.request().postDataJSON();
         await route.fulfill({
@@ -152,6 +164,23 @@ test.describe('Operational mode navigation gating', () => {
       await textarea.fill('Cliente Core precisa de 10 produtos.');
       await page.getByRole('button', { name: /Extrair/i }).click();
       await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible();
+      const popupPromise = page.waitForEvent('popup');
+      await page.getByRole('button', { name: 'Visualizar' }).click();
+      const popup = await popupPromise;
+      await expect(popup.getByText('Cliente Core - Produto Core')).toBeVisible();
+      expect(previewPayload?.extracted).toMatchObject({
+        nome: 'Cliente Core',
+        template_key: 'padrao',
+        items: [{
+          item_code: 'CORE-001',
+          item_name: 'Produto Core',
+          qty: 10,
+          rate: 12,
+          manual_rate: false,
+        }],
+      });
+      expect(quoteRequest).toBeNull();
+      await popup.close();
       await page.getByRole('button', { name: 'Criar orçamento' }).click();
       await expect(page.getByText('Orçamento criado', { exact: false })).toBeVisible();
       expect(quoteRequest?.extracted?.items?.[0]).toMatchObject({
@@ -160,6 +189,46 @@ test.describe('Operational mode navigation gating', () => {
         rate: 12,
         manual_rate: false,
       });
+    });
+
+    test('disables preview and creation when Auto draft has no valid items', async ({ page }) => {
+      await page.route('**/api/quotations**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/quote-leads**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/communication-flows**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ flows: [] }),
+        });
+      });
+      await page.route('**/api/extract', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            orders: [{ nome: 'Cliente sem item', items: [] }],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      await page.locator('textarea').first().fill('Cliente sem item');
+      await page.getByRole('button', { name: /Extrair/i }).click();
+      await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Visualizar' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'Criar orçamento' })).toBeDisabled();
     });
   });
 

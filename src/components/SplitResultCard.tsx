@@ -14,6 +14,7 @@ import {
   Check,
   Phone,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBRL, capitalize } from '@/lib/formatters';
@@ -39,6 +40,7 @@ export interface SplitResultCardProps {
   selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
   onRefetchPricing: (draftIdx: number) => Promise<void>;
   onCreateQuote: (draftIdx: number) => void;
+  onPreviewQuote: (draftIdx: number) => void;
   viewUrl?: string;
   waStatus?: { state?: 'sending' | 'sent' | 'error'; message?: string };
   waFlows?: CommunicationFlow[];
@@ -67,6 +69,7 @@ export default function SplitResultCard({
   selectProduct,
   onRefetchPricing,
   onCreateQuote,
+  onPreviewQuote,
   viewUrl,
   waStatus,
   waFlows = [],
@@ -179,6 +182,7 @@ export default function SplitResultCard({
   const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
   const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
+  const canCreate = validItems > 0 && Boolean(draft.edited.nome?.trim());
   const displayItems = editing ? items : items.filter((it) => it.item_code);
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
 
@@ -587,14 +591,25 @@ export default function SplitResultCard({
             </Button>
           </>
         ) : (
-          <Button
-            size="sm"
-            onClick={() => onCreateQuote(draft.index)}
-            disabled={isProcessing || validItems === 0 || !draft.edited.nome?.trim()}
-          >
-            <Send size={13} />
-            Criar orçamento
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onPreviewQuote(draft.index)}
+              disabled={isProcessing || !canCreate}
+            >
+              <Eye size={13} />
+              Visualizar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => onCreateQuote(draft.index)}
+              disabled={isProcessing || !canCreate}
+            >
+              <Send size={13} />
+              Criar orçamento
+            </Button>
+          </>
         )}
       </div>
 
