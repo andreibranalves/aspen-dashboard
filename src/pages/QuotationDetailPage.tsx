@@ -336,14 +336,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           available.find((template) => !template.archived) ||
           available[0];
         const persisted = initialData.template_key || initialData.template_padrao || '';
+        const persistedTemplate = available.find((template) => template.key === persisted);
         setTemplates(available);
-        if (initialData.status_canonical === 'rascunho' && fallback) {
+        if (persistedTemplate?.archived) {
+          setSelectedTemplate(persisted);
+          setSelectedVersionId(
+            initialData.template_version_id || persistedTemplate.current_version_id || ''
+          );
+        } else if (initialData.status_canonical === 'rascunho' && fallback) {
           setSelectedTemplate(fallback.key);
           setSelectedVersionId(fallback.current_version_id || '');
-        } else if (persisted && available.some((template) => template.key === persisted)) {
+        } else if (persistedTemplate) {
           setSelectedTemplate(persisted);
-          const current = available.find((template) => template.key === persisted);
-          setSelectedVersionId(initialData.template_version_id || current?.current_version_id || '');
+          setSelectedVersionId(
+            initialData.template_version_id || persistedTemplate.current_version_id || ''
+          );
         } else if (fallback) {
           setSelectedTemplate(fallback.key);
           setSelectedVersionId(fallback.current_version_id || '');
