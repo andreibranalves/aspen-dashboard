@@ -212,6 +212,14 @@ async function setupApiMocks(page) {
 async function setupLeadsMocks(page) {
   let currentDetail = { ...MOCK_LEAD_DETAIL };
 
+  await page.route('**/api/settings**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ operational_mode: false }),
+    });
+  });
+
   await page.route('**/api/quotations**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -450,6 +458,20 @@ test.describe('Leads — Página single e visualização rápida', () => {
 
 test.describe('Orçamento manual — clientes unificados', () => {
   test('usa a resposta core_mode para mostrar Cliente e não oferece escolha de Lead', async ({ page }) => {
+    await page.route('**/api/settings**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ operational_mode: false }),
+      });
+    });
+    await page.route('**/api/quotation-templates**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ templates: [], default_key: '' }),
+      });
+    });
     await page.route('**/api/leads-clients**', async (route) => {
       await route.fulfill({
         status: 200,

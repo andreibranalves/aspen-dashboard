@@ -423,9 +423,6 @@ export default function SplitResultCard({
                             </div>
                           )}
                           <label className="mt-1 block space-y-1">
-                            <span className="text-[10px] font-medium text-fg-muted">
-                              Nome exibido no orçamento
-                            </span>
                             <Input
                               aria-label={`Nome exibido no orçamento ${item.item_code || ii + 1}`}
                               className="h-7 text-xs"

@@ -1057,9 +1057,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
                     <TableCell>
                       {editing ? (
                         <label className="block space-y-1">
-                          <span className="text-[10px] font-medium text-fg-muted">
-                            Nome exibido no orçamento
-                          </span>
                           <Input
                             aria-label={`Nome exibido no orçamento ${item.sku}`}
                             className="h-8 text-sm"

@@ -36,6 +36,20 @@ function detail(overrides = {}) {
 }
 
 test('core quotations list/search/open/edit and surface optimistic conflicts', async ({ page }) => {
+  await page.route('**/api/settings**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ operational_mode: false }),
+    });
+  });
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ templates: [], default_key: '' }),
+    });
+  });
   const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;
   let lastPutPayload;
