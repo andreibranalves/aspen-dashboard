@@ -32,13 +32,13 @@ function describeDifference(expected: Set<string>, actual: Set<string>): string 
   return `missing=[${missing.join(', ')}] unexpected=[${unexpected.join(', ')}]`;
 }
 
-test('Vercel and local route maps expose the same 42 route names', () => {
+test('Vercel and local route maps expose the same 43 route names', () => {
   const maps = ROUTE_MAP_FILES.map((file) => [file, routeNamesFromSource(file)] as const);
   const expected = maps[0][1];
 
-  assert.equal(expected.size, 42, `${maps[0][0]}: expected 42 routes, found ${expected.size}`);
+  assert.equal(expected.size, 43, `${maps[0][0]}: expected 43 routes, found ${expected.size}`);
   for (const [file, routes] of maps.slice(1)) {
-    assert.equal(routes.size, 42, `${file}: expected 42 routes, found ${routes.size}`);
+    assert.equal(routes.size, 43, `${file}: expected 43 routes, found ${routes.size}`);
     assert.equal(
       routes.size,
       expected.size,
