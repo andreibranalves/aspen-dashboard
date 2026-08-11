@@ -24,6 +24,13 @@ test.describe('Operational mode navigation gating', () => {
         body: JSON.stringify({ templates: [], default_key: 'padrao' }),
       });
     });
+    await page.route('**/api/order-templates**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: [] }),
+      });
+    });
   });
 
   test.describe('sidebar shows only operational items', () => {
@@ -50,7 +57,7 @@ test.describe('Operational mode navigation gating', () => {
       await page.waitForTimeout(1000);
 
       const sidebar = page.locator('aside');
-      
+
       // These should be visible
       await expect(sidebar.getByText('Auto', { exact: true })).toBeVisible();
       await expect(sidebar.getByText('Novo Orçamento')).toBeVisible();
@@ -65,7 +72,7 @@ test.describe('Operational mode navigation gating', () => {
     test('root route redirects to /manual', async ({ page }) => {
       await page.goto(`${BASE_URL}/#/`);
       await page.waitForTimeout(2000);
-      
+
       // Should be redirected to /manual
       expect(page.url()).toContain('#/manual');
     });
@@ -171,13 +178,15 @@ test.describe('Operational mode navigation gating', () => {
       expect(previewPayload?.extracted).toMatchObject({
         nome: 'Cliente Core',
         template_key: 'padrao',
-        items: [{
-          item_code: 'CORE-001',
-          item_name: 'Produto Core',
-          qty: 10,
-          rate: 12,
-          manual_rate: false,
-        }],
+        items: [
+          {
+            item_code: 'CORE-001',
+            item_name: 'Produto Core',
+            qty: 10,
+            rate: 12,
+            manual_rate: false,
+          },
+        ],
       });
       expect(quoteRequest).toBeNull();
       await popup.close();
@@ -230,13 +239,220 @@ test.describe('Operational mode navigation gating', () => {
       await expect(page.getByRole('button', { name: 'Visualizar' })).toBeDisabled();
       await expect(page.getByRole('button', { name: 'Criar orçamento' })).toBeDisabled();
     });
+
+    test('selects an order template and sends its id with extraction', async ({ page }) => {
+      /** @type {any} */
+      let extractRequest = null;
+      await page.route('**/api/order-templates', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              {
+                id: 'pack-id',
+                name: 'Pack de produtos',
+                archived: false,
+                items: [
+                  { sku: 'SKU-A', name: 'Produto A', position: 0 },
+                  { sku: 'SKU-B', name: 'Produto B', position: 1 },
+                ],
+                created_at: '2026-08-11T00:00:00.000Z',
+                updated_at: '2026-08-11T00:00:00.000Z',
+              },
+            ],
+          }),
+        });
+      });
+      await page.route('**/api/quotations**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/quote-leads**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/communication-flows**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ flows: [] }),
+        });
+      });
+      await page.route('**/api/extract', async (route) => {
+        extractRequest = route.request().postDataJSON();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            orders: [
+              {
+                nome: 'Andrei B.',
+                email: 'andrei@gmail.com',
+                telefone: '21999999999',
+                items: [
+                  { item_code: 'SKU-A', qty: 300 },
+                  { item_code: 'SKU-B', qty: 300 },
+                  { item_code: 'SKU-A', qty: 500 },
+                  { item_code: 'SKU-B', qty: 500 },
+                ],
+              },
+            ],
+          }),
+        });
+      });
+      await page.route('**/api/pricing-lookup', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            items: [
+              { item_code: 'SKU-A', rate: 10, item_name: 'Produto A' },
+              { item_code: 'SKU-B', rate: 12, item_name: 'Produto B' },
+            ],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      const templateSelect = page.getByLabel('Template de pedido');
+      await expect(templateSelect).toHaveValue('');
+      await templateSelect.selectOption('pack-id');
+      await page
+        .locator('textarea')
+        .first()
+        .fill('Andrei B. andrei@gmail.com 21999999999 300 e 500 unidades');
+      await page.getByRole('button', { name: /Extrair/i }).click();
+      await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible();
+      expect(extractRequest?.orderTemplateId).toBe('pack-id');
+      expect(extractRequest?.text).toContain('300 e 500 unidades');
+      await page.getByRole('button', { name: 'Limpar', exact: true }).click();
+      await expect(templateSelect).toHaveValue('');
+    });
+
+    test('creates an order template from the manager catalog search', async ({ page }) => {
+      /** @type {any} */
+      let createRequest = null;
+      await page.route('**/api/order-templates', async (route) => {
+        if (route.request().method() === 'POST') {
+          createRequest = route.request().postDataJSON();
+          await route.fulfill({
+            status: 201,
+            contentType: 'application/json',
+            body: JSON.stringify({ id: 'new-pack-id' }),
+          });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/products**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: [
+              { sku: 'LNC-A', nome: 'Lenço A', pricing_available: true },
+              { sku: 'LNC-B', nome: 'Lenço B', pricing_available: true },
+              { sku: 'LNC-SEM-PRECO', nome: 'Sem preço', pricing_available: false },
+            ],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      await page.getByRole('button', { name: 'Gerenciar' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Novo template' }).click();
+      await dialog.getByLabel('Nome').fill('Todos os lenços');
+      await dialog.getByLabel('Buscar produto').fill('LNC');
+      await expect(dialog.getByRole('button', { name: /LNC-A/ })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: /LNC-SEM-PRECO/ })).not.toBeVisible();
+      await dialog.getByRole('button', { name: /LNC-A/ }).click();
+      await dialog.getByLabel('Buscar produto').fill('LNC');
+      await dialog.getByRole('button', { name: /LNC-B/ }).click();
+      await dialog.getByRole('button', { name: 'Salvar' }).click();
+      await expect
+        .poll(() => createRequest)
+        .toEqual({ name: 'Todos os lenços', skus: ['LNC-A', 'LNC-B'] });
+    });
+
+    test('keeps Auto usable when order-template loading fails', async ({ page }) => {
+      await page.route('**/api/order-templates', async (route) => {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Falha' }),
+        });
+      });
+      await page.route('**/api/quotations**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/quote-leads**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
+      });
+      await page.route('**/api/communication-flows**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ flows: [] }),
+        });
+      });
+      await page.route('**/api/extract', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            orders: [{ nome: 'Sem template', items: [{ item_code: 'SKU-1', qty: 30 }] }],
+          }),
+        });
+      });
+      await page.route('**/api/pricing-lookup', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            items: [{ item_code: 'SKU-1', rate: 10, item_name: 'Produto' }],
+          }),
+        });
+      });
+
+      await page.goto(`${BASE_URL}/#/auto`);
+      await expect(
+        page.getByText('Não foi possível carregar os templates de pedido.')
+      ).toBeVisible();
+      await page.locator('textarea').first().fill('Sem template 30 unidades');
+      await expect(page.getByRole('button', { name: /Extrair/i })).toBeEnabled();
+      await page.getByRole('button', { name: /Extrair/i }).click();
+      await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible();
+    });
   });
 
   test.describe('settings page operational section', () => {
     test('shows Modo Operacional section', async ({ page }) => {
       await page.goto(`${BASE_URL}/#/settings`);
       await page.waitForTimeout(1000);
-      
+
       // Should show the operational mode section
       await expect(page.getByRole('heading', { name: 'Modo Operacional' })).toBeVisible();
     });

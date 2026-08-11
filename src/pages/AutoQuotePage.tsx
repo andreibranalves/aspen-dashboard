@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { apiPost, apiGet, apiPatch } from '@/lib/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
+import OrderTemplateManager from '@/components/OrderTemplateManager';
+import { listOrderTemplates, type OrderTemplate } from '@/lib/orderTemplatesApi';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatters';
 import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
@@ -91,6 +93,36 @@ export default function AutoQuotePage() {
   const [templateKey, setTemplateKey] = useState<string>('');
   const [templateLoading, setTemplateLoading] = useState<boolean>(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+
+  // ── Order template ──
+  const [orderTemplates, setOrderTemplates] = useState<OrderTemplate[]>([]);
+  const [orderTemplateId, setOrderTemplateId] = useState<string>('');
+  const [orderTemplatesLoading, setOrderTemplatesLoading] = useState<boolean>(true);
+  const [orderTemplatesError, setOrderTemplatesError] = useState<string | null>(null);
+  const [orderTemplateManagerOpen, setOrderTemplateManagerOpen] = useState(false);
+
+  const loadOrderTemplates = useCallback(async () => {
+    setOrderTemplatesLoading(true);
+    setOrderTemplatesError(null);
+    try {
+      const response = await listOrderTemplates();
+      const available = Array.isArray(response.data)
+        ? response.data.filter((template) => !template.archived)
+        : [];
+      setOrderTemplates(available);
+      setOrderTemplateId((current) =>
+        available.some((template) => template.id === current) ? current : ''
+      );
+    } catch {
+      setOrderTemplatesError('Não foi possível carregar os templates de pedido.');
+    } finally {
+      setOrderTemplatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrderTemplates();
+  }, [loadOrderTemplates]);
 
   const loadTemplates = useCallback(async () => {
     setTemplateLoading(true);
@@ -241,6 +273,7 @@ export default function AutoQuotePage() {
         text: text || null,
         imageBase64: imageData?.base64 || null,
         imageMimeType: imageData?.mime || null,
+        ...(orderTemplateId ? { orderTemplateId } : {}),
       });
       const orders = res.orders;
       if (!orders || orders.length === 0) {
@@ -273,7 +306,7 @@ export default function AutoQuotePage() {
     } finally {
       setExtracting(false);
     }
-  }, [text, imageData, templateKey, fetchPricing, buildDraftsFromOrders, loadHistory]);
+  }, [text, imageData, orderTemplateId, templateKey, fetchPricing, buildDraftsFromOrders, loadHistory]);
 
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
   const createSingleQuote = useCallback(
@@ -411,6 +444,7 @@ export default function AutoQuotePage() {
     setWaStatusByDraft({});
     setWaFlowByDraft({});
     setSelectedQuoteLeadId('');
+    setOrderTemplateId('');
     try {
       localStorage.removeItem('aspen_drafts');
     } catch (storageError) {
@@ -593,19 +627,62 @@ export default function AutoQuotePage() {
   const visibleDrafts = [...activeDrafts].reverse();
 
   return (
-    <div className="flex flex-col h-full overflow-hidden animate-fade-in">
-      <div className="flex flex-1 overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden animate-fade-in">
+      <OrderTemplateManager
+        open={orderTemplateManagerOpen}
+        templates={orderTemplates}
+        onClose={() => setOrderTemplateManagerOpen(false)}
+        onChanged={loadOrderTemplates}
+      />
+      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* ── LEFT PANEL (50%) ── */}
-        <div className="panel-left flex flex-col w-full lg:w-1/2 min-w-0 border-r border-line bg-surface overflow-hidden">
+        <div className="panel-left flex h-1/2 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto border-r border-line bg-surface lg:h-auto lg:overflow-hidden lg:w-1/2 lg:flex-none">
           <div className="px-4 md:px-6 pt-4 md:pt-5 space-y-4">
             {/* Page title */}
             <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
             {templateError && (
-              <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
-                <span>{templateError}</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+                <span className="min-w-0">{templateError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
               </div>
             )}
+            {orderTemplatesError && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+                <span className="min-w-0">{orderTemplatesError}</span>
+                <Button type="button" variant="outline" size="sm" onClick={loadOrderTemplates}>
+                  Tentar novamente
+                </Button>
+              </div>
+            )}
+
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+              <label className="min-w-0 flex-1 text-xs font-medium text-fg-muted">
+                Template de pedido
+                <select
+                  aria-label="Template de pedido"
+                  value={orderTemplateId}
+                  onChange={(event) => setOrderTemplateId(event.target.value)}
+                  disabled={extracting || orderTemplatesLoading}
+                  className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
+                >
+                  <option value="">Nenhum</option>
+                  {orderTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="self-end sm:self-auto"
+                onClick={() => setOrderTemplateManagerOpen(true)}
+              >
+                Gerenciar
+              </Button>
+            </div>
 
             {/* Text input */}
             <div className="mt-2">
@@ -866,7 +943,7 @@ export default function AutoQuotePage() {
         </div>
 
         {/* ── RIGHT PANEL (50%) ── */}
-        <div className="w-full lg:w-1/2 min-w-0 bg-page px-4 md:px-6 pt-4 md:pt-5 pb-6 overflow-y-auto">
+        <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-muted mb-4">
