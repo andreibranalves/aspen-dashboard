@@ -329,7 +329,7 @@ export default function OrderTemplateManager({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={cancelEdit}
+                    onClick={() => cancelEdit()}
                     disabled={saving}
                   >
                     Cancelar
@@ -457,7 +457,12 @@ export default function OrderTemplateManager({
                 </div>
 
                 <div className="flex justify-end gap-2 border-t border-line pt-4">
-                  <Button type="button" variant="outline" onClick={cancelEdit} disabled={saving}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => cancelEdit()}
+                    disabled={saving}
+                  >
                     Cancelar
                   </Button>
                   <Button type="button" onClick={save} disabled={saving}>
