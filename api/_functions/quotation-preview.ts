@@ -17,6 +17,13 @@ import {
 } from './lib/quotation-templates.js';
 import { renderQuotationPdfHtml } from './lib/quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from './lib/quotation-document-storage.js';
+import {
+  formatMoneyCents,
+  parseScaledInteger,
+  QUANTITY_SCALE,
+  URGENT_DENOMINATOR,
+  URGENT_NUMERATOR,
+} from './pricing-core.js';
 import { isCoreReadEnabled } from './orcamento-mode.js';
 
 interface DraftPreviewItem {
@@ -24,6 +31,8 @@ interface DraftPreviewItem {
   item_name: string;
   qty: number;
   rate: number;
+  quantity_scaled: bigint;
+  rate_cents: bigint;
   manual_rate: boolean;
 }
 
@@ -35,6 +44,7 @@ interface DraftPreviewInput {
   endereco?: Record<string, unknown>;
   template_key?: string;
   prazo_producao?: string;
+  urgente: boolean;
   items: DraftPreviewItem[];
 }
 
@@ -104,12 +114,23 @@ function parseDraftPreview(event: FunctionEvent): DraftPreviewInput {
     ) {
       return [];
     }
+    let quantityScaled: bigint;
+    let rateCents: bigint;
+    try {
+      quantityScaled = parseScaledInteger(qty, QUANTITY_SCALE, 'Quantidade do item');
+      rateCents = parseScaledInteger(rate, 2, 'Preço do item');
+    } catch {
+      return [];
+    }
+    if (quantityScaled <= 0n) return [];
     return [
       {
         item_code: itemCode,
         item_name: String(value.item_name || '').trim(),
         qty,
         rate,
+        quantity_scaled: quantityScaled,
+        rate_cents: rateCents,
         manual_rate: value.manual_rate === true,
       },
     ];
@@ -128,6 +149,7 @@ function parseDraftPreview(event: FunctionEvent): DraftPreviewInput {
       typeof extracted.template_key === 'string' ? extracted.template_key.trim() : undefined,
     prazo_producao:
       extracted.prazo_producao == null ? undefined : String(extracted.prazo_producao).trim(),
+    urgente: extracted.urgente === true,
     items,
   };
 }
@@ -178,8 +200,20 @@ function draftPreviewViewModel(
     uf: addressValue(address, 'uf'),
     cep: addressValue(address, 'cep'),
   };
+  const quantityBase = 10n ** BigInt(QUANTITY_SCALE);
+  let totalCents = 0n;
   const items = extracted.items.map((item, position) => {
-    const lineTotal = item.qty * item.rate;
+    const appliedRateCents =
+      extracted.urgente && !item.manual_rate
+        ? (item.rate_cents * URGENT_NUMERATOR + URGENT_DENOMINATOR / 2n) /
+          URGENT_DENOMINATOR
+        : item.rate_cents;
+    const lineTotalCents =
+      (item.quantity_scaled * appliedRateCents + quantityBase / 2n) / quantityBase;
+    totalCents += lineTotalCents;
+    const suggestedUnitPrice = formatMoneyCents(item.rate_cents);
+    const appliedUnitPrice = formatMoneyCents(appliedRateCents);
+    const lineTotal = formatMoneyCents(lineTotalCents);
     return {
       id: `preview-${position + 1}`,
       position,
@@ -194,21 +228,21 @@ function draftPreviewViewModel(
       qty: item.qty,
       quantidade: item.qty,
       quantity: String(item.qty),
-      suggested_unit_price: item.rate,
-      preco_sugerido: item.rate,
-      applied_unit_price: item.rate,
-      preco_aplicado: item.rate,
-      unit_price: item.rate,
+      suggested_unit_price: suggestedUnitPrice,
+      preco_sugerido: suggestedUnitPrice,
+      applied_unit_price: appliedUnitPrice,
+      preco_aplicado: appliedUnitPrice,
+      unit_price: appliedUnitPrice,
       line_total: lineTotal,
       total_linha: lineTotal,
       manual_rate: item.manual_rate,
       display: {
-        unit_price: formatQuotationCurrency(item.rate),
+        unit_price: formatQuotationCurrency(appliedUnitPrice),
         line_total: formatQuotationCurrency(lineTotal),
       },
     };
   });
-  const total = items.reduce((sum, item) => sum + Number(item.line_total), 0);
+  const total = formatMoneyCents(totalCents);
   const terms = {
     pagamento: '',
     entrega: '',
@@ -239,9 +273,9 @@ function draftPreviewViewModel(
     terms,
     terms_snapshot: terms,
     subtotal: total,
-    freight: 0,
+    freight: '0.00',
     total,
-    frete: 0,
+    frete: '0.00',
     secoes: {
       prazo_producao: { value: extracted.prazo_producao || '' },
       pagamento: { body_html: '' },
@@ -251,7 +285,7 @@ function draftPreviewViewModel(
       quote_date: formatQuotationDate(current),
       validity_date: formatQuotationDate(validityDate),
       subtotal: formatQuotationCurrency(total),
-      freight: formatQuotationCurrency(0),
+      freight: formatQuotationCurrency('0.00'),
       total: formatQuotationCurrency(total),
     },
   };

@@ -54,6 +54,61 @@ test('renders an unsaved quotation draft as secured HTML without loading a snaps
   assert.equal(snapshotReads, 0);
 });
 
+test('applies urgent markup to non-manual item prices', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+  });
+  const response = await handler(
+    post({ extracted: { ...extracted, urgente: true, items: [{ ...extracted.items[0], qty: 1, rate: 10 }] } })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body || '', /R\$ 13,00/);
+  assert.match(response.body || '', /Total<\/span><span>R\$ 13,00/);
+});
+
+test('leaves urgent manual item prices unchanged', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+  });
+  const response = await handler(
+    post({
+      extracted: {
+        ...extracted,
+        urgente: true,
+        items: [{ ...extracted.items[0], qty: 1, rate: 10, manual_rate: true }],
+      },
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body || '', /Total<\/span><span>R\$ 10,00/);
+  assert.doesNotMatch(response.body || '', /Total<\/span><span>R\$ 13,00/);
+});
+
+test('aggregates multi-line totals in exact cents', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+  });
+  const response = await handler(
+    post({
+      extracted: {
+        ...extracted,
+        items: [
+          { ...extracted.items[0], qty: 1, rate: 0.1 },
+          { ...extracted.items[0], item_code: 'SKU-002', qty: 1, rate: 0.2 },
+        ],
+      },
+    })
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body || '', /Total<\/span><span>R\$ 0,30/);
+});
+
 test('rejects draft preview without a client name', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
