@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { handler } from '../../api/_functions/extract.js';
+import { createExtractHandler, handler } from '../../api/_functions/extract.js';
+import {
+  OrderTemplateConflictError,
+  OrderTemplateNotFoundError,
+} from '../../api/_db/order-template-repository.js';
 
 function event(method: string, body: unknown) {
   return {
@@ -20,6 +24,124 @@ test('extract rejects unsupported methods with a Portuguese JSON error', async (
   assert.deepEqual(JSON.parse(result.body || ''), { error: 'Método não permitido.' });
 });
 
+test('extract with a selected template expands quantities and ignores model SKUs', async () => {
+  let lookedUpId = '';
+  let extractedTemplate: unknown;
+  const template = {
+    id: 'pack-id',
+    name: 'Pack',
+    archived: false,
+    created_at: '2026-08-11T00:00:00.000Z',
+    updated_at: '2026-08-11T00:00:00.000Z',
+    items: [
+      { sku: 'SKU-A', name: 'A', position: 0 },
+      { sku: 'SKU-B', name: 'B', position: 1 },
+    ],
+  };
+  const selectedHandler = createExtractHandler({
+    orderTemplates: {
+      getForExtraction: async (id: string) => {
+        lookedUpId = id;
+        return template;
+      },
+    },
+    extractOrders: async (...args: unknown[]) => {
+      extractedTemplate = args[5];
+      return [
+        {
+          nome: 'Cliente',
+          items: [
+            { item_code: 'MODEL-SKU', qty: 300 },
+            { item_code: 'ANOTHER-MODEL-SKU', qty: 500 },
+          ],
+        },
+      ];
+    },
+  });
+
+  const result = await selectedHandler(
+    event('POST', {
+      text: 'Cliente quer 300 e 500 unidades de produto livre.',
+      orderTemplateId: ' pack-id ',
+    })
+  );
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(lookedUpId, 'pack-id');
+  assert.deepEqual(extractedTemplate, template);
+  assert.deepEqual(JSON.parse(result.body || '').orders[0].items, [
+    { item_code: 'SKU-A', qty: 300 },
+    { item_code: 'SKU-B', qty: 300 },
+    { item_code: 'SKU-A', qty: 500 },
+    { item_code: 'SKU-B', qty: 500 },
+  ]);
+});
+
+test('extract returns public errors for missing or archived templates', async () => {
+  const missingHandler = createExtractHandler({
+    orderTemplates: {
+      getForExtraction: async () => {
+        throw new OrderTemplateNotFoundError('Template de pedido não encontrado.');
+      },
+    },
+    extractOrders: async () => [],
+  });
+  const missing = await missingHandler(
+    event('POST', {
+      text: 'Cliente quer 300 unidades.',
+      orderTemplateId: 'missing',
+    })
+  );
+  assert.equal(missing.statusCode, 404);
+  assert.equal(JSON.parse(missing.body || '').error, 'Template de pedido não encontrado.');
+
+  const archivedHandler = createExtractHandler({
+    orderTemplates: {
+      getForExtraction: async () => {
+        throw new OrderTemplateConflictError('O template de pedido selecionado foi arquivado.');
+      },
+    },
+    extractOrders: async () => [],
+  });
+  const archived = await archivedHandler(
+    event('POST', {
+      text: 'Cliente quer 300 unidades.',
+      orderTemplateId: 'archived',
+    })
+  );
+  assert.equal(archived.statusCode, 409);
+  assert.equal(
+    JSON.parse(archived.body || '').error,
+    'O template de pedido selecionado foi arquivado.'
+  );
+});
+
+test('extract without a template skips repository lookup and keeps the extractor contract', async () => {
+  let lookups = 0;
+  let receivedArgs: unknown[] = [];
+  const noTemplateHandler = createExtractHandler({
+    orderTemplates: {
+      getForExtraction: async () => {
+        lookups += 1;
+        throw new Error('template lookup should not run');
+      },
+    },
+    extractOrders: async (...args: unknown[]) => {
+      receivedArgs = args;
+      return [{ nome: 'Cliente', items: [{ item_code: 'MODEL-SKU', qty: 30 }] }];
+    },
+  });
+
+  const result = await noTemplateHandler(event('POST', { text: '30 unidades.' }));
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(lookups, 0);
+  assert.equal(receivedArgs.length, 5);
+  assert.deepEqual(JSON.parse(result.body || '').orders[0].items, [
+    { item_code: 'MODEL-SKU', qty: 30 },
+  ]);
+});
+
 test('extract validates the OpenRouter request and normalizes its JSON response', async () => {
   const previousKey = process.env.OPENROUTER_API_KEY;
   const previousModel = process.env.OPENROUTER_MODEL;
@@ -34,15 +156,17 @@ test('extract validates the OpenRouter request and normalizes its JSON response'
     requestInit = init;
     return new Response(
       JSON.stringify({
-        choices: [{ message: { content: '[{"nome":"Cliente","items":[{"item_code":"SKU-1","qty":30}]}]' } }],
+        choices: [
+          { message: { content: '[{"nome":"Cliente","items":[{"item_code":"SKU-1","qty":30}]}]' } },
+        ],
       }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   }) as typeof fetch;
 
   try {
     const result = await handler(
-      event('POST', { text: 'Cliente precisa de 30 unidades do SKU-1.' }),
+      event('POST', { text: 'Cliente precisa de 30 unidades do SKU-1.' })
     );
     const requestBody = JSON.parse(String(requestInit?.body));
 
@@ -51,7 +175,10 @@ test('extract validates the OpenRouter request and normalizes its JSON response'
       orders: [{ nome: 'Cliente', items: [{ item_code: 'SKU-1', qty: 30 }] }],
     });
     assert.equal(requestUrl, 'https://openrouter.ai/api/v1/chat/completions');
-    assert.equal((requestInit?.headers as Record<string, string>).Authorization, 'Bearer unit-test-key');
+    assert.equal(
+      (requestInit?.headers as Record<string, string>).Authorization,
+      'Bearer unit-test-key'
+    );
     assert.equal(requestBody.model, 'unit-test/model');
     assert.equal(requestBody.messages[0].role, 'system');
     assert.equal(requestBody.messages[1].content, 'Cliente precisa de 30 unidades do SKU-1.');

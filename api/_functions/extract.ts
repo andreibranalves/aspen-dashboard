@@ -1,4 +1,9 @@
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionResult, LegacyHandler } from '../_lib/types.js';
+import {
+  createOrderTemplateRepository,
+  type OrderTemplateRecord,
+  type OrderTemplateRepository,
+} from '../_db/order-template-repository.js';
 
 // ── Regras de extração padrão ──
 export const DEFAULT_RULES = `Rule 0 — SKU Explícito (TEXTO): Se o cliente informar SKUs explícitos NO CORPO DO TEXTO (ex: alguém digitou "CNG-SAL-70"), use exatamente esses SKUs sem expandir.
@@ -55,12 +60,36 @@ Formato Brindice: Se encontrar colunas PRODUTO | CÓD | QTD | NOME | TEL | E-MAI
 
 Urgência: urgente=true se prazo < 15 dias úteis (aplica +30% no preço).`;
 
+export interface ExtractionOrderTemplate {
+  id: string;
+  name: string;
+  items: Array<{ sku: string; name: string; position: number }>;
+}
+
 export function buildSystemPrompt(
   customRules?: string,
-  existingItems?: Array<{ item_code: string; qty: number }> | null
+  existingItems?: Array<{ item_code: string; qty: number }> | null,
+  orderTemplate?: ExtractionOrderTemplate | null
 ): string {
   const rules = customRules?.trim() || DEFAULT_RULES;
   let mergeInstruction = '';
+  let orderTemplateInstruction = '';
+  if (orderTemplate) {
+    const skus = orderTemplate.items
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((item) => `- ${item.sku}`)
+      .join('\n');
+    orderTemplateInstruction = `
+
+TEMPLATE DE PEDIDO SELECIONADO: ${orderTemplate.name}
+SKUs autorizados, na ordem:
+${skus}
+
+Ignore qualquer produto ou SKU mencionado no pedido.
+Extraia as quantidades solicitadas e use apenas os SKUs autorizados nos itens.
+Aplique cada quantidade a todos os SKUs autorizados.`;
+  }
   if (Array.isArray(existingItems) && existingItems.length > 0) {
     const itemsText = existingItems
       .filter((it) => it && it.item_code)
@@ -72,7 +101,7 @@ export function buildSystemPrompt(
 
 REGRAS DE NEGÓCIO:
 
-${rules}${mergeInstruction}
+${rules}${mergeInstruction}${orderTemplateInstruction}
 
 RETORNE APENAS JSON válido — um array com um objeto por cliente/pedido:
 [
@@ -120,6 +149,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 interface HttpError extends Error {
   statusCode: number;
+  expose: boolean;
   logMessage: string;
 }
 
@@ -130,6 +160,7 @@ function createHttpError(
 ): HttpError {
   const error = new Error(publicMessage) as HttpError;
   error.statusCode = statusCode;
+  error.expose = statusCode < 500;
   error.logMessage = logMessage || publicMessage;
   return error;
 }
@@ -193,6 +224,39 @@ interface Order {
   cnpj: string | null;
   endereco: Record<string, string | null>;
   items: OrderItem[];
+}
+
+export function applyOrderTemplate(
+  orders: Order[],
+  template: Pick<OrderTemplateRecord, 'items'>
+): Order[] {
+  const orderedItems = template.items.slice().sort((a, b) => a.position - b.position);
+
+  if (orderedItems.length === 0) {
+    throw createHttpError(422, 'O template de pedido não contém produtos.');
+  }
+
+  return orders.map((order) => {
+    const quantities: number[] = [];
+    const seen = new Set<number>();
+    for (const item of Array.isArray(order.items) ? order.items : []) {
+      const quantity = Number(item?.qty);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      const normalized = quantity < 30 ? 30 : quantity;
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      quantities.push(normalized);
+    }
+
+    if (quantities.length === 0) {
+      throw createHttpError(422, 'Nenhuma quantidade válida identificada para o template.');
+    }
+
+    return {
+      ...order,
+      items: quantities.flatMap((qty) => orderedItems.map(({ sku }) => ({ item_code: sku, qty }))),
+    };
+  });
 }
 
 function normalizeOrdersPayload(parsed: unknown): Order[] {
@@ -266,7 +330,8 @@ async function extractWithOpenRouter(
   imageBase64?: string,
   imageMimeType?: string,
   customRules?: string,
-  existingItems?: Array<{ item_code: string; qty: number }> | null
+  existingItems?: Array<{ item_code: string; qty: number }> | null,
+  orderTemplate?: ExtractionOrderTemplate | null
 ): Promise<Order[]> {
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
   const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
@@ -298,7 +363,10 @@ async function extractWithOpenRouter(
   const body = {
     model: OPENROUTER_MODEL,
     messages: [
-      { role: 'system', content: buildSystemPrompt(customRules, existingItems) },
+      {
+        role: 'system',
+        content: buildSystemPrompt(customRules, existingItems, orderTemplate),
+      },
       { role: 'user', content: buildUserContent(text, imageBase64, imageMimeType) },
     ],
     temperature: 0.1,
@@ -346,43 +414,74 @@ async function extractWithOpenRouter(
   return normalizeOrdersPayload(parsed);
 }
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Método não permitido.' }),
-    };
-  }
-
-  let payload: Record<string, unknown>;
-  try {
-    payload = JSON.parse(event.body);
-  } catch {
-    return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
-  }
-
-  try {
-    const orders = await extractWithOpenRouter(
-      payload.text as string | undefined,
-      payload.imageBase64 as string | undefined,
-      payload.imageMimeType as string | undefined,
-      payload.rules as string | undefined,
-      payload.existingItems as Array<{ item_code: string; qty: number }> | undefined
-    );
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orders }),
-    };
-  } catch (err) {
-    const typedErr = err as { statusCode?: number; logMessage?: string; message?: string };
-    const statusCode = Number.isInteger(typedErr?.statusCode) ? typedErr.statusCode! : 500;
-    console.error('[extract]', typedErr?.logMessage || typedErr?.message || err);
-    return {
-      statusCode,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: typedErr?.message || 'Erro interno na extração.' }),
-    };
-  }
+function json(statusCode: number, payload: object): FunctionResult {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  };
 }
+
+function extractionErrorResponse(error: unknown): FunctionResult {
+  const typed = (error || {}) as {
+    statusCode?: number;
+    expose?: boolean;
+    logMessage?: string;
+    message?: string;
+  };
+  const isPublic =
+    Number.isInteger(typed.statusCode) &&
+    (typed.expose === true || typeof typed.logMessage === 'string');
+  console.error('[extract]', typed.logMessage || typed.message || error);
+  return json(isPublic ? typed.statusCode! : 500, {
+    error: isPublic && typed.message ? typed.message : 'Erro interno na extração.',
+  });
+}
+
+export interface ExtractHandlerDependencies {
+  extractOrders: typeof extractWithOpenRouter;
+  orderTemplates: Pick<OrderTemplateRepository, 'getForExtraction'>;
+}
+
+export function createExtractHandler(
+  dependencies: ExtractHandlerDependencies = {
+    extractOrders: extractWithOpenRouter,
+    orderTemplates: createOrderTemplateRepository(),
+  }
+): LegacyHandler {
+  return async (event) => {
+    if (event.httpMethod !== 'POST') {
+      return json(405, { error: 'Método não permitido.' });
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(event.body) as Record<string, unknown>;
+    } catch {
+      return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
+    }
+
+    try {
+      const templateId =
+        typeof payload.orderTemplateId === 'string' ? payload.orderTemplateId.trim() : '';
+      const template = templateId
+        ? await dependencies.orderTemplates.getForExtraction(templateId)
+        : undefined;
+      const args = [
+        payload.text as string | undefined,
+        payload.imageBase64 as string | undefined,
+        payload.imageMimeType as string | undefined,
+        payload.rules as string | undefined,
+        payload.existingItems as Array<{ item_code: string; qty: number }> | undefined,
+      ] as const;
+      const orders = template
+        ? await dependencies.extractOrders(...args, template)
+        : await dependencies.extractOrders(...args);
+      return json(200, { orders: template ? applyOrderTemplate(orders, template) : orders });
+    } catch (error) {
+      return extractionErrorResponse(error);
+    }
+  };
+}
+
+export const handler = createExtractHandler();
