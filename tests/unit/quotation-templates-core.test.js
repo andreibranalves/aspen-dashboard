@@ -366,7 +366,7 @@ test('quotation display removes zero padding without changing raw quantity', () 
   assert.doesNotMatch(html, />200\.000<\/td>/);
 });
 
-test('legacy template resolution requires exact key and hash', () => {
+test('template resolution requires exact key and hash', () => {
   assert.equal(resolveQuotationTemplate('padrao', DEFAULT_QUOTATION_TEMPLATE.hash).key, 'padrao');
   assert.throws(
     () => resolveQuotationTemplate('padrao', '0'.repeat(64)),
@@ -521,10 +521,6 @@ test('repository snapshot renders persisted source and stays stable after global
 });
 
 test('preview selects draft template_version_id through repository join and renders PDF on the fly', async () => {
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
-  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
   const selectedVersionId = '99999999-9999-4999-8999-999999999999';
   const selectedVersion = {
     ...dynamicVersion,
@@ -592,8 +588,7 @@ test('preview selects draft template_version_id through repository join and rend
       },
     };
   };
-  try {
-    const handler = createQuotationPreviewHandler({
+  const handler = createQuotationPreviewHandler({
       repository: createQuotationTemplateRepository(() => makeDraftPreviewDb()),
       renderPdf: async () => Buffer.from('%PDF-1.7\\n1 0 obj\\n<<>>\\nendobj\\ntrailer\\n<<>>\\n%%EOF'),
     });
@@ -626,19 +621,9 @@ test('preview selects draft template_version_id through repository join and rend
         return true;
       }
     );
-    } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-  }
 });
 
 test('preview preserves repository 409 for a non-draft version override', async () => {
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
-  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
   const quotation = { ...snapshot.quotation, status: 'enviado' };
   const revision = { ...snapshot.revision, status: 'enviado', templateVersionId: null };
   let selectCount = 0;
@@ -655,27 +640,15 @@ test('preview preserves repository 409 for a non-draft version override', async 
       return { from: () => ({ where: () => query }) };
     },
   };
-  try {
-    const repository = createQuotationTemplateRepository(() => db);
+  const repository = createQuotationTemplateRepository(() => db);
     const response = await createQuotationPreviewHandler({ repository })(
       event({ id: 'ORC-20260001', template_version_id: 'version-1' })
     );
     assert.equal(response.statusCode, 409);
     assert.match(response.body, /só pode ser alterada/);
-    } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-  }
 });
 
-test('preview consumes an exact legacy hash mismatch as not found', async () => {
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
-  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
-  try {
+test('preview consumes an exact template hash mismatch as not found', async () => {
     const repository = {
       get: async () => ({
         ...snapshot,
@@ -685,51 +658,23 @@ test('preview consumes an exact legacy hash mismatch as not found', async () => 
     const response = await createQuotationPreviewHandler({ repository })(event({ id: 'ORC-20260001' }));
     assert.equal(response.statusCode, 404);
     assert.match(response.body, /Template do orçamento não encontrado/);
-    } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-  }
 });
 
-test('preview is flag-gated, returns secure headers, and rejects legacy overrides', async () => {
-  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
-  delete process.env.CRM_OPERATIONAL_MODE;
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
+test('preview returns secure headers and rejects template overrides', async () => {
   const repository = { get: async () => snapshot };
-  try {
-    delete process.env.CRM_CORE_QUOTES_ENABLED;
-    delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    const disabled = await createQuotationPreviewHandler({ repository })(
-      event({ id: 'ORC-20260001' })
-    );
-    assert.equal(disabled.statusCode, 404);
-
-    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-    process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
-    const handler = createQuotationPreviewHandler({ repository });
-    const preview = await handler(event({ id: 'ORC-20260001' }));
-    assert.equal(preview.statusCode, 200);
-    assert.equal(preview.headers['Content-Type'], 'text/html; charset=utf-8');
-    assert.equal(preview.headers['Cache-Control'], 'no-store');
-    assert.match(preview.headers['Content-Security-Policy'], /default-src 'none'/);
-    assert.equal(preview.headers['Referrer-Policy'], 'no-referrer');
-    assert.equal(preview.headers['X-Quotation-Template-Key'], 'padrao');
-    assert.equal(preview.headers['X-Quotation-Template-Version'], 'legacy');
-    assert.match(preview.headers['X-Quotation-Template-Hash'], /^[0-9a-f]{64}$/);
-    assert.equal(snapshot.revision.templatePadrao, 'padrao');
-    const invalid = await handler(event({ id: 'ORC-20260001', template: 'minimalista' }));
-    assert.equal(invalid.statusCode, 400);
-    } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
-    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
-  }
+  const handler = createQuotationPreviewHandler({ repository });
+  const preview = await handler(event({ id: 'ORC-20260001' }));
+  assert.equal(preview.statusCode, 200);
+  assert.equal(preview.headers['Content-Type'], 'text/html; charset=utf-8');
+  assert.equal(preview.headers['Cache-Control'], 'no-store');
+  assert.match(preview.headers['Content-Security-Policy'], /default-src 'none'/);
+  assert.equal(preview.headers['Referrer-Policy'], 'no-referrer');
+  assert.equal(preview.headers['X-Quotation-Template-Key'], 'padrao');
+  assert.equal(preview.headers['X-Quotation-Template-Version'], 'builtin');
+  assert.match(preview.headers['X-Quotation-Template-Hash'], /^[0-9a-f]{64}$/);
+  assert.equal(snapshot.revision.templatePadrao, 'padrao');
+  const invalid = await handler(event({ id: 'ORC-20260001', template: 'minimalista' }));
+  assert.equal(invalid.statusCode, 400);
 });
 
 test('body_html escapes user text and preserves line breaks', () => {
@@ -951,7 +896,7 @@ test('disabled sections expose no body HTML', () => {
   assert.equal(model.secoes.condicoes_gerais.body_html.toString(), '');
 });
 
-// ── Adversarial: Frappe rendering ───────────────────────────────────
+// ── Adversarial: built-in template rendering ────────────────────────
 
 test('deterministic preview fixture renders the standard template with every nested field', () => {
   const rendered = renderQuotationTemplate(
@@ -975,7 +920,7 @@ test('comparativo template is registered and renders the saved matrix', () => {
   assert.match(html, /100 - 299/);
   assert.match(html, /R\$ 7,50/);
   assert.match(html, /Camiseta/);
-  assert.doesNotMatch(template.source, /\{%|%\}|\bfrappe\b|\bdoc\./i);
+  assert.doesNotMatch(template.source, /\{%|%\}|\bdoc\./i);
 });
 
 test('comparativo source satisfies the new-template contract', () => {
@@ -1011,7 +956,7 @@ test('simples source satisfies the new-template contract', () => {
 
 test('all built-in templates render without error', () => {
   const model = quotationSnapshotViewModel(snapshot);
-  for (const key of ['padrao', 'minimalista', 'frappe', 'comparativo', 'simples']) {
+  for (const key of ['padrao', 'minimalista', 'branded', 'comparativo', 'simples']) {
     const tmpl = getQuotationTemplate(key);
     assert.ok(tmpl, `template ${key} should exist`);
     const html = renderQuotationTemplate(tmpl, model);
@@ -1108,27 +1053,27 @@ test('rejects end tag without matching open tag', () => {
   );
 });
 
-// ── Required fields: Frappe exception ─────────────────────────────
+// ── Required fields: built-in compatibility exception ─────────────
 
-test('exact historical Frappe source/hash accepts missing display.total', () => {
-  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
-  assert.ok(frappe, 'frappe template exists');
-  // Frappe source does not contain {{display.total}} - verify it renders
+test('exact built-in source/hash accepts missing display.total', () => {
+  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'branded template exists');
+  // Built-in source does not contain {{display.total}} - verify it renders
   const model = quotationSnapshotViewModel(snapshot);
-  const html = renderQuotationTemplate(frappe, model);
-  assert.ok(html.length > 100, 'frappe renders substantial HTML');
+  const html = renderQuotationTemplate(branded, model);
+  assert.ok(html.length > 100, 'branded renders substantial HTML');
 });
 
-test('persisted historical Frappe version keeps trusted provenance', () => {
-  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
-  assert.ok(frappe, 'frappe template exists');
+test('persisted built-in version keeps trusted provenance', () => {
+  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'branded template exists');
   const persisted = quotationTemplateFromVersion({
-    source: frappe.source,
-    sourceHash: frappe.hash,
-    template: { key: frappe.key, name: frappe.name },
+    source: branded.source,
+    sourceHash: branded.hash,
+    template: { key: branded.key, name: branded.name },
   });
   const html = renderQuotationTemplate(persisted, quotationSnapshotViewModel(snapshot));
-  assert.ok(html.length > 100, 'persisted Frappe renders substantial HTML');
+  assert.ok(html.length > 100, 'persisted branded renders substantial HTML');
 });
 
 test('new source missing display.total is rejected', () => {
@@ -1137,29 +1082,29 @@ test('new source missing display.total is rejected', () => {
   assert.throws(() => validateQuotationHtmlSource(newSource, 'new-template'), /display\.total/);
 });
 
-test('public validators cannot grant the Frappe display.total exemption', () => {
-  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
-  assert.ok(frappe, 'frappe template exists');
+test('public validators cannot grant the built-in display.total exemption', () => {
+  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'branded template exists');
   assert.throws(
-    () => validateQuotationHtmlSource(frappe.source, 'frappe', 'frappe'),
+    () => validateQuotationHtmlSource(branded.source, 'branded', 'branded'),
     /display\.total/
   );
   assert.throws(
-    () => validateQuotationSource(frappe.source, 'frappe', 'frappe'),
+    () => validateQuotationSource(branded.source, 'branded', 'branded'),
     /display\.total/
   );
 });
 
-test('spoofed template object with Frappe key/hash is rejected at render', () => {
-  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
-  assert.ok(frappe, 'frappe template exists');
+test('spoofed template object with built-in key/hash is rejected at render', () => {
+  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'branded template exists');
   // Construct a forged template that copies key, hash, and source but is NOT the built-in object
   const spoofed = {
-    key: 'frappe',
-    name: 'Frappe (Original)',
+    key: 'branded',
+    name: 'Aspen Original',
     is_default: false,
-    source: frappe.source,
-    hash: frappe.hash,
+    source: branded.source,
+    hash: branded.hash,
   };
   const model = quotationSnapshotViewModel(snapshot);
   // The spoofed object must NOT receive the display.total exception
@@ -1175,12 +1120,12 @@ test('spoofed template object with Frappe key/hash is rejected at render', () =>
   }
 });
 
-test('trusted built-in Frappe template still renders with missing display.total', () => {
-  const frappe = QUOTATION_TEMPLATES.find((t) => t.key === 'frappe');
-  assert.ok(frappe, 'frappe template exists');
+test('trusted built-in template still renders with missing display.total', () => {
+  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'branded template exists');
   const model = quotationSnapshotViewModel(snapshot);
-  const html = renderQuotationTemplate(frappe, model);
-  assert.ok(html.length > 100, 'frappe built-in renders substantial HTML');
+  const html = renderQuotationTemplate(branded, model);
+  assert.ok(html.length > 100, 'branded built-in renders substantial HTML');
 });
 
 test('built-in definitions are validated for both AST and HTML policy', () => {
@@ -1256,7 +1201,7 @@ test('CSS named entities are decoded before dangerous-pattern check', () => {
   );
 });
 
-// ── Legacy schema_version validation ──────────────────────────────
+// ── Schema version validation ─────────────────────────────────────
 
 test('validateQuotationSections rejects schema_version !== 1', () => {
   assert.throws(
@@ -1323,10 +1268,10 @@ test('factory snapshot → view-model round-trip produces correct secoes', () =>
   assert.equal(model.secoes.prazo_producao.value, snapshot.revision.prazoProducao);
   assert.ok(
     model.secoes.pagamento.body_html.toString().includes('50%'),
-    'pagamento body contains legacy text'
+    'pagamento body contains prior settings text'
   );
   assert.ok(
     model.secoes.condicoes_gerais.body_html.toString().includes('Prazo de entrega'),
-    'condicoes_gerais contains combined legacy'
+    'condicoes_gerais contains combined settings'
   );
 });

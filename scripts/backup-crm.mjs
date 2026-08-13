@@ -34,6 +34,83 @@ const __dirname = resolve(__filename, '..');
 const PROJECT_ROOT = resolve(__dirname, '..');
 const BACKUP_PREFIX = 'backup-';
 const BACKUP_SUFFIX = '.sql';
+const HISTORICAL_LINEAGE_SUFFIX = '_import_lineage';
+const HISTORICAL_LINEAGE_COLUMNS = new Set([
+  'provider',
+  'source_doctype',
+  'source_id',
+  'entity_type',
+  'local_id',
+  'local_key',
+  'canonical_hash',
+  'source_hash',
+  'lineage_status',
+  'business_number',
+  'legacy_payload',
+  'migration_run_id',
+  'source_updated_at',
+  'imported_at',
+  'created_at',
+  'updated_at',
+]);
+
+export function quoteIdentifier(identifier) {
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(identifier))
+    throw new Error('Identificador de tabela inválido no catálogo PostgreSQL.');
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+export function chooseHistoricalLineageTable(rows) {
+  const candidates = rows
+    .map((row) => {
+      if (typeof row === 'string') {
+        const [schema, table, columns] = row.split('|');
+        return { schema, table, columns: columns?.split(',').filter(Boolean) || [] };
+      }
+      return {
+        schema: row?.schema,
+        table: row?.table,
+        columns: Array.isArray(row?.columns) ? row.columns : String(row?.columns || '').split(',').filter(Boolean),
+      };
+    })
+    .filter((row) => row.schema && row.table?.endsWith(HISTORICAL_LINEAGE_SUFFIX));
+  const matches = candidates.filter((row) => {
+    const columns = new Set(row.columns);
+    return columns.size === HISTORICAL_LINEAGE_COLUMNS.size &&
+      row.columns.length === HISTORICAL_LINEAGE_COLUMNS.size &&
+      [...columns].every((column) => HISTORICAL_LINEAGE_COLUMNS.has(column));
+  });
+  if (matches.length !== 1) {
+    throw new Error('Tabela histórica de linhagem ausente ou ambígua no catálogo PostgreSQL.');
+  }
+  const schema = quoteIdentifier(matches[0].schema);
+  const table = quoteIdentifier(matches[0].table);
+  return {
+    schema,
+    table,
+    qualified: `${schema}.${table}`,
+    label: matches[0].table,
+  };
+}
+
+export function discoverHistoricalLineageTable(service, env) {
+  const output = command(
+    'psql',
+    [
+      '--no-psqlrc',
+      '--quiet',
+      '--tuples-only',
+      '--no-align',
+      '--field-separator=|',
+      '--dbname',
+      `service=${service.name}`,
+      '--command',
+      `SELECT table_schema, table_name, string_agg(column_name, ',' ORDER BY ordinal_position)\nFROM information_schema.columns\nWHERE table_schema NOT IN ('pg_catalog', 'information_schema')\nGROUP BY table_schema, table_name\nORDER BY table_schema, table_name;`,
+    ],
+    { env }
+  );
+  return chooseHistoricalLineageTable(output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+}
 
 function stderr(message) {
   process.stderr.write(`${message}\n`);
@@ -437,13 +514,13 @@ function runValidate(dumpFile) {
     timeout: 60_000,
   });
   stdout('Migrações concluídas no alvo isolado.');
+  const historicalLineage = discoverHistoricalLineageTable(restoreService, targetEnv);
   const tables = [
-    'products',
-    'clients',
-    'quotations',
-    'quote_revisions',
-    'quote_revision_items',
-    'frappe_import_lineage',
+    ...['products', 'clients', 'quotations', 'quote_revisions', 'quote_revision_items'].map((table) => ({
+      label: table,
+      qualified: quoteIdentifier(table),
+    })),
+    historicalLineage,
   ];
   let allPass = true;
   stdout('\nValidação de integridade:');
@@ -459,13 +536,13 @@ function runValidate(dumpFile) {
           '--dbname',
           `service=${restoreService.name}`,
           '--command',
-          `SELECT count(*) FROM ${table};`,
+          `SELECT count(*) FROM ${table.qualified};`,
         ],
         { env: targetEnv }
       );
-      stdout(`  ${table}: ${parseInt(result.trim(), 10)} registros - tabela acessível`);
+      stdout(`  ${table.label}: ${parseInt(result.trim(), 10)} registros - tabela acessível`);
     } catch {
-      stdout(`  ${table}: tabela ausente`);
+      stdout(`  ${table.label}: tabela ausente`);
       allPass = false;
     }
   }

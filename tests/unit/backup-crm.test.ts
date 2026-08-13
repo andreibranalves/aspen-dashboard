@@ -11,13 +11,13 @@ import {
   exceedsMegabyteQuota,
   ensureBackupDirectory,
   resolveBackupDirectory,
+  chooseHistoricalLineageTable,
+  quoteIdentifier,
 } from '../../scripts/backup-crm.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const script = path.join(root, 'scripts/backup-crm.mjs');
-const reconcileScript = path.join(root, 'scripts/reconcile-migration.mjs');
 const backupSource = readFileSync(script, 'utf8');
-const reconcileSource = readFileSync(reconcileScript, 'utf8');
 
 function run(args: string[], env: NodeJS.ProcessEnv) {
   return spawnSync(process.execPath, [script, ...args], {
@@ -29,9 +29,7 @@ function run(args: string[], env: NodeJS.ProcessEnv) {
 
 test('named psql service calls use libpq service syntax', () => {
   assert.match(backupSource, /'--dbname', `service=\$\{service\.name\}`/);
-  assert.match(reconcileSource, /'--dbname', `service=\$\{service\}`/);
   assert.doesNotMatch(backupSource, /'--dbname', service\.name/);
-  assert.doesNotMatch(reconcileSource, /'--dbname', service/);
 });
 
 test('explicit backup destination is outside checkout and mode 0700', () => {
@@ -56,7 +54,12 @@ test('backup preflight exige serviço nomeado e identidade esperada', () => {
     ...process.env,
     DATABASE_URL: 'postgresql://source-user@staging.test:5433/aspen_test',
   };
-  for (const key of ['CUTOVER_PG_SERVICE', 'CUTOVER_EXPECTED_DATABASE', 'PGSERVICEFILE', 'PGPASSFILE'])
+  for (const key of [
+    'CUTOVER_PG_SERVICE',
+    'CUTOVER_EXPECTED_DATABASE',
+    'PGSERVICEFILE',
+    'PGPASSFILE',
+  ])
     delete env[key];
   const result = run(['--preflight'], env);
   assert.notEqual(result.status, 0);
@@ -170,7 +173,10 @@ test('restore validation rejects a named restore target matching active producti
 });
 
 test('restore validation refuses implicit newest-backup selection', () => {
-  const env: NodeJS.ProcessEnv = { ...process.env, RESTORE_DATABASE_URL: 'postgresql://restore.test/isolated' };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    RESTORE_DATABASE_URL: 'postgresql://restore.test/isolated',
+  };
   delete env.DATABASE_URL;
   const result = run(['--validate'], env);
   assert.notEqual(result.status, 0);
@@ -225,6 +231,54 @@ test('parsed connection fields override inherited libpq environment', () => {
   assert.equal(env.PGDATABASE, 'target-db');
   for (const key of ['PGHOSTADDR', 'PGSERVICE', 'PGSERVICEFILE', 'PGPASSFILE', 'TEST_DATABASE_URL'])
     assert.equal(env[key], undefined, `${key} must not override parsed connection`);
+});
+
+test('discovers exactly one historical lineage table by suffix and full column signature', () => {
+  const columns = [
+    'provider',
+    'source_doctype',
+    'source_id',
+    'entity_type',
+    'local_id',
+    'local_key',
+    'canonical_hash',
+    'source_hash',
+    'lineage_status',
+    'business_number',
+    'legacy_payload',
+    'migration_run_id',
+    'source_updated_at',
+    'imported_at',
+    'created_at',
+    'updated_at',
+  ];
+  const result = chooseHistoricalLineageTable([
+    { schema: 'public', table: 'history_import_lineage', columns },
+  ]);
+  assert.equal(result.qualified, '"public"."history_import_lineage"');
+  assert.throws(() => chooseHistoricalLineageTable([]), /ausente ou ambígua/);
+  assert.throws(
+    () =>
+      chooseHistoricalLineageTable([
+        { schema: 'public', table: 'one_import_lineage', columns },
+        { schema: 'public', table: 'two_import_lineage', columns },
+      ]),
+    /ausente ou ambígua/
+  );
+  assert.throws(
+    () =>
+      chooseHistoricalLineageTable([
+        { schema: 'public', table: 'bad_import_lineage', columns: columns.slice(1) },
+      ]),
+    /ausente ou ambígua/
+  );
+  assert.throws(() => quoteIdentifier('public";DROP TABLE x'), /inválido/);
+  assert.throws(
+    () => chooseHistoricalLineageTable([
+      { schema: 'public', table: 'duplicate_import_lineage', columns: [...columns.slice(1), 'updated_at'] },
+    ]),
+    /ausente ou ambígua/
+  );
 });
 
 test('database size quota compares bytes against megabytes', () => {

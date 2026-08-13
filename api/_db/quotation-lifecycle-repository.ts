@@ -2,6 +2,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import { appendProductActivityEvents } from './product-activity-repository.js';
 import {
   readPostgresQuotationDetail,
   QuoteManagementConflictError,
@@ -14,7 +15,6 @@ import {
 import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
-import { enqueueQuotationOutboxEvent } from './quotation-outbox-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -193,15 +193,6 @@ export function createPostgresQuotationLifecycleRepository(
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
           await tx.update(quotations).set({ status, updatedAt }).where(eq(quotations.id, quotation.id));
-          await enqueueQuotationOutboxEvent(tx, {
-            eventType: 'quotation.updated',
-            provider: 'crm',
-            quotationId: quotation.id,
-            revisionId: revision.id,
-            businessNumber: quotation.businessNumber,
-            idempotencyKey: `quotation.updated:crm:${quotation.id}:${revision.id}:${updatedAt.toISOString()}`,
-            now: updatedAt,
-          });
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;
@@ -316,16 +307,17 @@ export function createPostgresQuotationLifecycleRepository(
               manualRate: item.manualRate,
             })));
           }
+          await appendProductActivityEvents(
+            tx,
+            [...new Set(sourceItems.map((item) => item.produtoSku || item.productSku))].map((sku) => ({
+              sku,
+              tipo: 'orcamento' as const,
+              texto: `Orçamento ${quotation.businessNumber} atualizado`,
+              reference_id: `orcamento:${quotation.id}:${revisionId}:${sku}`,
+              created_at: createdAt,
+            })),
+          );
           await tx.update(quotations).set({ status: 'rascunho', updatedAt: createdAt }).where(eq(quotations.id, quotation.id));
-          await enqueueQuotationOutboxEvent(tx, {
-            eventType: 'quotation.updated',
-            provider: 'crm',
-            quotationId: quotation.id,
-            revisionId,
-            businessNumber: quotation.businessNumber,
-            idempotencyKey: `quotation.updated:crm:${quotation.id}:${revisionId}:${createdAt.toISOString()}`,
-            now: createdAt,
-          });
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;

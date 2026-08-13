@@ -3,7 +3,7 @@ import { Archive, ChevronDown, ChevronUp, Pencil, Plus, Search, Trash2, X } from
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { isCoreUnpricedProduct, searchProducts } from '@/lib/productCache';
+import { isUnpricedProduct, searchProducts } from '@/lib/productCache';
 import {
   archiveOrderTemplate,
   createOrderTemplate,
@@ -152,7 +152,7 @@ export default function OrderTemplateManager({
       searchProducts(term, 8)
         .then((products) => {
           if (!active) return;
-          setSearchResults(products.filter((product) => !isCoreUnpricedProduct(product)));
+          setSearchResults(products.filter((product) => !isUnpricedProduct(product)));
         })
         .catch(() => {
           if (active) setSearchResults([]);

@@ -24,7 +24,6 @@ import {
   URGENT_DENOMINATOR,
   URGENT_NUMERATOR,
 } from './pricing-core.js';
-import { isCoreReadEnabled } from './orcamento-mode.js';
 
 interface DraftPreviewItem {
   item_code: string;
@@ -333,7 +332,6 @@ export function createQuotationPreviewHandler(
   const resolveDraftTemplate = dependencies.resolveDraftTemplate || resolveCurrentDraftTemplate;
   const now = dependencies.now || (() => new Date());
   return async function quotationPreviewHandler(event: FunctionEvent): Promise<FunctionResult> {
-    if (!isCoreReadEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     if (event.httpMethod === 'POST') {
       try {
         const extracted = parseDraftPreview(event);
@@ -401,7 +399,7 @@ export function createQuotationPreviewHandler(
             'X-Quotation-Template-Key': template.key,
             'X-Quotation-Template-Version': snapshot.templateVersion
               ? String(snapshot.templateVersion.version)
-              : 'legacy',
+              : 'builtin',
             'X-Quotation-Template-Hash': template.hash,
           },
           body: pdf.toString('base64'),
@@ -416,7 +414,7 @@ export function createQuotationPreviewHandler(
           'X-Quotation-Template-Key': template.key,
           'X-Quotation-Template-Version': snapshot.templateVersion
             ? String(snapshot.templateVersion.version)
-            : 'legacy',
+            : 'builtin',
           'X-Quotation-Template-Hash': template.hash,
         },
         body: html,

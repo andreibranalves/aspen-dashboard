@@ -12,6 +12,7 @@ import { apiGet } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader';
+import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,15 +20,13 @@ import {
 } from '@/components/ui/table';
 
 const STATUS_LABELS: Record<string, string> = {
-  'Draft': 'Rascunho',
-  'On Hold': 'Em espera',
-  'To Pay': 'A pagar',
+  Draft: 'Rascunho',
   'To Deliver and Bill': 'A entregar e faturar',
   'To Bill': 'A faturar',
   'To Deliver': 'A entregar',
-  'Completed': 'Concluído',
-  'Cancelled': 'Cancelado',
-  'Closed': 'Fechado',
+  Completed: 'Concluído',
+  Cancelled: 'Cancelado',
+  Closed: 'Fechado',
 };
 
 interface PeriodOption {
@@ -43,41 +42,68 @@ const PERIODS: PeriodOption[] = [
   { value: 'month', label: 'Mês' },
 ];
 
-const STATUSES = ['', 'Draft', 'On Hold', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
-const STATUS_DISPLAY = ['Todos', 'Rascunho', 'Em espera', 'A entregar e faturar', 'A faturar', 'A entregar', 'Concluído', 'Cancelado', 'Fechado'];
+const STATUSES = ['', 'Draft', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
+const STATUS_DISPLAY = ['Todos', 'Rascunho', 'A entregar e faturar', 'A faturar', 'A entregar', 'Concluído', 'Cancelado', 'Fechado'];
 
 interface SalesOrdersPageProps {
   navigate: (path: string) => void;
 }
 
 interface DashboardSummary {
-  revenue?: number;
-  revenue_delta_pct?: number;
-  orders?: number;
-  average_ticket?: number;
-  open_orders?: number;
+  total_revenue: number;
+  revenue_delta: number;
+  orders_count: number;
+  orders_delta: number;
+  avg_ticket: number;
+  avg_ticket_delta: number;
+  open_orders: number;
+  conversion_rate: number;
+  conversion_delta: number;
 }
 
-interface DashboardResponse {
-  success?: boolean;
-  summary?: DashboardSummary;
-}
-
-interface SalesOrderItem {
-  id: string;
-  date?: string;
-  customer_name?: string;
-  customer?: string;
-  grand_total?: number | string;
-  status?: string;
-  delivery_date?: string;
-  per_delivered?: number | string;
-  source_quotation?: string;
-}
+type SalesOrderItem = ProjectedSalesOrderListRow;
 
 interface OrdersResponse {
-  items?: SalesOrderItem[];
-  has_more?: boolean;
+  items?: unknown;
+  has_more?: unknown;
+}
+
+function projectDashboardSummary(value: unknown): DashboardSummary | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const response = value as Record<string, unknown>;
+  if (response.success !== true || !response.summary || typeof response.summary !== 'object' || Array.isArray(response.summary)) return null;
+  const summary = response.summary as Record<string, unknown>;
+  const money = (field: unknown): number | null =>
+    typeof field === 'number' && Number.isFinite(field) && field >= 0 ? field : null;
+  const count = (field: unknown): number | null =>
+    typeof field === 'number' && Number.isSafeInteger(field) && field >= 0 ? field : null;
+  const delta = (field: unknown): number | null =>
+    typeof field === 'number' && Number.isFinite(field) ? field : null;
+  const totalRevenue = money(summary.total_revenue);
+  const ordersCount = count(summary.orders_count);
+  const avgTicket = money(summary.avg_ticket);
+  const openOrders = count(summary.open_orders);
+  const conversionRate = delta(summary.conversion_rate);
+  const revenueDelta = delta(summary.revenue_delta);
+  const ordersDelta = delta(summary.orders_delta);
+  const avgTicketDelta = delta(summary.avg_ticket_delta);
+  const conversionDelta = delta(summary.conversion_delta);
+  if (
+    totalRevenue === null || ordersCount === null || avgTicket === null || openOrders === null ||
+    conversionRate === null || revenueDelta === null || ordersDelta === null ||
+    avgTicketDelta === null || conversionDelta === null
+  ) return null;
+  return {
+    total_revenue: totalRevenue,
+    revenue_delta: revenueDelta,
+    orders_count: ordersCount,
+    orders_delta: ordersDelta,
+    avg_ticket: avgTicket,
+    avg_ticket_delta: avgTicketDelta,
+    open_orders: openOrders,
+    conversion_rate: conversionRate,
+    conversion_delta: conversionDelta,
+  };
 }
 
 export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
@@ -90,16 +116,28 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const [status, setStatus] = useState<string>('');
   const [search, setSearch] = useState<string>('');
   const [searchDraft, setSearchDraft] = useState<string>('');
-  const [summary, setSummary] = useState<DashboardResponse | null>(null);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState<number>(1);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const fetchSummary = useCallback(async () => {
+    setSummary(null);
+    setSummaryError(null);
+    try {
+      const response = await apiGet<unknown>('/sales-dashboard?period=30d');
+      const projected = projectDashboardSummary(response);
+      if (!projected) throw new Error('Resposta inválida ao carregar métricas de vendas.');
+      setSummary(projected);
+    } catch {
+      setSummaryError('Não foi possível carregar as métricas de vendas. Tente novamente.');
+    }
+  }, []);
+
   // ── Fetch summary on mount ──────────────────────────────────────────────────
   useEffect(() => {
-    apiGet<DashboardResponse>('/sales-dashboard?period=30d').then(d => {
-      if (d?.success) setSummary(d);
-    }).catch(() => {});
-  }, []);
+    void fetchSummary();
+  }, [fetchSummary]);
 
   // ── Fetch orders ────────────────────────────────────────────────────────────
   const fetchOrders = useCallback(async () => {
@@ -113,7 +151,14 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       if (status) params.set('status', status);
       if (search) params.set('search', search);
       const data = await apiGet<OrdersResponse>(`/sales-orders?${params}`);
-      setItems(data.items || []);
+      if (!Array.isArray(data.items) || typeof data.has_more !== 'boolean') {
+        throw new Error('Resposta inválida ao carregar pedidos.');
+      }
+      const projectedRows = data.items.map(projectSalesOrderListRow);
+      if (projectedRows.some((row): row is null => row === null)) {
+        throw new Error('Resposta inválida ao carregar pedidos.');
+      }
+      setItems(projectedRows as SalesOrderItem[]);
       setTotalPages(data.has_more ? page + 1 : page);
     } catch (err) {
       setError((err as Error).message || 'Erro ao carregar pedidos.');
@@ -172,8 +217,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     return '—';
   };
 
-  // ── Format source quotation ─────────────────────────────────────────────────
-  const formatSource = (item: SalesOrderItem) => {
+  // ── Format local quotation relation ──────────────────────────────────────────
+  const formatQuotation = (item: SalesOrderItem) => {
     if (item.source_quotation) {
       return (
         <button
@@ -219,7 +264,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     );
   };
 
-  const summaryData = summary?.summary;
+  const summaryData = summary;
 
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
@@ -229,33 +274,41 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       />
 
       {/* Summary cards */}
+      {summaryError && (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-6 text-fg-muted" role="alert">
+          <p className="text-sm text-destructive">Erro ao carregar métricas de vendas</p>
+          <p className="text-sm">{summaryError}</p>
+          <Button variant="outline" onClick={() => void fetchSummary()}>
+            Tentar novamente
+          </Button>
+        </div>
+      )}
       {summaryData && (
         <div className="flex flex-wrap gap-3">
           <SummaryCard
             icon={DollarSign}
             label="Receita"
-            value={formatBRL(summaryData.revenue || 0)}
-            subtitle={summaryData.revenue_delta_pct !== undefined
-              ? `${summaryData.revenue_delta_pct >= 0 ? '+' : ''}${summaryData.revenue_delta_pct}% vs período anterior`
-              : undefined}
+            value={formatBRL(summaryData.total_revenue)}
+            subtitle={`${summaryData.revenue_delta >= 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
           <SummaryCard
             icon={ShoppingCart}
             label="Pedidos"
-            value={String(summaryData.orders || 0)}
+            value={String(summaryData.orders_count)}
             colorClass="bg-primary/10 text-primary"
           />
           <SummaryCard
             icon={TrendingUp}
             label="Ticket Médio"
-            value={formatBRL(summaryData.average_ticket || 0)}
+            value={formatBRL(summaryData.avg_ticket)}
+            subtitle={`${summaryData.avg_ticket_delta >= 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
             colorClass="tone-warning-soft"
           />
           <SummaryCard
             icon={Package}
             label="Pedidos em Aberto"
-            value={String(summaryData.open_orders || 0)}
+            value={String(summaryData.open_orders)}
             colorClass="tone-info-soft"
           />
         </div>
@@ -378,7 +431,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                   <TableCell className="whitespace-nowrap text-fg-muted">
                     {row.date ? new Date(row.date).toLocaleDateString('pt-BR') : '—'}
                   </TableCell>
-                  <TableCell>{row.customer_name || row.customer || '—'}</TableCell>
+                  <TableCell>{row.customer_name || 'Cliente não identificado'}</TableCell>
                   <TableCell className="text-right font-mono">
                     {formatBRL(row.grand_total)}
                   </TableCell>
@@ -387,14 +440,14 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                       'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                       statusBadgeClass(row.status),
                     )}>
-                      {STATUS_LABELS[row.status || ''] || row.status}
+                      {STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                     </span>
                   </TableCell>
                   <TableCell className="text-sm text-fg-muted">
                     {formatDelivery(row)}
                   </TableCell>
                   <TableCell className="text-sm">
-                    {formatSource(row)}
+                    {formatQuotation(row)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -418,11 +471,11 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                   'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                   statusBadgeClass(row.status),
                 )}>
-                  {STATUS_LABELS[row.status || ''] || row.status}
+                  {STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-fg truncate">{row.customer_name || row.customer || '—'}</span>
+                <span className="text-fg truncate">{row.customer_name || 'Cliente não identificado'}</span>
                 <span className="text-fg-muted text-xs">
                   {row.date ? new Date(row.date).toLocaleDateString('pt-BR') : '—'}
                 </span>
@@ -434,7 +487,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                 </div>
               </div>
               <div className="flex items-center justify-between text-xs text-fg-muted">
-                <span>Origem: {row.source_quotation ? (
+                <span>Orçamento relacionado: {row.source_quotation ? (
                   <button
                     onClick={(e: MouseEvent<HTMLButtonElement>) => {
                       e.stopPropagation();
@@ -489,8 +542,6 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 function statusBadgeClass(status: string | undefined): string {
   const map: Record<string, string> = {
     'Draft': 'bg-surface-muted text-fg-muted',
-    'On Hold': 'tone-warning-soft',
-    'To Pay': 'tone-warning-soft',
     'To Deliver and Bill': 'bg-primary/10 text-primary',
     'To Bill': 'tone-info-soft',
     'To Deliver': 'tone-info-soft',

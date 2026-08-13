@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 
 import type { QuoteDatabase } from './quote-draft-management-repository.js';
 import { quotationTemplateVersions, quotationTemplates } from './schema.js';
-import { snapshotFromLegacyRevision } from './quotation-template-migration.js';
+import { snapshotFromLegacyRevision } from './quotation-template-snapshot.js';
 import type { QuotationSectionsSnapshot } from './quotation-content.js';
 
 export async function resolveQuotationRevisionMetadata(

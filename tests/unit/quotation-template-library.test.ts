@@ -68,12 +68,7 @@ function event(method: string, path: string, query: Record<string, string> = {},
 }
 
 test('template library handler routes metadata, details, validation and mutations through repository seam', { concurrency: false }, async () => {
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
-  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
-  try {
-    const handler = createQuotationTemplatesHandler({ repository });
+  const handler = createQuotationTemplatesHandler({ repository });
     let response = await handler(event('GET', '/api/quotation-templates'));
     let payload = JSON.parse(response.body!);
     assert.equal(response.statusCode, 200);
@@ -122,20 +117,9 @@ test('template library handler routes metadata, details, validation and mutation
       event('PUT', '/api/quotation-templates', { id: 'template-id' }, { action: 'set_default' })
     );
     assert.equal(response.statusCode, 200);
-  } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-  }
 });
 
 test('template library handler maps missing details and repository validation failures', { concurrency: false }, async () => {
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
-  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
-  try {
     const rejectingRepository = {
       ...repository,
       get: async () => null,
@@ -174,30 +158,13 @@ test('template library handler maps missing details and repository validation fa
       event('PUT', '/api/quotation-templates', { id: 'template-id' }, { action: 'archive' })
     );
     assert.equal(archive.statusCode, 409);
-  } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-  }
 });
 
 test('template library handler rejects malformed JSON and unsupported methods', { concurrency: false }, async () => {
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const previousState = process.env.CRM_QUOTES_ROLLOUT_STATE;
-  process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-  process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-write';
-  try {
     const handler = createQuotationTemplatesHandler({ repository });
     assert.equal(
       (await handler({ ...event('POST', '/api/quotation-templates'), body: '{' })).statusCode,
       400
     );
     assert.equal((await handler(event('DELETE', '/api/quotation-templates'))).statusCode, 405);
-  } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (previousState === undefined) delete process.env.CRM_QUOTES_ROLLOUT_STATE;
-    else process.env.CRM_QUOTES_ROLLOUT_STATE = previousState;
-  }
 });

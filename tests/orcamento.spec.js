@@ -39,8 +39,6 @@ const MOCK_ORCAMENTO = {
   deal_id: 'CRM-DEAL-2026-00001',
   customer_id: 'CUST-001',
   customer_new: true,
-  core_mode: true,
-  source: 'postgres',
 };
 
 const MOCK_LEADS_LIST = {
@@ -62,14 +60,12 @@ const MOCK_LEADS_LIST = {
     },
   ],
   pagination: { page: 1, limit: 50, total: 2, total_pages: 1 },
-  core_mode: false,
-  source: 'frappe',
 };
 
 const MOCK_LEAD_DETAIL = {
   success: true,
-  doctype: 'Lead',
-  name: 'LEAD-001',
+  id: 'LEAD-001',
+  nome: 'João Silva',
   display_name: 'João Silva',
   email: 'joao@teste.com',
   telefone: '(11) 99999-0001',
@@ -79,9 +75,6 @@ const MOCK_LEAD_DETAIL = {
   empresa: 'Silva Eventos',
   contribuinte: '9',
   inscricao_estadual: 'ISENTO',
-  creation: '2026-05-20T10:00:00.000Z',
-  modified: '2026-05-20T11:00:00.000Z',
-  erp_url: 'https://aspenestamparia.l.frappe.cloud/app/lead/LEAD-001',
   address: {
     complete: true,
     endereco: 'Rua das Flores',
@@ -133,7 +126,7 @@ async function setupApiMocks(page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ operational_mode: false }),
+      body: JSON.stringify({}),
     });
   });
 
@@ -142,6 +135,14 @@ async function setupApiMocks(page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(MOCK_TEMPLATES),
+    });
+  });
+
+  await page.route('**/api/order-templates**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
     });
   });
 
@@ -212,14 +213,6 @@ async function setupApiMocks(page) {
 async function setupLeadsMocks(page) {
   let currentDetail = { ...MOCK_LEAD_DETAIL };
 
-  await page.route('**/api/settings**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ operational_mode: false }),
-    });
-  });
-
   await page.route('**/api/quotations**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -261,7 +254,6 @@ async function setupLeadsMocks(page) {
         address: body.endereco
           ? { ...currentDetail.address, ...body.endereco }
           : currentDetail.address,
-        modified: '2026-05-20T12:00:00.000Z',
       };
       await route.fulfill({
         status: 200,
@@ -338,6 +330,75 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect(quotationLink.getByRole('button')).toHaveCount(0);
   });
 
+  test('ação atual de WhatsApp envia somente referências exatas da cotação e revisão', async ({ page }) => {
+    await setupApiMocks(page);
+    await page.route('**/api/communication-flows**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          flows: [{
+            id: 'flow-test', name: 'Fluxo de teste', context: 'manual', channel: 'whatsapp',
+            vendor_name: 'Juliana', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0,
+            max_media_per_product_group: 1, steps: [{ id: 'step-1', type: 'text', template: 'Olá' }],
+          }],
+          selectedFlowId: 'flow-test', source: 'test',
+        }),
+      });
+    });
+    let sendRequest;
+    await page.route('**/api/send-whatsapp-flow', async (route) => {
+      sendRequest = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          dry_run: false,
+          send_status: 'completed',
+          duplicate_warning: false,
+          duplicate_message: '',
+          flow_id: 'flow-test',
+          flow_name: 'Fluxo de teste',
+          quotation_id: 'ORC-20260001',
+          deal_id: null,
+          phone: '55119999990001',
+          product_summary: 'cangas',
+          categories: ['canga'],
+          steps_count: 1,
+          steps: [],
+          evolution: [],
+          send_event_id: null,
+        }),
+      });
+    });
+    await page.goto('/#/auto');
+    await page.waitForSelector('textarea', { timeout: 10000 });
+    await page.locator('textarea').first().fill(TEST_INPUT);
+    await page.getByRole('button', { name: /Extrair/i }).click();
+    await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Criar orçamento' }).click();
+    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
+    await expect.poll(() => sendRequest, { timeout: 10000 }).toBeTruthy();
+    expect(sendRequest).toEqual({
+      quotation_id: 'ORC-20260001',
+      quotation_uuid: '11111111-1111-4111-8111-111111111101',
+      business_number: 'ORC-20260001',
+      revision_id: '22222222-2222-4222-8222-222222222201',
+      flow_id: 'flow-test',
+      idempotency_key: 'aspen:whatsapp-send:v2|ORC-20260001|22222222-2222-4222-8222-222222222201|flow-test',
+    });
+    if (!sendRequest) throw new Error('WhatsApp send request was not captured');
+    /** @type {any} */
+    const captured = sendRequest;
+    expect(captured.source).toBeUndefined();
+    expect(captured.nome).toBeUndefined();
+    expect(captured.phone).toBeUndefined();
+    expect(captured.provider).toBeUndefined();
+  });
+
   test('falha ao carregar modelos não bloqueia formulário e permite retry', async ({ page }) => {
     await setupApiMocks(page);
     let templateAttempts = 0;
@@ -410,16 +471,15 @@ test.describe('Leads — Página single e visualização rápida', () => {
     await setupLeadsMocks(page);
     await page.goto('/#/leads');
 
-    await expect(page.getByRole('main').getByRole('heading', { name: /^Leads$/i })).toBeVisible({
+    await expect(page.getByRole('main').getByRole('heading', { name: /^Clientes$/i })).toBeVisible({
       timeout: 10000,
     });
     await page.locator('tbody tr').filter({ hasText: 'João Silva' }).first().click();
 
-    await expect(page).toHaveURL(/#\/leads\/lead\/LEAD-001/);
+    await expect(page).toHaveURL(/#\/leads\/cliente\/LEAD-001/);
     await expect(
       page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 2 })
     ).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Silva Eventos/i).first()).toBeVisible();
     await expect(page.getByText(/Atividade recente/i)).toBeVisible();
     await expect(page.getByText(/ORC-20260001/i).first()).toBeVisible();
   });
@@ -431,7 +491,7 @@ test.describe('Leads — Página single e visualização rápida', () => {
     await page.getByRole('button', { name: /Visualização rápida João Silva/i }).click();
 
     await expect(page).toHaveURL(/#\/leads$/);
-    await expect(page.getByText(/Dados gerais/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('dialog').getByText('Nome', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: /Editar/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Página completa/i })).toBeVisible();
   });
@@ -444,10 +504,10 @@ test.describe('Leads — Página single e visualização rápida', () => {
       page.getByRole('main').getByRole('heading', { name: 'João Silva', level: 2 })
     ).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: /Editar cadastro/i }).click();
-    await page.locator('input[placeholder="Nome do lead"]').fill('João Silva Atualizado');
+    await page.locator('input[placeholder="Nome do cliente"]').fill('João Silva Atualizado');
     await page.getByRole('button', { name: /^Salvar$/i }).click();
 
-    await expect(page.getByText(/Cadastro atualizado com sucesso/i)).toBeVisible({
+    await expect(page.getByText(/Cliente atualizado com sucesso/i)).toBeVisible({
       timeout: 10000,
     });
     await expect(
@@ -457,21 +517,7 @@ test.describe('Leads — Página single e visualização rápida', () => {
 });
 
 test.describe('Orçamento manual — clientes unificados', () => {
-  test('usa a resposta core_mode para mostrar Cliente e não oferece escolha de Lead', async ({ page }) => {
-    await page.route('**/api/settings**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ operational_mode: false }),
-      });
-    });
-    await page.route('**/api/quotation-templates**', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ templates: [], default_key: '' }),
-      });
-    });
+  test('usa a resposta local para mostrar Cliente e não oferece escolha de Lead', async ({ page }) => {
     await page.route('**/api/leads-clients**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -479,8 +525,6 @@ test.describe('Orçamento manual — clientes unificados', () => {
         body: JSON.stringify({
           data: [{ id: 'CLIENT-001', nome: 'Cliente Core', email: 'core@example.com', telefone: '5511999990000', tipo: 'cliente' }],
           pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-          core_mode: true,
-          source: 'postgres',
         }),
       });
     });
@@ -494,6 +538,6 @@ test.describe('Orçamento manual — clientes unificados', () => {
     await expect(page.getByText('Cliente Core', { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Cliente', { exact: true }).last()).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-    await expect(page.getByText('Origem da venda *', { exact: true })).toBeVisible();
+    await expect(page.getByText('Origem *', { exact: true })).toBeVisible();
   });
 });

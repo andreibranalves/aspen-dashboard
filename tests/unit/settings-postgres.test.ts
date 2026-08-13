@@ -88,7 +88,7 @@ test(
         frete_padrao: '0.00',
         observacoes: '',
         template_padrao: 'padrao',
-        operational_mode: false,
+
         secoes: {
           schema_version: 1,
           prazo_producao: { enabled: true, title: 'Prazo de produção' },
@@ -181,9 +181,7 @@ test(
       assert.equal(reloaded.statusCode, 200);
       const reloadedBody = parse(reloaded);
       const sectionFirstBody = parse(sectionFirst);
-      const { operational_mode: _reloadedMode, ...reloadedCore } = reloadedBody;
-      const { operational_mode: _sectionFirstMode, ...sectionFirstCore } = sectionFirstBody;
-      assert.deepEqual(reloadedCore, sectionFirstCore);
+      assert.deepEqual(reloadedBody, sectionFirstBody);
 
       const invalid = await handler(
         event('PUT', {

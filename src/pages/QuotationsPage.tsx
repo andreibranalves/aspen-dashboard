@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api';
 import { formatBRL, formatDate } from '@/lib/formatters';
-import { buildQuotationViewUrl } from '@/lib/printFormats';
+import { buildQuotationPreviewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
@@ -35,47 +35,33 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import SkeletonTable from '@/components/SkeletonTable';
+import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
 
 const STATUS_LABELS: Record<string, string> = {
-  Draft: 'Rascunho',
-  Open: 'Aberto',
-  Replied: 'Respondido',
-  Ordered: 'Convertido',
-  Lost: 'Perdido',
-  Expired: 'Expirado',
-  Cancelled: 'Cancelado',
+  rascunho: 'Rascunho',
+  enviado: 'Enviado',
+  aprovado: 'Aprovado',
+  perdido: 'Perdido',
 };
 
-const STATUSES = ['', 'Draft', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled'];
-const STATUS_DISPLAY = [
-  'Todos',
-  'Rascunho',
-  'Aberto',
-  'Respondido',
-  'Convertido',
-  'Perdido',
-  'Expirado',
-  'Cancelado',
-];
+const STATUS_OPTIONS = [
+  { value: '', label: 'Todos', summaryKey: null },
+  { value: 'rascunho', label: 'Rascunho', summaryKey: 'Rascunho' },
+  { value: 'enviado', label: 'Enviado', summaryKey: 'Enviado' },
+  { value: 'aprovado', label: 'Aprovado', summaryKey: 'Aprovado' },
+  { value: 'perdido', label: 'Perdido', summaryKey: 'Perdido' },
+] as const;
 const PAGE_SIZES = [10, 25, 50];
 
-interface QuotationRow {
-  id: string;
-  data?: string;
-  cliente?: string;
-  valor?: string | number;
-  status: string;
-}
+type QuotationRow = ProjectedQuotationListRow;
 
 interface QuotationsApiResponse {
-  data?: QuotationRow[];
+  data?: unknown;
   pagination?: {
-    total_pages?: number;
-    total?: number;
+    total_pages?: unknown;
+    total?: unknown;
   };
-  status_summary?: Record<string, number>;
-  core_mode?: boolean;
-  source?: string;
+  status_summary?: unknown;
 }
 
 interface DuplicateQuotationResponse {
@@ -106,7 +92,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [totalPages, setTotalPages] = useState<number>(0);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
-  const [coreMode, setCoreMode] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
@@ -142,11 +127,28 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         if (statusVal) params.set('status', statusVal);
 
         const result = await apiGet<QuotationsApiResponse>(`/quotations?${params.toString()}`);
-        setData(result.data || []);
-        setTotalPages(result.pagination?.total_pages || 0);
-        setTotalRecords(result.pagination?.total || 0);
-        setStatusSummary(result.status_summary || {});
-        setCoreMode(result.core_mode === true && result.source === 'postgres');
+        if (!Array.isArray(result.data) || !result.pagination || typeof result.status_summary !== 'object' || result.status_summary === null || Array.isArray(result.status_summary)) {
+          throw new Error('Resposta inválida ao carregar orçamentos.');
+        }
+        const projectedRows = result.data.map(projectQuotationListRow);
+        const totalPages = result.pagination.total_pages;
+        const totalRecords = result.pagination.total;
+        if (
+          projectedRows.some((row): row is null => row === null) ||
+          typeof totalPages !== 'number' || !Number.isSafeInteger(totalPages) || totalPages < 0 ||
+          typeof totalRecords !== 'number' || !Number.isSafeInteger(totalRecords) || totalRecords < 0
+        ) {
+          throw new Error('Resposta inválida ao carregar orçamentos.');
+        }
+        const projectedSummary: Record<string, number> = {};
+        for (const [key, value] of Object.entries(result.status_summary as Record<string, unknown>)) {
+          if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error('Resposta inválida ao carregar orçamentos.');
+          if (['Rascunho', 'Enviado', 'Aprovado', 'Perdido'].includes(key)) projectedSummary[key] = value;
+        }
+        setData(projectedRows as QuotationRow[]);
+        setTotalPages(totalPages);
+        setTotalRecords(totalRecords);
+        setStatusSummary(projectedSummary);
       } catch (err) {
         console.error('[quotations]', err);
         setError((err as Error).message || 'Erro ao carregar orçamentos.');
@@ -350,20 +352,18 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           onClick={() => handleDelete(row.id)}
           colorClass="hover:bg-destructive/10 hover:text-destructive"
         />
-        {!coreMode && (
-          <>
-            <ActionBtn
-              icon={FileText}
-              label={`Abrir PDF do orçamento ${row.id}`}
-              href={buildQuotationViewUrl(row.id)}
-            />
-            <ActionBtn
-              icon={Copy}
-              label={`Duplicar orçamento ${row.id}`}
-              onClick={() => handleDuplicate(row.id)}
-            />
-          </>
+        {row.revision_id && (
+          <ActionBtn
+            icon={FileText}
+            label={`Abrir PDF do orçamento ${row.id}`}
+            href={buildQuotationPreviewUrl(row.revision_id)}
+          />
         )}
+        <ActionBtn
+          icon={Copy}
+          label={`Duplicar orçamento ${row.id}`}
+          onClick={() => handleDuplicate(row.id)}
+        />
       </div>
     );
   };
@@ -403,21 +403,21 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
       {/* Status chips */}
       <div className="flex flex-wrap gap-2">
-        {STATUSES.map((s, i) => (
+        {STATUS_OPTIONS.map((option) => (
           <button
-            key={s}
-            onClick={() => onStatusClick(s)}
+            key={option.value}
+            onClick={() => onStatusClick(option.value)}
             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors
               ${
-                status === s
+                status === option.value
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'
               }`}
           >
-            {STATUS_DISPLAY[i]}
-            {s === '' && totalRecords > 0 && <span className="opacity-70">({totalRecords})</span>}
-            {s !== '' && statusSummary[s] !== undefined && (
-              <span className="opacity-70">({statusSummary[s]})</span>
+            {option.label}
+            {option.value === '' && totalRecords > 0 && <span className="opacity-70">({totalRecords})</span>}
+            {option.summaryKey && statusSummary[option.summaryKey] !== undefined && (
+              <span className="opacity-70">({statusSummary[option.summaryKey]})</span>
             )}
           </button>
         ))}
@@ -495,8 +495,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <TableCell className="text-right font-mono">{formatBRL(row.valor)}</TableCell>
                   <TableCell>
                     <StatusBadge
-                      status={row.status}
-                      label={STATUS_LABELS[row.status] || row.status}
+                      status={row.status_canonical || 'unknown'}
+                      label={STATUS_LABELS[row.status_canonical || ''] || 'Status desconhecido'}
                     />
                   </TableCell>
                   <TableCell className="text-center">{actionButtons(row)}</TableCell>
@@ -530,7 +530,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   />
                   <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
                 </div>
-                <StatusBadge status={row.status} label={STATUS_LABELS[row.status] || row.status} />
+                <StatusBadge
+                  status={row.status_canonical || 'unknown'}
+                  label={STATUS_LABELS[row.status_canonical || ''] || 'Status desconhecido'}
+                />
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-fg-muted">{row.cliente || '—'}</span>
@@ -544,20 +547,18 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     label={`Editar ${row.id}`}
                     onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                   />
-                  {!coreMode && (
-                    <>
-                      <ActionBtn
-                        icon={FileText}
-                        label={`PDF ${row.id}`}
-                        href={buildQuotationViewUrl(row.id)}
-                      />
-                      <ActionBtn
-                        icon={Copy}
-                        label={`Duplicar ${row.id}`}
-                        onClick={() => handleDuplicate(row.id)}
-                      />
-                    </>
+                  {row.revision_id && (
+                    <ActionBtn
+                      icon={FileText}
+                      label={`PDF ${row.id}`}
+                      href={buildQuotationPreviewUrl(row.revision_id)}
+                    />
                   )}
+                  <ActionBtn
+                    icon={Copy}
+                    label={`Duplicar ${row.id}`}
+                    onClick={() => handleDuplicate(row.id)}
+                  />
                 </div>
               </div>
             </div>

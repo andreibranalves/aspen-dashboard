@@ -33,7 +33,8 @@ test.describe('quotation cutover staging', () => {
     const detailResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.postgresQuotationId));
     expect(detailResponse.status()).toBe(200);
     const detail = await detailResponse.json();
-    assert.equal(detail.core_mode, true, 'known PostgreSQL quotation must be in core mode');
+    assert.equal(Object.keys(detail).some((key) => key.endsWith('_mode')), false, 'quotation detail must not expose rollout metadata');
+    assert.equal(Object.prototype.hasOwnProperty.call(detail, 'origin'), false, 'quotation detail must not expose origin metadata');
     assert.ok(detail.revision_id, 'known PostgreSQL quotation must expose revision_id');
 
     await page.goto('/#/quotations');
@@ -78,7 +79,7 @@ test.describe('quotation cutover staging', () => {
     }
   });
 
-  test('uses disposable scratch quotation for public outbox and UI revision edit', async ({ page }) => {
+  test('uses disposable scratch quotation for public link and UI revision edit', async ({ page }) => {
     let scratchDetail;
     let mainError;
     let cleanupError;
@@ -86,7 +87,8 @@ test.describe('quotation cutover staging', () => {
       const detailResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
       expect(detailResponse.status()).toBe(200);
       scratchDetail = await detailResponse.json();
-      assert.equal(scratchDetail.core_mode, true, 'scratch quotation must be PostgreSQL');
+      assert.equal(Object.keys(scratchDetail).some((key) => key.endsWith('_mode')), false, 'scratch quotation must not expose rollout metadata');
+      assert.equal(Object.prototype.hasOwnProperty.call(scratchDetail, 'origin'), false, 'scratch quotation must not expose origin metadata');
       assert.equal(
         scratchDetail.status_canonical,
         'enviado',
@@ -111,39 +113,7 @@ test.describe('quotation cutover staging', () => {
       expect(publicResponse.headers()['x-document-revision']).toBe(scratchDetail.revision_id);
       const publicHtml = await publicResponse.text();
       expect(publicHtml).not.toContain('/api/view');
-      expect(publicHtml).not.toMatch(/ERPNEXT_TOKEN|Bearer\s+/i);
-
-      const aggregateId = scratchDetail.quotation_uuid || scratchDetail.quote_id || scratchDetail.id;
-      const inspectResponse = await apiRequest(
-        page,
-        'GET',
-        `/api/quotation-outbox-inspect?quotation_id=${encodeURIComponent(aggregateId)}`,
-        { headers: { 'x-e2e-username': CONFIG.username } },
-      );
-      expect(inspectResponse.status()).toBe(200);
-      const inspected = await inspectResponse.json();
-      expect(inspected.identity_attested).toBe(true);
-      expect(inspected.providers_disabled).toBe(true);
-      const issuedEvent = inspected.events.find(
-        (event) => event.event_type === 'quotation.issued' && event.provider === 'n8n',
-      );
-      assert.ok(issuedEvent, 'canonical quotation.issued outbox event must be present');
-      expect(issuedEvent.quotation_id).toBe(aggregateId);
-      expect(issuedEvent.revision_id).toBe(scratchDetail.revision_id);
-      expect(issuedEvent.business_number).toBe(scratchDetail.id);
-      expect(['pending', 'retry']).toContain(issuedEvent.status);
-      expect(Object.keys(issuedEvent).sort()).toEqual([
-        'attempts',
-        'business_number',
-        'created_at',
-        'event_type',
-        'idempotency_key',
-        'next_attempt_at',
-        'provider',
-        'quotation_id',
-        'revision_id',
-        'status',
-      ]);
+      expect(publicHtml).not.toMatch(/EXTERNAL_API_TOKEN|Bearer\s+/i);
 
       const revoked = await apiRequest(
         page,
@@ -210,20 +180,6 @@ test.describe('quotation cutover staging', () => {
 
     {
       try {
-        // Always use the declared disposable scratch ID; detail fields only refine
-        // the outbox aggregate identity for that same fixture.
-        const aggregateId =
-          scratchDetail?.quotation_uuid || scratchDetail?.quote_id || scratchDetail?.id || CONFIG.scratchQuotationId;
-        const purge = await apiRequest(
-          page,
-          'DELETE',
-          `/api/quotation-outbox-inspect?quotation_id=${encodeURIComponent(aggregateId)}`,
-          { headers: { 'x-e2e-username': CONFIG.username } },
-        );
-        if (purge.status() !== 204) {
-          throw new Error(`STAGING_FIXTURE_RESET failed: outbox purge returned ${purge.status()}`);
-        }
-
         const currentResponse = await apiRequest(page, 'GET', quotationPath(CONFIG.scratchQuotationId));
         if (currentResponse.status() === 404) {
           // Already cleaned by a prior attempt.
@@ -270,11 +226,8 @@ function assertNoForbiddenEgress(requests) {
     const host = parsed.hostname.toLowerCase();
     return (
       path.includes('/api/send-whatsapp') ||
-      host.includes('frappe') ||
-      host.includes('erpnext') ||
-      host.includes('n8n') ||
-      host.includes('evolution')
+      /(?:external-crm|external-erp)/i.test(host)
     );
   });
-  assert.equal(forbidden.length, 0, 'staging browser made a forbidden legacy/provider request');
+  assert.equal(forbidden.length, 0, 'staging browser made a forbidden external request');
 }

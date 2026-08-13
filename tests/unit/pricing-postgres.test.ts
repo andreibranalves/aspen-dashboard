@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 import { createPostgresPricingRepository } from '../../api/_db/pricing-repository.js';
 import { createPostgresProductCatalogRepository } from '../../api/_db/product-catalog-repository.js';
 import { createPostgresProductsRepository } from '../../api/_db/products-repository.js';
-import { productPricingTiers, products } from '../../api/_db/schema.js';
+import { productActivityEvents, productPricingTiers, products } from '../../api/_db/schema.js';
 import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
 import * as schema from '../../api/_db/schema.js';
 import { createCoreHandler as createProductsCoreHandler } from '../../api/_functions/products-core.js';
@@ -44,6 +44,9 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
   const sku = `TEST-PRICING-${Date.now()}`;
   const createFailureSku = `${sku}-CREATE`;
   const updateFailureSku = `${sku}-UPDATE`;
+  const catalogOrderSku = `${sku}-ORDER`;
+  const emptyPricingSku = `${sku}-EMPTY`;
+  const archiveSku = `${sku}-ARCHIVE`;
   const productsRepository = createPostgresProductsRepository(() => db);
   const pricingRepository = createPostgresPricingRepository(() => db);
 
@@ -65,6 +68,11 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
     ]);
     assert.equal(resolveProductPrice(saved, '100.125').rate, '8.75');
     assert.equal(resolveProductPrice(saved, '100.124').rate, '10.00');
+    const activityRows = () => db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, sku));
+    assert.equal((await activityRows()).filter((row) => row.tipo === 'preco').length, 1);
 
     await assert.rejects(
       () => pricingRepository.replace(sku, {
@@ -110,6 +118,7 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
       }));
       assert.equal(failedCreate.statusCode, 503);
       assert.equal(await productsRepository.get(createFailureSku), null);
+      assert.equal((await db.select().from(productActivityEvents).where(eq(productActivityEvents.productSku, createFailureSku))).length, 0);
 
       const failedUpdate = await updateCore(event('PATCH', {
         nome: 'Não deve persistir',
@@ -121,7 +130,8 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
       const unchangedPricing = await pricingRepository.get(updateFailureSku);
       assert.equal(unchangedPricing?.preco_base, '20.00');
       assert.deepEqual(unchangedPricing?.precos.map((row) => [row.minimum_quantity, row.unit_price]), [['30.000', '18.00']]);
-      assert.equal(parse(failedUpdate).source, 'postgres');
+      assert.equal(parse(failedUpdate).source, undefined);
+      assert.equal((await db.select().from(productActivityEvents).where(eq(productActivityEvents.productSku, updateFailureSku))).filter((row) => row.tipo === 'preco').length, 1);
     } finally {
       await client.unsafe('DROP TRIGGER IF EXISTS pricing_test_fail_tier_insert_trigger ON product_pricing_tiers');
       await client.unsafe('DROP FUNCTION IF EXISTS pricing_test_fail_tier_insert()');
@@ -141,6 +151,96 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
     assert.deepEqual(emptied?.precos, []);
     assert.equal(emptied?.pricing_available, false);
 
+    const beforeRapidUpdates = (await activityRows()).filter((row) => row.tipo === 'preco');
+    await pricingRepository.replace(sku, { preco_base: '21.00', precos: [] });
+    await pricingRepository.replace(sku, { preco_base: '22.00', precos: [] });
+    const afterRapidUpdates = (await activityRows()).filter((row) => row.tipo === 'preco');
+    assert.equal(afterRapidUpdates.length, beforeRapidUpdates.length + 2);
+    assert.equal(new Set(afterRapidUpdates.map((row) => row.referenceId)).size, afterRapidUpdates.length);
+    await pricingRepository.replace(sku, { preco_base: '22.00', precos: [] });
+    assert.equal((await activityRows()).filter((row) => row.tipo === 'preco').length, afterRapidUpdates.length);
+
+    await catalogRepository.create(
+      { sku: catalogOrderSku, nome: 'Produto com faixas reordenadas' },
+      {
+        preco_base: '30.00',
+        precos: [
+          { minimum_quantity: '100', unit_price: '20.00' },
+          { minimum_quantity: '30', unit_price: '25.00' },
+        ],
+      },
+    );
+    const catalogActivitiesBeforeReorder = await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, catalogOrderSku));
+    await db.transaction(async (tx) => {
+      const tiers = await tx
+        .select()
+        .from(productPricingTiers)
+        .where(eq(productPricingTiers.productSku, catalogOrderSku));
+      await tx.delete(productPricingTiers).where(eq(productPricingTiers.productSku, catalogOrderSku));
+      await tx.insert(productPricingTiers).values([...tiers].reverse().map((tier) => ({
+        productSku: tier.productSku,
+        minimumQuantity: tier.minimumQuantity,
+        unitPrice: tier.unitPrice,
+        criadoEm: tier.criadoEm,
+        atualizadoEm: tier.atualizadoEm,
+      })));
+    });
+    await catalogRepository.update(catalogOrderSku, {}, {
+      preco_base: '30.00',
+      precos: [
+        { minimum_quantity: '30', unit_price: '25.00' },
+        { minimum_quantity: '100', unit_price: '20.00' },
+      ],
+    });
+    const catalogActivitiesAfterReorder = await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, catalogOrderSku));
+    assert.equal(catalogActivitiesAfterReorder.length, catalogActivitiesBeforeReorder.length);
+    const catalogProductEventsBeforeRapid = catalogActivitiesAfterReorder.filter((row) => row.tipo === 'produto');
+    await catalogRepository.update(catalogOrderSku, { nome: 'Produto reordenado A' });
+    await catalogRepository.update(catalogOrderSku, { nome: 'Produto reordenado B' });
+    const catalogProductEventsAfterRapid = (await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, catalogOrderSku))).filter((row) => row.tipo === 'produto');
+    assert.equal(catalogProductEventsAfterRapid.length, catalogProductEventsBeforeRapid.length + 2);
+    assert.equal(new Set(catalogProductEventsAfterRapid.map((row) => row.referenceId)).size, catalogProductEventsAfterRapid.length);
+    await catalogRepository.update(catalogOrderSku, { nome: 'Produto reordenado B' });
+    assert.equal((await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, catalogOrderSku))).filter((row) => row.tipo === 'produto').length, catalogProductEventsAfterRapid.length);
+
+    await catalogRepository.create({ sku: emptyPricingSku, nome: 'Produto sem preço' }, {
+      preco_base: null,
+      precos: [],
+    });
+    const emptyPricingActivities = await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, emptyPricingSku));
+    assert.deepEqual(emptyPricingActivities.map((row) => row.texto), ['Produto criado']);
+
+    const archiveCreate = await productsCore(event('POST', { sku: archiveSku, nome: 'Produto arquivável' }));
+    assert.equal(archiveCreate.statusCode, 201);
+    const hardDelete = await productsCore(event('DELETE', undefined, { id: archiveSku, permanent: 'true' }));
+    assert.equal(hardDelete.statusCode, 409);
+    const archive = await productsCore(event('DELETE', undefined, { id: archiveSku }));
+    assert.equal(archive.statusCode, 200);
+    assert.equal((await productsRepository.get(archiveSku))?.ativo, false);
+    const archiveAgain = await productsCore(event('DELETE', undefined, { id: archiveSku }));
+    assert.equal(archiveAgain.statusCode, 200);
+    const archiveActivities = await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, archiveSku));
+    assert.equal(archiveActivities.filter((row) => row.texto === 'Produto arquivado').length, 1);
+    await assert.rejects(() => db.delete(products).where(eq(products.sku, archiveSku)));
+
     await assert.rejects(
       () => db.insert(productPricingTiers).values([
         { productSku: sku, minimumQuantity: '2.000', unitPrice: '1.00' },
@@ -156,7 +256,8 @@ test('PostgreSQL pricing persists exact numerics, rejects duplicates and replace
       },
     );
   } finally {
-    for (const cleanupSku of [sku, createFailureSku, updateFailureSku]) {
+    for (const cleanupSku of [sku, createFailureSku, updateFailureSku, catalogOrderSku, emptyPricingSku, archiveSku]) {
+      await db.delete(productActivityEvents).where(eq(productActivityEvents.productSku, cleanupSku)).catch(() => undefined);
       await db.delete(productPricingTiers).where(eq(productPricingTiers.productSku, cleanupSku)).catch(() => undefined);
       await db.delete(products).where(eq(products.sku, cleanupSku)).catch(() => undefined);
     }

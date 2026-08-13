@@ -25,7 +25,7 @@ test.describe('Configurações de orçamento', () => {
     await page.route('**/api/settings**', async (route) => {
       if (route.request().method() === 'GET') {
         const response = route.request().url().includes('scope=operational')
-          ? { operational_mode: false }
+          ? {}
           : settings;
         await route.fulfill({
           status: 200,
@@ -100,7 +100,7 @@ test.describe('Configurações de orçamento', () => {
     /** @type {{ template_padrao?: string } | undefined} */
     let savedSettings;
     await page.route('**/api/settings?scope=operational**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
     });
     await page.route('**/api/settings', async (route) => {
       if (route.request().method() === 'GET') {
@@ -225,7 +225,7 @@ test.describe('Configurações de orçamento', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ operational_mode: false }),
+        body: JSON.stringify({}),
       });
     });
     await page.route('**/api/settings**', async (route) => {
@@ -233,12 +233,12 @@ test.describe('Configurações de orçamento', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ operational_mode: false }),
+          body: JSON.stringify({}),
         });
         return;
       }
       settingsCalls += 1;
-      if (settingsCalls <= 5) {
+      if (settingsCalls <= 1) {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -249,7 +249,7 @@ test.describe('Configurações de orçamento', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ...INITIAL_SETTINGS, operational_mode: false }),
+        body: JSON.stringify({ ...INITIAL_SETTINGS }),
       });
     });
 

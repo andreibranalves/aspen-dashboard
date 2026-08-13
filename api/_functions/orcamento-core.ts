@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   createPostgresQuoteDraftRepository,
   QuoteDraftConflictError,
@@ -8,7 +8,7 @@ import {
   type QuoteDraftCreateInput,
   type QuoteDraftRepository,
 } from '../_db/quote-repository.js';
-import { responseMetadata } from './orcamento-mode.js';
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface OrcamentoCoreDependencies {
   repository: QuoteDraftRepository;
@@ -18,7 +18,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, ...responseMetadata('core') }),
+    body: JSON.stringify(payload),
   };
 }
 
@@ -29,24 +29,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function logError(error: unknown): void {
   const kind = error instanceof Error ? error.name : typeof error;
   console.error(`[orcamento-core] create failed (${kind})`);
-}
-
-function draftResponse(result: unknown): Record<string, unknown> {
-  const payload = result as Record<string, unknown>;
-  const eventId = typeof payload.outbox_event_id === 'string' ? payload.outbox_event_id : '';
-  const eventType = typeof payload.outbox_event_type === 'string' ? payload.outbox_event_type : '';
-  const idempotencyKey =
-    typeof payload.outbox_idempotency_key === 'string' ? payload.outbox_idempotency_key : '';
-  if (!eventId || !eventType || !idempotencyKey) return payload;
-  return {
-    ...payload,
-    outbox: {
-      status: 'queued',
-      event_id: eventId,
-      event_type: eventType,
-      idempotency_key: idempotencyKey,
-    },
-  };
 }
 
 function errorResponse(error: unknown): FunctionResult {
@@ -68,7 +50,7 @@ export function createCoreHandler(
   dependencies: OrcamentoCoreDependencies = {
     repository: createPostgresQuoteDraftRepository(),
   },
-): LegacyHandler {
+): Handler {
   return async function orcamentoCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });
 
@@ -89,7 +71,7 @@ export function createCoreHandler(
         return json(503, { error: 'Não foi possível salvar o rascunho do orçamento. Tente novamente.' });
       }
       const result = await createDraft(extracted as QuoteDraftCreateInput);
-      return json(201, draftResponse(result));
+      return json(201, result as unknown as Record<string, unknown>);
     } catch (error) {
       return errorResponse(error);
     }

@@ -2,7 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
-  useMemo,
+  useRef,
   type ReactNode,
   type ChangeEvent,
   type ComponentType,
@@ -28,8 +28,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import SkeletonDetail from '@/components/SkeletonDetail';
-
-const BRACKETS = [30, 100, 300, 500, 1000];
 
 interface Produto {
   sku: string;
@@ -57,32 +55,24 @@ interface ProductDetail {
   precos: Preco[];
   preco_base?: string | number | null;
   pricing_available?: boolean;
-  core_mode?: boolean;
-  source?: string;
 }
 
-interface ProductsModeResponse {
-  core_mode?: unknown;
-}
-
-interface ResolvedProductMode {
-  sku: string;
-  core: boolean;
+interface RequestRecord {
+  key: string;
+  generation: number;
+  promise: Promise<void>;
 }
 
 interface Atividade {
   tipo: string;
   data: string;
   texto: string;
+  id: string;
 }
 
 interface Toast {
   type: 'success' | 'error';
   message: string;
-}
-
-interface Rates {
-  [faixa: number]: string;
 }
 
 interface EditedProduct {
@@ -93,7 +83,6 @@ interface EditedProduct {
   marca: string;
   unidade: string;
   ativo: boolean;
-  rates: Rates;
   precoBase: string;
   tiers: Array<{ minimum_quantity: string; unit_price: string }>;
 }
@@ -116,17 +105,16 @@ function buildEmptyProduct(): ProductDetail {
   };
 }
 
-function buildEmptyRates(): Rates {
-  return Object.fromEntries(BRACKETS.map((faixa) => [faixa, '']));
+function formatActivityDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
 }
 
 function buildEditedState(produto?: Produto | null, precos: Preco[] = [], precoBase?: string | number | null): EditedProduct {
-  const rates = buildEmptyRates();
-  for (const faixa of BRACKETS) {
-    const row = precos.find((p) => Number(p.faixa) === faixa);
-    rates[faixa] = row?.rate != null ? String(row.rate) : '';
-  }
-
   return {
     sku: produto?.sku || '',
     nome: produto?.nome || '',
@@ -135,7 +123,6 @@ function buildEditedState(produto?: Produto | null, precos: Preco[] = [], precoB
     marca: produto?.marca || '',
     unidade: produto?.unidade || 'Und',
     ativo: produto?.ativo ?? true,
-    rates,
     precoBase: precoBase == null ? '' : String(precoBase),
     tiers: precos
       .map((row) => ({
@@ -144,6 +131,13 @@ function buildEditedState(produto?: Produto | null, precos: Preco[] = [], precoB
       }))
       .filter((row) => row.minimum_quantity !== '' || row.unit_price !== ''),
   };
+}
+
+function selectContextualErrorMessage(error: unknown, fallback: string): string {
+  const message = (error as { message?: unknown })?.message;
+  if (typeof message !== 'string') return fallback;
+  const trimmedMessage = message.trim();
+  return trimmedMessage && !/^Erro \d+$/i.test(trimmedMessage) ? message : fallback;
 }
 
 interface SectionCardProps {
@@ -231,88 +225,165 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const [deleting, setDeleting] = useState<boolean>(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
-  const [resolvedProductMode, setResolvedProductMode] = useState<ResolvedProductMode | null>(null);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityLoading, setActivityLoading] = useState<boolean>(() => !isNewProduct);
   const [activityRefresh, setActivityRefresh] = useState(0);
+  const mountedRef = useRef(false);
+  const lifecycleCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentSkuRef = useRef(decodedSku);
+  const productRequestRef = useRef<RequestRecord | null>(null);
+  const activityRequestRef = useRef<RequestRecord | null>(null);
+  const productGenerationRef = useRef(0);
+  const activityGenerationRef = useRef(0);
+  currentSkuRef.current = decodedSku;
   const setTopBarActions = useSetTopBarActions();
 
-  const modeForCurrentSku =
-    resolvedProductMode?.sku === decodedSku ? resolvedProductMode.core : null;
-  const coreMode = modeForCurrentSku === true;
-  const legacyMode = modeForCurrentSku === false;
+  useEffect(() => {
+    if (lifecycleCleanupRef.current !== null) {
+      clearTimeout(lifecycleCleanupRef.current);
+      lifecycleCleanupRef.current = null;
+    }
+    mountedRef.current = true;
 
-  const fetchProduct = useCallback(async () => {
+    return () => {
+      mountedRef.current = false;
+      lifecycleCleanupRef.current = setTimeout(() => {
+        lifecycleCleanupRef.current = null;
+        if (mountedRef.current) return;
+        currentSkuRef.current = '';
+        productRequestRef.current = null;
+        activityRequestRef.current = null;
+        productGenerationRef.current += 1;
+        activityGenerationRef.current += 1;
+      }, 0);
+    };
+  }, []);
+
+  const fetchProduct = useCallback(async (options: { force?: boolean } = {}) => {
+    if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
+    const requestKey = decodedSku;
+    const previousRequest = productRequestRef.current;
+    if (!options.force && previousRequest?.key === requestKey) {
+      return previousRequest.promise;
+    }
+    if (currentSkuRef.current !== decodedSku) return;
+
+    const generation = ++productGenerationRef.current;
     setLoading(true);
     setError(null);
-    try {
-      if (isNewProduct) {
-        const modeResult = await apiGet<ProductsModeResponse>('/products?limit=1');
-        if (typeof modeResult?.core_mode !== 'boolean') {
-          throw new Error('MODO_INDISPONIVEL');
+
+    const requestRecord: RequestRecord = {
+      key: requestKey,
+      generation,
+      promise: Promise.resolve(),
+    };
+    productRequestRef.current = requestRecord;
+    const request = (async () => {
+      const isCurrentRequest = () =>
+        mountedRef.current &&
+        currentSkuRef.current === requestKey &&
+        productRequestRef.current?.key === requestKey &&
+        productRequestRef.current?.generation === generation;
+
+      try {
+        if (isNewProduct) {
+          const emptyProduct = buildEmptyProduct();
+          if (!isCurrentRequest()) return;
+          setProduct(emptyProduct);
+          setAtividades([]);
+          setActivityError(null);
+          setEdited(buildEditedState(emptyProduct.produto, [], emptyProduct.preco_base));
+          setEditing(true);
+          return;
         }
 
-        setResolvedProductMode({ sku: decodedSku, core: modeResult.core_mode });
-        const emptyProduct = buildEmptyProduct();
-        setProduct(emptyProduct);
-        setAtividades([]);
-        setEdited(buildEditedState(emptyProduct.produto, [], emptyProduct.preco_base));
-        setEditing(true);
-        return;
+        const result = await apiGet<ProductDetail>(
+          `/product-detail?sku=${encodeURIComponent(decodedSku)}`
+        );
+        if (!isCurrentRequest()) return;
+        setProduct(result);
+        setEditing(false);
+        setEdited({});
+      } catch (err) {
+        if (!isCurrentRequest()) return;
+        const apiErr = err as { status?: number; message?: string };
+        if (apiErr.status === 404) setError('not_found');
+        else setError(apiErr.message || 'Erro ao carregar produto.');
+      } finally {
+        if (isCurrentRequest()) setLoading(false);
       }
-
-      const result = await apiGet<ProductDetail>(
-        `/product-detail?sku=${encodeURIComponent(decodedSku)}`
-      );
-      setProduct(result);
-      setResolvedProductMode({ sku: decodedSku, core: result.core_mode === true });
-      if (result.core_mode === true) setAtividades([]);
-      setEditing(false);
-      setEdited({});
-    } catch (err) {
-      const apiErr = err as { status?: number; message?: string };
-      if (isNewProduct)
-        setError('Não foi possível identificar o modo do catálogo. Tente novamente.');
-      else if (apiErr.status === 404) setError('not_found');
-      else setError(apiErr.message || 'Erro ao carregar produto.');
+    })();
+    requestRecord.promise = request;
+    try {
+      await request;
     } finally {
-      setLoading(false);
+      if (productRequestRef.current === requestRecord) productRequestRef.current = null;
     }
   }, [decodedSku, isNewProduct]);
 
-  const fetchAtividades = useCallback(async () => {
-    if (isNewProduct || !legacyMode) {
+  const fetchAtividades = useCallback(async (options: { force?: boolean } = {}) => {
+    if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
+    const requestKey = `${decodedSku}:${activityRefresh}`;
+    if (isNewProduct) {
+      activityRequestRef.current = null;
       setAtividades([]);
+      setActivityError(null);
+      setActivityLoading(false);
       return;
     }
-    try {
-      const result = await apiGet<{ atividades?: Atividade[] }>(
-        `/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=3`
-      );
-      setAtividades(result.atividades || []);
-    } catch {
-      setAtividades([]);
+
+    const previousRequest = activityRequestRef.current;
+    if (!options.force && previousRequest?.key === requestKey) {
+      return previousRequest.promise;
     }
-  }, [decodedSku, isNewProduct, legacyMode]);
+
+    const generation = ++activityGenerationRef.current;
+    setAtividades([]);
+    setActivityError(null);
+    setActivityLoading(true);
+
+    const requestRecord: RequestRecord = {
+      key: requestKey,
+      generation,
+      promise: Promise.resolve(),
+    };
+    activityRequestRef.current = requestRecord;
+    const request = (async () => {
+      const isCurrentRequest = () =>
+        mountedRef.current &&
+        currentSkuRef.current === decodedSku &&
+        activityRequestRef.current?.key === requestKey &&
+        activityRequestRef.current?.generation === generation;
+
+      try {
+        const result = await apiGet<{ atividades?: Atividade[] }>(
+          `/product-activity?sku=${encodeURIComponent(decodedSku)}&limit=3`
+        );
+        if (!isCurrentRequest()) return;
+        setAtividades(result.atividades || []);
+      } catch {
+        if (!isCurrentRequest()) return;
+        setAtividades([]);
+        setActivityError('Não foi possível carregar a atividade.');
+      } finally {
+        if (isCurrentRequest()) setActivityLoading(false);
+      }
+    })();
+    requestRecord.promise = request;
+    try {
+      await request;
+    } finally {
+      if (activityRequestRef.current === requestRecord) activityRequestRef.current = null;
+    }
+  }, [activityRefresh, decodedSku, isNewProduct]);
 
   useEffect(() => {
-    fetchProduct();
+    void fetchProduct();
   }, [fetchProduct]);
 
   useEffect(() => {
-    fetchAtividades();
-  }, [activityRefresh, fetchAtividades]);
-
-  const precosRates = useMemo<Preco[]>(() => {
-    return BRACKETS.map((faixa) => {
-      if (editing) {
-        const raw = edited.rates?.[faixa];
-        const rate = raw === '' || raw == null ? null : Number(raw);
-        return { faixa, rate: Number.isNaN(rate) ? null : rate };
-      }
-
-      const row = product?.precos?.find((p) => Number(p.faixa) === faixa);
-      return { faixa, rate: row?.rate != null ? Number(row.rate) : null };
-    });
-  }, [editing, edited.rates, product?.precos]);
+    void fetchAtividades();
+  }, [fetchAtividades]);
 
   const startEditing = useCallback(() => {
     const { produto, precos = [], preco_base } = product || {};
@@ -330,7 +401,17 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     setEdited({});
   }, [isNewProduct, navigate]);
 
+  const refreshActivity = useCallback(() => {
+    if (!mountedRef.current) return;
+    activityRequestRef.current = null;
+    setAtividades([]);
+    setActivityError(null);
+    setActivityLoading(true);
+    setActivityRefresh((current) => current + 1);
+  }, []);
+
   const saveProduct = useCallback(async () => {
+    if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
     setSaving(true);
     setToast(null);
 
@@ -344,7 +425,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         marca,
         unidade,
         ativo,
-        rates = {},
         precoBase = '',
         tiers = [],
       } = edited as EditedProduct;
@@ -361,44 +441,28 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         return;
       }
 
-      const precos = BRACKETS.map((faixa) => {
-        const raw = rates[faixa];
-        const rate = raw === '' || raw == null ? null : Number(raw);
-        return { faixa, rate };
-      }).filter((p) => p.rate != null && !Number.isNaN(p.rate));
+      const createPayload: Record<string, unknown> = {
+        sku: normalizedSku,
+        nome: normalizedNome,
+        descricao: descricao.trim(),
+        categoria: categoria?.trim() || undefined,
+        marca: marca?.trim() || undefined,
+        unidade: unidade?.trim() || 'Und',
+        preco_base: precoBase.trim() === '' ? null : precoBase.trim(),
+        precos: tiers.map((tier) => ({
+          minimum_quantity: tier.minimum_quantity,
+          unit_price: tier.unit_price,
+        })),
+      };
 
       if (isNewProduct) {
-        // The catalog mode is resolved before this form becomes editable, so
-        // core pricing can be committed atomically with product creation.
-        const creatingCore = coreMode;
-        const createPayload: Record<string, unknown> = {
-          sku: normalizedSku,
-          nome: normalizedNome,
-          descricao: descricao.trim(),
-          categoria: categoria?.trim() || undefined,
-          marca: marca?.trim() || undefined,
-          unidade: unidade?.trim() || 'Und',
-        };
-        if (creatingCore) {
-          createPayload.preco_base = precoBase.trim() === '' ? null : precoBase.trim();
-          createPayload.precos = tiers.map((tier) => ({
-            minimum_quantity: tier.minimum_quantity,
-            unit_price: tier.unit_price,
-          }));
+        await apiPost('/products', createPayload);
+        if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
+        if (ativo !== true) {
+          await apiPut(`/product-update?sku=${encodeURIComponent(normalizedSku)}`, { ativo });
+          if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
         }
-        await apiPost<{ core_mode?: boolean }>('/products', createPayload);
-        setResolvedProductMode({ sku: normalizedSku, core: creatingCore });
-
-        const extraBody: Record<string, unknown> = {};
-        if ((descricao || '').trim()) extraBody.descricao = descricao.trim();
-        if (ativo !== true) extraBody.ativo = ativo;
-        if (!creatingCore && (marca || '').trim()) extraBody.marca = marca.trim();
-        if (!creatingCore && precos.length > 0) extraBody.precos = precos;
-
-        if (Object.keys(extraBody).length > 0) {
-          await apiPut(`/product-update?sku=${encodeURIComponent(normalizedSku)}`, extraBody);
-        }
-
+        if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
         setToast({ type: 'success', message: 'Produto criado com sucesso!' });
         clearProductCache();
         navigate(`/products/${encodeURIComponent(normalizedSku)}`);
@@ -413,27 +477,17 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       if ((unidade || '') !== (produto?.unidade || '')) metadata.unidade = unidade || '';
       if (ativo !== produto?.ativo) metadata.ativo = ativo;
 
-      const body: Record<string, unknown> = {};
-      if (Object.keys(metadata).length > 0) Object.assign(body, metadata);
-      if (coreMode) {
-        body.preco_base = precoBase.trim() === '' ? null : precoBase.trim();
-        body.precos = tiers.map((tier) => ({
-          minimum_quantity: tier.minimum_quantity,
-          unit_price: tier.unit_price,
-        }));
-      } else if (precos.length > 0) {
-        body.precos = precos;
-      }
-
-      if (Object.keys(body).length === 0) {
-        setToast({ type: 'error', message: 'Nenhuma alteração para salvar.' });
-        return;
-      }
+      const body: Record<string, unknown> = {
+        ...metadata,
+        preco_base: createPayload.preco_base,
+        precos: createPayload.precos,
+      };
 
       const result = await apiPut<{ success?: boolean }>(
         `/product-update?sku=${encodeURIComponent(decodedSku)}`,
         body
       );
+      if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       if (!result.success) {
         setToast({ type: 'error', message: 'Erro ao salvar produto.' });
         return;
@@ -442,56 +496,60 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       setToast({ type: 'success', message: 'Produto atualizado com sucesso!' });
       clearProductCache();
       setEditing(false);
-      await fetchProduct();
-      setActivityRefresh((current) => current + 1);
+      refreshActivity();
+      await fetchProduct({ force: true });
     } catch (err) {
+      if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       const apiErr = err as { message?: string };
       setToast({ type: 'error', message: apiErr.message || 'Erro ao salvar produto.' });
     } finally {
-      setSaving(false);
+      if (mountedRef.current && currentSkuRef.current === decodedSku) setSaving(false);
     }
   }, [
-    coreMode,
     decodedSku,
     edited,
-    fetchAtividades,
     fetchProduct,
     isNewProduct,
     navigate,
     product,
+    refreshActivity,
   ]);
 
   const deleteProduct = useCallback(async () => {
-    if (isNewProduct) return;
-    if (
-      !window.confirm(
-        `Tem certeza que deseja ${coreMode && product?.produto.ativo === false ? 'restaurar' : coreMode ? 'arquivar' : 'excluir'} o produto ${decodedSku}?`
-      )
-    )
+    if (isNewProduct || !mountedRef.current || currentSkuRef.current !== decodedSku) return;
+    const restoring = product?.produto.ativo === false;
+    if (!window.confirm(`Tem certeza que deseja ${restoring ? 'restaurar' : 'arquivar'} o produto ${decodedSku}?`)) {
       return;
+    }
 
     setDeleting(true);
     setToast(null);
     try {
-      if (coreMode && product?.produto.ativo === false) {
+      if (restoring) {
         await apiPatch(`/product-update?sku=${encodeURIComponent(decodedSku)}`, { ativo: true });
       } else {
         await apiDelete(`/products?id=${encodeURIComponent(decodedSku)}`);
       }
+      if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       clearProductCache();
-      if (coreMode) await fetchProduct();
-      else navigate('/products');
+      refreshActivity();
+      await fetchProduct({ force: true });
     } catch (err) {
-      const apiErr = err as { message?: string };
-      setToast({ type: 'error', message: apiErr.message || 'Erro ao excluir produto.' });
+      if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
+      const fallbackMessage = restoring
+        ? 'Erro ao restaurar produto.'
+        : 'Erro ao arquivar produto.';
+      setToast({ type: 'error', message: selectContextualErrorMessage(err, fallbackMessage) });
     } finally {
-      setDeleting(false);
+      if (mountedRef.current && currentSkuRef.current === decodedSku) setDeleting(false);
     }
-  }, [coreMode, decodedSku, fetchProduct, isNewProduct, navigate, product]);
+  }, [decodedSku, fetchProduct, isNewProduct, product, refreshActivity]);
 
   useEffect(() => {
     if (!toast) return undefined;
-    const timer = setTimeout(() => setToast(null), 5000);
+    const timer = setTimeout(() => {
+      if (mountedRef.current) setToast(null);
+    }, 5000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -545,33 +603,19 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
             size="sm"
             onClick={deleteProduct}
             disabled={saving || deleting}
-            aria-label={
-              coreMode
-                ? product?.produto.ativo === false
-                  ? 'Restaurar produto'
-                  : 'Arquivar produto'
-                : 'Excluir produto'
-            }
+            aria-label={product?.produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
             className="text-destructive border-destructive/20 hover:bg-destructive/10"
           >
-            {coreMode ? (
-              product?.produto.ativo === false ? (
-                <ArchiveRestore size={14} />
-              ) : (
-                <Archive size={14} />
-              )
+            {product?.produto.ativo === false ? (
+              <ArchiveRestore size={14} />
             ) : (
-              <Trash2 size={14} />
+              <Archive size={14} />
             )}
             {deleting
-              ? coreMode
-                ? 'Atualizando…'
-                : 'Excluindo…'
-              : coreMode
-                ? product?.produto.ativo === false
-                  ? 'Restaurar'
-                  : 'Arquivar'
-                : 'Excluir'}
+              ? 'Atualizando…'
+              : product?.produto.ativo === false
+                ? 'Restaurar'
+                : 'Arquivar'}
           </Button>
         )}
       </div>
@@ -583,7 +627,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     deleteProduct,
     deleting,
     error,
-    coreMode,
     isNewProduct,
     loading,
     product,
@@ -612,7 +655,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         <AlertTriangle size={40} className="text-destructive" />
         <p className="text-lg font-medium">Erro ao carregar produto</p>
         <p className="text-sm">{error}</p>
-        <Button variant="outline" className="min-h-10" onClick={fetchProduct}>
+        <Button variant="outline" className="min-h-10" onClick={() => fetchProduct({ force: true })}>
           Tentar novamente
         </Button>
       </div>
@@ -791,8 +834,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </div>
       </SectionCard>
 
-      {coreMode ? (
-        <SectionCard
+      <SectionCard
           title="Preços do catálogo"
           description="Configure um preço base opcional e faixas dinâmicas por quantidade."
           icon={Tag}
@@ -920,50 +962,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               ) : null}
             </div>
           )}
-        </SectionCard>
-      ) : (
-        <SectionCard
-          title="Preços por faixa"
-          description="As 5 faixas sempre aparecem; sem preço definido mostramos “—”."
-          icon={Tag}
-        >
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {BRACKETS.map((faixa) => {
-              const row = precosRates.find((p) => p.faixa === faixa);
-              return (
-                <div key={faixa} className="rounded-xl border border-line bg-surface/50 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">
-                    {faixa.toLocaleString('pt-BR')} un.
-                  </p>
-                  {editing ? (
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      aria-label={`Preço da faixa ${faixa} unidades`}
-                      value={edited.rates?.[faixa] ?? ''}
-                      onChange={(e) =>
-                        setEdited((prev) => ({
-                          ...prev,
-                          rates: { ...prev.rates, [faixa]: e.target.value },
-                        }))
-                      }
-                      className="mt-2 text-sm font-mono"
-                      placeholder="0,00"
-                    />
-                  ) : (
-                    <p className="mt-2 text-sm font-medium text-fg font-mono">
-                      {row?.rate != null ? formatBRL(row.rate) : '—'}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      )}
+      </SectionCard>
 
-      {!isNewProduct && legacyMode && (
+      {!isNewProduct && (
         <SectionCard
           title="Atividade recente"
           description={
@@ -973,16 +974,27 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           }
           icon={FileText}
         >
-          {atividades.length > 0 ? (
+          {activityLoading ? (
+            <p className="text-sm text-fg-muted" role="status">Carregando atividade…</p>
+          ) : activityError ? (
+            <div className="space-y-3" role="alert">
+              <p className="text-sm text-destructive">{activityError}</p>
+              <Button variant="outline" className="min-h-10" onClick={refreshActivity}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : atividades.length > 0 ? (
             <div className="space-y-3">
               {atividades.map((atividade, index) => (
                 <div
-                  key={`${atividade.tipo}-${atividade.data}-${index}`}
+                  key={atividade.id || `${atividade.tipo}-${atividade.data}-${index}`}
                   className="rounded-xl border border-line bg-surface/50 px-4 py-3 text-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-fg break-words">{atividade.texto}</span>
-                    <span className="shrink-0 text-xs text-fg-muted">{atividade.data}</span>
+                    <span className="shrink-0 text-xs text-fg-muted">
+                      {formatActivityDate(atividade.data)}
+                    </span>
                   </div>
                 </div>
               ))}

@@ -2,61 +2,114 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createHandler } from '../../api/_functions/quote-leads.js';
-import type { QuoteLead } from '../../api/_functions/lib/quote-leads-store.js';
-import { createQuoteLeadMemoryDeps, makeQuoteLead, parseJsonResult } from './pre-quote-fixtures.ts';
+import {
+  formatQuoteLeadText,
+  mergeQuoteLead,
+  normalizeQuoteLeadInput,
+  type QuoteLead,
+} from '../../api/_functions/lib/quote-leads-store.js';
+import {
+  quoteLeadIdentityKey,
+  type QuoteLeadRecord,
+  type QuoteLeadRepository,
+} from '../../api/_db/quote-leads-repository.js';
+import { makeQuoteLead, parseJsonResult } from './pre-quote-fixtures.ts';
 
-function createMemoryDeps(seed: QuoteLead[] = []) {
-  let records = [...seed];
+const UUID_1 = '00000000-0000-4000-8000-000000000001';
+const UUID_2 = '00000000-0000-4000-8000-000000000002';
+
+function asRecord(lead: QuoteLead, created = false): QuoteLeadRecord {
   return {
-    async readAll() {
-      return [...records];
+    ...lead,
+    identityKey: quoteLeadIdentityKey(lead),
+    crmDealId: '00000000-0000-4000-8000-000000000099',
+    created,
+  };
+}
+
+function memoryRepository(seed: QuoteLead[] = []): QuoteLeadRepository {
+  const rows = seed.map((lead) => asRecord(lead));
+  let idCounter = 10;
+  const now = () => '2026-06-29T12:00:00.000Z';
+  const nextId = () => {
+    idCounter += 1;
+    return `00000000-0000-4000-8000-${String(idCounter).padStart(12, '0')}`;
+  };
+
+  return {
+    async upsert(input) {
+      const incoming = normalizeQuoteLeadInput(input, { now, id: nextId });
+      const identityKey = quoteLeadIdentityKey(incoming);
+      const index = rows.findIndex((row) => row.identityKey === identityKey);
+      if (index < 0) {
+        const created = asRecord({ ...incoming, id: incoming.id }, true);
+        rows.unshift(created);
+        return created;
+      }
+      const merged = asRecord(mergeQuoteLead(rows[index], incoming, now()), false);
+      merged.id = rows[index].id;
+      merged.identityKey = identityKey;
+      merged.crmDealId = rows[index].crmDealId;
+      rows[index] = merged;
+      return merged;
     },
-    async writeAll(next: QuoteLead[]) {
-      records = [...next];
+    async findByExternalId(externalId, source) {
+      return rows.find((row) => row.externalId === externalId && (!source || row.source === source)) || null;
     },
-    now() {
-      return '2026-06-29T12:00:00.000Z';
+    async list(options = {}) {
+      const status = options.status || 'new';
+      const source = options.source || 'all';
+      const query = String(options.q || '')
+        .trim()
+        .toLowerCase();
+      const limit = Math.max(1, Math.min(Number(options.limit || 20), 100));
+      return rows
+        .filter((row) => status === 'all' || row.status === status)
+        .filter((row) => source === 'all' || row.source === source)
+        .filter(
+          (row) =>
+            !query ||
+            [row.nome, row.email, row.telefone, row.pedidoTexto]
+              .join(' ')
+              .toLowerCase()
+              .includes(query)
+        )
+        .slice(0, limit)
+        .map((row) => ({ ...row, texto: formatQuoteLeadText(row) }));
     },
-    id() {
-      return 'quote_lead_new';
+    async update(id, patch) {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row) return null;
+      const normalized = normalizeQuoteLeadInput({ ...row, ...patch, id }, { now, id: () => id });
+      const merged = asRecord(mergeQuoteLead(row, normalized, now()), false);
+      merged.id = id;
+      merged.crmDealId = row.crmDealId;
+      Object.assign(row, merged);
+      return { ...row, texto: formatQuoteLeadText(row) };
     },
   };
 }
 
-function parse(result: { body?: string }) {
-  try {
-    return JSON.parse(result.body || '{}');
-  } catch {
-    return { error: 'Invalid JSON', raw: String(result.body || '') };
-  }
-}
-
 const ORIGINAL_INGEST_TOKEN = process.env.QUOTE_LEADS_INGEST_TOKEN;
-const ORIGINAL_OPERATIONAL_MODE = process.env.CRM_OPERATIONAL_MODE;
 
 afterEach(() => {
   if (ORIGINAL_INGEST_TOKEN === undefined) delete process.env.QUOTE_LEADS_INGEST_TOKEN;
   else process.env.QUOTE_LEADS_INGEST_TOKEN = ORIGINAL_INGEST_TOKEN;
-  if (ORIGINAL_OPERATIONAL_MODE === undefined) delete process.env.CRM_OPERATIONAL_MODE;
-  else process.env.CRM_OPERATIONAL_MODE = ORIGINAL_OPERATIONAL_MODE;
 });
 
 describe('quote-leads handler', () => {
   it('retorna erro JSON em português para método não suportado', async () => {
-    const result = await createHandler(createMemoryDeps())({
-      httpMethod: 'DELETE',
-    } as any);
+    const result = await createHandler(memoryRepository())({ httpMethod: 'DELETE' } as any);
 
     assert.equal(result.statusCode, 405);
-    assert.equal(parse(result).error, 'Método não permitido.');
+    assert.equal(parseJsonResult(result).error, 'Método não permitido.');
   });
 
-  it('stays available in operational mode because it uses the CRM lead store', async () => {
-    process.env.CRM_OPERATIONAL_MODE = 'true';
+  it('permanece disponível com armazenamento local configurado', async () => {
     const result = await createHandler(
-      createMemoryDeps([
+      memoryRepository([
         {
-          id: 'quote_lead_1',
+          id: UUID_1,
           nome: 'Cliente Operacional',
           email: 'cliente@example.com',
           telefone: '5511978086811',
@@ -71,17 +124,17 @@ describe('quote-leads handler', () => {
       httpMethod: 'GET',
       queryStringParameters: { limit: '5' },
     } as any);
-    const body = parse(result);
+    const body = parseJsonResult(result);
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.data[0].nome, 'Cliente Operacional');
   });
 
   it('retorna leads novos com texto pronto para textarea', async () => {
-    const handler = createHandler(
-      createMemoryDeps([
+    const result = await createHandler(
+      memoryRepository([
         {
-          id: 'quote_lead_1',
+          id: UUID_1,
           nome: 'Viviane Correa',
           email: 'viviane@example.com',
           telefone: '5511978086811',
@@ -92,26 +145,24 @@ describe('quote-leads handler', () => {
           updatedAt: '2026-06-29T11:00:00.000Z',
         },
       ])
-    );
-
-    const result = await handler({
+    )({
       httpMethod: 'GET',
       queryStringParameters: { limit: '5' },
     } as any);
-    const body = parse(result);
+    const body = parseJsonResult(result);
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.success, true);
     assert.equal(body.data.length, 1);
-    assert.equal(body.data[0].id, 'quote_lead_1');
+    assert.equal(body.data[0].id, UUID_1);
     assert.equal(body.data[0].texto.includes('Nome: Viviane Correa'), true);
   });
 
   it('marca lead como convertido', async () => {
-    const handler = createHandler(
-      createMemoryDeps([
+    const result = await createHandler(
+      memoryRepository([
         {
-          id: 'quote_lead_1',
+          id: UUID_1,
           nome: 'Viviane Correa',
           email: 'viviane@example.com',
           telefone: '5511978086811',
@@ -122,56 +173,42 @@ describe('quote-leads handler', () => {
           updatedAt: '2026-06-29T11:00:00.000Z',
         },
       ])
-    );
-
-    const result = await handler({
+    )({
       httpMethod: 'PATCH',
-      body: JSON.stringify({
-        id: 'quote_lead_1',
-        status: 'converted',
-        quotationId: 'ORC-20261777',
-      }),
+      body: JSON.stringify({ id: UUID_1, status: 'converted', quotationId: UUID_2 }),
     } as any);
-    const body = parse(result);
+    const body = parseJsonResult(result);
 
     assert.equal(result.statusCode, 200);
     assert.equal(body.success, true);
     assert.equal(body.data.status, 'converted');
-    assert.equal(body.data.quotationId, 'ORC-20261777');
+    assert.equal(body.data.quotationId, UUID_2);
   });
 
   it('retorna 400 para PATCH sem id', async () => {
-    const handler = createHandler(createMemoryDeps());
-    const result = await handler({
+    const result = await createHandler(memoryRepository())({
       httpMethod: 'PATCH',
       body: JSON.stringify({ status: 'converted' }),
     } as any);
-    const body = parse(result);
+    const body = parseJsonResult(result);
 
     assert.equal(result.statusCode, 400);
     assert.equal(body.error, 'ID do lead é obrigatório.');
   });
 
   it('filtra GET por status, source e busca textual', async () => {
-    const handler = createHandler(
-      createQuoteLeadMemoryDeps([
+    const result = await createHandler(
+      memoryRepository([
+        makeQuoteLead({ id: UUID_1, source: 'typebot', status: 'ready', nome: 'Ana Typebot' }),
         makeQuoteLead({
-          id: 'typebot-ready',
-          source: 'typebot',
-          status: 'ready',
-          nome: 'Ana Typebot',
-        }),
-        makeQuoteLead({
-          id: 'site-ready',
+          id: UUID_2,
           source: 'site_form',
           status: 'ready',
           nome: 'Bruna Site',
           telefone: '5521888887777',
         }),
       ])
-    );
-
-    const result = await handler({
+    )({
       httpMethod: 'GET',
       queryStringParameters: { status: 'ready', source: 'site_form', q: 'bruna', limit: '20' },
     } as any);
@@ -179,17 +216,15 @@ describe('quote-leads handler', () => {
 
     assert.equal(result.statusCode, 200);
     assert.deepEqual(
-      body.data.map((lead: any) => lead.id),
-      ['site-ready']
+      body.data.map((lead: QuoteLeadRecord) => lead.id),
+      [UUID_2]
     );
   });
 
-  it('cria lead via POST externo autenticado', async () => {
+  it('cria lead local via POST autenticado', async () => {
     process.env.QUOTE_LEADS_INGEST_TOKEN = 'ingest-secret';
-    const deps = createQuoteLeadMemoryDeps();
-    const handler = createHandler(deps);
-
-    const result = await handler({
+    const repository = memoryRepository();
+    const result = await createHandler(repository)({
       httpMethod: 'POST',
       headers: { authorization: 'Bearer ingest-secret' },
       body: JSON.stringify({
@@ -210,13 +245,12 @@ describe('quote-leads handler', () => {
     assert.equal(body.data.source, 'site_form');
     assert.equal(body.data.externalId, 'sanity-1');
     assert.equal(body.data.attribution.gclid, 'gclid-site');
+    assert.equal(body.data.crmDealId, '00000000-0000-4000-8000-000000000099');
   });
 
-  it('bloqueia POST externo sem token', async () => {
+  it('bloqueia POST sem token', async () => {
     process.env.QUOTE_LEADS_INGEST_TOKEN = 'ingest-secret';
-    const handler = createHandler(createQuoteLeadMemoryDeps());
-
-    const result = await handler({
+    const result = await createHandler(memoryRepository())({
       httpMethod: 'POST',
       headers: {},
       body: JSON.stringify({ nome: 'Cliente Site' }),
@@ -228,14 +262,10 @@ describe('quote-leads handler', () => {
   });
 
   it('edita campos do lead via PATCH', async () => {
-    const handler = createHandler(
-      createQuoteLeadMemoryDeps([makeQuoteLead({ id: 'quote_lead_1' })])
-    );
-
-    const result = await handler({
+    const result = await createHandler(memoryRepository([makeQuoteLead({ id: UUID_1 })]))({
       httpMethod: 'PATCH',
       body: JSON.stringify({
-        id: 'quote_lead_1',
+        id: UUID_1,
         nome: 'Viviane Editada',
         produto: 'Lenços',
         quantidade: '200',

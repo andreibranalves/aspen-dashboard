@@ -11,10 +11,6 @@
     "dev:api": "tsc -p api/tsconfig.api.json --watch",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "migrate:frappe-crm": "npm run build:api && node scripts/migrate-frappe-crm.mjs",
-    "migrate:quotation-templates": "npm run build:api && node scripts/migrate-quotation-templates.mjs",
-    "migrate:frappe": "npm run migrate:frappe-crm",
-    "worker:quotation-outbox": "npm run build:api && node scripts/quotation-outbox-worker.mjs",
     "preview": "vite preview",
     "server": "vercel dev",
     "lint": "eslint .",
@@ -29,7 +25,6 @@
     "test:e2e": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report",
-    "test:erp": "node test_local.mjs",
     "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs",
     "test:whatsapp-flows": "node scripts/test-whatsapp-flows.mjs"
   },

@@ -46,12 +46,11 @@ export async function searchProducts(
   return data;
 }
 
-/** Core catalog rows explicitly advertise that pricing is not cut over yet. */
 export function isProductPriceAvailable(product: Product | null | undefined): boolean {
   return product?.pricing_available !== false;
 }
 
-export function isCoreUnpricedProduct(product: Product | null | undefined): boolean {
+export function isUnpricedProduct(product: Product | null | undefined): boolean {
   return product?.pricing_available === false;
 }
 

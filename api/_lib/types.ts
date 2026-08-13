@@ -2,7 +2,6 @@
 // Used by function-adapter, auth, rate-limit, and every _functions/* handler.
 
 
-
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS';
 
 export type FunctionHeaders = Record<string, string | string[] | undefined>;
@@ -49,9 +48,3 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 
 /** jsonResponse helper used by many handlers. */
 export type JsonResponseFn = (statusCode: number, body: unknown) => FunctionResult;
-
-/** ERPNext document — loosely typed record (frappe documents are schemaless at runtime). */
-export type ErpnextDoc = Record<string, unknown>;
-
-/** ERPNext list item (array element from erpGetList). Alias for consistency. */
-export type ErpnextListItem = Record<string, unknown>;

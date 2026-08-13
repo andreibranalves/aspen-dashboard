@@ -12,11 +12,6 @@ import './load-env-side-effect.mjs';
 import { isAuthenticated } from '../api/_lib/auth.js';
 import { checkRateLimitAsync } from '../api/_lib/rate-limit.js';
 
-if (!process.env.ERPNEXT_TOKEN) {
-  console.error('ERPNEXT_TOKEN não configurado no .env');
-  process.exit(1);
-}
-
 // Import API handlers
 import { handler as clientDetail } from '../api/_functions/client-detail.js';
 import { handler as crmDeals } from '../api/_functions/crm-deals.js';
@@ -42,12 +37,12 @@ import { handler as quotationTemplates } from '../api/_functions/quotation-templ
 import { handler as orderTemplates } from '../api/_functions/order-templates.js';
 import { handler as quotationPreview } from '../api/_functions/quotation-preview.js';
 import { handler as publicQuotation } from '../api/_functions/public-quotation.js';
-import { handler as quotationOutboxInspect } from '../api/_functions/quotation-outbox-inspect.js';
 import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
+import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
 import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
@@ -88,12 +83,12 @@ const ROUTES = {
   'order-templates': orderTemplates,
   'quotation-preview': quotationPreview,
   'public-quotation': publicQuotation,
-  'quotation-outbox-inspect': quotationOutboxInspect,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
+  'whatsapp-send-status': whatsappSendStatus,
   settings,
   'operational-status': operationalStatus,
   'typebot-lead-capture': typebotLeadCapture,

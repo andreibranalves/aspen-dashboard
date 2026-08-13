@@ -1,145 +1,71 @@
-// ── Imports ─────────────────────────────────────────────────────────────────
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { erpGetList } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
+import {
+  createPostgresProductActivityRepository,
+  ProductActivityRepositoryError,
+  type ProductActivityRepository,
+} from '../_db/product-activity-repository.js';
 
-// ── Handler ─────────────────────────────────────────────────────────────────
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'product-activity não está disponível no modo operacional.' }) };
-  }
-  if (event.httpMethod !== 'GET') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
-
-  const params = event.queryStringParameters || {};
-  const sku = (params.sku || '').trim();
-
-  if (!sku) {
-    return {
-      statusCode: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'SKU é obrigatório.' }),
-    };
-  }
-
-  const limit = Math.min(20, Math.max(1, parseInt(params.limit ?? '10', 10) || 10));
-
-  try {
-    const atividades = [];
-
-    // ── 1. Orçamentos recentes que contêm este SKU ──
-    try {
-      const quotes = await erpGetList('Quotation', {
-        fields: ['name', 'items', 'modified'],
-        order_by: 'modified desc',
-        limit: 50,
-      });
-      for (const q of quotes) {
-        const items = q.items || [];
-        const match = items.find((it: Record<string, unknown>) => (it.item_code as string) === sku || (it.item_code as string) === sku);
-        if (match) {
-          atividades.push({
-            tipo: 'orcamento',
-            texto: `Orçamento ${q.name} com ${match.qty || '?'} un.`,
-            data: (q.modified || '').split(' ')[0],
-            id: q.name,
-            ts: q.modified || '',
-          });
-        }
-      }
-    } catch (err: any) {
-      console.warn('[product-activity] Quotation query failed:', err?.logMessage || err?.message);
-    }
-
-    // ── 2. Alterações de preço via Version ──
-    try {
-      const priceVersions = await erpGetList('Version', {
-        fields: ['docname', 'data', 'modified'],
-        filters: [
-          ['ref_doctype', '=', 'Pricing Rule'],
-          ['docname', 'like', `${sku}-%`],
-        ],
-        order_by: 'modified desc',
-        limit,
-      });
-
-      for (const v of priceVersions) {
-        let texto = `Preço da regra ${v.docname} alterado`;
-        try {
-          const parsed = typeof v.data === 'string' ? JSON.parse(v.data) : v.data;
-          const changed = parsed?.changed;
-          if (Array.isArray(changed)) {
-            for (const c of changed) {
-              if (c[0] === 'rate' || c[0] === 'title') {
-                texto = `Preço alterado em ${v.docname}: R$ ${c[1] || '?'} → R$ ${c[2] || '?'}`;
-              }
-            }
-          }
-        } catch { /* mantém texto default */ }
-        atividades.push({
-          tipo: 'preco',
-          texto,
-          data: (v.modified || '').split(' ')[0],
-          id: v.docname,
-          ts: v.modified || '',
-        });
-      }
-    } catch (err: any) {
-      console.warn('[product-activity] Pricing Rule Version query failed:', err?.logMessage || err?.message);
-    }
-
-    // ── 3. Atualizações do produto via Version ──
-    try {
-      const itemVersions = await erpGetList('Version', {
-        fields: ['docname', 'data', 'modified'],
-        filters: [
-          ['ref_doctype', '=', 'Item'],
-          ['docname', '=', sku],
-        ],
-        order_by: 'modified desc',
-        limit: 5,
-      });
-
-      for (const v of itemVersions) {
-        let texto = 'Produto atualizado';
-        try {
-          const parsed = typeof v.data === 'string' ? JSON.parse(v.data) : v.data;
-          const changed = parsed?.changed;
-          if (Array.isArray(changed)) {
-            const fieldNames = changed.map(c => c[0]).filter(Boolean);
-            texto = `Produto atualizado: ${fieldNames.join(', ')}`;
-          }
-        } catch { /* mantém texto default */ }
-        atividades.push({
-          tipo: 'produto',
-          texto,
-          data: (v.modified || '').split(' ')[0],
-          id: v.docname,
-          ts: v.modified || '',
-        });
-      }
-    } catch (err: any) {
-      console.warn('[product-activity] Item Version query failed:', err?.logMessage || err?.message);
-    }
-
-    // Ordenar por data decrescente, limitar, remover ts
-    atividades.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-    const result = atividades.slice(0, limit).map(({ ts: _ts, ...rest }) => rest);
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sku, atividades: result }),
-    };
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[product-activity]', err?.logMessage || err?.message || err);
-    return {
-      statusCode: code,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Erro ao buscar atividades do produto.' }),
-    };
-  }
+export interface ProductActivityHandlerDependencies {
+  repository?: ProductActivityRepository;
 }
+
+function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  };
+}
+
+function parseLimit(value: string | undefined): number {
+  if (value === undefined) return 10;
+  if (typeof value !== 'string') {
+    throw new ProductActivityRepositoryError(400, 'Limite deve ser um número inteiro válido.');
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new ProductActivityRepositoryError(400, 'Limite deve ser um número inteiro válido.');
+  }
+  if (!/^\d+$/.test(normalized)) {
+    throw new ProductActivityRepositoryError(400, 'Limite deve ser um número inteiro válido.');
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new ProductActivityRepositoryError(400, 'Limite deve ser maior que zero.');
+  }
+  return Math.min(20, parsed);
+}
+
+export function createHandler(
+  dependencies: ProductActivityHandlerDependencies = {},
+): Handler {
+  const repository = dependencies.repository || createPostgresProductActivityRepository();
+  return async function productActivityHandler(event: FunctionEvent): Promise<FunctionResult> {
+    if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
+
+    const sku = (event.queryStringParameters?.sku || '').trim();
+    if (!sku) return json(400, { error: 'SKU é obrigatório.' });
+
+    try {
+      const atividades = await repository.list(sku, parseLimit(event.queryStringParameters?.limit));
+      return json(200, {
+        sku,
+        atividades: atividades.map(({ tipo, texto, data, id }) => ({ tipo, texto, data, id })),
+      });
+    } catch (error) {
+      console.error('[product-activity]', error instanceof Error ? error.name : typeof error);
+      if (error instanceof ProductActivityRepositoryError && error.expose) {
+        return json(error.statusCode, { error: error.message });
+      }
+      const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+      if (statusCode === 400 || statusCode === 404 || statusCode === 409 || statusCode === 503) {
+        return json(statusCode, { error: (error as { message?: string }).message || 'Operação inválida.' });
+      }
+      return json(503, { error: 'Não foi possível consultar a atividade do produto. Tente novamente.' });
+    }
+  };
+}
+
+export const handler = createHandler();

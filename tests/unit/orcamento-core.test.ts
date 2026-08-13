@@ -3,8 +3,6 @@ import { test } from 'node:test';
 
 import { createHandler } from '../../api/_functions/orcamento.js';
 import { createCoreHandler } from '../../api/_functions/orcamento-core.js';
-import { createLegacyHandler } from '../../api/_functions/orcamento-legacy.js';
-import { runQuotePipeline } from '../../api/_functions/lib/quote-pipeline.js';
 import {
   QuoteDraftInputError,
   readSelectedTemplate,
@@ -90,15 +88,11 @@ test('quote core validates the envelope and annotates successful drafts', async 
 
   const invalidJson = await handler({ ...event({}), body: '{' });
   assert.equal(invalidJson.statusCode, 400);
-  assert.deepEqual(parse(invalidJson), {
-    error: 'JSON inválido.',
-    core_mode: true,
-    source: 'postgres',
-  });
+  assert.deepEqual(parse(invalidJson), { error: 'JSON inválido.' });
 
   const missing = await handler(event({}));
   assert.equal(missing.statusCode, 400);
-  assert.equal(parse(missing).core_mode, true);
+  assert.equal(Object.keys(parse(missing)).some((key) => key.endsWith('_mode')), false);
 
   const result = await handler(event({
     extracted: {
@@ -114,7 +108,7 @@ test('quote core validates the envelope and annotates successful drafts', async 
   }));
   assert.equal(result.statusCode, 201);
   assert.equal(parse(result).quotation_name, 'ORC-20260001');
-  assert.equal(parse(result).source, 'postgres');
+  assert.equal(Object.prototype.hasOwnProperty.call(parse(result), 'source'), false);
   assert.equal(received?.client_id, '33333333-3333-4333-8333-333333333333');
   assert.equal(received?.template_key, 'minimalista');
   assert.equal(received?.template_version_id, '44444444-4444-4444-8444-444444444444');
@@ -160,7 +154,7 @@ test('repository template selection rejects inconsistent, archived and missing c
   assert.equal((await readSelectedTemplate({} as never, settings, {}, lookup))?.model.key, 'padrao');
 });
 
-test('repository template selection seeds a valid static migration fallback', async () => {
+test('repository template selection seeds a valid static template fallback', async () => {
   let seeded: string | undefined;
   const lookup = selectionLookup({
     current: async () => null,
@@ -200,7 +194,7 @@ test('quote core maps safe validation errors without exposing driver details', a
   const result = await handler(event({ extracted: { items: [] } }));
   assert.equal(result.statusCode, 400);
   assert.equal(parse(result).error, 'Quantidade do item 1 deve ser maior que zero.');
-  assert.equal(parse(result).core_mode, true);
+  assert.equal(Object.keys(parse(result)).some((key) => key.endsWith('_mode')), false);
   assert.equal(String(result.body).includes('SQL'), false);
 });
 
@@ -224,182 +218,15 @@ test('quote core does not trust structural status codes from unknown errors', as
   assert.equal(String(result.body).includes('secret'), false);
 });
 
-test('legacy boundary promotes displayed rates without mutating the request', async () => {
-  let receivedItems: Array<Record<string, unknown>> | undefined;
-  const originalItems = [
-    { item_code: 'AUTO-1', qty: 30, rate: '9.00', manual_rate: false },
-    { item_code: 'AUTO-DECIMAL', qty: 30, rate: 9.25, manual_rate: false },
-    { item_code: 'NO-RATE', qty: 30, manual_rate: false },
-    { item_code: 'ZERO-RATE', qty: 30, rate: '0.00', manual_rate: false },
-    { item_code: 'NEGATIVE-RATE', qty: 30, rate: -1.5, manual_rate: false },
-    { item_code: 'INVALID-QTY', qty: 0, rate: '3.00', manual_rate: false },
-  ];
-  const handler = createLegacyHandler({
-    runQuotePipeline: async (_event, extracted) => {
-      receivedItems = extracted.items as Array<Record<string, unknown>>;
-      return {
-        success: true,
-        quotation_id: 'QUO-0001',
-        deal_id: 'DEAL-0001',
-        cliente: 'Cliente legado',
-        pdf_url: 'https://example.test/quote.pdf',
-      };
+test('quote boundary always invokes the PostgreSQL core', async () => {
+  let calls = 0;
+  const handler = createHandler({
+    core: async () => {
+      calls += 1;
+      return { statusCode: 200, body: JSON.stringify({ success: true }) };
     },
   });
-
-  const result = await handler(event({
-    extracted: { nome: 'Cliente legado', items: originalItems },
-  }));
-
+  const result = await handler(event({ extracted: {} }));
   assert.equal(result.statusCode, 200);
-  assert.equal(parse(result).source, 'frappe');
-  assert.deepEqual(receivedItems, [
-    { item_code: 'AUTO-1', qty: 30, rate: '9.00', manual_rate: true },
-    { item_code: 'AUTO-DECIMAL', qty: 30, rate: 9.25, manual_rate: true },
-    { item_code: 'NO-RATE', qty: 30, manual_rate: false },
-    { item_code: 'ZERO-RATE', qty: 30, rate: '0.00', manual_rate: false },
-    { item_code: 'NEGATIVE-RATE', qty: 30, rate: -1.5, manual_rate: false },
-    { item_code: 'INVALID-QTY', qty: 0, rate: '3.00', manual_rate: false },
-  ]);
-  assert.equal(originalItems[0].manual_rate, false);
-});
-
-test('legacy pipeline validates and sends the trimmed display name to Frappe', async () => {
-  const originalFetch = globalThis.fetch;
-  const previousN8nEnabled = process.env.N8N_WEBHOOK_ENABLED;
-  const previousN8nUrl = process.env.N8N_WEBHOOK_URL;
-  const quotationPayloads: Array<Record<string, unknown>> = [];
-  const jsonResponse = (data: unknown) =>
-    new Response(JSON.stringify({ data }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  delete process.env.N8N_WEBHOOK_ENABLED;
-  delete process.env.N8N_WEBHOOK_URL;
-  globalThis.fetch = (async (input: RequestInfo | URL, options: RequestInit = {}) => {
-    const url = new URL(String(input));
-    const path = decodeURIComponent(url.pathname);
-    const method = options.method || 'GET';
-    if (method === 'GET' && path.endsWith('/CRM Lead Source')) return jsonResponse([]);
-    if (method === 'GET' && path.endsWith('/UTM Source')) return jsonResponse([{ name: 'Google Ads' }]);
-    if (method === 'GET' && path.includes('/CRM Deal')) return jsonResponse([]);
-    if (method === 'GET' && path.includes('/Quotation/')) {
-      return jsonResponse({ items: [{ item_code: 'SKU-1', qty: 30, rate: 10 }] });
-    }
-    if (method === 'GET' && path.includes('/printview')) {
-      return new Response('<html><head></head><body></body></html>', { status: 200 });
-    }
-    if (method === 'POST' && path.endsWith('/Lead')) return jsonResponse({ name: 'LEAD-1' });
-    if (method === 'POST' && path.endsWith('/Contact')) return jsonResponse({ name: 'CONTACT-1' });
-    if (method === 'POST' && path.endsWith('/Quotation')) {
-      quotationPayloads.push(JSON.parse(String(options.body)) as Record<string, unknown>);
-      return jsonResponse({ name: `QTN-${quotationPayloads.length}` });
-    }
-    if (method === 'POST' && path.endsWith('/CRM Deal')) return jsonResponse({ name: 'DEAL-1' });
-    throw new Error(`Unexpected Frappe request: ${method} ${url}`);
-  }) as typeof fetch;
-
-  const handler = createLegacyHandler({ runQuotePipeline });
-  const call = (item_name: unknown) =>
-    handler(event({
-      extracted: {
-        nome: 'Cliente legado',
-        origem: 'Google Ads',
-        items: [{ item_code: 'SKU-1', item_name, qty: 30, rate: 10, manual_rate: true }],
-      },
-    }));
-
-  try {
-    const trimmed = await call('  Lenço 100 x 100 cm  ');
-    assert.equal(trimmed.statusCode, 200);
-    const trimmedItems = quotationPayloads[0]?.items as Array<Record<string, unknown>>;
-    assert.equal(trimmedItems[0]?.item_name, 'Lenço 100 x 100 cm');
-
-    const maximum = 'M'.repeat(255);
-    const maximumResult = await call(maximum);
-    assert.equal(maximumResult.statusCode, 200);
-    const maximumItems = quotationPayloads[1]?.items as Array<Record<string, unknown>>;
-    assert.equal(maximumItems[0]?.item_name, maximum);
-
-    const tooLong = await call('N'.repeat(256));
-    assert.equal(tooLong.statusCode, 400);
-    assert.equal(quotationPayloads.length, 2);
-
-    const invalidType = await call(123);
-    assert.equal(invalidType.statusCode, 400);
-    assert.equal(quotationPayloads.length, 2);
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (previousN8nEnabled === undefined) delete process.env.N8N_WEBHOOK_ENABLED;
-    else process.env.N8N_WEBHOOK_ENABLED = previousN8nEnabled;
-    if (previousN8nUrl === undefined) delete process.env.N8N_WEBHOOK_URL;
-    else process.env.N8N_WEBHOOK_URL = previousN8nUrl;
-  }
-});
-
-test('legacy quote skips N8N unless explicitly enabled', async () => {
-  const previousUrl = process.env.N8N_WEBHOOK_URL;
-  const previousEnabled = process.env.N8N_WEBHOOK_ENABLED;
-  const originalFetch = globalThis.fetch;
-  let requests = 0;
-  process.env.N8N_WEBHOOK_URL = 'https://n8n.test/webhook';
-  delete process.env.N8N_WEBHOOK_ENABLED;
-  globalThis.fetch = (async () => {
-    requests += 1;
-    return new Response('{}', { status: 200 });
-  }) as typeof fetch;
-
-  try {
-    const handler = createLegacyHandler({
-      runQuotePipeline: async () => ({
-        success: true,
-        quotation_id: 'QUO-0001',
-        deal_id: 'DEAL-0001',
-        cliente: 'Cliente legado',
-        pdf_url: 'https://example.test/quote.pdf',
-      }),
-    });
-    const result = await handler(event({ extracted: { items: [{ item_code: 'AUTO-1', qty: 1 }] } }));
-
-    assert.equal(result.statusCode, 200);
-    assert.equal(requests, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    if (previousUrl === undefined) delete process.env.N8N_WEBHOOK_URL;
-    else process.env.N8N_WEBHOOK_URL = previousUrl;
-    if (previousEnabled === undefined) delete process.env.N8N_WEBHOOK_ENABLED;
-    else process.env.N8N_WEBHOOK_ENABLED = previousEnabled;
-  }
-});
-
-test('quote rollout uses exact flag and never falls back after a core failure', async () => {
-  const prevOperational = process.env.CRM_OPERATIONAL_MODE;
-  delete process.env.CRM_OPERATIONAL_MODE;
-  const previous = process.env.CRM_CORE_QUOTES_ENABLED;
-  const calls: string[] = [];
-  const core = async () => {
-    calls.push('core');
-    return { statusCode: 503, body: JSON.stringify({ error: 'falha core' }) };
-  };
-  const legacy = async () => {
-    calls.push('legacy');
-    return { statusCode: 200, body: JSON.stringify({ success: true }) };
-  };
-  const handler = createHandler({ core, legacy });
-
-  try {
-    process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-    assert.equal((await handler(event({ extracted: {} }))).statusCode, 503);
-    assert.deepEqual(calls, ['core']);
-    calls.length = 0;
-
-    process.env.CRM_CORE_QUOTES_ENABLED = 'TRUE';
-    assert.equal((await handler(event({ extracted: {} }))).statusCode, 200);
-    assert.deepEqual(calls, ['legacy']);
-  } finally {
-    if (previous === undefined) delete process.env.CRM_CORE_QUOTES_ENABLED;
-    else process.env.CRM_CORE_QUOTES_ENABLED = previous;
-    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
-    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
-  }
+  assert.equal(calls, 1);
 });

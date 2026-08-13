@@ -173,7 +173,7 @@ async function main() {
           }
         } else {
           // Product card may not have loaded (pricing endpoint down)
-          check('Card do produto apareceu ou falhou silenciosamente', true, 'pode precisar do servidor ERPNext');
+          check('Card do produto apareceu ou falhou silenciosamente', true, 'pode precisar do servidor PostgreSQL');
         }
       } else {
         check('Busca de produto executada (sem resultados ou backend offline)', true);

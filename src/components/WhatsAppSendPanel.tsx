@@ -12,7 +12,11 @@ import type { CommunicationFlow } from '@/lib/communicationApi';
 export interface WhatsAppSendPanelProps {
   selectedFlowId?: string;
   flows?: CommunicationFlow[];
-  status?: { state?: 'sending' | 'sent' | 'error'; message?: string };
+  status?: {
+    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial';
+    message?: string;
+    deliveryAccepted?: boolean;
+  };
   onSelectFlow?: (flowId: string) => void;
   onSend?: () => void;
   hideButton?: boolean;
@@ -59,21 +63,27 @@ export default function WhatsAppSendPanel({
                 type="button"
                 size="lg"
                 className="w-full"
-                disabled={status?.state === 'sending'}
+                disabled={status?.state === 'sending' || status?.state === 'reconciling' || status?.state === 'accepted-partial'}
                 onClick={onSend}
               >
                 <Phone size={16} />
                 {status?.state === 'sent'
                   ? 'Enviado pelo WhatsApp'
-                  : status?.state === 'sending'
-                    ? 'Enviando…'
-                    : 'Enviar via WhatsApp'}
+                  : status?.state === 'reconciling' || status?.state === 'accepted-partial'
+                    ? 'Reconciliação pendente'
+                    : status?.state === 'sending'
+                      ? 'Enviando…'
+                      : 'Enviar via WhatsApp'}
               </Button>
               {status?.message && (
                 <p
                   className={cn(
                     'text-xs leading-5 text-center',
-                    status.state === 'error' ? 'text-destructive' : 'text-fg-muted'
+                    status.state === 'error'
+                      ? 'text-destructive'
+                      : status.deliveryAccepted
+                        ? 'text-warning'
+                        : 'text-fg-muted'
                   )}
                 >
                   {status.message}

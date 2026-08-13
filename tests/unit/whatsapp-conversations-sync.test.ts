@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  evolutionRequest,
   normalizeEvolutionConversation,
   normalizeEvolutionMessage,
   syncMessagesForConversation,
@@ -118,11 +119,7 @@ describe('whatsapp-conversations-sync', () => {
     assert.ok(normalized);
     assert.equal(normalized!.type, 'image');
     assert.equal(normalized!.body, 'My image');
-    assert.ok(Array.isArray((normalized as any).attachments));
-    assert.equal((normalized as any).attachments.length, 1);
-    assert.equal((normalized as any).attachments[0].kind, 'image');
-    assert.equal((normalized as any).attachments[0].mediaUrl, 'http://example.com/image.jpg');
-    assert.equal((normalized as any).attachments[0].caption, 'My image');
+    assert.deepEqual((normalized as any).attachments, [], 'external media must be rejected');
   });
 
   it('unwraps Evolution collections from nested payload shapes', () => {
@@ -136,6 +133,55 @@ describe('whatsapp-conversations-sync', () => {
       1
     );
     assert.equal(unwrapEvolutionCollection({ response: [{ key: { id: 'm3' } }] }).length, 1);
+  });
+
+  it('times out when the provider body never completes', async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      body: {
+        getReader: () => ({
+          read: () => new Promise<never>(() => undefined),
+          cancel: async () => undefined,
+        }),
+      },
+    } as unknown as Response;
+    await assert.rejects(
+      () => evolutionRequest('/chat/findChats/test', undefined, {
+        baseUrl: 'https://evolution.test',
+        apiKey: 'test-key',
+        instance: 'test',
+        timeoutMs: 5,
+        fetchImpl: async () => response,
+      }),
+      (error: any) => error.statusCode === 504 && /Tempo limite/.test(error.message),
+    );
+  });
+
+  it('enforces returned chat/message limits and deterministic provider dedupe before normalization', async () => {
+    const storeDeps = makeStoreDeps();
+    const fetchedRemoteJids: string[] = [];
+    const syncDeps: EvolutionSyncDeps = {
+      ...storeDeps,
+      fetchChats: async () => [
+        { remoteJid: '5511999999999@s.whatsapp.net', phone: '5511999999999', updatedAt: 10 },
+        { remoteJid: '5511999999999@s.whatsapp.net', phone: '5511999999999', updatedAt: 10, secret: 'duplicate' },
+        { remoteJid: '5521888888888@s.whatsapp.net', phone: '5521888888888', updatedAt: 9 },
+      ],
+      fetchMessages: async (remoteJid) => {
+        fetchedRemoteJids.push(remoteJid);
+        return Array.from({ length: 5 }, (_, index) => ({
+          key: { id: index === 0 ? 'duplicate-message' : `message-${index}`, fromMe: false },
+          messageTimestamp: index + 1,
+          message: { conversation: `message ${index}` },
+        }));
+      },
+    };
+    const result = await syncWhatsappConversations({ chatLimit: 1, messageLimit: 2 }, syncDeps);
+    assert.equal(result.conversations.length, 1);
+    assert.deepEqual(fetchedRemoteJids, ['5511999999999@s.whatsapp.net']);
+    assert.equal((await storeDeps.readMessages(result.conversations[0].id)).length, 2);
   });
 
   it('syncs chats and messages through injected fetcher', async () => {

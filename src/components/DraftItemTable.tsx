@@ -6,7 +6,7 @@ import { GripVertical, X, Plus, Package, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { formatBRL } from '@/lib/formatters';
-import { isCoreUnpricedProduct } from '@/lib/productCache';
+import { isUnpricedProduct } from '@/lib/productCache';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Product, Draft, DraftItem, ProductSearchEntry } from '@/types/domain';
 
@@ -123,17 +123,17 @@ export default function DraftItemTable({
                           <button
                             key={p.sku}
                             type="button"
-                            disabled={isCoreUnpricedProduct(p)}
-                            title={isCoreUnpricedProduct(p) ? 'Preço indisponível para este produto.' : undefined}
+                            disabled={isUnpricedProduct(p)}
+                            title={isUnpricedProduct(p) ? 'Preço indisponível para este produto.' : undefined}
                             className={cn(
                               'w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-2',
-                              isCoreUnpricedProduct(p)
+                              isUnpricedProduct(p)
                                 ? 'cursor-not-allowed opacity-50'
                                 : 'hover:bg-surface-muted/50',
                             )}
                             onMouseDown={e => {
                               e.preventDefault();
-                              if (isCoreUnpricedProduct(p)) return;
+                              if (isUnpricedProduct(p)) return;
                               selectProduct(draftIdx, ii, p);
                             }}
                           >
@@ -141,7 +141,7 @@ export default function DraftItemTable({
                               <span className="font-mono text-primary">{p.sku}</span>
                               <span className="text-fg-muted ml-2">{String(p.nome || '')}</span>
                             </div>
-                            {isCoreUnpricedProduct(p) ? (
+                            {isUnpricedProduct(p) ? (
                               <span className="text-[10px] text-destructive shrink-0">Preço indisponível</span>
                             ) : p.categoria ? (
                               <span className="text-[10px] text-fg-muted shrink-0">{p.categoria}</span>

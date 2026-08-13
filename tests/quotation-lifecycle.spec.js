@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 const id = 'ORC-20260012';
@@ -10,6 +13,7 @@ function detail(overrides = {}) {
     quotation_id: id,
     quotation_uuid: '11111111-1111-4111-8111-111111111111',
     revision_id: '22222222-2222-4222-8222-222222222222',
+    revision: 1,
     revision_number: 1,
     status: 'Enviado',
     status_canonical: 'enviado',
@@ -20,6 +24,7 @@ function detail(overrides = {}) {
     data: '2026-07-01',
     pagamento: 'À vista',
     entrega: '10 dias',
+    frete_padrao: '0.00',
     frete: '0.00',
     observacoes: '',
     prazo_producao: '',
@@ -54,6 +59,10 @@ function detail(overrides = {}) {
         manual_rate: false,
       },
     ],
+    derived_expired: false,
+    expiration_derived: false,
+    is_expired: false,
+    expirada: false,
     revision_history: [
       {
         id: 'stored-document-id-must-not-be-used',
@@ -79,8 +88,6 @@ function detail(overrides = {}) {
         expirada: false,
       },
     ],
-    core_mode: true,
-    source: 'postgres',
     ...overrides,
   };
 }
@@ -90,7 +97,7 @@ async function routeTemplates(page) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ operational_mode: false }),
+      body: JSON.stringify({}),
     });
   });
 
@@ -110,7 +117,7 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ operational_mode: false }),
+      body: JSON.stringify({}),
     });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
@@ -248,8 +255,6 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
       body: JSON.stringify({
         data: [],
         pagination: { page: 1, limit: 50, total: 0, total_pages: 0 },
-        core_mode: true,
-        source: 'postgres',
       }),
     });
   });
@@ -263,7 +268,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   const modelPopup = await modelPreview;
   const modelUrl = new globalThis.URL(modelPopup.url());
   expect(modelUrl.pathname).toBe('/api/quotation-preview');
-  expect(modelUrl.searchParams.get('id')).toBe(id);
+  expect(modelUrl.searchParams.get('id')).toBe('22222222-2222-4222-8222-222222222222');
   expect(modelUrl.searchParams.has('template_version_id')).toBe(false);
   expect(modelUrl.searchParams.has('template')).toBe(false);
   await modelPopup.close();
@@ -272,7 +277,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   const pdfPopup = await pdfPreview;
   const pdfUrl = new globalThis.URL(pdfPopup.url());
   expect(pdfUrl.pathname).toBe('/api/quotation-preview');
-  expect(pdfUrl.searchParams.get('id')).toBe(id);
+  expect(pdfUrl.searchParams.get('id')).toBe('22222222-2222-4222-8222-222222222222');
   expect(pdfUrl.searchParams.get('format')).toBe('pdf');
   expect(pdfUrl.searchParams.has('template_version_id')).toBe(false);
   expect(pdfUrl.searchParams.has('template')).toBe(false);
@@ -312,4 +317,175 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
     source_revision_id: '22222222-2222-4222-8222-222222222222',
     concurrency_token: token,
   });
+});
+
+function fulfillJson(route, body, status = 200) {
+  return route.fulfill({
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  });
+}
+
+test('frontend source guard rejects removed external files, tokens, and app URLs', () => {
+  const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
+  const forbidden = /external-crm|external-erp|internal_mode|external_url/i;
+  const externalAppUrl = /https?:\/\/[^\s"']+\/(?:app|desk)\//i;
+  const files = [];
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const filename = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(filename);
+      else if (/\.(?:ts|tsx|js|jsx)$/.test(entry.name)) files.push(filename);
+    }
+  };
+  visit(srcRoot);
+  expect(fs.existsSync(path.join(srcRoot, 'types/external-crm.ts'))).toBe(false);
+  expect(fs.existsSync(path.join(srcRoot, 'lib/externalLinks.ts'))).toBe(false);
+  const violations = files.flatMap((filename) => {
+    const content = fs.readFileSync(filename, 'utf8');
+    return forbidden.test(content) || externalAppUrl.test(content) ? [path.relative(srcRoot, filename)] : [];
+  });
+  expect(violations).toEqual([]);
+});
+
+test('local sales order detail has no external app link and keeps local quotation navigation', async ({ page }) => {
+  await page.route('**/api/sales-orders**', async (route) => {
+    const url = new globalThis.URL(route.request().url());
+    const id = url.searchParams.get('id');
+    await fulfillJson(route, {
+      id,
+      status: 'Completed',
+      customer_name: 'Cliente local',
+      date: '2026-07-01',
+      source_quotation: id === 'LOCAL-WITH-QUOTE' ? 'ORC-LOCAL-1' : undefined,
+      grand_total: 100,
+      items: [{ item_code: 'SKU-1', item_name: 'Produto local', qty: 1, rate: 100, amount: 100, uom: 'und' }],
+    });
+  });
+  await page.goto('/#/sales-orders/LOCAL-NO-QUOTE');
+  await expect(page.getByText('Cliente local', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
+  await expect(page.getByText('Voltar ao orçamento', { exact: true })).toHaveCount(0);
+
+  await page.goto('/#/sales-orders/LOCAL-WITH-QUOTE');
+  await expect(page.getByRole('button', { name: 'Voltar ao orçamento' }).last()).toBeVisible();
+  await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
+});
+
+test('empty local dashboard renders zero metrics', async ({ page }) => {
+  await page.route('**/api/sales-dashboard**', async (route) => fulfillJson(route, {
+    success: true,
+    period: { label: 'Últimos 30 dias', from: '2026-06-01', to: '2026-07-01' },
+    summary: {
+      total_revenue: 0,
+      revenue_delta: 0,
+      orders_count: 0,
+      orders_delta: 0,
+      avg_ticket: 0,
+      avg_ticket_delta: 0,
+      open_orders: 0,
+      conversion_rate: 0,
+      conversion_delta: 0,
+    },
+    top_products: [],
+    top_customers: [],
+    sales_by_day: [],
+    stale_quotations: [],
+  }));
+  await page.goto('/#/dashboard');
+  await expect(page.getByText('Dashboard', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('R$ 0,00', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Nenhum produto vendido no período.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Nenhuma venda no período.', { exact: true })).toBeVisible();
+});
+
+test('products page uses local controls without response mode metadata', async ({ page }) => {
+  await page.route('**/api/products**', async (route) => fulfillJson(route, {
+    data: [{ sku: 'SKU-LOCAL', nome: 'Produto local', descricao: '', unidade: 'Und', ativo: true }],
+    pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+  }));
+  await page.goto('/#/products');
+  await expect(page.getByRole('cell', { name: 'Produto local' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ativos' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Arquivados' })).toBeVisible();
+});
+
+test('manual quotation accepts metadata-free local responses', async ({ page }) => {
+  await page.route('**/api/quotation-templates**', async (route) => fulfillJson(route, {
+    templates: [{ key: 'padrao', name: 'Padrão', is_default: true }],
+    default_key: 'padrao',
+  }));
+  await page.route('**/api/leads-clients**', async (route) => fulfillJson(route, {
+    data: [{ id: 'client-local', nome: 'Cliente local', email: 'local@example.com', telefone: '5511999990000', tipo: 'cliente' }],
+    pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+  }));
+  await page.route('**/api/products**', async (route) => fulfillJson(route, {
+    data: [{ sku: 'SKU-LOCAL', nome: 'Produto local', preco_minimo: '10.00', pricing_available: true }],
+    pagination: { page: 1, limit: 8, total: 1, total_pages: 1 },
+  }));
+  await page.route('**/api/pricing-lookup**', async (route) => fulfillJson(route, {
+    success: true,
+    items: [{ item_code: 'SKU-LOCAL', qty: 30, rate: '10.00' }],
+  }));
+  await page.route('**/api/orcamento**', async (route) => fulfillJson(route, {
+    success: true,
+    quotation_id: 'ORC-LOCAL-1',
+    quote_id: 'quote-local-1',
+    revision_id: 'revision-local-1',
+    revision_number: 1,
+    cliente: 'Cliente local',
+    status: 'rascunho',
+  }, 201));
+  await page.goto('/#/manual');
+  await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
+  await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Cliente');
+  await page.getByRole('button', { name: 'Selecionar Cliente local' }).click();
+  await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
+  await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill('SKU-LOCAL');
+  await page.getByRole('button', { name: 'Adicionar SKU-LOCAL ao orçamento' }).click();
+  await page.getByRole('button', { name: 'Criar orçamento' }).click();
+  await expect(page.getByText('Rascunho persistido com sucesso', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
+});
+
+test('empty local CRM and leads retain loading/error/retry states', async ({ page }) => {
+  await page.route('**/api/crm-deals**', async (route) => fulfillJson(route, { columns: [] }));
+  await page.route('**/api/crm-prune-candidates**', async (route) => fulfillJson(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } }));
+  await page.goto('/#/crm');
+  await expect(page.getByText('Nenhum deal no pipeline', { exact: true })).toBeVisible();
+
+  let leadAttempts = 0;
+  await page.route('**/api/leads-clients**', async (route) => {
+    leadAttempts += 1;
+    if (leadAttempts === 1) return fulfillJson(route, { error: 'Falha temporária.' }, 503);
+    return fulfillJson(route, { data: [], pagination: { page: 1, limit: 10, total: 0, total_pages: 0 } });
+  });
+  await page.goto('/#/leads');
+  await expect(page.getByText('Erro ao carregar clientes', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
+});
+
+test('communication screen consumes local conversation and message IDs only', async ({ page }) => {
+  const conversation = {
+    id: 'conversation-local-1', canonicalPhone: '5511999990000', phone: '5511999990000',
+    displayLabel: 'Cliente local', displayName: 'Cliente local', identityStatus: 'verified',
+    lastMessageAt: '2026-07-01T12:00:00.000Z', lastMessagePreview: 'Olá', status: 'new',
+    createdAt: '2026-07-01T12:00:00.000Z', updatedAt: '2026-07-01T12:00:00.000Z',
+  };
+  const message = { id: 'message-local-1', conversationId: conversation.id, direction: 'inbound', type: 'text', body: 'Olá local', mediaUrl: '', timestamp: '2026-07-01T12:00:00.000Z' };
+  await page.route('**/api/whatsapp-conversations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.has('messages')) return fulfillJson(route, { success: true, data: [message] });
+    if (request.method() === 'GET' && url.searchParams.has('id')) return fulfillJson(route, { success: true, data: conversation });
+    if (request.method() === 'POST' && request.postDataJSON()?.action === 'sync-messages') return fulfillJson(route, { success: true, data: [message] });
+    if (request.method() === 'POST' && request.postDataJSON()?.action === 'sync') return fulfillJson(route, { success: true, data: { conversations: [conversation], syncedMessages: 1 } });
+    return fulfillJson(route, { success: true, data: [conversation] });
+  });
+  await page.goto('/#/whatsapp-inbox');
+  await expect(page.getByText('Cliente local', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Olá local', { exact: true })).toBeVisible();
+  await expect(page.locator('body')).not.toContainText(/provider|conversationId|messageId/i);
 });

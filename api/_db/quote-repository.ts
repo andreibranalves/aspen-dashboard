@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import { appendProductActivityEvents } from './product-activity-repository.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import {
   appSettings,
   clients,
+  crmDeals,
   products,
   productPricingTiers,
   quoteRevisionItems,
@@ -45,7 +47,6 @@ import {
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
 import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
-import { enqueueQuotationOutboxEvent } from './quotation-outbox-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -204,14 +205,45 @@ export interface QuoteDraftResult {
   template_version_id: string;
   secoes: QuotationSectionsSnapshot;
   created_at: string;
-  outbox_event_id?: string;
-  outbox_event_type?: 'quotation.created';
-  outbox_idempotency_key?: string;
+}
+
+export interface QuoteDuplicateResult {
+  success: true;
+  quotation_id: string;
+  quotation_name: string;
+  quote_id: string;
+  quotation_uuid: string;
+  revision_id: string;
+  quote_revision_id: string;
+  revision: 1;
+  revision_number: 1;
+  status: 'rascunho';
+  cliente: string;
+  cliente_id: string;
+  cliente_snapshot: QuoteDraftClientSnapshot;
+  items: QuoteDraftItemSnapshot[];
+  subtotal: string;
+  frete: string;
+  total: string;
+  validade_dias: number;
+  pagamento: string;
+  entrega: string;
+  observacoes: string;
+  prazo_producao: string;
+  template_padrao: string;
+  template_key: string;
+  template_hash: string;
+  template_version_id: string | null;
+  secoes: QuotationSectionsSnapshot;
+  created_at: string;
+  crm_deal_id: string;
 }
 
 export interface QuoteDraftRepository {
   createDraft: (input: QuoteDraftCreateInput) => Promise<QuoteDraftResult>;
   create?: (input: QuoteDraftCreateInput) => Promise<QuoteDraftResult>;
+  duplicateDraft?: (quotationId: string) => Promise<QuoteDuplicateResult>;
+  duplicateQuotation?: (quotationId: string) => Promise<QuoteDuplicateResult>;
 }
 
 export interface QuoteDraftRepositoryOptions {
@@ -626,6 +658,76 @@ function copy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function quotationPredicate(id: string) {
+  return isUuid(id)
+    ? or(eq(quotations.id, id), eq(quotations.businessNumber, id))
+    : eq(quotations.businessNumber, id);
+}
+
+function clientSnapshotFromRevision(
+  revision: typeof quoteRevisions.$inferSelect,
+  clientId: string,
+): QuoteDraftClientSnapshot {
+  const address = {
+    endereco: revision.clienteEndereco ?? null,
+    numero: revision.clienteNumero ?? null,
+    bairro: revision.clienteBairro ?? null,
+    complemento: revision.clienteComplemento ?? null,
+    municipio: revision.clienteMunicipio ?? null,
+    uf: revision.clienteUf ?? null,
+    cep: revision.clienteCep ?? null,
+  } satisfies ClientAddress;
+  return {
+    id: clientId,
+    nome: revision.clienteNome,
+    documento: revision.clienteDocumento ?? null,
+    email: revision.clienteEmail ?? null,
+    telefone: revision.clienteTelefone ?? null,
+    notes: revision.clienteNotas ?? null,
+    address: Object.values(address).some(Boolean) ? address : null,
+  };
+}
+
+function duplicateItemSnapshot(
+  row: typeof quoteRevisionItems.$inferSelect,
+  id: string,
+): QuoteDraftItemSnapshot {
+  const source = row.precoFonte === 'tier' ? 'tier' : 'base';
+  const tier = row.precoMinimoFaixa == null ? null : String(row.precoMinimoFaixa);
+  const qty = String(row.quantidade);
+  const suggested = String(row.precoSugerido);
+  const applied = String(row.precoAplicado);
+  const difference = String(row.diferencaPreco);
+  const total = String(row.totalLinha);
+  const sku = row.produtoSku || row.productSku;
+  return {
+    id,
+    position: row.position,
+    item_code: sku,
+    sku,
+    qty,
+    quantidade: qty,
+    nome: row.produtoNome,
+    descricao: row.produtoDescricao,
+    unidade: row.produtoUnidade,
+    categoria: row.produtoCategoria ?? null,
+    marca: row.produtoMarca ?? null,
+    price_source: source,
+    preco_fonte: source,
+    tier_minimum: tier,
+    preco_minimo_faixa: tier,
+    suggested_unit_price: suggested,
+    preco_sugerido: suggested,
+    applied_unit_price: applied,
+    preco_aplicado: applied,
+    price_difference: difference,
+    diferenca_preco: difference,
+    line_total: total,
+    total_linha: total,
+    manual_rate: Boolean(row.manualRate),
+  };
+}
+
 function resolutionSource(resolution: PricingResolution): 'base' | 'tier' {
   return resolution.source === 'tier' ? 'tier' : 'base';
 }
@@ -1031,18 +1133,16 @@ export function createPostgresQuoteDraftRepository(
           }))
         );
 
-        // This insert shares the aggregate transaction. If the outbox write
-        // fails, PostgreSQL rolls back the quotation rather than saving a
-        // quote whose CRM effect can never be observed.
-        const outboxEvent = await enqueueQuotationOutboxEvent(tx, {
-          eventType: 'quotation.created',
-          provider: 'crm',
-          quotationId,
-          revisionId,
-          businessNumber,
-          idempotencyKey: `quotation.created:crm:${quotationId}:${revisionId}`,
-          now: createdAt,
-        });
+        await appendProductActivityEvents(
+          tx,
+          [...new Set(resolvedItems.map((item) => item.product.sku))].map((sku) => ({
+            sku,
+            tipo: 'orcamento' as const,
+            texto: `Orçamento ${businessNumber} criado`,
+            reference_id: `orcamento:${quotationId}:${sku}`,
+            created_at: createdAt,
+          })),
+        );
 
         const savedItems = resolvedItems.map(
           (item) =>
@@ -1105,9 +1205,6 @@ export function createPostgresQuoteDraftRepository(
           template_version_id: template.version.id || revisionMetadata.templateVersionId,
           secoes: sectionsSnapshot,
           created_at: createdAt.toISOString(),
-          outbox_event_id: outboxEvent.id,
-          outbox_event_type: 'quotation.created',
-          outbox_idempotency_key: outboxEvent.idempotencyKey,
         } satisfies QuoteDraftResult;
       });
       return result;
@@ -1125,7 +1222,227 @@ export function createPostgresQuoteDraftRepository(
       throw new QuoteDraftRepositoryError();
     }
   };
-  return { createDraft, create: createDraft };
+
+  const duplicateDraft = async (quotationIdValue: string): Promise<QuoteDuplicateResult> => {
+    const normalizedId = String(quotationIdValue || '').trim();
+    if (!normalizedId) throw new QuoteDraftInputError('ID do orçamento não informado.');
+
+    let database: AppDatabase;
+    try {
+      database = getDb();
+    } catch {
+      throw new QuoteDraftRepositoryError('Não foi possível duplicar o orçamento. Tente novamente.');
+    }
+
+    try {
+      const createdAt = ensureDate(now());
+      return await database.transaction(async (tx) => {
+        await acquireQuotationWriteLock(tx);
+        const [sourceQuotation] = await tx
+          .select()
+          .from(quotations)
+          .where(quotationPredicate(normalizedId))
+          .for('update')
+          .limit(1);
+        if (!sourceQuotation) throw new QuoteDraftNotFoundError('Orçamento não encontrado.');
+
+        const [sourceRevision] = await tx
+          .select()
+          .from(quoteRevisions)
+          .where(eq(quoteRevisions.quotationId, sourceQuotation.id))
+          .orderBy(sql`${quoteRevisions.version} DESC`)
+          .limit(1);
+        if (!sourceRevision) {
+          throw new QuoteDraftNotFoundError('Revisão do orçamento não encontrada.');
+        }
+
+        const sourceItems = await tx
+          .select()
+          .from(quoteRevisionItems)
+          .where(eq(quoteRevisionItems.revisionId, sourceRevision.id))
+          .orderBy(asc(quoteRevisionItems.position));
+        if (sourceItems.length === 0) {
+          throw new QuoteDraftInputError('Orçamento sem itens não pode ser duplicado.');
+        }
+
+        const revisionMetadata = sourceRevision.sectionsSnapshot
+          ? {
+              templateVersionId: sourceRevision.templateVersionId,
+              sectionsSnapshot: copy(sourceRevision.sectionsSnapshot),
+            }
+          : await resolveQuotationRevisionMetadata(tx, sourceRevision);
+        const clientSnapshot = clientSnapshotFromRevision(sourceRevision, sourceQuotation.clientId);
+        const businessNumber = await reserveBusinessNumber(tx, createdAt.getUTCFullYear());
+        const quotationId = idFactory();
+        const revisionId = idFactory();
+        const itemIds = sourceItems.map(() => idFactory());
+        const dealId = idFactory();
+        const generatedIds = [quotationId, revisionId, dealId, ...itemIds];
+        if (
+          generatedIds.some((id) => !isUuid(id)) ||
+          new Set(generatedIds).size !== generatedIds.length
+        ) {
+          throw new QuoteDraftRepositoryError(
+            'Não foi possível gerar os identificadores da duplicação.'
+          );
+        }
+
+        await tx.insert(quotations).values({
+          id: quotationId,
+          businessNumber,
+          clientId: sourceQuotation.clientId,
+          status: 'rascunho',
+          createdAt,
+          updatedAt: createdAt,
+        });
+        await tx.insert(quoteRevisions).values({
+          id: revisionId,
+          quotationId,
+          version: 1,
+          status: 'rascunho',
+          validadeDias: sourceRevision.validadeDias,
+          pagamento: sourceRevision.pagamento,
+          entrega: sourceRevision.entrega,
+          fretePadrao: sourceRevision.fretePadrao,
+          frete: sourceRevision.frete,
+          observacoes: sourceRevision.observacoes,
+          prazoProducao: sourceRevision.prazoProducao,
+          templatePadrao: sourceRevision.templatePadrao,
+          templateHash: sourceRevision.templateHash,
+          templateVersionId: revisionMetadata.templateVersionId,
+          sectionsSnapshot: copy(revisionMetadata.sectionsSnapshot),
+          ...clientSnapshotToRow(clientSnapshot),
+          subtotal: sourceRevision.subtotal,
+          total: sourceRevision.total,
+          createdAt,
+        });
+        await tx.insert(quoteRevisionItems).values(
+          sourceItems.map((item, index) => ({
+            id: itemIds[index],
+            revisionId,
+            position: item.position,
+            productSku: item.productSku,
+            quantidade: item.quantidade,
+            produtoSku: item.produtoSku,
+            produtoNome: item.produtoNome,
+            produtoDescricao: item.produtoDescricao,
+            produtoUnidade: item.produtoUnidade,
+            produtoCategoria: item.produtoCategoria,
+            produtoMarca: item.produtoMarca,
+            notas: item.notas,
+            precoFonte: item.precoFonte,
+            precoMinimoFaixa: item.precoMinimoFaixa,
+            precoSugerido: item.precoSugerido,
+            precoAplicado: item.precoAplicado,
+            diferencaPreco: item.diferencaPreco,
+            totalLinha: item.totalLinha,
+            manualRate: item.manualRate,
+          }))
+        );
+
+        await appendProductActivityEvents(
+          tx,
+          [...new Set(sourceItems.map((item) => item.produtoSku || item.productSku))].map((sku) => ({
+            sku,
+            tipo: 'orcamento' as const,
+            texto: `Orçamento ${businessNumber} criado`,
+            reference_id: `orcamento:${quotationId}:${sku}`,
+            created_at: createdAt,
+          })),
+        );
+
+        const [existingDeal] = await tx
+          .select()
+          .from(crmDeals)
+          .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, 'Perdido')))
+          .for('update')
+          .limit(1);
+        let linkedDealId = existingDeal?.id;
+        if (!linkedDealId) {
+          const [createdDeal] = await tx
+            .insert(crmDeals)
+            .values({
+              id: dealId,
+              quoteLeadId: null,
+              clientId: sourceQuotation.clientId,
+              quotationId,
+              nome: clientSnapshot.nome,
+              email: clientSnapshot.email,
+              telefone: clientSnapshot.telefone,
+              status: 'Orcamento Enviado',
+              followUpStage: 0,
+              nextStep: null,
+              lostReason: null,
+              createdAt,
+              updatedAt: createdAt,
+            })
+            .onConflictDoNothing()
+            .returning({ id: crmDeals.id });
+          linkedDealId = createdDeal?.id;
+        }
+        if (!linkedDealId) {
+          const [winner] = await tx
+            .select({ id: crmDeals.id })
+            .from(crmDeals)
+            .where(and(eq(crmDeals.quotationId, quotationId), ne(crmDeals.status, 'Perdido')))
+            .limit(1);
+          linkedDealId = winner?.id;
+        }
+        if (!linkedDealId) {
+          throw new QuoteDraftRepositoryError('Não foi possível duplicar o orçamento. Tente novamente.');
+        }
+
+        return {
+          success: true as const,
+          quotation_id: businessNumber,
+          quotation_name: businessNumber,
+          quote_id: quotationId,
+          quotation_uuid: quotationId,
+          revision_id: revisionId,
+          quote_revision_id: revisionId,
+          revision: 1,
+          revision_number: 1,
+          status: 'rascunho' as const,
+          cliente: clientSnapshot.nome,
+          cliente_id: clientSnapshot.id,
+          cliente_snapshot: clientSnapshot,
+          items: sourceItems.map((item, index) => duplicateItemSnapshot(item, itemIds[index])),
+          subtotal: String(sourceRevision.subtotal),
+          frete: String(sourceRevision.frete),
+          total: String(sourceRevision.total),
+          validade_dias: sourceRevision.validadeDias,
+          pagamento: sourceRevision.pagamento,
+          entrega: sourceRevision.entrega,
+          observacoes: sourceRevision.observacoes,
+          prazo_producao: sourceRevision.prazoProducao,
+          template_padrao: sourceRevision.templatePadrao,
+          template_key: sourceRevision.templatePadrao,
+          template_hash: sourceRevision.templateHash,
+          template_version_id: revisionMetadata.templateVersionId,
+          secoes: copy(revisionMetadata.sectionsSnapshot),
+          created_at: createdAt.toISOString(),
+          crm_deal_id: linkedDealId,
+        } satisfies QuoteDuplicateResult;
+      });
+    } catch (error) {
+      if (
+        error instanceof QuoteDraftInputError ||
+        error instanceof QuoteDraftNotFoundError ||
+        error instanceof QuoteDraftConflictError ||
+        error instanceof QuoteDraftRepositoryError
+      )
+        throw error;
+      console.error(`[quote-repository] duplicate failed (${safeErrorKind(error)})`);
+      throw new QuoteDraftRepositoryError('Não foi possível duplicar o orçamento. Tente novamente.');
+    }
+  };
+
+  return {
+    createDraft,
+    create: createDraft,
+    duplicateDraft,
+    duplicateQuotation: duplicateDraft,
+  };
 }
 
 export function quoteDraftItemFromRow(

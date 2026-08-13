@@ -16,7 +16,7 @@ import { formatBRL, capitalize } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import type { DashboardData } from '@/types/domain';
+import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
 
 interface PeriodOption {
   key: string;
@@ -45,16 +45,19 @@ interface SummaryCard {
 
 export default function DashboardPage({ navigate }: DashboardPageProps) {
   const [period, setPeriod] = useState<string>('30d');
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<ProjectedDashboardData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setData(null);
     try {
-      const result = await apiGet<DashboardData>(`/sales-dashboard?period=${period}`);
-      setData(result);
+      const result = await apiGet<unknown>(`/sales-dashboard?period=${period}`);
+      const projected = projectDashboardData(result);
+      if (!projected) throw new Error('Resposta inválida ao carregar o dashboard.');
+      setData(projected);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar dashboard.';
       setError(message);
@@ -117,6 +120,9 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
             <BarChart3 className="h-5 w-5 shrink-0" />
             <p className="text-sm">{error}</p>
           </div>
+          <Button variant="outline" className="mt-4" onClick={() => void fetchDashboard()}>
+            Tentar novamente
+          </Button>
         </div>
       </div>
     );
@@ -128,32 +134,35 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     {
       icon: DollarSign,
       label: 'Total vendido',
-      value: data?.summary?.total_revenue != null ? formatBRL(data.summary.total_revenue) : '—',
-      delta: data?.summary?.revenue_delta,
+      value: data ? formatBRL(data.summary.total_revenue) : '—',
+      delta: data?.summary.revenue_delta,
     },
     {
       icon: ShoppingCart,
       label: 'Pedidos',
-      value: data?.summary?.orders_count != null ? String(data.summary.orders_count) : '—',
-      delta: data?.summary?.orders_delta,
+      value: data ? String(data.summary.orders_count) : '—',
+      delta: data?.summary.orders_delta,
     },
     {
       icon: TrendingUp,
       label: 'Ticket médio',
-      value: data?.summary?.avg_ticket != null ? formatBRL(data.summary.avg_ticket) : '—',
-      delta: data?.summary?.avg_ticket_delta,
+      value: data ? formatBRL(data.summary.avg_ticket) : '—',
+      delta: data?.summary.avg_ticket_delta,
     },
     {
       icon: Clock,
       label: 'Pedidos em aberto',
-      value: data?.summary?.open_orders != null ? String(data.summary.open_orders) : '—',
+      value: data ? String(data.summary.open_orders) : '—',
       delta: null,
     },
     {
       icon: BarChart3,
       label: 'Conversão',
-      value: data?.summary?.conversion_rate != null ? `${data.summary.conversion_rate}%` : '—',
-      delta: data?.summary?.conversion_delta,
+      value:
+        data
+          ? `${Number((data.summary.conversion_rate * 100).toFixed(2))}%`
+          : '—',
+      delta: data?.summary.conversion_delta,
     },
   ];
 
@@ -232,13 +241,13 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                     <tr key={p.sku || i} className="border-b border-line/50 last:border-0">
                       <td className="py-2 pr-2 text-fg-muted font-mono text-xs">{p.sku}</td>
                       <td className="py-2 pr-2 text-fg font-medium truncate max-w-[180px]">
-                        {p.product || p.name}
+                        {p.product}
                       </td>
-                      <td className="py-2 pr-2 text-right text-fg">{p.quantity ?? p.qty}</td>
+                      <td className="py-2 pr-2 text-right text-fg">{p.quantity}</td>
                       <td className="py-2 pr-2 text-right text-fg font-medium">
-                        {formatBRL(p.revenue ?? p.total)}
+                        {formatBRL(p.revenue)}
                       </td>
-                      <td className="py-2 text-right text-fg">{p.orders ?? p.order_count}</td>
+                      <td className="py-2 text-right text-fg">{p.orders}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -269,12 +278,12 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                   {data.top_customers.map((c, i) => (
                     <tr key={c.name || i} className="border-b border-line/50 last:border-0">
                       <td className="py-2 pr-2 text-fg font-medium truncate max-w-[240px]">
-                        {capitalize(c.name || c.customer)}
+                        {capitalize(c.name)}
                       </td>
                       <td className="py-2 pr-2 text-right text-fg font-medium">
-                        {formatBRL(c.revenue ?? c.total)}
+                        {formatBRL(c.revenue)}
                       </td>
-                      <td className="py-2 text-right text-fg">{c.orders ?? c.order_count}</td>
+                      <td className="py-2 text-right text-fg">{c.orders}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -306,7 +315,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                   <tr key={d.date || i} className="border-b border-line/50 last:border-0">
                     <td className="py-2 pr-2 text-fg">{d.date}</td>
                     <td className="py-2 text-right text-fg font-medium">
-                      {formatBRL(d.revenue ?? d.total)}
+                      {formatBRL(d.revenue)}
                     </td>
                   </tr>
                 ))}
@@ -350,11 +359,11 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                       </button>
                     </td>
                     <td className="py-2 pr-2 text-fg truncate max-w-[180px]">
-                      {capitalize(q.customer || q.client)}
+                      {capitalize(q.customer)}
                     </td>
-                    <td className="py-2 pr-2 text-fg-muted">há {q.age ?? q.days_old} dias</td>
+                    <td className="py-2 pr-2 text-fg-muted">há {q.age} dias</td>
                     <td className="py-2 pr-2 text-right text-fg font-medium">
-                      {formatBRL(q.value ?? q.total)}
+                      {formatBRL(q.value)}
                     </td>
                     <td className="py-2 pr-2">
                       <span className="inline-block px-2 py-0.5 text-xs rounded-pill bg-primary/10 text-primary font-medium">

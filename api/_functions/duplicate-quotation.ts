@@ -1,83 +1,93 @@
-// POST /api/duplicate-quotation — Duplicates a quotation in ERPNext.
+// POST /api/duplicate-quotation - Duplicates a local PostgreSQL quotation.
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-//
-// Body: { quotation_id: "ORC-20261368" }
-// Returns: { success: true, new_id: "ORC-20261369" }
+import {
+  createPostgresQuoteDraftRepository,
+  QuoteDraftConflictError,
+  QuoteDraftInputError,
+  QuoteDraftNotFoundError,
+  QuoteDraftRepositoryError,
+  type QuoteDraftRepository,
+  type QuoteDuplicateResult,
+} from '../_db/quote-repository.js';
 
-import { erpGetDoc, erpPost, createHttpError } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
+export type DuplicateQuotationRepository = Pick<
+  QuoteDraftRepository,
+  'duplicateDraft' | 'duplicateQuotation'
+>;
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'duplicate-quotation não está disponível no modo operacional.' }) };
-  }
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  }
-
-  let payload;
-  try { payload = JSON.parse(event.body); }
-  catch { return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) }; }
-
-  const { quotation_id } = payload;
-  if (!quotation_id || typeof quotation_id !== 'string' || !quotation_id.trim()) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'ID do orçamento é obrigatório.' }) };
-  }
-
-  try {
-    // 1. Fetch source quotation
-    const src = await erpGetDoc('Quotation', quotation_id);
-    if (!src) {
-      throw createHttpError(404, 'Orçamento não encontrado.', `[duplicate-quotation] not found: ${quotation_id}`);
-    }
-
-    // 2. Build items array (strip name/parent fields)
-    const items = (src.items || []).map((item: Record<string, unknown>) => ({
-      item_code: item.item_code,
-      item_name: item.item_name,
-      description: item.description || '',
-      qty: item.qty,
-      uom: item.uom || item.stock_uom || 'und',
-      rate: item.rate,
-    }));
-
-    if (items.length === 0) {
-      throw createHttpError(400, 'Orçamento sem itens não pode ser duplicado.', '[duplicate-quotation] no items');
-    }
-
-    // 3. Create new quotation
-    const newQuotation = await erpPost('Quotation', {
-      quotation_to: src.quotation_to || 'Lead',
-      party_name: src.party_name,
-      customer_name: src.customer_name,
-      title: src.title || src.customer_name || 'Cópia',
-      currency: src.currency || 'BRL',
-      selling_price_list: src.selling_price_list || 'Standard Selling',
-      transaction_date: new Date().toISOString().split('T')[0],
-      remarks: src.remarks || '',
-      ...(src.utm_source ? { utm_source: src.utm_source } : {}),
-      ...(src.contact_email ? { contact_email: src.contact_email } : {}),
-      ...(src.contact_mobile ? { contact_mobile: src.contact_mobile } : {}),
-      ...(src.customer_address ? { customer_address: src.customer_address } : {}),
-      items,
-      ignore_pricing_rule: 1,
-    });
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        new_id: newQuotation.name,
-      }),
-    };
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[duplicate-quotation]', err?.logMessage || err?.message || err);
-    return {
-      statusCode: code,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.statusCode ? err.message : 'Erro interno ao duplicar orçamento.' }),
-    };
-  }
+export interface DuplicateQuotationHandlerDependencies {
+  repository?: DuplicateQuotationRepository;
 }
+
+function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function logError(error: unknown): void {
+  const kind = error instanceof Error ? error.name : typeof error;
+  console.error(`[duplicate-quotation] failed (${kind})`);
+}
+
+function errorResponse(error: unknown): FunctionResult {
+  logError(error);
+  if (
+    error instanceof QuoteDraftInputError ||
+    error instanceof QuoteDraftNotFoundError ||
+    error instanceof QuoteDraftConflictError ||
+    error instanceof QuoteDraftRepositoryError
+  ) {
+    return json(error.statusCode, { error: error.message });
+  }
+  return json(503, { error: 'Não foi possível duplicar o orçamento. Tente novamente.' });
+}
+
+export async function duplicateQuotation(
+  quotationId: string,
+  repository: DuplicateQuotationRepository = createPostgresQuoteDraftRepository(),
+): Promise<QuoteDuplicateResult> {
+  const duplicate = repository.duplicateQuotation || repository.duplicateDraft;
+  if (!duplicate) {
+    throw new QuoteDraftRepositoryError('Não foi possível duplicar o orçamento. Tente novamente.');
+  }
+  return duplicate(quotationId);
+}
+
+export function createHandler(
+  dependencies: DuplicateQuotationHandlerDependencies = {},
+): Handler {
+  const repository = dependencies.repository || createPostgresQuoteDraftRepository();
+  return async function duplicateQuotationHandler(event: FunctionEvent): Promise<FunctionResult> {
+    if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(event.body || '{}');
+    } catch {
+      return json(400, { error: 'JSON inválido.' });
+    }
+    if (!isRecord(payload)) return json(400, { error: 'Envie um payload válido.' });
+
+    const quotationId = payload.quotation_id;
+    if (typeof quotationId !== 'string' || !quotationId.trim()) {
+      return json(400, { error: 'ID do orçamento é obrigatório.' });
+    }
+
+    try {
+      const result = await duplicateQuotation(quotationId, repository);
+      return json(200, { success: true, new_id: result.quotation_id });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  };
+}
+
+export const handler = createHandler();

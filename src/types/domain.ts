@@ -1,5 +1,4 @@
-// src/types/domain.ts
-// Shared domain types used across the frontend.
+// Shared first-party domain types used across the frontend.
 
 import type { Address } from '@/lib/clientMetadata';
 
@@ -39,8 +38,42 @@ export interface ProductsApiResponse {
     page?: number;
     limit?: number;
   };
-  core_mode?: boolean;
-  source?: 'postgres' | 'frappe' | string;
+}
+
+export interface OrcamentoResponse {
+  success?: boolean;
+  cliente?: string;
+  quotation_id?: string;
+  quotation_name?: string;
+  quote_id?: string;
+  quotation_uuid?: string;
+  revision_id?: string;
+  quote_revision_id?: string;
+  revision?: number;
+  revision_number?: number;
+  status?: string;
+  cliente_id?: string;
+  cliente_snapshot?: Record<string, unknown>;
+  items?: Array<Record<string, unknown>>;
+  subtotal?: string;
+  frete?: string;
+  total?: string;
+  validade_dias?: number;
+  pagamento?: string;
+  entrega?: string;
+  observacoes?: string;
+  prazo_producao?: string;
+  template_padrao?: string;
+  deal_id?: string;
+  pdf_url?: string;
+  public_url?: string | null;
+  publicUrl?: string | null;
+}
+
+export interface LeadCreateResponse {
+  created?: string;
+  name?: string;
+  id?: string;
 }
 
 export interface DraftItem {
@@ -67,12 +100,12 @@ export interface DraftEdited {
 
 export interface Draft {
   index: number;
-  original: Record<string, unknown>; // raw ERPNext payload shape is dynamic / not typed
+  original: Record<string, unknown>;
   edited: DraftEdited;
   approved: boolean;
   discarded: boolean;
   status?: 'processing' | 'done' | 'error';
-  result?: { success: boolean; data?: Record<string, unknown>; error?: string }; // raw ERPNext response payload
+  result?: { success: boolean; data?: Record<string, unknown>; error?: string };
 }
 
 export interface ProductSearchEntry {
@@ -119,6 +152,7 @@ export interface SalesByDay {
   date?: string;
   revenue?: number;
   total?: number;
+  orders?: number;
 }
 
 export interface StaleQuotation {
@@ -133,6 +167,12 @@ export interface StaleQuotation {
 }
 
 export interface DashboardData {
+  success?: boolean;
+  period?: {
+    label?: string;
+    from?: string;
+    to?: string;
+  };
   summary?: DashboardSummary;
   top_products?: TopProduct[];
   top_customers?: TopCustomer[];

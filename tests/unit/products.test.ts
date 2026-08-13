@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 
 import { createHandler as createProductsBoundary } from '../../api/_functions/products.js';
 import { createHandler as createDetailBoundary } from '../../api/_functions/product-detail.js';
@@ -102,39 +102,44 @@ class MemoryProductsRepository implements ProductsRepository {
   }
 }
 
-const previousFlag = process.env.CRM_CORE_PRODUCTS_ENABLED;
-afterEach(() => {
-  if (previousFlag === undefined) delete process.env.CRM_CORE_PRODUCTS_ENABLED;
-  else process.env.CRM_CORE_PRODUCTS_ENABLED = previousFlag;
-});
+describe('products direct PostgreSQL boundaries', () => {
+  it('delegates to the PostgreSQL handler', async () => {
+    let calls = 0;
+    const handler = createProductsBoundary({
+      core: async (request: any) => {
+        calls += 1;
+        return { statusCode: 200, body: JSON.stringify({ method: request.httpMethod }) };
+      },
+    });
+    const result = await handler(event('GET'));
+    assert.equal(result.statusCode, 200);
+    assert.equal(calls, 1);
+  });
 
-describe('products rollout boundary', () => {
-  it('delegates false/unset to legacy and exact true to core without fallback', async () => {
-    const prevOperational = process.env.CRM_OPERATIONAL_MODE;
-    delete process.env.CRM_OPERATIONAL_MODE;
-    let legacyCalls = 0;
-    let coreCalls = 0;
-    const legacy = async () => {
-      legacyCalls += 1;
-      return { statusCode: 200, body: JSON.stringify({ source: 'legacy-test' }) };
-    };
-    const core = async () => {
-      coreCalls += 1;
-      throw new Error('core unavailable');
-    };
-    const handler = createProductsBoundary({ legacy, core });
+  it('updates an empty product description through the only product handler', async () => {
+    const repository = new MemoryProductsRepository();
+    const products = createProductsCore({ repository });
+    await products(event('POST', { sku: 'SKU-1', nome: 'Alpha', descricao: 'Original' }));
+    const handler = createUpdateBoundary({
+      core: createUpdateCore({ repository }),
+    });
+    const result = await handler(event('PATCH', { descricao: '' }, { sku: 'SKU-1' }));
+    assert.equal(result.statusCode, 200);
+    assert.equal(parse(result).produto.descricao, '');
+  });
 
-    delete process.env.CRM_CORE_PRODUCTS_ENABLED;
-    const legacyResult = await handler(event('GET'));
-    assert.equal(legacyCalls, 1);
-    assert.equal(parse(legacyResult).core_mode, false);
-
-    process.env.CRM_CORE_PRODUCTS_ENABLED = 'true';
-    await assert.rejects(() => handler(event('GET')), /core unavailable/);
-    assert.equal(coreCalls, 1);
-    assert.equal(legacyCalls, 1);
-    if (prevOperational === undefined) delete process.env.CRM_OPERATIONAL_MODE;
-    else process.env.CRM_OPERATIONAL_MODE = prevOperational;
+  it('serves product details through the PostgreSQL boundary without metadata', async () => {
+    const repository = new MemoryProductsRepository();
+    const products = createProductsCore({ repository });
+    await products(event('POST', { sku: 'SKU-1', nome: 'Alpha' }));
+    const handler = createDetailBoundary({
+      core: createDetailCore({ repository }),
+    });
+    const result = await handler(event('GET', undefined, { sku: 'SKU-1' }));
+    assert.equal(result.statusCode, 200);
+    assert.equal(parse(result).produto.sku, 'SKU-1');
+    assert.equal(Object.keys(parse(result)).some((key) => key.endsWith('_mode')), false);
+    assert.equal(parse(result).source, undefined);
   });
 });
 
@@ -165,7 +170,8 @@ describe('products core handlers', () => {
     assert.equal(first.statusCode, 201);
     assert.equal(parse(first).produto.sku, 'SKU-1');
     assert.equal(parse(first).produto.unidade, 'Und');
-    assert.equal(parse(first).core_mode, true);
+    assert.equal(Object.keys(parse(first)).some((key) => key.endsWith('_mode')), false);
+    assert.equal(parse(first).source, undefined);
 
     const second = await products(event('POST', { sku: 'SKU-2', nome: 'Beta', categoria: 'B' }));
     assert.equal(second.statusCode, 201);

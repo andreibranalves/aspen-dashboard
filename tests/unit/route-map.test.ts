@@ -63,7 +63,6 @@ test('Vercel and local route maps expose the same 43 route names', () => {
     'sales-order-from-quotation',
     'sales-orders',
     'sales-dashboard',
-    'quotation-outbox-inspect',
   ]) {
     assert.ok(expected.has(route), `required quotation route missing: ${route}`);
   }

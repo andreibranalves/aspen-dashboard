@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, type ClipboardEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type ClipboardEvent } from 'react';
 import {
   Sparkles,
   FileText,
@@ -15,14 +15,18 @@ import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/qu
 import OrderTemplateManager from '@/components/OrderTemplateManager';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/orderTemplatesApi';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatters';
-import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
 import type { Draft } from '@/types/domain';
-import { fetchFlows, executeFlow, type CommunicationFlow } from '@/lib/communicationApi';
+import { fetchFlows, executeFlow, CommunicationSendError, type CommunicationFlow } from '@/lib/communicationApi';
+import {
+  executeWithSendLock,
+  sendContextKey,
+  type SendContext,
+} from '@/lib/communicationSend';
 
 interface HistoryItem {
   id: string;
@@ -44,8 +48,9 @@ interface QuoteLead {
 }
 
 interface WaStatus {
-  state?: 'sending' | 'sent' | 'error';
+  state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial';
   message?: string;
+  deliveryAccepted?: boolean;
 }
 
 function buildQuotePayload(draft: Draft) {
@@ -72,6 +77,8 @@ function buildQuotePayload(draft: Draft) {
     },
   };
 }
+
+const WHATSAPP_STATUS_EXPIRY_MS = 30_000;
 
 export default function AutoQuotePage() {
   // ── Helpers ──
@@ -146,10 +153,17 @@ export default function AutoQuotePage() {
   }, [loadTemplates]);
 
   // ── WhatsApp send state ──
-  const [waStatusByDraft, setWaStatusByDraft] = useState<Record<number, WaStatus>>({});
+  const [waStatusByContext, setWaStatusByContext] = useState<Record<string, WaStatus>>({});
   const [waFlows, setWaFlows] = useState<CommunicationFlow[]>([]);
   const [defaultWaFlowId, setDefaultWaFlowId] = useState<string>('');
   const [waFlowByDraft, setWaFlowByDraft] = useState<Record<number, string>>({});
+  const activeSendKeys = useRef(new Set<string>());
+  const reconciliationTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  useEffect(() => () => {
+    for (const timer of reconciliationTimers.current.values()) clearTimeout(timer);
+    reconciliationTimers.current.clear();
+  }, []);
 
   // ── Re-extract state (add items to existing draft) ──
   const [reExtractTextByDraft, setReExtractTextByDraft] = useState<Record<number, string>>({});
@@ -443,7 +457,7 @@ export default function AutoQuotePage() {
     setError(null);
     setExtracting(false);
     setProductSearch({});
-    setWaStatusByDraft({});
+    setWaStatusByContext({});
     setWaFlowByDraft({});
     setSelectedQuoteLeadId('');
     setOrderTemplateId('');
@@ -457,7 +471,7 @@ export default function AutoQuotePage() {
   const clearResults = useCallback(() => {
     setDrafts([]);
     setProductSearch({});
-    setWaStatusByDraft({});
+    setWaStatusByContext({});
     setWaFlowByDraft({});
     setSelectedQuoteLeadId('');
     try {
@@ -468,8 +482,41 @@ export default function AutoQuotePage() {
   }, [setDrafts, setProductSearch]);
 
   // ── WhatsApp handlers ──
+  const sendContextForDraft = useCallback((draft: Draft, flowId: string): SendContext | null => {
+    const resultData = draft.result?.data;
+    const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
+    const revisionId = typeof resultData?.revision_id === 'string'
+      ? resultData.revision_id
+      : typeof resultData?.quote_revision_id === 'string'
+        ? resultData.quote_revision_id
+        : '';
+    if (!quotationId || !revisionId || !flowId) return null;
+    return { quotationId, revisionId, flowId };
+  }, []);
+
+  const statusForContext = useCallback((context: SendContext | null): WaStatus | undefined => {
+    if (!context) return undefined;
+    return waStatusByContext[sendContextKey(context)];
+  }, [waStatusByContext]);
+
   const handleSelectWhatsAppFlow = useCallback((draftIndex: number, flowId: string) => {
     setWaFlowByDraft((prev) => ({ ...prev, [draftIndex]: flowId }));
+  }, []);
+
+  const scheduleReconciliationExpiry = useCallback((contextKey: string) => {
+    const previous = reconciliationTimers.current.get(contextKey);
+    if (previous) clearTimeout(previous);
+    const timer = setTimeout(() => {
+      reconciliationTimers.current.delete(contextKey);
+      setWaStatusByContext((prev) => {
+        const current = prev[contextKey];
+        if (current?.state !== 'reconciling' && current?.state !== 'accepted-partial') return prev;
+        const next = { ...prev };
+        delete next[contextKey];
+        return next;
+      });
+    }, WHATSAPP_STATUS_EXPIRY_MS);
+    reconciliationTimers.current.set(contextKey, timer);
   }, []);
 
   const handleSendWhatsApp = useCallback(
@@ -477,82 +524,107 @@ export default function AutoQuotePage() {
       const draft = drafts.find((d) => d.index === draftIndex);
       if (!draft) {
         console.warn('[sendWhatsApp] draft not found for index:', draftIndex);
-        setWaStatusByDraft((prev) => ({
-          ...prev,
-          [draftIndex]: { state: 'error', message: 'Pedido não encontrado.' },
-        }));
+        setError('Pedido não encontrado.');
         return;
       }
-      if (!draft.result?.data?.quotation_id) {
+      const resultData = draft.result?.data;
+      const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
+      if (!quotationId) {
         console.warn('[sendWhatsApp] missing quotation_id — draft not processed yet:', {
           draftIndex,
           hasResult: !!draft.result,
           hasData: !!draft.result?.data,
           status: draft.status,
         });
-        setWaStatusByDraft((prev) => ({
-          ...prev,
-          [draftIndex]: { state: 'error', message: 'Crie o orçamento antes de enviar WhatsApp.' },
-        }));
+        setError('Crie o orçamento antes de enviar WhatsApp.');
         return;
       }
 
-      const resultData = draft.result.data;
-      const quotationId = resultData.quotation_id as string;
-      const telefone = draft.edited.telefone || (resultData.telefone as string) || '';
-      const nome = (resultData.cliente as string) || draft.edited.nome || '';
       const flowId = waFlowByDraft[draftIndex] || defaultWaFlowId || waFlows[0]?.id || '';
-
-      if (!flowId) {
-        setWaStatusByDraft((prev) => ({
-          ...prev,
-          [draftIndex]: { state: 'error', message: 'Nenhum fluxo de WhatsApp disponível.' },
-        }));
+      const context = sendContextForDraft(draft, flowId);
+      if (!context) {
+        setError(flowId
+          ? 'Não foi possível identificar a revisão imutável do orçamento.'
+          : 'Nenhum fluxo de WhatsApp disponível.');
         return;
       }
-
-      setWaStatusByDraft((prev) => ({ ...prev, [draftIndex]: { state: 'sending' } }));
+      const contextKey = sendContextKey(context);
+      if (activeSendKeys.current.has(contextKey)) return;
+      activeSendKeys.current.add(contextKey);
+      setWaStatusByContext((prev) => ({ ...prev, [contextKey]: { state: 'sending' } }));
 
       try {
-        const res = await executeFlow({
-          quotation_id: quotationId,
-          quotation_uuid: (resultData.quotation_uuid as string | null) || (resultData.quote_id as string | null) || null,
-          business_number: quotationId,
-          revision_id: (resultData.revision_id as string | null) || (resultData.quote_revision_id as string | null) || null,
-          source: resultData.core_mode === true || resultData.source === 'postgres' ? 'postgres' : 'frappe',
-          flow_id: flowId,
-          telefone,
-          nome,
-          deal_id: (resultData.deal_id as string | null) || null,
-          items: (resultData.items as unknown[]) || draft.edited.items || [],
-        });
-
-        setWaStatusByDraft((prev) => ({
+        const result = await executeWithSendLock(context, (idempotencyKey) => executeFlow({
+          quotation_id: context.quotationId,
+          quotation_uuid: (resultData?.quotation_uuid as string | null) || (resultData?.quote_id as string | null) || null,
+          business_number: context.quotationId,
+          revision_id: context.revisionId,
+          flow_id: context.flowId,
+          idempotency_key: idempotencyKey,
+        }));
+        if (result.kind === 'accepted') {
+          setWaStatusByContext((prev) => ({
+            ...prev,
+            [contextKey]: {
+              state: 'accepted-partial',
+              deliveryAccepted: true,
+              message: 'Transporte aceito; reconciliação necessária. Não reenvie enquanto este estado estiver visível.',
+            },
+          }));
+          scheduleReconciliationExpiry(contextKey);
+          return;
+        }
+        const response = result.response;
+        setWaStatusByContext((prev) => ({
           ...prev,
-          [draftIndex]: {
+          [contextKey]: {
             state: 'sent',
-            message: res.duplicate_warning
-              ? res.duplicate_message || 'Fluxo enviado novamente.'
+            message: response.duplicate_warning
+              ? response.duplicate_message || 'Fluxo já processado.'
               : 'Orçamento enviado com sucesso!',
           },
         }));
       } catch (err) {
-        const sendError = err as Error & { providerAccepted?: boolean; alertId?: string };
+        const sendError = err instanceof CommunicationSendError
+          ? err
+          : new Error(err instanceof Error ? err.message : 'Erro ao enviar WhatsApp.');
         console.error('[sendWhatsApp] failed:', sendError.message);
-        setWaStatusByDraft((prev) => ({
-          ...prev,
-          [draftIndex]: {
-            // Evolution accepted the message, so show a warning-like sent
-            // state and prevent an accidental duplicate retry.
-            state: sendError.providerAccepted ? 'sent' : 'error',
-            message: sendError.providerAccepted
-              ? `${sendError.message} Alerta ${sendError.alertId || 'sem ID'}.`
-              : sendError.message || 'Erro ao enviar WhatsApp.',
-          },
-        }));
+        const acceptedPartial = sendError instanceof CommunicationSendError
+          && (sendError.deliveryAccepted || sendError.sendStatus === 'accepted_partial');
+        const sendStatus = sendError instanceof CommunicationSendError ? sendError.sendStatus : null;
+        if (acceptedPartial) {
+          setWaStatusByContext((prev) => ({
+            ...prev,
+            [contextKey]: {
+              state: 'accepted-partial',
+              deliveryAccepted: true,
+              message: 'Transporte aceito; reconciliação necessária. Não reenvie enquanto este estado estiver visível.',
+            },
+          }));
+          scheduleReconciliationExpiry(contextKey);
+        } else if (sendStatus === 'processing' || sendStatus === 'reconciling' || sendStatus === 'reserved') {
+          setWaStatusByContext((prev) => ({
+            ...prev,
+            [contextKey]: {
+              state: 'reconciling',
+              message: 'Envio em andamento; aguarde a reconciliação.',
+            },
+          }));
+          scheduleReconciliationExpiry(contextKey);
+        } else {
+          setWaStatusByContext((prev) => ({
+            ...prev,
+            [contextKey]: {
+              state: 'error',
+              message: sendError.message || 'Erro ao enviar WhatsApp.',
+            },
+          }));
+        }
+      } finally {
+        activeSendKeys.current.delete(contextKey);
       }
     },
-    [defaultWaFlowId, drafts, waFlowByDraft, waFlows]
+    [defaultWaFlowId, drafts, scheduleReconciliationExpiry, sendContextForDraft, waFlowByDraft, waFlows]
   );
 
   // ── Re-extract handlers (add more items to an existing draft) ──
@@ -981,9 +1053,7 @@ export default function AutoQuotePage() {
                 const resultData = draft.result?.data;
                 const quotationId = resultData?.quotation_id ? String(resultData.quotation_id) : '';
                 const relativeViewUrl = quotationId
-                  ? resultData?.core_mode === true || resultData?.source === 'postgres'
-                    ? `/#/quotations/${encodeURIComponent(quotationId)}`
-                    : buildQuotationViewUrl(quotationId)
+                  ? `/#/quotations/${encodeURIComponent(quotationId)}`
                   : '';
 
                 if (isError) {
@@ -1005,6 +1075,12 @@ export default function AutoQuotePage() {
                   );
                 }
 
+                const selectedFlowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
+                const revisionId = (resultData?.revision_id as string | null) || (resultData?.quote_revision_id as string | null) || '';
+                const sendContext = quotationId && revisionId && selectedFlowId
+                  ? { quotationId, revisionId, flowId: selectedFlowId }
+                  : null;
+
                 return (
                   <SplitResultCard
                     key={draft.index}
@@ -1021,9 +1097,9 @@ export default function AutoQuotePage() {
                     onCreateQuote={createSingleQuote}
                     onPreviewQuote={previewSingleQuote}
                     viewUrl={relativeViewUrl}
-                    waStatus={waStatusByDraft[draft.index]}
+                    waStatus={statusForContext(sendContext)}
                     waFlows={waFlows}
-                    waSelectedFlowId={waFlowByDraft[draft.index] || defaultWaFlowId}
+                    waSelectedFlowId={selectedFlowId}
                     onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
                     onSendWhatsApp={handleSendWhatsApp}
                     templates={templates}

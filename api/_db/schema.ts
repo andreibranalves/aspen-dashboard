@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -416,199 +418,204 @@ export const quoteRevisionItems = pgTable(
   ]
 );
 
-/**
- * Durable boundary for quotation effects that must outlive the request that
- * saved the aggregate.  `payloadReference` contains identifiers only; worker
- * adapters resolve any provider-specific data from PostgreSQL at delivery
- * time, so customer PII and provider secrets never enter the queue.
- */
-export const quotationOutboxEvents = pgTable(
-  'quotation_outbox_events',
+export const quoteLeads = pgTable(
+  'quote_leads',
   {
     id: uuid('id').primaryKey(),
-    eventType: varchar('event_type', { length: 48 }).notNull(),
-    provider: varchar('provider', { length: 32 }).notNull(),
-    aggregateType: varchar('aggregate_type', { length: 32 }).notNull().default('quotation'),
-    aggregateId: varchar('aggregate_id', { length: 255 }).notNull(),
-    payloadReference: jsonb('payload_reference')
-      .$type<{ quotationId: string; revisionId: string; businessNumber: string }>()
-      .notNull(),
-    idempotencyKey: varchar('idempotency_key', { length: 255 }).notNull(),
-    status: varchar('status', { length: 24 }).notNull().default('pending'),
-    attempts: integer('attempts').notNull().default(0),
-    leaseOwner: varchar('lease_owner', { length: 128 }),
-    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
-    lastErrorClass: varchar('last_error_class', { length: 128 }),
-    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    identityKey: varchar('identity_key', { length: 512 }).notNull(),
+    nome: varchar('nome', { length: 200 }),
+    email: varchar('email', { length: 254 }),
+    telefone: varchar('telefone', { length: 15 }),
+    pedidoTexto: varchar('pedido_texto', { length: 4000 }),
+    source: varchar('source', { length: 80 }).notNull().default('typebot'),
+    sourceDetail: varchar('source_detail', { length: 255 }),
+    externalId: varchar('external_id', { length: 255 }),
+    empresa: varchar('empresa', { length: 255 }),
+    produto: varchar('produto', { length: 255 }),
+    quantidade: varchar('quantidade', { length: 255 }),
+    finalidade: varchar('finalidade', { length: 255 }),
+    prazo: varchar('prazo', { length: 255 }),
+    arte: varchar('arte', { length: 255 }),
+    attribution: jsonb('attribution').$type<Record<string, unknown>>(),
+    raw: jsonb('raw').$type<Record<string, unknown>>(),
+    status: varchar('status', { length: 16 }).notNull().default('new'),
+    quotationId: uuid('quotation_id').references(() => quotations.id),
+    crmDealId: uuid('crm_deal_id').references((): AnyPgColumn => crmDeals.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex('quotation_outbox_events_idempotency_unique').on(table.idempotencyKey),
-    index('quotation_outbox_events_due_idx').on(table.status, table.nextAttemptAt),
-    index('quotation_outbox_events_aggregate_idx').on(table.aggregateId, table.createdAt),
+    uniqueIndex('quote_leads_identity_key_unique').on(table.identityKey),
     check(
-      'quotation_outbox_events_type_check',
-      sql`${table.eventType} IN ('quotation.created', 'quotation.updated', 'quotation.issued', 'quotation.sent')`
+      'quote_leads_identity_key_not_blank_check',
+      sql`char_length(btrim(${table.identityKey})) > 0`
     ),
     check(
-      'quotation_outbox_events_provider_check',
-      sql`${table.provider} IN ('n8n', 'evolution', 'crm')`
+      'quote_leads_email_lowercase_check',
+      sql`${table.email} IS NULL OR ${table.email} = lower(${table.email})`
     ),
     check(
-      'quotation_outbox_events_status_check',
-      sql`${table.status} IN ('pending', 'processing', 'retry', 'delivered', 'dead_letter')`
+      'quote_leads_telefone_digits_check',
+      sql`${table.telefone} IS NULL OR ${table.telefone} ~ '^[0-9]{10,15}$'`
     ),
-    check('quotation_outbox_events_attempts_check', sql`${table.attempts} >= 0`),
     check(
-      'quotation_outbox_events_idempotency_not_blank_check',
-      sql`char_length(btrim(${table.idempotencyKey})) > 0`
+      'quote_leads_status_check',
+      sql`${table.status} IN ('new', 'incomplete', 'ready', 'reviewing', 'converted', 'discarded')`
     ),
   ]
 );
 
-// Singular aliases keep tests and repositories concise without changing the
-// SQL table name used by migrations.
-export const quotationOutbox = quotationOutboxEvents;
-export const quotationOutboxEvent = quotationOutboxEvents;
-
-/** Per-run tracking for Frappe CRM migrations.  Every apply creates one row;
- * dry-run manifests are computed in-memory only.
- */
-export const frappeMigrationRuns = pgTable(
-  'frappe_migration_runs',
+export const crmDeals = pgTable(
+  'crm_deals',
   {
     id: uuid('id').primaryKey(),
-    provider: varchar('provider', { length: 80 }).notNull().default('frappe'),
-    mode: varchar('mode', { length: 20 }).notNull(),
-    sourceSnapshotAt: timestamp('source_snapshot_at', { withTimezone: true }).notNull(),
-    manifestHash: varchar('manifest_hash', { length: 64 }).notNull(),
-    status: varchar('status', { length: 20 }).notNull().default('pending'),
-    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
-    completedAt: timestamp('completed_at', { withTimezone: true }),
+    quoteLeadId: uuid('quote_lead_id').references((): AnyPgColumn => quoteLeads.id),
+    clientId: uuid('client_id').references(() => clients.id),
+    quotationId: uuid('quotation_id').references(() => quotations.id),
+    nome: varchar('nome', { length: 200 }).notNull(),
+    email: varchar('email', { length: 254 }),
+    telefone: varchar('telefone', { length: 15 }),
+    status: varchar('status', { length: 32 }).notNull().default('Novo Lead'),
+    followUpStage: integer('follow_up_stage').notNull().default(0),
+    nextStep: varchar('next_step', { length: 500 }),
+    lostReason: varchar('lost_reason', { length: 500 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    check('frappe_migration_runs_mode_check', sql`${table.mode} IN ('dry-run', 'apply')`),
+    index('crm_deals_status_updated_idx').on(table.status, table.updatedAt),
+    uniqueIndex('crm_deals_active_quotation_unique')
+      .on(table.quotationId)
+      .where(sql`${table.quotationId} IS NOT NULL AND ${table.status} <> 'Perdido'`),
+    check('crm_deals_nome_not_blank_check', sql`char_length(btrim(${table.nome})) > 0`),
     check(
-      'frappe_migration_runs_status_check',
-      sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`
+      'crm_deals_email_lowercase_check',
+      sql`${table.email} IS NULL OR ${table.email} = lower(${table.email})`
     ),
     check(
-      'frappe_migration_runs_manifest_hash_check',
-      sql`${table.manifestHash} ~ '^[0-9a-f]{64}$'`
+      'crm_deals_telefone_digits_check',
+      sql`${table.telefone} IS NULL OR ${table.telefone} ~ '^[0-9]{10,15}$'`
+    ),
+    check('crm_deals_follow_up_stage_check', sql`${table.followUpStage} >= 0`),
+    check(
+      'crm_deals_status_check',
+      sql`${table.status} IN ('Novo Lead', 'Contato Feito', 'Orcamento Enviado', 'Em Negociacao', 'Arte Aprovada', 'Pedido Fechado', 'Perdido')`
     ),
   ]
 );
 
-/** Per-entity-type batch progress within a migration run.  Each entity group
- * (produtos, faixas, clientes, orcamentos, documentos) gets one batch row
- * that tracks processing status, checkpoint count and attempt count for
- * resume-after-failure.
- */
-export const frappeMigrationBatches = pgTable(
-  'frappe_migration_batches',
+export const salesOrderSequences = pgTable(
+  'sales_order_sequences',
+  {
+    year: integer('year').primaryKey(),
+    lastNumber: integer('last_number').notNull().default(0),
+  },
+  (table) => [
+    check('sales_order_sequences_year_check', sql`${table.year} BETWEEN 2000 AND 9999`),
+    check(
+      'sales_order_sequences_last_number_check',
+      sql`${table.lastNumber} >= 0 AND ${table.lastNumber} <= 9999`
+    ),
+  ]
+);
+
+export const salesOrders = pgTable(
+  'sales_orders',
   {
     id: uuid('id').primaryKey(),
-    runId: uuid('run_id')
+    orderNumber: varchar('order_number', { length: 32 }).notNull(),
+    quotationId: uuid('quotation_id').references(() => quotations.id),
+    quotationRevisionId: uuid('quotation_revision_id').references(() => quoteRevisions.id),
+    clientId: uuid('client_id')
       .notNull()
-      .references(() => frappeMigrationRuns.id, { onDelete: 'cascade' }),
-    entityType: varchar('entity_type', { length: 32 }).notNull(),
-    status: varchar('status', { length: 20 }).notNull().default('pending'),
-    checkpoint: integer('checkpoint').notNull().default(0),
-    attemptCount: integer('attempt_count').notNull().default(0),
-  },
-  (table) => [
-    uniqueIndex('frappe_migration_batches_run_entity_unique').on(table.runId, table.entityType),
-    check(
-      'frappe_migration_batches_entity_type_check',
-      sql`${table.entityType} IN ('produtos', 'faixas', 'clientes', 'orcamentos', 'documentos')`
-    ),
-    check(
-      'frappe_migration_batches_status_check',
-      sql`${table.status} IN ('pending', 'running', 'completed', 'failed')`
-    ),
-    check('frappe_migration_batches_checkpoint_non_negative_check', sql`${table.checkpoint} >= 0`),
-    check(
-      'frappe_migration_batches_attempt_count_non_negative_check',
-      sql`${table.attemptCount} >= 0`
-    ),
-  ]
-);
-
-/** Immutable-ish lineage for records imported from Frappe.  A source document
- * is unique regardless of the entity it currently maps to, which lets a Lead
- * and a Customer retain their independent ERP identifiers while sharing one
- * local client key.  The raw payload is intentionally kept as JSONB for
- * audit/replay; canonicalHash and sourceHash are persisted fingerprints used
- * by legacy and migration contracts respectively.
- */
-export const frappeImportLineage = pgTable(
-  'frappe_import_lineage',
-  {
-    provider: varchar('provider', { length: 80 }).notNull().default('frappe'),
-    sourceDoctype: varchar('source_doctype', { length: 80 }).notNull(),
-    sourceId: varchar('source_id', { length: 255 }).notNull(),
-    entityType: varchar('entity_type', { length: 32 }).notNull(),
-    localId: varchar('local_id', { length: 255 }).notNull(),
-    localKey: varchar('local_key', { length: 255 }).notNull(),
-    canonicalHash: varchar('canonical_hash', { length: 64 }).notNull(),
-    sourceHash: varchar('source_hash', { length: 64 }),
-    /** Rows from before migration 0014 are explicitly legacy-unverified and
-     * block no-op reuse until a source re-import reconciles their payload. */
-    lineageStatus: varchar('lineage_status', { length: 24 }).notNull().default('legacy-unverified'),
-    /** Denormalized business number (ORC-YYYYNNNN) from the source quotation.
-     * Stored here for cross-run lineage queries by business number without
-     * joining to the quotations table.  NULL for non-quotation lineage. */
-    businessNumber: varchar('business_number', { length: 16 }),
-    /** Raw Frappe document for audit/replay.  Intentionally JSONB; must
-     * NEVER be serialized in reports, manifests, logs or API responses.
-     * Retention policy: keep for the lifetime of the lineage row; purge
-     * when lineage is archived. */
-    legacyPayload: jsonb('legacy_payload').$type<Record<string, unknown>>().notNull(),
-    /** FK to the migration run that created/updated this lineage entry. */
-    migrationRunId: uuid('migration_run_id').references(() => frappeMigrationRuns.id),
-    /** Last-modified timestamp reported by the Frappe source document. */
-    sourceUpdatedAt: timestamp('source_updated_at', { withTimezone: true }),
-    /** When this lineage entry was first written or last updated locally. */
-    importedAt: timestamp('imported_at', { withTimezone: true }),
+      .references(() => clients.id),
+    status: varchar('status', { length: 32 }).notNull().default('Draft'),
+    transactionDate: date('transaction_date').notNull(),
+    deliveryDate: date('delivery_date'),
+    perDelivered: numeric('per_delivered', { precision: 5, scale: 2 }).notNull().default('0.00'),
+    perBilled: numeric('per_billed', { precision: 5, scale: 2 }).notNull().default('0.00'),
+    subtotal: numeric('subtotal', { precision: 20, scale: 2 }).notNull(),
+    grandTotal: numeric('grand_total', { precision: 20, scale: 2 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    primaryKey({
-      columns: [table.sourceDoctype, table.sourceId],
-      name: 'frappe_import_lineage_pkey',
-    }),
-    index('frappe_import_lineage_local_id_idx').on(table.localId),
-    index('frappe_import_lineage_local_key_idx').on(table.localKey),
-    index('frappe_import_lineage_entity_local_idx').on(table.entityType, table.localKey),
-    index('frappe_import_lineage_hash_idx').on(table.canonicalHash),
-    index('frappe_import_lineage_run_idx').on(table.migrationRunId),
-    check('frappe_import_lineage_provider_check', sql`char_length(btrim(${table.provider})) > 0`),
+    uniqueIndex('sales_orders_order_number_unique').on(table.orderNumber),
+    uniqueIndex('sales_orders_active_quotation_unique')
+      .on(table.quotationId)
+      .where(sql`${table.quotationId} IS NOT NULL AND ${table.status} <> 'Cancelled'`),
+    index('sales_orders_status_transaction_date_idx').on(table.status, table.transactionDate),
+    index('sales_orders_client_transaction_date_idx').on(table.clientId, table.transactionDate),
     check(
-      'frappe_import_lineage_source_doctype_check',
-      sql`char_length(btrim(${table.sourceDoctype})) > 0`
-    ),
-    check('frappe_import_lineage_source_id_check', sql`char_length(btrim(${table.sourceId})) > 0`),
-    check(
-      'frappe_import_lineage_entity_type_check',
-      sql`${table.entityType} IN ('produto', 'faixa', 'cliente', 'orcamento')`
-    ),
-    check('frappe_import_lineage_local_id_check', sql`char_length(btrim(${table.localId})) > 0`),
-    check('frappe_import_lineage_local_key_check', sql`char_length(btrim(${table.localKey})) > 0`),
-    check('frappe_import_lineage_hash_check', sql`${table.canonicalHash} ~ '^[0-9a-f]{64}$'`),
-    check(
-      'frappe_import_lineage_source_hash_check',
-      sql`${table.sourceHash} IS NULL OR ${table.sourceHash} ~ '^[0-9a-f]{64}$'`
+      'sales_orders_order_number_format_check',
+      sql`${table.orderNumber} ~ '^PED-[0-9]{4}-[0-9]{4}$'`
     ),
     check(
-      'frappe_import_lineage_status_check',
-      sql`${table.lineageStatus} IN ('verified', 'legacy-unverified')`
+      'sales_orders_status_check',
+      sql`${table.status} IN ('Draft', 'To Deliver and Bill', 'To Deliver', 'To Bill', 'Completed', 'Cancelled', 'Closed')`
+    ),
+    check(
+      'sales_orders_per_delivered_check',
+      sql`${table.perDelivered} BETWEEN 0 AND 100`
+    ),
+    check('sales_orders_per_billed_check', sql`${table.perBilled} BETWEEN 0 AND 100`),
+    check('sales_orders_subtotal_check', sql`${table.subtotal} >= 0`),
+    check('sales_orders_grand_total_check', sql`${table.grandTotal} >= 0`),
+  ]
+);
+
+export const salesOrderItems = pgTable(
+  'sales_order_items',
+  {
+    id: uuid('id').primaryKey(),
+    salesOrderId: uuid('sales_order_id')
+      .notNull()
+      .references(() => salesOrders.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    productSku: varchar('product_sku', { length: 120 })
+      .notNull()
+      .references(() => products.sku),
+    productName: varchar('product_name', { length: 255 }).notNull(),
+    unit: varchar('unit', { length: 32 }).notNull(),
+    quantity: numeric('quantity', { precision: 14, scale: 3 }).notNull(),
+    unitPrice: numeric('unit_price', { precision: 20, scale: 2 }).notNull(),
+    lineTotal: numeric('line_total', { precision: 20, scale: 2 }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('sales_order_items_order_position_unique').on(table.salesOrderId, table.position),
+    index('sales_order_items_product_idx').on(table.productSku),
+    check('sales_order_items_position_check', sql`${table.position} >= 0`),
+    check('sales_order_items_quantity_check', sql`${table.quantity} > 0`),
+    check('sales_order_items_unit_price_check', sql`${table.unitPrice} >= 0`),
+    check('sales_order_items_line_total_check', sql`${table.lineTotal} >= 0`),
+  ]
+);
+
+export const productActivityEvents = pgTable(
+  'product_activity_events',
+  {
+    id: uuid('id').primaryKey(),
+    productSku: varchar('product_sku', { length: 120 })
+      .notNull()
+      .references(() => products.sku),
+    tipo: varchar('tipo', { length: 16 }).notNull(),
+    texto: varchar('texto', { length: 1000 }).notNull(),
+    referenceId: varchar('reference_id', { length: 255 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('product_activity_events_sku_created_idx').on(table.productSku, table.createdAt),
+    check(
+      'product_activity_events_tipo_check',
+      sql`${table.tipo} IN ('produto', 'preco', 'orcamento', 'pedido')`
+    ),
+    check(
+      'product_activity_events_texto_not_blank_check',
+      sql`char_length(btrim(${table.texto})) > 0`
     ),
   ]
 );
+
 
 // Singular aliases make repository/tests that speak in domain terms concise
 // without changing the SQL table names used by migrations.
@@ -616,6 +623,3 @@ export const quoteSequence = quoteSequences;
 export const quotation = quotations;
 export const quoteRevision = quoteRevisions;
 export const quoteRevisionItem = quoteRevisionItems;
-export const frappeLineage = frappeImportLineage;
-export const frappeMigrationRun = frappeMigrationRuns;
-export const frappeMigrationBatch = frappeMigrationBatches;

@@ -9,6 +9,7 @@ function coreDetail(overrides = {}) {
     quotation_id: id,
     quotation_uuid: '11111111-1111-4111-8111-111111111111',
     revision_id: '22222222-2222-4222-8222-222222222222',
+    revision: 1,
     revision_number: 1,
     status: 'Draft',
     status_canonical: 'rascunho',
@@ -19,6 +20,7 @@ function coreDetail(overrides = {}) {
     data: '2026-07-01',
     pagamento: 'À vista',
     entrega: '10 dias',
+    frete_padrao: '0.00',
     frete: '0.00',
     observacoes: '',
     prazo_producao: '',
@@ -36,11 +38,14 @@ function coreDetail(overrides = {}) {
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
+    revision_history: [],
+    derived_expired: false,
+    expiration_derived: false,
+    is_expired: false,
+    expirada: false,
     concurrency_token: token,
     updated_at: token,
     items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto core', item_name: 'Produto core', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '90.00', manual_rate: false }],
-    core_mode: true,
-    source: 'postgres',
     ...overrides,
   };
 }
@@ -82,10 +87,10 @@ test('core UI selects/previews a repository template and saves template_key', as
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], pagination: { page: 1, limit: 10, total: 0, total_pages: 0 }, core_mode: true, source: 'postgres' }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], pagination: { page: 1, limit: 10, total: 0, total_pages: 0 } }) });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...manifest, core_mode: true, source: 'postgres' }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifest) });
   });
   await page.route('**/api/quotation-preview**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<html><body>preview</body></html>' });
@@ -99,7 +104,7 @@ test('core UI selects/previews a repository template and saves template_key', as
   const preview = page.waitForEvent('popup');
   await page.getByRole('button', { name: 'Visualizar modelo' }).click();
   const popup = await preview;
-  await expect(popup).toHaveURL(new RegExp(`/api/quotation-preview\\?id=${id}&template_version_id=77777777-7777-4777-8777-777777777777`));
+  await expect(popup).toHaveURL(new RegExp(`/api/quotation-preview\\?id=22222222-2222-4222-8222-222222222222&template_version_id=77777777-7777-4777-8777-777777777777`));
   await popup.close();
 
   await page.getByRole('button', { name: 'Editar' }).click();
@@ -160,7 +165,7 @@ test('draft retains an archived current template when saving unchanged', async (
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...manifest, core_mode: true }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifest) });
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByLabel('Modelo do orçamento')).toHaveValue('arquivado');
@@ -183,27 +188,30 @@ test('mismatched status label cannot enable draft editing', async ({ page }) => 
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...manifest, core_mode: true }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifest) });
   });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
 });
 
-test('legacy detail does not render the core template controls', async ({ page }) => {
+test('metadata-free quotation response renders core revision UI', async ({ page }) => {
+  const metadataFreeDetail = coreDetail({ revision: 2, revision_number: 2 });
+
   await page.route('**/api/quotations**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
     if (request.method() === 'GET' && url.searchParams.get('id')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id, status: 'Draft', cliente: 'Legacy', data: '2026-07-01', validade: '2026-07-16', customer_name: 'Legacy', items: [], source: 'frappe', core_mode: false }) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(metadataFreeDetail) });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], pagination: { page: 1, limit: 10, total: 0, total_pages: 0 }, core_mode: false, source: 'frappe' }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
-  await page.route('**/api/quotation-templates**', async (_route) => {
-    throw new Error('legacy UI must not fetch the core template manifest');
+  await page.route('**/api/quotation-templates**', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifest) });
   });
   await page.goto(`/#/quotations/${id}`);
-  await expect(page.getByText('Legacy')).toBeVisible();
-  await expect(page.getByLabel('Modelo do orçamento')).toHaveCount(0);
+  await expect(page.getByText('Revisão 2', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Seções do orçamento' })).toBeVisible();
+  await expect(page.getByLabel('Modelo do orçamento')).toBeVisible();
 });

@@ -143,15 +143,6 @@ export function hasAnyAddressField(address: unknown): boolean {
 }
 
 /**
- * Retorna true se o endereço tem dados mínimos para criar Address no ERPNext:
- * logradouro + numero, cidade, e país (sempre Brasil).
- */
-export function hasMinimumAddressForErp(address: unknown): boolean {
-  const a = normalizeAddress(address);
-  return !!(a.logradouro || a.numero) && !!a.cidade;
-}
-
-/**
  * Resumo de endereço para exibição compacta.
  */
 export function formatAddressSummary(address: unknown): string {

@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   createPostgresProductsRepository,
   ProductRepositoryError,
@@ -7,7 +7,6 @@ import {
   type ProductsRepository,
   type ProductStatus,
 } from '../_db/products-repository.js';
-import { PRODUCT_CORE_SOURCE, responseMetadata } from './products-mode.js';
 import {
   createPostgresPricingRepository,
   type PricingRepository,
@@ -19,6 +18,8 @@ import {
   type ProductCatalogRepository,
 } from '../_db/product-catalog-repository.js';
 
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
+
 export interface ProductsCoreDependencies {
   repository: ProductsRepository;
   pricingRepository?: PricingRepository;
@@ -29,7 +30,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, ...responseMetadata('core') }),
+    body: JSON.stringify(payload),
   };
 }
 
@@ -70,7 +71,7 @@ export function createCoreHandler(
     pricingRepository: createPostgresPricingRepository(),
     catalogRepository: createPostgresProductCatalogRepository(),
   }
-): LegacyHandler {
+): Handler {
   return async function productsCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod === 'GET') {
       const params = event.queryStringParameters || {};
@@ -162,11 +163,16 @@ export function createCoreHandler(
             return json(503, { error: 'O serviço de catálogo não está disponível. Tente novamente.' });
           }
         }
-        const combined = hasPricing && catalogRepository
-          ? await catalogRepository.create(input, {
-            preco_base: normalizedPricing?.preco_base ?? null,
-            precos: normalizedPricing?.precos || [],
-          })
+        const combined = catalogRepository
+          ? await catalogRepository.create(
+            input,
+            hasPricing
+              ? {
+                preco_base: normalizedPricing?.preco_base ?? null,
+                precos: normalizedPricing?.precos || [],
+              }
+              : undefined,
+          )
           : null;
         const created = combined?.product || await dependencies.repository.create(input);
         const pricing = combined?.pricing || null;
@@ -201,7 +207,9 @@ export function createCoreHandler(
       const sku = (params.id || params.sku || '').trim();
       if (!sku) return json(400, { error: 'ID do produto não informado.' });
       try {
-        const archived = await dependencies.repository.archive(sku);
+        const archived = dependencies.catalogRepository
+          ? (await dependencies.catalogRepository.update(sku, { ativo: false }))?.product || null
+          : await dependencies.repository.archive(sku);
         if (!archived) return json(404, { error: 'Produto não encontrado.' });
         return json(200, {
           success: true,
@@ -218,4 +226,3 @@ export function createCoreHandler(
 }
 
 export const handler = createCoreHandler();
-export { PRODUCT_CORE_SOURCE };

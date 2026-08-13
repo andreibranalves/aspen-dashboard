@@ -89,7 +89,6 @@ export type SampleImages = Record<string, string[]>;
 export interface ApiFetchResult {
   flows: Flow[];
   selectedFlowId: string | null;
-  source: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -602,7 +601,7 @@ export function parseSampleImages(text: unknown): SampleImages {
 
 /**
  * Fetch flows from the server API.
- * Returns { flows, selectedFlowId, source }.
+ * Returns flows and selected flow ID.
  * Falls back to localStorage if API is unreachable.
  */
 export async function fetchFlowsFromApi(): Promise<ApiFetchResult> {
@@ -613,14 +612,13 @@ export async function fetchFlowsFromApi(): Promise<ApiFetchResult> {
       success?: boolean;
       flows?: unknown[];
       selectedFlowId?: string | null;
-      source?: string;
     };
     if (data.success && Array.isArray(data.flows)) {
       const flows = data.flows.map((f: unknown, i: number) =>
         normalizeFlow(f as Partial<Flow>, i)
       );
       const selectedFlowId = data.selectedFlowId || flows[0]?.id || null;
-      return { flows, selectedFlowId, source: data.source || 'api' };
+      return { flows, selectedFlowId };
     }
     throw new Error('Invalid API response');
   } catch (err) {
@@ -630,7 +628,7 @@ export async function fetchFlowsFromApi(): Promise<ApiFetchResult> {
     );
     const flows = loadWhatsappFlows();
     const selectedFlowId = getSelectedFlowId(flows);
-    return { flows, selectedFlowId, source: 'localStorage' };
+    return { flows, selectedFlowId };
   }
 }
 

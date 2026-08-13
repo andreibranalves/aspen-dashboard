@@ -1,21 +1,46 @@
-// GET /api/whatsapp-leads — five most recent WhatsApp conversations with contact readiness status.
+// GET /api/whatsapp-leads - recent verified WhatsApp conversation snapshots.
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import {
+  getWhatsappMessages,
+  listWhatsappConversations,
+  LIVE_DEPS,
+  type WhatsappConversation,
+  type WhatsappConversationStoreDeps,
+} from './lib/whatsapp-conversations-store.js';
+import {
+  syncWhatsappConversations,
+  type EvolutionSyncDeps,
+  type WhatsappSyncOptions,
+} from './lib/whatsapp-conversations-sync.js';
+import {
+  createPostgresWhatsappCrmRepository,
+  resolveWhatsappCrmCandidateFromSnapshot,
+  type LocalCrmCandidate,
+  type LocalClientRecord,
+  type LocalDealRecord,
+  type LocalQuoteLeadRecord,
+  type LocalQuotationRecord,
+  type LocalWhatsappCrmRepository,
+} from './lib/whatsapp-crm-match.js';
 
-import { erpGetList, createHttpError } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
-
-// ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
-const EVOLUTION_API_KEY = (process.env.EVOLUTION_API_KEY || '').trim();
-const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || '').trim();
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
-
-const MAX_CHATS_TO_SCAN = 5;
+// Keep the read-side scan small: one request can still trigger one extraction/CRM read per chat.
+const MAX_CHATS_TO_SCAN = 20;
+const MAX_EXTRACTION_CONCURRENCY = 4;
 const MAX_MESSAGES_PER_CHAT = 50;
 const MAX_LEADS = 5;
+const MAX_MESSAGE_TEXT = 2_000;
+const MAX_CONVERSATION_TEXT = 6_000;
+const MAX_SUMMARY_TEXT = 2_000;
+const MAX_EMAIL_LENGTH = 254;
+const MAX_EXTRACTION_RESPONSE = 256 * 1024;
+const OPENROUTER_TIMEOUT_MS = 15_000;
+const BODY_CANCEL_TIMEOUT_MS = 100;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ORC_BUSINESS_NUMBER_PATTERN = /^ORC-[0-9]{8}$/;
+const EMAIL_PATTERN = /[A-Z0-9!#$%&'*+/?^_`{|}~-]+(?:\.[A-Z0-9!#$%&'*+/?^_`{|}~-]+)*@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)*\.[A-Z]{2,63}/gi;
+const SNAPSHOT_PHONE_FORMAT = /^(?:\+?[0-9]|\([0-9]{2}\))[0-9 .()-]*$/;
 
-// ── Basic helpers ───────────────────────────────────────────────────────────
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
 const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   statusCode,
@@ -23,31 +48,81 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   body: JSON.stringify(body),
 });
 
+function cleanText(value: unknown, maxLength = MAX_MESSAGE_TEXT): string {
+  if (typeof value !== 'string') return '';
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  const head = Math.ceil(maxLength / 2);
+  return `${normalized.slice(0, head)} … ${normalized.slice(-Math.floor(maxLength / 2))}`;
+}
+
 function firstNonEmpty(...values: unknown[]): string {
   for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    const text = cleanText(value);
+    if (text) return text;
   }
   return '';
 }
 
+function hasEmailControlChars(value: string, allowTextWhitespace: boolean): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (allowTextWhitespace && (code === 9 || code === 10 || code === 13)) continue;
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+function normalizeEmailMatch(value: string): string {
+  if (value.length > MAX_EMAIL_LENGTH || hasEmailControlChars(value, false)) return '';
+  const normalized = value.trim().toLowerCase();
+  EMAIL_PATTERN.lastIndex = 0;
+  const match = EMAIL_PATTERN.exec(normalized)?.[0] || '';
+  return match.length <= MAX_EMAIL_LENGTH ? match : '';
+}
+
+function extractEmailFromText(value: unknown): string {
+  if (typeof value !== 'string' || value.length > MAX_CONVERSATION_TEXT || hasEmailControlChars(value, true)) return '';
+  EMAIL_PATTERN.lastIndex = 0;
+  for (const match of value.matchAll(EMAIL_PATTERN)) {
+    const normalized = normalizeEmailMatch(match[0]);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function isFormattedBrazilPhone(value: string): boolean {
+  if (!SNAPSHOT_PHONE_FORMAT.test(value)) return false;
+  const open = value.indexOf('(');
+  const close = value.indexOf(')');
+  if (open < 0) return close < 0;
+  if (close < 0 || value.indexOf('(', open + 1) >= 0 || value.indexOf(')', close + 1) >= 0) return false;
+  const prefix = value.slice(0, open).replace(/[ .-]/g, '');
+  return /^(?:\+?55)?$/.test(prefix) && /^\d{2}$/.test(value.slice(open + 1, close));
+}
+
+function normalizeBrazilPhone(value: unknown): string {
+  if (typeof value !== 'string' || hasEmailControlChars(value, false)) return '';
+  const raw = value.trim();
+  if (!raw || !isFormattedBrazilPhone(raw)) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits.length === 12 || digits.length === 13 ? (digits.startsWith('55') ? digits : '') : '';
+}
+
 export function normalizeWhatsappPhone(value: unknown): string {
-  const raw = String(value || '');
-  const parts = raw.split('@');
-  const beforeAt = parts[0];
-  const suffix = parts[1] || '';
-  let digits = beforeAt.replace(/\D/g, '');
-  if (!digits) return '';
-  // @lid / @g.us / @newsletter JIDs are NOT phone numbers — only accept if already starts with 55
-  if (suffix && suffix !== 's.whatsapp.net' && !digits.startsWith('55')) return '';
-  if (!digits.startsWith('55') && digits.length >= 10 && digits.length <= 11)
-    digits = `55${digits}`;
-  return digits;
+  return normalizeBrazilPhone(value);
+}
+
+function normalizeSnapshotPhone(value: unknown): string {
+  return normalizeBrazilPhone(value);
 }
 
 function normalizeComparablePhone(value: unknown): string {
-  let digits = normalizeWhatsappPhone(value);
-  if (digits.startsWith('55')) digits = digits.slice(2);
-  return digits.replace(/^0+/, '');
+  const digits = normalizeSnapshotPhone(value);
+  return digits.length === 12 || digits.length === 13
+    ? digits.slice(2).replace(/^0+/, '')
+    : '';
 }
 
 function isValidBrazilWhatsappPhone(value: unknown): boolean {
@@ -55,183 +130,13 @@ function isValidBrazilWhatsappPhone(value: unknown): boolean {
   return comparable.length === 10 || comparable.length === 11;
 }
 
-function cleanText(value: unknown): string {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function normalizeLeadEmail(value: unknown): string {
-  return (
-    String(value || '')
-      .match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]
-      ?.trim()
-      .toLowerCase() || ''
-  );
-}
-
-function getChatRemoteJid(chat: Record<string, any>): string {
-  return firstNonEmpty(
-    chat?.remoteJid,
-    chat?.id,
-    chat?.jid,
-    chat?.key?.remoteJid,
-    chat?.conversationTimestamp?.remoteJid
-  );
-}
-
-function isGroupChat(chat: Record<string, any>): boolean {
-  const remoteJid = getChatRemoteJid(chat);
-  const candidateStrings = [
-    remoteJid,
-    chat?.remoteJid,
-    chat?.id,
-    chat?.jid,
-    chat?.owner,
-    chat?.subject,
-    chat?.name,
-  ]
-    .filter(Boolean)
-    .map((value) => String(value).toLowerCase());
-
-  if (candidateStrings.some((value) => value.includes('@g.us'))) return true;
-  if (candidateStrings.some((value) => value.includes('status@broadcast'))) return true;
-
-  return Boolean(
-    chat?.isGroup ||
-    chat?.group ||
-    chat?.isGrp ||
-    chat?.isCommunity ||
-    chat?.conversationType === 'group' ||
-    chat?.chatType === 'group' ||
-    chat?.type === 'group'
-  );
-}
-
-function getChatTimestamp(chat: Record<string, any>): number {
-  const candidates = [
-    chat?.updatedAt,
-    chat?.lastMessage?.messageTimestamp,
-    chat?.messageTimestamp,
-    chat?.conversationTimestamp,
-    chat?.t,
-  ];
-  for (const candidate of candidates) {
-    if (!candidate) continue;
-    const numeric = Number(candidate);
-    if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
-    const parsed = Date.parse(candidate);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
-}
-
-function unwrapData(payload: Record<string, any>): any[] {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.chats)) return payload.chats;
-  if (Array.isArray(payload?.messages)) return payload.messages;
-  if (Array.isArray(payload?.messages?.records)) return payload.messages.records;
-  if (Array.isArray(payload?.result)) return payload.result;
-  if (Array.isArray(payload?.response)) return payload.response;
-  if (Array.isArray(payload?.data?.messages)) return payload.data.messages;
-  if (Array.isArray(payload?.data?.messages?.records)) return payload.data.messages.records;
-  if (Array.isArray(payload?.data?.chats)) return payload.data.chats;
-  if (Array.isArray(payload?.data?.chats?.records)) return payload.data.chats.records;
-  return [];
-}
-
-function getMessageRemoteJidAlt(message: Record<string, any>): string {
-  return firstNonEmpty(
-    message?.key?.remoteJidAlt,
-    message?.remoteJidAlt,
-    message?.message?.key?.remoteJidAlt,
-    message?.lastMessage?.key?.remoteJidAlt,
-    message?.lastMessage?.remoteJidAlt,
-    message?.lastMessage?.message?.key?.remoteJidAlt
-  );
-}
-
-// senderPn is the real phone number available even for @lid JIDs (WhatsApp workaround)
-function getSenderPhone(messages: Record<string, any>[]): string {
-  for (const msg of messages || []) {
-    const senderPn = firstNonEmpty(
-      msg?.key?.senderPn,
-      msg?.senderPn,
-      msg?.message?.key?.senderPn,
-      msg?.lastMessage?.key?.senderPn
-    );
-    if (senderPn) {
-      const digits = String(senderPn).replace(/\D/g, '');
-      if (digits.length >= 10) return digits;
-    }
-  }
-  return '';
-}
-
-// Build a map of pushName → phone digits from saved WhatsApp contacts
-// Also returns a fuzzy-match function for partial name matching
-let _contactMapCache: { data: Record<string, any> | null; ts: number } = { data: null, ts: 0 };
-const CONTACT_MAP_TTL = 10 * 60 * 1000; // 10 min
-
-async function getContactPhoneMap() {
-  if (_contactMapCache.data && Date.now() - _contactMapCache.ts < CONTACT_MAP_TTL) {
-    return _contactMapCache.data;
-  }
-  try {
-    assertEvolutionConfig();
-    const payload = await evolutionFetch(
-      `/chat/findContacts/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
-      {}
-    );
-    const contacts = unwrapData(payload);
-    const exact = new Map();
-    const fuzzy = []; // { name, phone } for partial matching
-    for (const c of contacts || []) {
-      const name = cleanText(c?.pushName || c?.name || '').toLowerCase();
-      const jid = String(c?.remoteJid || '');
-      if (name && jid.endsWith('@s.whatsapp.net')) {
-        const phone = normalizeWhatsappPhone(jid);
-        if (isValidBrazilWhatsappPhone(phone)) {
-          exact.set(name, phone);
-          fuzzy.push({ name, phone });
-        }
-      }
-    }
-    const result = { exact, fuzzy };
-    _contactMapCache = { data: result, ts: Date.now() };
-    return result;
-  } catch (err: any) {
-    console.warn('[whatsapp-leads] contact map fallback:', err?.message || err);
-    return { exact: new Map(), fuzzy: [] };
-  }
-}
-
-function lookupContactPhone(contactMap: Record<string, any> | null, leadName: string): string {
-  if (!leadName || !contactMap) return '';
-  // Exact match
-  if (contactMap.exact.has(leadName)) return contactMap.exact.get(leadName);
-  // Fuzzy: contact name contains lead name, or vice versa
-  for (const { name, phone } of contactMap.fuzzy) {
-    if (name.includes(leadName) || leadName.includes(name)) return phone;
-  }
-  return '';
-}
-
-function getInboundPushName(messages: Record<string, any>[]): string {
-  return (
-    (messages || [])
-      .slice()
-      .reverse()
-      .map((message: Record<string, any>) => cleanText(message?.pushName))
-      .find((name: string) => name && name !== 'Você' && !/^\d+$/.test(name)) || ''
-  );
+  return typeof value === 'string' ? normalizeEmailMatch(value) : '';
 }
 
 function isPlaceholderLeadName(value: unknown): boolean {
-  const normalized = cleanText(value).toLowerCase();
+  const normalized = cleanText(value, 200).toLowerCase();
   if (!normalized) return true;
-
   return [
     'aspen',
     'aspen estamparia',
@@ -245,194 +150,278 @@ function isPlaceholderLeadName(value: unknown): boolean {
   ].includes(normalized);
 }
 
-function resolveLeadName(
-  chat: Record<string, any>,
-  messages: Record<string, any>[],
-  extracted: Record<string, unknown>,
-  telefone: string
-): string {
-  const extractedName = cleanText(extracted?.nome);
-  const inboundName = getInboundPushName(messages);
-  const chatNames = [chat?.pushName, chat?.name, chat?.notify].map(cleanText).filter(Boolean);
-
-  const preferred = [extractedName, inboundName, ...chatNames].find(
-    (name) => name && !isPlaceholderLeadName(name)
-  );
-
-  return preferred || firstNonEmpty(extractedName, inboundName, ...chatNames, telefone);
-}
-
-function getMessageText(message: Record<string, any>): string {
-  const msg = message?.message || message;
-  return cleanText(
-    firstNonEmpty(
-      msg?.conversation,
-      msg?.extendedTextMessage?.text,
-      msg?.imageMessage?.caption,
-      msg?.videoMessage?.caption,
-      msg?.documentMessage?.caption,
-      message?.text,
-      message?.body,
-      message?.messageText,
-      message?.content
-    )
-  );
-}
-
-function getMessageTimestamp(message: Record<string, any>): number {
-  const candidate =
-    message?.messageTimestamp || message?.timestamp || message?.createdAt || message?.dateTime;
-  const numeric = Number(candidate);
+function timestampValue(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value !== 'string') return 0;
+  const numeric = Number(value);
   if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
-  const parsed = Date.parse(candidate);
+  const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeMessages(
-  messages: Record<string, any>[] | null
-): { fromMe: boolean; text: string; timestamp: number }[] {
-  return (messages || [])
+function normalizeInboundMessages(value: unknown): Array<{ body: string; timestamp: number }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((message): message is Record<string, unknown> => {
+      return typeof message === 'object' && message !== null && !Array.isArray(message);
+    })
+    .filter((message) => message.direction === 'inbound')
     .map((message) => ({
-      fromMe: Boolean(message?.key?.fromMe || message?.fromMe),
-      text: getMessageText(message),
-      timestamp: getMessageTimestamp(message),
+      body: cleanText(message.body, MAX_MESSAGE_TEXT),
+      timestamp: timestampValue(message.timestamp),
     }))
-    .filter((message) => message.text)
-    .sort((a: { timestamp: number }, b: { timestamp: number }) => a.timestamp - b.timestamp);
+    .filter((message) => message.body)
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-MAX_MESSAGES_PER_CHAT);
 }
 
-function composeConversationText(
-  messages: Record<string, any>[] | null,
-  preNormalized?: { fromMe: boolean; text: string; timestamp: number }[] | null
-): string {
-  const normalized = preNormalized || normalizeMessages(messages);
-  return normalized
+function composeInboundText(messages: Array<{ body: string; timestamp: number }>): string {
+  return messages
     .slice(-MAX_MESSAGES_PER_CHAT)
-    .map((message) => `${message.fromMe ? 'Aspen' : 'Cliente'}: ${message.text}`)
-    .join('\n');
+    .map((message) => `Cliente: ${message.body}`)
+    .join('\n')
+    .slice(-MAX_CONVERSATION_TEXT);
+}
+
+function summaryFromMessages(messages: Array<{ body: string; timestamp: number }>): string {
+  return messages
+    .slice(-2)
+    .map((message) => message.body)
+    .join(' · ')
+    .slice(0, MAX_SUMMARY_TEXT);
 }
 
 function extractFallback(conversationText: string): Record<string, unknown> {
-  // Only analyze Cliente lines to avoid picking up attendant names from Aspen's side
-  const clientLines = conversationText
-    .split('\n')
-    .filter((line) => /^Cliente:\s*/i.test(line))
-    .map((line) => line.replace(/^Cliente:\s*/i, ''))
-    .join('\n');
-  const searchText = clientLines || conversationText;
-
-  const email = normalizeLeadEmail(searchText);
-  const nameMatch = searchText.match(/(?:meu nome é|me chamo|sou a?)\s*([^\n,.]+)/i);
-  // Try to find a Brazilian phone number pattern in the text: (XX) XXXXX-XXXX or XX XXXXX-XXXX etc
-  const phoneMatch =
-    searchText.match(/(?:telefone|whatsapp|celular|contato|tel)[^\d]*(\d[\d\s().-]{8,})/i) ||
-    searchText.match(/\(?(\d{2})\)?\s*\d[\d\s.-]{7,}/);
-  const telefone = cleanText(phoneMatch?.[1] || '').replace(/\D/g, '');
+  const email = extractEmailFromText(conversationText);
   return {
-    nome: cleanText(nameMatch?.[1] || ''),
     email,
-    telefone,
+    resumo: conversationText.slice(-MAX_SUMMARY_TEXT),
+    produto: '',
+    quantidade: '',
   };
 }
 
-export function formatLeadText(lead: Record<string, unknown>): string {
-  // Strip 55 prefix for display (Brazilian formatting applies DDD separately)
-  const displayPhone = String(lead.telefone || '').startsWith('55')
-    ? String(lead.telefone).slice(2)
-    : String(lead.telefone || '');
-  const lines = [
-    lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
-    lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
-    displayPhone ? `Telefone: ${displayPhone}` : 'Telefone:',
-  ];
-  const pedidoParts = [];
-  if (lead.produto) pedidoParts.push(lead.produto);
-  if (lead.quantidade) pedidoParts.push(`${lead.quantidade} un`);
-  lines.push(pedidoParts.length ? `Pedido: ${pedidoParts.join(' — ')}` : 'Pedido:');
-  return lines.join('\n');
+function projectedExtraction(value: unknown, fallback: Record<string, unknown>): Record<string, unknown> {
+  const record = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    nome: cleanText(record.nome, 200),
+    email: normalizeLeadEmail(record.email) || normalizeLeadEmail(fallback.email),
+    telefone: cleanText(record.telefone, 32).replace(/\D/g, '').slice(0, 15),
+    resumo: cleanText(record.resumo || record.pedidoTexto || record.pedido, MAX_SUMMARY_TEXT),
+    produto: cleanText(record.produto, 200),
+    quantidade: cleanText(record.quantidade || record.qtd, 80),
+  };
 }
 
-// ── External APIs ────────────────────────────────────────────────────────────
-
-function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs: number = 10000
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
-}
-
-function assertEvolutionConfig() {
-  const missing = [];
-  if (!EVOLUTION_BASE_URL) missing.push('EVOLUTION_BASE_URL');
-  if (!EVOLUTION_API_KEY) missing.push('EVOLUTION_API_KEY');
-  if (!EVOLUTION_INSTANCE) missing.push('EVOLUTION_INSTANCE');
-  if (missing.length) {
-    throw createHttpError(
-      500,
-      'Integração WhatsApp indisponível.',
-      `[whatsapp-leads] missing env: ${missing.join(', ')}`
+async function readResponseChunk(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal?: AbortSignal,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (!signal) return reader.read();
+  if (signal.aborted) throw new Error('response aborted');
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('response aborted'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    reader.read().then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
     );
+  });
+}
+
+async function cancelWithDeadline(operation: () => unknown): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cancellation = Promise.resolve()
+    .then(operation)
+    .catch(() => undefined);
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, BODY_CANCEL_TIMEOUT_MS);
+  });
+  await Promise.race([cancellation, deadline]);
+  if (timer !== undefined) clearTimeout(timer);
+}
+
+async function cancelResponseReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  if (typeof reader.cancel !== 'function') return;
+  await cancelWithDeadline(() => reader.cancel());
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  const body = response.body as (ReadableStream<Uint8Array> & { cancel?: () => unknown }) | null;
+  if (!body) return;
+  if (typeof body.cancel === 'function') {
+    await cancelWithDeadline(() => body.cancel());
+    return;
+  }
+  if (typeof body.getReader !== 'function') return;
+  try {
+    await cancelResponseReader(body.getReader());
+  } catch {
+    // Preserve the original response failure.
   }
 }
 
-async function evolutionFetch(
-  path: string,
-  body: Record<string, any> = {},
-  timeoutMs: number = 10000
-): Promise<any> {
-  assertEvolutionConfig();
-  const res = await fetchWithTimeout(
-    `${EVOLUTION_BASE_URL}${path}`,
-    {
+export async function readResponseJson(response: Response, signal?: AbortSignal): Promise<unknown> {
+  if (!response.body) throw new Error('response body unavailable');
+  if (typeof response.body.getReader !== 'function') {
+    await cancelResponseBody(response);
+    throw new Error('response body unavailable');
+  }
+  let reader: ReadableStreamDefaultReader<Uint8Array>;
+  try {
+    reader = response.body.getReader();
+  } catch {
+    await cancelResponseBody(response);
+    throw new Error('response body unavailable');
+  }
+  const declaredLength = response.headers?.get?.('content-length') ?? null;
+  if (declaredLength !== null) {
+    const normalizedLength = declaredLength.trim();
+    if (!/^\d+$/.test(normalizedLength) || Number(normalizedLength) > MAX_EXTRACTION_RESPONSE) {
+      await cancelResponseReader(reader);
+      throw new Error('response too large');
+    }
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let parsed = false;
+  try {
+    while (true) {
+      const next = await readResponseChunk(reader, signal);
+      if (next.done) break;
+      if (!next.value || !Number.isSafeInteger(next.value.byteLength)) {
+        throw new Error('invalid response chunk');
+      }
+      total += next.value.byteLength;
+      if (total > MAX_EXTRACTION_RESPONSE) throw new Error('response too large');
+      chunks.push(next.value);
+    }
+    const text = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8');
+    try {
+      const value = JSON.parse(text);
+      parsed = true;
+      return value;
+    } catch {
+      throw new Error('invalid response JSON');
+    }
+  } finally {
+    if (!parsed) await cancelResponseReader(reader);
+  }
+}
+
+export interface OpenRouterRequestOptions {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}
+
+export async function requestOpenRouter(
+  payload: Record<string, unknown>,
+  options: OpenRouterRequestOptions = {},
+): Promise<unknown> {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim() || '';
+  if (!apiKey) return null;
+  const controller = new AbortController();
+  const fetchImpl = options.fetchImpl || fetch;
+  const configuredTimeout = Number(options.timeoutMs ?? OPENROUTER_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(configuredTimeout) ? Math.max(1, configuredTimeout) : OPENROUTER_TIMEOUT_MS;
+  let timedOut = false;
+  let completed = false;
+  let rejectTimeout: ((reason?: unknown) => void) | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    rejectTimeout = reject;
+  });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+    rejectTimeout?.(new Error('OpenRouter timeout'));
+  }, timeoutMs);
+  try {
+    const fetchPromise = Promise.resolve().then(() => fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        apikey: EVOLUTION_API_KEY,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'X-OpenRouter-Title': 'Aspen Orcamento WhatsApp Leads',
       },
-      body: JSON.stringify(body),
-    },
-    timeoutMs
-  );
-  const text = await res.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = { raw: text };
-  }
-  if (!res.ok) {
-    throw createHttpError(
-      502,
-      'Falha ao consultar WhatsApp.',
-      `[whatsapp-leads] Evolution ${res.status}: ${text.slice(0, 500)}`
-    );
-  }
-  return data;
-}
-
-async function findChats() {
-  const payload = await evolutionFetch(
-    `/chat/findChats/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
-    {}
-  );
-  return unwrapData(payload)
-    .filter((chat) => getChatRemoteJid(chat) && !isGroupChat(chat))
-    .sort((a, b) => getChatTimestamp(b) - getChatTimestamp(a))
-    .slice(0, MAX_CHATS_TO_SCAN);
-}
-
-async function findMessages(remoteJid: string): Promise<any[]> {
-  const payload = await evolutionFetch(
-    `/chat/findMessages/${encodeURIComponent(EVOLUTION_INSTANCE)}`,
-    {
-      where: { key: { remoteJid } },
-      limit: MAX_MESSAGES_PER_CHAT,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    }));
+    void fetchPromise.then(
+      (response) => timedOut ? cancelResponseBody(response) : undefined,
+      () => undefined,
+    ).catch(() => undefined);
+    const response = await Promise.race([fetchPromise, timeout]);
+    if (!response.ok) {
+      await cancelResponseBody(response);
+      throw new Error('OpenRouter request failed');
     }
-  );
-  return unwrapData(payload).slice(-MAX_MESSAGES_PER_CHAT);
+    const contentType = response.headers?.get?.('content-type') || '';
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+      await cancelResponseBody(response);
+      throw new Error('OpenRouter response MIME invalid');
+    }
+    const data = await Promise.race([readResponseJson(response, controller.signal), timeout]);
+    completed = true;
+    return data;
+  } finally {
+    clearTimeout(timer);
+    if (!completed) controller.abort();
+  }
+}
+
+async function extractLeadWithOpenRouter(
+  conversationText: string,
+  _messages: Array<{ body: string; timestamp: number }>
+): Promise<Record<string, unknown>> {
+  const fallback = extractFallback(conversationText);
+  if (!conversationText.trim()) return fallback;
+  try {
+    const data = await requestOpenRouter({
+      model: OPENROUTER_MODEL,
+      messages: [{
+        role: 'user',
+        content: [
+          'Extraia somente dados do cliente a partir das mensagens recebidas abaixo.',
+          'Não invente dados e retorne apenas JSON válido.',
+          '{"email":"","resumo":"","produto":"","quantidade":""}',
+          `Mensagens recebidas:\n${conversationText}`,
+        ].join('\n'),
+      }],
+      temperature: 0,
+    });
+    const content = (data as Record<string, unknown> | null)?.choices;
+    const firstChoice = Array.isArray(content) ? content[0] : null;
+    const message = firstChoice && typeof firstChoice === 'object'
+      ? (firstChoice as Record<string, unknown>).message
+      : null;
+    const raw = message && typeof message === 'object'
+      ? (message as Record<string, unknown>).content
+      : null;
+    const parsed = JSON.parse(String(raw || '{}').replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
+    return projectedExtraction(parsed, fallback);
+  } catch {
+    return fallback;
+  }
 }
 
 export function isLikelyAttendantName(
@@ -442,203 +431,51 @@ export function isLikelyAttendantName(
   if (!name || name.length < 3) return false;
   const nameLower = name.toLowerCase();
   const aspenMentions = normalized
-    .filter((m) => m.fromMe)
-    .filter((m) => m.text.toLowerCase().includes(nameLower)).length;
+    .filter((message) => message.fromMe)
+    .filter((message) => message.text.toLowerCase().includes(nameLower)).length;
   const clientMentions = normalized
-    .filter((m) => !m.fromMe)
-    .filter((m) => m.text.toLowerCase().includes(nameLower)).length;
-  // Only flag as attendant name when it appears on Aspen side but never on client side
+    .filter((message) => !message.fromMe)
+    .filter((message) => message.text.toLowerCase().includes(nameLower)).length;
   return aspenMentions > 0 && clientMentions === 0;
-}
-
-async function extractLeadWithOpenRouter(
-  conversationText: string,
-  normalized?: { fromMe: boolean; text: string; timestamp: number }[]
-): Promise<Record<string, unknown>> {
-  const normalizedMessages = normalized || [];
-  const fallback = extractFallback(conversationText);
-  if (!OPENROUTER_API_KEY || !conversationText.trim()) return fallback;
-
-  const prompt = `Você é um assistente da Aspen Estamparia. Abaixo está uma conversa de WhatsApp entre um ATENDENTE da Aspen e um CLIENTE.\n\nAs linhas "Aspen:" são mensagens ENVIADAS pelo atendente da Aspen.\nAs linhas "Cliente:" são mensagens RECEBIDAS do cliente.\n\nExtraia APENAS os dados de contato do CLIENTE — NUNCA extraia dados do atendente.\n\nRetorne APENAS JSON válido no formato:\n{"nome":"","email":"","telefone":""}\n\nRegras:\n- Extraia nome, e-mail e telefone APENAS do CLIENTE (lado "Cliente:").\n- IGNORE completamente nomes que apareçam nas mensagens do atendente (lado "Aspen:").\n- NUNCA retorne o nome de um atendente como sendo o cliente, mesmo que ele apareça na conversa.\n- Nunca invente dados ausentes.\n- Se a conversa tiver mais de um e-mail ou telefone, retorne apenas o primeiro citado pelo CLIENTE.\n- Telefone deve ser apenas dígitos com DDD (ex: 11987654321).\n- Se não houver um campo, use string vazia.\n\nConversa:\n${conversationText.slice(-6000)}`;
-
-  try {
-    const res = await fetchWithTimeout(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'X-OpenRouter-Title': 'Aspen Orcamento WhatsApp Leads',
-        },
-        body: JSON.stringify({
-          model: OPENROUTER_MODEL,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0,
-        }),
-      },
-      15000
-    );
-    const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content || '{}';
-    const parsed = JSON.parse(
-      String(raw)
-        .replace(/^```(?:json)?\s*|\s*```$/g, '')
-        .trim()
-    );
-    const aiName = cleanText(parsed.nome || '');
-    // Filter out attendant names — if the AI returned a name that only appears
-    // on Aspen's (attendant) side of the conversation, it's a false positive.
-    const nome =
-      aiName && normalizedMessages.length && isLikelyAttendantName(aiName, normalizedMessages)
-        ? ''
-        : aiName || fallback.nome;
-    return {
-      nome: cleanText(nome),
-      email: normalizeLeadEmail(parsed.email || fallback.email),
-      telefone: cleanText(parsed.telefone || fallback.telefone || '').replace(/\D/g, ''),
-    };
-  } catch (err: any) {
-    console.warn('[whatsapp-leads] OpenRouter extraction fallback:', err?.message || err);
-    return fallback;
-  }
-}
-
-let _convertedKeysCache: { data: Record<string, any> | null; ts: number } = { data: null, ts: 0 };
-const CONVERTED_KEYS_TTL = 60 * 1000; // 60s
-
-async function getConvertedContactKeys() {
-  if (_convertedKeysCache.data && Date.now() - _convertedKeysCache.ts < CONVERTED_KEYS_TTL) {
-    return _convertedKeysCache.data;
-  }
-  const rows = await erpGetList('Quotation', {
-    fields: ['name', 'customer_name', 'contact_email', 'contact_mobile'],
-    filters: [['docstatus', '!=', 2]],
-    order_by: 'creation desc',
-    limit: 200,
-  });
-  const phones = new Map();
-  const emails = new Map();
-  const names = new Map();
-  const emailPhones = new Map(); // email → phone (for @lid fallback)
-  const quotationNames = new Map(); // quotationId → full customer name
-  for (const row of rows || []) {
-    const quotationId = String(row.name || '').trim();
-    const customerName = cleanText(row.customer_name);
-    const phone = normalizeComparablePhone(row.contact_mobile);
-    const email = String(row.contact_email || '')
-      .trim()
-      .toLowerCase();
-    if (phone && quotationId && !phones.has(phone)) phones.set(phone, quotationId);
-    if (email && quotationId && !emails.has(email)) emails.set(email, quotationId);
-    const name = customerName.toLowerCase();
-    if (name && quotationId && !names.has(name)) names.set(name, quotationId);
-    if (quotationId && customerName && !quotationNames.has(quotationId))
-      quotationNames.set(quotationId, customerName);
-    const fullPhone = normalizeWhatsappPhone(row.contact_mobile);
-    if (email && fullPhone && isValidBrazilWhatsappPhone(fullPhone) && !emailPhones.has(email)) {
-      emailPhones.set(email, fullPhone);
-    }
-  }
-  const result = { phones, emails, names, emailPhones, quotationNames };
-  _convertedKeysCache = { data: result, ts: Date.now() };
-  return result;
-}
-
-export function findConvertedQuotation(
-  lead: Record<string, any>,
-  converted: Record<string, any>
-): string {
-  const phone = normalizeComparablePhone(lead.telefone);
-  if (phone && converted.phones.has(phone)) return converted.phones.get(phone);
-  const email = String(lead.email || '')
-    .trim()
-    .toLowerCase();
-  if (email && converted.emails.has(email)) return converted.emails.get(email);
-  const name = String(lead.nome || '')
-    .trim()
-    .toLowerCase();
-  if (name && converted.names.has(name)) return converted.names.get(name);
-  return '';
-}
-
-function resolveCanonicalLeadName(
-  lead: Record<string, any>,
-  converted: Record<string, any>
-): string {
-  const quotationId = findConvertedQuotation(lead, converted);
-  const quotationName = quotationId ? cleanText(converted.quotationNames?.get(quotationId)) : '';
-  return quotationName || cleanText(lead.nome);
 }
 
 export function resolveWhatsappDisplayName(
   extracted: Record<string, any>,
-  chat: Record<string, any>,
+  snapshot: Record<string, any>,
   fallbackPhone: string
 ): string {
   const preferred = [
-    cleanText(extracted?.nome),
-    cleanText(chat?.pushName),
-    cleanText(chat?.name),
-    cleanText(chat?.notify),
+    cleanText(snapshot?.displayLabel, 200),
+    cleanText(snapshot?.displayName, 200),
+    cleanText(snapshot?.pushName, 200),
+    cleanText(snapshot?.name, 200),
+    cleanText(snapshot?.notify, 200),
+    cleanText(extracted?.nome, 200),
   ].find((name) => name && !isPlaceholderLeadName(name));
-  return (
-    preferred ||
-    firstNonEmpty(chat?.pushName, chat?.name, chat?.notify, extracted?.nome, fallbackPhone)
+  return preferred || firstNonEmpty(
+    snapshot?.displayLabel,
+    snapshot?.displayName,
+    snapshot?.pushName,
+    snapshot?.name,
+    snapshot?.notify,
+    extracted?.nome,
+    fallbackPhone,
   );
 }
 
-function shareLeadIdentity(a: Record<string, any>, b: Record<string, any>): boolean {
-  const aPhone = normalizeComparablePhone(a.telefone);
-  const bPhone = normalizeComparablePhone(b.telefone);
-  if (aPhone && bPhone && aPhone === bPhone) return true;
-
-  const aEmail = normalizeLeadEmail(a.email);
-  const bEmail = normalizeLeadEmail(b.email);
-  if (aEmail && bEmail && aEmail === bEmail) return true;
-
-  const aQuotationId = cleanText(a.quotationId);
-  const bQuotationId = cleanText(b.quotationId);
-  return Boolean(aQuotationId && bQuotationId && aQuotationId === bQuotationId);
-}
-
-function mergeWhatsappLead(
-  existing: Record<string, any>,
-  candidate: Record<string, any>
-): Record<string, any> {
-  const newer =
-    Number(candidate.timestamp || 0) > Number(existing.timestamp || 0) ? candidate : existing;
-  const older = newer === candidate ? existing : candidate;
-  const merged = { ...newer };
-
-  for (const field of ['id', 'remoteJid', 'nome', 'telefone', 'quotationId', 'resumo'] as const) {
-    if (!cleanText(merged[field]) && cleanText(older[field])) merged[field] = older[field];
-  }
-
-  const olderEmail = normalizeLeadEmail(older.email);
-  if (!normalizeLeadEmail(merged.email) && olderEmail) merged.email = olderEmail;
-  merged.timestamp = Math.max(Number(existing.timestamp || 0), Number(candidate.timestamp || 0));
-  merged.hasQuotation = Boolean(merged.quotationId);
-  Object.assign(merged, getWhatsappLeadQuality(merged));
-  merged.texto = formatLeadText(merged);
-  return merged;
-}
-
-export function prioritizeWhatsappLeads(
-  leads: Record<string, any>[],
-  limit: number = MAX_LEADS
-): Record<string, any>[] {
-  const byNewest = (a: Record<string, any>, b: Record<string, any>) =>
-    Number(b.timestamp || 0) - Number(a.timestamp || 0);
-  const deduped: Record<string, any>[] = [];
-
-  for (const lead of [...leads].sort(byNewest)) {
-    const index = deduped.findIndex((existing) => shareLeadIdentity(existing, lead));
-    if (index === -1) deduped.push(lead);
-    else deduped[index] = mergeWhatsappLead(deduped[index], lead);
-  }
-
-  return deduped.sort(byNewest).slice(0, limit);
+export function formatLeadText(lead: Record<string, unknown>): string {
+  const phone = String(lead.telefone || '');
+  const displayPhone = phone.startsWith('55') ? phone.slice(2) : phone;
+  const lines = [
+    lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
+    lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
+    displayPhone ? `Telefone: ${displayPhone}` : 'Telefone:',
+  ];
+  const pedidoParts: string[] = [];
+  if (lead.produto) pedidoParts.push(String(lead.produto));
+  if (lead.quantidade) pedidoParts.push(`${lead.quantidade} un`);
+  lines.push(pedidoParts.length ? `Pedido: ${pedidoParts.join(' — ')}` : 'Pedido:');
+  return lines.join('\n');
 }
 
 export function getWhatsappLeadQuality(lead: Record<string, any>): {
@@ -646,21 +483,15 @@ export function getWhatsappLeadQuality(lead: Record<string, any>): {
   missingFields: string[];
   statusLabel: string;
 } {
-  const missingFields = [];
-  if (!cleanText(lead?.nome)) missingFields.push('nome');
+  const missingFields: string[] = [];
+  if (!cleanText(lead?.nome, 200)) missingFields.push('nome');
   if (!normalizeLeadEmail(lead?.email)) missingFields.push('email');
   if (!isValidBrazilWhatsappPhone(lead?.telefone)) missingFields.push('telefone');
-
-  if (!missingFields.length) {
-    return { isReady: true, missingFields, statusLabel: 'Pronto para gerar' };
-  }
-
+  if (!missingFields.length) return { isReady: true, missingFields, statusLabel: 'Pronto para gerar' };
   const readable = missingFields.map((field) => (field === 'email' ? 'e-mail' : field));
-  const joined =
-    readable.length === 1
-      ? readable[0]
-      : `${readable.slice(0, -1).join(', ')} e ${readable.at(-1)}`;
-
+  const joined = readable.length === 1
+    ? readable[0]
+    : `${readable.slice(0, -1).join(', ')} e ${readable.at(-1)}`;
   return { isReady: false, missingFields, statusLabel: `Sem ${joined}` };
 }
 
@@ -668,126 +499,365 @@ export function shouldIncludeWhatsappLead(lead: Record<string, any>): boolean {
   return getWhatsappLeadQuality(lead).isReady;
 }
 
-// ── Handler ─────────────────────────────────────────────────────────────────
-
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'whatsapp-leads não está disponível no modo operacional.' }) };
-  }
-  if (event.httpMethod !== 'GET') {
-    return jsonResponse(405, { error: 'Method Not Allowed' });
-  }
-
-  try {
-    const [chats, converted, contactMap] = await Promise.all([
-      findChats(),
-      getConvertedContactKeys(),
-      getContactPhoneMap(),
-    ]);
-
-    // Process each chat independently and in parallel
-    const candidatePromises = chats.map(async (chat) => {
-      const remoteJid = getChatRemoteJid(chat);
-      if (!remoteJid) return null;
-
-      const messages = await findMessages(remoteJid);
-      const normalized = normalizeMessages(messages);
-      const conversationText = composeConversationText(null, normalized);
-
-      const displayJid = firstNonEmpty(
-        getMessageRemoteJidAlt(chat),
-        messages.map(getMessageRemoteJidAlt).find(Boolean),
-        remoteJid
-      );
-      let telefone = normalizeWhatsappPhone(displayJid);
-
-      // Fallback 1: senderPn in messages (WhatsApp workaround for @lid JIDs)
-      if (!isValidBrazilWhatsappPhone(telefone)) {
-        const senderPhone = getSenderPhone(messages);
-        if (senderPhone) {
-          const senderPhoneFormatted = normalizeWhatsappPhone(senderPhone);
-          if (isValidBrazilWhatsappPhone(senderPhoneFormatted)) {
-            telefone = senderPhoneFormatted;
-          }
-        }
-      }
-
-      const extracted = await extractLeadWithOpenRouter(conversationText, normalized);
-
-      // Fallback 2: try extracted phone from conversation text (regex + OpenRouter)
-      if (!isValidBrazilWhatsappPhone(telefone) && extracted.telefone) {
-        const fallbackPhone = normalizeWhatsappPhone(extracted.telefone);
-        if (isValidBrazilWhatsappPhone(fallbackPhone)) {
-          telefone = fallbackPhone;
-        }
-      }
-      if (!telefone) {
-        console.warn('[whatsapp-leads] no valid phone for chat, skipping', {
-          remoteJid,
-          displayPhone: normalizeWhatsappPhone(displayJid),
-          extractedPhone: extracted.telefone,
-        });
-        return null;
-      }
-
-      const nome = resolveLeadName(chat, messages, extracted, telefone);
-
-      // Fallback 3: match email against ERPNext (most reliable for @lid resolution)
-      if (!isValidBrazilWhatsappPhone(telefone)) {
-        const leadEmail = normalizeLeadEmail(extracted.email);
-        if (leadEmail && converted.emailPhones?.has(leadEmail)) {
-          telefone = converted.emailPhones.get(leadEmail);
-        }
-      }
-
-      // Fallback 4: match resolved name against saved contacts (fuzzy match for @lid)
-      if (!isValidBrazilWhatsappPhone(telefone)) {
-        const leadName = cleanText(nome).toLowerCase();
-        const contactPhone = lookupContactPhone(contactMap, leadName);
-        if (contactPhone) telefone = contactPhone;
-      }
-
-      // Log silent failure when all 4 fallbacks couldn't resolve the phone
-      if (!isValidBrazilWhatsappPhone(telefone)) {
-        console.warn('[whatsapp-leads] all fallbacks failed to resolve @lid phone', {
-          remoteJid,
-          nome,
-          email: extracted.email,
-          jidPhone: normalizeWhatsappPhone(displayJid),
-        });
-      }
-
-      const timestamp =
-        getChatTimestamp(chat) || Math.max(...normalized.map((m) => m.timestamp), 0);
-      const lead = {
-        id: remoteJid,
-        remoteJid,
-        nome,
-        telefone,
-        email: normalizeLeadEmail(extracted.email),
-        resumo: conversationText.split('\n').slice(-2).join(' · '),
-        timestamp,
-      };
-      const leadExt = lead as Record<string, unknown>;
-      leadExt.quotationId = findConvertedQuotation(lead, converted);
-      leadExt.nome = resolveCanonicalLeadName(lead, converted) || lead.nome;
-      leadExt.hasQuotation = Boolean(leadExt.quotationId);
-      Object.assign(leadExt, getWhatsappLeadQuality(lead));
-      leadExt.texto = formatLeadText(leadExt);
-      return lead;
-    });
-
-    const candidates = (await Promise.all(candidatePromises)).filter(Boolean) as Record<
-      string,
-      any
-    >[];
-
-    return jsonResponse(200, { success: true, data: prioritizeWhatsappLeads(candidates) });
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[whatsapp-leads]', err?.logMessage || err?.message || err);
-    return jsonResponse(code, {
-      error: err?.statusCode ? err.message : 'Erro interno ao buscar conversas do WhatsApp.',
-    });
-  }
+function leadIdentityKeys(value: Record<string, any>): string[] {
+  const keys: string[] = [];
+  const phone = normalizeComparablePhone(value.telefone);
+  const email = normalizeLeadEmail(value.email);
+  const quotationId = safeQuotationReference(value.quotationId);
+  if (phone) keys.push(`phone:${phone}`);
+  if (email) keys.push(`email:${email}`);
+  if (quotationId) keys.push(`quotation:${quotationId}`);
+  return keys;
 }
+
+function stableLeadKey(value: Record<string, any>): string {
+  return [
+    cleanText(value.id, 200),
+    cleanText(value.nome, 200),
+    normalizeSnapshotPhone(value.telefone),
+    normalizeLeadEmail(value.email),
+    cleanText(value.resumo, MAX_SUMMARY_TEXT),
+    cleanText(value.produto, 200),
+    cleanText(value.quantidade, 200),
+    safeQuotationReference(value.quotationId),
+  ].join('|');
+}
+
+function compareLeadSnapshots(a: Record<string, any>, b: Record<string, any>): number {
+  return timestampValue(b.timestamp) - timestampValue(a.timestamp) ||
+    cleanText(a.id, 200).localeCompare(cleanText(b.id, 200)) ||
+    stableLeadKey(a).localeCompare(stableLeadKey(b));
+}
+
+function leadProjection(value: Record<string, any>): Record<string, any> {
+  const quotationId = safeQuotationReference(value.quotationId);
+  const projected: Record<string, any> = {
+    id: cleanText(value.id, 200),
+    nome: cleanText(value.nome, 200),
+    telefone: normalizeSnapshotPhone(value.telefone),
+    email: normalizeLeadEmail(value.email),
+    resumo: cleanText(value.resumo, MAX_SUMMARY_TEXT),
+    timestamp: timestampValue(value.timestamp),
+    quotationId: quotationId || null,
+    hasQuotation: Boolean(quotationId),
+  };
+  for (const field of ['produto', 'quantidade'] as const) {
+    const text = cleanText(value[field], 200);
+    if (text) projected[field] = text;
+  }
+  Object.assign(projected, getWhatsappLeadQuality(projected));
+  projected.texto = formatLeadText(projected);
+  return projected;
+}
+
+function mergeLeadComponent(component: Record<string, any>[]): Record<string, any> {
+  const ordered = component.map(leadProjection).sort(compareLeadSnapshots);
+  const merged: Record<string, any> = { ...(ordered[0] || {}) };
+  for (const field of ['nome', 'resumo', 'produto', 'quantidade'] as const) {
+    if (!merged[field]) {
+      const source = ordered.find((candidate) => candidate[field]);
+      if (source) merged[field] = source[field];
+    }
+  }
+  for (const field of ['telefone', 'email', 'quotationId'] as const) {
+    if (merged[field]) continue;
+    const values = new Set(ordered.map((candidate) => candidate[field]).filter(Boolean));
+    if (values.size === 1) merged[field] = values.values().next().value;
+  }
+  merged.timestamp = Math.max(...ordered.map((candidate) => timestampValue(candidate.timestamp)), 0);
+  return leadProjection(merged);
+}
+
+export function prioritizeWhatsappLeads(
+  leads: Record<string, any>[],
+  limit: number = MAX_LEADS
+): Record<string, any>[] {
+  const projected = leads.map(leadProjection);
+  const parents = projected.map((_, index) => index);
+  const find = (index: number): number => {
+    let root = index;
+    while (parents[root] !== root) root = parents[root];
+    while (parents[index] !== index) {
+      const next = parents[index];
+      parents[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  const union = (left: number, right: number): void => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+  };
+  const firstByIdentity = new Map<string, number>();
+  projected.forEach((lead, index) => {
+    for (const key of leadIdentityKeys(lead)) {
+      const previous = firstByIdentity.get(key);
+      if (previous === undefined) firstByIdentity.set(key, index);
+      else union(previous, index);
+    }
+  });
+  const components = new Map<number, Record<string, any>[]>();
+  projected.forEach((lead, index) => {
+    const root = find(index);
+    const component = components.get(root);
+    if (component) component.push(lead);
+    else components.set(root, [lead]);
+  });
+  return [...components.values()]
+    .map(mergeLeadComponent)
+    .sort(compareLeadSnapshots)
+    .slice(0, Math.max(0, Math.min(MAX_LEADS, Math.floor(limit))));
+}
+
+function safeQuotationReference(value: unknown): string {
+  const normalized = cleanText(value, 120).toUpperCase();
+  return UUID_PATTERN.test(normalized) || ORC_BUSINESS_NUMBER_PATTERN.test(normalized)
+    ? normalized
+    : '';
+}
+
+export function findConvertedQuotation(
+  lead: Record<string, any>,
+  converted: Record<string, any>
+): string {
+  const phone = normalizeComparablePhone(lead.telefone);
+  if (phone && converted?.phones?.has(phone)) return safeQuotationReference(converted.phones.get(phone));
+  const email = normalizeLeadEmail(lead.email);
+  if (email && converted?.emails?.has(email)) return safeQuotationReference(converted.emails.get(email));
+  const name = cleanText(lead.nome, 200).toLowerCase();
+  if (name && converted?.names?.has(name)) return safeQuotationReference(converted.names.get(name));
+  return '';
+}
+
+interface SnapshotConversation {
+  id: string;
+  canonicalPhone: string;
+  displayLabel: string;
+  displayName: string;
+  identityStatus: WhatsappConversation['identityStatus'];
+  lastMessageAt: number;
+  linkedLeadId: string | null;
+  linkedDealId: string | null;
+  linkedQuotationId: string | null;
+  linkedCrmEntityId: string | null;
+  linkedCrmEntityType: 'lead' | 'cliente' | null;
+  linkedCrmMatchSource: 'phone' | 'email' | 'name' | null;
+}
+
+function snapshotLocalId(value: unknown): string | null {
+  const normalized = cleanText(value, 200);
+  return UUID_PATTERN.test(normalized) ? normalized : null;
+}
+
+function snapshotConversation(value: unknown): SnapshotConversation | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const identityStatus = record.identityStatus === 'verified' || record.identityStatus === 'derived'
+    ? record.identityStatus
+    : record.identityStatus === 'conflict' ? 'conflict' : 'unresolved';
+  const phoneValue = record.canonicalPhone === undefined || record.canonicalPhone === null || record.canonicalPhone === ''
+    ? record.phone
+    : record.canonicalPhone;
+  const canonicalPhone = normalizeSnapshotPhone(phoneValue);
+  const id = cleanText(record.id, 200);
+  if (!id || id.includes('@')) return null;
+  const linkedCrmEntityId = snapshotLocalId(record.linkedCrmEntityId);
+  const linkedCrmEntityType = linkedCrmEntityId &&
+    (record.linkedCrmEntityType === 'lead' || record.linkedCrmEntityType === 'cliente')
+    ? record.linkedCrmEntityType
+    : null;
+  return {
+    id,
+    canonicalPhone,
+    displayLabel: cleanText(record.displayLabel, 200),
+    displayName: cleanText(record.displayName, 200),
+    identityStatus,
+    lastMessageAt: timestampValue(record.lastMessageAt),
+    linkedLeadId: snapshotLocalId(record.linkedLeadId),
+    linkedDealId: snapshotLocalId(record.linkedDealId),
+    linkedQuotationId: snapshotLocalId(record.linkedQuotationId),
+    linkedCrmEntityId,
+    linkedCrmEntityType,
+    linkedCrmMatchSource:
+      record.linkedCrmMatchSource === 'phone' ||
+      record.linkedCrmMatchSource === 'email' ||
+      record.linkedCrmMatchSource === 'name'
+        ? record.linkedCrmMatchSource
+        : null,
+  };
+}
+
+function buildStoreDeps(deps: WhatsappLeadsDeps): WhatsappConversationStoreDeps {
+  const overrides = { ...deps } as Record<string, unknown>;
+  delete overrides.sync;
+  delete overrides.localCrm;
+  delete overrides.extractLead;
+  delete overrides.usePostgresCrm;
+  return { ...LIVE_DEPS, ...overrides } as WhatsappConversationStoreDeps;
+}
+
+export interface WhatsappLeadsDeps extends Partial<WhatsappConversationStoreDeps> {
+  sync?: (options: WhatsappSyncOptions, deps?: EvolutionSyncDeps) => Promise<unknown>;
+  localCrm?: LocalWhatsappCrmRepository | null;
+  extractLead?: (
+    conversationText: string,
+    messages: Array<{ body: string; timestamp: number }>
+  ) => Promise<Record<string, unknown>>;
+  usePostgresCrm?: boolean;
+  listQuoteLeads?: () => Promise<LocalQuoteLeadRecord[]>;
+  listClients?: () => Promise<LocalClientRecord[]>;
+  listDeals?: () => Promise<LocalDealRecord[]>;
+  listQuotations?: () => Promise<LocalQuotationRecord[]>;
+  getQuoteLead?: (id: string) => Promise<LocalQuoteLeadRecord | null>;
+  getClient?: (id: string) => Promise<LocalClientRecord | null>;
+  getDeal?: (id: string) => Promise<LocalDealRecord | null>;
+  getQuotation?: (id: string) => Promise<LocalQuotationRecord | null>;
+  findCandidatesByPhone?: (phone: string, limit: number) => Promise<LocalCrmCandidate[]>;
+  findCandidatesByEmail?: (emails: string[], limit: number) => Promise<LocalCrmCandidate[]>;
+  findCandidatesByName?: (name: string, limit: number) => Promise<LocalCrmCandidate[]>;
+}
+
+function crmRepositoryFor(
+  deps: WhatsappLeadsDeps
+): LocalWhatsappCrmRepository | null {
+  if (deps.localCrm !== undefined) return deps.localCrm;
+  const hasCandidateSeam = Boolean(
+    deps.findCandidatesByPhone || deps.findCandidatesByEmail || deps.findCandidatesByName ||
+    deps.listQuoteLeads || deps.listClients || deps.listDeals || deps.listQuotations
+  );
+  if (hasCandidateSeam) {
+    return {
+      getQuoteLead: deps.getQuoteLead || (async () => null),
+      getClient: deps.getClient || (async () => null),
+      getDeal: deps.getDeal || (async () => null),
+      getQuotation: deps.getQuotation || (async () => null),
+      ...(deps.listQuoteLeads ? { listQuoteLeads: deps.listQuoteLeads } : {}),
+      ...(deps.listClients ? { listClients: deps.listClients } : {}),
+      ...(deps.listDeals ? { listDeals: deps.listDeals } : {}),
+      ...(deps.listQuotations ? { listQuotations: deps.listQuotations } : {}),
+      ...(deps.findCandidatesByPhone ? { findCandidatesByPhone: deps.findCandidatesByPhone } : {}),
+      ...(deps.findCandidatesByEmail ? { findCandidatesByEmail: deps.findCandidatesByEmail } : {}),
+      ...(deps.findCandidatesByName ? { findCandidatesByName: deps.findCandidatesByName } : {}),
+    };
+  }
+  if (!deps.usePostgresCrm) return null;
+  return createPostgresWhatsappCrmRepository();
+}
+
+async function correlateQuotation(
+  conversation: SnapshotConversation,
+  _messages: Array<{ body: string; timestamp: number }>,
+  storeDeps: WhatsappConversationStoreDeps,
+  repository: LocalWhatsappCrmRepository | null
+): Promise<string> {
+  if (!repository) return '';
+  const candidate = await resolveWhatsappCrmCandidateFromSnapshot({
+    conversation,
+    deps: {
+      ...storeDeps,
+      localCrm: repository,
+    },
+  });
+  return safeQuotationReference(candidate?.candidate.quotationId) || '';
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  let failed = false;
+  let firstError: unknown;
+  async function worker(): Promise<void> {
+    while (!failed) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      try {
+        results[index] = await mapper(values[index], index);
+      } catch (error) {
+        failed = true;
+        firstError = error;
+      }
+    }
+  }
+  await Promise.allSettled(
+    Array.from({ length: Math.min(Math.max(1, concurrency), values.length) }, () => worker()),
+  );
+  if (failed) {
+    const statusCode = Number((firstError as { statusCode?: unknown } | null)?.statusCode || 0);
+    if (Number.isInteger(statusCode) && statusCode >= 400) throw firstError;
+    throw Object.assign(new Error('WhatsApp lead worker failed.'), { statusCode: 503 });
+  }
+  return results;
+}
+
+export function createHandler(deps: WhatsappLeadsDeps = {}): (event: FunctionEvent) => Promise<FunctionResult> {
+  const storeDeps = buildStoreDeps(deps);
+  return async function whatsappLeadsHandler(event: FunctionEvent): Promise<FunctionResult> {
+    if (String(event.httpMethod || '').toUpperCase() !== 'GET') {
+      return jsonResponse(405, { error: 'Método não permitido.' });
+    }
+    try {
+      const repository = crmRepositoryFor(deps);
+      if (deps.sync) {
+        await deps.sync({ chatLimit: MAX_LEADS, messageLimit: MAX_MESSAGES_PER_CHAT }, storeDeps);
+      }
+      const conversations = await listWhatsappConversations(
+        { status: 'all', limit: MAX_CHATS_TO_SCAN },
+        storeDeps
+      );
+      const candidates = (await mapWithConcurrency(
+        conversations,
+        MAX_EXTRACTION_CONCURRENCY,
+        async (item): Promise<Record<string, any> | null> => {
+          const conversation = snapshotConversation(item);
+          if (!conversation || !isValidBrazilWhatsappPhone(conversation.canonicalPhone)) return null;
+          if (conversation.identityStatus !== 'verified' && conversation.identityStatus !== 'derived') return null;
+          const messages = normalizeInboundMessages(await getWhatsappMessages(conversation.id, storeDeps));
+          const conversationText = composeInboundText(messages);
+          let extracted: Record<string, unknown>;
+          try {
+            extracted = await (deps.extractLead || extractLeadWithOpenRouter)(conversationText, messages);
+          } catch {
+            extracted = extractFallback(conversationText);
+          }
+          const extractedProjection = projectedExtraction(extracted, extractFallback(conversationText));
+          const nome = firstNonEmpty(conversation.displayLabel, conversation.displayName);
+          const email = normalizeLeadEmail(extractedProjection.email) || extractEmailFromText(conversationText);
+          const resumo = cleanText(extractedProjection.resumo, MAX_SUMMARY_TEXT) || summaryFromMessages(messages);
+          const quotationId = await correlateQuotation(conversation, messages, storeDeps, repository);
+          return leadProjection({
+            id: conversation.id,
+            nome: isPlaceholderLeadName(nome) ? '' : nome,
+            telefone: conversation.canonicalPhone,
+            email,
+            resumo,
+            timestamp: conversation.lastMessageAt,
+            quotationId,
+            produto: extractedProjection.produto,
+            quantidade: extractedProjection.quantidade,
+          });
+        },
+      )).filter((candidate): candidate is Record<string, any> => candidate !== null);
+      return jsonResponse(200, { success: true, data: prioritizeWhatsappLeads(candidates) });
+    } catch (error: unknown) {
+      const record = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};
+      const statusCode = Number.isInteger(record.statusCode) ? Number(record.statusCode) : 500;
+      console.error('[whatsapp-leads]', error instanceof Error ? error.name : typeof error, statusCode);
+      const message = typeof record.message === 'string' ? record.message : '';
+      const safeMessage = message.length <= 200 && /^(Não |Armazenamento|Sincronização|Tempo limite|Falha ao conectar|Integração WhatsApp|Método |JSON |Conversa )/.test(message)
+        ? message
+        : 'Erro interno ao buscar conversas do WhatsApp.';
+      return jsonResponse(statusCode, { error: safeMessage });
+    }
+  };
+}
+
+export const handler = createHandler({
+  sync: process.env.EVOLUTION_BASE_URL ? syncWhatsappConversations : undefined,
+  usePostgresCrm: Boolean(process.env.DATABASE_URL),
+});

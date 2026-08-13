@@ -1,46 +1,22 @@
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  type ChangeEvent,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
-import {
-  Search, Phone, Mail, AlertTriangle, Users, Pencil, Check, X, Eye, ChevronRight, Trash2, UserPlus, Archive, ArchiveRestore,
-} from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
+import { Search, Phone, Mail, AlertTriangle, Users, Eye, ChevronRight, Archive, ArchiveRestore, UserPlus, Check, X } from 'lucide-react';
 import { apiGet, apiPut, apiPatch, apiDelete } from '@/lib/api';
 import { fmtPhone } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
-import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-} from '@/components/ui/table';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonTable from '@/components/SkeletonTable';
 import { DetailDrawer } from '@/components/DetailDrawer';
 import { QualityBadges, type QualityBadge } from '@/components/QualityBadges';
 import { ContextActions, type ContextAction } from '@/components/ContextActions';
-import { buildQuotationErpUrl, buildCrmDealErpUrl } from '@/lib/erpLinks';
-
-const TIPOS = ['', 'lead', 'cliente'];
-const TIPO_DISPLAY = ['Todos', 'Leads', 'Clientes'];
-const PAGE_SIZES = [10, 25, 50];
-
-const CONTRIBUINTE_OPTS = [
-  { value: '0', label: '0 - Não informado' },
-  { value: '1', label: '1 - Contribuinte ICMS' },
-  { value: '2', label: '2 - Contribuinte isento' },
-  { value: '9', label: '9 - Não Contribuinte' },
-];
-
-const LEAD_SOURCES = ['Google Ads', 'Bríndice', 'Cliente recorrente'];
-
-const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
-
-// ── Types ──
+import {
+  projectClientDetail,
+  projectClientListResponse,
+  type ProjectedClientDetail,
+  type ProjectedClientRow,
+} from '@/lib/localProjections';
 
 interface Address {
   endereco?: string;
@@ -52,155 +28,84 @@ interface Address {
   cep?: string;
 }
 
-interface DataRow {
-  id: string;
-  nome?: string;
-  email?: string;
-  telefone?: string;
-  documento?: string | null;
-  tipo?: string;
-  arquivado?: boolean;
-  status?: string;
-}
+type DataRow = ProjectedClientRow;
+type ClientDetail = ProjectedClientDetail;
 
-interface LeadsResponse {
-  data?: DataRow[];
-  core_mode?: boolean;
-  source?: 'postgres' | 'frappe';
-  pagination?: {
-    total_pages?: number;
-    total?: number;
-  };
-}
-
-interface ClientDetail {
-  display_name?: string;
-  email?: string;
-  telefone?: string;
-  notes?: string | null;
-  observacoes?: string | null;
-  origem?: string;
-  person_type?: string;
-  tax_id?: string;
-  empresa?: string;
-  contribuinte?: string;
-  inscricao_estadual?: string;
-  address?: Address;
-  latest_quotation?: {
-    name: string;
-    status: string;
-    grand_total?: number;
-  };
-  deal?: {
-    name: string;
-    status: string;
-    next_step?: string;
-  };
-  erp_url?: string;
-  quality_flags?: string[];
-  creation?: string;
-  modified?: string;
-}
+type LeadsResponse = unknown;
 
 interface EditFields {
-  nome?: string;
-  email?: string;
-  telefone?: string;
-  observacoes?: string;
-  origem?: string;
-  personType?: string;
-  taxId?: string;
-  empresa?: string;
-  contribuinte?: string;
-  inscricaoEstadual?: string;
-  endereco?: Address;
-}
-
-interface SelectedClient {
-  doctype: 'Lead' | 'Customer';
-  name: string;
-  tipo: string;
+  nome: string;
+  email: string;
+  telefone: string;
+  documento: string;
+  observacoes: string;
+  endereco: Address;
 }
 
 interface LeadsPageProps {
   navigate?: (path: string) => void;
 }
 
-// ── CPF/CNPJ helpers ──
-
-function formatCpf(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 11);
-  return d.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
-}
-
-function formatCnpj(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 14);
-  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
-}
-
-function isValidCpf(value: string): boolean {
-  const d = value.replace(/\D/g, '');
-  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
-  const calc = (slice: string, factor: number): number => {
-    let sum = 0;
-    for (let i = 0; i < slice.length; i++) sum += Number(slice[i]) * (factor - i);
-    const rest = (sum * 10) % 11;
-    return rest === 10 ? 0 : rest;
-  };
-  return calc(d.slice(0, 9), 10) === Number(d[9]) && calc(d.slice(0, 10), 11) === Number(d[10]);
-}
-
-function isValidCnpj(value: string): boolean {
-  const d = value.replace(/\D/g, '');
-  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
-  const calc = (slice: string, weights: number[]): number => {
-    let sum = 0;
-    for (let i = 0; i < slice.length; i++) sum += Number(slice[i]) * weights[i];
-    const rest = sum % 11;
-    return rest < 2 ? 0 : 11 - rest;
-  };
-  const w1 = [5,4,3,2,9,8,7,6,5,4,3,2];
-  const w2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
-  return calc(d.slice(0, 12), w1) === Number(d[12]) && calc(d.slice(0, 13), w2) === Number(d[13]);
-}
-
-function formatTaxId(value: string, personType: string): string {
-  const d = value.replace(/\D/g, '');
-  if (personType === 'pf') return formatCpf(d);
-  if (personType === 'pj') return formatCnpj(d);
-  return value;
-}
-
-// ── Email/Phone validators ──
+const PAGE_SIZES = [10, 25, 50];
+const EMPTY_FIELDS: EditFields = { nome: '', email: '', telefone: '', documento: '', observacoes: '', endereco: {} };
 
 function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+  return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 function isValidPhone(value: string): boolean {
-  const d = String(value || '').replace(/\D/g, '');
-  return d.length >= 10 && d.length <= 11;
+  const digits = value.replace(/\D/g, '');
+  return !digits || (digits.length >= 10 && digits.length <= 15);
 }
 
-async function lookupCep(cep: string, setEditFields: Dispatch<SetStateAction<EditFields>>) {
-  const digits = cep.replace(/\D/g, '');
-  if (digits.length !== 8) return;
-  try {
-    const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
-    const data = await res.json() as Record<string, string>;
-    if (data.erro) return;
-    setEditFields(prev => ({
-      ...prev,
-      endereco: {
-        ...prev.endereco,
-        endereco: data.logradouro || prev.endereco?.endereco || '',
-        bairro: data.bairro || prev.endereco?.bairro || '',
-        municipio: data.localidade || prev.endereco?.municipio || '',
-        uf: data.uf || prev.endereco?.uf || '',
-        // complemento NÃO é preenchido automaticamente — ViaCEP retorna dados pouco úteis ("até 183/184")
-      },
-    }));
-  } catch { /* silencioso */ }
+function addressText(address?: Address | null): string {
+  if (!address) return 'Endereço não cadastrado';
+  const first = [address.endereco, address.numero].filter(Boolean).join(', ');
+  const second = [address.bairro, address.complemento].filter(Boolean).join(' · ');
+  const city = [address.municipio, address.uf].filter(Boolean).join('/');
+  return [first, second, city, address.cep].filter(Boolean).join(' · ') || 'Endereço não cadastrado';
+}
+
+function formatDocument(value?: string | null): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11) return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  if (digits.length === 14) return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  return value || '—';
+}
+
+function qualityBadges(detail: ClientDetail): QualityBadge[] {
+  const labels: Record<string, QualityBadge> = {
+    sem_telefone: { label: 'Sem telefone', type: 'warning' },
+    sem_email: { label: 'Sem email', type: 'warning' },
+    sem_cnpj: { label: 'Sem documento', type: 'info' },
+    endereco_incompleto: { label: 'Endereço incompleto', type: 'warning' },
+  };
+  return detail.quality_flags?.length
+    ? detail.quality_flags.map((flag) => labels[flag] || { label: flag, type: 'warning' })
+    : [{ label: 'Cadastro completo', type: 'success' }];
+}
+
+function fieldsFromDetail(detail: ClientDetail): EditFields {
+  return {
+    nome: detail.display_name || detail.nome || '',
+    email: detail.email || '',
+    telefone: detail.telefone || '',
+    documento: detail.tax_id || detail.documento || '',
+    observacoes: detail.notes ?? detail.observacoes ?? '',
+    endereco: { ...(detail.address || {}) },
+  };
+}
+
+function addressPayload(address: Address): Address {
+  return {
+    endereco: address.endereco?.trim() || '',
+    numero: address.numero?.trim() || '',
+    bairro: address.bairro?.trim() || '',
+    complemento: address.complemento?.trim() || '',
+    municipio: address.municipio?.trim() || '',
+    uf: address.uf?.trim() || '',
+    cep: address.cep?.trim() || '',
+  };
 }
 
 export default function LeadsPage({ navigate }: LeadsPageProps) {
@@ -208,1216 +113,239 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [tipo, setTipo] = useState('');
   const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
-  // `undefined` is an intentional pending state. Rendering the legacy mode
-  // before the server answers would briefly expose lead-only controls to core
-  // customers on a cold deep link.
-  const [coreMode, setCoreMode] = useState<boolean | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const setTopBarActions = useSetTopBarActions();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ClientDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailSaving, setDetailSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editFields, setEditFields] = useState<EditFields>(EMPTY_FIELDS);
 
-  const fetchData = useCallback(async (searchVal: string, tipoVal: string, pageNum: number, limitVal: number, statusVal = status) => {
+  const fetchData = useCallback(async (searchValue = search, pageValue = page, statusValue = status, limitValue = limit) => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
     try {
-      const params = new URLSearchParams();
-      params.set('page', String(pageNum));
-      params.set('limit', String(limitVal));
-      params.set('status', statusVal);
-      if (searchVal) params.set('search', searchVal);
-      // The server is authoritative about the rollout mode. Do not send a
-      // legacy-only filter until that mode has been resolved.
-      if (tipoVal && coreMode === false) params.set('tipo', tipoVal);
-
+      const params = new URLSearchParams({ page: String(pageValue), limit: String(limitValue), status: statusValue });
+      if (searchValue) params.set('search', searchValue);
       const result = await apiGet<LeadsResponse>(`/leads-clients?${params.toString()}`);
-      if (typeof result.core_mode === 'boolean') {
-        setCoreMode((previous) => previous === result.core_mode ? previous : result.core_mode);
-      }
-      setData(result.data || []);
-      setTotalPages(result.pagination?.total_pages || 0);
-      setTotalRecords(result.pagination?.total || 0);
+      const projected = projectClientListResponse(result);
+      if (!projected) throw new Error('Resposta inválida ao carregar clientes.');
+      setData(projected.data);
+      setTotalPages(projected.pagination.total_pages);
+      setTotalRecords(projected.pagination.total);
     } catch (err) {
-      setError((err as Error).message || 'Erro ao carregar leads e clientes.');
+      setData([]);
+      setTotalPages(0);
+      setTotalRecords(0);
+      setError((err as Error).message || 'Erro ao carregar clientes.');
     } finally {
       setLoading(false);
     }
-  }, [coreMode, status]);
+  }, [limit, page, search, status]);
 
-  // Keep the TopBar neutral until the authoritative mode response arrives.
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
   useEffect(() => {
-    if (coreMode === undefined) {
-      setTopBarActions?.(null);
-      return () => setTopBarActions?.(null);
-    }
     setTopBarActions?.(
-      <Button size="sm" onClick={() => navigate?.(`/leads/${coreMode ? 'cliente' : 'lead'}/new`)}>
-        <UserPlus size={16} />
-        {coreMode ? 'Criar cliente' : 'Criar Lead'}
-      </Button>
+      <Button size="sm" onClick={() => navigate?.('/leads/cliente/new')}>
+        <UserPlus size={16} /> Criar cliente
+      </Button>,
     );
     return () => setTopBarActions?.(null);
-  }, [setTopBarActions, navigate, coreMode]);
-
-  // ── Selection ──
-  const toggleSelected = useCallback((id: string) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-  }, []);
-
-  const toggleSelectAll = useCallback((checked: boolean) => {
-    setSelectedIds(checked ? data.map(row => row.id) : []);
-  }, [data]);
-
-  const allSelected = data.length > 0 && selectedIds.length === data.length;
-  const someSelected = selectedIds.length > 0 && !allSelected;
-  const selectedCount = selectedIds.length;
+  }, [navigate, setTopBarActions]);
 
   useEffect(() => {
-    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected;
-  }, [someSelected]);
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selectedIds.length > 0 && selectedIds.length < data.length;
+  }, [data.length, selectedIds.length]);
 
-  // ── Delete ──
-  const handleDelete = useCallback(async (id: string, tipoRow: string) => {
-    const label = coreMode ? 'o cliente' : (tipoRow === 'lead' ? 'o lead' : 'o cliente');
-    if (!confirm(coreMode
-      ? `Arquivar ${label} ${id}? Você poderá restaurá-lo depois.`
-      : `Tem certeza que deseja excluir ${label} ${id}?\n\nEsta ação não pode ser desfeita.`)) return;
-    try {
-      await apiDelete(`/leads-clients?id=${encodeURIComponent(id)}&tipo=${tipoRow}`);
-      setData(prev => coreMode && status === 'all'
-        ? prev.map(r => r.id === id ? { ...r, arquivado: true, status: 'archived' } : r)
-        : prev.filter(r => r.id !== id));
-      if (status !== 'all') setTotalRecords(prev => Math.max(0, prev - 1));
-      setSelectedIds(prev => prev.filter(i => i !== id));
-    } catch (err) {
-      alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
-    }
-  }, [coreMode, status]);
-
-  const handleRestore = useCallback(async (row: DataRow) => {
-    if (!coreMode) return;
-    try {
-      await apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false });
-      setData(prev => status === 'all'
-        ? prev.map(item => item.id === row.id ? { ...item, arquivado: false, status: 'active' } : item)
-        : prev.filter(item => item.id !== row.id));
-      if (status !== 'all') setTotalRecords(prev => Math.max(0, prev - 1));
-    } catch (err) {
-      alert('Erro ao restaurar: ' + ((err as Error).message || 'Tente novamente.'));
-    }
-  }, [coreMode, status]);
-
-  const handleBulkAction = useCallback(async () => {
-    const selected = data.filter(row => selectedIds.includes(row.id));
-    if (selected.length === 0) return;
-
-    if (coreMode === true) {
-      const restoring = status === 'archived';
-      const actionable = selected.filter((row) => {
-        const archived = row.arquivado || row.status === 'archived';
-        return restoring ? archived : !archived;
-      });
-
-      if (actionable.length === 0) {
-        setError(restoring
-          ? 'Selecione clientes arquivados para restaurar.'
-          : 'Selecione clientes ativos para arquivar.');
-        return;
-      }
-
-      const action = restoring ? 'restaurar' : 'arquivar';
-      const confirmation = restoring
-        ? `Restaurar ${actionable.length} cliente${actionable.length !== 1 ? 's' : ''}?`
-        : `Arquivar ${actionable.length} cliente${actionable.length !== 1 ? 's' : ''}? Eles poderão ser restaurados depois.`;
-      if (!confirm(confirmation)) return;
-
-      try {
-        if (restoring) {
-          await Promise.all(actionable.map((row) =>
-            apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false })
-          ));
-        } else {
-          // In the core, DELETE is the established archive endpoint. Archived
-          // rows are deliberately excluded above, including in the "Todos" view.
-          await Promise.all(actionable.map((row) =>
-            apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}&tipo=${row.tipo || 'cliente'}`)
-          ));
-        }
-        const nextPage = actionable.length === data.length && page > 1 ? page - 1 : page;
-        setSelectedIds([]);
-        setPage(nextPage);
-        await fetchData(search, tipo, nextPage, limit, status);
-      } catch (err) {
-        console.error('Falha na ação em massa de clientes', {
-          action,
-          clientIds: actionable.map((row) => row.id),
-          error: err,
-        });
-        setSelectedIds([]);
-        await fetchData(search, tipo, page, limit, status);
-        const message = (err as Error).message || 'Tente novamente.';
-        setError(`Não foi possível ${action} os clientes selecionados: ${message}`);
-        alert(`Não foi possível ${action} os clientes selecionados: ${message}`);
-      }
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja excluir ${selected.length} registro${selected.length !== 1 ? 's' : ''}?\n\nEssa ação não pode ser desfeita.`)) return;
-
-    try {
-      await Promise.all(selected.map(row =>
-        apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}&tipo=${row.tipo}`)
-      ));
-      const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
-      setPage(nextPage);
-      await fetchData(search, tipo, nextPage, limit, status);
-    } catch (err) {
-      console.error('Falha ao excluir registros em massa', {
-        clientIds: selected.map((row) => row.id),
-        error: err,
-      });
-      const message = (err as Error).message || 'Tente novamente.';
-      setError(`Não foi possível excluir os registros selecionados: ${message}`);
-      alert(`Não foi possível excluir os registros selecionados: ${message}`);
-    }
-  }, [coreMode, data, selectedIds, page, search, tipo, limit, status, fetchData]);
-
-  // ── Drawer state ──
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<SelectedClient | null>(null); // { doctype, name, tipo }
-  const [clientDetail, setClientDetail] = useState<ClientDetail | null>(null);
-  const [clientLoading, setClientLoading] = useState(false);
-  const [clientError, setClientError] = useState<string | null>(null);
-  const [clientSaving, setClientSaving] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [editFields, setEditFields] = useState<EditFields>({});
-
-  useEffect(() => { fetchData(search, tipo, page, limit, status); }, [fetchData, search, tipo, page, limit, status]);
-
-  const onSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setSearch(val);
+  const onSearchChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setSearch(value);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => {
       setPage(1);
-      fetchData(val, tipo, 1, limit, status);
-    }, 350);
-  }, [tipo, limit, status, fetchData]);
-
-  const onTipoClick = useCallback((t: string) => {
-    setTipo(t);
-    setPage(1);
-    fetchData(search, t, 1, limit);
-  }, [search, limit, fetchData]);
-
-  const onStatusClick = useCallback((nextStatus: 'active' | 'archived' | 'all') => {
-    setStatus(nextStatus);
-    setPage(1);
-    fetchData(search, tipo, 1, limit, nextStatus);
-  }, [search, tipo, limit, fetchData]);
-
-  const onLimitChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    const newLimit = parseInt(e.target.value, 10);
-    setLimit(newLimit);
-    setPage(1);
-    fetchData(search, tipo, 1, newLimit, status);
-  }, [search, tipo, status, fetchData]);
-
-  const navigateToDetail = useCallback((row: DataRow) => {
-    if (!row?.id) return;
-    const tipoRoute = coreMode ? 'cliente' : (row.tipo === 'cliente' ? 'cliente' : 'lead');
-    if (navigate) navigate(`/leads/${tipoRoute}/${encodeURIComponent(row.id)}`);
-    else window.location.hash = `#/leads/${tipoRoute}/${encodeURIComponent(row.id)}`;
-  }, [navigate, coreMode]);
-
-  const getPageNumbers = (): number[] => {
-    if (totalPages <= 1) return [];
-    const start = Math.max(1, page - 3);
-    const end = Math.min(totalPages, start + 6);
-    const nums: number[] = [];
-    for (let i = start; i <= end; i++) nums.push(i);
-    return nums;
-  };
-
-  // ── Drawer handlers ──
+      void fetchData(value, 1, status, limit);
+    }, 300);
+  }, [fetchData, limit, status]);
 
   const openDrawer = useCallback(async (row: DataRow) => {
-    const doctype = coreMode ? 'Customer' : (row.tipo === 'lead' ? 'Lead' : 'Customer');
-    setSelectedClient({ doctype, name: row.id, tipo: row.tipo || '' });
-    setClientDetail(null);
-    setClientError(null);
-    setClientLoading(true);
-    setEditMode(false);
-    setEditFields({});
+    setSelectedId(row.id);
     setDrawerOpen(true);
-
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    setEditMode(false);
     try {
-      const detail = await apiGet<ClientDetail>(`/client-detail?doctype=${encodeURIComponent(doctype)}&name=${encodeURIComponent(row.id)}`);
-      setClientDetail(detail);
+      const result = await apiGet<unknown>(`/client-detail?name=${encodeURIComponent(row.id)}`);
+      const projected = projectClientDetail(result);
+      if (!projected) throw new Error('Resposta inválida ao carregar cliente.');
+      setDetail(projected);
     } catch (err) {
-      setClientError((err as Error).message || 'Erro ao carregar detalhes.');
+      setDetailError((err as Error).message || 'Erro ao carregar detalhes.');
     } finally {
-      setClientLoading(false);
+      setDetailLoading(false);
     }
-  }, [coreMode]);
+  }, []);
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
-    setSelectedClient(null);
-    setClientDetail(null);
-    setClientError(null);
+    setSelectedId(null);
+    setDetail(null);
     setEditMode(false);
   }, []);
 
-  const startEdit = useCallback(() => {
-    if (!clientDetail) return;
-    setEditFields({
-      nome: clientDetail.display_name || '',
-      email: clientDetail.email || '',
-      telefone: clientDetail.telefone || '',
-      observacoes: clientDetail.notes ?? clientDetail.observacoes ?? '',
-      origem: clientDetail.origem || '',
-      personType: clientDetail.person_type || '',
-      taxId: clientDetail.tax_id || '',
-      empresa: clientDetail.empresa || '',
-      contribuinte: clientDetail.contribuinte || '0',
-      inscricaoEstadual: clientDetail.inscricao_estadual || '',
-      endereco: {
-        endereco: clientDetail.address?.endereco || '',
-        numero: clientDetail.address?.numero || '',
-        bairro: clientDetail.address?.bairro || '',
-        complemento: clientDetail.address?.complemento || '',
-        municipio: clientDetail.address?.municipio || '',
-        uf: clientDetail.address?.uf || '',
-        cep: clientDetail.address?.cep || '',
-      },
-    });
-    setEditMode(true);
-  }, [clientDetail]);
-
-  const cancelEdit = useCallback(() => {
-    setEditMode(false);
-    setEditFields({});
-  }, []);
-
-  const saveEdit = useCallback(async () => {
-    if (!selectedClient || !clientDetail) return;
-    setClientSaving(true);
-    setClientError(null);
+  const updateDetail = useCallback(async () => {
+    if (!selectedId || !detail) return;
+    const fields = editFields;
+    if (!fields.nome.trim()) { setDetailError('Nome é obrigatório.'); return; }
+    if (!isValidEmail(fields.email)) { setDetailError('E-mail inválido.'); return; }
+    if (!isValidPhone(fields.telefone)) { setDetailError('Telefone inválido.'); return; }
+    setDetailSaving(true);
+    setDetailError(null);
     try {
-      const payload: Record<string, unknown> = {
-        nome: editFields.nome?.trim() || null,
-        email: editFields.email?.trim() || null,
-        telefone: editFields.telefone?.trim() || null,
-      };
-      const coreClient = coreMode && selectedClient.doctype === 'Customer';
-      // Origem apenas para Lead
-      if (!coreClient && selectedClient.doctype === 'Lead') {
-        payload.origem = editFields.origem?.trim() || null;
-      }
-      // Tipo de pessoa + CPF/CNPJ
-      if (editFields.personType) {
-        payload.person_type = editFields.personType;
-        payload.tax_id = editFields.taxId?.replace(/\D/g, '') || null;
-      }
-      if (coreClient) {
-        const notes = editFields.observacoes?.trim() || null;
-        payload.notes = notes;
-        payload.observacoes = notes;
-      } else {
-        // Campos adicionais são mantidos somente no adapter legado.
-        payload.empresa = editFields.empresa?.trim() || null;
-        payload.contribuinte = editFields.contribuinte || '0';
-        payload.inscricao_estadual = editFields.inscricaoEstadual?.trim() || null;
-        payload.origem = editFields.origem?.trim() || null;
-      }
-      // Endereço (sempre envia se tiver campos preenchidos)
-      if (editFields.endereco) {
-        payload.endereco = {
-          endereco: editFields.endereco.endereco?.trim() || '',
-          numero: editFields.endereco.numero?.trim() || '',
-          bairro: editFields.endereco.bairro?.trim() || '',
-          complemento: editFields.endereco.complemento?.trim() || '',
-          municipio: editFields.endereco.municipio?.trim() || '',
-          uf: editFields.endereco.uf?.trim() || '',
-          cep: editFields.endereco.cep?.trim() || '',
-        };
-      }
-
-      const updated = await apiPut<ClientDetail>(
-        `/client-detail?doctype=${encodeURIComponent(selectedClient.doctype)}&name=${encodeURIComponent(selectedClient.name)}`,
-        payload,
-      );
-      setClientDetail(updated);
+      const result = await apiPut<unknown>(`/client-detail?name=${encodeURIComponent(selectedId)}`, {
+        nome: fields.nome.trim(),
+        email: fields.email.trim() || null,
+        telefone: fields.telefone.trim() || null,
+        documento: fields.documento.replace(/\D/g, '') || null,
+        notes: fields.observacoes.trim() || null,
+        endereco: addressPayload(fields.endereco),
+      });
+      const projected = projectClientDetail(result);
+      if (!projected) throw new Error('Resposta inválida ao salvar cliente.');
+      setDetail(projected);
       setEditMode(false);
-      setEditFields({});
-
-      // Atualiza a linha na lista local
-      if (updated.display_name) {
-        setData(prev => prev.map(row =>
-          row.id === selectedClient.name ? { ...row, nome: updated.display_name, email: updated.email, telefone: updated.telefone } : row,
-        ));
-      }
+      setData((rows) => rows.map((row) => row.id === selectedId ? {
+        ...row,
+        nome: projected.display_name || projected.nome,
+        email: projected.email,
+        telefone: projected.telefone,
+      } : row));
     } catch (err) {
-      setClientError((err as Error).message || 'Erro ao salvar.');
+      setDetailError((err as Error).message || 'Erro ao salvar cliente.');
     } finally {
-      setClientSaving(false);
+      setDetailSaving(false);
     }
-  }, [clientDetail, coreMode, editFields, selectedClient]);
+  }, [detail, editFields, selectedId]);
 
-  // ── Build context actions ──
-
-  const buildContextActions = useCallback((): ContextAction[] => {
-    if (!clientDetail) return [];
-    const actions: ContextAction[] = [];
-
-    if (selectedClient) {
-      actions.push({
-        label: 'Página completa',
-        icon: ChevronRight,
-        onClick: () => {
-          setDrawerOpen(false);
-          navigateToDetail({ id: selectedClient.name, tipo: selectedClient.tipo });
-        },
-        title: 'Abrir página completa do cadastro',
-      });
+  const toggleArchive = useCallback(async (row: DataRow) => {
+    const archived = row.status === 'archived' || row.arquivado === true;
+    if (!confirm(`${archived ? 'Restaurar' : 'Arquivar'} o cliente ${row.nome || row.id}?`)) return;
+    try {
+      if (archived) await apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false });
+      else await apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}`);
+      await fetchData();
+    } catch (err) {
+      setError((err as Error).message || 'Não foi possível alterar o status.');
     }
+  }, [fetchData]);
 
-    if (clientDetail.telefone) {
-      actions.push({
-        label: 'WhatsApp',
-        icon: Phone,
-        href: `https://wa.me/${clientDetail.telefone.replace(/\D/g, '')}`,
-        title: 'Abrir WhatsApp',
-      });
-    }
+  const navigateToDetail = useCallback((id: string) => {
+    navigate?.(`/leads/cliente/${encodeURIComponent(id)}`);
+  }, [navigate]);
 
-    if (clientDetail.email) {
-      actions.push({
-        label: 'Email',
-        icon: Mail,
-        href: `mailto:${clientDetail.email}`,
-        title: 'Enviar email',
-      });
-    }
-
-    if (clientDetail.latest_quotation) {
-      actions.push({
-        label: 'Orçamento recente',
-        href: buildQuotationErpUrl(null, clientDetail.latest_quotation.name) || undefined,
-        title: `Abrir ${clientDetail.latest_quotation.name}`,
-      });
-    }
-
-    if (clientDetail.deal) {
-      actions.push({
-        label: 'Deal vinculado',
-        href: buildCrmDealErpUrl(null, clientDetail.deal.name) || undefined,
-        title: `Abrir ${clientDetail.deal.name}`,
-      });
-    }
-
+  const contextActions = useCallback((): ContextAction[] => {
+    if (!detail) return [];
+    const actions: ContextAction[] = [{ label: 'Página completa', icon: ChevronRight, onClick: () => { closeDrawer(); navigateToDetail(detail.id); }, title: 'Abrir página completa do cadastro' }];
+    if (detail.telefone) actions.push({ label: 'WhatsApp', icon: Phone, href: `https://wa.me/${detail.telefone.replace(/\D/g, '')}`, title: 'Abrir WhatsApp' });
+    if (detail.email) actions.push({ label: 'Email', icon: Mail, href: `mailto:${detail.email}`, title: 'Enviar email' });
+    if (detail.latest_quotation) actions.push({ label: 'Orçamento recente', icon: ChevronRight, onClick: () => navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`), title: `Abrir ${detail.latest_quotation.name}` });
     return actions;
-  }, [clientDetail, navigateToDetail, selectedClient]);
+  }, [closeDrawer, detail, navigate, navigateToDetail]);
 
-  // ── Build quality badges ──
+  const allSelected = data.length > 0 && selectedIds.length === data.length;
+  const toggleAll = (checked: boolean) => setSelectedIds(checked ? data.map((row) => row.id) : []);
+  const toggleSelected = (id: string) => setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const archiveSelected = async () => {
+    if (!selectedIds.length) return;
+    const selected = data.filter((row) => selectedIds.includes(row.id));
+    const restoring = status === 'archived';
+    const actionable = selected.filter((row) => (restoring ? row.status === 'archived' || row.arquivado === true : row.status !== 'archived' && row.arquivado !== true));
+    if (!actionable.length) {
+      setError(restoring ? 'Selecione clientes arquivados para restaurar.' : 'Selecione clientes ativos para arquivar.');
+      return;
+    }
+    const action = restoring ? 'Restaurar' : 'Arquivar';
+    if (!confirm(`${action} ${actionable.length} cliente${actionable.length === 1 ? '' : 's'}?`)) return;
+    try {
+      await Promise.all(actionable.map((row) => restoring
+        ? apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false })
+        : apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}`)));
+      await fetchData();
+    } catch (err) {
+      setError((err as Error).message || `Não foi possível ${action.toLowerCase()} os clientes selecionados.`);
+    }
+  };
 
-  const buildQualityBadges = useCallback((): QualityBadge[] => {
-    if (!clientDetail?.quality_flags) return [];
-
-    const labelMap: Record<string, QualityBadge> = {
-      sem_telefone: { label: 'Sem telefone', type: 'warning' },
-      sem_email: { label: 'Sem email', type: 'warning' },
-      sem_origem: { label: 'Sem origem', type: 'danger' },
-      sem_cnpj: { label: 'Sem CNPJ', type: 'info' },
-      endereco_incompleto: { label: 'Sem endereço', type: 'warning' },
-    };
-
-    return clientDetail.quality_flags.map(flag => labelMap[flag] || { label: flag, type: 'warning' });
-  }, [clientDetail]);
-
-  // ── Components ──
-
-  const TipoBadge = ({ tipo: t }: { tipo?: string }) => (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-      ${coreMode || t === 'cliente' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'}
-    `}>
-      {coreMode ? (t === 'archived' ? 'Arquivado' : 'Cliente') : (t === 'lead' ? 'Lead' : t === 'cliente' ? 'Cliente' : t || '—')}
-    </span>
-  );
-
-  const coreClientDetail = coreMode && selectedClient?.doctype === 'Customer';
+  const pageNumbers = Array.from({ length: Math.max(0, totalPages) }, (_, index) => index + 1).slice(Math.max(0, page - 3), page + 4);
 
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader
-        title={coreMode === true ? 'Clientes' : coreMode === false ? 'Leads' : 'Contatos'}
-      />
-
-      {/* Unified mode filters by lifecycle; the legacy marker keeps the old
-          Lead/Cliente type chips and filtering behavior. */}
-      <div className="flex gap-2">
-        {coreMode === true ? (['active', 'archived', 'all'] as const).map((value) => (
-          <button
-            key={value}
-            onClick={() => onStatusClick(value)}
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${status === value ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'}
-            `}
-          >
+      <PageHeader title="Clientes" />
+      <div className="flex flex-wrap gap-2">
+        {(['active', 'archived', 'all'] as const).map((value) => (
+          <button key={value} type="button" onClick={() => { setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} className={`rounded-full px-3 py-1 text-xs font-medium ${status === value ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg'}`}>
             {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
           </button>
-        )) : coreMode === false ? TIPOS.map((t, i) => (
-          <button
-            key={t}
-            onClick={() => onTipoClick(t)}
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${tipo === t ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'}
-            `}
-          >
-            {TIPO_DISPLAY[i]}
-          </button>
-        )) : null}
+        ))}
       </div>
-
-      {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-          <Input
-            placeholder={coreMode === true ? 'Buscar por nome, documento, e-mail ou telefone…' : coreMode === false ? 'Buscar por nome…' : 'Buscar contatos…'}
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-            aria-label={coreMode === true ? 'Buscar clientes' : coreMode === false ? 'Buscar leads e clientes' : 'Buscar contatos'}
-          />
+          <Input placeholder="Buscar por nome, documento, e-mail ou telefone…" value={search} onChange={onSearchChange} className="pl-9" aria-label="Buscar clientes" />
         </div>
-        <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <span>Itens por página</span>
-          <select
-            value={limit}
-            onChange={onLimitChange}
-            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          >
-            {PAGE_SIZES.map(n => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        </div>
+        <select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg" aria-label="Itens por página">
+          {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+        </select>
       </div>
 
-      {/* Loading */}
       {loading && <SkeletonTable cols={5} rows={8} />}
-
-      {/* Error */}
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <AlertTriangle size={32} className="text-destructive/60" />
-          <p>{coreMode === undefined ? 'Erro ao carregar contatos' : 'Erro ao carregar leads e clientes'}</p>
+          <p>Erro ao carregar clientes</p>
           <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={() => fetchData(search, tipo, page, limit)}>Tentar novamente</Button>
+          <Button variant="outline" onClick={() => void fetchData()}>Tentar novamente</Button>
         </div>
       )}
-
-      {/* Empty */}
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <Users size={36} className="text-fg-muted/40" />
-          <p>{coreMode === true ? 'Nenhum cliente encontrado' : coreMode === false ? 'Nenhum lead ou cliente encontrado' : 'Nenhum contato encontrado'}</p>
+          <p>Nenhum cliente encontrado</p>
           <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
         </div>
       )}
-
-      {/* ── Desktop Table ── */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:block">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12 px-3">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) => toggleSelectAll(e.target.checked)}
-                    aria-label="Selecionar todos os registros desta página"
-                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
-                  />
-                </TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>{coreMode ? 'Status' : 'Tipo'}</TableHead>
-                <TableHead className="w-[160px] text-center">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.map(row => {
-                const isSelected = selectedIds.includes(row.id);
-                return (
-                <TableRow
-                  key={row.id || row.email}
-                  className={`cursor-pointer hover:bg-surface-muted/50 transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
-                  onClick={() => navigateToDetail(row)}
-                >
-                  <TableCell className="w-12 px-3" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelected(row.id)}
-                      aria-label={`Selecionar ${row.nome || row.email}`}
-                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium">{row.nome || '—'}</TableCell>
-                  <TableCell className="text-fg-muted text-sm">{row.email || '—'}</TableCell>
-                  <TableCell className="text-fg-muted text-sm">{fmtPhone(row.telefone)}</TableCell>
-                  <TableCell><TipoBadge tipo={coreMode ? row.status : row.tipo} /></TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex items-center justify-center gap-1" onClick={e => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => openDrawer(row)}
-                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-primary/10 hover:text-primary transition-colors"
-                        aria-label={`Visualização rápida ${row.nome || row.email}`}
-                        title={`Visualização rápida ${row.nome || row.email}`}
-                      >
-                        <Eye size={18} />
-                      </button>
-                      {row.telefone && (
-                        <a
-                          href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
-                          target="_blank" rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-success transition-colors"
-                          aria-label={`WhatsApp ${row.nome || row.email}`}
-                          title={`WhatsApp ${row.nome || row.email}`}
-                        >
-                          <Phone size={18} />
-                        </a>
-                      )}
-                      {row.email && (
-                        <a
-                          href={`mailto:${row.email}`}
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors"
-                          aria-label={`Email ${row.nome || row.email}`}
-                          title={`Email ${row.nome || row.email}`}
-                        >
-                          <Mail size={18} />
-                        </a>
-                      )}
-                      <button
-                        onClick={() => coreMode && row.arquivado ? handleRestore(row) : handleDelete(row.id, row.tipo || '')}
-                        className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
-                        aria-label={coreMode && row.arquivado ? `Restaurar ${row.nome || row.email}` : `${coreMode ? 'Arquivar' : 'Excluir'} ${row.nome || row.email}`}
-                        title={coreMode && row.arquivado ? `Restaurar ${row.nome || row.email}` : `${coreMode ? 'Arquivar' : 'Excluir'} ${row.nome || row.email}`}
-                      >
-                        {coreMode && row.arquivado ? <ArchiveRestore size={18} /> : coreMode ? <Archive size={18} /> : <Trash2 size={18} />}
-                      </button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader><TableRow><TableHead className="w-12"><input ref={selectAllRef} type="checkbox" checked={allSelected} onChange={(event) => toggleAll(event.target.checked)} aria-label="Selecionar todos os clientes" /></TableHead><TableHead>Nome</TableHead><TableHead>Email</TableHead><TableHead>Telefone</TableHead><TableHead>Status</TableHead><TableHead className="text-center">Ações</TableHead></TableRow></TableHeader>
+              <TableBody>{data.map((row) => <TableRow key={row.id} className="cursor-pointer" onClick={() => navigateToDetail(row.id)}><TableCell onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} aria-label={`Selecionar ${row.nome || row.id}`} /></TableCell><TableCell className="font-medium">{row.nome || '—'}</TableCell><TableCell className="text-fg-muted">{row.email || '—'}</TableCell><TableCell className="text-fg-muted">{fmtPhone(row.telefone)}</TableCell><TableCell><span className={`rounded-full px-2 py-0.5 text-xs ${row.status === 'archived' ? 'bg-surface-muted text-fg-muted' : 'bg-success/10 text-success'}`}>{row.status === 'archived' ? 'Arquivado' : 'Ativo'}</span></TableCell><TableCell onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-center gap-1"><button type="button" onClick={() => void openDrawer(row)} className="min-h-10 min-w-10 rounded hover:bg-primary/10" aria-label={`Visualização rápida ${row.nome || row.id}`}><Eye size={18} /></button>{row.telefone && <a href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded hover:bg-green-500/10" aria-label={`WhatsApp ${row.nome || row.id}`}><Phone size={18} /></a>}{row.email && <a href={`mailto:${row.email}`} className="min-h-10 min-w-10 inline-flex items-center justify-center rounded hover:bg-surface-muted" aria-label={`Email ${row.nome || row.id}`}><Mail size={18} /></a>}<button type="button" onClick={() => void toggleArchive(row)} className="min-h-10 min-w-10 inline-flex items-center justify-center rounded hover:bg-surface-muted" aria-label={`${row.status === 'archived' ? 'Restaurar' : 'Arquivar'} ${row.nome || row.id}`}>{row.status === 'archived' ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button></div></TableCell></TableRow>)}</TableBody>
+            </Table>
+          </div>
+          <div className="md:hidden space-y-3">{data.map((row) => <div key={row.id} className="bg-surface rounded-lg border border-line p-4 space-y-2" onClick={() => navigateToDetail(row.id)}><div className="flex items-center justify-between"><span className="font-medium">{row.nome || '—'}</span><span className="text-xs text-fg-muted">{row.status === 'archived' ? 'Arquivado' : 'Ativo'}</span></div><p className="text-xs text-fg-muted">{row.email || '—'}</p><div className="flex gap-1" onClick={(event) => event.stopPropagation()}>{row.telefone && <a href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${row.nome || row.id}`} className="min-h-10 min-w-10 inline-flex items-center justify-center"><Phone size={18} /></a>}{row.email && <a href={`mailto:${row.email}`} aria-label={`Email ${row.nome || row.id}`} className="min-h-10 min-w-10 inline-flex items-center justify-center"><Mail size={18} /></a>}</div></div>)}</div>
+        </>
       )}
+      {totalPages > 1 && <div className="flex items-center justify-between text-sm"><span className="text-fg-muted">Página {page} de {totalPages} · {totalRecords} registro{totalRecords === 1 ? '' : 's'}</span><div className="flex gap-1"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { setPage(page - 1); void fetchData(search, page - 1); }}>‹ Anterior</Button>{pageNumbers.map((number) => <Button key={number} variant={number === page ? 'default' : 'outline'} size="sm" onClick={() => { setPage(number); void fetchData(search, number); }}>{number}</Button>)}<Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { setPage(page + 1); void fetchData(search, page + 1); }}>Próximo ›</Button></div></div>}
+      {selectedIds.length > 0 && <div className="fixed inset-x-0 bottom-0 z-40"><div className="mx-auto max-w-[1060px] px-4"><div className="rounded-t-2xl border border-b-0 border-line bg-surface p-4 flex items-center justify-between"><span>{selectedIds.length} cliente{selectedIds.length === 1 ? '' : 's'} selecionado{selectedIds.length === 1 ? '' : 's'}</span><div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedIds([])}>Limpar seleção</Button><Button onClick={() => void archiveSelected()}>{status === 'archived' ? <ArchiveRestore size={16} /> : <Archive size={16} />} {status === 'archived' ? 'Restaurar clientes' : 'Arquivar clientes'}</Button></div></div></div></div>}
 
-      {/* ── Mobile Cards ── */}
-      {!loading && !error && data.length > 0 && (
-        <div className="md:hidden space-y-3">
-          {data.map(row => (
-            <div
-              key={row.id || row.email}
-              className="bg-surface rounded-lg border border-line shadow-sm p-4 space-y-2 cursor-pointer hover:bg-surface-muted/50 transition-colors"
-              onClick={() => navigateToDetail(row)}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-sm">{row.nome || '—'}</span>
-                <TipoBadge tipo={coreMode ? row.status : row.tipo} />
-              </div>
-              <div className="text-xs text-fg-muted space-y-0.5">
-                {row.email && <div className="flex items-center gap-1"><Mail size={12} /> {row.email}</div>}
-                {row.telefone && <div className="flex items-center gap-1"><Phone size={12} /> {fmtPhone(row.telefone)}</div>}
-              </div>
-              <div className="flex items-center gap-1 pt-1" onClick={e => e.stopPropagation()}>
-                <button
-                  type="button"
-                  onClick={() => openDrawer(row)}
-                  className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-primary/10 hover:text-primary transition-colors"
-                  aria-label={`Visualização rápida ${row.nome || row.email}`}
-                >
-                  <Eye size={18} />
-                </button>
-                {row.telefone && (
-                  <a
-                    href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-green-500/10 hover:text-success transition-colors"
-                    aria-label={`WhatsApp ${row.nome || row.email}`}
-                  >
-                    <Phone size={18} />
-                  </a>
-                )}
-                {row.email && (
-                  <a
-                    href={`mailto:${row.email}`}
-                    className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors"
-                    aria-label={`Email ${row.nome || row.email}`}
-                  >
-                    <Mail size={18} />
-                  </a>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-fg-muted">
-            Página {page} de {totalPages} · {totalRecords} registro{totalRecords !== 1 ? 's' : ''}
-          </span>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-              ‹ Anterior
-            </Button>
-            {getPageNumbers().map(p => (
-              <Button key={p} variant={p === page ? 'default' : 'outline'} size="sm" onClick={() => setPage(p)}>
-                {p}
-              </Button>
-            ))}
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
-              Próximo ›
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Detail Drawer ── */}
-      <DetailDrawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        title={clientDetail?.display_name || 'Carregando…'}
-        description={
-          selectedClient
-            ? `${coreMode ? 'Cliente' : selectedClient.doctype} · ${selectedClient.name}`
-            : undefined
-        }
-        actions={
-          clientDetail && (
-            <div className="space-y-3">
-              {/* Quality badges */}
-              <QualityBadges badges={buildQualityBadges()} />
-
-              {/* Context actions */}
-              <ContextActions actions={buildContextActions()} />
-
-              {/* Edit / Save buttons */}
-              <div className="flex items-center gap-2 pt-1">
-                {!editMode ? (
-                  <Button variant="outline" size="sm" onClick={startEdit} disabled={clientLoading || clientSaving}>
-                    <Pencil className="size-3.5" />
-                    Editar
-                  </Button>
-                ) : (
-                  <>
-                    <Button variant="default" size="sm" onClick={saveEdit} disabled={clientSaving}>
-                      <Check className="size-3.5" />
-                      {clientSaving ? 'Salvando…' : 'Salvar'}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={cancelEdit} disabled={clientSaving}>
-                      <X className="size-3.5" />
-                      Cancelar
-                    </Button>
-                  </>
-                )}
-                {/* Abrir no ERPNext */}
-                {clientDetail.erp_url && (
-                  <a
-                    href={clientDetail.erp_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-surface-muted text-fg hover:bg-primary hover:text-white active:scale-[0.97] transition-all duration-200 no-underline"
-                  >
-                    Abrir no ERPNext
-                  </a>
-                )}
-              </div>
-            </div>
-          )
-        }
-      >
-        {clientLoading && (
-          <div className="flex items-center justify-center py-12 text-fg-muted text-sm">
-            Carregando detalhes…
-          </div>
-        )}
-
-        {clientError && !clientLoading && (
-          <div className="flex flex-col items-center py-12 text-fg-muted gap-3">
-            <AlertTriangle size={24} className="text-destructive/60" />
-            <p className="text-sm">{clientError}</p>
-            <Button variant="outline" size="sm" onClick={() => selectedClient && openDrawer({ id: selectedClient.name, tipo: selectedClient.tipo })}>
-              Tentar novamente
-            </Button>
-          </div>
-        )}
-
-        {clientDetail && !clientLoading && (
-          <div className="space-y-4">
-            {/* ── Dados Gerais ── */}
-            <div>
-              <h3 className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">Dados gerais</h3>
-              <div className="space-y-2 text-sm">
-                {/* L1: Nome (core/legacy) + Empresa (legacy only) */}
-                <div className="flex gap-2">
-                  <div style={{ width: '50%' }}>
-                    <span className="text-fg-muted text-[10px]">Nome</span>
-                    {editMode ? (
-                      <Input
-                        value={editFields.nome}
-                        onChange={e => setEditFields(prev => ({ ...prev, nome: e.target.value }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Nome do cliente"
-                      />
-                    ) : (
-                      <p className="mt-0.5 font-medium truncate">{clientDetail.display_name || '—'}</p>
-                    )}
-                  </div>
-                  {!coreClientDetail && (
-                    <div style={{ width: '50%' }}>
-                      <span className="text-fg-muted text-[10px]">Empresa</span>
-                      {editMode ? (
-                        <Input
-                          value={editFields.empresa || ''}
-                          onChange={e => setEditFields(prev => ({ ...prev, empresa: e.target.value }))}
-                          className="mt-0.5 h-8 text-xs"
-                          placeholder="Nome da empresa"
-                        />
-                      ) : (
-                        <p className="mt-0.5 font-medium truncate">{clientDetail.empresa || '—'}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* L2: E-mail + Telefone + Origem (legacy only) */}
-                <div className="flex gap-2">
-                  <div style={{ width: '50%' }}>
-                    <span className="text-fg-muted text-[10px]">E-mail</span>
-                    {editMode ? (
-                      <Input
-                        value={editFields.email}
-                        onChange={e => setEditFields(prev => ({ ...prev, email: e.target.value }))}
-                        className={`mt-0.5 h-8 text-xs ${editFields.email && !isValidEmail(editFields.email) ? 'border-red-400' : ''}`}
-                        placeholder="email@exemplo.com"
-                      />
-                    ) : (
-                      <p className="mt-0.5 font-medium truncate">{clientDetail.email || '—'}</p>
-                    )}
-                  </div>
-                  <div style={{ width: '25%' }}>
-                    <span className="text-fg-muted text-[10px]">Telefone</span>
-                    {editMode ? (
-                      <Input
-                        value={editFields.telefone}
-                        onChange={e => setEditFields(prev => ({ ...prev, telefone: e.target.value }))}
-                        className={`mt-0.5 h-8 text-xs ${editFields.telefone && !isValidPhone(editFields.telefone) ? 'border-red-400' : ''}`}
-                        placeholder="(99) 99999-9999"
-                      />
-                    ) : (
-                      <p className="mt-0.5 font-medium">{fmtPhone(clientDetail.telefone) || '—'}</p>
-                    )}
-                  </div>
-                  {!coreClientDetail && (
-                    <div style={{ width: '25%' }}>
-                      <span className="text-fg-muted text-[10px]">Origem</span>
-                      {editMode ? (
-                        <select
-                          value={editFields.origem || ''}
-                          onChange={e => setEditFields(prev => ({ ...prev, origem: e.target.value }))}
-                          className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                        >
-                          <option value="">Selecione</option>
-                          {LEAD_SOURCES.map(src => (
-                            <option key={src} value={src}>{src}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p className="mt-0.5 font-medium">{clientDetail.origem || '—'}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {coreClientDetail && (
-                  <div>
-                    <span className="text-fg-muted text-[10px]">Observações</span>
-                    {editMode ? (
-                      <textarea
-                        aria-label="Observações"
-                        value={editFields.observacoes || ''}
-                        onChange={e => setEditFields(prev => ({ ...prev, observacoes: e.target.value }))}
-                        className="mt-0.5 min-h-20 w-full resize-y rounded-[10px] border border-line bg-surface px-2 py-1.5 text-xs text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                        placeholder="Observações do cliente"
-                      />
-                    ) : (
-                      <p className="mt-0.5 whitespace-pre-wrap font-medium">{(clientDetail.notes ?? clientDetail.observacoes) || '—'}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* L3: Tipo de Pessoa + CPF/CNPJ + Contribuinte (legacy only) */}
-                <div className="flex gap-2">
-                  <div style={{ width: '33%' }}>
-                    <span className="text-fg-muted text-[10px]">Tipo de Pessoa</span>
-                    {editMode ? (
-                      <select
-                        value={editFields.personType || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          personType: e.target.value,
-                          taxId: '',
-                        }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                      >
-                        <option value="">Selecione</option>
-                        <option value="pf">Pessoa Física</option>
-                        <option value="pj">Pessoa Jurídica</option>
-                      </select>
-                    ) : (
-                      <p className="mt-0.5 font-medium">
-                        {clientDetail.person_type === 'pf' ? 'Pessoa Física' : clientDetail.person_type === 'pj' ? 'Pessoa Jurídica' : '—'}
-                      </p>
-                    )}
-                  </div>
-                  <div style={{ width: '33%' }}>
-                    <span className="text-fg-muted text-[10px]">
-                      {editFields.personType === 'pf' ? 'CPF' : editFields.personType === 'pj' ? 'CNPJ' : 'CPF/CNPJ'}
-                    </span>
-                    {editMode ? (
-                      <Input
-                        value={formatTaxId(editFields.taxId || '', editFields.personType || '')}
-                        onChange={e => {
-                          const raw = e.target.value.replace(/\D/g, '');
-                          const maxLen = editFields.personType === 'pf' ? 11 : editFields.personType === 'pj' ? 14 : 14;
-                          setEditFields(prev => ({ ...prev, taxId: raw.slice(0, maxLen) }));
-                        }}
-                        className={`mt-0.5 h-8 text-xs ${editFields.taxId && editFields.personType && (
-                          (editFields.personType === 'pf' && editFields.taxId.length === 11 && !isValidCpf(editFields.taxId)) ||
-                          (editFields.personType === 'pj' && editFields.taxId.length === 14 && !isValidCnpj(editFields.taxId))
-                        ) ? 'border-red-400' : ''}`}
-                        placeholder={editFields.personType === 'pf' ? '000.000.000-00' : editFields.personType === 'pj' ? '00.000.000/0000-00' : 'Selecione o tipo'}
-                        disabled={!editFields.personType}
-                      />
-                    ) : (
-                      <p className="mt-0.5 font-medium">
-                        {(() => {
-                          const tid = clientDetail.tax_id;
-                          if (!tid) return '—';
-                          if (tid.length === 11) return formatCpf(tid);
-                          if (tid.length === 14) return formatCnpj(tid);
-                          return tid;
-                        })()}
-                      </p>
-                    )}
-                  </div>
-                  {!coreClientDetail && (
-                    <div style={{ width: '33%' }}>
-                      <span className="text-fg-muted text-[10px]">Contribuinte</span>
-                      {editMode ? (
-                        <select
-                          value={editFields.contribuinte || '0'}
-                          onChange={e => setEditFields(prev => ({ ...prev, contribuinte: e.target.value }))}
-                          className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                        >
-                          {CONTRIBUINTE_OPTS.map(opt => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <p className="mt-0.5 font-medium text-xs">
-                          {CONTRIBUINTE_OPTS.find(o => o.value === clientDetail.contribuinte)?.label || '—'}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {!coreClientDetail && (
-                  <div className="flex gap-2">
-                    <div style={{ width: '33%' }}>
-                      <span className="text-fg-muted text-[10px]">Inscrição Estadual</span>
-                      {editMode ? (
-                        <Input
-                          value={editFields.inscricaoEstadual || ''}
-                          onChange={e => setEditFields(prev => ({ ...prev, inscricaoEstadual: e.target.value }))}
-                          className="mt-0.5 h-8 text-xs"
-                          placeholder="IE"
-                        />
-                      ) : (
-                        <p className="mt-0.5 font-medium">{clientDetail.inscricao_estadual || '—'}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Endereço ── */}
-            <div>
-              <h3 className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">
-                Endereço
-              </h3>
-              {editMode ? (
-                <div className="space-y-2 text-sm">
-                  {/* Linha 1: CEP (30%) + Município (50%) + UF (20%) */}
-                  <div className="flex gap-2">
-                    <div className="relative" style={{ width: '30%' }}>
-                      <span className="text-fg-muted text-[10px]">CEP</span>
-                      <Input
-                        value={editFields.endereco?.cep || ''}
-                        onChange={e => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 8);
-                          setEditFields(prev => ({
-                            ...prev,
-                            endereco: { ...prev.endereco, cep: val },
-                          }));
-                          if (val.length === 8) lookupCep(val, setEditFields);
-                        }}
-                        className="mt-0.5 h-8 text-xs pr-8"
-                        placeholder="00000-000"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const cep = editFields.endereco?.cep || '';
-                          if (cep.replace(/\D/g, '').length === 8) lookupCep(cep, setEditFields);
-                        }}
-                        className="absolute right-1 top-5 p-1 rounded-full text-fg-muted hover:text-primary hover:bg-surface-muted transition-colors"
-                        title="Buscar CEP"
-                      >
-                        <Search size={14} />
-                      </button>
-                    </div>
-                    <div style={{ width: '50%' }}>
-                      <span className="text-fg-muted text-[10px]">Município</span>
-                      <Input
-                        value={editFields.endereco?.municipio || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, municipio: e.target.value },
-                        }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Município"
-                      />
-                    </div>
-                    <div style={{ width: '20%' }}>
-                      <span className="text-fg-muted text-[10px]">UF</span>
-                      <select
-                        value={editFields.endereco?.uf || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, uf: e.target.value },
-                        }))}
-                        className="mt-0.5 h-8 w-full text-xs border border-line rounded-[10px] px-2 bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                      >
-                        <option value="">UF</option>
-                        {UFS.map(uf => (
-                          <option key={uf} value={uf}>{uf}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Linha 2: Endereço (80%) + Número (20%) */}
-                  <div className="flex gap-2">
-                    <div style={{ width: '80%' }}>
-                      <span className="text-fg-muted text-[10px]">Endereço</span>
-                      <Input
-                        value={editFields.endereco?.endereco || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, endereco: e.target.value },
-                        }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Endereço"
-                      />
-                    </div>
-                    <div style={{ width: '20%' }}>
-                      <span className="text-fg-muted text-[10px]">Número</span>
-                      <Input
-                        value={editFields.endereco?.numero || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, numero: e.target.value },
-                        }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Nº"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Linha 3: Bairro (50%) + Complemento (50%) */}
-                  <div className="flex gap-2">
-                    <div style={{ width: '50%' }}>
-                      <span className="text-fg-muted text-[10px]">Bairro</span>
-                      <Input
-                        value={editFields.endereco?.bairro || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, bairro: e.target.value },
-                        }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Bairro"
-                      />
-                    </div>
-                    <div style={{ width: '50%' }}>
-                      <span className="text-fg-muted text-[10px]">Complemento</span>
-                      <Input
-                        value={editFields.endereco?.complemento || ''}
-                        onChange={e => setEditFields(prev => ({
-                          ...prev,
-                          endereco: { ...prev.endereco, complemento: e.target.value },
-                        }))}
-                        className="mt-0.5 h-8 text-xs"
-                        placeholder="Complemento"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : clientDetail.address ? (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  {clientDetail.address.cep && (
-                    <div>
-                      <span className="text-fg-muted text-[10px]">CEP</span>
-                      <p className="font-medium">{clientDetail.address.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.municipio && (
-                    <div>
-                      <span className="text-fg-muted text-[10px]">Município</span>
-                      <p className="font-medium">{clientDetail.address.municipio}{clientDetail.address.uf ? `/${clientDetail.address.uf}` : ''}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.endereco && (
-                    <div className="col-span-2">
-                      <span className="text-fg-muted text-[10px]">Endereço</span>
-                      <p className="font-medium">{clientDetail.address.endereco}{clientDetail.address.numero ? `, ${clientDetail.address.numero}` : ''}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.bairro && (
-                    <div>
-                      <span className="text-fg-muted text-[10px]">Bairro</span>
-                      <p className="font-medium">{clientDetail.address.bairro}</p>
-                    </div>
-                  )}
-                  {clientDetail.address.complemento && (
-                    <div>
-                      <span className="text-fg-muted text-[10px]">Complemento</span>
-                      <p className="font-medium">{clientDetail.address.complemento}</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-fg-muted">Clique em Editar para cadastrar</p>
-              )}
-            </div>
-
-            {/* Orçamento recente */}
-            {clientDetail.latest_quotation && (
-              <div className="border-t border-line pt-3">
-                <span className="text-fg-muted text-xs">Último orçamento</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <a
-                    href={buildQuotationErpUrl(null, clientDetail.latest_quotation.name) || undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    {clientDetail.latest_quotation.name}
-                  </a>
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium
-                    ${clientDetail.latest_quotation.status === 'Open' ? 'bg-primary/10 text-primary' : 'bg-surface-muted text-fg-muted'}
-                  `}>
-                    {clientDetail.latest_quotation.status}
-                  </span>
-                </div>
-                {clientDetail.latest_quotation.grand_total != null && (
-                  <p className="text-xs text-fg-muted mt-0.5">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(clientDetail.latest_quotation.grand_total)}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Deal vinculado */}
-            {clientDetail.deal && (
-              <div className="border-t border-line pt-3">
-                <span className="text-fg-muted text-xs">Deal CRM</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <a
-                    href={buildCrmDealErpUrl(null, clientDetail.deal.name) || undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    {clientDetail.deal.name}
-                  </a>
-                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-surface-muted text-fg-muted">
-                    {clientDetail.deal.status}
-                  </span>
-                </div>
-                {clientDetail.deal.next_step && (
-                  <p className="text-xs text-fg-muted mt-0.5">{clientDetail.deal.next_step}</p>
-                )}
-              </div>
-            )}
-
-            {/* Datas */}
-            <div className="border-t border-line pt-3 text-xs text-fg-muted space-y-0.5">
-              <p>Criado: {clientDetail.creation ? new Date(clientDetail.creation).toLocaleString('pt-BR') : '—'}</p>
-              <p>Modificado: {clientDetail.modified ? new Date(clientDetail.modified).toLocaleString('pt-BR') : '—'}</p>
-            </div>
-          </div>
-        )}
+      <DetailDrawer open={drawerOpen} onClose={closeDrawer} title={detail?.display_name || detail?.nome || 'Carregando…'} description={selectedId ? `Cliente · ${selectedId}` : undefined} actions={detail && <div className="space-y-3"><QualityBadges badges={qualityBadges(detail)} /><ContextActions actions={contextActions()} /><div className="flex gap-2">{!editMode ? <Button variant="outline" size="sm" onClick={() => { setEditFields(fieldsFromDetail(detail)); setEditMode(true); }}>Editar</Button> : <><Button size="sm" onClick={() => void updateDetail()} disabled={detailSaving}><Check size={14} /> Salvar</Button><Button variant="outline" size="sm" onClick={() => setEditMode(false)} disabled={detailSaving}><X size={14} /> Cancelar</Button></>}</div></div>}>
+        {detailLoading && <div className="py-12 text-center text-sm text-fg-muted">Carregando detalhes…</div>}
+        {detailError && !detailLoading && <div className="flex flex-col items-center gap-3 py-12 text-sm text-fg-muted"><AlertTriangle size={24} className="text-destructive/60" /><p>{detailError}</p><Button variant="outline" size="sm" onClick={() => selectedId && detail && void openDrawer(detail)}>Tentar novamente</Button></div>}
+        {detail && !detailLoading && !editMode && <div className="space-y-4 text-sm"><div><p className="text-xs uppercase text-fg-muted">Nome</p><p className="font-medium">{detail.display_name || detail.nome || '—'}</p></div><div><p className="text-xs uppercase text-fg-muted">Email</p><p>{detail.email || '—'}</p></div><div><p className="text-xs uppercase text-fg-muted">Telefone</p><p>{fmtPhone(detail.telefone) || '—'}</p></div><div><p className="text-xs uppercase text-fg-muted">Documento</p><p>{formatDocument(detail.tax_id || detail.documento)}</p></div><div><p className="text-xs uppercase text-fg-muted">Endereço</p><p>{addressText(detail.address)}</p></div><div><p className="text-xs uppercase text-fg-muted">Observações</p><p className="whitespace-pre-wrap">{detail.notes || detail.observacoes || '—'}</p></div>{detail.latest_quotation && <Button variant="outline" size="sm" onClick={() => navigate?.(`/quotations/${encodeURIComponent(detail.latest_quotation!.name)}`)}>Abrir orçamento recente</Button>}</div>}
+        {detail && !detailLoading && editMode && <div className="space-y-3"><label className="block text-xs text-fg-muted">Nome<Input value={editFields.nome} onChange={(event) => setEditFields((current) => ({ ...current, nome: event.target.value }))} /></label><label className="block text-xs text-fg-muted">Email<Input type="email" value={editFields.email} onChange={(event) => setEditFields((current) => ({ ...current, email: event.target.value }))} /></label><label className="block text-xs text-fg-muted">Telefone<Input value={editFields.telefone} onChange={(event) => setEditFields((current) => ({ ...current, telefone: event.target.value }))} /></label><label className="block text-xs text-fg-muted">Documento<Input value={editFields.documento} onChange={(event) => setEditFields((current) => ({ ...current, documento: event.target.value }))} /></label><label className="block text-xs text-fg-muted">Observações<textarea aria-label="Observações" value={editFields.observacoes} onChange={(event) => setEditFields((current) => ({ ...current, observacoes: event.target.value }))} className="mt-1 w-full rounded border border-line bg-surface p-2 text-sm" /></label><p className="text-xs text-fg-muted">{addressText(editFields.endereco)}</p></div>}
       </DetailDrawer>
-
-      {/* Bulk delete toolbar */}
-      <div
-        className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
-      >
-        <div className="mx-auto max-w-[1060px] px-4">
-          <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
-            <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
-              <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                <span>
-                  {selectedCount} registro{selectedCount !== 1 ? 's' : ''} selecionado{selectedCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => setSelectedIds([])} disabled={selectedCount === 0}>
-                  Limpar seleção
-                </Button>
-                <Button variant="default" onClick={handleBulkAction} disabled={selectedCount === 0}>
-                  {coreMode === true && status === 'archived' ? <ArchiveRestore size={16} className="mr-2" /> : coreMode === true ? <Archive size={16} className="mr-2" /> : <Trash2 size={16} className="mr-2" />}
-                  {coreMode === true && status === 'archived' ? 'Restaurar clientes' : coreMode === true ? 'Arquivar clientes' : 'Excluir registros'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

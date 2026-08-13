@@ -16,7 +16,7 @@ function delay(milliseconds: number): Promise<void> {
 async function getAvailablePort(): Promise<number> {
   const server = createServer();
   server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
+  await once(server as any, 'listening');
 
   const address = server.address();
   if (!address || typeof address === 'string') {
@@ -54,7 +54,7 @@ async function waitForServer(url: string, appServer: AppServerProcess): Promise<
 async function stopServer(appServer: AppServerProcess): Promise<void> {
   if (appServer.exitCode !== null) return;
 
-  const exited = once(appServer, 'exit');
+  const exited = once(appServer as any, 'exit');
   appServer.kill('SIGTERM');
   await Promise.race([exited, delay(2_000)]);
   if (appServer.exitCode === null) {
@@ -78,9 +78,6 @@ describe('app-server authentication handoff', () => {
         APP_AUTH_BYPASS: 'true',
         APP_PASSWORD_HASH: passwordHash,
         APP_SESSION_SECRET: sessionSecret,
-        CRM_CORE_QUOTES_ENABLED: 'true',
-        CRM_QUOTES_ROLLOUT_STATE: 'postgres-read-only',
-        ERPNEXT_TOKEN: 'app-server-test-token',
         DATABASE_URL: '',
         KV_REST_API_URL: '',
         KV_REST_API_TOKEN: '',

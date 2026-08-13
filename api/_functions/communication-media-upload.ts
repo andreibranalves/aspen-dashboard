@@ -13,8 +13,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 // Requires BLOB_READ_WRITE_TOKEN env var (set by Vercel when Blob store is linked).
 
 import { handleUpload } from '@vercel/blob/client';
-import { createHttpError } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
+import { createHttpError } from '../_lib/http-error.js';
 import {
   PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
@@ -33,9 +32,6 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-media-upload não está disponível no modo operacional.' }) };
-  }
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, { error: 'Método não permitido.' });
   }
@@ -58,11 +54,23 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       request: { url: requestUrl } as unknown as Request,
       onBeforeGenerateToken: async (pathname /* , clientPayload */) => {
         // Validate pathname has a valid product group prefix
-        const safePathname = Array.isArray(pathname) ? pathname[0] : pathname;
-        const parts = safePathname.replace(/^\/+/, '').split('/');
-        const productGroup = parts[1]; // aspen-media/{product_group}/...
+        const safePathname = String(Array.isArray(pathname) ? pathname[0] : pathname || '')
+          .replace(/^\/+/, '');
+        let parts: string[];
+        try {
+          parts = safePathname.split('/').map((part) => decodeURIComponent(part));
+        } catch {
+          throw createHttpError(400, 'Caminho de upload inválido.');
+        }
+        const productGroup = parts[1]?.toLowerCase(); // aspen-media/{product_group}/...
 
-        if (!productGroup || !PRODUCT_GROUPS.includes(productGroup)) {
+        if (
+          parts[0] !== 'aspen-media' ||
+          parts.length < 3 ||
+          parts.some((part) => !part || part === '.' || part === '..') ||
+          !productGroup ||
+          !PRODUCT_GROUPS.includes(productGroup)
+        ) {
           throw createHttpError(
             400,
             `Grupo de produto inválido no caminho. Use: ${PRODUCT_GROUPS.join(', ')}.`,
@@ -70,7 +78,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           );
         }
 
-        const isVideo = pathname.match(/\.(mp4|mov|webm)$/i);
+        const isVideo = /\.(mp4|mov|webm)$/i.test(safePathname);
         const maxSize = isVideo ? MAX_SIZE_VIDEO : MAX_SIZE_IMAGE;
 
         return {

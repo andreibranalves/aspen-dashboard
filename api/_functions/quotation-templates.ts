@@ -1,5 +1,4 @@
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
-import { isCoreReadEnabled, isCoreWriteEnabled, responseMetadata } from './orcamento-mode.js';
 import {
   createQuotationTemplateLibraryRepository,
   type QuotationTemplateLibraryRepository,
@@ -13,7 +12,7 @@ function json(statusCode: number, payload: object): FunctionResult {
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ ...payload, ...responseMetadata('core') }),
+    body: JSON.stringify(payload),
   };
 }
 function record(value: unknown): value is Record<string, unknown> {
@@ -60,10 +59,8 @@ export function createQuotationTemplatesHandler(
   }
 ): LegacyHandler {
   return async (event) => {
-    if (!isCoreReadEnabled()) return json(404, { error: 'Endpoint não encontrado.' });
     try {
       if (isValidate(event)) {
-        if (!isCoreWriteEnabled()) return json(403, { error: 'Operação de escrita não permitida neste estado de rollout.' });
         if (event.httpMethod !== 'POST') return json(405, { error: 'Método não permitido.' });
         const input = body(event);
         if (!input) return json(400, { error: 'JSON inválido.' });
@@ -88,7 +85,6 @@ export function createQuotationTemplatesHandler(
         return json(200, { ...result, data: result.templates });
       }
       if (event.httpMethod === 'POST') {
-        if (!isCoreWriteEnabled()) return json(403, { error: 'Operação de escrita não permitida neste estado de rollout.' });
         const input = body(event);
         if (!input) return json(400, { error: 'JSON inválido.' });
         return json(
@@ -101,7 +97,6 @@ export function createQuotationTemplatesHandler(
         );
       }
       if (event.httpMethod !== 'PUT') return json(405, { error: 'Método não permitido.' });
-      if (!isCoreWriteEnabled()) return json(403, { error: 'Operação de escrita não permitida neste estado de rollout.' });
       const input = body(event);
       if (!input) return json(400, { error: 'JSON inválido.' });
       const id = event.queryStringParameters?.id;

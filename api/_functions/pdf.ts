@@ -1,6 +1,5 @@
 // GET /api/pdf?q=ORC-XXXX — returns quotation PDF (binary).
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-// Used by n8n email follow-up workflow to attach PDFs to emails.
 import { generateQuotationPdf } from './lib/quotation-pdf.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {

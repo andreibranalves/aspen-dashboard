@@ -11,15 +11,41 @@ import {
   handler as sendWhatsappFlow,
 } from '../../api/_functions/send-whatsapp-flow.js';
 import { handler as communicationFlowPreview } from '../../api/_functions/communication-flow-preview.js';
-import { QuotationOutboxDurabilityError } from '../../api/_db/quotation-outbox-repository.js';
-import { normalizePostgresMediaUrl } from '../../api/_functions/lib/postgres-media.js';
+import {
+  normalizeOwnedBlobUrl,
+  normalizePostgresMediaUrl,
+} from '../../api/_functions/lib/postgres-media.js';
 import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
+import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';
 const businessNumber = 'ORC-20260001';
 const publicToken = 'A'.repeat(32);
+const ownedMediaUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
+
+function mediaRecords() {
+  return [{
+    id: 'media-1',
+    product_group: 'canga',
+    blob_url: ownedMediaUrl,
+    active: true,
+    content_type: 'image/jpeg',
+    size_bytes: 11,
+    pathname: 'aspen-media/canga/reference.jpg',
+  }];
+}
+
+function mediaHeadResult(overrides: Record<string, unknown> = {}) {
+  return {
+    url: ownedMediaUrl,
+    pathname: 'aspen-media/canga/reference.jpg',
+    contentType: 'image/jpeg',
+    size: 11,
+    ...overrides,
+  } as any;
+}
 
 function snapshot() {
   return {
@@ -112,6 +138,10 @@ function store() {
   };
 }
 
+function reservationStore() {
+  return createFakeWhatsappReservationStore() as any;
+}
+
 function event(body: Record<string, unknown>) {
   return {
     httpMethod: 'POST',
@@ -120,7 +150,7 @@ function event(body: Record<string, unknown>) {
   } as any;
 }
 
-test('send-whatsapp rejects PostgreSQL send without quotation before provider', async () => {
+test('send-whatsapp rejects PostgreSQL send without quotation before transport', async () => {
   const originalFetch = globalThis.fetch;
   let providerCalls = 0;
   globalThis.fetch = (async () => {
@@ -129,7 +159,7 @@ test('send-whatsapp rejects PostgreSQL send without quotation before provider', 
   }) as typeof fetch;
   try {
     const response = await sendWhatsapp(
-      event({ source: 'postgres', revision_id: revisionId, template: 'Olá' }),
+      event({ revision_id: revisionId, template: 'Olá' }),
     );
     assert.equal(response.statusCode, 400);
     assert.match(response.body || '', /Cotação PostgreSQL é obrigatória/);
@@ -139,10 +169,38 @@ test('send-whatsapp rejects PostgreSQL send without quotation before provider', 
   }
 });
 
-test('send-whatsapp-flow rejects PostgreSQL send without quotation before provider', async () => {
+test('PostgreSQL revision send does not resolve quotation data externally', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = (async (input) => {
+    calls.push(String(input));
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-local-context' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(
+      event({
+        quotation_id: businessNumber,
+        revision_id: revisionId,
+        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }] },
+      }),
+      {
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+      },
+    );
+    assert.equal(response.statusCode, 200);
+    assert.equal(calls.every((url) => url.startsWith('https://evolution.test')), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('send-whatsapp-flow rejects PostgreSQL send without quotation before transport', async () => {
   const response = await sendWhatsappFlow(
     event({
-      source: 'postgres',
       flow: { id: 'flow-1', name: 'Teste', steps: [{ type: 'text', template: 'Olá' }] },
       flow_id: 'flow-1',
       revision_id: revisionId,
@@ -152,9 +210,9 @@ test('send-whatsapp-flow rejects PostgreSQL send without quotation before provid
   assert.match(response.body || '', /Cotação PostgreSQL é obrigatória/);
 });
 
-test('communication preview rejects PostgreSQL send without revision before Frappe', async () => {
+test('communication preview rejects PostgreSQL send without revision before transport', async () => {
   const response = await communicationFlowPreview(
-    event({ source: 'postgres', quotation_id: businessNumber }),
+    event({ quotation_id: businessNumber }),
   );
   assert.equal(response.statusCode, 400);
   assert.match(response.body || '', /Revisão PostgreSQL do orçamento é obrigatória/);
@@ -212,11 +270,18 @@ test('loadPostgresSendContext returns canonical immutable revision context', asy
     repository: repositoryFor(),
     store: tokenStore,
     token: () => publicToken,
-    mediaCandidates: ['/media/reference.jpg'],
+    mediaCandidates: [ownedMediaUrl],
+    mediaRecords: mediaRecords(),
+    resolveDeal: async (resolvedQuotationId, resolvedBusinessNumber) => {
+      assert.equal(resolvedQuotationId, quotationId);
+      assert.equal(resolvedBusinessNumber, businessNumber);
+      return { id: 'deal-local', quotationId: resolvedQuotationId } as any;
+    },
   });
   assert.equal(context.quotationUuid, quotationId);
   assert.equal(context.revisionId, revisionId);
   assert.equal(context.businessNumber, businessNumber);
+  assert.equal(context.dealId, 'deal-local');
   assert.equal(context.phone, '5511999990000');
   const view = context.view as {
     client: { name?: string };
@@ -225,27 +290,25 @@ test('loadPostgresSendContext returns canonical immutable revision context', asy
   assert.equal(view.client.name, 'Cliente Teste');
   assert.equal(view.items[0]?.item_code, 'CNG-001');
   assert.equal(context.publicLink, `https://app.test/api/public-quotation?token=${publicToken}`);
-  assert.deepEqual(context.permittedMedia, ['https://app.test/media/reference.jpg']);
+  assert.deepEqual(context.permittedMedia, [ownedMediaUrl]);
   assert.equal(tokenStore.values.size, 1);
 });
 
-test('PostgreSQL media policy rejects Frappe, arbitrary, credentialed and data URLs', () => {
-  const allowed = normalizePostgresMediaUrl('/media/reference.jpg', 'https://app.test');
-  assert.equal(allowed, 'https://app.test/media/reference.jpg');
-  assert.match(
-    normalizePostgresMediaUrl('https://ASSET.public.blob.vercel-storage.com/a.jpg', 'https://app.test'),
-    /public\.blob\.vercel-storage\.com\/a\.jpg$/,
-  );
+test('PostgreSQL media policy requires an owned Blob record and rejects unsafe URLs', () => {
+  assert.equal(normalizeOwnedBlobUrl(ownedMediaUrl, 'https://app.test'), ownedMediaUrl);
+  assert.equal(normalizePostgresMediaUrl(ownedMediaUrl, 'https://app.test', [ownedMediaUrl]), ownedMediaUrl);
   for (const value of [
-    'https://aspenestamparia.l.frappe.cloud/files/a.jpg',
-    'https://ASPENESTAMPARIA.L.FRAPPE.CLOUD/files/a.jpg',
-    'https://user@aspenestamparia.l.frappe.cloud/files/a.jpg',
-    '//aspenestamparia.l.frappe.cloud/files/a.jpg',
+    '/media/reference.jpg',
+    'https://ASSET.public.blob.vercel-storage.com/a.jpg',
+    'https://external-crm.invalid/files/a.jpg',
+    'https://EXTERNAL-CRM.INVALID/files/a.jpg',
+    'https://user@external-crm.invalid/files/a.jpg',
+    '//external-crm.invalid/files/a.jpg',
     'https://evil.test/a.jpg',
     'data:image/png;base64,abc',
     'https://user@public.blob.vercel-storage.com/a.jpg',
   ]) {
-    assert.throws(() => normalizePostgresMediaUrl(value, 'https://app.test'), /Mídia pública|Mídia Frappe/);
+    assert.throws(() => normalizePostgresMediaUrl(value, 'https://app.test'), /Mídia pública/);
   }
 });
 
@@ -260,6 +323,7 @@ test('PostgreSQL context rejects mixed media before provider configuration', asy
       repository: repositoryFor(),
       store: tokenStore,
       token: () => publicToken,
+      mediaRecords: [],
       mediaCandidates: ['/media/a.jpg', 'https://evil.test/b.jpg'],
     }),
     /Mídia pública inválida/,
@@ -288,7 +352,7 @@ test('loadPostgresSendContext reports PDF preparation failure without provider a
 test('flow PostgreSQL content and duplicate keys use canonical snapshot values', () => {
   assert.equal(canonicalFlowQuotationId('quote-uuid', businessNumber), businessNumber);
   assert.equal(flowProductSummary(true, 'texto adulterado', [{ item_code: 'CNG-001' }]), 'cangas');
-  assert.equal(flowProductSummary(false, 'texto legado', [{ item_code: 'CNG-001' }]), 'texto legado');
+  assert.equal(flowProductSummary(false, 'texto legado', [{ item_code: 'CNG-001' }]), 'cangas');
 });
 
 test('Evolution response requires explicit provider acceptance', () => {
@@ -320,18 +384,15 @@ function withEvolutionEnv() {
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
-    n8nUrl: process.env.N8N_WEBHOOK_URL,
   };
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
-  delete process.env.N8N_WEBHOOK_URL;
   return () => {
     for (const [key, value] of Object.entries({
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
-      N8N_WEBHOOK_URL: previous.n8nUrl,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -349,7 +410,6 @@ test('PostgreSQL endpoint rejects recipient ownership before provider setup', as
   try {
     const response = await sendWhatsapp(
       event({
-        source: 'postgres',
         quotation_id: businessNumber,
         revision_id: revisionId,
         telefone: '11988880000',
@@ -365,10 +425,9 @@ test('PostgreSQL endpoint rejects recipient ownership before provider setup', as
   }
 });
 
-test('PostgreSQL endpoint enqueues only after provider acceptance', async () => {
+test('PostgreSQL endpoint completes local send after Evolution acceptance', async () => {
   const restoreEnv = withEvolutionEnv();
   const originalFetch = globalThis.fetch;
-  const queued: Array<{ quotationId: string; payload: Record<string, unknown> }> = [];
   let providerCalls = 0;
   globalThis.fetch = (async () => {
     providerCalls += 1;
@@ -377,7 +436,6 @@ test('PostgreSQL endpoint enqueues only after provider acceptance', async () => 
   try {
     const response = await sendWhatsapp(
       event({
-        source: 'postgres',
         quotation_id: businessNumber,
         revision_id: revisionId,
         sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }] },
@@ -386,49 +444,10 @@ test('PostgreSQL endpoint enqueues only after provider acceptance', async () => 
         repository: repositoryFor(),
         store: store(),
         token: () => publicToken,
-        enqueueSentEvent: async (quotationId, payload) => {
-          queued.push({ quotationId, payload });
-        },
       },
     );
     assert.equal(response.statusCode, 200);
     assert.equal(providerCalls, 1);
-    assert.equal(queued.length, 1);
-    assert.equal(queued[0]?.quotationId, businessNumber);
-    assert.equal(queued[0]?.payload.source, 'postgres');
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('PostgreSQL endpoint exposes durable outbox failure without partial-send false positive', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-durable' }), { status: 200 })) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        source: 'postgres',
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: { steps: [{ type: 'text', template: 'Olá' }] },
-      }),
-      {
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        enqueueSentEvent: async () => {
-          throw new QuotationOutboxDurabilityError(new Error('synthetic outbox failure'));
-        },
-      },
-    );
-    const body = JSON.parse(response.body || '{}');
-    assert.equal(response.statusCode, 503);
-    assert.equal(body.provider_accepted, true);
-    assert.equal(body.outbox_durable, false);
-    assert.equal(body.partial_send, false);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
@@ -445,7 +464,6 @@ test('PostgreSQL endpoint rejects PDF preparation before provider setup', async 
   try {
     const response = await sendWhatsapp(
       event({
-        source: 'postgres',
         quotation_id: businessNumber,
         revision_id: revisionId,
         sequence: {
@@ -479,7 +497,6 @@ test('PostgreSQL endpoint rejects arbitrary media before provider setup', async 
   try {
     const response = await sendWhatsapp(
       event({
-        source: 'postgres',
         quotation_id: businessNumber,
         revision_id: revisionId,
         sequence: {
@@ -488,11 +505,88 @@ test('PostgreSQL endpoint rejects arbitrary media before provider setup', async 
       }),
       { repository: repositoryFor(), store: store(), token: () => publicToken },
     );
-    assert.equal(response.statusCode, 400);
-    assert.match(response.body || '', /Mídia pública inválida/i);
+    assert.equal(response.statusCode, 503);
+    assert.match(response.body || '', /validar as mídias cadastradas/i);
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('PostgreSQL send downloads only an owned Blob media before Evolution', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const evolutionBodies: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === ownedMediaUrl) return new Response('image-bytes', {
+      status: 200,
+      headers: { 'Content-Type': 'image/jpeg', 'Content-Length': '11' },
+    });
+    evolutionBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-owned-media' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(
+      event({
+        quotation_id: businessNumber,
+        revision_id: revisionId,
+        sequence: {
+          delay_min_ms: 0,
+          delay_max_ms: 0,
+          steps: [{ type: 'image', media: ownedMediaUrl }],
+        },
+      }),
+      {
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+        mediaRecords: mediaRecords(),
+        headBlob: async () => mediaHeadResult(),
+      },
+    );
+    assert.equal(response.statusCode, 200);
+    assert.equal(evolutionBodies.length, 1);
+    assert.equal(evolutionBodies[0]?.media, Buffer.from('image-bytes').toString('base64'));
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('PostgreSQL send rejects stale or foreign-store media before provider transport', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-should-not-run' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    for (const dependencies of [
+      { headBlob: async () => mediaHeadResult({ size: 12 }) },
+      { headBlob: async () => { throw new Error('BlobAccessError'); } },
+      { headBlob: async () => mediaHeadResult(), blobStoreId: 'different-store' },
+    ]) {
+      const response = await sendWhatsapp(
+        event({
+          quotation_id: businessNumber,
+          revision_id: revisionId,
+          sequence: { steps: [{ type: 'image', media: ownedMediaUrl }] },
+        }),
+        {
+          repository: repositoryFor(),
+          store: store(),
+          token: () => publicToken,
+          mediaRecords: mediaRecords(),
+          ...dependencies,
+        },
+      );
+      assert.ok([400, 503].includes(response.statusCode || 0));
+    }
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
@@ -500,13 +594,11 @@ test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key
   const restoreEnv = withEvolutionEnv();
   const originalFetch = globalThis.fetch;
   const duplicateKeys: string[] = [];
-  const queued: Record<string, unknown>[] = [];
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ accepted: true, message_id: 'provider-flow' }), { status: 200 })) as typeof fetch;
   try {
     const response = await sendWhatsappFlow(
       event({
-        source: 'postgres',
         flow_id: 'flow-postgres',
         quotation_id: quotationId,
         revision_id: revisionId,
@@ -520,14 +612,12 @@ test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key
         repository: repositoryFor(),
         store: store(),
         token: () => publicToken,
+        reservationStore: reservationStore(),
         checkDuplicate: async (id) => {
           duplicateKeys.push(id);
           return true;
         },
         recordSendEvent: async () => 'synthetic-flow-event',
-        enqueueSentEvent: async (_id, payload) => {
-          queued.push(payload);
-        },
       },
     );
     const body = JSON.parse(response.body || '{}');
@@ -535,57 +625,15 @@ test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key
     assert.equal(body.product_summary, 'cangas');
     assert.equal(body.duplicate_warning, true);
     assert.deepEqual(duplicateKeys, [businessNumber]);
-    assert.equal(queued.length, 1);
-    assert.equal(queued[0]?.source, 'postgres');
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
   }
 });
 
-test('PostgreSQL flow reports complete provider delivery separately from outbox failure', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-flow-durable' }), { status: 200 })) as typeof fetch;
-  try {
-    const response = await sendWhatsappFlow(
-      event({
-        source: 'postgres',
-        flow_id: 'flow-durable',
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-      }),
-      {
-        resolveFlow: async () => ({
-          id: 'flow-durable',
-          name: 'Fluxo durável',
-          steps: [{ type: 'text', template: 'Olá' }],
-        }),
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        recordSendEvent: async () => 'synthetic-flow-event',
-        enqueueSentEvent: async () => {
-          throw new QuotationOutboxDurabilityError(new Error('synthetic flow outbox failure'));
-        },
-      },
-    );
-    const body = JSON.parse(response.body || '{}');
-    assert.equal(response.statusCode, 503);
-    assert.equal(body.provider_accepted, true);
-    assert.equal(body.outbox_durable, false);
-    assert.equal(body.partial_send, false);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('PostgreSQL preview rejects Frappe media before rendering output', async () => {
+test('PostgreSQL preview rejects external media before rendering output', async () => {
   const response = await communicationFlowPreview(
     event({
-      source: 'postgres',
       flow_id: 'preview-postgres',
       quotation_id: businessNumber,
       revision_id: revisionId,
@@ -605,14 +653,14 @@ test('PostgreSQL preview rejects Frappe media before rendering output', async ()
         categories: ['canga'],
       }),
       resolveMedia: async () => {
-        const error = new Error('Mídia Frappe proibida') as Error & { statusCode?: number };
+        const error = new Error('Mídia externa proibida') as Error & { statusCode?: number };
         error.statusCode = 400;
         throw error;
       },
     },
   );
   assert.equal(response.statusCode, 400);
-  assert.match(response.body || '', /Mídia Frappe proibida/);
+  assert.match(response.body || '', /Mídia externa proibida/);
 });
 
 test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
@@ -630,13 +678,16 @@ test('non-dry legacy endpoint requires explicit provider acceptance', async () =
   }
 });
 
-test('legacy caller PostgreSQL references cannot enqueue quotation.sent', async () => {
+test('quotation references without a local revision cannot use the direct send path', async () => {
   const restoreEnv = withEvolutionEnv();
   const previousDatabaseUrl = process.env.DATABASE_URL;
   process.env.DATABASE_URL = 'postgresql://127.0.0.1:1/should-not-connect';
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-legacy' }), { status: 200 })) as typeof fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-unexpected' }), { status: 200 });
+  }) as typeof fetch;
   try {
     const response = await sendWhatsapp(event({
       telefone: '11999990000',
@@ -645,7 +696,8 @@ test('legacy caller PostgreSQL references cannot enqueue quotation.sent', async 
       revision_id: revisionId,
       business_number: businessNumber,
     }));
-    assert.equal(response.statusCode, 200);
+    assert.equal(response.statusCode, 503);
+    assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();

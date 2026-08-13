@@ -7,6 +7,8 @@ import {
   listWhatsappConversations,
   normalizeWhatsappConversationInput,
   normalizeWhatsappMessageInput,
+  projectWhatsappMessage,
+  sanitizeWhatsappMediaUrl,
   updateWhatsappConversation,
   upsertWhatsappConversation,
   upsertWhatsappMessages,
@@ -89,23 +91,78 @@ describe('whatsapp-conversations-store', () => {
     assert.equal(message.body, 'Olá, queria orçamento');
   });
 
-  it('normalizes legacy message with mediaUrl to include attachment', () => {
-    const deps = makeDeps();
-    const message = normalizeWhatsappMessageInput(
-      {
-        providerMessageId: 'm1',
-        type: 'image',
-        mediaUrl: 'http://example.com/image.jpg',
-        body: 'Look at this!',
-      },
-      deps
+  it('rejects traversal, foreign, credentialed, and arbitrary API media URLs', () => {
+    const token = 'A'.repeat(32);
+    for (const value of [
+      '/media/../secret.pdf',
+      '/media/%2e%2e/secret.pdf',
+      '/media/a\\\\secret.pdf',
+      '/api/private/file.pdf',
+      'https://user:pass@evil.example/file.pdf',
+      'https://evil.example/api/public-quotation?token=' + token,
+      'https://blob.public.blob.vercel-storage.com/aspen-media/a.pdf',
+    ]) assert.equal(sanitizeWhatsappMediaUrl(value, { applicationOrigin: 'https://app.test' }), '');
+    assert.equal(
+      sanitizeWhatsappMediaUrl('/api/public-quotation?token=' + token, { applicationOrigin: 'https://app.test' }),
+      '/api/public-quotation?token=' + token,
     );
+  });
 
-    assert.equal(message.mediaUrl, 'http://example.com/image.jpg');
-    assert.ok(message.attachments, 'attachments should be defined');
-    assert.equal(message.attachments!.length, 1);
-    assert.equal(message.attachments![0].mediaUrl, 'http://example.com/image.jpg');
-    assert.equal(message.attachments![0].caption, 'Look at this!');
+  it('rejects provider inbound media and keeps only token-bound internal quotation attachments', () => {
+    const deps = makeDeps();
+    const inbound = normalizeWhatsappMessageInput({
+      providerMessageId: 'm1',
+      type: 'image',
+      direction: 'inbound',
+      mediaUrl: '/media/owned/image.jpg',
+      attachments: [{ kind: 'image', mediaUrl: '/media/owned/image.jpg', origin: 'provider' }],
+    }, deps);
+    assert.equal(inbound.mediaUrl, '');
+    assert.equal(inbound.attachments, undefined);
+
+    const outbound = normalizeWhatsappMessageInput({
+      providerMessageId: 'm2',
+      direction: 'outbound',
+      type: 'document',
+      attachments: [{
+        kind: 'document',
+        mediaUrl: '/api/public-quotation?token=' + 'B'.repeat(32),
+        origin: 'internal_generated',
+        documentRole: 'quotation_pdf',
+        quotationId: '11111111-1111-4111-8111-111111111111',
+        quotationBusinessNumber: 'ORC-20260001',
+      }],
+    }, deps);
+    assert.equal(outbound.attachments?.[0]?.quotationId, '11111111-1111-4111-8111-111111111111');
+    assert.equal(outbound.attachments?.[0]?.quotationBusinessNumber, 'ORC-20260001');
+    assert.equal(outbound.attachments?.[0]?.mediaUrl, '/api/public-quotation?token=' + 'B'.repeat(32));
+  });
+
+  it('projects a public quotation attachment without provider fields', () => {
+    const message = projectWhatsappMessage({
+      id: 'local-message',
+      conversationId: 'wa-local',
+      providerMessageId: 'provider-secret',
+      raw: { apikey: 'secret' },
+      direction: 'outbound',
+      type: 'document',
+      body: 'Orçamento',
+      attachments: [{
+        id: 'local-attachment',
+        kind: 'document',
+        mediaUrl: '/api/public-quotation?token=' + 'C'.repeat(32),
+        origin: 'internal_generated',
+        documentRole: 'quotation_pdf',
+        quotationId: '11111111-1111-4111-8111-111111111111',
+        quotationBusinessNumber: 'ORC-20260001',
+        providerUrl: 'https://provider.invalid/file.pdf',
+      }],
+      timestamp: '2026-07-01T12:00:00.000Z',
+    });
+    assert.equal(message?.attachments?.[0]?.mediaUrl, '/api/public-quotation?token=' + 'C'.repeat(32));
+    assert.equal(message?.attachments?.[0]?.quotationBusinessNumber, 'ORC-20260001');
+    assert.equal('providerMessageId' in (message || {}), false);
+    assert.equal('raw' in (message || {}), false);
   });
 
   it('upserts conversations by remoteJid and keeps newest preview', async () => {
@@ -189,6 +246,45 @@ describe('whatsapp-conversations-store', () => {
       stored.map((message) => message.providerMessageId),
       ['m1', 'm2']
     );
+  });
+
+  it('uses atomic conversation/message writers instead of direct replacement', async () => {
+    let conversations: WhatsappConversation[] = [];
+    const messages = new Map<string, any[]>();
+    const base = makeDeps();
+    const deps: WhatsappConversationStoreDeps = {
+      ...base,
+      readConversations: async () => {
+        throw new Error('direct read should not run');
+      },
+      writeConversations: async () => {
+        throw new Error('direct write should not run');
+      },
+      readMessages: async () => {
+        throw new Error('direct message read should not run');
+      },
+      writeMessages: async () => {
+        throw new Error('direct message write should not run');
+      },
+      atomicUpdateConversations: async (mutation) => {
+        const changed = await mutation(conversations);
+        conversations = changed.conversations;
+        return changed.result;
+      },
+      atomicUpdateMessages: async (conversationId, mutation) => {
+        const current = (messages.get(conversationId) || []) as any[];
+        const changed = await mutation(current);
+        messages.set(conversationId, changed.messages);
+        return changed.result;
+      },
+    };
+    const conversation = await upsertWhatsappConversation(
+      { remoteJid: '5511999999999@s.whatsapp.net', phone: '5511999999999' },
+      deps,
+    );
+    await upsertWhatsappMessages(conversation.id, [{ providerMessageId: 'm1', body: 'Oi' }], deps);
+    assert.equal(conversations.length, 1);
+    assert.equal(messages.get(conversation.id)?.length, 1);
   });
 
   it('filters conversations by status, query, and limit', async () => {

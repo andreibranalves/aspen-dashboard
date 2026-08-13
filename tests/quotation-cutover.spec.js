@@ -2,119 +2,59 @@
 import { Buffer } from 'node:buffer';
 import { expect, test } from '@playwright/test';
 
-const CLIENT = {
-  id: '00000000-0000-4000-8000-000000000301',
-  nome: 'Cliente Legado Cutover',
-  email: 'legacy@example.com',
-  telefone: '5511999990000',
-};
-const PRODUCT = {
-  sku: 'CUTOVER-001',
-  nome: 'Produto legado',
-  descricao: 'Produto de teste',
-  unidade: 'Und',
-  categoria: 'Teste',
-  ativo: true,
-  pricing_available: true,
-  preco_minimo: '9.00',
-};
-
-test('cotação legada não oferece link customer-facing /api/view', async ({ page }) => {
-  const customerRequests = [];
-  page.on('request', (request) => {
-    if (request.url().includes('/api/view')) customerRequests.push(request.url());
-  });
-
-  await page.route('**/api/settings**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
-  });
-  await page.route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ templates: [{ key: 'padrao', name: 'Padrão Aspen', is_default: true }] }),
-    });
-  });
-  await page.route('**/api/leads-clients**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: [CLIENT], core_mode: false, source: 'frappe' }),
-    });
-  });
-  await page.route('**/api/products**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: [PRODUCT], core_mode: false, source: 'frappe' }),
-    });
-  });
-  await page.route('**/api/pricing-lookup**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, qty: 30, rate: '9.00' }] }),
-    });
-  });
-  await page.route('**/api/orcamento', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        quotation_id: 'ERP-QUOTE-CUTOVER',
-        cliente: CLIENT.nome,
-        items: [{ sku: PRODUCT.sku, qty: 30, rate: 9 }],
-        core_mode: false,
-        source: 'frappe',
-      }),
-    });
-  });
-
-  await page.goto('/#/manual');
-  await page.getByRole('button', { name: 'Buscar cliente existente' }).click();
-  await page.getByRole('textbox', { name: 'Buscar cliente' }).fill('Cliente');
-  await expect(page.getByText(CLIENT.nome, { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: `Selecionar ${CLIENT.nome}` }).click();
-  await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
-  await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill(PRODUCT.sku);
-  await expect(page.getByText(PRODUCT.nome)).toBeVisible();
-  await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
-  await page.getByRole('button', { name: 'Criar orçamento' }).click();
-
-  await expect(page.getByText('Orçamento criado com sucesso')).toBeVisible();
-  await expect(page.getByText('Link público indisponível para esta cotação legada.')).toBeVisible();
-  await expect(page.getByRole('link', { name: /^WhatsApp$/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /link público/i })).toHaveCount(0);
-  expect(customerRequests).toEqual([]);
-});
-
 const CORE_ID = 'ORC-20260042';
 const CORE_REVISION_ID = '22222222-2222-4222-8222-222222222242';
 const CORE_NEXT_REVISION_ID = '22222222-2222-4222-8222-222222222243';
 const CORE_TOKEN = 'a'.repeat(40);
 
 function coreDetail(overrides = {}) {
+  const revision = overrides.revision ?? overrides.revision_number ?? 1;
   return {
     id: CORE_ID,
     quotation_id: CORE_ID,
     quotation_uuid: '11111111-1111-4111-8111-111111111142',
     revision_id: CORE_REVISION_ID,
-    revision_number: 1,
+    revision,
+    revision_number: revision,
     status: 'Enviado',
     status_canonical: 'enviado',
     cliente: 'Cliente PostgreSQL Cutover',
+    client_id: '33333333-3333-4333-8333-333333333342',
     validade_dias: 15,
     validade: '2026-08-23',
     data: '2026-08-08',
     pagamento: 'À vista',
     entrega: '10 dias',
+    frete_padrao: '0.00',
     frete: '0.00',
     observacoes: 'Revisão original',
     prazo_producao: '3 dias',
+    template_key: 'padrao',
+    template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
+    template_version_id: null,
+    template_version: null,
+    secoes: {
+      schema_version: 1,
+      prazo_producao: {
+        base: { enabled: true, title: 'Prazo de produção' },
+        current: { enabled: true, title: 'Prazo de produção' },
+      },
+      pagamento: {
+        base: { enabled: true, title: 'Pagamento', body: 'À vista' },
+        current: { enabled: true, title: 'Pagamento', body: 'À vista' },
+      },
+      condicoes_gerais: {
+        base: { enabled: true, title: 'Condições Gerais', body: '10 dias' },
+        current: { enabled: true, title: 'Condições Gerais', body: '10 dias' },
+      },
+    },
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
+    derived_expired: false,
+    expiration_derived: false,
+    is_expired: false,
+    expirada: false,
     concurrency_token: '2026-08-08T12:00:00.000Z',
     updated_at: '2026-08-08T12:00:00.000Z',
     items: [{
@@ -139,6 +79,7 @@ function coreDetail(overrides = {}) {
       createdAt: '2026-08-08T12:00:00.000Z',
       validade_dias: 15,
       validade: '2026-08-23',
+      subtotal: '90.00',
       total: '90.00',
       valor: '90.00',
       status: 'Enviado',
@@ -147,9 +88,10 @@ function coreDetail(overrides = {}) {
       template_version: 1,
       template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
       derived_expired: false,
+      expiration_derived: false,
+      is_expired: false,
+      expirada: false,
     }],
-    core_mode: true,
-    source: 'postgres',
     ...overrides,
   };
 }
@@ -161,7 +103,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   page.on('request', (request) => requests.push(request.url()));
 
   await page.context().route('**/api/settings**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
   });
   await page.context().route('**/api/quotation-templates**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [{ key: 'padrao', name: 'Padrão', is_default: true, hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e' }] }) });
@@ -192,7 +134,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
       return;
     }
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: CORE_ID, cliente: authoritative.cliente, valor: authoritative.total, status: authoritative.status }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, core_mode: true, source: 'postgres' }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: CORE_ID, cliente: authoritative.cliente, valor: authoritative.total, status: authoritative.status }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 } }) });
   });
   await page.context().route('**/api/quotation-preview**', async (route) => {
     await route.fulfill({
@@ -277,7 +219,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
     return { status: response.status, body: await response.text() };
   });
   expect(expired.status).toBe(410);
-  expect(expired.body).not.toMatch(/ERPNEXT_TOKEN|stack|secret/i);
+  expect(expired.body).not.toMatch(/EXTERNAL_API_TOKEN|stack|secret/i);
 
   const sanitizedError = await page.evaluate(async () => {
     const response = await globalThis.fetch('/api/public-quotation?token=error');
@@ -285,12 +227,12 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
   });
   expect(sanitizedError.status).toBe(503);
   expect(sanitizedError.body).toContain('Erro ao processar orçamento. Tente novamente.');
-  expect(sanitizedError.body).not.toMatch(/ERPNEXT_TOKEN|stack|secret|\/home\//i);
+  expect(sanitizedError.body).not.toMatch(/EXTERNAL_API_TOKEN|stack|secret|\/home\//i);
 
   await page.getByRole('button', { name: 'Nova revisão' }).click();
   await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
   await expect(page.getByText('Revisão 2')).toBeVisible();
   expect(authoritative.revision_id).toBe(CORE_NEXT_REVISION_ID);
-  expect(requests.some((url) => /n8n|evolution|\/api\/send-whatsapp/i.test(url))).toBe(false);
+  expect(requests.some((url) => /\/api\/send-whatsapp/i.test(url))).toBe(false);
   expect(requests.filter((url) => url.includes('/api/view'))).toEqual([]);
 });

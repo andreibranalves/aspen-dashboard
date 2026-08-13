@@ -28,7 +28,7 @@ function parseBody(event: FunctionEvent): Record<string, unknown> | null {
 function toInput(input: Record<string, unknown>): { name: string; skus: string[] } {
   return {
     name: String(input.name || ''),
-    skus: Array.isArray(input.skus) ? input.skus.map(String) : [],
+    skus: Array.isArray(input.skus) ? input.skus.map((sku) => String(sku)) : [],
   };
 }
 

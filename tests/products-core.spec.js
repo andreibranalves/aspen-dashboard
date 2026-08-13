@@ -20,10 +20,8 @@ function product(sku, nome, ativo = true) {
   };
 }
 
-function detail(row, coreMode) {
+function detail(row) {
   return {
-    core_mode: coreMode,
-    source: coreMode ? 'postgres' : 'frappe',
     produto: {
       ...row,
       imagem: null,
@@ -35,11 +33,7 @@ function detail(row, coreMode) {
   };
 }
 
-async function mockProductApi(
-  page,
-  initialRows,
-  { coreMode = true, postIgnoresBrand = false } = {}
-) {
+async function mockProductApi(page, initialRows) {
   const rows = initialRows.map((row) => ({ ...row }));
   const requests = [];
   const updates = [];
@@ -74,8 +68,6 @@ async function mockProductApi(
             total: filtered.length,
             total_pages: Math.ceil(filtered.length / limit) || 0,
           },
-          core_mode: coreMode,
-          source: coreMode ? 'postgres' : 'frappe',
         }),
       });
       return;
@@ -95,7 +87,7 @@ async function mockProductApi(
       const row = product(body.sku, body.nome, true);
       row.descricao = body.descricao || '';
       row.categoria = body.categoria || null;
-      row.marca = postIgnoresBrand ? null : body.marca || null;
+      row.marca = body.marca || null;
       row.unidade = body.unidade || 'Und';
       row.preco_base = body.preco_base ?? null;
       row.precos = Array.isArray(body.precos) ? body.precos : [];
@@ -108,8 +100,6 @@ async function mockProductApi(
           success: true,
           created: row.sku,
           produto: row,
-          core_mode: coreMode,
-          source: coreMode ? 'postgres' : 'frappe',
         }),
       });
       return;
@@ -136,8 +126,6 @@ async function mockProductApi(
           success: true,
           deleted: sku,
           archived: true,
-          core_mode: coreMode,
-          source: coreMode ? 'postgres' : 'frappe',
         }),
       });
       return;
@@ -164,7 +152,7 @@ async function mockProductApi(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(detail(row, coreMode)),
+      body: JSON.stringify(detail(row)),
     });
   });
 
@@ -181,10 +169,10 @@ async function mockProductApi(
       });
       return;
     }
-      const body = request.postDataJSON();
-      updates.push({ sku, body });
-      Object.assign(row, body);
-      if (body.precos) row.pricing_available = Boolean(body.preco_base || body.precos.length > 0);
+    const body = request.postDataJSON();
+    updates.push({ sku, body });
+    Object.assign(row, body);
+    if (body.precos) row.pricing_available = Boolean(body.preco_base || body.precos.length > 0);
     if (body.ativo === true) row.arquivado_em = null;
     if (body.ativo === false) row.arquivado_em = '2026-01-02T00:00:00.000Z';
     row.atualizado_em = '2026-01-03T00:00:00.000Z';
@@ -195,8 +183,6 @@ async function mockProductApi(
         success: true,
         sku,
         produto: row,
-        core_mode: coreMode,
-        source: coreMode ? 'postgres' : 'frappe',
       }),
     });
   });
@@ -245,6 +231,7 @@ test.describe('Produtos — catálogo principal', () => {
     await page.getByLabel('Preço unitário da faixa 2').fill('7.25');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
+    await expect(page.getByText(/11,00/).first()).toBeVisible();
     const pricingUpdate = updates.at(-1)?.body;
     expect(pricingUpdate?.preco_base).toBe('11.00');
     expect(pricingUpdate?.precos).toEqual([
@@ -277,7 +264,7 @@ test.describe('Produtos — catálogo principal', () => {
     expect(updates).toHaveLength(updateCountBeforeManual);
   });
 
-  test('cria, pesquisa, edita, arquiva e restaura produto no PostgreSQL', async ({ page }) => {
+  test('cria, pesquisa e edita produto no PostgreSQL sem metadados de rollout', async ({ page }) => {
     const { rows } = await mockProductApi(page, [product('CORE-SEED', 'Produto inicial')]);
 
     await page.goto('/#/products');
@@ -313,18 +300,6 @@ test.describe('Produtos — catálogo principal', () => {
     await page.getByPlaceholder('Buscar por SKU ou nome…').fill('CORE-NEW');
     await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
 
-    page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Arquivar produto CORE-NEW' }).click();
-    await expect(page.getByText('Produto editado', { exact: true })).toHaveCount(0);
-
-    await page.getByRole('button', { name: 'Arquivados' }).click();
-    await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
-    page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Restaurar produto CORE-NEW' }).click();
-    await expect(page.getByText('Produto editado', { exact: true })).toHaveCount(0);
-
-    await page.getByRole('button', { name: 'Ativos' }).click();
-    await expect(page.getByText('Produto editado', { exact: true }).first()).toBeVisible();
   });
 
   test('impede selecionar produto do core sem preço e não cria linha R$ 0,00', async ({ page }) => {
@@ -358,33 +333,39 @@ test.describe('Produtos — catálogo principal', () => {
     ).toBe(true);
   });
 
-  test('não consulta atividade Frappe ao abrir um produto do catálogo principal', async ({
+  test('consulta atividade local para produto do catálogo sem metadados de rollout', async ({
     page,
   }) => {
-    await mockProductApi(page, [product('CORE-ACTIVITY', 'Produto sem atividade Frappe')]);
+    const priced = product('CORE-ACTIVITY', 'Produto com atividade local');
+    priced.preco_base = '10.00';
+    priced.pricing_available = true;
+    await mockProductApi(page, [priced]);
     let activityRequests = 0;
     await page.route('**/api/product-activity**', async (route) => {
       activityRequests += 1;
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ atividades: [] }),
+        body: JSON.stringify({
+          sku: 'CORE-ACTIVITY',
+          atividades: [{ tipo: 'produto', texto: 'Produto criado', data: '2026-01-01', id: 'activity-1' }],
+        }),
       });
     });
 
     await page.goto('/#/products/CORE-ACTIVITY');
     await expect(
-      page.getByText('Produto sem atividade Frappe', { exact: true }).first()
+      page.getByText('Produto com atividade local', { exact: true }).first()
     ).toBeVisible();
-    await page.waitForTimeout(100);
-
-    expect(activityRequests).toBe(0);
+    await expect(page.getByText('Produto criado', { exact: true })).toBeVisible();
+    await expect(page.getByText(/10,00/).first()).toBeVisible();
+    await expect.poll(() => activityRequests).toBe(1);
   });
 
-  test('consulta atividade legada uma única vez após salvar um produto existente', async ({
+  test('consulta atividade local uma única vez após salvar um produto existente', async ({
     page,
   }) => {
-    await mockProductApi(page, [product('LEGACY-ACTIVITY', 'Produto legado')], { coreMode: false });
+    await mockProductApi(page, [product('CORE-ACTIVITY-SAVE', 'Produto local')]);
     let activityRequests = 0;
     await page.route('**/api/product-activity**', async (route) => {
       activityRequests += 1;
@@ -395,12 +376,12 @@ test.describe('Produtos — catálogo principal', () => {
       });
     });
 
-    await page.goto('/#/products/LEGACY-ACTIVITY');
-    await expect(page.getByText('Produto legado', { exact: true }).first()).toBeVisible();
+    await page.goto('/#/products/CORE-ACTIVITY-SAVE');
+    await expect(page.getByText('Produto local', { exact: true }).first()).toBeVisible();
     await expect.poll(() => activityRequests).toBe(1);
 
     await page.getByRole('button', { name: 'Editar produto' }).click();
-    await page.getByPlaceholder('Nome do produto').fill('Produto legado atualizado');
+    await page.getByPlaceholder('Nome do produto').fill('Produto local atualizado');
     await page.getByRole('button', { name: 'Salvar produto' }).click();
     await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
     await expect.poll(() => activityRequests).toBe(2);
@@ -408,31 +389,291 @@ test.describe('Produtos — catálogo principal', () => {
     expect(activityRequests).toBe(2);
   });
 
-  test('persiste Marca pela atualização ao criar produto legado quando o POST a ignora', async ({
-    page,
-  }) => {
-    const { rows, updates } = await mockProductApi(page, [], {
-      coreMode: false,
-      postIgnoresBrand: true,
+  test('ignora respostas atrasadas de produto e atividade de SKU antigo', async ({ page }) => {
+    const oldProduct = product('OLD-SKU', 'Produto antigo');
+    const newProduct = product('NEW-SKU', 'Produto atual');
+    await mockProductApi(page, [oldProduct, newProduct]);
+    /** @type {(value?: unknown) => void} */
+    let releaseOldProduct = () => {};
+    /** @type {(value?: unknown) => void} */
+    let releaseOldActivity = () => {};
+    const oldProductReady = new Promise((resolve) => { releaseOldProduct = resolve; });
+    const oldActivityReady = new Promise((resolve) => { releaseOldActivity = resolve; });
+    let oldProductStarted = 0;
+    let oldActivityStarted = 0;
+    const lifecycleErrors = [];
+    page.on('console', (message) => {
+      if (/unmount|state update|cannot perform|warning/i.test(message.text())) {
+        lifecycleErrors.push(message.text());
+      }
+    });
+    page.on('pageerror', (error) => lifecycleErrors.push(error.message));
+
+    await page.route('**/api/product-detail**', async (route) => {
+      const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
+      if (requestSku === 'OLD-SKU') {
+        oldProductStarted += 1;
+        await oldProductReady;
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha antiga' }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(newProduct)) });
     });
     await page.route('**/api/product-activity**', async (route) => {
+      const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
+      if (requestSku === 'OLD-SKU') {
+        oldActivityStarted += 1;
+        await oldActivityReady;
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Falha antiga' }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Atividade atual', data: '2026-01-02T00:00:00.000Z', id: 'new-activity' }] }) });
+    });
+
+    await page.goto('/#/products/OLD-SKU');
+    await expect.poll(() => oldProductStarted).toBe(1);
+    await expect.poll(() => oldActivityStarted).toBe(1);
+    await page.goto('/#/products/NEW-SKU');
+    await expect(page.getByText('Produto atual', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Atividade atual', { exact: true })).toBeVisible();
+    releaseOldProduct();
+    releaseOldActivity();
+    await page.waitForTimeout(100);
+    await expect(page.getByText('Produto atual', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Atividade atual', { exact: true })).toBeVisible();
+    await expect(page.getByText('Falha antiga', { exact: true })).toHaveCount(0);
+    expect(lifecycleErrors).toEqual([]);
+  });
+
+  test('limpa atividade ao trocar SKU e exibe carregamento até a nova resposta', async ({ page }) => {
+    const oldProduct = product('ACTIVITY-OLD', 'Produto com atividade antiga');
+    const newProduct = product('ACTIVITY-NEW', 'Produto com atividade nova');
+    await mockProductApi(page, [oldProduct, newProduct]);
+    /** @type {(value?: unknown) => void} */
+    let releaseNewActivity = () => {};
+    const newActivityReady = new Promise((resolve) => { releaseNewActivity = resolve; });
+    let newActivityStarted = 0;
+
+    await page.route('**/api/product-detail**', async (route) => {
+      const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
+      const row = requestSku === 'ACTIVITY-OLD' ? oldProduct : newProduct;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(detail(row)) });
+    });
+    await page.route('**/api/product-activity**', async (route) => {
+      const requestSku = new globalThis.URL(route.request().url()).searchParams.get('sku');
+      if (requestSku === 'ACTIVITY-NEW') {
+        newActivityStarted += 1;
+        await newActivityReady;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Atividade nova', data: '2026-01-02T00:00:00.000Z', id: 'new-activity' }] }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ atividades: [] }),
+        body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Atividade antiga', data: '2026-01-01T00:00:00.000Z', id: 'old-activity' }] }),
       });
     });
 
+    await page.goto('/#/products/ACTIVITY-OLD');
+    await expect(page.getByText('Atividade antiga', { exact: true })).toBeVisible();
+    await page.goto('/#/products/ACTIVITY-NEW');
+    await expect.poll(() => newActivityStarted).toBe(1);
+    await expect(page.getByRole('status')).toHaveText('Carregando atividade…');
+    await expect(page.getByText('Atividade antiga', { exact: true })).toHaveCount(0);
+    releaseNewActivity();
+    await expect(page.getByText('Atividade nova', { exact: true })).toBeVisible();
+  });
+
+  test('não vaza estado de salvar ou arquivar para outro SKU', async ({ page }) => {
+    const first = product('STATE-FIRST', 'Produto primeiro');
+    const second = product('STATE-SECOND', 'Produto segundo');
+    await mockProductApi(page, [first, second]);
+    /** @type {(value?: unknown) => void} */
+    let releaseSave = () => {};
+    /** @type {(value?: unknown) => void} */
+    let releaseDelete = () => {};
+    const saveReady = new Promise((resolve) => { releaseSave = resolve; });
+    const deleteReady = new Promise((resolve) => { releaseDelete = resolve; });
+    let saveStarted = 0;
+    let deleteStarted = 0;
+    page.on('dialog', (dialog) => dialog.accept());
+
+    await page.route('**/api/product-update**', async (route) => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.method() === 'PUT' && url.searchParams.get('sku') === 'STATE-FIRST') {
+        saveStarted += 1;
+        await saveReady;
+        await route.fallback();
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route('**/api/products**', async (route) => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.method() === 'DELETE' && url.searchParams.get('id') === 'STATE-FIRST') {
+        deleteStarted += 1;
+        await deleteReady;
+        await route.fallback();
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/#/products/STATE-FIRST');
+    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await page.getByPlaceholder('Nome do produto').fill('Produto primeiro salvo');
+    await page.getByRole('button', { name: 'Salvar produto' }).click();
+    await expect.poll(() => saveStarted).toBe(1);
+    await page.goto('/#/products/STATE-SECOND');
+    await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    const saveResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'PUT' && response.url().includes('/api/product-update?sku=STATE-FIRST');
+    });
+    await releaseSave();
+    await saveResponse;
+    await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Arquivar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /Salvando|Atualizando/ })).toHaveCount(0);
+    await expect(page.getByText('Produto primeiro salvo', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Erro ao salvar produto.', { exact: true })).toHaveCount(0);
+
+    await page.goto('/#/products/STATE-FIRST');
+    await page.getByRole('button', { name: 'Arquivar produto' }).click();
+    await expect.poll(() => deleteStarted).toBe(1);
+    await page.goto('/#/products/STATE-SECOND');
+    await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    const deleteResponse = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === 'DELETE' && response.url().includes('/api/products?id=STATE-FIRST');
+    });
+    await releaseDelete();
+    await deleteResponse;
+    await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Editar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Arquivar produto' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /Salvando|Atualizando/ })).toHaveCount(0);
+    await expect(page.getByText('Produto primeiro salvo', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Erro ao arquivar produto.', { exact: true })).toHaveCount(0);
+  });
+
+  test('faz refresh de atividade após salvar e mantém a resposta mais nova', async ({ page }) => {
+    await mockProductApi(page, [product('SAVE-SKU', 'Produto antes')]);
+    let activityRequests = 0;
+    /** @type {(value?: unknown) => void} */
+    let releaseInitialActivity = () => {};
+    const initialActivityReady = new Promise((resolve) => { releaseInitialActivity = resolve; });
+    await page.route('**/api/product-activity**', async (route) => {
+      activityRequests += 1;
+      if (activityRequests === 1) {
+        await initialActivityReady;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Histórico antigo', data: '2026-01-01T00:00:00.000Z', id: 'old-activity' }] }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'produto', texto: 'Histórico atualizado', data: '2026-01-02T00:00:00.000Z', id: 'fresh-activity' }] }) });
+    });
+
+    await page.goto('/#/products/SAVE-SKU');
+    await expect.poll(() => activityRequests).toBe(1);
+    await page.getByRole('button', { name: 'Editar produto' }).click();
+    await page.getByPlaceholder('Nome do produto').fill('Produto depois');
+    await page.getByRole('button', { name: 'Salvar produto' }).click();
+    await expect(page.getByText('Produto atualizado com sucesso!', { exact: true })).toBeVisible();
+    await expect.poll(() => activityRequests).toBe(2);
+    await expect(page.getByText('Histórico atualizado', { exact: true })).toBeVisible();
+    releaseInitialActivity();
+    await page.waitForTimeout(100);
+    await expect(page.getByText('Histórico atualizado', { exact: true })).toBeVisible();
+    await expect(page.getByText('Histórico antigo', { exact: true })).toHaveCount(0);
+  });
+
+  test('expõe erro de atividade com retry e formata data em pt-BR', async ({ page }) => {
+    await mockProductApi(page, [product('ERROR-SKU', 'Produto com erro')]);
+    let activityRequests = 0;
+    /** @type {(value?: unknown) => void} */
+    let releaseRetryActivity = () => {};
+    const retryActivityReady = new Promise((resolve) => { releaseRetryActivity = resolve; });
+    await page.route('**/api/product-activity**', async (route) => {
+      activityRequests += 1;
+      if (activityRequests === 1) {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Falha temporária' }) });
+        return;
+      }
+      await retryActivityReady;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ atividades: [{ tipo: 'preco', texto: 'Preço atualizado', data: '2026-01-01T15:04:05.000Z', id: 'readable-date' }] }) });
+    });
+
+    await page.goto('/#/products/ERROR-SKU');
+    await expect(page.getByRole('alert')).toContainText('Não foi possível carregar a atividade.');
+    await expect(page.getByText('Sem atividade recente para este produto.', { exact: true })).toHaveCount(0);
+    await page.getByRole('alert').getByRole('button', { name: 'Tentar novamente' }).click();
+    await expect(page.getByRole('status')).toHaveText('Carregando atividade…');
+    await expect(page.getByText('Sem atividade recente para este produto.', { exact: true })).toHaveCount(0);
+    releaseRetryActivity();
+    await expect(page.getByText('Preço atualizado', { exact: true })).toBeVisible();
+    await expect(page.getByText(/01\/01\/2026/)).toBeVisible();
+    await expect(page.getByText('2026-01-01T15:04:05.000Z', { exact: true })).toHaveCount(0);
+    await expect.poll(() => activityRequests).toBe(2);
+  });
+
+  test('mostra mensagem correta ao falhar ao restaurar ou arquivar', async ({ page }) => {
+    const archived = product('RESTORE-SKU', 'Produto arquivado', false);
+    const active = product('ARCHIVE-SKU', 'Produto ativo');
+    await mockProductApi(page, [archived, active]);
+    page.on('dialog', (dialog) => dialog.accept());
+
+    await page.route('**/api/product-update**', async (route) => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.method() === 'PATCH' && url.searchParams.get('sku') === 'RESTORE-SKU') {
+        await route.fulfill({ status: 503, body: '' });
+        return;
+      }
+      await route.fallback();
+    });
+    await page.route('**/api/products**', async (route) => {
+      const request = route.request();
+      const url = new globalThis.URL(request.url());
+      if (request.method() === 'DELETE' && url.searchParams.get('id') === 'ARCHIVE-SKU') {
+        await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({}) });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/#/products/RESTORE-SKU');
+    await page.getByRole('button', { name: 'Restaurar produto' }).click();
+    await expect(page.getByText('Erro ao restaurar produto.', { exact: true })).toBeVisible();
+
+    await page.goto('/#/products/ARCHIVE-SKU');
+    await page.getByRole('button', { name: 'Arquivar produto' }).click();
+    await expect(page.getByText('Erro ao arquivar produto.', { exact: true })).toBeVisible();
+  });
+
+  test('cria novo produto sem consultar modo externo', async ({ page }) => {
+    const { requests } = await mockProductApi(page, []);
     await page.goto('/#/products/new');
     await expect(page.getByRole('button', { name: 'Criar produto' })).toBeVisible();
-    await page.getByPlaceholder('LNC-SED-70').fill('LEGACY-BRAND');
-    await page.getByPlaceholder('Nome do produto').fill('Produto legado');
-    await page.getByPlaceholder('Marca').fill('Marca preservada');
+    await page.getByPlaceholder('LNC-SED-70').fill('LOCAL-NEW');
+    await page.getByPlaceholder('Nome do produto').fill('Produto local novo');
+    await page.getByLabel('Preço base').fill('12.50');
     await page.getByRole('button', { name: 'Criar produto' }).click();
 
-    await expect.poll(() => updates.length).toBe(1);
-    expect(updates[0]).toEqual({ sku: 'LEGACY-BRAND', body: { marca: 'Marca preservada' } });
-    await expect(page.getByText('Marca preservada', { exact: true }).first()).toBeVisible();
-    expect(rows.find((row) => row.sku === 'LEGACY-BRAND')?.marca).toBe('Marca preservada');
+    await expect(page).toHaveURL(/#\/products\/LOCAL-NEW$/);
+    const post = requests.find((request) => request.method === 'POST');
+    expect(post?.body?.preco_base).toBe('12.50');
+    expect(post?.body?.precos).toEqual([]);
+    expect(requests.filter((request) => request.method === 'GET')).toHaveLength(0);
   });
 });

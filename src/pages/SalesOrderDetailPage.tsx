@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ExternalLink, FileText, Truck, DollarSign, Check } from 'lucide-react';
+import { FileText, Truck, DollarSign, Check } from 'lucide-react';
 import { apiGet } from '@/lib/api';
 import { formatBRL } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
@@ -28,8 +28,7 @@ interface SalesOrderItem {
 interface SalesOrderDetailData {
   id: string;
   status: string;
-  customer?: string;
-  cliente?: string;
+  customer_name?: string;
   date?: string;
   data?: string;
   delivery_date?: string;
@@ -130,16 +129,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {/* ERPNext link */}
-            <a
-              href={`https://aspenestamparia.l.frappe.cloud/app/sales-order/${data.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line bg-transparent px-3 text-xs font-medium transition-all duration-200 hover:bg-primary/5 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
-            >
-              <ExternalLink size={14} /> Abrir no ERPNext
-            </a>
-            {/* Link to source quotation */}
+            {/* Link to the local quotation */}
             {data.source_quotation && (
               <Button
                 variant="outline"
@@ -156,7 +146,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
         <div className="px-6 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-6">
           <div>
             <span className="text-xs text-fg-muted">Cliente</span>
-            <p className="font-medium">{data.customer || data.cliente || '—'}</p>
+            <p className="font-medium">{data.customer_name || 'Cliente não identificado'}</p>
           </div>
           <div>
             <span className="text-xs text-fg-muted">Data</span>
@@ -244,14 +234,15 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
             </div>
           )}
           <div className="flex-1" />
-          <a
-            href={`https://aspenestamparia.l.frappe.cloud/app/sales-order/${data.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-primary px-3 text-xs font-medium text-on-solid transition-all duration-200 hover:bg-primary/90 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
-          >
-            <ExternalLink size={14} /> Abrir no ERPNext
-          </a>
+          {data.source_quotation && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => navigate(`/quotations/${encodeURIComponent(data.source_quotation || '')}`)}
+            >
+              <FileText size={14} /> Voltar ao orçamento
+            </Button>
+          )}
         </div>
       </div>
     </div>

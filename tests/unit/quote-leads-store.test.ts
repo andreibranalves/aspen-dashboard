@@ -42,7 +42,6 @@ describe('quote-leads-store', () => {
         quantidade: '100',
         mensagem_contexto: 'Cliente pediu orçamento pelo WhatsApp',
         source: 'typebot',
-        erpLeadId: 'CRM-LEAD-0001',
       },
       { now: () => '2026-06-29T12:00:00.000Z', id: () => 'quote_lead_1' }
     );
@@ -57,7 +56,6 @@ describe('quote-leads-store', () => {
     );
     assert.equal(lead.source, 'typebot');
     assert.equal(lead.status, 'ready');
-    assert.equal(lead.erpLeadId, 'CRM-LEAD-0001');
   });
 
   it('resolve códigos numéricos de produto (1-7) para nomes', () => {
@@ -314,5 +312,24 @@ describe('quote-leads-store', () => {
       leads.map((lead) => lead.id),
       ['site-ready']
     );
+  });
+
+  it('mantém converted e discarded em novas entregas da mesma identidade', async () => {
+    const convertedDeps = createQuoteLeadMemoryDeps([
+      makeQuoteLead({ status: 'converted', quotationId: 'ORC-20260001' }),
+    ]);
+    const converted = await upsertQuoteLead(
+      { nome: 'Viviane Atualizada', telefone: '5511978086811', source: 'typebot' },
+      convertedDeps
+    );
+    assert.equal(converted.status, 'converted');
+    assert.equal(converted.quotationId, 'ORC-20260001');
+
+    const discardedDeps = createQuoteLeadMemoryDeps([makeQuoteLead({ status: 'ready' })]);
+    const discarded = await upsertQuoteLead(
+      { nome: 'Viviane', telefone: '5511978086811', source: 'typebot', status: 'discarded' },
+      discardedDeps
+    );
+    assert.equal(discarded.status, 'discarded');
   });
 });

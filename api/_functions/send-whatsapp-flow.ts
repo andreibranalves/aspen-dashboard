@@ -4,36 +4,50 @@
 // Resolves product_media steps from the media library (Vercel Blob).
 // Performs duplicate detection (30min window per quotation+phone+flow).
 // Records send events in KV for history.
-// Updates CRM Deal status in parallel.
+// Keeps send history in local KV and uses Evolution only as transport.
 //
-// Reuses Evolution API patterns from send-whatsapp.js.
+// Reuses Evolution delivery patterns from send-whatsapp.js.
 // Storage: Vercel KV for flows, media, and send events.
 
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
-import type { HttpError } from './lib/erpnext.js';
+import type { HttpError } from '../_lib/http-error.js';
 import { kv } from '@vercel/kv';
-import { erpGetDoc, erpGetList, erpPut, createHttpError, ERPNEXT_BASE } from './lib/erpnext.js';
-import { generateQuotationPdf } from './lib/quotation-pdf.js';
+import { createHttpError } from '../_lib/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
-import { isOperationalMode } from './operational-mode.js';
-import { getDatabase } from '../_db/client.js';
 import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
 import {
   isRevisionBoundPublicQuotationUrl,
 } from './public-quotation.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
-import { normalizePostgresMediaUrl } from './lib/postgres-media.js';
+import {
+  allowedMediaMimeTypes,
+  downloadApprovedMedia,
+  normalizeOwnedBlobUrl,
+  readCommunicationMediaRecords,
+  safeMediaFilename,
+  stripMediaInternals,
+  verifyOwnedBlobRecord,
+  isMediaTombstone,
+  type BlobHead,
+  type PostgresMediaRecord,
+} from './lib/postgres-media.js';
 import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
 import {
-  deriveOpaqueQuotationOutboxIdempotencyKey,
-  enqueueQuotationSentEvent,
-  QuotationOutboxDurabilityError,
-} from '../_db/quotation-outbox-repository.js';
-import {
-  KV_KEY_MEDIA_PREFIX,
   KV_KEY_FLOWS,
   KV_KEY_SEND_EVENTS_PREFIX,
 } from '../_lib/media-schema.js';
+import {
+  canonicalWhatsappSendIdempotencyKey,
+  defaultWhatsappSendReservationStore,
+  isWhatsappSendReservationStale,
+  parseWhatsappSendReservationRecord,
+  sanitizeWhatsappSendTerminalResult,
+  type WhatsappSendAcceptedStepKind,
+  type WhatsappSendReservationCasResult,
+  type WhatsappSendReservationRecord,
+  type WhatsappSendReservationStore,
+  WhatsappSendReservationStorageError,
+} from './lib/whatsapp-send-reservation-store.js';
 
 function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
   return {
@@ -101,17 +115,20 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   body: JSON.stringify(body),
 });
 
-function normalizePhone(phone: unknown): string {
-  if (!phone) return '';
-  let digits = String(phone).replace(/\D/g, '');
-  digits = digits.replace(/^55(\d{10,11})$/, '$1').replace(/^0(\d{10,11})$/, '$1');
-  if (!/^\d{10,11}$/.test(digits)) return '';
-  return `55${digits}`;
-}
-
 function firstNonEmpty(...values: unknown[]): string {
   const found = values.find((v) => typeof v === 'string' && v.trim());
   return typeof found === 'string' ? found.trim() : '';
+}
+
+function minimalLocalIdentifier(value: string, label: string): string {
+  if (!value || value.length > 255 || value.includes('://')) {
+    throw createHttpError(400, `${label} inválido.`);
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) throw createHttpError(400, `${label} inválido.`);
+  }
+  return value;
 }
 
 function wait(ms: number): Promise<void> {
@@ -209,12 +226,11 @@ export function canonicalFlowQuotationId(quotationId: string, businessNumber: st
 }
 
 export function flowProductSummary(
-  postgresPath: boolean,
-  callerSummary: unknown,
+  _postgresPath: boolean,
+  _callerSummary: unknown,
   items: Record<string, unknown>[],
 ): string {
-  const canonical = productSummaryFromCategories(detectCategories(items));
-  return postgresPath ? canonical : firstNonEmpty(callerSummary, canonical);
+  return productSummaryFromCategories(detectCategories(items));
 }
 
 // ── Evolution API ──────────────────────────────────────────────────────────
@@ -234,6 +250,21 @@ function assertEvolutionConfig() {
   }
 }
 
+type EvolutionTransportOutcome = 'unknown' | 'retryable';
+
+function transportError(
+  statusCode: number,
+  message: string,
+  outcome: EvolutionTransportOutcome,
+  logMessage?: string,
+): Error & { transportOutcome: EvolutionTransportOutcome } {
+  const error = createHttpError(statusCode, message, logMessage) as Error & {
+    transportOutcome?: EvolutionTransportOutcome;
+  };
+  error.transportOutcome = outcome;
+  return error as Error & { transportOutcome: EvolutionTransportOutcome };
+}
+
 async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
   const { baseUrl, apiKey } = evolutionConfig();
   const url = `${baseUrl}${path}`;
@@ -247,23 +278,26 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
     responseBody = await res.json().catch(() => null);
     } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw createHttpError(
+    throw transportError(
       502,
       'Falha ao conectar com o WhatsApp.',
+      'unknown',
       `Evolution fetch failed: ${msg}`
     );
   }
   if (!res.ok) {
-    const detail =
-      responseBody?.message || responseBody?.error || JSON.stringify(responseBody || {});
-    throw createHttpError(
+    throw transportError(
       400,
       'Não foi possível enviar a mensagem.',
-      `Evolution ${res.status}: ${detail}`
+      'retryable',
+      `Evolution HTTP ${res.status}`
     );
   }
   const delivery = normalizeEvolutionDelivery(responseBody);
-  if (!delivery) throw createHttpError(502, 'O provedor não confirmou o recebimento da mensagem.');
+  if (!delivery) {
+    // A response without explicit acceptance may follow an accepted transport.
+    throw transportError(502, 'O provedor não confirmou o recebimento da mensagem.', 'unknown');
+  }
   return delivery;
 }
 
@@ -275,67 +309,102 @@ async function sendText(number: string, text: string): Promise<EvolutionDelivery
   });
 }
 
-async function fetchQuotationPdfBuffer(quotationId: string): Promise<Buffer> {
-  try {
-    const { buffer } = await generateQuotationPdf(quotationId, { timeout: 30000 });
-    if (!buffer || buffer.length === 0) throw createHttpError(502, 'PDF vazio.');
-    return buffer;
-  } catch (err: unknown) {
-    if ((err as HttpError)?.statusCode) throw err;
-    throw createHttpError(502, 'Falha ao gerar PDF do orçamento.');
+async function prepareFlowSteps(
+  steps: Record<string, unknown>[],
+  baseUrl: string,
+  records: PostgresMediaRecord[] = [],
+  revisionUrls: string[] = [],
+  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
+): Promise<Record<string, unknown>[]> {
+  for (const step of steps) {
+    if (step.type === 'text' || step.generatedMedia === 'quotation_pdf') continue;
+    const source = String(step.media || '').trim();
+    if (!source) throw createHttpError(400, 'A etapa de mídia não possui conteúdo.');
+    const stepType = step.type === 'document' ? 'document' : step.type === 'video' ? 'video' : 'image';
+    const declaredMime = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
+    if (declaredMime && !allowedMediaMimeTypes(stepType).includes(declaredMime)) {
+      throw createHttpError(400, 'O tipo MIME não corresponde à etapa do fluxo.');
+    }
+    const downloaded = await downloadApprovedMedia({
+      url: source,
+      origin: baseUrl,
+      stepType,
+      records,
+      revisionUrls,
+      headFn: verification.headFn,
+      blobToken: verification.blobToken,
+      blobStoreId: verification.blobStoreId,
+    });
+    step.deliveryMedia = downloaded.base64;
+    step.mimetype = downloaded.mimeType;
   }
+  return steps;
 }
 
-async function sendMedia(number: string, step: Record<string, unknown>, postgresPath = false, baseUrl = ''): Promise<EvolutionDeliveryResult> {
-  let media: string | undefined = step.media as string | undefined;
-
-  if (postgresPath && typeof media === 'string' && media.startsWith('__pdf__:')) {
-    throw createHttpError(400, 'O PDF PostgreSQL precisa ser gerado a partir da revisão.');
-  }
-  if (postgresPath && typeof media === 'string' && !media.startsWith('__pdf-')) {
-    try {
-      media = normalizePostgresMediaUrl(media, baseUrl);
-    } catch {
-      throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+async function sendMedia(
+  number: string,
+  step: Record<string, unknown>,
+  baseUrl: string,
+  records: PostgresMediaRecord[] = [],
+  revisionUrls: string[] = [],
+  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
+): Promise<EvolutionDeliveryResult> {
+  let media = String(step.deliveryMedia || '').trim();
+  if (!media) {
+    const source = String(step.media || '').trim();
+    if (!source) throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+    const stepType = step.type === 'document' ? 'document' : step.type === 'video' ? 'video' : 'image';
+    const declaredMime = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
+    if (declaredMime && !allowedMediaMimeTypes(stepType).includes(declaredMime)) {
+      throw createHttpError(400, 'O tipo MIME não corresponde à etapa do fluxo.');
     }
+    const downloaded = await downloadApprovedMedia({
+      url: source,
+      origin: baseUrl,
+      stepType,
+      records,
+      revisionUrls,
+      headFn: verification.headFn,
+      blobToken: verification.blobToken,
+      blobStoreId: verification.blobStoreId,
+    });
+    media = downloaded.base64;
+    step.mimetype = downloaded.mimeType;
   }
-
-  // PDF marker
-  if (media && typeof media === 'string' && media.startsWith('__pdf-base64__:')) {
-    media = media.slice('__pdf-base64__:'.length);
-  } else if (media && typeof media === 'string' && media.startsWith('__pdf__:')) {
-    const qid = media.slice('__pdf__:'.length);
-    const buffer = await fetchQuotationPdfBuffer(qid);
-    media = buffer.toString('base64');
-  }
-
-  // Blob URL → fetch + base64 (Evolution requires base64 for media)
-  if (media && /^https?:\/\//.test(media) && !media.startsWith(ERPNEXT_BASE)) {
-    try {
-      const res = await fetch(media);
-      if (!res.ok) throw createHttpError(502, 'Não foi possível baixar a mídia.');
-      const buffer = Buffer.from(await res.arrayBuffer());
-      media = buffer.toString('base64');
-    } catch (err: unknown) {
-      if ((err as HttpError)?.statusCode) throw err;
-      throw createHttpError(502, 'Falha ao processar mídia.');
-    }
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(media)) {
+    throw createHttpError(400, 'Dados de mídia não autorizados.');
   }
 
   const { instance } = evolutionConfig();
+  const mimeType = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
+  const mediaType = step.type === 'document'
+    ? 'document'
+    : mimeType === 'video/mp4'
+      ? 'video'
+      : 'image';
+  if (!allowedMediaMimeTypes(mediaType).includes(mimeType)) {
+    throw createHttpError(400, 'O tipo MIME de mídia não é permitido.');
+  }
   return evolutionPost(`/message/sendMedia/${encodeURIComponent(instance)}`, {
     number,
-    mediatype: step.type === 'document' ? 'document' : 'image',
-    mimetype: step.mimetype,
+    mediatype: mediaType,
+    mimetype: mimeType,
     caption: step.caption || '',
     media,
-    fileName: step.fileName,
+    fileName: safeMediaFilename(step.fileName, mimeType, mediaType === 'video' ? 'referencia' : mediaType),
   });
 }
 
-async function sendStep(number: string, step: Record<string, unknown>, postgresPath = false, baseUrl = ''): Promise<EvolutionDeliveryResult> {
-  if (step.type === 'text') return sendText(number, step.text as string);
-  return sendMedia(number, step, postgresPath, baseUrl);
+async function sendStep(
+  number: string,
+  step: Record<string, unknown>,
+  baseUrl: string,
+  records: PostgresMediaRecord[] = [],
+  revisionUrls: string[] = [],
+  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
+): Promise<EvolutionDeliveryResult> {
+  if (step.type === 'text') return sendText(number, String(step.text || ''));
+  return sendMedia(number, step, baseUrl, records, revisionUrls, verification);
 }
 
 // ── Media resolution ───────────────────────────────────────────────────────
@@ -343,53 +412,42 @@ async function sendStep(number: string, step: Record<string, unknown>, postgresP
 async function resolveProductMedia(
   categories: string[],
   maxPerGroup = 1,
-  postgresPath = false,
   applicationOrigin = '',
+  readRecords: () => Promise<PostgresMediaRecord[]> = readCommunicationMediaRecords,
+  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
 ): Promise<Record<string, unknown>[]> {
   if (!categories.length) return [];
-
-  // Scan KV for all media assets
-  let keys: string[] = [];
-  try {
-    const result = await kv.scan(0, { match: `${KV_KEY_MEDIA_PREFIX}*`, count: 200 });
-    keys = result[1] || [];
-  } catch {
-    /* ignore */
-  }
-
-  if (keys.length === 0) return [];
-
-  const entries = await Promise.all(keys.map((k) => kv.get(k)));
-  const media = (entries.filter(Boolean) as Array<Record<string, unknown>>).filter((m) => m.active !== false);
-
-  // Group by product_group
+  const media = (await readRecords()).filter((item) => item.active === true && !isMediaTombstone(item));
   const byGroup: Record<string, Array<Record<string, unknown>>> = {};
-  for (const m of media) {
-    const product_group = m.product_group as string | undefined;
-    const blob_url = m.blob_url as string | undefined;
-    if (!product_group || !blob_url) continue;
-    (byGroup[product_group] = byGroup[product_group] || []).push(m);
+  for (const item of media as Array<Record<string, unknown>>) {
+    const group = normalizeCategory(item.product_group);
+    if (!group || !item.blob_url) continue;
+    (byGroup[group] = byGroup[group] || []).push(item);
   }
 
-  // Resolve for each detected category
-  const resolved = [];
+  const resolved: Record<string, unknown>[] = [];
   for (const cat of categories) {
-    const normalized = normalizeCategory(cat);
-    const assets = (byGroup[normalized] || []).slice(0, maxPerGroup);
+    const assets = (byGroup[normalizeCategory(cat)] || []).slice(0, maxPerGroup);
     for (const asset of assets) {
-      let mediaUrl = String(asset.blob_url || '').trim();
-      if (postgresPath) {
-        try {
-          mediaUrl = normalizePostgresMediaUrl(mediaUrl, applicationOrigin);
-        } catch {
-          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
-        }
+      let verified;
+      try {
+        verified = await verifyOwnedBlobRecord(asset, applicationOrigin, {
+          headFn: verification.headFn,
+          token: verification.blobToken,
+          storeId: verification.blobStoreId,
+          expectedProductGroup: normalizeCategory(cat),
+        });
+      } catch (error) {
+        if (error && typeof error === 'object' && 'statusCode' in error) throw error;
+        throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
       }
+      const type = verified.contentType === 'video/mp4' ? 'video' : 'image';
       resolved.push({
-        type: 'image',
-        media: mediaUrl,
-        mimetype: asset.content_type || 'image/jpeg',
-        fileName: ((asset.pathname as string) || '').split('/').pop() || 'referencia.jpg',
+        type,
+        media: verified.url,
+        approvedRecord: asset,
+        mimetype: verified.contentType,
+        fileName: safeMediaFilename(asset.pathname, verified.contentType),
         caption: asset.caption || '',
       });
     }
@@ -466,68 +524,6 @@ async function recordSendEvent({
   return eventId;
 }
 
-// ── CRM Deal update ─────────────────────────────────────────────────────────
-
-async function queuePostgresSentEvent(
-  quotationId: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  const quotationUuid = firstNonEmpty(
-    payload.quotation_uuid,
-    payload.quotationUuid,
-    payload.quote_id,
-  );
-  const revisionId = firstNonEmpty(
-    payload.revision_id,
-    payload.revisionId,
-    payload.quote_revision_id,
-  );
-  // Only a validated PostgreSQL flow may create quotation.sent.
-  const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
-  if (!postgresPath) return;
-  if (!quotationUuid || !revisionId || !process.env.DATABASE_URL) {
-    throw new QuotationOutboxDurabilityError(new Error('Referências PostgreSQL ausentes.'));
-  }
-  try {
-    await enqueueQuotationSentEvent(getDatabase(), {
-      eventType: 'quotation.sent',
-      provider: 'crm',
-      quotationId: quotationUuid,
-      revisionId,
-      businessNumber: firstNonEmpty(
-        payload.business_number,
-        payload.businessNumber,
-        quotationId,
-      ),
-      idempotencyKey: deriveOpaqueQuotationOutboxIdempotencyKey(
-        payload.idempotency_key ?? payload.idempotencyKey,
-        `quotation.sent:crm:${quotationUuid}:${revisionId}`,
-        `${quotationUuid}:${revisionId}`,
-      ),
-    });
-  } catch (error) {
-    throw new QuotationOutboxDurabilityError(error);
-  }
-}
-
-async function updateDeal(dealId: string | null, quotationId: string): Promise<void> {
-  if (!dealId) return;
-  try {
-    await erpPut('CRM Deal', dealId, {
-      status: 'Orcamento Enviado',
-      custom_quotation: quotationId,
-      custom_quotation_sent_date: new Date().toISOString().slice(0, 10),
-      custom_follow_up_stage: 0,
-    });
-  } catch (err: unknown) {
-    const httpErr = err as HttpError;
-    console.warn(
-      '[send-whatsapp-flow] deal update failed:',
-      httpErr.logMessage || httpErr.message || err
-    );
-  }
-}
-
 // ── Flow resolution ────────────────────────────────────────────────────────
 
 async function resolveFlow(flowId: string): Promise<Record<string, any> | null> {
@@ -545,8 +541,24 @@ async function resolveFlow(flowId: string): Promise<Record<string, any> | null> 
 
 // ── Build planned steps from flow ──────────────────────────────────────────
 
-async function buildSteps(flow: Record<string, any>, context: Record<string, any>): Promise<Record<string, unknown>[]> {
-  const steps = [];
+function publicFlowStep(step: Record<string, unknown>): Record<string, unknown> {
+  const publicStep = { ...step };
+  delete publicStep.approvedData;
+  delete publicStep.deliveryMedia;
+  delete publicStep.approvedRecord;
+  if (step.generatedMedia === 'quotation_pdf') {
+    publicStep.media = 'quotation_pdf';
+    publicStep.media_ref = 'quotation_pdf';
+  }
+  return stripMediaInternals(publicStep);
+}
+
+async function buildSteps(
+  flow: Record<string, any>,
+  context: Record<string, any>,
+  mediaResolver: typeof resolveProductMedia = resolveProductMedia,
+): Promise<Record<string, unknown>[]> {
+  const steps: Record<string, unknown>[] = [];
   let pdfAdded = false;
 
   for (const rawStep of flow.steps || []) {
@@ -554,13 +566,17 @@ async function buildSteps(flow: Record<string, any>, context: Record<string, any
       const text = renderTemplate(rawStep.template || '', context).trim();
       if (text) steps.push({ type: 'text', text });
     } else if (rawStep.type === 'document' && rawStep.source === 'quotation_pdf') {
-      if (!pdfAdded && context.quotationId && (!context.postgresPath || context.pdfBase64)) {
+      if (!pdfAdded) {
+        if (!context.quotationId || !context.pdfBase64) {
+          throw createHttpError(503, 'Não foi possível preparar o PDF do orçamento.');
+        }
         const caption = rawStep.caption ? renderTemplate(rawStep.caption, context).trim() : '';
         steps.push({
           type: 'document',
-          media: context.pdfBase64
-            ? `__pdf-base64__:${context.pdfBase64}`
-            : `__pdf__:${context.quotationId}`,
+          media: 'quotation_pdf',
+          deliveryMedia: context.pdfBase64,
+          generatedMedia: 'quotation_pdf',
+          approvedData: true,
           mimetype: 'application/pdf',
           fileName: `${context.quotationId}.pdf`,
           caption,
@@ -568,15 +584,26 @@ async function buildSteps(flow: Record<string, any>, context: Record<string, any
         pdfAdded = true;
       }
     } else if (rawStep.type === 'product_media') {
-      const maxItems =
-        rawStep.max_items || context.maxMediaPerGroup || flow.max_media_per_product_group || 1;
-      const mediaSteps = await resolveProductMedia(
+      const maxItems = rawStep.max_items || context.maxMediaPerGroup || flow.max_media_per_product_group || 1;
+      const mediaSteps = await mediaResolver(
         context.categories,
         maxItems,
-        context.postgresPath === true,
         context.applicationOrigin || '',
       );
-      for (const ms of mediaSteps) steps.push(ms);
+      if (mediaSteps.length === 0) {
+        throw createHttpError(400, 'A etapa de mídia não encontrou imagens autorizadas.');
+      }
+      for (const mediaStep of mediaSteps) {
+        const media = String(mediaStep.media || '').trim();
+        if (!media) throw createHttpError(400, 'A etapa de mídia não possui conteúdo.');
+        try {
+          normalizeOwnedBlobUrl(media, context.applicationOrigin || '');
+        } catch {
+          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
+        }
+        if (media && !context.permittedMedia.includes(media)) context.permittedMedia.push(media);
+        steps.push(mediaStep);
+      }
     }
   }
 
@@ -593,71 +620,265 @@ export function resolveServerIssuedPublicLink(
     : '';
 }
 
-// ── N8n webhook ────────────────────────────────────────────────────────────
-
-function fireN8n(payload: Record<string, unknown>): void {
-  const n8nUrl = process.env.N8N_WEBHOOK_URL;
-  if (!n8nUrl) return;
-  fetch(n8nUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      event: 'whatsapp_flow_sent',
-      ...payload,
-    }),
-  }).catch((err) => console.error('[send-whatsapp-flow] n8n webhook failed:', err.message));
-}
-
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export type SendWhatsappFlowDependencies = {
   repository?: ReturnType<typeof createQuotationTemplateRepository>;
   store?: Parameters<typeof loadPostgresSendContext>[0]['store'];
   token?: () => string;
+  headBlob?: BlobHead;
+  blobToken?: string;
+  blobStoreId?: string;
   renderPdf?: Parameters<typeof loadPostgresSendContext>[0]['renderPdf'];
+  mediaRecords?: Array<Record<string, unknown>>;
+  readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
+  resolveDeal?: Parameters<typeof loadPostgresSendContext>[0]['resolveDeal'];
+  resolveMedia?: typeof resolveProductMedia;
   resolveFlow?: (flowId: string) => Promise<Record<string, any> | null>;
   checkDuplicate?: typeof checkDuplicate;
   recordSendEvent?: typeof recordSendEvent;
-  enqueueSentEvent?: typeof queuePostgresSentEvent;
+  reservationStore?: WhatsappSendReservationStore;
+  beforeTransport?: (idempotencyKey: string) => Promise<void>;
 };
+
+function reservationPhase(record: WhatsappSendReservationRecord): string {
+  return record.phase;
+}
+
+function stepKind(step: Record<string, unknown>): WhatsappSendAcceptedStepKind {
+  if (step.type === 'text') return 'text';
+  if (step.type === 'video') return 'video';
+  if (step.type === 'document') return 'document';
+  return 'image';
+}
+
+function neutralTerminalResult(result: Record<string, unknown>, steps: Record<string, unknown>[]): Record<string, unknown> {
+  const neutral = { ...result };
+  delete neutral.phone;
+  return { ...neutral, steps: steps.map((step) => ({ type: stepKind(step) })) };
+}
+
+function reconciliationBody(phase = 'reconciling'): Record<string, unknown> {
+  return {
+    error: 'O envio permanece em reconciliação. Não reenvie automaticamente.',
+    send_status: phase,
+    reconciliation_required: true,
+  };
+}
+
+function existingReservationResponse(
+  record: WhatsappSendReservationRecord,
+  flowId: string,
+): FunctionResult | null {
+  const existingPhase = reservationPhase(record);
+  if (existingPhase === 'completed') {
+    if (!record.result) throw new WhatsappSendReservationStorageError();
+    return jsonResponse(200, sanitizeWhatsappSendTerminalResult(record.result, flowId));
+  }
+  if (existingPhase === 'accepted_partial') {
+    return jsonResponse(503, {
+      error: 'O transporte foi aceito e aguarda reconciliação. Não reenvie automaticamente.',
+      send_status: 'accepted_partial',
+      accepted_partial: true,
+      provider_accepted: true,
+      partial_send: true,
+      reconciliation_required: true,
+    });
+  }
+  if (existingPhase === 'transporting') return jsonResponse(409, reconciliationBody());
+  if (existingPhase === 'reserved' && !isWhatsappSendReservationStale(record)) {
+    return jsonResponse(409, {
+      error: 'Já existe uma reserva para esta revisão e fluxo. Aguarde a reconciliação.',
+      send_status: 'reserved',
+      reconciliation_required: true,
+    });
+  }
+  return null;
+}
+
+function validatedReservationRecord(
+  value: unknown,
+  key: string,
+): WhatsappSendReservationRecord {
+  return parseWhatsappSendReservationRecord(value, key);
+}
+
+function explicitCasResult(value: unknown, key: string): WhatsappSendReservationCasResult {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || typeof (value as { ok?: unknown }).ok !== 'boolean') {
+    return { ok: false, reason: 'invalid' };
+  }
+  const source = value as { ok: boolean; record?: unknown; reason?: unknown };
+  if (source.ok) {
+    try {
+      return { ok: true, record: validatedReservationRecord(source.record, key) };
+    } catch {
+      return { ok: false, reason: 'invalid' };
+    }
+  }
+  if (!['missing', 'conflict', 'invalid', 'storage'].includes(String(source.reason))) {
+    return { ok: false, reason: 'invalid' };
+  }
+  if (source.record === undefined) return { ok: false, reason: source.reason as 'missing' | 'conflict' | 'invalid' | 'storage' };
+  try {
+    return {
+      ok: false,
+      reason: source.reason as 'missing' | 'conflict' | 'invalid' | 'storage',
+      record: validatedReservationRecord(source.record, key),
+    };
+  } catch {
+    return { ok: false, reason: 'invalid' };
+  }
+}
+
+async function casReservation(
+  store: WhatsappSendReservationStore,
+  input: Parameters<WhatsappSendReservationStore['compareAndSet']>[0],
+): Promise<WhatsappSendReservationCasResult> {
+  const candidate = store as WhatsappSendReservationStore & {
+    compareAndSet?: WhatsappSendReservationStore['compareAndSet'];
+    cas?: WhatsappSendReservationStore['cas'];
+  };
+  const raw = typeof candidate.compareAndSet === 'function'
+    ? await candidate.compareAndSet(input)
+    : typeof candidate.cas === 'function'
+      ? await candidate.cas(input)
+      : undefined;
+  return explicitCasResult(raw, input.key);
+}
+
+async function casWithRetry(
+  store: WhatsappSendReservationStore,
+  input: Parameters<WhatsappSendReservationStore['compareAndSet']>[0],
+): Promise<WhatsappSendReservationCasResult> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const result = await casReservation(store, input);
+      if (!result.ok && result.reason === 'storage') {
+        if (attempt === 2) throw new WhatsappSendReservationStorageError();
+        await wait(10 * (attempt + 1));
+        continue;
+      }
+      return result;
+    } catch (error) {
+      if (attempt === 2) {
+        if (error instanceof WhatsappSendReservationStorageError) throw error;
+        throw new WhatsappSendReservationStorageError();
+      }
+      await wait(10 * (attempt + 1));
+    }
+  }
+  throw new WhatsappSendReservationStorageError();
+}
+
+async function reservationConflictResponse(
+  store: WhatsappSendReservationStore,
+  key: string,
+  flowId: string,
+  conflict: WhatsappSendReservationCasResult,
+): Promise<FunctionResult> {
+  if (conflict.ok) {
+    try {
+      if (conflict.record.phase !== 'completed' || !conflict.record.result) return jsonResponse(503, reconciliationBody());
+      return jsonResponse(200, sanitizeWhatsappSendTerminalResult(conflict.record.result, flowId));
+    } catch {
+      return jsonResponse(503, reconciliationBody());
+    }
+  }
+  try {
+    const current = await store.get(key);
+    if (current) {
+      const validated = parseWhatsappSendReservationRecord(current, key);
+      if (validated.phase === 'completed' && validated.result) {
+        return jsonResponse(200, sanitizeWhatsappSendTerminalResult(validated.result, flowId));
+      }
+    }
+    return jsonResponse(conflict.reason === 'missing' ? 503 : 409, reconciliationBody());
+  } catch {
+    return jsonResponse(503, reconciliationBody());
+  }
+}
+
+async function acceptedProviderCasFailure(
+  store: WhatsappSendReservationStore,
+  key: string,
+  flowId: string,
+  failure: WhatsappSendReservationCasResult,
+): Promise<FunctionResult> {
+  try {
+    const current = await store.get(key);
+    if (current) {
+      const validated = parseWhatsappSendReservationRecord(current, key);
+      if (validated.phase === 'completed' && validated.result) {
+        return jsonResponse(200, sanitizeWhatsappSendTerminalResult(validated.result, flowId));
+      }
+    }
+    if (!failure.ok && failure.reason === 'conflict') return jsonResponse(409, reconciliationBody());
+  } catch {
+    // Keep the neutral reconciliation response below when the state cannot be read.
+  }
+  return jsonResponse(503, {
+    error: 'O transporte foi aceito, mas a reconciliação não pôde ser persistida. Não reenvie automaticamente.',
+    send_status: 'reconciling',
+    reconciliation_required: true,
+  });
+}
 
 export async function handler(
   event: FunctionEvent,
   dependencies: SendWhatsappFlowDependencies = {},
 ): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'send-whatsapp-flow não está disponível no modo operacional.' }) };
-  }
-  if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Method Not Allowed' });
+  if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Método não permitido.' });
 
-  let payload;
+  let payload: Record<string, any>;
   try {
-    payload = JSON.parse(event.body || '{}');
+    const parsed = JSON.parse(event.body || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('object');
+    payload = parsed;
   } catch {
     return jsonResponse(400, { error: 'JSON inválido.' });
   }
 
-  let providerAcceptedCount = 0;
-  let providerDeliveryComplete = false;
-  let postgresOutboxContext: { quotationId: string; payload: Record<string, unknown> } | null = null;
-  const enqueueSentEvent = dependencies.enqueueSentEvent || queuePostgresSentEvent;
   const flowResolver = dependencies.resolveFlow || resolveFlow;
   const duplicateChecker = dependencies.checkDuplicate || checkDuplicate;
   const sendEventRecorder = dependencies.recordSendEvent || recordSendEvent;
+  const reservationStore = dependencies.reservationStore || defaultWhatsappSendReservationStore;
+  let reservation: WhatsappSendReservationRecord | null = null;
+  let reservationKey!: string;
+
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
+    const rawFlowId = firstNonEmpty(payload.flow_id, payload.flowId);
+    const rawQuotationId = firstNonEmpty(
+      payload.quotation_uuid,
+      payload.quotationUuid,
+      payload.quotation_id,
+      payload.quotationId,
+      payload.business_number,
+      payload.businessNumber,
+      payload.quote_id,
+    );
+    const rawRevisionId = firstNonEmpty(payload.revision_id, payload.revisionId, payload.quote_revision_id);
+    if (!rawFlowId) throw createHttpError(400, 'ID do fluxo é obrigatório.');
+    if (!rawQuotationId) throw createHttpError(400, 'Cotação PostgreSQL é obrigatória.');
+    if (!rawRevisionId) throw createHttpError(400, 'Revisão PostgreSQL do orçamento é obrigatória.');
+    const flowId = minimalLocalIdentifier(rawFlowId, 'ID do fluxo');
+    const quotationId = minimalLocalIdentifier(rawQuotationId, 'Identificador do orçamento');
+    const revisionId = minimalLocalIdentifier(rawRevisionId, 'Identificador da revisão');
 
-    const flowId = String(payload.flow_id || payload.flowId || '').trim();
-    if (!flowId) throw createHttpError(400, 'ID do fluxo é obrigatório.');
-
-    const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
-    const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
-    if (postgresPath && !quotationId) {
-      throw createHttpError(400, 'Cotação PostgreSQL é obrigatória.');
-    }
-    const revisionId = firstNonEmpty(payload.revision_id, payload.revisionId, payload.quote_revision_id);
-    if (postgresPath && !revisionId) {
-      throw createHttpError(400, 'Revisão PostgreSQL do orçamento não informada.');
+    reservationKey = canonicalWhatsappSendIdempotencyKey(quotationId, revisionId, flowId);
+    if (!dryRun) {
+      let current: WhatsappSendReservationRecord | null;
+      try {
+        current = await reservationStore.get(reservationKey);
+      } catch (error) {
+        if (error instanceof WhatsappSendReservationStorageError) throw error;
+        throw new WhatsappSendReservationStorageError();
+      }
+      if (current) {
+        const validated = validatedReservationRecord(current, reservationKey);
+        const replay = existingReservationResponse(validated, flowId);
+        if (replay) return replay;
+      }
     }
 
     const flow = await flowResolver(flowId);
@@ -666,202 +887,193 @@ export async function handler(
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
     const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
     const baseUrl = `${proto}://${host}`;
-    let nome = '';
-    let telefone = '';
-    let dealId: string | null = null;
-    let items: Record<string, unknown>[] = [];
-    let link = '';
-    let pdfBase64 = '';
-    let businessNumber = quotationId;
-
-    if (postgresPath) {
-      const context = await loadPostgresSendContext({
-        quotationId,
-        revisionId,
-        businessNumber: firstNonEmpty(payload.business_number, payload.businessNumber),
-        recipientPhone: firstNonEmpty(payload.phone, payload.telefone) || undefined,
-        needPdf: (flow.steps || []).some(
-          (step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf',
-        ),
-        baseUrl,
-        repository: dependencies.repository || createQuotationTemplateRepository(),
-        store: dependencies.store,
-        token: dependencies.token,
-        renderPdf: dependencies.renderPdf,
-      });
-      payload.quotation_uuid = context.quotationUuid;
-      payload.revision_id = context.revisionId;
-      payload.business_number = context.businessNumber;
-      businessNumber = canonicalFlowQuotationId(quotationId, context.businessNumber);
-      link = context.publicLink;
-      pdfBase64 = context.pdfBase64;
-      nome = context.nome;
-      telefone = context.telefone;
-      items = context.view.items as Record<string, unknown>[];
-      postgresOutboxContext = { quotationId: businessNumber, payload };
-    } else if (quotationId) {
-      try {
-        const quotation = await erpGetDoc('Quotation', quotationId) as Record<string, unknown>;
-        nome = firstNonEmpty(payload.nome, quotation?.customer_name, quotation?.party_name);
-        telefone = firstNonEmpty(payload.phone || payload.telefone, quotation?.contact_mobile, quotation?.contact_phone);
-        items = (quotation?.items as Record<string, unknown>[]) || [];
-        const deals = await erpGetList('CRM Deal', {
-          filters: [['custom_quotation', '=', quotationId]],
-          fields: ['name', 'mobile_no'],
-          limit: 1,
-        });
-        if (deals.length > 0) {
-          dealId = deals[0].name;
-          telefone = firstNonEmpty(telefone, deals[0].mobile_no);
-        }
-        // Legacy links cannot use the protected generic view route. Keep the
-        // legacy send behavior but omit an unsupported customer link.
-      } catch {
-        // Non-fatal for explicit legacy callers: use provided contact fields.
-      }
-    }
-
-    if (!postgresPath) {
-      nome = firstNonEmpty(payload.nome, nome);
-      telefone = firstNonEmpty(payload.phone || payload.telefone, telefone);
-      items = (payload.items || items || []) as Record<string, unknown>[];
-      dealId = payload.deal_id || payload.dealId || dealId;
-    }
-    link = resolveServerIssuedPublicLink(postgresPath, link, baseUrl);
-
-    const number = normalizePhone(telefone);
-    if (!number) throw createHttpError(400, 'Telefone inválido ou ausente.');
-
+    const context = await loadPostgresSendContext({
+      quotationId,
+      revisionId,
+      businessNumber: firstNonEmpty(payload.business_number, payload.businessNumber),
+      recipientPhone: firstNonEmpty(payload.phone, payload.telefone) || undefined,
+      needPdf: (flow.steps || []).some((step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf'),
+      baseUrl,
+      repository: dependencies.repository || createQuotationTemplateRepository(),
+      store: dependencies.store,
+      token: dependencies.token,
+      renderPdf: dependencies.renderPdf,
+      mediaRecords: dependencies.mediaRecords,
+      readMediaRecords: dependencies.readMediaRecords,
+      resolveDeal: dependencies.resolveDeal,
+    });
+    const businessNumber = canonicalFlowQuotationId(quotationId, context.businessNumber);
+    const link = resolveServerIssuedPublicLink(true, context.publicLink, baseUrl);
+    const items = context.view.items as Record<string, unknown>[];
     const categories = detectCategories(items);
-    const productSummary = flowProductSummary(postgresPath, payload.product_summary, items);
-    const context = {
-      nome,
+    const productSummary = flowProductSummary(true, undefined, items);
+    const flowContext = {
+      nome: context.nome,
       quotationId: businessNumber,
       link,
-      pdfBase64,
-      postgresPath,
+      pdfBase64: context.pdfBase64,
+      postgresPath: true,
       applicationOrigin: baseUrl,
-      vendorName: flow.vendor_name || payload.vendedora || 'Juliana',
+      permittedMedia: link ? [link] : [],
+      vendorName: flow.vendor_name || 'Juliana',
       productSummary,
       categories,
       maxMediaPerGroup: flow.max_media_per_product_group || 1,
     };
-
-    // Build steps
-    const steps = await buildSteps(flow, context);
+    const mediaVerification = { headFn: dependencies.headBlob, blobToken: dependencies.blobToken, blobStoreId: dependencies.blobStoreId };
+    const injectedMediaReader = dependencies.mediaRecords
+      ? async () => dependencies.mediaRecords as PostgresMediaRecord[]
+      : dependencies.readMediaRecords
+        ? async () => (await dependencies.readMediaRecords!()) as PostgresMediaRecord[]
+        : readCommunicationMediaRecords;
+    const mediaResolver = dependencies.resolveMedia || ((cats, maxItems, origin) => resolveProductMedia(cats, maxItems, origin, injectedMediaReader, mediaVerification));
+    const steps = await buildSteps(flow, flowContext, mediaResolver);
     if (steps.length === 0) throw createHttpError(400, 'Fluxo não gerou nenhuma etapa válida.');
+    if (steps.length > 64) throw createHttpError(400, 'O fluxo excede o limite de etapas reconciliáveis.');
+    const approvedRecords = steps.map((step) => step.approvedRecord).filter((record): record is PostgresMediaRecord => Boolean(record));
+    await prepareFlowSteps(steps, baseUrl, approvedRecords, link ? [link] : [], mediaVerification);
 
-    // Duplicate check
-    let duplicateWarning = false;
-    if (businessNumber && !dryRun) {
-      duplicateWarning = await duplicateChecker(businessNumber, number, flowId);
+    if (!dryRun) {
+      let decision;
+      try {
+        decision = await reservationStore.reserve({
+          key: reservationKey,
+          quotationId,
+          revisionId,
+          flowId,
+          stepsCount: steps.length,
+        });
+      } catch (error) {
+        if (error instanceof WhatsappSendReservationStorageError) throw error;
+        throw new WhatsappSendReservationStorageError();
+      }
+      const validated = validatedReservationRecord(decision.record, reservationKey);
+      if (decision.kind === 'existing') {
+        const replay = existingReservationResponse(validated, flowId);
+        if (replay) return replay;
+        if (validated.stepsCount !== steps.length) {
+          throw new WhatsappSendReservationStorageError('O fluxo mudou enquanto o envio estava pendente.');
+        }
+        return jsonResponse(409, reconciliationBody());
+      }
+      if (validated.stepsCount !== steps.length) {
+        throw new WhatsappSendReservationStorageError('A quantidade de etapas da reserva não corresponde ao fluxo.');
+      }
+      reservation = validated;
     }
 
-    // Send
+    let duplicateWarning = false;
+    if (businessNumber && !dryRun) duplicateWarning = await duplicateChecker(businessNumber, context.phone, flowId);
+
     const evolution: EvolutionDeliveryResult[] = [];
     if (!dryRun) {
+      // Configuration is deliberately checked after reservation and preparation.
       assertEvolutionConfig();
-      for (let i = 0; i < steps.length; i++) {
-        if (i > 0)
-          await wait(randomDelay(flow.delay_min_seconds * 1000, flow.delay_max_seconds * 1000));
-        const resp = await sendStep(number, steps[i], postgresPath, baseUrl);
-        if (!resp.accepted) throw createHttpError(502, 'O provedor não confirmou a mensagem.');
-        providerAcceptedCount += 1;
-        evolution.push(resp);
+      await dependencies.beforeTransport?.(reservationKey);
+      for (let index = 0; index < steps.length; index += 1) {
+        if (index > 0) await wait(randomDelay(flow.delay_min_seconds * 1000, flow.delay_max_seconds * 1000));
+        if (!reservation) throw new WhatsappSendReservationStorageError();
+        const transporting = await casWithRetry(reservationStore, {
+          key: reservation.key,
+          owner: reservation.owner,
+          expectedVersion: reservation.version,
+          from: reservationPhase(reservation) as 'reserved' | 'accepted_partial',
+          to: 'transporting',
+          currentStep: index,
+        });
+        if (!transporting.ok) return await reservationConflictResponse(reservationStore, reservation.key, flowId, transporting);
+        reservation = transporting.record;
+        const response = await sendStep(context.phone, steps[index], baseUrl, approvedRecords, link ? [link] : [], mediaVerification);
+        if (!response.accepted) return jsonResponse(503, reconciliationBody());
+        // Persist neutral acceptance before any next step or bookkeeping.
+        const accepted = await casWithRetry(reservationStore, {
+          key: reservation.key,
+          owner: reservation.owner,
+          expectedVersion: reservation.version,
+          from: 'transporting',
+          to: 'accepted_partial',
+          currentStep: index,
+          acceptedStep: { step: index, kind: stepKind(steps[index]) },
+          errorMessage: 'O transporte foi aceito e aguarda reconciliação.',
+        });
+        if (!accepted.ok) return await acceptedProviderCasFailure(reservationStore, reservation.key, flowId, accepted);
+        reservation = accepted.record;
+        evolution.push(response);
       }
-      providerDeliveryComplete = true;
-      await enqueueSentEvent(businessNumber, payload);
-      if (!postgresPath) await updateDeal(dealId, businessNumber);
     }
 
-    // Record send event
     let sendEventId = null;
     if (!dryRun) {
       sendEventId = await sendEventRecorder({
         quotationId: businessNumber,
-        phone: number,
+        phone: context.phone,
         flowId,
-        flowName: flow.name,
-        steps,
+        flowName: String(flow.name || 'Fluxo'),
+        steps: steps.map(publicFlowStep),
         evolution,
         duplicateWarning,
       });
     }
-
-    // N8n webhook (fire-and-forget)
-    if (!dryRun) {
-      fireN8n({ quotation_id: businessNumber, deal_id: dealId, nome, phone: number, flow_id: flowId });
-    }
-
-    return jsonResponse(200, {
+    const resultBody: Record<string, unknown> = {
       success: true,
       dry_run: dryRun,
+      send_status: dryRun ? 'dry_run' : 'completed',
       duplicate_warning: duplicateWarning,
-      duplicate_message: duplicateWarning
-        ? 'Este fluxo já foi enviado para este telefone há menos de 30 minutos.'
-        : '',
+      duplicate_message: duplicateWarning ? 'Este fluxo já foi enviado para este telefone há menos de 30 minutos.' : '',
       flow_id: flowId,
-      flow_name: flow.name,
+      flow_name: String(flow.name || 'Fluxo'),
       quotation_id: businessNumber || null,
-      deal_id: dealId || null,
-      phone: number,
+      deal_id: context.dealId || null,
+      phone: context.phone,
       product_summary: productSummary,
       categories,
       steps_count: steps.length,
-      steps,
-      evolution,
+      steps: steps.map(publicFlowStep),
       send_event_id: sendEventId,
-    });
-  } catch (err: unknown) {
-    const httpErr = err as HttpError & {
-      providerAccepted?: boolean;
-      outboxDurable?: boolean;
-      alertId?: string;
     };
+    if (reservation) {
+      const completed = await casWithRetry(reservationStore, {
+        key: reservation.key,
+        owner: reservation.owner,
+        expectedVersion: reservation.version,
+        from: 'accepted_partial',
+        to: 'completed',
+        result: neutralTerminalResult(resultBody, steps),
+      });
+      if (!completed.ok) return await reservationConflictResponse(reservationStore, reservation.key, flowId, completed);
+    }
+    return jsonResponse(200, resultBody);
+  } catch (err: unknown) {
+    const httpErr = err as HttpError;
     const code = Number.isInteger(httpErr?.statusCode) ? httpErr.statusCode : 500;
     console.error('[send-whatsapp-flow]', httpErr?.logMessage || httpErr?.message || err);
-    if (err instanceof QuotationOutboxDurabilityError) {
-      console.error(`[send-whatsapp-flow] durable outbox alert ${err.alertId}`);
-      return jsonResponse(code, {
-        error: err.message,
-        provider_accepted: true,
-        outbox_durable: false,
-        partial_send: providerAcceptedCount > 0 && !providerDeliveryComplete,
-        alert_id: err.alertId,
-      });
+    if (err instanceof WhatsappSendReservationStorageError) {
+      return jsonResponse(503, { error: 'Não foi possível consultar o estado durável do envio. Tente novamente sem repetir automaticamente.', send_status: 'reconciling', reconciliation_required: true });
     }
-    if (providerAcceptedCount > 0) {
-      if (postgresOutboxContext) {
+    if (reservation) {
+      const currentPhase = reservationPhase(reservation);
+      if (currentPhase === 'reserved') {
         try {
-          await enqueueSentEvent(
-            postgresOutboxContext.quotationId,
-            postgresOutboxContext.payload,
-          );
-          return jsonResponse(502, {
-            error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',
-            provider_accepted: true,
-            outbox_durable: true,
-            partial_send: true,
-            accepted_steps: providerAcceptedCount,
+          const transitioned = await casWithRetry(reservationStore, {
+            key: reservation.key,
+            owner: reservation.owner,
+            expectedVersion: reservation.version,
+            from: 'reserved',
+            to: 'retryable',
+            errorMessage: 'Falha antes do transporte.',
           });
-        } catch (queueError) {
-          const durability = queueError as { alertId?: string };
-          return jsonResponse(503, {
-            error: 'Parte da mensagem foi aceita, mas o rastreamento durável falhou.',
-            provider_accepted: true,
-            outbox_durable: false,
-            partial_send: true,
-            accepted_steps: providerAcceptedCount,
-            alert_id: durability.alertId,
-          });
+          if (!transitioned.ok) return await reservationConflictResponse(reservationStore, reservation.key, reservation.flowId, transitioned);
+        } catch {
+          return jsonResponse(503, { error: 'Não foi possível persistir a falha segura antes do transporte. Não repita automaticamente.', send_status: 'reconciling', reconciliation_required: true });
         }
+        return jsonResponse(code, { error: 'Falha antes do transporte. Tente novamente.', send_status: 'retryable' });
       }
-      return jsonResponse(502, {
-        error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',
-        provider_accepted: true,
-        outbox_durable: true,
-        partial_send: true,
-        accepted_steps: providerAcceptedCount,
+      return jsonResponse(503, {
+        error: 'O envio permanece em reconciliação. Não reenvie automaticamente.',
+        send_status: currentPhase === 'accepted_partial' ? 'accepted_partial' : 'reconciling',
+        accepted_partial: currentPhase === 'accepted_partial',
+        provider_accepted: currentPhase === 'accepted_partial',
+        reconciliation_required: true,
       });
     }
     return jsonResponse(code, { error: httpErr?.message || 'Erro interno.' });

@@ -9,7 +9,6 @@ export function makeQuoteLead(overrides: Partial<QuoteLead> = {}): QuoteLead {
     pedidoTexto: 'Produto: Lenços\nQuantidade: 100',
     source: 'typebot',
     status: 'new',
-    erpLeadId: null,
     quotationId: null,
     createdAt: '2026-07-01T12:00:00.000Z',
     updatedAt: '2026-07-01T12:00:00.000Z',

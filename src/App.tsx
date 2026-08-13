@@ -1,14 +1,11 @@
-import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, type ReactNode } from 'react';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/PageLoader';
-import { apiGet } from '@/lib/api';
 
-// Eager pages — rota padrão e tela de login (críticas, pequenas)
 import AutoQuotePage from '@/pages/AutoQuotePage';
 import LoginPage from '@/pages/LoginPage';
 
-// Lazy pages — carregadas sob demanda ao navegar
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const PreQuotesPage = lazy(() => import('@/pages/PreQuotesPage'));
 const QuotationsPage = lazy(() => import('@/pages/QuotationsPage'));
@@ -25,28 +22,9 @@ const ManualOrcamentoPage = lazy(() => import('@/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/pages/ComunicacaoPage'));
 const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
-// Routes hidden in operational mode (Frappe-dependent)
-const HIDDEN_ROUTES = new Set([
-  '/dashboard',
-  '/pre-orcamentos',
-  '/sales-orders',
-  '/crm',
-  '/comunicacao',
-  '/whatsapp-inbox',
-]);
-
-function renderPage(route: string, navigate: (hash: string) => void, operationalMode: boolean) {
-  // In operational mode, redirect hidden and unknown routes to /manual
-  if (operationalMode) {
-    if (HIDDEN_ROUTES.has(route) || route === '' || route === '/') {
-      navigate('/manual');
-      return <PageLoader />;
-    }
-  }
-  // Login page — full screen, no layout
+function renderPage(route: string, navigate: (hash: string) => void) {
   if (route === '/login') return <LoginPage navigate={navigate} />;
 
-  // Detail page: #/quotations/ORC-20261143
   if (route.startsWith('/quotations/')) {
     const id = route.split('/quotations/')[1];
     return (
@@ -56,12 +34,7 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
     );
   }
 
-  // Detail page: #/sales-orders/VP-20261143
   if (route.startsWith('/sales-orders/')) {
-    if (operationalMode) {
-      navigate('/manual');
-      return <PageLoader />;
-    }
     const id = route.split('/sales-orders/')[1];
     return (
       <Suspense fallback={<PageLoader />}>
@@ -70,29 +43,15 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
     );
   }
 
-  // Unknown route in operational mode -> redirect to /manual
-  if (
-    operationalMode &&
-    !['/auto', '/quotations', '/products', '/leads', '/settings', '/manual'].includes(route) &&
-    !route.startsWith('/quotations/') &&
-    !route.startsWith('/products/') &&
-    !route.startsWith('/leads/')
-  ) {
-    navigate('/manual');
-    return <PageLoader />;
-  }
-
-  // Product detail page: #/products/LNC-SED-70
   if (route.startsWith('/products/')) {
     const sku = route.split('/products/')[1];
     return (
       <Suspense fallback={<PageLoader />}>
-        <ProductDetailPage sku={sku} navigate={navigate} />
+        <ProductDetailPage key={sku} sku={sku} navigate={navigate} />
       </Suspense>
     );
   }
 
-  // Lead/Customer detail page: #/leads/lead/CRM-LEAD-... or #/leads/cliente/CUST-...
   if (route.startsWith('/leads/')) {
     const parts = route.split('/');
     const tipo = parts[2];
@@ -107,7 +66,6 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
   }
 
   let page: ReactNode;
-
   switch (route) {
     case '/dashboard':
       page = <DashboardPage navigate={navigate} />;
@@ -146,39 +104,21 @@ function renderPage(route: string, navigate: (hash: string) => void, operational
       page = <WhatsAppInboxPage navigate={navigate} />;
       break;
     default:
-      page = operationalMode ? <ManualOrcamentoPage /> : <AutoQuotePage />;
+      page = <AutoQuotePage />;
   }
 
-  // AutoQuotePage is eager; wrap lazy pages (all switch cases except auto/default)
-  if (route === '/auto' || route === '' || route === '/') {
-    return page;
-  }
-
+  if (route === '/auto' || route === '' || route === '/') return page;
   return <Suspense fallback={<PageLoader />}>{page}</Suspense>;
 }
 
 export default function App() {
   const [route, navigate] = useHashRoute();
-  const [operationalMode, setOperationalMode] = useState(false);
 
-  useEffect(() => {
-    apiGet<{ operational_mode?: boolean }>('/settings')
-      .then((result) => {
-        if (typeof result.operational_mode === 'boolean') {
-          setOperationalMode(result.operational_mode);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Login page - full screen, no sidebar
-  if (route === '/login') {
-    return <LoginPage navigate={navigate} />;
-  }
+  if (route === '/login') return <LoginPage navigate={navigate} />;
 
   return (
     <Layout route={route} onNavigate={navigate}>
-      {renderPage(route, navigate, operationalMode)}
+      {renderPage(route, navigate)}
     </Layout>
   );
 }

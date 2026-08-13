@@ -3,7 +3,6 @@ import {
   Search,
   AlertTriangle,
   Tag,
-  Trash2,
   PlusCircle,
   Archive,
   ArchiveRestore,
@@ -19,7 +18,10 @@ import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/components/ui/table';
-import type { Product, ProductsApiResponse } from '@/types/domain';
+import { projectProductListResponse, type ProjectedProductListRow } from '@/lib/localProjections';
+
+type Product = ProjectedProductListRow;
+type ProductsApiResponse = unknown;
 
 const PAGE_SIZES = [10, 25, 50];
 
@@ -47,7 +49,6 @@ export default function ProductsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sort, setSort] = useState<string>('modified desc');
   const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
-  const [coreMode, setCoreMode] = useState<boolean>(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearPendingSearch = useCallback(() => {
     if (searchTimer.current) {
@@ -72,11 +73,15 @@ export default function ProductsPage() {
       params.set('status', statusVal);
 
       const result = await apiGet<ProductsApiResponse>(`/products?${params.toString()}`);
-      setCoreMode(result.core_mode === true);
-      setData(result.data || []);
-      setTotalPages(result.pagination?.total_pages || 0);
-      setTotalRecords(result.pagination?.total || 0);
+      const projected = projectProductListResponse(result);
+      if (!projected) throw new Error('Resposta inválida ao carregar produtos.');
+      setData(projected.data);
+      setTotalPages(projected.pagination.total_pages);
+      setTotalRecords(projected.pagination.total);
     } catch (err) {
+      setData([]);
+      setTotalPages(0);
+      setTotalRecords(0);
       setError((err as Error).message || 'Erro ao carregar produtos.');
     } finally {
       setLoading(false);
@@ -149,10 +154,10 @@ export default function ProductsPage() {
   // ── Delete ──
 
   const handleDelete = useCallback(async (sku: string, archived: boolean) => {
-    const action = coreMode ? (archived ? 'restaurar' : 'arquivar') : 'excluir';
+    const action = archived ? 'restaurar' : 'arquivar';
     if (!confirm(`Tem certeza que deseja ${action} o produto ${sku}?`)) return;
     try {
-      if (coreMode && archived) {
+      if (archived) {
         await apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true });
       } else {
         await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
@@ -162,13 +167,13 @@ export default function ProductsPage() {
     } catch (err) {
       alert(`Erro ao ${action}: ` + ((err as Error).message || 'Tente novamente.'));
     }
-  }, [coreMode, fetchData, limit, page, search, sort, status]);
+  }, [fetchData, limit, page, search, sort, status]);
 
   const handleBulkDelete = useCallback(async () => {
     const selected = data.filter((row) => selectedIds.includes(row.sku || row.item_code || ''));
-    if (selected.length === 0 || (coreMode && status === 'archived')) return;
+    if (selected.length === 0 || status === 'archived') return;
 
-    const action = coreMode ? 'arquivar' : 'excluir';
+    const action = 'arquivar';
     if (!confirm(`Tem certeza que deseja ${action} ${selected.length} produto${selected.length !== 1 ? 's' : ''}?`)) return;
 
     try {
@@ -180,7 +185,7 @@ export default function ProductsPage() {
     } catch (err) {
       alert('Erro ao excluir produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'));
     }
-  }, [coreMode, data, selectedIds, page, search, limit, sort, status, fetchData]);
+  }, [data, selectedIds, page, search, limit, sort, status, fetchData]);
 
   const selectedCount = selectedIds.length;
 
@@ -212,8 +217,7 @@ export default function ProductsPage() {
             ))}
           </select>
         </div>
-        {coreMode && (
-          <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1 text-xs">
+        <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1 text-xs">
             {(['active', 'archived', 'all'] as const).map((value) => (
               <button
                 key={value}
@@ -228,8 +232,7 @@ export default function ProductsPage() {
                 {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
               </button>
             ))}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Sorting */}
@@ -332,10 +335,10 @@ export default function ProductsPage() {
                         <button
                           onClick={() => handleDelete(sku, p.ativo === false)}
                           className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
-                          aria-label={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} produto ${sku}`}
-                          title={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} ${sku}`}
+                          aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
+                          title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
                         >
-                          {coreMode ? (p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />) : <Trash2 size={18} />}
+                          {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
                         </button>
                       </TableCell>
                     </TableRow>
@@ -391,10 +394,10 @@ export default function ProductsPage() {
                     <button
                       onClick={() => handleDelete(sku, p.ativo === false)}
                       className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors shrink-0"
-                      aria-label={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} produto ${sku}`}
-                      title={`${coreMode ? (p.ativo === false ? 'Restaurar' : 'Arquivar') : 'Excluir'} ${sku}`}
+                      aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
+                      title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
                     >
-                      {coreMode ? (p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />) : <Trash2 size={18} />}
+                      {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
                     </button>
                   </div>
                 </div>
@@ -443,8 +446,8 @@ export default function ProductsPage() {
                   Limpar seleção
                 </Button>
                 <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
-                  {coreMode ? <Archive size={16} className="mr-2" /> : <Trash2 size={16} className="mr-2" />}
-                  {coreMode ? 'Arquivar produtos' : 'Excluir produtos'}
+                  <Archive size={16} className="mr-2" />
+                  Arquivar produtos
                 </Button>
               </div>
             </div>

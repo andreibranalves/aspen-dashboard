@@ -11,12 +11,6 @@ const REQUIRED_STAGING_VARS = [
   'STAGING_EGRESS_BLOCKED',
   'STAGING_FIXTURE_RESET',
 ];
-const EXTERNAL_PROVIDER_VARS = [
-  'OUTBOX_N8N_URL',
-  'N8N_OUTBOX_WEBHOOK_URL',
-  'OUTBOX_EVOLUTION_URL',
-  'OUTBOX_CRM_URL',
-];
 
 function safeStagingOrigin(value) {
   let parsed;
@@ -48,10 +42,6 @@ export function getStagingConfig(env = process.env) {
   }
   if (env.STAGING_FIXTURE_RESET !== '1') {
     throw new Error('STAGING_FIXTURE_RESET=1 is required for disposable fixture cleanup');
-  }
-  const configuredProviders = EXTERNAL_PROVIDER_VARS.filter((name) => String(env[name] || '').trim());
-  if (configuredProviders.length) {
-    throw new Error(`External provider variables must be unset: ${configuredProviders.join(', ')}`);
   }
   return {
     baseUrl: safeStagingOrigin(env.STAGING_BASE_URL),
@@ -89,11 +79,11 @@ export function assertSafeApiPath(path) {
     throw new Error('Staging test attempted an API request outside the staging origin');
   }
   if (
-    /\/api\/send-whatsapp(?:-flow)?(?:[/?]|$)|(?:n8n|evolution|hubspot|salesforce|frappe|erpnext)/i.test(
+    /\/api\/send-whatsapp(?:-flow)?(?:[/?]|$)|(?:hubspot|salesforce|external-crm|external-erp)/i.test(
       `${parsed.hostname}${parsed.pathname}`,
     )
   ) {
-    throw new Error('Staging test attempted a forbidden provider/send request');
+    throw new Error('Staging test attempted a forbidden external/send request');
   }
   return expectedOrigin ? parsed.href : value;
 }
@@ -109,8 +99,8 @@ export async function apiRequest(page, method, path, options = {}) {
 export async function loginToStaging(page) {
   const config = assertStagingConfig();
   // The application intentionally has password-only auth and no username input.
-  // The designated account is attested through x-e2e-username at the staging-only
-  // outbox inspection seam after login; the server rejects a mismatched account.
+  // The designated account is attested through x-e2e-username; the server rejects
+  // a mismatched account.
   await page.setExtraHTTPHeaders({ 'x-e2e-username': config.username });
   await page.goto('/#/login');
   await page.getByPlaceholder('Senha de acesso').fill(config.password);

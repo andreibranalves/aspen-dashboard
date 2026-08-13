@@ -39,9 +39,7 @@ export interface PreQuoteLead {
   source?: string;
   sourceDetail?: string;
   status?: PreQuoteStatus;
-  erpLeadId?: string | null;
   quotationId?: string | null;
-  externalId?: string | null;
   attribution?: PreQuoteAttribution;
   missingFields?: string[];
   createdAt?: string;

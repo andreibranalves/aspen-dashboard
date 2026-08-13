@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
+import { createHandler as createBoundary } from '../../api/_functions/quotations.js';
 import { createCoreHandler } from '../../api/_functions/quotations-core.js';
 import { createPostgresQuotationLifecycleRepository } from '../../api/_db/quotation-lifecycle-repository.ts';
 import {
@@ -47,7 +48,7 @@ const detail = {
   updated_at: '2026-07-01T12:00:00.000Z',
 };
 
-test('quotations core lists and opens persisted drafts without a Frappe call', async () => {
+test('quotations core lists and opens persisted local drafts', async () => {
   const calls: string[] = [];
   const handler = createCoreHandler({
     repository: {
@@ -66,13 +67,13 @@ test('quotations core lists and opens persisted drafts without a Frappe call', a
         return id === detail.id ? detail : null;
       },
       update: async () => detail,
-    },
+    } as any,
   });
 
   const list = await handler(event('GET', { search: 'teste', page: '2', limit: '10' }));
   assert.equal(list.statusCode, 200);
-  assert.equal(parse(list).core_mode, true);
-  assert.equal(parse(list).source, 'postgres');
+  assert.equal(Object.keys(parse(list)).some((key) => key.endsWith('_mode')), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(parse(list), 'source'), false);
   assert.equal((parse(list).pagination as Record<string, unknown>).page, 2);
   assert.deepEqual(calls, ['list:teste']);
 
@@ -81,6 +82,50 @@ test('quotations core lists and opens persisted drafts without a Frappe call', a
   assert.equal(parse(opened).quotation_uuid, detail.quotation_uuid);
   assert.equal(parse(opened).concurrency_token, detail.concurrency_token);
   assert.deepEqual(calls, ['list:teste', `get:${detail.id}`]);
+});
+
+test('quotations core strips internal metadata from repository details before public output', async () => {
+  const detailWithInternalMetadata = {
+    ...detail,
+    local_mode: true,
+    origin: 'local',
+  };
+  const handler = createCoreHandler({
+    repository: {
+      list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
+      get: async () => detailWithInternalMetadata,
+      update: async () => detailWithInternalMetadata,
+    } as any,
+  });
+
+  const opened = await handler(event('GET', { id: detail.id }));
+  assert.equal(opened.statusCode, 200);
+  const payload = parse(opened);
+  assert.equal(payload.quotation_uuid, detail.quotation_uuid);
+  assert.equal(payload.concurrency_token, detail.concurrency_token);
+  assert.equal('local_mode' in payload, false);
+  assert.equal('origin' in payload, false);
+
+  const updated = await handler(event('PUT', { id: detail.id }, '{}'));
+  assert.equal(updated.statusCode, 200);
+  const updatedPayload = parse(updated);
+  assert.equal(updatedPayload.quotation_uuid, detail.quotation_uuid);
+  assert.equal('local_mode' in updatedPayload, false);
+  assert.equal('origin' in updatedPayload, false);
+});
+
+test('quotations boundary always invokes PostgreSQL core', async () => {
+  const calls: string[] = [];
+  const handler = createBoundary({
+    core: async (request) => {
+      calls.push(request.httpMethod);
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    },
+  });
+  for (const method of ['GET', 'PUT', 'DELETE']) {
+    assert.equal((await handler(event(method, { id: 'Q-1' }))).statusCode, 200);
+  }
+  assert.deepEqual(calls, ['GET', 'PUT', 'DELETE']);
 });
 
 test('quotations core accepts and forwards the legacy quotation ordering vocabulary', async () => {
@@ -93,7 +138,7 @@ test('quotations core accepts and forwards the legacy quotation ordering vocabul
       },
       get: async () => null,
       update: async () => detail,
-    },
+    } as any,
   });
   for (const orderBy of [
     'creation desc',
@@ -138,7 +183,7 @@ test('quotations core forwards complete update input and maps stale/non-editable
         received = input as Record<string, unknown>;
         return detail;
       },
-    },
+    } as any,
   });
   const payload = {
     concurrency_token: detail.concurrency_token,
@@ -160,12 +205,12 @@ test('quotations core forwards complete update input and maps stale/non-editable
       list: async () => ({ rows: [], total: 0, page: 1, limit: 50, statusSummary: {} }),
       get: async () => detail,
       update: async () => { throw new QuoteManagementConflictError('O orçamento foi alterado por outro usuário.'); },
-    },
+    } as any,
   });
   const conflict = await conflictHandler(event('PUT', { id: detail.id }, JSON.stringify(payload)));
   assert.equal(conflict.statusCode, 409);
   assert.equal(parse(conflict).error, 'O orçamento foi alterado por outro usuário.');
-  assert.equal(parse(conflict).core_mode, true);
+  assert.equal(Object.keys(parse(conflict)).some((key) => key.endsWith('_mode')), false);
 });
 
 test('actual lifecycle repository status transition returns no issuance artifacts', async () => {
@@ -243,7 +288,7 @@ test('quotations core validates JSON/status and never exposes unknown repository
       list: async () => { throw new Error('postgres://secret'); },
       get: async () => null,
       update: async () => { throw new QuoteManagementInputError('Items deve ser um array.'); },
-    },
+    } as any,
   });
   const badJson = await handler(event('PUT', { id: detail.id }, '{'));
   assert.equal(badJson.statusCode, 400);

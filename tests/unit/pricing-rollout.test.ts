@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 
 import { createCoreHandler as createLookupCoreHandler, createHandler as createLookupHandler } from '../../api/_functions/pricing-lookup.js';
 import { createCoreHandler as createPricingCoreHandler, createHandler as createPricingHandler } from '../../api/_functions/product-pricing.js';
@@ -45,31 +45,24 @@ function pricingRepository(row: ProductPricingRecord | null = pricingRow): Prici
   };
 }
 
-describe('core pricing rollout seams', () => {
-  const previousFlag = process.env.CRM_CORE_PRODUCTS_ENABLED;
-  afterEach(() => {
-    if (previousFlag === undefined) delete process.env.CRM_CORE_PRODUCTS_ENABLED;
-    else process.env.CRM_CORE_PRODUCTS_ENABLED = previousFlag;
-    // Always disable operational mode for rollout tests - they test individual flag behavior
-    delete process.env.CRM_OPERATIONAL_MODE;
-  });
+describe('direct PostgreSQL pricing boundaries', () => {
 
-  it('resolves core lookup from the injected PostgreSQL seam with decimal-string rates', async () => {
-    process.env.CRM_CORE_PRODUCTS_ENABLED = 'true';
+  it('resolves pricing from PostgreSQL without response source metadata', async () => {
     const handler = createLookupCoreHandler({ pricingRepository: pricingRepository() });
     const result = await handler(event('POST', { items: [{ item_code: 'CORE-001', qty: 100 }], urgent: false }));
     assert.equal(result.statusCode, 200);
     assert.equal(parse(result).items[0].rate, '7.25');
-    assert.equal(parse(result).source, 'postgres');
+    assert.equal(parse(result).source, undefined);
+    assert.equal(Object.keys(parse(result)).some((key) => key.endsWith('_mode')), false);
   });
 
-  it('serves product pricing reads/writes from the core repository without a Frappe fallback', async () => {
-    process.env.CRM_CORE_PRODUCTS_ENABLED = 'true';
+  it('serves product pricing reads and writes without response mode metadata', async () => {
     const handler = createPricingCoreHandler({ pricingRepository: pricingRepository() });
     const get = await handler(event('GET', undefined, { sku: 'CORE-001' }));
     assert.equal(get.statusCode, 200);
     assert.equal(parse(get).preco_base, '10.00');
-    assert.equal(parse(get).core_mode, true);
+    assert.equal(Object.keys(parse(get)).some((key) => key.endsWith('_mode')), false);
+    assert.equal(parse(get).source, undefined);
   });
 
   it('rejects duplicate tiers before metadata or pricing mutation', async () => {
@@ -105,32 +98,17 @@ describe('core pricing rollout seams', () => {
     assert.equal(pricingReplacements, 0);
   });
 
-  it('dispatches all public pricing wrappers by the exact flag and never falls back after core failure', async () => {
+  it('always routes every public pricing boundary to its PostgreSQL handler', async () => {
     for (const makeHandler of [createLookupHandler, createPricingHandler, createPricingUpdateHandler]) {
-      let legacyCalls = 0;
       let coreCalls = 0;
-      const legacy = async () => {
-        legacyCalls += 1;
-        return { statusCode: 200, body: JSON.stringify({ lane: 'legacy' }) };
-      };
       const core = async () => {
         coreCalls += 1;
-        throw new Error('core failure');
+        return { statusCode: 200, body: JSON.stringify({ ok: true }) };
       };
-      const handler = makeHandler({ core, legacy } as any);
-
-      for (const value of [undefined, '', 'TRUE', 'false', '1']) {
-        if (value === undefined) delete process.env.CRM_CORE_PRODUCTS_ENABLED;
-        else process.env.CRM_CORE_PRODUCTS_ENABLED = value;
-        const result = await handler(event('POST', { items: [] }, { sku: 'CORE-001' }));
-        assert.equal(result.statusCode, 200);
-        assert.equal(legacyCalls > 0, true);
-      }
-
-      process.env.CRM_CORE_PRODUCTS_ENABLED = 'true';
-      await assert.rejects(() => handler(event('POST', { items: [] }, { sku: 'CORE-001' })), /core failure/);
+      const handler = makeHandler({ core } as any);
+      const result = await handler(event('POST', { items: [] }, { sku: 'CORE-001' }));
+      assert.equal(result.statusCode, 200);
       assert.equal(coreCalls, 1);
-      assert.equal(legacyCalls, 5);
     }
   });
 });

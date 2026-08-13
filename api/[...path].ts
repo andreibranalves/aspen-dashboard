@@ -33,12 +33,12 @@ import { handler as quotationTemplates } from './_functions/quotation-templates.
 import { handler as orderTemplates } from './_functions/order-templates.js';
 import { handler as quotationPreview } from './_functions/quotation-preview.js';
 import { handler as publicQuotation } from './_functions/public-quotation.js';
-import { handler as quotationOutboxInspect } from './_functions/quotation-outbox-inspect.js';
 import { handler as salesDashboard } from './_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from './_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from './_functions/sales-orders.js';
 import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from './_functions/send-whatsapp-flow.js';
+import { handler as whatsappSendStatus } from './_functions/whatsapp-send-status.js';
 import { handler as settings } from './_functions/settings.js';
 import { handler as typebotLeadCapture } from './_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from './_functions/whatsapp-conversations.js';
@@ -80,12 +80,12 @@ const ROUTES: Record<string, HandlerFunction> = {
   'order-templates': orderTemplates,
   'quotation-preview': quotationPreview,
   'public-quotation': publicQuotation,
-  'quotation-outbox-inspect': quotationOutboxInspect,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
+  'whatsapp-send-status': whatsappSendStatus,
   settings,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,

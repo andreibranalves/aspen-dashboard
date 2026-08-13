@@ -1,32 +1,42 @@
-// GET/POST/PATCH /api/whatsapp-conversations — WhatsApp commercial inbox
+// GET/POST/PATCH /api/whatsapp-conversations - local WhatsApp commercial inbox
 import type {
   FunctionEvent,
   FunctionResult,
   JsonResponseFn,
   LegacyHandler,
 } from '../_lib/types.js';
+import { createHttpError } from '../_lib/http-error.js';
 import { handler as extractHandler } from './extract.js';
 import { sendText } from './send-whatsapp.js';
-import { createHttpError, erpGetDoc, erpGetList } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
-import { upsertQuoteLead } from './lib/quote-leads-store.js';
+import { createPostgresQuoteLeadRepository } from '../_db/quote-leads-repository.js';
 import {
-  LIVE_DEPS,
   cleanText,
   getWhatsappConversation,
   getWhatsappMessages,
   listWhatsappConversations,
+  LIVE_DEPS,
+  normalizeWhatsappPhone,
+  projectWhatsappConversation,
+  projectWhatsappMessage,
   updateWhatsappConversation,
   upsertWhatsappMessages,
+  type WhatsappConversation,
   type WhatsappConversationStatus,
-  type WhatsappConversationStoreDeps,
+  type WhatsappPublicMessage,
 } from './lib/whatsapp-conversations-store.js';
-import { resolveWhatsappCrmMatch, type ResolveCrmMatchDeps } from './lib/whatsapp-crm-match.js';
+import type { LocalQuoteLeadRecord } from './lib/whatsapp-crm-match.js';
 import {
-  syncWhatsappConversations,
+  resolveWhatsappCrmMatch,
+  validateWhatsappConversationLinks,
+  type ResolveCrmMatchDeps,
+} from './lib/whatsapp-crm-match.js';
+import {
   syncMessagesForConversation,
+  syncWhatsappConversations,
   type EvolutionSyncDeps,
 } from './lib/whatsapp-conversations-sync.js';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   statusCode,
@@ -36,16 +46,20 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 
 function parseJsonBody(body: unknown): Record<string, unknown> {
   if (!body) return {};
-  if (typeof body === 'object') return body as Record<string, unknown>;
+  if (typeof body === 'object' && !Array.isArray(body)) return body as Record<string, unknown>;
   try {
-    return JSON.parse(String(body));
+    const parsed = JSON.parse(String(body));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('payload');
+    }
+    return parsed as Record<string, unknown>;
   } catch {
     throw createHttpError(400, 'JSON inválido.');
   }
 }
 
 function parseStatus(value: unknown): WhatsappConversationStatus | 'all' {
-  const allowed: (WhatsappConversationStatus | 'all')[] = [
+  const allowed: Array<WhatsappConversationStatus | 'all'> = [
     'new',
     'needs_quote',
     'incomplete',
@@ -61,15 +75,32 @@ function parseStatus(value: unknown): WhatsappConversationStatus | 'all' {
     : 'all';
 }
 
+function parsePatchStatus(value: unknown): WhatsappConversationStatus {
+  const status = parseStatus(value);
+  if (status === 'all') throw createHttpError(400, 'Status inválido.');
+  return status;
+}
+
 function parseLimit(value: unknown): number {
   const limit = Number(value || 50);
   return Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 50;
 }
 
-interface WhatsappActionDeps
-  extends EvolutionSyncDeps, WhatsappConversationStoreDeps, ResolveCrmMatchDeps {
+function own(body: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(body, key);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+interface WhatsappActionDeps extends EvolutionSyncDeps, ResolveCrmMatchDeps {
   extractOrders?: (text: string) => Promise<unknown[]>;
   upsertQuoteLead?: (input: Record<string, unknown>) => Promise<unknown>;
+  findQuoteLeadByExternalId?: (
+    externalId: string,
+    source?: string
+  ) => Promise<LocalQuoteLeadRecord | null>;
   sendTextMessage?: (number: string, text: string) => Promise<unknown>;
 }
 
@@ -94,17 +125,17 @@ async function liveExtractOrders(text: string): Promise<unknown[]> {
     try {
       errorBody = JSON.parse(result.body || '{}');
     } catch {
-      /* ignore */
+      // Keep the Portuguese fallback below.
     }
     throw createHttpError(code, String(errorBody.error || 'Erro ao extrair orçamento.'));
   }
-  let resBody: Record<string, unknown> = {};
+  let responseBody: Record<string, unknown> = {};
   try {
-    resBody = JSON.parse(result.body || '{}');
+    responseBody = JSON.parse(result.body || '{}');
   } catch {
-    /* ignore */
+    // Treat an invalid extractor response as an empty extraction.
   }
-  return Array.isArray(resBody.orders) ? resBody.orders : [];
+  return Array.isArray(responseBody.orders) ? responseBody.orders : [];
 }
 
 function missingFieldsForPreQuote(input: {
@@ -119,60 +150,168 @@ function missingFieldsForPreQuote(input: {
   return missing;
 }
 
-async function liveListLeads(
-  filters: Array<Array<string | number>>
-): Promise<Array<Record<string, unknown>>> {
-  return erpGetList('Lead', {
-    fields: ['name', 'lead_name', 'first_name', 'email_id', 'mobile_no'],
-    filters,
-    limit: 50,
-  });
-}
-
 function buildCrmDeps(deps?: Partial<WhatsappActionDeps>): ResolveCrmMatchDeps {
   return {
     ...LIVE_DEPS,
     ...(deps || {}),
-    listLeads: deps?.listLeads || liveListLeads,
-    getDoc: deps?.getDoc || erpGetDoc,
   };
 }
 
+function hasConversationLinks(conversation: WhatsappConversation): boolean {
+  return Boolean(
+    conversation.linkedLeadId || conversation.linkedDealId || conversation.linkedQuotationId ||
+    conversation.linkedCrmEntityId
+  );
+}
+
+function buildStoreDeps(deps?: WhatsappActionDeps): WhatsappActionDeps {
+  // Injected seams must use their own read/write pair, never LIVE_DEPS CAS.
+  const storeDeps = (deps ? { ...deps } : { ...LIVE_DEPS }) as WhatsappActionDeps;
+  storeDeps.validateConversationMutation = async (_current, next) => {
+    for (const conversation of next) {
+      if (!hasConversationLinks(conversation)) continue;
+      await validateWhatsappConversationLinks({
+        patch: {
+          linkedLeadId: conversation.linkedLeadId || null,
+          linkedDealId: conversation.linkedDealId || null,
+          linkedQuotationId: conversation.linkedQuotationId || null,
+        },
+        deps: buildCrmDeps(deps),
+      });
+    }
+  };
+  return storeDeps;
+}
+
+function publicConversation(conversation: WhatsappConversation): Record<string, unknown> {
+  return (projectWhatsappConversation(conversation) as unknown as Record<string, unknown>) || {
+    id: conversation.id,
+    canonicalPhone: '',
+    phone: '',
+    displayLabel: '',
+    displayName: '',
+    identityStatus: 'unresolved',
+    lastMessageAt: '',
+    lastMessagePreview: '',
+    linkedLeadId: null,
+    linkedDealId: null,
+    linkedQuotationId: null,
+    status: 'new',
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+
+function publicMessage(message: unknown): WhatsappPublicMessage {
+  return projectWhatsappMessage(message) || {
+    id: '',
+    conversationId: '',
+    direction: 'inbound',
+    type: 'unknown',
+    body: '',
+    mediaUrl: '',
+    timestamp: '',
+  };
+}
+
+function publicQuoteLead(value: unknown): Record<string, unknown> {
+  const record = isRecord(value) ? value : {};
+  return {
+    id: cleanText(record.id),
+    nome: cleanText(record.nome),
+    telefone: cleanText(record.telefone),
+    email: cleanText(record.email),
+    pedidoTexto: cleanText(record.pedidoTexto),
+    source: cleanText(record.source),
+    status: cleanText(record.status),
+    quotationId: cleanText(record.quotationId) || null,
+    createdAt: cleanText(record.createdAt),
+    updatedAt: cleanText(record.updatedAt),
+  };
+}
+
+function requireConversationId(value: unknown): string {
+  const id = cleanText(value);
+  if (!id) throw createHttpError(400, 'Identificador da conversa é obrigatório.');
+  return id;
+}
+
+function ensureSendablePhone(conversation: WhatsappConversation): string {
+  if (conversation.identityStatus !== 'verified' && conversation.identityStatus !== 'derived') {
+    throw createHttpError(400, 'Não é possível enviar com a identidade do contato não confirmada.');
+  }
+  const phone = normalizeWhatsappPhone(conversation.canonicalPhone);
+  if (!phone || phone !== conversation.canonicalPhone) {
+    throw createHttpError(400, 'Conversa sem telefone canônico para envio.');
+  }
+  return phone;
+}
+
+async function findExistingWhatsappLead(
+  conversationId: string,
+  deps: WhatsappActionDeps
+): Promise<Record<string, unknown> | null> {
+  try {
+    const isWhatsappLead = (value: unknown): value is Record<string, unknown> => {
+      if (!isRecord(value)) return false;
+      const source = cleanText(value.source);
+      return source === 'whatsapp' && cleanText(value.externalId) === conversationId;
+    };
+    const finder = deps.findQuoteLeadByExternalId || deps.localCrm?.findQuoteLeadByExternalId;
+    if (finder) {
+      const value = await finder(conversationId, 'whatsapp');
+      return isWhatsappLead(value) ? value : null;
+    }
+    const listLeads = deps.listQuoteLeads || deps.localCrm?.listQuoteLeads;
+    if (listLeads) {
+      const matches = (await listLeads()).filter((row) => isWhatsappLead(row));
+      if (matches.length > 1) {
+        throw createHttpError(409, 'Identificador externo do WhatsApp ambíguo.');
+      }
+      return matches[0] ? (matches[0] as unknown as Record<string, unknown>) : null;
+    }
+    if (!deps.upsertQuoteLead && !deps.localCrm) {
+      const value = await createPostgresQuoteLeadRepository().findByExternalId(conversationId, 'whatsapp');
+      return isWhatsappLead(value) ? value : null;
+    }
+    return null;
+  } catch (error) {
+    const statusCode = Number((error as { statusCode?: unknown })?.statusCode || 0);
+    if (statusCode >= 400 && statusCode < 500) throw error;
+    if (statusCode === 503) throw error;
+    throw createHttpError(503, 'Não foi possível acessar os leads locais.');
+  }
+}
+
 export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
+  const storeDeps = buildStoreDeps(deps);
   return async function whatsappConversationsHandler(
     event: FunctionEvent
   ): Promise<FunctionResult> {
     try {
+      const method = String(event.httpMethod || 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'POST' && method !== 'PATCH') {
+        return jsonResponse(405, { error: 'Método não permitido.' });
+      }
       const qs = event.queryStringParameters || {};
-      const body = event.httpMethod !== 'GET' ? parseJsonBody(event.body) : {};
+      const body = method !== 'GET' ? parseJsonBody(event.body) : {};
 
-      // ── GET /api/whatsapp-conversations ——
-      if (event.httpMethod === 'GET') {
-        // Single conversation by id
+      if (method === 'GET') {
         if (qs.id) {
-          const conversation = await getWhatsappConversation(qs.id, deps);
-          let crmMatch = null;
-          try {
-            crmMatch = await resolveWhatsappCrmMatch({
-              conversation,
-              deps: buildCrmDeps(deps),
-            });
-          } catch (matchErr) {
-            console.error(
-              '[whatsapp-conversations] CRM match failed:',
-              (matchErr as Error)?.message || matchErr
-            );
-          }
-          return jsonResponse(200, { success: true, data: { ...conversation, crmMatch } });
+          const conversation = await getWhatsappConversation(qs.id, storeDeps);
+          const crmMatch = await resolveWhatsappCrmMatch({
+            conversation,
+            deps: buildCrmDeps(storeDeps),
+          });
+          return jsonResponse(200, {
+            success: true,
+            data: { ...publicConversation(conversation), crmMatch },
+          });
         }
-
-        // Messages for a conversation
         if (qs.messages) {
-          const data = await getWhatsappMessages(qs.messages, deps);
-          return jsonResponse(200, { success: true, data });
+          const data = await getWhatsappMessages(qs.messages, storeDeps);
+          return jsonResponse(200, { success: true, data: data.map(publicMessage) });
         }
-
-        // List conversations
         const data = await listWhatsappConversations(
           {
             status: parseStatus(qs.status),
@@ -180,50 +319,51 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
             hasQuoteRequest: qs.hasQuoteRequest,
             limit: parseLimit(qs.limit),
           },
-          deps
+          storeDeps
         );
-        return jsonResponse(200, { success: true, data });
+        return jsonResponse(200, {
+          success: true,
+          data: data.map(publicConversation),
+        });
       }
 
-      // ── POST /api/whatsapp-conversations ——
-      if (event.httpMethod === 'POST') {
-        const action = String(body.action || '');
-
-        // Sync conversations from Evolution
+      if (method === 'POST') {
+        const action = cleanText(body.action);
         if (action === 'sync') {
           const data = await syncWhatsappConversations(
             {
               chatLimit: parseLimit(body.chatLimit || 5),
               messageLimit: parseLimit(body.messageLimit || 100),
             },
-            deps as EvolutionSyncDeps
+            storeDeps
           );
-          return jsonResponse(200, { success: true, data });
+          return jsonResponse(200, {
+            success: true,
+            data: {
+              conversations: data.conversations.map(publicConversation),
+              syncedMessages: data.syncedMessages,
+            },
+          });
         }
 
-        // Sync messages for a single conversation
         if (action === 'sync-messages') {
-          const id = String(body.id || '');
-          const conversation = await getWhatsappConversation(id, deps);
-          await syncMessagesForConversation(conversation, 100, deps as EvolutionSyncDeps);
-          const messages = await getWhatsappMessages(id, deps);
-          return jsonResponse(200, { success: true, data: messages });
+          const id = requireConversationId(body.id);
+          const conversation = await getWhatsappConversation(id, storeDeps);
+          await syncMessagesForConversation(conversation, 100, storeDeps);
+          const messages = await getWhatsappMessages(id, storeDeps);
+          return jsonResponse(200, { success: true, data: messages.map(publicMessage) });
         }
 
-        // Extract quote from conversation messages
         if (action === 'extract-quote') {
-          const id = String(body.id || '');
-          const conversation = await getWhatsappConversation(id, deps);
-          const messages = await getWhatsappMessages(id, deps);
-          const text = buildConversationText(messages);
-          const extractOrders = deps?.extractOrders || liveExtractOrders;
-          const orders = await extractOrders(text);
-
+          const id = requireConversationId(body.id);
+          const conversation = await getWhatsappConversation(id, storeDeps);
+          const messages = await getWhatsappMessages(id, storeDeps);
+          const orders = await (deps?.extractOrders || liveExtractOrders)(buildConversationText(messages));
           return jsonResponse(200, {
             success: true,
             data: {
               conversationId: conversation.id,
-              inputMessageIds: messages.map((m) => m.id),
+              inputMessageIds: messages.map((message) => message.id),
               extractedPayload: { orders },
               confidence: orders.length > 0 ? 0.8 : 0.2,
               missingFields: orders.length > 0 ? [] : ['pedido'],
@@ -232,127 +372,135 @@ export function createHandler(deps?: WhatsappActionDeps): LegacyHandler {
           });
         }
 
-        // Create pre-quote lead from conversation
         if (action === 'create-quote-lead') {
-          const id = String(body.id || '');
-          const conversation = await getWhatsappConversation(id, deps);
-
-          // Block pre-quote creation when identity is not confirmed
-          if (
-            conversation.identityStatus === 'unresolved' ||
-            conversation.identityStatus === 'conflict'
-          ) {
-            return jsonResponse(400, {
-              error: 'Não é possível criar pré-orçamento com identidade do contato não confirmada.',
-            });
+          const id = requireConversationId(body.id);
+          const conversation = await getWhatsappConversation(id, storeDeps);
+          if (conversation.identityStatus === 'unresolved' || conversation.identityStatus === 'conflict') {
+            throw createHttpError(400, 'Não é possível criar pré-orçamento com identidade do contato não confirmada.');
           }
 
-          const messages = await getWhatsappMessages(id, deps);
+          // The local externalId is the durable source of truth. If a prior
+          // request saved the lead but lost the KV link, retry only completes
+          // that link and never creates another business identity.
+          const existing = await findExistingWhatsappLead(id, storeDeps);
+          if (existing) {
+            const existingLeadId = cleanText(existing.id);
+            if (!UUID_PATTERN.test(existingLeadId)) {
+              throw createHttpError(503, 'Pré-orçamento local sem identificador válido.');
+            }
+            const existingDealId = cleanText(existing.crmDealId);
+            const linked = await updateWhatsappConversation(
+              id,
+              {
+                linkedLeadId: existingLeadId,
+                linkedDealId: UUID_PATTERN.test(existingDealId) ? existingDealId : null,
+                status: 'quote_lead_created',
+              },
+              storeDeps
+            );
+            return jsonResponse(200, { success: true, data: publicQuoteLead(existing), conversation: publicConversation(linked) });
+          }
+
+          const messages = await getWhatsappMessages(id, storeDeps);
           const pedidoTexto = buildConversationText(messages);
+          const missingFields = missingFieldsForPreQuote({
+            nome: conversation.displayLabel,
+            telefone: conversation.canonicalPhone,
+            pedidoTexto,
+          });
           const leadInput = {
             nome: conversation.displayLabel,
             telefone: conversation.canonicalPhone,
             pedidoTexto,
             source: 'whatsapp',
-            sourceDetail: conversation.remoteJid,
-            externalId: conversation.id,
-            status: missingFieldsForPreQuote({
-              nome: conversation.displayLabel,
-              telefone: conversation.canonicalPhone,
-              pedidoTexto,
-            }).length
-              ? 'incomplete'
-              : 'ready',
-            raw: {
-              conversationId: conversation.id,
-              extractedPayload: body.extractedPayload || null,
-            },
+            status: missingFields.length ? 'incomplete' : 'ready',
+            externalId: id,
           };
-
-          const createLead = deps?.upsertQuoteLead || upsertQuoteLead;
-          const data = await createLead(leadInput);
-          await updateWhatsappConversation(
-            conversation.id,
-            { status: 'quote_lead_created', linkedLeadId: (data as { id?: string }).id || null },
-            deps
+          let data: unknown;
+          try {
+            const createLead = deps?.upsertQuoteLead || createPostgresQuoteLeadRepository().upsert;
+            data = await createLead(leadInput);
+          } catch (error) {
+            const statusCode = Number((error as { statusCode?: unknown })?.statusCode || 0);
+            if (statusCode >= 400 && statusCode < 500) throw error;
+            if (statusCode === 503) throw error;
+            throw createHttpError(503, 'Não foi possível salvar o pré-orçamento local.');
+          }
+          const dataRecord = isRecord(data) ? data : {};
+          const leadId = cleanText(dataRecord.id);
+          if (!UUID_PATTERN.test(leadId)) throw createHttpError(503, 'Pré-orçamento local sem identificador válido.');
+          const dealId = cleanText(dataRecord.crmDealId);
+          const linked = await updateWhatsappConversation(
+            id,
+            {
+              linkedLeadId: leadId,
+              linkedDealId: UUID_PATTERN.test(dealId) ? dealId : null,
+              status: 'quote_lead_created',
+            },
+            storeDeps
           );
-
-          return jsonResponse(201, { success: true, data });
+          return jsonResponse(201, {
+            success: true,
+            data: publicQuoteLead(data),
+            conversation: publicConversation(linked),
+          });
         }
 
-        // Send a text message to the customer and record it as outbound
         if (action === 'send-message') {
-          const id = String(body.id || '');
+          const id = requireConversationId(body.id);
           const text = cleanText(body.text);
-          if (!text) {
-            return jsonResponse(400, { error: 'Texto da mensagem é obrigatório.' });
-          }
-          const conversation = await getWhatsappConversation(id, deps);
-          if (!conversation.canonicalPhone && conversation.identityStatus !== 'unresolved') {
-            return jsonResponse(400, { error: 'Conversa sem telefone para envio.' });
-          }
-
-          // Use canonicalPhone for sending, fall back to provider resolution
-          const targetPhone = conversation.canonicalPhone || conversation.phone;
-          if (!targetPhone) {
-            return jsonResponse(400, { error: 'Conversa sem telefone para envio.' });
-          }
+          if (!text) throw createHttpError(400, 'Texto da mensagem é obrigatório.');
+          const conversation = await getWhatsappConversation(id, storeDeps);
+          const targetPhone = ensureSendablePhone(conversation);
           const sender = deps?.sendTextMessage || sendText;
-          await sender(targetPhone, text);
+          const delivery: unknown = await sender(targetPhone, text);
+          const deliveryRecord = delivery && typeof delivery === 'object' ? (delivery as Record<string, unknown>) : {};
+          const providerMessageId =
+            cleanText(deliveryRecord.providerMessageId || deliveryRecord.messageId || deliveryRecord.id) ||
+            `out-${Date.now()}-${deps?.id?.() || Math.random().toString(36).slice(2)}`;
           const stored = await upsertWhatsappMessages(
             id,
-            [
-              {
-                providerMessageId: `out-${Date.now()}`,
-                direction: 'outbound',
-                type: 'text',
-                body: text,
-                timestamp: Date.now(),
-              },
-            ],
-            deps
+            [{
+              providerMessageId,
+              direction: 'outbound',
+              type: 'text',
+              body: text,
+              timestamp: Date.now(),
+            }],
+            storeDeps
           );
-          return jsonResponse(201, { success: true, data: stored });
+          return jsonResponse(201, { success: true, data: stored.map(publicMessage) });
         }
 
         return jsonResponse(400, {
-          error:
-            'Ação não reconhecida. Use action: sync, sync-messages, send-message, extract-quote, ou create-quote-lead.',
+          error: 'Ação não reconhecida. Use action: sync, sync-messages, send-message, extract-quote, ou create-quote-lead.',
         });
       }
 
-      // ── PATCH /api/whatsapp-conversations ——
-      if (event.httpMethod === 'PATCH') {
-        const id = String(body.id || '');
-        const data = await updateWhatsappConversation(
-          id,
-          {
-            status: parseStatus(body.status) as WhatsappConversationStatus,
-            linkedLeadId: body.linkedLeadId == null ? null : String(body.linkedLeadId),
-            linkedDealId: body.linkedDealId == null ? null : String(body.linkedDealId),
-            linkedQuotationId:
-              body.linkedQuotationId == null ? null : String(body.linkedQuotationId),
-          },
-          deps
-        );
-        return jsonResponse(200, { success: true, data });
-      }
-
-      return jsonResponse(405, { error: 'Método não permitido.' });
-    } catch (err: any) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error('[whatsapp-conversations]', err?.logMessage || err?.message || err);
-      return jsonResponse(code, {
-        error: err?.message || 'Erro interno ao buscar conversas do WhatsApp.',
+      const id = requireConversationId(body.id);
+      await getWhatsappConversation(id, storeDeps);
+      const patch: Partial<WhatsappConversation> = {};
+      if (own(body, 'status')) patch.status = parsePatchStatus(body.status);
+      if (own(body, 'linkedLeadId')) patch.linkedLeadId = body.linkedLeadId == null ? null : cleanText(body.linkedLeadId);
+      if (own(body, 'linkedDealId')) patch.linkedDealId = body.linkedDealId == null ? null : cleanText(body.linkedDealId);
+      if (own(body, 'linkedQuotationId')) patch.linkedQuotationId = body.linkedQuotationId == null ? null : cleanText(body.linkedQuotationId);
+      // updateWhatsappConversation validates against the latest CAS snapshot;
+      // omitted links are deliberately absent from this sparse patch.
+      const data = await updateWhatsappConversation(id, patch, storeDeps);
+      return jsonResponse(200, { success: true, data: publicConversation(data) });
+    } catch (error: unknown) {
+      const record = isRecord(error) ? error : {};
+      const statusCode = Number.isInteger(record.statusCode) ? Number(record.statusCode) : 500;
+      console.error(
+        '[whatsapp-conversations]',
+        error instanceof Error ? error.name : typeof error,
+        statusCode,
+      );
+      return jsonResponse(statusCode, {
+        error: String(record.message || 'Erro interno ao buscar conversas do WhatsApp.'),
       });
     }
   };
 }
 
-async function guardedHandler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'whatsapp-conversations não está disponível no modo operacional.' }) };
-  }
-  return createHandler()(event);
-}
-export const handler: LegacyHandler = guardedHandler;
+export const handler: LegacyHandler = createHandler();

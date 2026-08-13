@@ -210,7 +210,6 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
     const optimistic: WhatsappMessage = {
       id: `temp-${Date.now()}`,
       conversationId: selected.id,
-      providerMessageId: `temp-${Date.now()}`,
       direction: 'outbound',
       type: 'text',
       body: text,

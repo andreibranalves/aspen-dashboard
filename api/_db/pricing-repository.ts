@@ -1,6 +1,8 @@
 import { asc, eq, inArray } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import { appendProductActivityEvents } from './product-activity-repository.js';
 import { productPricingTiers, products } from './schema.js';
 import {
   normalizeProductPricing,
@@ -94,6 +96,13 @@ function normalizeSku(sku: string): string {
 function asString(value: string | number | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   return String(value);
+}
+
+function numericKey(value: unknown): string {
+  const [integer, fraction = ''] = String(value ?? '').trim().split('.');
+  const normalizedInteger = (integer || '0').replace(/^(-?)0+(?=\d)/, '$1');
+  const normalizedFraction = fraction.replace(/0+$/, '');
+  return normalizedFraction ? `${normalizedInteger}.${normalizedFraction}` : normalizedInteger;
 }
 
 function toTier(row: typeof productPricingTiers.$inferSelect): PricingTierRecord {
@@ -221,15 +230,32 @@ export function createPostgresPricingRepository(
       try {
         const result = await db.transaction(async (tx) => {
           const [existing] = await tx
-            .select({ sku: products.sku })
+            .select({ sku: products.sku, precoBase: products.precoBase })
             .from(products)
             .where(eq(products.sku, normalizedSku))
+            .for('update')
             .limit(1);
           if (!existing) return null;
+          const currentTiers = await tx
+            .select()
+            .from(productPricingTiers)
+            .where(eq(productPricingTiers.productSku, normalizedSku))
+            .orderBy(asc(productPricingTiers.minimumQuantity), asc(productPricingTiers.unitPrice));
+          const changed = numericKey(existing.precoBase) !== numericKey(normalized.preco_base)
+            || currentTiers.length !== normalized.precos.length
+            || currentTiers.some((tier, index) => {
+              const next = normalized.precos[index];
+              return !next
+                || numericKey(tier.minimumQuantity) !== numericKey(next.minimum_quantity)
+                || numericKey(tier.unitPrice) !== numericKey(next.unit_price);
+            });
+          if (!changed) return true;
 
+          const operationAt = new Date();
+          const mutationId = randomUUID();
           await tx
             .update(products)
-            .set({ precoBase: normalized.preco_base, atualizadoEm: new Date() })
+            .set({ precoBase: normalized.preco_base, atualizadoEm: operationAt })
             .where(eq(products.sku, normalizedSku));
           // Delete + insert inside one transaction is the complete-set write;
           // readers observe either the old set or the new set, never a partial set.
@@ -239,9 +265,16 @@ export function createPostgresPricingRepository(
               productSku: normalizedSku,
               minimumQuantity: tier.minimum_quantity,
               unitPrice: tier.unit_price,
-              atualizadoEm: new Date(),
+              atualizadoEm: operationAt,
             })));
           }
+          await appendProductActivityEvents(tx, [{
+            sku: normalizedSku,
+            tipo: 'preco',
+            texto: 'Preço atualizado',
+            reference_id: `preco:${normalizedSku}:${mutationId}`,
+            created_at: operationAt,
+          }]);
           return true;
         });
         if (!result) throw new PricingRepositoryError(404, 'Produto não encontrado.');

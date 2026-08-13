@@ -15,11 +15,9 @@ const CLIENT = {
 };
 
 const DETAIL = {
-  success: true,
-  core_mode: true,
-  source: 'postgres',
-  doctype: 'Customer',
+  id: CLIENT.id,
   name: CLIENT.id,
+  nome: CLIENT.nome,
   display_name: CLIENT.nome,
   email: CLIENT.email,
   telefone: CLIENT.telefone,
@@ -30,7 +28,6 @@ const DETAIL = {
   address: null,
   latest_quotation: null,
   deal: null,
-  erp_url: null,
   quality_flags: [],
   notes: null,
   observacoes: null,
@@ -38,7 +35,7 @@ const DETAIL = {
 
 /** @typedef {typeof DETAIL & { id?: string, nome?: string, archived?: boolean, updated?: boolean }} ClientDetail */
 
-test.describe('Clientes unificados — core', () => {
+test.describe('Clientes locais', () => {
   test('exibe Cliente sem Lead e permite abrir detalhe', async ({ page }) => {
     await page.route('**/api/leads-clients**', async (route) => {
       await route.fulfill({
@@ -47,8 +44,6 @@ test.describe('Clientes unificados — core', () => {
         body: JSON.stringify({
           data: [CLIENT],
           pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-          core_mode: true,
-          source: 'postgres',
         }),
       });
     });
@@ -90,7 +85,7 @@ test.describe('Clientes unificados — core', () => {
         };
         rows = [...rows, created];
         details.set(created.id, { ...DETAIL, id: created.id, name: created.id, display_name: created.nome, nome: created.nome, email: created.email, documento: created.documento, tax_id: created.documento });
-        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, id: created.id, created: created.id, data: created, core_mode: true, source: 'postgres' }) });
+        await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ success: true, id: created.id, created: created.id, data: created }) });
         return;
       }
       const url = new globalThis.URL(request.url());
@@ -99,13 +94,13 @@ test.describe('Clientes unificados — core', () => {
         rows = rows.map((row) => row.id === id ? { ...row, arquivado: true, status: 'archived' } : row);
         const detail = details.get(id);
         if (detail) details.set(id, { ...detail, arquivado: true, archived: true, status: 'archived' });
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, deleted: id, archived: true, arquivado: true, core_mode: true, source: 'postgres' }) });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, deleted: id, archived: true, arquivado: true }) });
         return;
       }
       const status = url.searchParams.get('status') || 'active';
       const search = (url.searchParams.get('search') || '').toLowerCase();
       const data = rows.filter((row) => (status === 'all' || row.status === status) && (!search || `${row.nome} ${row.email} ${row.documento}`.toLowerCase().includes(search)));
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data, pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 }, core_mode: true, source: 'postgres' }) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data, pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 } }) });
     });
 
     await page.route('**/api/client-detail**', async (route) => {
@@ -143,10 +138,10 @@ test.describe('Clientes unificados — core', () => {
         }
         details.set(id, next);
         rows = rows.map((row) => row.id === id ? { ...row, nome: next.display_name, email: next.email, arquivado: next.arquivado, status: next.status } : row);
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...next, core_mode: true, source: 'postgres' }) });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...next }) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...current, core_mode: true, source: 'postgres' }) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...current }) });
     });
 
     await page.goto('/#/leads');
@@ -174,7 +169,7 @@ test.describe('Clientes unificados — core', () => {
     await expect(page.getByText('Contribuinte', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Inscrição Estadual', { exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Editar' }).click();
-    await page.locator('input[placeholder="Nome do cliente"]').fill('Ana Cliente Editada');
+    await page.getByRole('textbox', { name: 'Nome' }).fill('Ana Cliente Editada');
     await page.getByLabel('Observações').fill('Nota do drawer');
     await page.getByRole('button', { name: /^Salvar$/ }).click();
     await expect(page.getByText('Ana Cliente Editada', { exact: true }).last()).toBeVisible();
@@ -192,32 +187,18 @@ test.describe('Clientes unificados — core', () => {
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
   });
 
-  test('deep-link novo cliente resolve o modo no servidor antes de renderizar', async ({ page }) => {
-    await page.addInitScript(() => globalThis.localStorage.clear());
-    let modeRequests = 0;
-    await page.route('**/api/leads-clients**', async (route) => {
-      if (route.request().method() === 'GET') modeRequests += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          data: [],
-          pagination: { page: 1, limit: 1, total: 0, total_pages: 0 },
-          core_mode: true,
-          source: 'postgres',
-        }),
-      });
-    });
+  test('deep-link novo cliente renders the local form directly', async ({ page }) => {
+    const requests = [];
+    page.on('request', (request) => requests.push(request.url()));
 
     await page.goto('/#/leads/cliente/new');
     await expect(page.getByText('Novo cliente', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Criar cliente' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-    expect(modeRequests).toBeGreaterThanOrEqual(1);
+    expect(requests.some((url) => url.includes('/api/leads-clients'))).toBe(false);
   });
 
-  test('lista permanece neutra enquanto o modo core está pendente', async ({ page }) => {
-    await page.addInitScript(() => globalThis.localStorage.clear());
+  test('lista mantém o contrato local enquanto a API está pendente', async ({ page }) => {
     /** @type {() => void} */
     let release = () => {};
     /** @type {Promise<void>} */
@@ -232,24 +213,20 @@ test.describe('Clientes unificados — core', () => {
         body: JSON.stringify({
           data: [],
           pagination: { page: 1, limit: 1, total: 0, total_pages: 0 },
-          core_mode: true,
-          source: 'postgres',
         }),
       });
     });
 
     await page.goto('/#/leads');
-    const sidebarContacts = page.locator('aside').getByRole('button', { name: 'Contatos', exact: true });
-    await expect(sidebarContacts).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Contatos' })).toBeVisible();
+    const sidebarClients = page.locator('aside').getByRole('button', { name: 'Clientes', exact: true });
+    await expect(sidebarClients).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
     await expect(page.getByText('Leads', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Criar Lead' })).toHaveCount(0);
     expect(initialRequests.every((requestUrl) => !new globalThis.URL(requestUrl).searchParams.has('tipo'))).toBe(true);
 
     release();
-    const sidebarClients = page.locator('aside').getByRole('button', { name: 'Clientes', exact: true });
-    await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
+    await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Criar cliente' })).toBeVisible();
     await expect(sidebarClients).toBeVisible();
     await expect(page.getByText('Leads', { exact: true })).toHaveCount(0);
@@ -272,9 +249,9 @@ test.describe('Clientes unificados — core', () => {
       const url = new globalThis.URL(request.url());
       if (request.method() === 'DELETE') {
         const id = url.searchParams.get('id');
-        archiveRequests.push({ id, tipo: url.searchParams.get('tipo') });
+        archiveRequests.push({ id });
         rows = rows.map((row) => row.id === id ? { ...row, arquivado: true, status: 'archived' } : row);
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, archived: true, arquivado: true, core_mode: true, source: 'postgres' }) });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, archived: true, arquivado: true }) });
         return;
       }
 
@@ -283,7 +260,7 @@ test.describe('Clientes unificados — core', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data, pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 }, core_mode: true, source: 'postgres' }),
+        body: JSON.stringify({ data, pagination: { page: 1, limit: 10, total: data.length, total_pages: data.length ? 1 : 0 } }),
       });
     });
 
@@ -292,7 +269,7 @@ test.describe('Clientes unificados — core', () => {
       const body = route.request().postDataJSON();
       restoreRequests.push({ id, body });
       rows = rows.map((row) => row.id === id ? { ...row, arquivado: false, status: 'active' } : row);
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, arquivado: false, status: 'active', core_mode: true, source: 'postgres' }) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, id, arquivado: false, status: 'active' }) });
     });
 
     await page.goto('/#/leads');
@@ -301,7 +278,7 @@ test.describe('Clientes unificados — core', () => {
     await expect(page.getByRole('button', { name: 'Arquivar clientes' })).toBeVisible();
     await page.getByRole('button', { name: 'Arquivar clientes' }).click();
     await expect(page.getByText('Nenhum cliente encontrado')).toBeVisible();
-    expect(archiveRequests).toEqual([{ id: CLIENT.id, tipo: 'cliente' }]);
+    expect(archiveRequests).toEqual([{ id: CLIENT.id }]);
     expect(confirmations.at(0)).toMatch(/Arquivar 1 cliente/);
     expect(confirmations.at(0)).not.toMatch(/não pode ser desfeita/i);
 
@@ -322,17 +299,13 @@ test.describe('Clientes unificados — core', () => {
     expect(confirmations.some((message) => /não pode ser desfeita/i.test(message))).toBe(false);
   });
 
-  test('cliente core cria, lê e edita observações', async ({ page }) => {
-    await page.addInitScript(() => globalThis.localStorage.clear());
+  test('cliente local cria, lê e edita observações', async ({ page }) => {
     const id = '00000000-0000-4000-8000-000000000003';
     let record = { ...DETAIL, id, name: id, display_name: '', nome: '', notes: null, observacoes: null };
     let createdNotes = null;
     let editedNotes = null;
-    let createPersisted = false;
-    /** @type {{ nome: string, email: string, telefone: string }} */
+    /** @type {{ nome: string, email: string, telefone: string, documento?: string, notes?: string, endereco?: object }} */
     let createdPost = { nome: '', email: '', telefone: '' };
-    /** @type {{ person_type: string, tax_id: string, endereco: { endereco: string }, empresa?: string, origem?: string, contribuinte?: string, inscricao_estadual?: string }} */
-    let createdPatch = { person_type: '', tax_id: '', endereco: { endereco: '' } };
 
     await page.route('**/api/leads-clients**', async (route) => {
       const request = route.request();
@@ -340,33 +313,30 @@ test.describe('Clientes unificados — core', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ data: [], pagination: { page: 1, limit: 1, total: 0, total_pages: 0 }, core_mode: true, source: 'postgres' }),
+          body: JSON.stringify({ data: [], pagination: { page: 1, limit: 1, total: 0, total_pages: 0 } }),
         });
         return;
       }
       const body = request.postDataJSON();
       createdPost = body;
-      record = { ...record, display_name: body.nome, nome: body.nome, email: body.email || null, telefone: body.telefone || null };
+      createdNotes = body.notes ?? null;
+      record = { ...record, display_name: body.nome, nome: body.nome, email: body.email || null, telefone: body.telefone || null, notes: body.notes ?? null, observacoes: body.notes ?? null, documento: body.documento ?? null, tax_id: body.documento ?? null };
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, id, created: id, name: id, data: record, core_mode: true, source: 'postgres' }),
+        body: JSON.stringify({ success: true, id, created: id, name: id, data: record }),
       });
     });
 
     await page.route('**/api/client-detail**', async (route) => {
       const request = route.request();
       if (request.method() === 'GET') {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...record, core_mode: true, source: 'postgres' }) });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...record }) });
         return;
       }
       const body = request.postDataJSON();
       const notes = body.notes ?? body.observacoes ?? null;
-      if (!createPersisted) {
-        createdNotes = notes;
-        createdPatch = body;
-        createPersisted = true;
-      } else editedNotes = notes;
+      editedNotes = notes;
       record = {
         ...record,
         email: body.email ?? record.email,
@@ -376,8 +346,6 @@ test.describe('Clientes unificados — core', () => {
         address: body.endereco ?? body.address ?? record.address,
         notes,
         observacoes: notes,
-        core_mode: true,
-        source: 'postgres',
       };
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...record, updated: true }) });
     });
@@ -390,10 +358,7 @@ test.describe('Clientes unificados — core', () => {
     await page.getByPlaceholder('Nome do cliente').fill('Cliente com observação');
     await page.getByPlaceholder('email@exemplo.com').fill('cliente@example.com');
     await page.getByPlaceholder('(99) 99999-9999').fill('(11) 99999-0000');
-    await page.locator('select').first().selectOption('pf');
-    await page.getByPlaceholder('000.000.000-00').fill('12345678901');
-    await page.getByPlaceholder('Município').fill('São Paulo');
-    await page.getByPlaceholder('Endereço').fill('Rua A');
+    await page.getByPlaceholder('CPF ou CNPJ').fill('12345678901');
     await page.getByLabel('Observações').fill('Nota criada');
     await page.getByRole('button', { name: 'Criar cliente' }).click();
     await expect(page).toHaveURL(new RegExp(`#\\/leads\\/cliente\\/${id}$`));
@@ -402,13 +367,8 @@ test.describe('Clientes unificados — core', () => {
     expect(createdPost.nome).toBe('Cliente com observação');
     expect(createdPost.email).toBe('cliente@example.com');
     expect(createdPost.telefone).toBe('(11) 99999-0000');
-    expect(createdPatch.person_type).toBe('pf');
-    expect(createdPatch.tax_id).toBe('12345678901');
-    expect(createdPatch.endereco.endereco).toBe('Rua A');
-    expect(createdPatch.empresa).toBeUndefined();
-    expect(createdPatch.origem).toBeUndefined();
-    expect(createdPatch.contribuinte).toBeUndefined();
-    expect(createdPatch.inscricao_estadual).toBeUndefined();
+    expect(createdPost.documento).toBe('12345678901');
+    expect(createdPost.notes).toBe('Nota criada');
 
     await page.getByRole('button', { name: 'Editar cadastro' }).click();
     await expect(page.getByLabel('Observações')).toHaveValue('Nota criada');

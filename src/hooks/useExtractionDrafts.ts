@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { apiPost } from '@/lib/api';
-import { isCoreUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/productCache';
+import { isUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/productCache';
 import type {
   Draft,
   DraftEdited,
@@ -261,7 +261,7 @@ export function useExtractionDrafts() {
 
   const selectProduct = useCallback(
     async (draftIdx: number, itemIdx: number, product: Product) => {
-      if (isCoreUnpricedProduct(product)) return;
+      if (isUnpricedProduct(product)) return;
       updateDraftItem(draftIdx, itemIdx, 'item_code', product.sku);
       updateDraftItem(draftIdx, itemIdx, 'item_name', product.nome || '');
       setProductSearch(prev => ({

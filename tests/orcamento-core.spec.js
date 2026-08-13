@@ -75,8 +75,6 @@ test.describe('Orçamento manual — rascunho core', () => {
         body: JSON.stringify({
           data: [CLIENT],
           pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
-          core_mode: true,
-          source: 'postgres',
         }),
       });
     });
@@ -87,8 +85,6 @@ test.describe('Orçamento manual — rascunho core', () => {
         body: JSON.stringify({
           data: [PRODUCT],
           pagination: { page: 1, limit: 8, total: 1, total_pages: 1 },
-          core_mode: true,
-          source: 'postgres',
         }),
       });
     });
@@ -96,7 +92,7 @@ test.describe('Orçamento manual — rascunho core', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, qty: 30, rate: '9.00' }], core_mode: true, source: 'postgres' }),
+        body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, qty: 30, rate: '9.00' }] }),
       });
     });
     await page.route('**/api/orcamento', async (route) => {
@@ -117,8 +113,6 @@ test.describe('Orçamento manual — rascunho core', () => {
           subtotal: '270.00',
           frete: '0.00',
           total: '270.00',
-          core_mode: true,
-          source: 'postgres',
         }),
       });
     });
@@ -147,7 +141,7 @@ test.describe('Orçamento manual — rascunho core', () => {
     expect(quoteRequest?.extracted?.template_key).toBe('minimalista');
   });
 
-  test('envia o mesmo preço exibido para o boundary legado com sinal não manual', async ({ page }) => {
+  test('envia o mesmo preço exibido para o fluxo local com sinal não manual', async ({ page }) => {
     /** @type {any} */
     let quoteRequest;
 
@@ -155,21 +149,21 @@ test.describe('Orçamento manual — rascunho core', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [CLIENT], core_mode: false, source: 'frappe' }),
+        body: JSON.stringify({ data: [CLIENT] }),
       });
     });
     await page.route('**/api/products**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: [PRODUCT], core_mode: false, source: 'frappe' }),
+        body: JSON.stringify({ data: [PRODUCT] }),
       });
     });
     await page.route('**/api/pricing-lookup**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, qty: 30, rate: '9.00' }], core_mode: false, source: 'frappe' }),
+        body: JSON.stringify({ success: true, items: [{ item_code: PRODUCT.sku, qty: 30, rate: '9.00' }] }),
       });
     });
     await page.route('**/api/orcamento', async (route) => {
@@ -179,12 +173,11 @@ test.describe('Orçamento manual — rascunho core', () => {
         contentType: 'application/json',
         body: JSON.stringify({
           success: true,
-          quotation_id: 'ERP-QUOTE-0001',
-          deal_id: 'DEAL-0001',
+          quotation_id: 'ORC-LOCAL-0001',
+          quote_id: 'quote-local-0001',
+          revision_id: 'revision-local-0001',
           cliente: CLIENT.nome,
           items: [{ sku: PRODUCT.sku, qty: 30, rate: 9 }],
-          core_mode: false,
-          source: 'frappe',
         }),
       });
     });
@@ -201,8 +194,8 @@ test.describe('Orçamento manual — rascunho core', () => {
     await expect(page.getByText(PRODUCT.sku, { exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Criar orçamento' }).click();
 
-    await expect(page.getByText('Orçamento criado com sucesso')).toBeVisible();
-    await expect(page.getByText(/ERP-QUOTE-0001/)).toBeVisible();
+    await expect(page.getByText('Rascunho persistido com sucesso')).toBeVisible();
+    await expect(page.getByText(/ORC-LOCAL-0001/)).toBeVisible();
     expect(quoteRequest?.extracted?.items?.[0]?.rate).toBe(9);
     expect(quoteRequest?.extracted?.items?.[0]?.manual_rate).toBe(false);
   });

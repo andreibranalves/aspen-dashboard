@@ -3,9 +3,6 @@ import assert from 'node:assert/strict';
 import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
 
-process.env.CRM_CORE_QUOTES_ENABLED = 'true';
-process.env.CRM_QUOTES_ROLLOUT_STATE = 'postgres-read-only';
-
 const template = getQuotationTemplate('padrao')!;
 const extracted = {
   nome: 'Cliente Preview',

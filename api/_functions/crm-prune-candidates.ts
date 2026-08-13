@@ -1,6 +1,9 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { createHttpError, erpGetList, erpPut } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
+import { createHttpError } from '../_lib/http-error.js';
+import {
+  createPostgresCrmDealRepository,
+  type CrmDealRepository,
+} from '../_db/crm-deals-repository.js';
 import {
   getPruneCandidates,
   parseDealIds,
@@ -9,7 +12,10 @@ import {
   PRUNE_THRESHOLD_DAYS,
 } from './lib/crm-prune.js';
 
-const deps = { erpGetList, erpPut };
+export interface CrmPruneCandidatesHandlerDependencies {
+  repository?: CrmDealRepository;
+  now?: () => Date;
+}
 
 function json(statusCode: number, body: unknown): FunctionResult {
   return {
@@ -19,7 +25,7 @@ function json(statusCode: number, body: unknown): FunctionResult {
   };
 }
 
-function parseJsonBody(body: string | undefined | null): unknown {
+function parseJsonBody(body: string | undefined): unknown {
   try {
     return body ? JSON.parse(body) : {};
   } catch {
@@ -27,32 +33,40 @@ function parseJsonBody(body: string | undefined | null): unknown {
   }
 }
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'crm-prune-candidates não está disponível no modo operacional.' }) };
-  }
-  try {
-    if (event.httpMethod === 'GET') {
-      const candidates = await getPruneCandidates(deps);
-      return json(200, {
-        candidates,
-        meta: {
-          threshold_days: PRUNE_THRESHOLD_DAYS,
-          protect_recent_days: PRUNE_PROTECT_RECENT_DAYS,
-          count: candidates.length,
-        },
+export function createCrmPruneCandidatesHandler(
+  dependencies: CrmPruneCandidatesHandlerDependencies = {}
+): (event: FunctionEvent) => Promise<FunctionResult> {
+  const repository = dependencies.repository || createPostgresCrmDealRepository();
+  const now = dependencies.now || (() => new Date());
+  return async (event: FunctionEvent): Promise<FunctionResult> => {
+    try {
+      if (event.httpMethod === 'GET') {
+        const candidates = await getPruneCandidates(repository, now());
+        return json(200, {
+          candidates,
+          meta: {
+            threshold_days: PRUNE_THRESHOLD_DAYS,
+            protect_recent_days: PRUNE_PROTECT_RECENT_DAYS,
+            count: candidates.length,
+          },
+        });
+      }
+
+      if (event.httpMethod === 'POST') {
+        const dealIds = parseDealIds(parseJsonBody(event.body));
+        return json(200, await pruneDeals(dealIds, now(), repository));
+      }
+
+      return json(405, { error: 'Método não permitido.' });
+    } catch (error) {
+      const httpError = error as { statusCode?: number; message?: string; logMessage?: string };
+      const statusCode = Number.isInteger(httpError.statusCode) ? httpError.statusCode! : 500;
+      console.error('[crm-prune-candidates]', httpError.logMessage || httpError.message || error);
+      return json(statusCode, {
+        error: httpError.statusCode ? httpError.message : 'Erro interno.',
       });
     }
-
-    if (event.httpMethod === 'POST') {
-      const dealIds = parseDealIds(parseJsonBody(event.body));
-      return json(200, await pruneDeals(dealIds, deps));
-    }
-
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[crm-prune-candidates]', err?.logMessage || err?.message || err);
-    return json(code, { error: err?.statusCode ? err.message : 'Erro interno.' });
-  }
+  };
 }
+
+export const handler = createCrmPruneCandidatesHandler();

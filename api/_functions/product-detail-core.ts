@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   createPostgresProductsRepository,
   ProductRepositoryError,
@@ -9,7 +9,8 @@ import {
   PricingRepositoryError,
   type PricingRepository,
 } from '../_db/pricing-repository.js';
-import { responseMetadata } from './products-mode.js';
+
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface ProductDetailCoreDependencies {
   repository: ProductsRepository;
@@ -20,7 +21,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, ...responseMetadata('core') }),
+    body: JSON.stringify(payload),
   };
 }
 
@@ -34,7 +35,7 @@ export function createCoreHandler(
     repository: createPostgresProductsRepository(),
     pricingRepository: createPostgresPricingRepository(),
   }
-): LegacyHandler {
+): Handler {
   return async function productDetailCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
     const sku = (event.queryStringParameters?.sku || '').trim();

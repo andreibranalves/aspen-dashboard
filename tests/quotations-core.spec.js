@@ -9,10 +9,11 @@ function detail(overrides = {}) {
     quotation_id: id,
     quotation_uuid: '11111111-1111-4111-8111-111111111111',
     revision_id: '22222222-2222-4222-8222-222222222222',
+    revision: 1,
     revision_number: 1,
     status: 'Draft',
     status_canonical: 'rascunho',
-    cliente: 'Cliente core',
+    cliente: 'Cliente local',
     client_id: '33333333-3333-4333-8333-333333333333',
     validade_dias: 15,
     validade: '2026-07-16',
@@ -23,33 +24,24 @@ function detail(overrides = {}) {
     frete: '0.00',
     observacoes: 'Original',
     prazo_producao: '3 dias',
+    template_padrao: 'padrao',
+    template_key: 'padrao',
+    template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e',
+    template_version_id: null,
+    template_version: null,
+    secoes: { schema_version: 1, prazo_producao: { base: { enabled: true, title: 'Prazo' }, current: { enabled: true, title: 'Prazo' } }, pagamento: { base: { enabled: true, title: 'Pagamento', body: 'À vista' }, current: { enabled: true, title: 'Pagamento', body: 'À vista' } }, condicoes_gerais: { base: { enabled: true, title: 'Condições', body: '' }, current: { enabled: true, title: 'Condições', body: '' } } },
     subtotal: '90.00',
     total: '90.00',
     valor: '90.00',
     concurrency_token: token,
     updated_at: token,
-    items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto core', item_name: 'Produto core', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '90.00', manual_rate: false }],
-    core_mode: true,
-    source: 'postgres',
+    items: [{ id: '44444444-4444-4444-8444-444444444444', sku: 'SKU-1', item_code: 'SKU-1', nome: 'Produto local', item_name: 'Produto local', qty: '10.000', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '90.00', manual_rate: false }],
+    revision_history: [], derived_expired: false, expiration_derived: false, is_expired: false, expirada: false,
     ...overrides,
   };
 }
 
-test('core quotations list/search/open/edit and surface optimistic conflicts', async ({ page }) => {
-  await page.route('**/api/settings**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ operational_mode: false }),
-    });
-  });
-  await page.route('**/api/quotation-templates**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ templates: [], default_key: '' }),
-    });
-  });
+test('local quotations list/search/open/edit and surface optimistic conflicts', async ({ page }) => {
   const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;
   let lastPutPayload;
@@ -85,11 +77,11 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [{ id, cliente: 'Cliente core', data: '2026-07-01', valor: '90.00', status: 'Draft' }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Draft: 1 }, core_mode: true, source: 'postgres' }),
+      body: JSON.stringify({ data: [{ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
     });
   });
   await page.route('**/api/leads-clients**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente core' }], core_mode: true, source: 'postgres' }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente local' }] }) });
   });
 
   await page.goto('/#/quotations');
@@ -97,7 +89,7 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
   await page.getByLabel('Buscar orçamentos').fill('Cliente');
   await expect(page.getByText(id).first()).toBeVisible();
   await page.getByRole('cell', { name: id, exact: true }).click();
-  await expect(page.getByText('Produto core')).toBeVisible();
+  await expect(page.getByText('Produto local')).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByLabel('Pagamento do orçamento').fill('Não persistir');
   await page.getByRole('button', { name: 'Cancelar' }).click();
@@ -129,11 +121,8 @@ test('core quotations list/search/open/edit and surface optimistic conflicts', a
 });
 
 test('pré-seleciona o modelo padrão em rascunho já existente', async ({ page }) => {
-  await page.route('**/api/settings**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ operational_mode: false }) });
-  });
   await page.route('**/api/leads-clients**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], core_mode: true }) });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
   await page.route('**/api/quotation-templates**', async (route) => {
     await route.fulfill({
@@ -142,7 +131,7 @@ test('pré-seleciona o modelo padrão em rascunho já existente', async ({ page 
       body: JSON.stringify({
         default_key: 'simples',
         templates: [
-          { key: 'frappe', name: 'Frappe (Original)', is_default: false, current_version_id: '55555555-5555-4555-8555-555555555555', current_version: 1 },
+          { key: 'branded', name: 'Aspen Original', is_default: false, current_version_id: '55555555-5555-4555-8555-555555555555', current_version: 1 },
           { key: 'simples', name: 'Simples', is_default: true, current_version_id: '66666666-6666-4666-8666-666666666666', current_version: 1 },
         ],
       }),
@@ -153,8 +142,8 @@ test('pré-seleciona o modelo padrão em rascunho já existente', async ({ page 
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(detail({
-        template_key: 'frappe',
-        template_padrao: 'frappe',
+        template_key: 'branded',
+        template_padrao: 'branded',
         template_version_id: '55555555-5555-4555-8555-555555555555',
       })),
     });

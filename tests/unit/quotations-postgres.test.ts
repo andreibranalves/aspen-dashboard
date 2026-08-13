@@ -20,7 +20,7 @@ import {
   getQuotationTemplateManifest,
   renderQuotationTemplate,
 } from '../../api/_functions/lib/quotation-templates.js';
-import { appSettings, clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
+import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -69,6 +69,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     if (oldSecondQuotations.length) await db.delete(quotations).where(inArray(quotations.id, oldSecondQuotations.map((row) => row.id)));
     await db.delete(clients).where(eq(clients.id, clientId));
     await db.delete(clients).where(eq(clients.id, secondClientId));
+    await db.delete(productActivityEvents).where(eq(productActivityEvents.productSku, sku));
     await db.delete(products).where(eq(products.sku, sku));
     await db.insert(products).values({ sku, nome: 'Produto de gerenciamento', descricao: 'Original', unidade: 'Und', precoBase: '12.00', ativo: true });
     await db.insert(productPricingTiers).values({ productSku: sku, minimumQuantity: '30.000', unitPrice: '9.00' });
@@ -76,6 +77,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     await db.insert(clients).values({ id: secondClientId, nome: 'Segundo cliente de gerenciamento', email: 'management-second@example.com', arquivado: false });
     const create = createPostgresQuoteDraftRepository(() => db, { now: () => new Date('2026-07-01T12:00:00.000Z') });
     const draft = await create.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
+    const draftActivity = await db
+      .select()
+      .from(productActivityEvents)
+      .where(eq(productActivityEvents.productSku, sku));
+    assert.equal(draftActivity.filter((row) => row.tipo === 'orcamento').length, 1);
     const createLater = createPostgresQuoteDraftRepository(() => db, { now: () => new Date('2026-07-02T12:00:00.000Z') });
     const laterDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     const terminalDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
@@ -374,6 +380,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     if (rows.length) await db.delete(quotations).where(inArray(quotations.id, rows.map((row) => row.id)));
     await db.delete(clients).where(eq(clients.id, clientId));
     await db.delete(clients).where(eq(clients.id, secondClientId));
+    await db.delete(productActivityEvents).where(eq(productActivityEvents.productSku, sku));
     await db.delete(products).where(eq(products.sku, sku));
     if (previousSettings) {
       await db.update(appSettings).set({

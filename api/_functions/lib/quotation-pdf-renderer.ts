@@ -1,9 +1,8 @@
 // Browser-only PDF renderer for immutable PostgreSQL quotation HTML.
-// Legacy ERPNext printview stays in quotation-pdf.ts.
 
 // Chrome/Edge headless PDF generator for quotation documents.
 // Implements the AGENTS.md requirement: use Chrome/Edge headless with --headless=new,
-// NOT wkhtmltopdf (ERPNext's download_pdf).
+// NOT wkhtmltopdf.
 //
 // Two strategies (tried in order):
 //   1. System browser via spawn (fast — for VPS / local dev)
@@ -209,9 +208,7 @@ async function pdfWithSparticuz(html: string, opts: { timeout?: number } = {}): 
 
 // ── Main export ─────────────────────────────────────────────────────────────
 
-/** Render already-prepared quotation HTML with the same Chromium pipeline used
- * by the legacy ERPNext PDF endpoint. Core issuance supplies HTML built only
- * from its immutable revision snapshot. */
+/** Render already-prepared quotation HTML from an immutable revision snapshot. */
 export async function renderQuotationPdfHtml(
   html: string,
   opts: { timeout?: number } = {},

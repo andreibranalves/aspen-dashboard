@@ -1,6 +1,5 @@
 // POST /api/edit-draft — interpret a natural-language edit prompt against
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { isOperationalMode } from './operational-mode.js';
 // a current draft and return proposed changes.
 
 const EDIT_SYSTEM_PROMPT = `Você é um assistente de edição de cotação da Aspen Estamparia.
@@ -145,9 +144,6 @@ async function editDraftWithOpenRouter(prompt: string, currentDraft: unknown): P
 }
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'edit-draft não está disponível no modo operacional.' }) };
-  }
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }

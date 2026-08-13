@@ -19,7 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatBRL, capitalize } from '@/lib/formatters';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
-import { isCoreUnpricedProduct, searchProducts } from '@/lib/productCache';
+import { isUnpricedProduct, searchProducts } from '@/lib/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +42,11 @@ export interface SplitResultCardProps {
   onCreateQuote: (draftIdx: number) => void;
   onPreviewQuote: (draftIdx: number) => void;
   viewUrl?: string;
-  waStatus?: { state?: 'sending' | 'sent' | 'error'; message?: string };
+  waStatus?: {
+    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial';
+    message?: string;
+    deliveryAccepted?: boolean;
+  };
   waFlows?: CommunicationFlow[];
   waSelectedFlowId?: string;
   templates?: QuotationTemplateMetadata[];
@@ -138,7 +142,7 @@ export default function SplitResultCard({
   const handleSelectProduct = useCallback(
     (ii: number, product: Product) => {
       if (!product?.sku) return;
-      if (isCoreUnpricedProduct(product)) return;
+      if (isUnpricedProduct(product)) return;
       selectProduct(draft.index, ii, product);
       setItemSearchTerms((prev) => ({
         ...prev,
@@ -394,15 +398,15 @@ export default function SplitResultCard({
                                 <button
                                   key={p.sku || p.item_code}
                                   type="button"
-                                  disabled={isCoreUnpricedProduct(p)}
+                                  disabled={isUnpricedProduct(p)}
                                   title={
-                                    isCoreUnpricedProduct(p)
+                                    isUnpricedProduct(p)
                                       ? 'Preço indisponível para este produto.'
                                       : undefined
                                   }
                                   className={cn(
                                     'w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2',
-                                    isCoreUnpricedProduct(p)
+                                    isUnpricedProduct(p)
                                       ? 'cursor-not-allowed opacity-50'
                                       : 'hover:bg-surface-muted'
                                   )}
@@ -417,7 +421,7 @@ export default function SplitResultCard({
                                   <span className="truncate">
                                     {String(p.nome || p.item_name || '—')}
                                   </span>
-                                  {isCoreUnpricedProduct(p) && (
+                                  {isUnpricedProduct(p) && (
                                     <span className="ml-auto shrink-0 text-[10px] text-destructive">
                                       Preço indisponível
                                     </span>
@@ -579,15 +583,20 @@ export default function SplitResultCard({
             )}
             <Button
               size="sm"
-              disabled={waStatus?.state === 'sending'}
+              disabled={waStatus?.state === 'sending'
+                || waStatus?.state === 'sent'
+                || waStatus?.state === 'reconciling'
+                || waStatus?.state === 'accepted-partial'}
               onClick={() => onSendWhatsApp?.(draft.index)}
             >
               <Phone size={13} />
               {waStatus?.state === 'sent'
                 ? 'Enviado'
-                : waStatus?.state === 'sending'
-                  ? 'Enviando…'
-                  : 'Enviar WhatsApp'}
+                : waStatus?.state === 'reconciling' || waStatus?.state === 'accepted-partial'
+                  ? 'Reconciliação pendente'
+                  : waStatus?.state === 'sending'
+                    ? 'Enviando…'
+                    : 'Enviar WhatsApp'}
             </Button>
           </>
         ) : (
@@ -663,7 +672,11 @@ export default function SplitResultCard({
         <p
           className={cn(
             'px-4 pb-3 text-xs leading-5 text-center',
-            waStatus.state === 'error' ? 'text-destructive' : 'text-fg-muted'
+            waStatus.state === 'error'
+              ? 'text-destructive'
+              : waStatus.deliveryAccepted
+                ? 'text-warning'
+                : 'text-fg-muted'
           )}
         >
           {waStatus.message}

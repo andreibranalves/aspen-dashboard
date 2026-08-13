@@ -4,8 +4,7 @@ import {
   useCallback,
   useRef,
   type ChangeEvent,
-  type DragEvent,
-  type MouseEvent,
+  type MutableRefObject,
 } from 'react';
 import {
   Pencil,
@@ -14,18 +13,14 @@ import {
   Save,
   X,
   Plus,
-  GripVertical,
   AlertTriangle,
-  ShoppingCart,
   Loader2,
-  Copy,
   Search,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { isCoreUnpricedProduct, searchProducts } from '@/lib/productCache';
+import { searchProducts } from '@/lib/productCache';
 import type { Product } from '@/types/domain';
 import { formatBRL, formatDate } from '@/lib/formatters';
-import { buildQuotationViewUrl } from '@/lib/printFormats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
@@ -35,7 +30,7 @@ import {
   QuotationSectionsEditor,
   type QuotationSectionsSnapshot,
 } from '@/components/quotation/QuotationSectionsEditor';
-import type { QuotationSectionsSettings } from '@/lib/settingsApi';
+import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
 
 const STATUS_LABELS: Record<string, string> = {
   Rascunho: 'Rascunho',
@@ -52,102 +47,14 @@ const STATUS_LABELS: Record<string, string> = {
   Cancelled: 'Cancelado',
 };
 
-interface QuotationItem {
-  _key: string;
-  item_code: string;
-  item_name: string;
-  qty: number | string;
-  quantidade?: number | string;
-  rate: number | string;
+type QuotationItem = ProjectedQuotationItem & {
+  _key?: string;
   _rateManual?: boolean;
-  sku?: string;
-  nome?: string;
-  descricao?: string;
-  unidade?: string;
-  suggested_unit_price?: string | number;
-  preco_sugerido?: string | number;
-  applied_unit_price?: string | number;
-  preco_aplicado?: string | number;
-  price_difference?: string | number;
-  diferenca_preco?: string | number;
-  line_total?: string | number;
-  total_linha?: string | number;
-  manual_rate?: boolean;
-}
+};
 
-interface QuotationData {
-  id: string;
-  status: string;
-  cliente?: string;
-  data?: string;
-  validade?: string;
-  validity_date?: string;
-  sales_order_id?: string;
+type QuotationData = Omit<ProjectedQuotationData, 'items'> & {
   items?: QuotationItem[];
-  core_mode?: boolean;
-  source?: string;
-  status_canonical?: string;
-  quotation_id?: string;
-  quotation_uuid?: string;
-  quote_id?: string;
-  revision_id?: string;
-  quote_revision_id?: string;
-  revision?: number;
-  revision_number?: number;
-  client_id?: string;
-  cliente_id?: string;
-  cliente_snapshot?: Record<string, unknown>;
-  validade_dias?: number;
-  pagamento?: string;
-  entrega?: string;
-  frete_padrao?: string | number;
-  frete?: string | number;
-  observacoes?: string;
-  prazo_producao?: string;
-  template_padrao?: string;
-  template_key?: string;
-  template_hash?: string;
-  template_version_id?: string | null;
-  template_version?: number | null;
-  secoes?: QuotationSectionsSnapshot | null;
-  sections_snapshot?: QuotationSectionsSnapshot | null;
-  subtotal?: string | number;
-  total?: string | number;
-  valor?: string | number;
-  updated_at?: string;
-  updatedAt?: string;
-  concurrency_token?: string;
-  version_token?: string;
-  revision_history?: QuotationRevisionHistoryEntry[];
-  derived_expired?: boolean;
-  expiration_derived?: boolean;
-  is_expired?: boolean;
-  expirada?: boolean;
-}
-
-interface QuotationRevisionHistoryEntry {
-  id: string;
-  revision_id: string;
-  revision: number;
-  revision_number: number;
-  created_at: string;
-  createdAt: string;
-  validade_dias: number;
-  validity_date: string;
-  validade: string;
-  subtotal: string | number;
-  total: string | number;
-  valor: string | number;
-  status: string;
-  status_canonical: string;
-  derived_expired: boolean;
-  expiration_derived: boolean;
-  is_expired: boolean;
-  expirada: boolean;
-  template_key?: string | null;
-  template_version?: number | null;
-  template_hash?: string | null;
-}
+};
 
 interface QuotationDetailPageProps {
   id: string;
@@ -166,6 +73,7 @@ interface CoreClientResult {
 }
 
 interface CoreQuotationItem extends QuotationItem {
+  _key: string;
   sku: string;
   nome: string;
   qty: string;
@@ -180,6 +88,7 @@ interface CoreQuotationDetailProps {
   data: QuotationData;
   navigate: (path: string) => void;
   onReload: () => Promise<void>;
+  concurrencyTokenRef: MutableRefObject<string>;
 }
 
 interface QuotationTemplateMetadata {
@@ -192,13 +101,6 @@ interface QuotationTemplateMetadata {
   current_version_id?: string | null;
   current_version?: number | null;
 }
-
-const DEFAULT_SECTIONS: QuotationSectionsSettings = {
-  schema_version: 1,
-  prazo_producao: { enabled: true, title: 'Prazo de produção' },
-  pagamento: { enabled: true, title: 'Pagamento', body: '' },
-  condicoes_gerais: { enabled: true, title: 'Condições Gerais', body: '' },
-};
 
 function cloneSections<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -219,47 +121,28 @@ function parseSections(value: unknown): QuotationSectionsSnapshot | null {
 
 function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
   const existing = parseSections(data.secoes) || parseSections(data.sections_snapshot);
-  if (existing) return cloneSections(existing);
-  const current: QuotationSectionsSettings = {
-    ...cloneSections(DEFAULT_SECTIONS),
-    pagamento: { ...DEFAULT_SECTIONS.pagamento, body: data.pagamento || '' },
-    condicoes_gerais: {
-      ...DEFAULT_SECTIONS.condicoes_gerais,
-      body: [data.entrega && `Prazo de entrega:\n${data.entrega}`, data.observacoes && `Observações:\n${data.observacoes}`]
-        .filter(Boolean)
-        .join('\n\n'),
-    },
-    prazo_producao: { ...DEFAULT_SECTIONS.prazo_producao, enabled: Boolean(data.prazo_producao) },
-  };
-  return {
-    schema_version: 1,
-    prazo_producao: { base: cloneSections(current.prazo_producao), current: cloneSections(current.prazo_producao) },
-    pagamento: { base: cloneSections(current.pagamento), current: cloneSections(current.pagamento) },
-    condicoes_gerais: { base: cloneSections(current.condicoes_gerais), current: cloneSections(current.condicoes_gerais) },
-  };
+  if (!existing) throw new Error('Resposta inválida: seções do orçamento ausentes.');
+  return cloneSections(existing);
 }
 
 function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
   return (items || []).map((item) => ({
-    ...item,
     _key: item._key || makeItemKey(),
-    sku: String(item.sku || item.item_code || ''),
-    item_code: String(item.item_code || item.sku || ''),
-    item_name: String(item.item_name || item.nome || ''),
-    nome: String(item.nome || item.item_name || ''),
-    qty: String(item.qty ?? item.quantidade ?? '1'),
-    suggested_unit_price: String(item.suggested_unit_price ?? item.preco_sugerido ?? '0.00'),
-    applied_unit_price: String(
-      item.applied_unit_price ?? item.preco_aplicado ?? item.rate ?? '0.00'
-    ),
-    price_difference: String(item.price_difference ?? item.diferenca_preco ?? '0.00'),
-    line_total: String(item.line_total ?? item.total_linha ?? '0.00'),
-    manual_rate: item.manual_rate === true || item._rateManual === true,
-    rate: String(item.applied_unit_price ?? item.preco_aplicado ?? item.rate ?? '0.00'),
+    sku: String(item.sku ?? item.item_code),
+    item_code: String(item.item_code),
+    item_name: String(item.item_name),
+    nome: String(item.nome ?? item.item_name),
+    qty: String(item.qty),
+    suggested_unit_price: String(item.suggested_unit_price ?? item.preco_sugerido),
+    applied_unit_price: String(item.applied_unit_price ?? item.preco_aplicado ?? item.rate),
+    price_difference: String(item.price_difference ?? item.diferenca_preco),
+    line_total: String(item.line_total ?? item.total_linha),
+    manual_rate: item.manual_rate,
+    rate: String(item.rate),
   }));
 }
 
-function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuotationDetailProps) {
+function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrencyTokenRef }: CoreQuotationDetailProps) {
   const [data, setData] = useState<QuotationData>(initialData);
   const draftEditable = data.status_canonical === 'rascunho';
   const [editing, setEditing] = useState(false);
@@ -271,21 +154,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const [message, setMessage] = useState('');
   const [conflict, setConflict] = useState('');
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
-  const [clientId, setClientId] = useState(data.client_id || data.cliente_id || '');
+  const [clientId, setClientId] = useState(data.client_id || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
   const [clientResults, setClientResults] = useState<CoreClientResult[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
   const [validadeDias, setValidadeDias] = useState(String(data.validade_dias ?? ''));
   const [pagamento, setPagamento] = useState(data.pagamento || '');
   const [entrega, setEntrega] = useState(data.entrega || '');
-  const [frete, setFrete] = useState(String(data.frete ?? '0.00'));
+  const [frete, setFrete] = useState(String(data.frete));
   const [observacoes, setObservacoes] = useState(data.observacoes || '');
   const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
   const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState(data.template_version_id || '');
   const [selectedTemplate, setSelectedTemplate] = useState(
-    data.template_key || data.template_padrao || 'padrao'
+    data.template_key || 'padrao'
   );
   const [templateError, setTemplateError] = useState('');
   const [productTerms, setProductTerms] = useState<Record<string, string>>({});
@@ -296,16 +179,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   useEffect(() => {
     setData(initialData);
     setItems(asCoreItems(initialData.items));
-    setClientId(initialData.client_id || initialData.cliente_id || '');
+    setClientId(initialData.client_id || '');
     setClientSearch(initialData.cliente || '');
     setValidadeDias(String(initialData.validade_dias ?? ''));
     setPagamento(initialData.pagamento || '');
     setEntrega(initialData.entrega || '');
-    setFrete(String(initialData.frete ?? '0.00'));
+    setFrete(String(initialData.frete));
     setObservacoes(initialData.observacoes || '');
     setPrazoProducao(initialData.prazo_producao || '');
     setSections(normalizeSections(initialData));
-    setSelectedTemplate(initialData.template_key || initialData.template_padrao || 'padrao');
+    setSelectedTemplate(initialData.template_key || 'padrao');
     setSelectedVersionId(initialData.template_version_id || '');
     setClientResults([]);
     setClientSearching(false);
@@ -322,20 +205,29 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
 
   useEffect(() => {
     let active = true;
-    apiGet<{
-      templates?: QuotationTemplateMetadata[];
-      data?: QuotationTemplateMetadata[];
-      default_key?: string;
-    }>('/quotation-templates')
+    apiGet<unknown>('/quotation-templates')
       .then((result) => {
         if (!active) return;
-        const available = result.templates || result.data || [];
+        const payload = result && typeof result === 'object' && !Array.isArray(result)
+          ? result as Record<string, unknown>
+          : null;
+        const rawTemplates = payload && Array.isArray(payload.templates)
+          ? payload.templates
+          : payload && Array.isArray(payload.data)
+            ? payload.data
+            : [];
+        const projected = rawTemplates.map(projectQuotationTemplate);
+        if (projected.some((template): template is null => template === null)) {
+          throw new Error('Resposta inválida ao carregar templates.');
+        }
+        const available = projected as QuotationTemplateMetadata[];
+        const defaultKey = typeof payload?.default_key === 'string' ? payload.default_key : '';
         const fallback =
-          available.find((template) => template.key === result.default_key && !template.archived) ||
+          available.find((template) => template.key === defaultKey && !template.archived) ||
           available.find((template) => template.is_default && !template.archived) ||
           available.find((template) => !template.archived) ||
           available[0];
-        const persisted = initialData.template_key || initialData.template_padrao || '';
+        const persisted = initialData.template_key || '';
         const persistedTemplate = available.find((template) => template.key === persisted);
         setTemplates(available);
         if (persistedTemplate?.archived) {
@@ -366,7 +258,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     return () => {
       active = false;
     };
-  }, [initialData.id, initialData.status_canonical, initialData.template_key, initialData.template_padrao]);
+  }, [initialData.id, initialData.status_canonical, initialData.template_key]);
 
   const searchClients = useCallback(async (term: string) => {
     if (term.trim().length < 2) {
@@ -375,10 +267,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     }
     setClientSearching(true);
     try {
-      const response = await apiGet<{ data?: CoreClientResult[] }>(
+      const response = await apiGet<unknown>(
         `/leads-clients?search=${encodeURIComponent(term)}&limit=10`
       );
-      setClientResults(response.data || []);
+      const payload = response && typeof response === 'object' && !Array.isArray(response)
+        ? response as Record<string, unknown>
+        : {};
+      const results = Array.isArray(payload.data)
+        ? payload.data.map(projectClientRow).filter((client): client is CoreClientResult => client !== null)
+        : [];
+      setClientResults(results);
     } catch {
       setClientResults([]);
     } finally {
@@ -409,9 +307,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       return;
     }
     try {
-      const results = await searchProducts(term, 6);
-      setProductResults((previous) => ({ ...previous, [key]: results }));
-    } catch {
+      const rawResults = await searchProducts(term, 6);
+      const results = rawResults.map(projectProduct);
+      if (results.some((product): product is null => product === null)) {
+        throw new Error('Resposta inválida ao buscar produtos.');
+      }
+      setProductResults((previous) => ({ ...previous, [key]: results as Product[] }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Não foi possível buscar produtos.');
       setProductResults((previous) => ({ ...previous, [key]: [] }));
     }
   }, []);
@@ -482,7 +385,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   const resetEditor = useCallback(
     (authoritative: QuotationData = data) => {
       setItems(asCoreItems(authoritative.items));
-      setClientId(authoritative.client_id || authoritative.cliente_id || '');
+      setClientId(authoritative.client_id || '');
       setClientSearch(authoritative.cliente || '');
       setClientResults([]);
       setClientSearching(false);
@@ -495,11 +398,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
       setValidadeDias(String(authoritative.validade_dias ?? ''));
       setPagamento(authoritative.pagamento || '');
       setEntrega(authoritative.entrega || '');
-      setFrete(String(authoritative.frete ?? '0.00'));
+      setFrete(String(authoritative.frete));
       setObservacoes(authoritative.observacoes || '');
       setPrazoProducao(authoritative.prazo_producao || '');
       setSections(normalizeSections(authoritative));
-      setSelectedTemplate(authoritative.template_key || authoritative.template_padrao || 'padrao');
+      setSelectedTemplate(authoritative.template_key || 'padrao');
       setSelectedVersionId(authoritative.template_version_id || '');
       setMessage('');
       setConflict('');
@@ -509,7 +412,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   );
 
   const save = useCallback(async () => {
-    if (!data.concurrency_token && !data.version_token && !data.updated_at) {
+    const token = concurrencyTokenRef.current;
+    if (!token) {
       setConflict('Token de concorrência ausente. Recarregue o orçamento antes de editar.');
       return;
     }
@@ -517,10 +421,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     setMessage('Salvando…');
     setConflict('');
     try {
-      const refreshed = await apiPut<QuotationData>(
+      const refreshed = await apiPut<unknown>(
         `/quotations?id=${encodeURIComponent(data.id)}`,
         {
-          concurrency_token: data.concurrency_token || data.version_token || data.updated_at,
+          concurrency_token: token,
           client_id: clientId,
           items: items.map((item) => ({
             item_code: item.sku || item.item_code,
@@ -540,10 +444,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
           secoes: sections,
         }
       );
-      if (refreshed && refreshed.id) {
-        setData(refreshed);
-        resetEditor(refreshed);
-      }
+      const projection = projectQuotationDetail(refreshed);
+      if (!projection) throw new Error('Resposta inválida ao salvar orçamento.');
+      concurrencyTokenRef.current = projection.concurrencyToken;
+      setData(projection.data);
+      resetEditor(projection.data);
       setMessage('Salvo.');
       setEditing(false);
     } catch (error) {
@@ -597,30 +502,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
   }, [data.id, navigate]);
 
   const displayItems = items;
-  const displayedTotal =
-    data.total ??
-    data.valor ??
-    displayItems.reduce(
-      (sum, item) =>
-        sum + Number(item.line_total || Number(item.qty) * Number(item.applied_unit_price)),
-      0
-    );
+  const displayedTotal = data.total;
   const selectedTemplateMetadata = templates.find((template) => template.key === selectedTemplate);
   const visibleTemplates = templates.filter(
     (template) => !template.archived || template.key === selectedTemplate
   );
   const openPreview = useCallback(() => {
-    const params = new URLSearchParams({ id: data.id });
+    const params = new URLSearchParams({ id: data.revision_id || data.id });
     if (draftEditable && selectedVersionId) params.set('template_version_id', selectedVersionId);
     window.open(
       `/api/quotation-preview?${params.toString()}`,
       '_blank',
       'noopener,noreferrer'
     );
-  }, [data.id, draftEditable, selectedVersionId]);
+  }, [data.id, data.revision_id, draftEditable, selectedVersionId]);
   const emitir = useCallback(async () => {
     if (!confirm(`Emitir orçamento ${data.id}? Após emissão não poderá ser editado.`)) return;
-    const token = data.concurrency_token || data.version_token || data.updated_at;
+    const token = concurrencyTokenRef.current;
     if (!token) {
       setConflict('Token de concorrência ausente. Recarregue o orçamento antes de emitir.');
       return;
@@ -641,11 +539,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
     } finally {
       setIssuing(false);
     }
-  }, [data.concurrency_token, data.id, data.updated_at, data.version_token, onReload]);
+  }, [concurrencyTokenRef, data.id, onReload]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido') => {
-      const token = data.concurrency_token || data.version_token || data.updated_at;
+      const token = concurrencyTokenRef.current;
       if (!token) {
         setConflict(
           'Token de concorrência ausente. Recarregue o orçamento antes de atualizar o estado.'
@@ -664,7 +562,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             concurrency_token: token,
           }
         );
-        setData(refreshed);
+        const projection = projectQuotationDetail(refreshed);
+        if (!projection) throw new Error('Resposta inválida ao atualizar o estado do orçamento.');
+        concurrencyTokenRef.current = projection.concurrencyToken;
+        setData(projection.data);
         setMessage(
           status === 'aprovado' ? 'Orçamento aprovado.' : 'Orçamento marcado como perdido.'
         );
@@ -685,12 +586,12 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         setLifecycleAction(null);
       }
     },
-    [data.concurrency_token, data.id, data.updated_at, data.version_token]
+    [concurrencyTokenRef, data.id]
   );
 
   const createRevision = useCallback(
     async (sourceRevisionId: string) => {
-      const token = data.concurrency_token || data.version_token || data.updated_at;
+      const token = concurrencyTokenRef.current;
       if (!token) {
         setConflict(
           'Token de concorrência ausente. Recarregue o orçamento antes de criar uma revisão.'
@@ -709,8 +610,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
             concurrency_token: token,
           }
         );
-        setData(refreshed);
-        resetEditor(refreshed);
+        const projection = projectQuotationDetail(refreshed);
+        if (!projection) throw new Error('Resposta inválida ao criar revisão.');
+        concurrencyTokenRef.current = projection.concurrencyToken;
+        setData(projection.data);
+        resetEditor(projection.data);
         setMessage('Nova revisão criada em rascunho.');
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
@@ -727,12 +631,12 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
         setLifecycleAction(null);
       }
     },
-    [data.concurrency_token, data.id, data.updated_at, data.version_token, resetEditor]
+    [concurrencyTokenRef, data.id, resetEditor]
   );
   const openIssuedDocument = useCallback(() => {
-    const params = new URLSearchParams({ id: data.id || '', format: 'pdf' });
+    const params = new URLSearchParams({ id: data.revision_id || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
-  }, [data.id]);
+  }, [data.id, data.revision_id]);
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -1299,645 +1203,45 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload }: CoreQuot
 
 export default function QuotationDetailPage({ id, navigate }: QuotationDetailPageProps) {
   const [data, setData] = useState<QuotationData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'view' | 'edit'>('view'); // 'view' | 'edit'
-  const [editedItems, setEditedItems] = useState<QuotationItem[]>([]);
-  const [saving, setSaving] = useState<boolean>(false);
-  const [saveStatus, setSaveStatus] = useState<string>('');
-  const [converting, setConverting] = useState<boolean>(false);
-  const [convertStatus, setConvertStatus] = useState<string>('');
+  const concurrencyTokenRef = useRef('');
 
-  // ── Product autocomplete ──
-  const [productSearchTerms, setProductSearchTerms] = useState<Record<string, string>>({}); // { _key: searchText }
-  const [productResults, setProductResults] = useState<Record<string, Product[]>>({}); // { _key: [...] }
-  const [productSearching, setProductSearching] = useState<Record<string, boolean>>({}); // { _key: bool }
-  const [activeField, setActiveField] = useState<{ key: string; field: 'sku' | 'name' } | null>(
-    null
-  ); // { key, field } or null
-  const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pricingTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({}); // { _key: timeoutId }
-
-  // ── Load ──
   const loadDetail = useCallback(async () => {
-    if (!id) return;
     setLoading(true);
     setError(null);
+    concurrencyTokenRef.current = '';
     try {
-      const result = await apiGet<QuotationData>(`/quotations?id=${encodeURIComponent(id)}`);
-      if (!result || !result.id) throw new Error('Orçamento não encontrado.');
-      setData(result);
-      setEditedItems((result.items || []).map((item) => ({ ...item, _key: makeItemKey() })));
-      setMode('view');
+      const result = await apiGet<unknown>(`/quotations?id=${encodeURIComponent(id)}`);
+      const projection = projectQuotationDetail(result);
+      if (!projection) throw new Error('Resposta inválida ao carregar orçamento.');
+      concurrencyTokenRef.current = projection.concurrencyToken;
+      setData(projection.data);
     } catch (err) {
-      console.error('[detail]', err);
-      setError((err instanceof Error ? err.message : null) || 'Erro ao carregar orçamento.');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar orçamento.');
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  useEffect(() => {
-    loadDetail();
-  }, [loadDetail]);
+  useEffect(() => { void loadDetail(); }, [loadDetail]);
 
-  // ── Computed ──
-  const items = mode === 'edit' ? editedItems : data?.items || [];
-  const total = items.reduce((s, item) => s + Number(item.qty || 0) * Number(item.rate || 0), 0);
-
-  // ── Edit mode helpers (key-based) ──
-  const updateItem = useCallback((_key: string, field: keyof QuotationItem, value: unknown) => {
-    setEditedItems((prev) =>
-      prev.map((item) =>
-        item._key === _key
-          ? {
-              ...item,
-              [field]: value,
-              ...(field === 'rate' ? { _rateManual: true } : {}),
-              ...(field === 'item_code' ? { _rateManual: undefined } : {}),
-            }
-          : item
-      )
-    );
-  }, []);
-
-  const removeItemByKey = useCallback(
-    (_key: string) => {
-      setEditedItems((prev) => prev.filter((item) => item._key !== _key));
-      // Clean up product search state for removed item
-      setProductSearchTerms((prev) => {
-        const n = { ...prev };
-        delete n[_key];
-        return n;
-      });
-      setProductResults((prev) => {
-        const n = { ...prev };
-        delete n[_key];
-        return n;
-      });
-      setProductSearching((prev) => {
-        const n = { ...prev };
-        delete n[_key];
-        return n;
-      });
-      if (activeField?.key === _key) setActiveField(null);
-      delete pricingTimers.current[_key];
-    },
-    [activeField]
-  );
-
-  const addItem = useCallback(() => {
-    const _key = makeItemKey();
-    setEditedItems((prev) => [...prev, { _key, item_code: '', item_name: '', qty: 1, rate: 0 }]);
-    setProductSearchTerms((prev) => ({ ...prev, [_key]: '' }));
-  }, []);
-
-  // ── Product search (debounced, ref-based) ──
-  const fetchProductOptions = useCallback(async (_key: string, term: string) => {
-    if (!term || term.length < 2) {
-      setProductResults((prev) => ({ ...prev, [_key]: [] }));
-      return;
-    }
-    setProductSearching((prev) => ({ ...prev, [_key]: true }));
-    try {
-      const result = await searchProducts(term, 6);
-      setProductResults((prev) => ({ ...prev, [_key]: result }));
-    } catch {
-      setProductResults((prev) => ({ ...prev, [_key]: [] }));
-    } finally {
-      setProductSearching((prev) => ({ ...prev, [_key]: false }));
-    }
-  }, []);
-
-  const onSkuChange = useCallback(
-    (_key: string, value: string) => {
-      setProductSearchTerms((prev) => ({ ...prev, [_key]: value }));
-      updateItem(_key, 'item_code', value);
-      if (productTimer.current) clearTimeout(productTimer.current);
-      productTimer.current = setTimeout(() => fetchProductOptions(_key, value), 300);
-    },
-    [updateItem, fetchProductOptions]
-  );
-
-  const onNameChange = useCallback(
-    (_key: string, value: string) => {
-      updateItem(_key, 'item_name', value);
-      if (productTimer.current) clearTimeout(productTimer.current);
-      productTimer.current = setTimeout(() => fetchProductOptions(_key, value), 300);
-    },
-    [updateItem, fetchProductOptions]
-  );
-
-  // ── Auto-pricing lookup (ref-based debounce, key-based) ──
-  interface PricingLookupResponse {
-    items?: Array<{
-      rate?: number;
-      item_name?: string;
-    }>;
-  }
-
-  const lookupPrice = useCallback(async (_key: string, sku: string, qty: number) => {
-    if (!sku || !qty) return;
-    try {
-      const result = await apiPost<PricingLookupResponse>('/pricing-lookup', {
-        items: [{ item_code: sku, qty: Number(qty) }],
-      });
-      const priced = result?.items?.[0];
-      if (priced?.rate !== undefined && priced?.rate !== null) {
-        setEditedItems((prev) =>
-          prev.map((item) => {
-            if (item._key !== _key || item._rateManual) return item;
-            return {
-              ...item,
-              rate: priced.rate ?? item.rate,
-              item_name: priced.item_name || item.item_name,
-            };
-          })
-        );
-      }
-    } catch (err) {
-      console.warn('[detail] pricing lookup failed:', err instanceof Error ? err.message : err);
-    }
-  }, []);
-
-  const schedulePricingLookup = useCallback(
-    (_key: string, sku: string, qty: number) => {
-      if (pricingTimers.current[_key]) clearTimeout(pricingTimers.current[_key]);
-      pricingTimers.current[_key] = setTimeout(() => lookupPrice(_key, sku, qty), 400);
-    },
-    [lookupPrice]
-  );
-
-  const selectProduct = useCallback(
-    (_key: string, product: Product) => {
-      if (!product?.sku) return;
-      if (isCoreUnpricedProduct(product)) {
-        setSaveStatus('Preço indisponível para este produto.');
-        setProductResults((prev) => ({ ...prev, [_key]: [] }));
-        setActiveField(null);
-        return;
-      }
-      updateItem(_key, 'item_code', product.sku);
-      updateItem(_key, 'item_name', product.nome || product.item_name || '');
-      setProductSearchTerms((prev) => ({ ...prev, [_key]: product.sku }));
-      setProductResults((prev) => ({ ...prev, [_key]: [] }));
-      setActiveField(null);
-      // Auto-price after selecting
-      setEditedItems((prev) => {
-        const item = prev.find((it) => it._key === _key);
-        if (!item) return prev;
-        const qty = Number(item.qty || 1);
-        schedulePricingLookup(_key, product.sku, qty);
-        return prev;
-      });
-    },
-    [updateItem, schedulePricingLookup]
-  );
-
-  // ── Save ──
-  interface SavePayload {
-    items: Array<Omit<QuotationItem, '_key'>>;
-  }
-
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    setSaveStatus('Salvando…');
-    try {
-      // Strip _key before sending to API
-      const payload: SavePayload = { items: editedItems.map(({ _key, ...item }) => item) };
-      await apiPut(`/quotations?id=${encodeURIComponent(id)}`, payload);
-      setSaveStatus('Salvo!');
-      setTimeout(() => setSaveStatus(''), 2000);
-      // Reload
-      await loadDetail();
-    } catch (err) {
-      setSaveStatus('Erro ao salvar: ' + (err instanceof Error ? err.message : 'Tente novamente.'));
-    } finally {
-      setSaving(false);
-    }
-  }, [id, editedItems, loadDetail]);
-
-  const handleCancel = useCallback(() => {
-    setEditedItems((data?.items || []).map((item) => ({ ...item, _key: makeItemKey() })));
-    // Reset autocomplete state
-    setProductSearchTerms({});
-    setProductResults({});
-    setProductSearching({});
-    setActiveField(null);
-    pricingTimers.current = {};
-    setMode('view');
-  }, [data]);
-
-  // ── Delete ──
-  const handleDelete = useCallback(async () => {
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`
-      )
-    )
-      return;
-    try {
-      await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
-      navigate('/quotations');
-    } catch (err) {
-      alert('Erro ao excluir: ' + (err instanceof Error ? err.message : 'Tente novamente.'));
-    }
-  }, [id, navigate]);
-
-  // ── Create Sales Order ──
-  interface SalesOrderResponse {
-    already_exists?: boolean;
-    sales_order_id?: string;
-  }
-
-  const handleCreateSalesOrder = useCallback(async () => {
-    if (!window.confirm(`Gerar e confirmar pedido de venda para o orçamento ${id}?`)) return;
-    setConverting(true);
-    setConvertStatus('Gerando pedido de venda…');
-    try {
-      const result = await apiPost<SalesOrderResponse>('/sales-order-from-quotation', {
-        quotation_id: id,
-      });
-      setConvertStatus(
-        result.already_exists ? 'Pedido já existia.' : 'Pedido de venda criado e confirmado.'
-      );
-      await loadDetail(); // refresh to show linked SO
-      if (result.sales_order_id) navigate(`/sales-orders/${result.sales_order_id}`);
-    } catch (err) {
-      setConvertStatus(err instanceof Error ? err.message : 'Erro ao gerar pedido de venda.');
-    } finally {
-      setConverting(false);
-    }
-  }, [id, loadDetail, navigate]);
-
-  // ── Duplicate ──
-  const [duplicating, setDuplicating] = useState<boolean>(false);
-
-  interface DuplicateResponse {
-    success?: boolean;
-    new_id?: string;
-  }
-
-  const handleDuplicate = useCallback(async () => {
-    if (!confirm(`Duplicar o orçamento ${id}? Será criada uma cópia com nova numeração.`)) return;
-    setDuplicating(true);
-    try {
-      const result = await apiPost<DuplicateResponse>('/duplicate-quotation', { quotation_id: id });
-      if (result.success && result.new_id) {
-        navigate(`/quotations/${result.new_id}`);
-      }
-    } catch (err) {
-      alert('Erro ao duplicar: ' + (err instanceof Error ? err.message : 'Tente novamente.'));
-    } finally {
-      setDuplicating(false);
-    }
-  }, [id, navigate]);
-
-  // ── Drag-and-drop reorder ──
-  const handleDragStart = useCallback((e: DragEvent<HTMLTableCellElement>, _key: string) => {
-    e.dataTransfer.setData('text/plain', _key);
-    e.dataTransfer.effectAllowed = 'move';
-  }, []);
-
-  const handleDragOver = useCallback((e: DragEvent<HTMLTableRowElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const handleDrop = useCallback((e: DragEvent<HTMLTableRowElement>, targetKey: string) => {
-    e.preventDefault();
-    const sourceKey = e.dataTransfer.getData('text/plain');
-    if (sourceKey === targetKey) return;
-    setEditedItems((prev) => {
-      const sourceIdx = prev.findIndex((it) => it._key === sourceKey);
-      const targetIdx = prev.findIndex((it) => it._key === targetKey);
-      if (sourceIdx === -1 || targetIdx === -1) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(sourceIdx, 1);
-      next.splice(targetIdx, 0, moved);
-      return next;
-    });
-  }, []);
-
-  // ── Loading / Error ──
-  if (loading) {
-    return <SkeletonDetail />;
-  }
-
+  if (loading) return <SkeletonDetail />;
   if (error) {
     return (
       <div className="space-y-4 animate-fade-in">
-        <button
-          onClick={() => navigate('/quotations')}
-          className="text-sm text-primary hover:underline"
-        >
+        <button onClick={() => navigate('/quotations')} className="text-sm text-primary hover:underline">
           ← Voltar para Orçamentos
         </button>
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <AlertTriangle size={32} className="text-destructive/60" />
           <p>Erro ao carregar orçamento</p>
           <p className="text-sm">{error}</p>
-          <Button variant="outline" onClick={loadDetail}>
-            Tentar novamente
-          </Button>
+          <Button variant="outline" onClick={() => void loadDetail()}>Tentar novamente</Button>
         </div>
       </div>
     );
   }
-
   if (!data) return null;
-
-  if (data.core_mode === true || data.source === 'postgres') {
-    return <CoreQuotationDetail data={data} navigate={navigate} onReload={loadDetail} />;
-  }
-
-  const quotationViewUrl = buildQuotationViewUrl(data.id);
-
-  return (
-    <div className="space-y-4 max-w-[1060px] mx-auto">
-      {/* Detail card */}
-      <div className="bg-surface rounded-lg border border-line shadow-sm">
-        {/* Header */}
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-lg font-semibold">{data.id}</span>
-            <StatusBadge status={data.status} label={STATUS_LABELS[data.status] || data.status} />
-          </div>
-          <div className="flex items-center gap-3">
-            {data.sales_order_id ? (
-              <>
-                <span className="text-xs text-fg-muted">
-                  Pedido criado: SAL-ORD-{data.sales_order_id}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate(`/sales-orders/${data.sales_order_id}`)}
-                >
-                  Abrir Pedido
-                </Button>
-              </>
-            ) : mode === 'view' ? (
-              <>
-                <Button onClick={handleCreateSalesOrder} disabled={converting} size="sm">
-                  <ShoppingCart size={14} />
-                  {converting ? 'Gerando pedido de venda…' : 'Gerar Pedido de Venda'}
-                </Button>
-                {convertStatus && (
-                  <span
-                    className={`text-xs ${convertStatus.startsWith('Erro') ? 'text-destructive/60' : 'text-fg-muted'}`}
-                  >
-                    {convertStatus}
-                  </span>
-                )}
-              </>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Meta */}
-        <div className="px-6 py-4 border-b grid grid-cols-3 gap-6">
-          <div>
-            <span className="text-xs text-fg-muted">Cliente</span>
-            <p className="font-medium">{data.cliente || '—'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-fg-muted">Data</span>
-            <p>{formatDate(data.data)}</p>
-          </div>
-          <div>
-            <span className="text-xs text-fg-muted">Validade</span>
-            <p>{formatDate(data.validade)}</p>
-          </div>
-        </div>
-
-        {/* Items table */}
-        <div className="px-6 py-4">
-          <div className="w-full overflow-visible">
-            <table className="w-full caption-bottom text-sm">
-              <TableHeader>
-                <TableRow>
-                  {mode === 'edit' && <TableHead className="w-8"></TableHead>}
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead className="text-center w-20">Qtd</TableHead>
-                  <TableHead className="text-center">
-                    {mode === 'edit' ? 'Preço Unit.' : 'Preço Unit.'}
-                  </TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  {mode === 'edit' && <TableHead className="w-8"></TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => {
-                  const amount = Number(item.qty || 0) * Number(item.rate || 0);
-                  const key = item._key;
-
-                  if (mode === 'edit') {
-                    const searchTerm = productSearchTerms[key] || '';
-                    const results = productResults[key] || [];
-                    const searching = productSearching[key] || false;
-                    const showDropdown = activeField?.key === key && results.length > 0;
-                    const searchSpinner = searching && (
-                      <div className="absolute right-2 top-2">
-                        <Loader2 size={12} className="animate-spin text-fg-muted" />
-                      </div>
-                    );
-                    const productDropdown = showDropdown && (
-                      <div className="absolute z-50 left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                        {results.map((p) => (
-                          <button
-                            key={p.sku || p.item_code}
-                            type="button"
-                            disabled={isCoreUnpricedProduct(p)}
-                            title={
-                              isCoreUnpricedProduct(p)
-                                ? 'Preço indisponível para este produto.'
-                                : undefined
-                            }
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2"
-                            onMouseDown={(e: MouseEvent<HTMLButtonElement>) => {
-                              e.preventDefault();
-                              selectProduct(key, p);
-                            }}
-                          >
-                            <span className="font-mono text-xs text-fg-muted">
-                              {p.sku || p.item_code}
-                            </span>
-                            <span className="truncate">{p.nome || p.item_name}</span>
-                            {isCoreUnpricedProduct(p) && (
-                              <span className="ml-auto shrink-0 text-[10px] text-destructive">
-                                Preço indisponível
-                              </span>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    );
-
-                    return (
-                      <TableRow
-                        key={key}
-                        onDragOver={handleDragOver}
-                        onDrop={(e: DragEvent<HTMLTableRowElement>) => handleDrop(e, key)}
-                      >
-                        {/* Drag handle — only the grip icon is draggable, not the whole row */}
-                        <TableCell
-                          className="cursor-grab text-fg-muted p-2"
-                          draggable
-                          onDragStart={(e: DragEvent<HTMLTableCellElement>) =>
-                            handleDragStart(e, key)
-                          }
-                        >
-                          <GripVertical size={14} />
-                        </TableCell>
-                        {/* SKU with autocomplete */}
-                        <TableCell className="relative">
-                          <Input
-                            className="h-8 text-sm font-mono"
-                            placeholder="Buscar SKU ou nome…"
-                            value={searchTerm || item.item_code || ''}
-                            onFocus={() => setActiveField({ key, field: 'sku' })}
-                            onBlur={() => setTimeout(() => setActiveField(null), 200)}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                              onSkuChange(key, e.target.value)
-                            }
-                          />
-                          {searchSpinner}
-                          {activeField?.field === 'sku' && productDropdown}
-                        </TableCell>
-                        {/* Name with autocomplete */}
-                        <TableCell className="relative">
-                          <Input
-                            className="h-8 text-sm"
-                            placeholder="Buscar produto…"
-                            value={item.item_name || ''}
-                            onFocus={() => setActiveField({ key, field: 'name' })}
-                            onBlur={() => setTimeout(() => setActiveField(null), 200)}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                              onNameChange(key, e.target.value)
-                            }
-                          />
-                          {activeField?.field === 'name' && productDropdown}
-                        </TableCell>
-                        {/* Qty */}
-                        <TableCell className="text-center">
-                          <Input
-                            type="number"
-                            min="1"
-                            className="h-8 w-20 text-sm mx-auto"
-                            value={item.qty || ''}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                              const val = Number(e.target.value);
-                              if (!isNaN(val)) {
-                                updateItem(key, 'qty', val);
-                                schedulePricingLookup(key, item.item_code, val);
-                              }
-                            }}
-                          />
-                        </TableCell>
-                        {/* Rate */}
-                        <TableCell className="text-center">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            className="h-8 w-28 text-sm mx-auto"
-                            value={item.rate || ''}
-                            onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                              const val = parseFloat(e.target.value);
-                              if (!isNaN(val)) updateItem(key, 'rate', val);
-                            }}
-                          />
-                        </TableCell>
-                        {/* Amount (calculated) */}
-                        <TableCell className="text-right font-mono">{formatBRL(amount)}</TableCell>
-                        {/* Remove */}
-                        <TableCell className="p-2">
-                          <button
-                            onClick={() => removeItemByKey(key)}
-                            className="text-fg-muted hover:text-destructive transition-colors"
-                            title="Remover"
-                          >
-                            <X size={16} />
-                          </button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  }
-
-                  // View mode
-                  return (
-                    <TableRow key={key}>
-                      <TableCell className="font-mono text-sm">{item.item_code}</TableCell>
-                      <TableCell>{item.item_name || item.item_code}</TableCell>
-                      <TableCell className="text-center">{item.qty}</TableCell>
-                      <TableCell className="text-center">{formatBRL(item.rate)}</TableCell>
-                      <TableCell className="text-right font-mono">{formatBRL(amount)}</TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </table>
-          </div>
-        </div>
-
-        {/* Totals */}
-        <div className="px-6 py-3 border-t text-right font-semibold">Total: {formatBRL(total)}</div>
-
-        {/* Actions */}
-        <div className="px-6 py-4 border-t flex items-center gap-3">
-          {mode === 'view' && (
-            <>
-              <Button onClick={() => setMode('edit')} variant="outline" size="sm">
-                <Pencil size={14} /> Editar
-              </Button>
-              <Button onClick={handleDuplicate} variant="outline" size="sm" disabled={duplicating}>
-                <Copy size={14} /> {duplicating ? 'Duplicando…' : 'Duplicar'}
-              </Button>
-              <a
-                href={quotationViewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full border border-line bg-transparent px-3 text-xs font-medium transition-all duration-200 hover:bg-primary/5 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
-              >
-                <FileText size={14} /> Visualizar
-              </a>
-              <span className="text-xs text-fg-muted">Link público indisponível para esta cotação legada.</span>
-              <div className="flex-1" />
-              <Button
-                onClick={handleDelete}
-                variant="outline"
-                size="sm"
-                className="text-red-700 border-red-200 hover:bg-destructive/10 dark:text-destructive/60 dark:border-red-800/40 dark:hover:bg-destructive/100/10"
-              >
-                <Trash2 size={14} /> Excluir
-              </Button>
-            </>
-          )}
-
-          {mode === 'edit' && (
-            <>
-              <Button onClick={handleSave} disabled={saving} variant="success" size="sm">
-                <Save size={14} /> Salvar
-              </Button>
-              <Button onClick={handleCancel} variant="outline" size="sm" disabled={saving}>
-                <X size={14} /> Cancelar
-              </Button>
-              <Button onClick={addItem} variant="outline" size="sm">
-                <Plus size={14} /> Item
-              </Button>
-              {saveStatus && (
-                <span
-                  className={`text-xs ${saveStatus.startsWith('Erro') ? 'text-destructive/60' : 'text-fg-muted'}`}
-                >
-                  {saveStatus}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+  return <CoreQuotationDetail data={data} navigate={navigate} onReload={loadDetail} concurrencyTokenRef={concurrencyTokenRef} />;
 }

@@ -11,7 +11,6 @@ import {
   validateQuotationSections,
   type QuotationSectionsSettings,
 } from '../_db/quotation-content.js';
-import { isOperationalMode } from './operational-mode.js';
 
 const MAX_PAYMENT_LENGTH = 500;
 const MAX_DELIVERY_LENGTH = 500;
@@ -192,7 +191,7 @@ export function createHandler(
       try {
         const settings = await dependencies.repository.get();
         const response = settings || { ...DEFAULT_SETTINGS };
-        return jsonResponse(200, { ...response, operational_mode: isOperationalMode() });
+        return jsonResponse(200, response);
       } catch (error) {
         logDatabaseError('load', error);
         return jsonResponse(500, {

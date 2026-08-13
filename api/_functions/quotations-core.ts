@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   createPostgresQuoteDraftManagementRepository,
   normalizeQuotationListStatus,
@@ -16,7 +16,7 @@ import {
   type QuotationLifecycleRepository,
   type SetQuotationStatusInput,
 } from '../_db/quotation-lifecycle-repository.js';
-import { responseMetadata } from './orcamento-mode.js';
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface QuotationsCoreDependencies {
   repository: QuoteDraftManagementRepository;
@@ -42,12 +42,21 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, ...responseMetadata('core') }),
+    body: JSON.stringify(payload),
   };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function sanitizeQuotationOutput<T>(value: T): T {
+  if (!isRecord(value)) return value;
+  const sanitized = { ...value };
+  for (const key of Object.keys(sanitized)) {
+    if (key.endsWith('_mode') || key === 'origin') delete sanitized[key];
+  }
+  return sanitized as T;
 }
 
 function parseJsonBody(event: FunctionEvent): Record<string, unknown> {
@@ -123,7 +132,7 @@ function lifecycleRepository(dependencies: QuotationsCoreDependencies): Quotatio
 
 export function createCoreHandler(
   dependencies: QuotationsCoreDependencies = { repository: createPostgresQuoteDraftManagementRepository() },
-): LegacyHandler {
+): Handler {
   return async function quotationsCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     const query = event.queryStringParameters || {};
     try {
@@ -131,7 +140,7 @@ export function createCoreHandler(
         if (query.id) {
           const detail = await repositoryGet(dependencies.repository, query.id);
           if (!detail) throw new QuoteManagementNotFoundError();
-          return json(200, detail as unknown as Record<string, unknown>);
+          return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
         }
         const status = (query.status || '').trim();
         if (status && normalizeQuotationListStatus(status) === undefined) {
@@ -162,7 +171,7 @@ export function createCoreHandler(
         const resultLimit = compatibleResult.limit || limit;
         const resultTotal = Number(compatibleResult.total || 0);
         return json(200, {
-          data: rows,
+          data: rows.map((row) => sanitizeQuotationOutput(row)),
           pagination: {
             page: resultPage,
             limit: resultLimit,
@@ -177,7 +186,7 @@ export function createCoreHandler(
         if (!query.id) throw new QuoteManagementInputError('ID do orçamento não informado.');
         const payload = parseJsonBody(event);
         const detail = await repositoryUpdate(dependencies.repository, query.id, payload as QuoteDraftManagementUpdateInput);
-        return json(200, detail as unknown as Record<string, unknown>);
+        return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
       }
 
       if (event.httpMethod === 'POST') {
@@ -191,14 +200,14 @@ export function createCoreHandler(
             throw new QuoteManagementInputError('Status inválido. Use "enviado", "aprovado" ou "perdido".');
           }
           const detail = await lifecycle.setStatus(query.id, payload as unknown as SetQuotationStatusInput);
-          return json(200, detail as unknown as Record<string, unknown>);
+          return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
         }
         if (action === 'create_revision') {
           if (typeof payload.source_revision_id !== 'string' || !payload.source_revision_id.trim()) {
             throw new QuoteManagementInputError('Revisão de origem obrigatória.');
           }
           const detail = await lifecycle.createRevision(query.id, payload as unknown as CreateQuotationRevisionInput);
-          return json(200, detail as unknown as Record<string, unknown>);
+          return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);
         }
         throw new QuoteManagementInputError('Ação de orçamento inválida.');
       }

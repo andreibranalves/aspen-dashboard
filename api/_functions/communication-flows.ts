@@ -2,25 +2,18 @@
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
 // PUT /api/communication-flows — saves flows to aspen:communication:flows KV
 //
-// Mirrors whatsapp-flows.js but writes to the new aspen:communication:* namespace.
-// Falls back to reading old aspen:whatsapp-flows if new key is absent (migration support).
+// Stores flow definitions in the local aspen:communication:* namespace.
 //
 // Storage: Vercel KV. Keys: aspen:communication:flows, aspen:communication:flows:selected
 
 import { kv } from '@vercel/kv';
-import { createHttpError } from './lib/erpnext.js';
-import { isOperationalMode } from './operational-mode.js';
+import { createHttpError } from '../_lib/http-error.js';
 import {
   KV_KEY_FLOWS,
   KV_KEY_FLOWS_SELECTED,
   createFlow,
   STEP_TYPES,
 } from '../_lib/media-schema.js';
-
-// ── Old namespace (for migration fallback) ──────────────────────────────────
-
-const OLD_KV_KEY_FLOWS = 'aspen:whatsapp-flows';
-const OLD_KV_KEY_SELECTED = 'aspen:whatsapp-flows:selected';
 
 // ── Default flows (matching DEFAULT_WA_FLOWS but with product_media) ────────
 
@@ -85,7 +78,7 @@ const DEFAULT_FLOWS = [
   },
 ];
 
-// ── Migration: convert old flow steps (image/product_images) → product_media ──
+// ── Flow sanitization ───────────────────────────────────────────────────────
 
 function normalizeProductSummaryTemplate(template: unknown): string {
   return typeof template === 'string'
@@ -101,50 +94,29 @@ function normalizeProductSummaryTemplate(template: unknown): string {
     : String(template || '');
 }
 
-function migrateStep(step: Record<string, any>): Record<string, any> {
-  if (!step) return step;
-  const normalizedStep: Record<string, any> = {
+function migrateStep(step: Record<string, any>): Record<string, any> | null {
+  if (!step || !['text', STEP_TYPES.DOCUMENT, STEP_TYPES.PRODUCT_MEDIA].includes(step.type)) {
+    return null;
+  }
+  const normalized: Record<string, any> = {
     ...step,
     template: normalizeProductSummaryTemplate(step.template),
+    id: step.id || `step_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
   };
-  // Old 'product_images' → new 'product_media'
-  if (normalizedStep.type === 'product_images') {
-    return {
-      ...normalizedStep,
-      type: STEP_TYPES.PRODUCT_MEDIA,
-      selection: 'product_group',
-      max_items: 2,
-    };
+  if (normalized.type === STEP_TYPES.DOCUMENT && normalized.source !== 'quotation_pdf') {
+    return null;
   }
-  // Old 'image' with media URL → new 'product_media' (treated as fallback)
-  if (normalizedStep.type === 'image') {
-    return {
-      ...normalizedStep,
-      type: STEP_TYPES.PRODUCT_MEDIA,
-      selection: 'product_group',
-      max_items: 1,
-    };
-  }
-  // Ensure every step has an id
-  if (!normalizedStep.id) {
-    return {
-      ...normalizedStep,
-      id: `step_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
-    };
-  }
-  return normalizedStep;
+  return normalized;
 }
 
 function migrateFlow(flow: Record<string, any>): Record<string, any> {
   const migrated = createFlow({
     ...flow,
-    steps: Array.isArray(flow.steps) ? flow.steps.map(migrateStep) : [],
+    steps: Array.isArray(flow.steps)
+      ? flow.steps.map(migrateStep).filter(Boolean)
+      : [],
   });
-  // Ensure context field is valid
   if (!migrated.context) migrated.context = 'manual';
-  if (flow.max_images_per_category !== undefined && migrated.max_media_per_product_group === 0) {
-    migrated.max_media_per_product_group = flow.max_images_per_category || 0;
-  }
   return migrated;
 }
 
@@ -152,42 +124,17 @@ function migrateFlow(flow: Record<string, any>): Record<string, any> {
 
 async function readFlows() {
   try {
-    // Try new namespace first
     const [flows, selectedFlowId] = await Promise.all([
       kv.get(KV_KEY_FLOWS),
       kv.get(KV_KEY_FLOWS_SELECTED),
     ]);
-
-    if (Array.isArray(flows) && flows.length > 0) {
-      return {
-        flows: flows.map((f) => migrateFlow(f)),
-        selectedFlowId: selectedFlowId || flows[0]?.id || null,
-        source: 'kv',
-      };
-    }
-
-    // Migration: try old namespace
-    try {
-      const [oldFlows, oldSelected] = await Promise.all([
-        kv.get(OLD_KV_KEY_FLOWS),
-        kv.get(OLD_KV_KEY_SELECTED),
-      ]);
-      if (Array.isArray(oldFlows) && oldFlows.length > 0) {
-        const migrated = oldFlows.map((f) => migrateFlow(f));
-        // Auto-write to new namespace
-        await kv.set(KV_KEY_FLOWS, migrated);
-        await kv.set(KV_KEY_FLOWS_SELECTED, oldSelected || migrated[0]?.id || '');
-        return {
-          flows: migrated,
-          selectedFlowId: oldSelected || migrated[0]?.id || null,
-          source: 'kv',
-        };
-      }
-    } catch (migrationErr: any) {
-      console.warn('[communication-flows] migration read failed:', migrationErr.message);
-    }
-
-    return null; // no stored flows found
+    if (!Array.isArray(flows) || flows.length === 0) return null;
+    const normalized = flows.map((flow) => migrateFlow(flow));
+    return {
+      flows: normalized,
+      selectedFlowId: selectedFlowId || normalized[0]?.id || null,
+      source: 'kv',
+    };
   } catch (err: any) {
     console.warn('[communication-flows] KV read failed:', err.message);
     return null;
@@ -220,9 +167,6 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-flows não está disponível no modo operacional.' }) };
-  }
   const method = event.httpMethod || 'GET';
 
   // ── GET: return flows ──
@@ -268,7 +212,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
     try {
       // Normalize each flow
-      const normalized = flows.map((f, i) => createFlow({ ...f, id: f.id || `flow_${i}` }));
+      const normalized = flows.map((f, i) =>
+        migrateFlow({ ...f, id: f.id || `flow_${i}` }),
+      );
       await writeFlows(normalized, selectedFlowId || normalized[0]?.id || '');
       return jsonResponse(200, { success: true, source: 'kv' });
     } catch (err: any) {

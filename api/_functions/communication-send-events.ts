@@ -9,7 +9,6 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 
 import { kv } from '@vercel/kv';
 import { KV_KEY_SEND_EVENTS_PREFIX } from '../_lib/media-schema.js';
-import { isOperationalMode } from './operational-mode.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -22,9 +21,6 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-send-events não está disponível no modo operacional.' }) };
-  }
   if (event.httpMethod !== 'GET') return jsonResponse(405, { error: 'Método não permitido.' });
 
   try {

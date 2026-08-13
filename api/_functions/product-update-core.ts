@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   createPostgresProductsRepository,
   ProductRepositoryError,
@@ -17,7 +17,8 @@ import {
   normalizeProductPricing,
   type PricingTierInput,
 } from './pricing-core.js';
-import { responseMetadata } from './products-mode.js';
+
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface ProductUpdateCoreDependencies {
   repository: ProductsRepository;
@@ -29,7 +30,7 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, ...responseMetadata('core') }),
+    body: JSON.stringify(payload),
   };
 }
 
@@ -48,7 +49,7 @@ export function createCoreHandler(
     pricingRepository: createPostgresPricingRepository(),
     catalogRepository: createPostgresProductCatalogRepository(),
   }
-): LegacyHandler {
+): Handler {
   return async function productUpdateCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod !== 'PATCH' && event.httpMethod !== 'PUT') {
       return json(405, { error: 'Método não permitido.' });
@@ -145,8 +146,14 @@ export function createCoreHandler(
         updated = combined.product;
         pricing = combined.pricing;
       } else if (Object.keys(patch).length > 0) {
-        updated = await dependencies.repository.update(sku, patch);
-        if (!updated) return json(404, { error: 'Produto não encontrado.' });
+        if (dependencies.catalogRepository) {
+          const combined = await dependencies.catalogRepository.update(sku, patch);
+          if (!combined) return json(404, { error: 'Produto não encontrado.' });
+          updated = combined.product;
+        } else {
+          updated = await dependencies.repository.update(sku, patch);
+          if (!updated) return json(404, { error: 'Produto não encontrado.' });
+        }
       } else {
         updated = await dependencies.repository.get(sku);
         if (!updated) return json(404, { error: 'Produto não encontrado.' });
@@ -179,7 +186,9 @@ export function createCoreHandler(
       }
       const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
       if (statusCode === 400 || statusCode === 404 || statusCode === 409 || statusCode === 503) {
-        return json(statusCode, { error: (error as { message?: string }).message || 'Operação inválida.' });
+        return json(statusCode, {
+          error: (error as { message?: string }).message || 'Operação inválida.',
+        });
       }
       return json(500, { error: 'Não foi possível atualizar o produto. Tente novamente.' });
     }

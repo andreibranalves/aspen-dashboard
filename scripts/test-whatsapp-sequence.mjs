@@ -1,13 +1,6 @@
 import assert from 'node:assert/strict';
 import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/whatsappFlows.ts';
 
-for (const key of [
-  'CRM_OPERATIONAL_MODE',
-  'CRM_CORE_QUOTES_ENABLED',
-  'CRM_QUOTES_ROLLOUT_STATE',
-  'N8N_WEBHOOK_URL',
-  'N8N_WEBHOOK_ENABLED',
-]) delete process.env[key];
 process.env.EVOLUTION_BASE_URL = 'https://evolution.example.test';
 process.env.EVOLUTION_API_KEY = 'test-key';
 process.env.EVOLUTION_INSTANCE = 'Ursinho';

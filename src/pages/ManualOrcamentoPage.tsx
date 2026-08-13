@@ -12,11 +12,9 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   FileText,
   Loader2,
   MapPin,
-  MessageCircle,
   PackagePlus,
   Plus,
   RotateCcw,
@@ -28,13 +26,11 @@ import {
 import { apiGet, apiPost } from '@/lib/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 import {
-  isCoreUnpricedProduct,
+  isUnpricedProduct,
   searchProducts as cachedSearchProducts,
 } from '@/lib/productCache';
-import type { Product } from '@/types/domain';
-import type { OrcamentoResponse } from '@/types/erpnext';
+import type { OrcamentoResponse, Product } from '@/types/domain';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
-import { buildQuotationViewUrl, normalizePublicQuotationUrl } from '@/lib/printFormats';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -86,8 +82,6 @@ interface PricingLookupResponse {
 
 interface LeadsClientsResponse {
   data?: Client[];
-  core_mode?: boolean;
-  source?: 'postgres' | 'frappe';
 }
 
 function toNumber(value: string | number, fallback = 0): number {
@@ -106,7 +100,6 @@ export default function ManualOrcamentoPage() {
   const [clientResults, setClientResults] = useState<Client[]>([]);
   const [clientSearching, setClientSearching] = useState<boolean>(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [clientCoreMode, setClientCoreMode] = useState<boolean>(false);
   const [newClient, setNewClient] = useState<NewClient>({ nome: '', email: '', telefone: '' });
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -191,7 +184,7 @@ export default function ManualOrcamentoPage() {
         priceMap.has(item._key) ? { ...item, rate: priceMap.get(item._key) ?? item.rate } : item
       )));
     } catch {
-      // mantém os preços atuais se o ERP não responder
+      // mantém os preços atuais se a precificação não responder
     } finally {
       setPricingRows(new Set());
     }
@@ -202,18 +195,14 @@ export default function ManualOrcamentoPage() {
     if (!term || term.length < 2) { setClientResults([]); return; }
     setClientSearching(true);
     try {
-      const tipo = clientCoreMode ? '' : '&tipo=todos';
-      const res = await apiGet<LeadsClientsResponse>(`/leads-clients?search=${encodeURIComponent(term)}&limit=10${tipo}`);
-      if (typeof res.core_mode === 'boolean') {
-        setClientCoreMode(res.core_mode);
-      }
+      const res = await apiGet<LeadsClientsResponse>(`/leads-clients?search=${encodeURIComponent(term)}&limit=10`);
       setClientResults(res.data || []);
     } catch {
       setClientResults([]);
     } finally {
       setClientSearching(false);
     }
-  }, [clientCoreMode]);
+  }, []);
 
   const onClientSearchChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -262,7 +251,7 @@ export default function ManualOrcamentoPage() {
     setError(null);
 
     try {
-      if (isCoreUnpricedProduct(product)) {
+      if (isUnpricedProduct(product)) {
         throw new Error('Preço indisponível para este produto.');
       }
       const rate = await lookupRate(product.sku, DEFAULT_QTY, urgente);
@@ -375,7 +364,7 @@ export default function ManualOrcamentoPage() {
   const handleSubmit = useCallback(async () => {
     const { nome, email, telefone } = getClientInfo();
     if (!nome) { alert('Informe o nome do cliente.'); return; }
-    if (!leadSource) { alert(`Selecione a origem ${clientCoreMode ? 'da venda' : 'do lead'} antes de criar o orçamento.`); return; }
+    if (!leadSource) { alert('Selecione a origem antes de criar o orçamento.'); return; }
     if (!isValidLeadSource(leadSource)) { alert('Origem selecionada não é válida.'); return; }
     if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido. Corrija ou deixe em branco.'); return; }
     if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
@@ -417,17 +406,7 @@ export default function ManualOrcamentoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj, address, clientCoreMode, clientType, selectedClient]);
-
-  // ── WhatsApp link builder ──
-  const buildWaLink = useCallback((telefone: string, nome: string | undefined, quotationId: string | undefined, quotationLink: string): string | null => {
-    if (!telefone) return null;
-    const digits = telefone.replace(/\D/g, '').replace(/^55(\d{10,11})$/, '$1');
-    if (digits.length < 10) return null;
-    const linkLine = quotationLink ? `\n${quotationLink}` : '';
-    const text = `Olá, ${nome || ''}! Segue seu orçamento ${quotationId}.${linkLine}\nQualquer dúvida estamos à disposição. Aspen Estamparia`;
-    return `https://wa.me/55${digits}?text=${encodeURIComponent(text)}`;
-  }, []);
+  }, [getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj, address, clientType, selectedClient]);
 
   // ── Reset all ──
   const resetForm = useCallback(() => {
@@ -459,7 +438,6 @@ export default function ManualOrcamentoPage() {
       {result && (
         <div className="bg-success/10 border border-success/30 rounded-xl p-5 space-y-4">
           {(() => {
-            const coreDraft = result.core_mode === true;
             const businessNumber = result.quotation_name || result.quotation_id || '';
             return (
               <>
@@ -468,49 +446,13 @@ export default function ManualOrcamentoPage() {
               <Check size={18} className="text-white" />
             </div>
             <div>
-              <p className="font-semibold text-success">
-                {coreDraft ? 'Rascunho persistido com sucesso' : 'Orçamento criado com sucesso'}
-              </p>
+              <p className="font-semibold text-success">Rascunho persistido com sucesso</p>
               <p className="text-sm text-success/70">
                 {capitalize(result.cliente || '')} · {businessNumber}
-                {coreDraft && result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
+                {result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
               </p>
             </div>
           </div>
-
-          {!coreDraft && <div className="flex flex-wrap gap-2">
-            {result.quotation_id && (
-              <a
-                href={buildQuotationViewUrl(result.quotation_id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-line rounded-full text-sm text-success hover:bg-surface-muted transition-colors"
-              >
-                <ExternalLink size={14} /> Visualizar PDF
-              </a>
-            )}
-            {(() => {
-              const publicUrl = normalizePublicQuotationUrl(
-                result.public_url || result.publicUrl,
-                window.location.origin,
-              );
-              if (!publicUrl) {
-                return <span className="text-xs text-fg-muted">Link público indisponível para esta cotação legada.</span>;
-              }
-              const info = getClientInfo();
-              const waLink = buildWaLink(info.telefone, result.cliente, result.quotation_id, publicUrl);
-              return waLink ? (
-                <a
-                  href={waLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success text-white rounded-full text-sm hover:bg-success/90 transition-colors"
-                >
-                  <MessageCircle size={14} /> WhatsApp
-                </a>
-              ) : null;
-            })()}
-          </div>}
 
           <Button variant="outline" size="sm" onClick={resetForm}>
             Novo orçamento
@@ -603,15 +545,15 @@ export default function ManualOrcamentoPage() {
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate">{client.nome || client.id}</p>
                               <p className="text-xs text-fg-muted truncate">
-                                {[client.email, client.telefone ? fmtPhone(client.telefone) : '', clientCoreMode ? 'Cliente' : (client.tipo === 'lead' ? 'Lead' : 'Cliente')]
+                                {[client.email, client.telefone ? fmtPhone(client.telefone) : '', 'Cliente']
                                   .filter(Boolean).join(' · ')}
                               </p>
                             </div>
                             <span className={cn(
                               'text-[10px] px-2 py-1 rounded-full shrink-0',
-                              !clientCoreMode && client.tipo === 'lead' ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success',
+                              'bg-success/10 text-success',
                             )}>
-                              {clientCoreMode ? 'Cliente' : (client.tipo === 'lead' ? 'Lead' : 'Cliente')}
+                              Cliente
                             </span>
                           </button>
                         ))}
@@ -673,7 +615,7 @@ export default function ManualOrcamentoPage() {
 
                 {/* ── Origem (obrigatória para compatibilidade com CRM) ── */}
                 <div className="space-y-1 pt-3 border-t border-line">
-                  <label className="text-xs font-medium text-fg-muted">{clientCoreMode ? 'Origem da venda *' : 'Origem do lead *'}</label>
+                  <label className="text-xs font-medium text-fg-muted">Origem *</label>
                   <select
                     className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
                     value={leadSource}
@@ -837,12 +779,12 @@ export default function ManualOrcamentoPage() {
                           type="button"
                           size="sm"
                           onClick={() => addProduct(product)}
-                          disabled={Boolean(addingSku) || isCoreUnpricedProduct(product)}
-                          title={isCoreUnpricedProduct(product) ? 'Preço indisponível para este produto.' : undefined}
+                          disabled={Boolean(addingSku) || isUnpricedProduct(product)}
+                          title={isUnpricedProduct(product) ? 'Preço indisponível para este produto.' : undefined}
                           className="w-full sm:w-auto"
                           aria-label={`Adicionar ${product.sku} ao orçamento`}
                         >
-                          {isCoreUnpricedProduct(product) ? (
+                          {isUnpricedProduct(product) ? (
                             'Preço indisponível'
                           ) : (
                             <>

@@ -47,14 +47,11 @@ export function getPrintFormatLabel(value: unknown): string {
   return PRINT_FORMAT_OPTIONS.find(option => option.value === normalizePrintFormat(value))?.label || PRINT_FORMAT_OPTIONS[0].label;
 }
 
-/** Administrative PDF URL. Never include this value in customer messages. */
-export function buildQuotationViewUrl(quotationId: string, printFormat: unknown = null): string {
-  const params = new URLSearchParams({ q: quotationId });
-  const normalized = normalizePrintFormat(printFormat);
-  if (normalized && normalized !== DEFAULT_PRINT_FORMAT) {
-    params.set('format', normalized);
-  }
-  return `/api/view?${params.toString()}`;
+/** Immutable PostgreSQL revision preview URL. Never include this value in customer messages. */
+export function buildQuotationPreviewUrl(revisionId: string, format: 'html' | 'pdf' = 'pdf'): string {
+  const params = new URLSearchParams({ id: revisionId });
+  if (format === 'pdf') params.set('format', 'pdf');
+  return `/api/quotation-preview?${params.toString()}`;
 }
 
 /** Accept only revision-bound public quotation links for customer messages. */

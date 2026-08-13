@@ -2,417 +2,302 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createHandler } from '../../api/_functions/whatsapp-conversations.js';
+import {
+  validateWhatsappConversationLinks,
+  type LocalClientRecord,
+  type LocalDealRecord,
+  type LocalQuoteLeadRecord,
+  type LocalQuotationRecord,
+  type LocalWhatsappCrmRepository,
+} from '../../api/_functions/lib/whatsapp-crm-match.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
 } from '../../api/_functions/lib/whatsapp-conversations-store.js';
 
-function parse(result: any): any {
-  try {
-    return JSON.parse(result.body || '{}');
-  } catch {
-    return {};
-  }
+const IDS = {
+  lead: '11111111-1111-4111-8111-111111111111',
+  leadTwo: '22222222-2222-4222-8222-222222222222',
+  deal: '33333333-3333-4333-8333-333333333333',
+  quotation: '44444444-4444-4444-8444-444444444444',
+  client: '55555555-5555-4555-8555-555555555555',
+};
+
+function parse(result: { body?: string }): Record<string, any> {
+  return JSON.parse(result.body || '{}');
 }
 
-function makeDeps(): WhatsappConversationStoreDeps & {
-  listLeads: any;
-  getDoc: any;
-  fetchChats: any;
-  fetchMessages: any;
-} {
-  let conversations: WhatsappConversation[] = [];
-  const messages = new Map<string, any[]>();
-  let nextId = 1;
-
+function conversation(overrides: Partial<WhatsappConversation> = {}): WhatsappConversation {
   return {
-    now: () => '2026-07-01T12:00:00.000Z',
-    id: () => `wa_${nextId++}`,
-    readConversations: async () => conversations,
-    writeConversations: async (value) => {
-      conversations = value;
-    },
-    readMessages: async (conversationId) => messages.get(conversationId) || [],
-    writeMessages: async (conversationId, value) => {
-      messages.set(conversationId, value);
-    },
-    listLeads: async () => [
-      {
-        name: 'LEAD-100',
-        lead_name: 'Maria',
-        first_name: 'Maria',
-        email_id: null,
-        mobile_no: '5511999999999',
-      },
-    ],
-    getDoc: async () => null,
-    fetchChats: async () => [
-      {
-        remoteJid: '5511999999999@s.whatsapp.net',
-        pushName: 'Maria',
-        updatedAt: 1782916800,
-        lastMessage: { text: 'Quero orçamento' },
-      },
-    ],
-    fetchMessages: async () => [
-      {
-        key: { id: 'm1', fromMe: false },
-        messageTimestamp: 1782916800,
-        message: { conversation: 'Quero orçamento' },
-      },
-    ],
+    id: 'wa-local-1',
+    providerConversationId: '5511999999999@s.whatsapp.net',
+    remoteJid: '5511999999999@s.whatsapp.net',
+    canonicalPhone: '5511999999999',
+    phone: '5511999999999',
+    displayLabel: 'Maria Silva',
+    displayName: 'Maria Silva',
+    identityStatus: 'verified',
+    identitySource: 'chat.phone',
+    identityConfidence: 'high',
+    lastMessageAt: '2026-07-01T12:00:00.000Z',
+    lastMessagePreview: 'Oi',
+    source: 'evolution',
+    status: 'new',
+    createdAt: '2026-07-01T12:00:00.000Z',
+    updatedAt: '2026-07-01T12:00:00.000Z',
+    ...overrides,
   };
 }
 
-const API = '/api/whatsapp-conversations';
+function makeStore() {
+  let conversations: WhatsappConversation[] = [];
+  const messages = new Map<string, any[]>();
+  let writeFailures = 0;
+  const deps: WhatsappConversationStoreDeps = {
+    now: () => '2026-07-01T12:00:00.000Z',
+    id: () => `wa-generated-${Math.random().toString(36).slice(2, 8)}`,
+    readConversations: async () => conversations,
+    writeConversations: async (value) => {
+      if (writeFailures > 0) {
+        writeFailures -= 1;
+        throw new Error('KV link unavailable');
+      }
+      conversations = value;
+    },
+    readMessages: async (id) => messages.get(id) || [],
+    writeMessages: async (id, value) => {
+      messages.set(id, value);
+    },
+  };
+  return {
+    deps,
+    seed: async (value: WhatsappConversation) => {
+      conversations = [value];
+    },
+    failNextWrite: () => {
+      writeFailures += 1;
+    },
+    conversations: () => conversations,
+    messages,
+  };
+}
+
+function repo(input: {
+  leads?: LocalQuoteLeadRecord[];
+  clients?: LocalClientRecord[];
+  deals?: LocalDealRecord[];
+  quotations?: LocalQuotationRecord[];
+} = {}): LocalWhatsappCrmRepository {
+  const leads = input.leads || [];
+  const clients = input.clients || [];
+  const deals = input.deals || [];
+  const quotations = input.quotations || [];
+  return {
+    listQuoteLeads: async () => leads,
+    listClients: async () => clients,
+    listDeals: async () => deals,
+    listQuotations: async () => quotations,
+    getQuoteLead: async (id) => leads.find((row) => row.id === id) || null,
+    getClient: async (id) => clients.find((row) => row.id === id) || null,
+    getDeal: async (id) => deals.find((row) => row.id === id) || null,
+    getQuotation: async (id) => quotations.find((row) => row.id === id) || null,
+  };
+}
+
+const lead = (overrides: Partial<LocalQuoteLeadRecord> = {}): LocalQuoteLeadRecord => ({
+  id: IDS.lead,
+  nome: 'Maria Silva',
+  telefone: '5511999999999',
+  email: 'maria@example.com',
+  status: 'ready',
+  quotationId: null,
+  crmDealId: null,
+  ...overrides,
+});
+
+const deal = (overrides: Partial<LocalDealRecord> = {}): LocalDealRecord => ({
+  id: IDS.deal,
+  quoteLeadId: IDS.lead,
+  clientId: null,
+  quotationId: null,
+  nome: 'Maria Silva',
+  telefone: '5511999999999',
+  email: null,
+  status: 'Novo Lead',
+  ...overrides,
+});
 
 describe('whatsapp-conversations handler', () => {
-  it('syncs conversations with POST action=sync', async () => {
-    const handler = createHandler(makeDeps());
-    const result = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.equal(parse(result).success, true);
-    assert.equal(parse(result).data.conversations.length, 1);
-  });
-
-  it('lists conversations', async () => {
-    const deps = makeDeps();
-    const handler = createHandler(deps);
-    await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-
-    const result = await handler({
+  it('projects every conversation and message response without provider internals', async () => {
+    const store = makeStore();
+    const saved = conversation();
+    await store.seed(saved);
+    await (store.deps.writeMessages as any)(saved.id, [{
+      id: 'message-local',
+      conversationId: saved.id,
+      providerMessageId: 'provider-secret',
+      direction: 'inbound',
+      type: 'image',
+      body: 'foto',
+      mediaUrl: 'https://foreign.invalid/private.jpg',
+      attachments: [{
+        id: 'attachment-local',
+        kind: 'image',
+        mediaUrl: '/media/../secret.jpg',
+        origin: 'provider',
+        secret: 'must disappear',
+      } as any],
+      raw: { apikey: 'secret' },
+      secret: 'must disappear',
+      timestamp: saved.lastMessageAt,
+    } as any]);
+    const result = await createHandler(store.deps)({
       httpMethod: 'GET',
-      url: API,
-      queryStringParameters: { limit: '50' },
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.equal(parse(result).data[0].displayName, 'Maria');
-  });
-
-  it('returns messages via query param ?messages=id', async () => {
-    const deps = makeDeps();
-    const handler = createHandler(deps);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
       queryStringParameters: {},
       headers: {},
     } as any);
-    const id = parse(syncResult).data.conversations[0].id;
+    assert.equal(result.statusCode, 200);
+    const body = parse(result);
+    assert.equal('providerConversationId' in body.data, false);
+    assert.equal('remoteJid' in body.data, false);
+    assert.equal('providerMessageId' in body.data, false);
+    assert.equal('raw' in body.data, false);
 
-    const result = await handler({
+    const messages = await createHandler(store.deps)({
       httpMethod: 'GET',
-      url: API,
-      queryStringParameters: { messages: id },
+      queryStringParameters: { messages: saved.id },
       headers: {},
     } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.equal(parse(result).data[0].body, 'Quero orçamento');
+    const message = parse(messages).data[0];
+    assert.equal('providerMessageId' in message, false);
+    assert.equal('raw' in message, false);
+    assert.equal(message.mediaUrl, '');
+    assert.equal(message.attachments, undefined);
   });
 
-  it('patches conversation via body id + status', async () => {
-    const deps = makeDeps();
-    const handler = createHandler(deps);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-    const id = parse(syncResult).data.conversations[0].id;
+  it('keeps omitted PATCH links and validates mismatches against local entities', async () => {
+    const store = makeStore();
+    await store.seed(conversation());
+    const local = repo({ leads: [lead()], deals: [deal()] });
+    const handler = createHandler({ ...store.deps, localCrm: local });
 
-    const result = await handler({
+    const first = await handler({
       httpMethod: 'PATCH',
-      url: API,
-      body: JSON.stringify({ id, status: 'waiting_customer' }),
+      body: JSON.stringify({ id: 'wa-local-1', linkedLeadId: IDS.lead }),
       queryStringParameters: {},
       headers: {},
     } as any);
+    assert.equal(first.statusCode, 200);
 
-    assert.equal(result.statusCode, 200);
-    assert.equal(parse(result).data.status, 'waiting_customer');
-  });
-
-  it('returns safe Portuguese 404 for missing conversation', async () => {
-    const handler = createHandler(makeDeps());
-    const result = await handler({
-      httpMethod: 'GET',
-      url: API,
-      queryStringParameters: { id: 'missing' },
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 404);
-    assert.match(parse(result).error, /Conversa do WhatsApp não encontrada/);
-  });
-
-  it('returns crmMatch when fetching a single conversation by id', async () => {
-    const deps = makeDeps();
-    const handler = createHandler(deps);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
+    const second = await handler({
+      httpMethod: 'PATCH',
+      body: JSON.stringify({ id: 'wa-local-1', linkedDealId: IDS.deal }),
       queryStringParameters: {},
       headers: {},
     } as any);
-    const id = parse(syncResult).data.conversations[0].id;
+    assert.equal(second.statusCode, 200);
+    assert.equal(store.conversations()[0].linkedLeadId, IDS.lead);
+    assert.equal(store.conversations()[0].linkedDealId, IDS.deal);
 
-    const result = await handler({
-      httpMethod: 'GET',
-      url: API,
-      queryStringParameters: { id },
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.ok(parse(result).data.crmMatch !== undefined);
-  });
-
-  it('returns null crmMatch when no CRM match is found', async () => {
-    const deps = makeDeps();
-    deps.listLeads = async () => []; // no leads exist
-    const handler = createHandler(deps);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-    const id = parse(syncResult).data.conversations[0].id;
-
-    const result = await handler({
-      httpMethod: 'GET',
-      url: API,
-      queryStringParameters: { id },
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.equal(parse(result).data.crmMatch, null);
-  });
-
-  it('returns crmMatch even when CRM helpers are omitted from injected deps', async () => {
-    const deps = makeDeps();
-    const { listLeads: _listLeads, getDoc: _getDoc, ...depsWithoutCrm } = deps as any;
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/resource/Lead?')) {
-        return new Response(
-          JSON.stringify({
-            data: [
-              {
-                name: 'LEAD-100',
-                lead_name: 'Maria',
-                first_name: 'Maria',
-                email_id: null,
-                mobile_no: '5511999999999',
-              },
-            ],
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      throw new Error(`unexpected fetch: ${url}`);
-    };
-
-    try {
-      const handler = createHandler(depsWithoutCrm);
-      const syncResult = await handler({
-        httpMethod: 'POST',
-        url: API,
-        body: JSON.stringify({ action: 'sync' }),
+    const [racedLead, racedDeal] = await Promise.all([
+      handler({
+        httpMethod: 'PATCH',
+        body: JSON.stringify({ id: 'wa-local-1', linkedLeadId: IDS.lead }),
         queryStringParameters: {},
         headers: {},
-      } as any);
-      const id = parse(syncResult).data.conversations[0].id;
-
-      const result = await handler({
-        httpMethod: 'GET',
-        url: API,
-        queryStringParameters: { id },
+      } as any),
+      handler({
+        httpMethod: 'PATCH',
+        body: JSON.stringify({ id: 'wa-local-1', linkedDealId: IDS.deal }),
+        queryStringParameters: {},
         headers: {},
-      } as any);
-
-      assert.equal(result.statusCode, 200);
-      assert.equal(parse(result).data.crmMatch?.id, 'LEAD-100');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it('syncs 100 messages when refreshing a single conversation', async () => {
-    const deps = makeDeps();
-    let requestedLimit = 0;
-    deps.fetchMessages = async (_remoteJid: string, limit: number) => {
-      requestedLimit = limit;
-      return [
-        {
-          key: { id: 'm1', fromMe: false },
-          messageTimestamp: 1782916800,
-          message: { conversation: 'Quero orçamento' },
-        },
-      ];
-    };
-
-    const handler = createHandler(deps);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-    const id = parse(syncResult).data.conversations[0].id;
-
-    const result = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync-messages', id }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.equal(requestedLimit, 100);
-  });
-
-  it('extracts quote payload via POST action=extract-quote', async () => {
-    const deps = makeDeps();
-    const handler = createHandler({
-      ...deps,
-      extractOrders: async (text: string) => {
-        assert.match(text, /Quero orçamento/);
-        return [{ produto: 'Canga', quantidade: 100 }];
-      },
-      upsertQuoteLead: async () => ({ id: 'unused' }),
-    } as any);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-    const id = parse(syncResult).data.conversations[0].id;
-
-    const result = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'extract-quote', id }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 200);
-    assert.deepEqual(parse(result).data.extractedPayload.orders, [
-      { produto: 'Canga', quantidade: 100 },
+      } as any),
     ]);
-  });
+    assert.equal(racedLead.statusCode, 200);
+    assert.equal(racedDeal.statusCode, 200);
+    assert.equal(store.conversations()[0].linkedLeadId, IDS.lead);
+    assert.equal(store.conversations()[0].linkedDealId, IDS.deal);
 
-  it('creates whatsapp pre-quote via POST action=create-quote-lead', async () => {
-    const deps = makeDeps();
-    const handler = createHandler({
-      ...deps,
-      upsertQuoteLead: async (input: any) => ({
-        id: 'quote_lead_1',
-        source: input.source,
-        telefone: input.telefone,
-        pedidoTexto: input.pedidoTexto,
-        status: 'ready',
-        createdAt: '2026-07-01T12:00:00.000Z',
-        updatedAt: '2026-07-01T12:00:00.000Z',
-      }),
-      extractOrders: async () => [{ produto: 'Canga', quantidade: 100 }],
-    } as any);
-    const syncResult = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
+    const mismatch = await handler({
+      httpMethod: 'PATCH',
+      body: JSON.stringify({ id: 'wa-local-1', linkedQuotationId: IDS.quotation }),
       queryStringParameters: {},
       headers: {},
     } as any);
-    const id = parse(syncResult).data.conversations[0].id;
+    assert.equal(mismatch.statusCode, 400);
 
-    const result = await handler({
-      httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({
-        action: 'create-quote-lead',
-        id,
-        extractedPayload: { produto: 'Canga', quantidade: 100 },
-      }),
-      queryStringParameters: {},
-      headers: {},
-    } as any);
-
-    assert.equal(result.statusCode, 201);
-    assert.equal(parse(result).data.source, 'whatsapp');
-    assert.equal(parse(result).data.id, 'quote_lead_1');
-  });
-
-  it('does not backfill legacy conversations when running sync', async () => {
-    const deps = makeDeps();
-    await deps.writeConversations([
-      {
-        id: 'wa_legacy',
-        providerConversationId: '183792384719283741@lid',
-        remoteJid: '183792384719283741@lid',
-        canonicalPhone: '',
-        phone: '5521981858541',
-        displayLabel: '',
-        displayName: 'Maria Legado',
-        identityStatus: 'unresolved',
-        identitySource: null,
-        identityConfidence: null,
-        source: 'evolution',
-        status: 'new',
-        lastMessageAt: '2026-07-01T12:00:00.000Z',
-        lastMessagePreview: 'Oi',
-        createdAt: '2026-07-01T12:00:00.000Z',
-        updatedAt: '2026-07-01T12:00:00.000Z',
+    const otherClient = '66666666-6666-4666-8666-666666666666';
+    const crossLinkError = validateWhatsappConversationLinks({
+      patch: { linkedLeadId: null, linkedDealId: IDS.deal, linkedQuotationId: IDS.quotation },
+      deps: {
+        ...store.deps,
+        localCrm: repo({
+          deals: [deal({ clientId: IDS.client, quotationId: IDS.quotation })],
+          quotations: [{
+            id: IDS.quotation,
+            businessNumber: 'ORC-20260001',
+            clientId: otherClient,
+            status: 'rascunho',
+            snapshot: null,
+          }],
+        }),
       },
-    ] as WhatsappConversation[]);
-    deps.fetchChats = async () => [];
-    deps.fetchMessages = async () => [];
+    });
+    await assert.rejects(crossLinkError, (error: any) => error.statusCode === 400);
+  });
 
-    const handler = createHandler(deps);
-    const result = await handler({
+  it('returns 503 when local CRM reads fail instead of crmMatch null', async () => {
+    const store = makeStore();
+    await store.seed(conversation());
+    const failing: LocalWhatsappCrmRepository = {
+      ...repo(),
+      listQuoteLeads: async () => {
+        throw new Error('database down');
+      },
+    };
+    const result = await createHandler({ ...store.deps, localCrm: failing })({
+      httpMethod: 'GET',
+      queryStringParameters: { id: 'wa-local-1' },
+      headers: {},
+    } as any);
+    assert.equal(result.statusCode, 503);
+    assert.match(parse(result).error, /dados comerciais locais/);
+  });
+
+  it('reuses one local lead and deal after a KV link failure', async () => {
+    const store = makeStore();
+    await store.seed(conversation());
+    store.failNextWrite();
+    const leads = [lead({ externalId: 'wa-local-1', source: 'whatsapp', crmDealId: IDS.deal })];
+    const deals = [deal()];
+    let upserts = 0;
+    const local = repo({ leads, deals });
+    const handler = createHandler({
+      ...store.deps,
+      localCrm: local,
+      upsertQuoteLead: async () => {
+        upserts += 1;
+        return { ...leads[0], crmDealId: IDS.deal };
+      },
+    });
+
+    const first = await handler({
       httpMethod: 'POST',
-      url: API,
-      body: JSON.stringify({ action: 'sync' }),
+      body: JSON.stringify({ action: 'create-quote-lead', id: 'wa-local-1' }),
       queryStringParameters: {},
       headers: {},
     } as any);
+    assert.equal(first.statusCode, 503);
 
-    assert.equal(result.statusCode, 200);
-    const stored = (await deps.readConversations())[0];
-    // Backfill is NOT called during sync — legacy phone stays in `phone`, not promoted
-    assert.equal(stored.canonicalPhone, '');
-    assert.equal(stored.phone, '5521981858541');
-    assert.equal(stored.identityStatus, 'unresolved');
+    const second = await handler({
+      httpMethod: 'POST',
+      body: JSON.stringify({ action: 'create-quote-lead', id: 'wa-local-1' }),
+      queryStringParameters: {},
+      headers: {},
+    } as any);
+    assert.equal(second.statusCode, 200);
+    assert.equal(upserts, 0);
+    assert.equal(store.conversations()[0].linkedLeadId, IDS.lead);
+    assert.equal(store.conversations()[0].linkedDealId, IDS.deal);
   });
 });

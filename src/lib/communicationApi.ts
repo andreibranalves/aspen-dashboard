@@ -150,7 +150,6 @@ export interface FlowsResponse {
   success: boolean;
   flows: CommunicationFlow[];
   selectedFlowId: string | null;
-  source: string;
 }
 
 export interface SaveFlowsPayload {
@@ -160,7 +159,6 @@ export interface SaveFlowsPayload {
 
 export interface SaveFlowsResponse {
   success: boolean;
-  source: string;
 }
 
 export interface ExecuteFlowPayload {
@@ -169,12 +167,8 @@ export interface ExecuteFlowPayload {
   quotation_uuid?: string | null;
   business_number?: string | null;
   revision_id?: string | null;
-  source?: 'postgres' | 'frappe';
   flow_id: string;
-  telefone: string;
-  nome: string;
-  deal_id?: string | null;
-  items?: unknown[];
+  idempotency_key?: string;
 }
 
 export interface ExecuteFlowResponse {
@@ -186,16 +180,27 @@ export interface ExecuteFlowResponse {
   flow_name: string;
   quotation_id: string | null;
   deal_id: string | null;
-  phone: string;
+  phone?: string | null;
   product_summary: string;
   categories: string[];
   steps_count: number;
   steps: unknown[];
-  evolution: unknown[];
   send_event_id: string | null;
-  provider_accepted?: boolean;
-  outbox_durable?: boolean;
-  alert_id?: string;
+  send_status: 'completed' | 'dry_run';
+}
+
+export class CommunicationSendError extends Error {
+  readonly transportAccepted: boolean;
+  readonly deliveryAccepted: boolean;
+  readonly sendStatus: string | null;
+
+  constructor(message: string, accepted = false, sendStatus: string | null = null) {
+    super(message);
+    this.name = 'CommunicationSendError';
+    this.transportAccepted = accepted;
+    this.deliveryAccepted = accepted;
+    this.sendStatus = sendStatus;
+  }
 }
 
 // ── Media endpoints ────────────────────────────────────────────────────────
@@ -314,6 +319,83 @@ export async function saveFlows(
 /**
  * Execute a WhatsApp flow for a quotation.
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function invalidExecuteFlowResponse(): never {
+  throw new CommunicationSendError('Resposta inválida do envio de WhatsApp.');
+}
+
+function requiredString(source: Record<string, unknown>, key: string): string {
+  const value = source[key];
+  if (typeof value !== 'string' || !value.trim()) invalidExecuteFlowResponse();
+  return value;
+}
+
+function nullableString(source: Record<string, unknown>, key: string): string | null {
+  const value = source[key];
+  if (value === null) return null;
+  if (typeof value !== 'string') invalidExecuteFlowResponse();
+  return value;
+}
+
+function optionalPhone(source: Record<string, unknown>, sendStatus: 'completed' | 'dry_run'): string | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(source, 'phone')) {
+    // Durable completed/reconciliation replays intentionally omit recipient PII.
+    if (sendStatus === 'completed') return undefined;
+    invalidExecuteFlowResponse();
+  }
+  const value = source.phone;
+  if (value === null) return null;
+  if (typeof value !== 'string' || !value.trim()) invalidExecuteFlowResponse();
+  return value;
+}
+
+function projectExecuteFlowResponse(value: unknown): ExecuteFlowResponse {
+  if (!isRecord(value) || value.success !== true) invalidExecuteFlowResponse();
+  const sendStatus = value.send_status;
+  if (sendStatus !== 'completed' && sendStatus !== 'dry_run') invalidExecuteFlowResponse();
+  if (typeof value.dry_run !== 'boolean') invalidExecuteFlowResponse();
+  if (value.dry_run !== (sendStatus === 'dry_run')) invalidExecuteFlowResponse();
+  if (typeof value.duplicate_warning !== 'boolean' || typeof value.duplicate_message !== 'string') {
+    invalidExecuteFlowResponse();
+  }
+  if (!Array.isArray(value.categories) || !value.categories.every((category) => typeof category === 'string')) {
+    invalidExecuteFlowResponse();
+  }
+  if (!Array.isArray(value.steps) || typeof value.steps_count !== 'number' || !Number.isInteger(value.steps_count) || value.steps_count < 0) {
+    invalidExecuteFlowResponse();
+  }
+  const stepsCount = value.steps_count;
+  const quotationId = nullableString(value, 'quotation_id');
+  const dealId = nullableString(value, 'deal_id');
+  const sendEventId = nullableString(value, 'send_event_id');
+  const phone = optionalPhone(value, sendStatus);
+  return {
+    success: true,
+    dry_run: value.dry_run,
+    duplicate_warning: value.duplicate_warning,
+    duplicate_message: value.duplicate_message,
+    flow_id: requiredString(value, 'flow_id'),
+    flow_name: requiredString(value, 'flow_name'),
+    quotation_id: quotationId,
+    deal_id: dealId,
+    ...(phone === undefined ? {} : { phone }),
+    product_summary: requiredString(value, 'product_summary'),
+    categories: value.categories,
+    steps_count: stepsCount,
+    // Steps may contain transport/provider details; the page does not need them after send.
+    steps: [],
+    send_event_id: sendEventId,
+    send_status: sendStatus,
+  };
+}
+
 export async function executeFlow(
   payload: ExecuteFlowPayload,
 ): Promise<ExecuteFlowResponse> {
@@ -322,21 +404,18 @@ export async function executeFlow(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const data = (await res.json()) as { error?: string } & Partial<ExecuteFlowResponse> & {
-    provider_accepted?: boolean;
-    outbox_durable?: boolean;
-    alert_id?: string;
-  };
+  const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const error = new Error(data.error || 'Erro ao enviar WhatsApp.') as Error & {
-      providerAccepted?: boolean;
-      outboxDurable?: boolean;
-      alertId?: string;
-    };
-    error.providerAccepted = data.provider_accepted;
-    error.outboxDurable = data.outbox_durable;
-    error.alertId = data.alert_id;
-    throw error;
+    const source = isRecord(data) ? data : {};
+    const sendStatus = typeof source.send_status === 'string' ? source.send_status : null;
+    const acceptedPartial = source.accepted_partial === true
+      && source.provider_accepted === true
+      && sendStatus === 'accepted_partial';
+    throw new CommunicationSendError(
+      asString(source.error, 'Erro ao enviar WhatsApp.'),
+      acceptedPartial,
+      sendStatus,
+    );
   }
-  return data as ExecuteFlowResponse;
+  return projectExecuteFlowResponse(data);
 }

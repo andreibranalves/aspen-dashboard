@@ -91,7 +91,7 @@ const MINIMAL_SOURCE = `<!doctype html>
 </body>
 </html>`;
 
-const FRAPPE_SOURCE = `<!doctype html>
+const BRANDED_SOURCE = `<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
@@ -961,7 +961,7 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
       padding: 0;
     }
 
-    /* Suprime cabeçalho padrão do ERPNext */
+    /* Suprime cabeçalho padrão do documento impresso */
     .letterhead,
     .print-format-header,
     .print-heading {
@@ -1508,7 +1508,7 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
 const DEFINITIONS: readonly QuotationTemplateDefinition[] = [
   { key: 'padrao', name: 'Padrão Aspen', is_default: true, source: PADRAO_SOURCE },
   { key: 'minimalista', name: 'Minimalista', is_default: false, source: MINIMAL_SOURCE },
-  { key: 'frappe', name: 'Frappe (Original)', is_default: false, source: FRAPPE_SOURCE },
+  { key: 'branded', name: 'Aspen Original', is_default: false, source: BRANDED_SOURCE },
   { key: 'comparativo', name: 'Comparativo por faixa', is_default: false, source: COMPARATIVE_SOURCE },
   { key: 'simples', name: 'Simples', is_default: false, source: SIMPLE_SOURCE },
 ];
@@ -1630,8 +1630,8 @@ const TEMPLATES: readonly QuotationTemplate[] = Object.freeze(
 );
 const BY_KEY = new Map(TEMPLATES.map((template) => [template.key, template]));
 const DEFAULT_TEMPLATE = TEMPLATES.find((template) => template.is_default)!;
-const FRAPPE_DEFINITION = DEFINITIONS.find((definition) => definition.key === 'frappe')!;
-const FRAPPE_TEMPLATE = TEMPLATES.find((template) => template.key === 'frappe')!;
+const BRANDED_DEFINITION = DEFINITIONS.find((definition) => definition.key === 'branded')!;
+const BRANDED_TEMPLATE = TEMPLATES.find((template) => template.key === 'branded')!;
 
 export const QUOTATION_TEMPLATES = TEMPLATES;
 export const DEFAULT_QUOTATION_TEMPLATE = DEFAULT_TEMPLATE;
@@ -1656,13 +1656,13 @@ export function quotationTemplateFromVersion(version: {
   sourceHash: string;
   template?: { key: string; name: string };
 }): QuotationTemplate {
-  // Persisted copies of the immutable historical Frappe source retain its trusted compatibility path.
+  // Persisted copies of the immutable branded source retain its trusted compatibility path.
   if (
-    version.template?.key === FRAPPE_TEMPLATE.key &&
-    version.source === FRAPPE_TEMPLATE.source &&
-    version.sourceHash === FRAPPE_TEMPLATE.hash
+    version.template?.key === BRANDED_TEMPLATE.key &&
+    version.source === BRANDED_TEMPLATE.source &&
+    version.sourceHash === BRANDED_TEMPLATE.hash
   ) {
-    return FRAPPE_TEMPLATE;
+    return BRANDED_TEMPLATE;
   }
   return {
     key: version.template?.key || 'persisted',
@@ -1843,13 +1843,9 @@ const SVG_ALLOWED_TAGS = new Set(['svg', 'g', 'path', 'defs', 'style']);
 // Tags that are ONLY valid inside SVG context
 const SVG_ONLY_TAGS = new Set(['g', 'path', 'defs']);
 
-// Exact hash of the historical Frappe source migrated from ERPNext.
-// Only this source may omit display.total; every new template/version must require it.
-// Trusted built-in keys that are allowed to omit display.total.
-// Only the exact source strings compiled into DEFINITIONS above qualify.
+// Only this built-in source may omit display.total; every new template/version must require it.
 // External/persisted templates with the same key or hash do NOT get this exception.
-// Private provenance token. Public source validators never receive this value.
-const FRAPPE_PROVENANCE_TOKEN = Symbol('historical-frappe-template');
+const BRANDED_PROVENANCE_TOKEN = Symbol('branded-template');
 
 // Global attribute allowlist (applied to all tags that lack per-tag restrictions)
 // NOTE: href and src are NOT here — they are only allowed on specific tags via TAG_ATTRIBUTE_RESTRICTIONS
@@ -2501,7 +2497,7 @@ function findRequiredFields(
 
   // Only the exact historical source, reached through the private internal path,
   // may omit display.total. Public/persisted validation always requires it.
-  const isTrustedBuiltin = source === FRAPPE_SOURCE && provenance === FRAPPE_PROVENANCE_TOKEN;
+  const isTrustedBuiltin = source === BRANDED_SOURCE && provenance === BRANDED_PROVENANCE_TOKEN;
   if (!found.display_total && isTrustedBuiltin) {
     // Emit the plan-required compatibility warning
     console.warn(
@@ -2601,7 +2597,7 @@ function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]
     if (!definition.name.trim() || !definition.source.trim())
       throw new Error(`Template incompleto: ${definition.key}`);
     const provenance =
-      definition === FRAPPE_DEFINITION ? FRAPPE_PROVENANCE_TOKEN : undefined;
+      definition === BRANDED_DEFINITION ? BRANDED_PROVENANCE_TOKEN : undefined;
     validateQuotationSourceInternal(definition.source, definition.key, provenance);
     if (definition.is_default) defaults += 1;
   }
@@ -2623,7 +2619,7 @@ export function renderQuotationTemplate(
     // Only the exact frozen built-in objects qualify for trusted exceptions.
     // Forged objects with matching key/hash metadata are rejected.
     const provenance =
-      template === FRAPPE_TEMPLATE ? FRAPPE_PROVENANCE_TOKEN : undefined;
+      template === BRANDED_TEMPLATE ? BRANDED_PROVENANCE_TOKEN : undefined;
     validateQuotationSourceInternal(template.source, template.key, provenance);
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,

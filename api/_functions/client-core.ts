@@ -14,14 +14,6 @@ import {
 } from './client-schema.js';
 import type { ClientRepository } from './client-repository.js';
 
-/** Stable rollout marker shared by all client endpoints. */
-export type CoreMode = boolean;
-
-export interface CoreMeta {
-  core_mode: CoreMode;
-  source: 'postgres' | 'frappe';
-}
-
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 export function jsonResponse(
@@ -34,33 +26,6 @@ export function jsonResponse(
     headers: { ...JSON_HEADERS, ...headers },
     body: JSON.stringify(body),
   };
-}
-
-export function coreMeta(): CoreMeta {
-  return { core_mode: true, source: 'postgres' };
-}
-
-export function legacyMeta(): CoreMeta {
-  return { core_mode: false, source: 'frappe' };
-}
-
-export function isCoreClientsEnabled(): boolean {
-  if (process.env.CRM_OPERATIONAL_MODE === 'true') return true;
-  return process.env.CRM_CORE_CLIENTS_ENABLED === 'true';
-}
-
-export function withMeta(result: FunctionResult, meta: CoreMeta): FunctionResult {
-  if (!result.body) return result;
-  try {
-    const parsed = JSON.parse(result.body);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return { ...result, body: JSON.stringify({ ...parsed, ...meta }) };
-    }
-  } catch {
-    // Keep a non-JSON legacy response intact; this is only compatibility
-    // decoration and must never turn a useful legacy error into a new one.
-  }
-  return result;
 }
 
 function hasOwn(value: Record<string, unknown>, key: string): boolean {
@@ -280,8 +245,6 @@ export function mapClientDetail(record: ClientRecord): Record<string, unknown> {
     : null;
   return {
     success: true,
-    ...coreMeta(),
-    doctype: 'Customer',
     tipo: 'cliente',
     name: record.id,
     id: record.id,
@@ -305,8 +268,6 @@ export function mapClientDetail(record: ClientRecord): Record<string, unknown> {
     modified: record.updatedAt,
     created_at: record.createdAt,
     updated_at: record.updatedAt,
-    erp_url: null,
-    erp: null,
     latest_quotation: null,
     quote: null,
     deal: null,

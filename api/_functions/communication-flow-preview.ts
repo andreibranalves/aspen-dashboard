@@ -3,18 +3,24 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 //
 // Renders a CommunicationFlow into a preview array of steps with resolved
 // template variables and media selections. Can work with mock context
-// (no quotationId) or real context (with quotationId from ERPNext).
+// (no quotationId) or an immutable local revision snapshot.
 //
-// Used by the flow editor's preview panel and the pre-send confirmation dialog.
+// Used by flow editor preview and pre-send confirmation dialog.
 
 import { kv } from '@vercel/kv';
-import { createHttpError, erpGetDoc } from './lib/erpnext.js';
+import { createHttpError } from '../_lib/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
-import { KV_KEY_MEDIA_PREFIX, KV_KEY_FLOWS } from '../_lib/media-schema.js';
+import { KV_KEY_FLOWS } from '../_lib/media-schema.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
-import { isOperationalMode } from './operational-mode.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
-import { normalizePostgresMediaUrl } from './lib/postgres-media.js';
+import {
+  readCommunicationMediaRecords,
+  verifyOwnedBlobRecord,
+  isMediaTombstone,
+  MediaStoreReadError,
+  type BlobHead,
+  type PostgresMediaRecord,
+} from './lib/postgres-media.js';
 
 // ── Template rendering ─────────────────────────────────────────────────────
 
@@ -164,74 +170,55 @@ async function resolvePostgresQuotationContext(
   };
 }
 
-async function resolveQuotationContext(quotationId: string): Promise<Record<string, any> | null> {
-  try {
-    const quotation = await erpGetDoc('Quotation', quotationId);
-    if (!quotation) return null;
-
-    const nome = quotation.customer_name || quotation.party_name || '';
-    const items = quotation.items || [];
-    const categories = detectCategories(items);
-    const productSummary = productSummaryFromCategories(categories);
-
-    return {
-      nome,
-      quotationId,
-      link: '',
-      vendorName: 'Juliana',
-      empresa: 'Aspen Estamparia',
-      productSummary,
-      categories,
-    };
-  } catch (err: any) {
-    console.warn('[flow-preview] quotation resolution failed:', err.message);
-    return null;
-  }
-}
-
 // ── Media resolution ───────────────────────────────────────────────────────
 
-async function resolveMediaUrls(categories: string[], applicationOrigin = '', postgresPath = false) {
+async function resolveMediaUrls(
+  categories: string[],
+  applicationOrigin = '',
+  _postgresPath = false,
+  verification: {
+    headFn?: BlobHead;
+    blobToken?: string;
+    blobStoreId?: string;
+    readRecords?: () => Promise<PostgresMediaRecord[]>;
+  } = {},
+) {
   if (!categories.length) return [];
-
-  let keys: string[] = [];
+  let mediaRecords: PostgresMediaRecord[];
   try {
-    const result = await kv.scan(0, { match: `${KV_KEY_MEDIA_PREFIX}*`, count: 200 });
-    keys = result[1] || [];
-  } catch {
-    /* ignore */
+    mediaRecords = await (verification.readRecords || readCommunicationMediaRecords)();
+  } catch (error) {
+    if (error instanceof MediaStoreReadError) throw error;
+    throw new MediaStoreReadError(error);
   }
-
-  if (keys.length === 0) return [];
-
-  const entries = await Promise.all(keys.map((k) => kv.get(k)));
-  const media: Record<string, unknown>[] = (
-    entries.filter(Boolean) as Record<string, unknown>[]
-  ).filter((m) => m.active !== false);
-
+  const media = mediaRecords.filter((item) => item.active === true && !isMediaTombstone(item)) as Array<Record<string, unknown>>;
   const byGroup: Record<string, Record<string, unknown>[]> = {};
-  for (const m of media) {
-    const group = String(m.product_group || '');
-    if (!group || !m.blob_url) continue;
-    (byGroup[group] = byGroup[group] || []).push(m);
+  for (const asset of media) {
+    const group = String(asset.product_group || '');
+    if (!group || !asset.blob_url) continue;
+    (byGroup[group] = byGroup[group] || []).push(asset);
   }
 
   const resolved: Record<string, unknown>[] = [];
   for (const cat of categories) {
     const assets = (byGroup[cat] || []).slice(0, 5);
     for (const asset of assets) {
-      let url = String(asset.blob_url || '').trim();
-      if (postgresPath) {
-        try {
-          url = normalizePostgresMediaUrl(url, applicationOrigin);
-        } catch {
-          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
-        }
+      let verified;
+      try {
+        verified = await verifyOwnedBlobRecord(asset, applicationOrigin, {
+          headFn: verification.headFn,
+          token: verification.blobToken,
+          storeId: verification.blobStoreId,
+          expectedProductGroup: cat,
+        });
+      } catch (error) {
+        if (error && typeof error === 'object' && 'statusCode' in error) throw error;
+        throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
       }
       resolved.push({
-        url,
+        url: verified.url,
         caption: asset.caption || '',
-        kind: asset.kind || 'image',
+        kind: verified.contentType === 'video/mp4' ? 'video' : 'image',
         product_group: asset.product_group,
       });
     }
@@ -253,16 +240,17 @@ export type CommunicationFlowPreviewDependencies = {
   resolveFlow?: (flowId: string) => Promise<Record<string, any> | null>;
   resolvePostgresContext?: typeof resolvePostgresQuotationContext;
   resolveMedia?: typeof resolveMediaUrls;
+  headBlob?: BlobHead;
+  blobToken?: string;
+  blobStoreId?: string;
+  readMediaRecords?: () => Promise<PostgresMediaRecord[]>;
 };
 
 export async function handler(
   event: FunctionEvent,
   dependencies: CommunicationFlowPreviewDependencies = {},
 ): Promise<FunctionResult> {
-  if (isOperationalMode()) {
-    return { statusCode: 503, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'communication-flow-preview não está disponível no modo operacional.' }) };
-  }
-  if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Method Not Allowed' });
+  if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Método não permitido.' });
 
   let payload;
   try {
@@ -273,15 +261,19 @@ export async function handler(
 
   try {
     const flowId = String(payload.flow_id || payload.flowId || '').trim();
-    const quotationId = String(payload.quotation_id || payload.quotationId || '').trim();
-    const postgresPath = payload.source === 'postgres' || payload.core_mode === true;
+    const quotationId = String(
+      payload.quotation_id || payload.quotationId || payload.business_number || payload.businessNumber || ''
+    ).trim();
     const revisionId = String(
       payload.revision_id || payload.revisionId || payload.quote_revision_id || ''
     ).trim();
-    if (postgresPath && !quotationId) {
+    // Legacy provider/core markers are ignored. Snapshot identifiers select the
+    // immutable local context when present.
+    const quoteContextRequested = Boolean(quotationId || revisionId);
+    if (quoteContextRequested && !quotationId) {
       return jsonResponse(400, { error: 'Cotação PostgreSQL é obrigatória.' });
     }
-    if (postgresPath && !revisionId) {
+    if (quoteContextRequested && !revisionId) {
       return jsonResponse(400, { error: 'Revisão PostgreSQL do orçamento é obrigatória.' });
     }
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
@@ -323,23 +315,22 @@ export async function handler(
     }
 
     // Resolve context
-    let context;
-    if (quotationId) {
-      context = postgresPath
-        ? await (dependencies.resolvePostgresContext || resolvePostgresQuotationContext)(quotationId, revisionId)
-        : await resolveQuotationContext(quotationId);
-      if (!context) {
-        return jsonResponse(404, { error: 'Orçamento não encontrado.' });
-      }
-    } else {
-      context = getMockContext();
-    }
+    const context = quoteContextRequested
+      ? await (dependencies.resolvePostgresContext || resolvePostgresQuotationContext)(quotationId, revisionId)
+      : getMockContext();
+    if (!context) return jsonResponse(404, { error: 'Orçamento não encontrado.' });
 
-    // Resolve media for product_media steps
+    // Resolve only active local Blob records for product_media steps.
     const mediaUrls = await (dependencies.resolveMedia || resolveMediaUrls)(
       context.categories || [],
       applicationOrigin,
-      postgresPath,
+      quoteContextRequested,
+      {
+        headFn: dependencies.headBlob,
+        blobToken: dependencies.blobToken,
+        blobStoreId: dependencies.blobStoreId,
+        readRecords: dependencies.readMediaRecords,
+      },
     );
 
     // Build preview steps

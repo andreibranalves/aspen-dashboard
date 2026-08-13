@@ -21,7 +21,7 @@ Os contratos HTTP equivalentes permanecem estáveis onde possível, enquanto met
 - Usar imports ESM com extensão `.js` para módulos locais do backend.
 - Manter erros HTTP visíveis em português brasileiro.
 - Remover toda chamada, import, URL, variável de ambiente, branch e flag Frappe/ERPNext de runtime, testes ativos e documentação operacional.
-- Permitir referências Frappe/ERPNext somente nas migrations históricas imutáveis sob `drizzle/` e no histórico Git.
+- Permitir referências Frappe/ERPNext somente nas migrations históricas imutáveis sob `drizzle/`, no histórico Git e nos registros de auditoria sob `docs/superpowers/`.
 - Aplicar TDD para cada comportamento novo ou mudança de comportamento.
 - Não fazer deploy em Production antes de staging sem egress Frappe/ERPNext e canário PostgreSQL-only verde.
 

@@ -7,9 +7,9 @@ export interface WhatsappAttachment {
   fileName: string;
   mediaUrl: string;
   caption: string;
-  origin: 'provider' | 'internal_generated';
   documentRole: 'quotation_pdf' | 'generic_document' | null;
   quotationId: string | null;
+  quotationBusinessNumber: string | null;
   leadId: string | null;
   customerId: string | null;
 }
@@ -26,15 +26,11 @@ export type WhatsappConversationStatus =
 
 export interface WhatsappConversation {
   id: string;
-  providerConversationId: string;
-  remoteJid: string;
   canonicalPhone: string;
   phone: string;
   displayLabel: string;
   displayName: string;
   identityStatus: 'verified' | 'derived' | 'unresolved' | 'conflict';
-  identitySource?: string | null;
-  identityConfidence?: 'high' | 'medium' | 'low' | null;
   lastMessageAt: string;
   lastMessagePreview: string;
   linkedLeadId?: string | null;
@@ -48,7 +44,6 @@ export interface WhatsappConversation {
 export interface WhatsappMessage {
   id: string;
   conversationId: string;
-  providerMessageId: string;
   direction: 'inbound' | 'outbound';
   type: 'text' | 'image' | 'document' | 'audio' | 'unknown';
   body: string;

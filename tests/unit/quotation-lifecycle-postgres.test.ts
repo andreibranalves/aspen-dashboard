@@ -17,6 +17,7 @@ import {
   quotations,
   quoteRevisionItems,
   quoteRevisions,
+  productActivityEvents,
 } from '../../api/_db/schema.js';
 import { createPostgresQuoteDraftRepository } from '../../api/_db/quote-repository.js';
 import { createPostgresQuoteDraftManagementRepository } from '../../api/_db/quote-draft-management-repository.js';
@@ -56,6 +57,7 @@ test(
     const db = drizzle(client, { schema });
     const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const sku = `LIFE-${suffix}`;
+    const secondSku = `LIFE-SECOND-${suffix}`;
     const clientId = randomUUID();
     const quotationIds: string[] = [];
     let previousSettings: typeof appSettings.$inferSelect | undefined;
@@ -83,14 +85,24 @@ test(
         });
       await db
         .insert(products)
-        .values({
-          sku,
-          nome: 'Produto lifecycle',
-          descricao: 'Snapshot',
-          unidade: 'Und',
-          precoBase: '10.00',
-          ativo: true,
-        });
+        .values([
+          {
+            sku,
+            nome: 'Produto lifecycle',
+            descricao: 'Snapshot',
+            unidade: 'Und',
+            precoBase: '10.00',
+            ativo: true,
+          },
+          {
+            sku: secondSku,
+            nome: 'Segundo produto lifecycle',
+            descricao: 'Snapshot 2',
+            unidade: 'Und',
+            precoBase: '20.00',
+            ativo: true,
+          },
+        ]);
       await db
         .insert(clients)
         .values({ id: clientId, nome: 'Cliente lifecycle', arquivado: false });
@@ -100,7 +112,10 @@ test(
       });
       const draft = await create.createDraft({
         client_id: clientId,
-        items: [{ item_code: sku, qty: '2.000', manual_rate: true, rate: '12.00' }],
+        items: [
+          { item_code: sku, qty: '2.000', manual_rate: true, rate: '12.00' },
+          { item_code: secondSku, qty: '1.000', manual_rate: true, rate: '20.00' },
+        ],
       });
       quotationIds.push(draft.quotation_uuid);
       // @deprecated issueQuotation + quotation-document-repository removed (#no-pdf-html-only)
@@ -139,6 +154,34 @@ test(
         .from(quoteRevisionItems)
         .where(eq(quoteRevisionItems.revisionId, draft.revision_id));
       assert.ok(sourceRevision);
+      const activityBeforeRevision = await db
+        .select()
+        .from(productActivityEvents)
+        .where(inArray(productActivityEvents.productSku, [sku, secondSku]));
+      assert.equal(activityBeforeRevision.filter((row) => row.tipo === 'orcamento').length, 2);
+
+      const failingLifecycle = createPostgresQuotationLifecycleRepository(() => db, {
+        now: () => new Date('2026-07-03T12:00:00.000Z'),
+        readDetail: async () => {
+          throw new Error('rollback lifecycle activity');
+        },
+      });
+      await assert.rejects(
+        () => failingLifecycle.createRevision(draft.quotation_name, {
+          source_revision_id: draft.revision_id,
+          concurrency_token: approved.concurrency_token,
+        }),
+        /nova revisão/i,
+      );
+      assert.equal(
+        (await db.select().from(quoteRevisions).where(eq(quoteRevisions.quotationId, draft.quotation_uuid))).length,
+        1,
+      );
+      assert.equal(
+        (await db.select().from(productActivityEvents).where(inArray(productActivityEvents.productSku, [sku, secondSku]))).length,
+        activityBeforeRevision.length,
+      );
+
       const concurrent = await Promise.allSettled([
         lifecycle.createRevision(draft.quotation_name, {
           source_revision_id: draft.revision_id,
@@ -157,6 +200,13 @@ test(
       assert.equal(created.revision, 2);
       assert.equal(created.status_canonical, 'rascunho');
       assert.equal(created.quotation_id, draft.quotation_name);
+      const revisionActivities = await db
+        .select()
+        .from(productActivityEvents)
+        .where(inArray(productActivityEvents.productSku, [sku, secondSku]));
+      const revisionActivityRows = revisionActivities.filter((row) => row.referenceId?.includes(`:${created.revision_id}:`));
+      assert.equal(revisionActivityRows.length, 2);
+      assert.deepEqual(new Set(revisionActivityRows.map((row) => row.productSku)), new Set([sku, secondSku]));
       // issued_document removed (#no-pdf-html-only)
       const [copiedRevision] = await db
         .select()
@@ -198,7 +248,8 @@ test(
         const ids = [...new Set([...quotationIds, ...owned.map((row) => row.id)])];
         if (ids.length) await db.delete(quotations).where(inArray(quotations.id, ids));
         await db.delete(clients).where(eq(clients.id, clientId));
-        await db.delete(products).where(eq(products.sku, sku));
+        await db.delete(productActivityEvents).where(inArray(productActivityEvents.productSku, [sku, secondSku]));
+        await db.delete(products).where(inArray(products.sku, [sku, secondSku]));
         if (previousSettings) {
           await db
             .update(appSettings)

@@ -1,6 +1,11 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from './client.js';
+import {
+  appendProductActivityEvents,
+  type ProductActivityEventInput,
+} from './product-activity-repository.js';
 import {
   normalizeProductCreateInput,
   normalizeProductUpdateInput,
@@ -69,6 +74,13 @@ function normalizePricing(input: PricingReplaceInput | undefined) {
   return normalizeProductPricing({ preco_base: input.preco_base, precos: input.precos });
 }
 
+function numericKey(value: unknown): string {
+  const [integer, fraction = ''] = String(value ?? '').trim().split('.');
+  const normalizedInteger = (integer || '0').replace(/^(-?)0+(?=\d)/, '$1');
+  const normalizedFraction = fraction.replace(/0+$/, '');
+  return normalizedFraction ? `${normalizedInteger}.${normalizedFraction}` : normalizedInteger;
+}
+
 function metadataValues(patch: ProductUpdateInput): Partial<typeof products.$inferInsert> {
   const values: Partial<typeof products.$inferInsert> = { atualizadoEm: new Date() };
   if (patch.nome !== undefined) values.nome = patch.nome;
@@ -121,6 +133,26 @@ export function createPostgresProductCatalogRepository(
           }).returning();
           if (!created) throw new Error('empty insert result');
           if (normalizedPricing) await insertTiers(tx, normalizedProduct.sku, normalizedPricing);
+          const activityCreatedAt = created.criadoEm instanceof Date
+            ? created.criadoEm
+            : new Date(created.criadoEm);
+          const activity: ProductActivityEventInput[] = [{
+            sku: normalizedProduct.sku,
+            tipo: 'produto',
+            texto: 'Produto criado',
+            reference_id: `produto:${normalizedProduct.sku}:criado`,
+            created_at: activityCreatedAt,
+          }];
+          if (normalizedPricing && (normalizedPricing.preco_base !== null || normalizedPricing.precos.length > 0)) {
+            activity.push({
+              sku: normalizedProduct.sku,
+              tipo: 'preco',
+              texto: 'Preço cadastrado',
+              reference_id: `preco:${normalizedProduct.sku}:criado`,
+              created_at: new Date(activityCreatedAt.getTime() + 1),
+            });
+          }
+          await appendProductActivityEvents(tx, activity);
           return created;
         });
         return {
@@ -141,18 +173,80 @@ export function createPostgresProductCatalogRepository(
       const db = getDb();
       try {
         const row = await db.transaction(async (tx) => {
-          const [existing] = await tx.select().from(products).where(eq(products.sku, normalizedSku)).limit(1);
+          const [existing] = await tx
+            .select()
+            .from(products)
+            .where(eq(products.sku, normalizedSku))
+            .for('update')
+            .limit(1);
           if (!existing) return null;
-          const values = metadataValues(normalizedPatch);
-          if (normalizedPricing) values.precoBase = normalizedPricing.preco_base;
-          const [updated] = Object.keys(values).length > 0
-            ? await tx.update(products).set(values).where(eq(products.sku, normalizedSku)).returning()
+
+          const metadata = metadataValues(normalizedPatch);
+          const metadataChanged = Object.entries(normalizedPatch).some(([key, value]) => {
+            if (key === 'ativo') return existing.ativo !== value;
+            if (key === 'categoria' || key === 'marca') return (existing[key] ?? null) !== (value ?? null);
+            return existing[key as keyof typeof existing] !== value;
+          });
+          let pricingChanged = false;
+          const currentTiers = normalizedPricing
+            ? await tx
+              .select()
+              .from(productPricingTiers)
+              .where(eq(productPricingTiers.productSku, normalizedSku))
+              .orderBy(asc(productPricingTiers.minimumQuantity), asc(productPricingTiers.unitPrice))
+            : [];
+          if (normalizedPricing) {
+            pricingChanged = numericKey(existing.precoBase) !== numericKey(normalizedPricing.preco_base)
+              || currentTiers.length !== normalizedPricing.precos.length
+              || currentTiers.some((tier, index) => {
+                const next = normalizedPricing!.precos[index];
+                return !next
+                  || numericKey(tier.minimumQuantity) !== numericKey(next.minimum_quantity)
+                  || numericKey(tier.unitPrice) !== numericKey(next.unit_price);
+              });
+          }
+          if (!metadataChanged && !pricingChanged) {
+            return existing;
+          }
+
+          if (normalizedPricing && pricingChanged) metadata.precoBase = normalizedPricing.preco_base;
+          if (!metadataChanged && !pricingChanged) {
+            delete metadata.atualizadoEm;
+          }
+          const [updated] = Object.keys(metadata).length > 0
+            ? await tx.update(products).set(metadata).where(eq(products.sku, normalizedSku)).returning()
             : [existing];
           if (!updated) throw new Error('empty update result');
-          if (normalizedPricing) {
+          if (normalizedPricing && pricingChanged) {
             await tx.delete(productPricingTiers).where(eq(productPricingTiers.productSku, normalizedSku));
             await insertTiers(tx, normalizedSku, normalizedPricing);
           }
+
+          const operationAt = updated.atualizadoEm;
+          const mutationId = randomUUID();
+          const activity: ProductActivityEventInput[] = [];
+          if (metadataChanged) {
+            const archived = normalizedPatch.ativo === false && existing.ativo;
+            activity.push({
+              sku: normalizedSku,
+              tipo: 'produto',
+              texto: archived ? 'Produto arquivado' : 'Produto atualizado',
+              reference_id: `produto:${normalizedSku}:${mutationId}`,
+              created_at: operationAt,
+            });
+          }
+          if (pricingChanged) {
+            activity.push({
+              sku: normalizedSku,
+              tipo: 'preco',
+              texto: 'Preço atualizado',
+              reference_id: `preco:${normalizedSku}:${mutationId}`,
+              created_at: operationAt instanceof Date
+                ? new Date(operationAt.getTime() + 1)
+                : new Date(new Date(operationAt).getTime() + 1),
+            });
+          }
+          await appendProductActivityEvents(tx, activity);
           return updated;
         });
         if (!row) return null;

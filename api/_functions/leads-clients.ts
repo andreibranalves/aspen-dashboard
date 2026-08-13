@@ -1,22 +1,19 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { handler as legacyHandler } from './leads-clients-legacy.js';
 import {
   buildCreateInput,
-  coreMeta,
   jsonResponse,
-  legacyMeta,
   mapClientRow,
   normalizeCoreError,
   parseJsonBody,
   parseListOptions,
-  withMeta,
 } from './client-core.js';
 import { getClientRepository, type ClientRepository } from './client-repository.js';
 
+type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
+
 export interface LeadsClientsHandlerDependencies {
   repository?: ClientRepository;
-  core?: (event: FunctionEvent) => Promise<FunctionResult>;
-  legacy?: (event: FunctionEvent) => Promise<FunctionResult>;
+  core?: Handler;
 }
 
 function logCoreError(operation: string, error: unknown): void {
@@ -40,7 +37,6 @@ export function createCoreHandler(dependencies: Pick<LeadsClientsHandlerDependen
             total: result.total,
             total_pages: Math.ceil(result.total / result.limit) || 0,
           },
-          ...coreMeta(),
         });
       }
 
@@ -49,7 +45,7 @@ export function createCoreHandler(dependencies: Pick<LeadsClientsHandlerDependen
         if (Object.prototype.hasOwnProperty.call(payload, 'tipo')) {
           const tipo = typeof payload.tipo === 'string' ? payload.tipo.trim().toLowerCase() : '';
           if (!tipo || (tipo !== 'lead' && tipo !== 'cliente')) {
-            return jsonResponse(400, { error: 'Tipo inválido. Use "lead" ou "cliente".', ...coreMeta() });
+            return jsonResponse(400, { error: 'Tipo inválido. Use "lead" ou "cliente".' });
           }
         }
         const record = await repository.create(buildCreateInput(payload));
@@ -60,13 +56,12 @@ export function createCoreHandler(dependencies: Pick<LeadsClientsHandlerDependen
           name: record.id,
           tipo: 'cliente',
           data: mapClientRow(record),
-          ...coreMeta(),
         });
       }
 
       if (event.httpMethod === 'DELETE') {
         const id = event.queryStringParameters?.id || event.queryStringParameters?.name;
-        if (!id || !String(id).trim()) return jsonResponse(400, { error: 'ID não informado.', ...coreMeta() });
+        if (!id || !String(id).trim()) return jsonResponse(400, { error: 'ID não informado.' });
         const record = await repository.archive(String(id));
         return jsonResponse(200, {
           success: true,
@@ -75,36 +70,20 @@ export function createCoreHandler(dependencies: Pick<LeadsClientsHandlerDependen
           arquivado: true,
           tipo: 'cliente',
           data: mapClientRow(record),
-          ...coreMeta(),
         });
       }
 
-      return jsonResponse(405, { error: 'Método não permitido.', ...coreMeta() }, { Allow: 'GET, POST, DELETE' });
+      return jsonResponse(405, { error: 'Método não permitido.' }, { Allow: 'GET, POST, DELETE' });
     } catch (error) {
       logCoreError(event.httpMethod, error);
       const normalized = normalizeCoreError(error);
-      return jsonResponse(normalized.statusCode, { ...normalized.body, ...coreMeta() });
+      return jsonResponse(normalized.statusCode, normalized.body);
     }
   };
 }
 
-export function createHandler(dependencies: LeadsClientsHandlerDependencies = {}): (event: FunctionEvent) => Promise<FunctionResult> {
-  const core = dependencies.core || createCoreHandler(dependencies);
-  return async function leadsClientsHandler(event: FunctionEvent): Promise<FunctionResult> {
-    const clientsCoreEnabled = process.env.CRM_CORE_CLIENTS_ENABLED === 'true';
-    const quotesCoreEnabled = process.env.CRM_CORE_QUOTES_ENABLED === 'true';
-    // Quote management searches clients through this endpoint. During the
-    // quote rollout only GET is promoted; writes remain owned by the clients
-    // flag until that surface is explicitly enabled.
-    const useCore = clientsCoreEnabled || (quotesCoreEnabled && event.httpMethod === 'GET');
-    if (!useCore) {
-      const legacy = dependencies.legacy || legacyHandler;
-      return withMeta(await legacy(event), legacyMeta());
-    }
-    // Deliberately do not catch/redirect core failures to legacy. A failed
-    // PostgreSQL request must remain observable as a core error.
-    return core(event);
-  };
+export function createHandler(dependencies: LeadsClientsHandlerDependencies = {}): Handler {
+  return dependencies.core || createCoreHandler(dependencies);
 }
 
 export const handler = createHandler();
