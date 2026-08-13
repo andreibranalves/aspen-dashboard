@@ -1076,6 +1076,18 @@ test('persisted built-in version keeps trusted provenance', () => {
   assert.ok(html.length > 100, 'persisted branded renders substantial HTML');
 });
 
+test('legacy template key keeps trusted provenance for the immutable branded source', () => {
+  const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
+  assert.ok(branded, 'branded template exists');
+  const persisted = quotationTemplateFromVersion({
+    source: branded.source,
+    sourceHash: branded.hash,
+    template: { key: 'legacy-branded', name: 'Legacy branded' },
+  });
+  const html = renderQuotationTemplate(persisted, quotationSnapshotViewModel(snapshot));
+  assert.ok(html.length > 100, 'legacy branded alias renders substantial HTML');
+});
+
 test('new source missing display.total is rejected', () => {
   const newSource =
     '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}}</body></html>';

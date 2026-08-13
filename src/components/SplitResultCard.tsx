@@ -47,6 +47,7 @@ export interface SplitResultCardProps {
     message?: string;
     deliveryAccepted?: boolean;
   };
+  waSendEnabled?: boolean;
   waFlows?: CommunicationFlow[];
   waSelectedFlowId?: string;
   templates?: QuotationTemplateMetadata[];
@@ -76,6 +77,7 @@ export default function SplitResultCard({
   onPreviewQuote,
   viewUrl,
   waStatus,
+  waSendEnabled = true,
   waFlows = [],
   waSelectedFlowId = '',
   templates = [],
@@ -581,23 +583,27 @@ export default function SplitResultCard({
                 Abrir orçamento
               </span>
             )}
-            <Button
-              size="sm"
-              disabled={waStatus?.state === 'sending'
-                || waStatus?.state === 'sent'
-                || waStatus?.state === 'reconciling'
-                || waStatus?.state === 'accepted-partial'}
-              onClick={() => onSendWhatsApp?.(draft.index)}
-            >
-              <Phone size={13} />
-              {waStatus?.state === 'sent'
-                ? 'Enviado'
-                : waStatus?.state === 'reconciling' || waStatus?.state === 'accepted-partial'
-                  ? 'Reconciliação pendente'
-                  : waStatus?.state === 'sending'
-                    ? 'Enviando…'
-                    : 'Enviar WhatsApp'}
-            </Button>
+            {waSendEnabled ? (
+              <Button
+                size="sm"
+                disabled={waStatus?.state === 'sending'
+                  || waStatus?.state === 'sent'
+                  || waStatus?.state === 'reconciling'
+                  || waStatus?.state === 'accepted-partial'}
+                onClick={() => onSendWhatsApp?.(draft.index)}
+              >
+                <Phone size={13} />
+                {waStatus?.state === 'sent'
+                  ? 'Enviado'
+                  : waStatus?.state === 'reconciling' || waStatus?.state === 'accepted-partial'
+                    ? 'Reconciliação pendente'
+                    : waStatus?.state === 'sending'
+                      ? 'Enviando…'
+                      : 'Enviar WhatsApp'}
+              </Button>
+            ) : (
+              <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>
+            )}
           </>
         ) : (
           <>

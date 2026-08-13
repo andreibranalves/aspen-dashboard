@@ -564,6 +564,9 @@ export async function loadPostgresSendContext(input: {
       pdfBase64 = encodedPdf;
     } catch (error) {
       if (error && typeof error === 'object' && 'statusCode' in error) throw error;
+      if (error instanceof Error && /rascunho|compartilh/i.test(error.message)) {
+        throw createHttpError(409, 'Emita o orçamento antes de enviar WhatsApp.');
+      }
       throw createHttpError(503, 'Não foi possível preparar o PDF do orçamento.');
     }
   }

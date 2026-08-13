@@ -24,6 +24,10 @@ export function sendContextKey(context: SendContext): string {
   return `v2|${recordKey(context)}`;
 }
 
+export function isSendableQuotationStatus(status: unknown): boolean {
+  return status === 'enviado' || status === 'aprovado';
+}
+
 export function sendIdempotencyKey(context: SendContext): string {
   return `${SEND_LOCK_KEY_PREFIX}${sendContextKey(context)}`;
 }

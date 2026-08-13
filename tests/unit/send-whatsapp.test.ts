@@ -331,6 +331,29 @@ test('PostgreSQL context rejects mixed media before provider configuration', asy
   assert.equal(tokenStore.values.size, 0);
 });
 
+test('loadPostgresSendContext rejects draft PDF sharing before rendering', async () => {
+  const draft = snapshot();
+  draft.quotation = { ...draft.quotation, status: 'rascunho' };
+  draft.revision = { ...draft.revision, status: 'rascunho' };
+  await assert.rejects(
+    loadPostgresSendContext({
+      quotationId: businessNumber,
+      revisionId,
+      needPdf: true,
+      baseUrl: 'https://app.test',
+      repository: repositoryFor(draft),
+      store: store(),
+      token: () => publicToken,
+      renderPdf: async () => { throw new Error('renderer must not run'); },
+    }),
+    (error: unknown) => {
+      assert.equal((error as { statusCode?: number }).statusCode, 409);
+      assert.equal((error as Error).message, 'Emita o orçamento antes de enviar WhatsApp.');
+      return true;
+    },
+  );
+});
+
 test('loadPostgresSendContext reports PDF preparation failure without provider access', async () => {
   const tokenStore = store();
   await assert.rejects(

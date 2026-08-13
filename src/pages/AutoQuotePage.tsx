@@ -24,6 +24,7 @@ import type { Draft } from '@/types/domain';
 import { fetchFlows, executeFlow, CommunicationSendError, type CommunicationFlow } from '@/lib/communicationApi';
 import {
   executeWithSendLock,
+  isSendableQuotationStatus,
   sendContextKey,
   type SendContext,
 } from '@/lib/communicationSend';
@@ -1077,7 +1078,8 @@ export default function AutoQuotePage() {
 
                 const selectedFlowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
                 const revisionId = (resultData?.revision_id as string | null) || (resultData?.quote_revision_id as string | null) || '';
-                const sendContext = quotationId && revisionId && selectedFlowId
+                const quotationSendable = isSendableQuotationStatus(resultData?.status_canonical || resultData?.status);
+                const sendContext = quotationSendable && quotationId && revisionId && selectedFlowId
                   ? { quotationId, revisionId, flowId: selectedFlowId }
                   : null;
 
@@ -1097,7 +1099,8 @@ export default function AutoQuotePage() {
                     onCreateQuote={createSingleQuote}
                     onPreviewQuote={previewSingleQuote}
                     viewUrl={relativeViewUrl}
-                    waStatus={statusForContext(sendContext)}
+                    waStatus={quotationSendable ? statusForContext(sendContext) : undefined}
+                    waSendEnabled={quotationSendable}
                     waFlows={waFlows}
                     waSelectedFlowId={selectedFlowId}
                     onSelectWhatsAppFlow={handleSelectWhatsAppFlow}

@@ -1656,12 +1656,8 @@ export function quotationTemplateFromVersion(version: {
   sourceHash: string;
   template?: { key: string; name: string };
 }): QuotationTemplate {
-  // Persisted copies of the immutable branded source retain its trusted compatibility path.
-  if (
-    version.template?.key === BRANDED_TEMPLATE.key &&
-    version.source === BRANDED_TEMPLATE.source &&
-    version.sourceHash === BRANDED_TEMPLATE.hash
-  ) {
+  // Persisted copies retain compatibility by immutable source identity, including legacy keys.
+  if (version.source === BRANDED_TEMPLATE.source && version.sourceHash === BRANDED_TEMPLATE.hash) {
     return BRANDED_TEMPLATE;
   }
   return {

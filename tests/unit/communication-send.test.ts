@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   executeWithSendLock,
+  isSendableQuotationStatus,
   sendContextKey,
   sendIdempotencyKey,
 } from '../../src/lib/communicationSend.ts';
@@ -31,6 +32,13 @@ function installBrowser(options: { locks?: unknown } = {}): { values: Map<string
     },
   };
 }
+
+test('only issued or approved quotations are sendable', () => {
+  assert.equal(isSendableQuotationStatus('enviado'), true);
+  assert.equal(isSendableQuotationStatus('aprovado'), true);
+  assert.equal(isSendableQuotationStatus('rascunho'), false);
+  assert.equal(isSendableQuotationStatus(undefined), false);
+});
 
 test('idempotency key includes exact quotation, revision, and flow independently', () => {
   assert.notEqual(sendContextKey(context), sendContextKey(otherFlow));
