@@ -203,6 +203,22 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       await db.update(quotationTemplates).set({ archived: minimalTemplate?.archived ?? false }).where(eq(quotationTemplates.key, 'minimalista'));
     }
     assert.ok(laterBefore);
+    const pendingBefore = await managementGet(pendingDraft.quotation_name);
+    assert.ok(pendingBefore?.secoes);
+    const reorderedSectionBases = globalThis.structuredClone(pendingBefore.secoes);
+    for (const key of ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const) {
+      reorderedSectionBases[key].base = Object.fromEntries(
+        Object.entries(reorderedSectionBases[key].base).reverse(),
+      );
+    }
+    const reorderedBaseUpdate = await managementUpdate(pendingDraft.quotation_name, {
+      concurrency_token: pendingBefore.concurrency_token,
+      items: [{ item_code: sku, qty: '30.000' }],
+      secoes: reorderedSectionBases,
+    });
+    assert.deepEqual(reorderedBaseUpdate.secoes?.pagamento.base, pendingBefore.secoes.pagamento.base);
+    assert.deepEqual(reorderedBaseUpdate.secoes?.condicoes_gerais.base, pendingBefore.secoes.condicoes_gerais.base);
+    assert.equal(reorderedBaseUpdate.secoes?.prazo_producao.base.title, pendingBefore.secoes.prazo_producao.base.title);
     assert.equal(before.frete_padrao, explicitSettings.fretePadrao);
     assert.equal(before.pagamento, explicitSettings.pagamento);
     assert.equal(before.items[0].suggested_unit_price, '9.00');
@@ -304,11 +320,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       () => managementUpdate(draft.quotation_name, { concurrency_token: currentBeforeUpdate.concurrency_token, items: [{ item_code: sku, qty: '1.000' }] }),
       (error: unknown) => error instanceof QuoteManagementConflictError,
     );
-    await db.update(quotations).set({ status: 'enviado' }).where(eq(quotations.id, updated.quotation_uuid));
-    await db.update(quoteRevisions).set({ status: 'enviado' }).where(eq(quoteRevisions.id, updated.revision_id));
+    await db.update(quotations).set({ status: 'emitido' }).where(eq(quotations.id, updated.quotation_uuid));
+    await db.update(quoteRevisions).set({ status: 'emitido' }).where(eq(quoteRevisions.id, updated.revision_id));
     await db.update(quotations).set({ status: 'aprovado' }).where(eq(quotations.id, laterDraft.quotation_uuid));
     await db.update(quoteRevisions).set({ status: 'aprovado' }).where(eq(quoteRevisions.id, laterDraft.revision_id));
-    await db.update(quotations).set({ status: 'perdido' }).where(eq(quotations.id, terminalDraft.quotation_uuid));
+    await db.update(quotations).set({ status: 'perdido', lossReason: 'Teste de perda' }).where(eq(quotations.id, terminalDraft.quotation_uuid));
     await db.update(quoteRevisions).set({ status: 'perdido' }).where(eq(quoteRevisions.id, terminalDraft.revision_id));
     const assertTerminalUpdateRejected = async (quotationName: string) => {
       const terminalDetail = await managementGet(quotationName);

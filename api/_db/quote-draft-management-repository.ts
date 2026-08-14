@@ -460,7 +460,7 @@ async function readTemplateSelection(
 }
 
 function copy<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  return globalThis.structuredClone(value);
 }
 
 function canonicalJson(value: unknown): string {
@@ -519,7 +519,7 @@ function sectionSnapshotForUpdate(
   }
   for (const key of ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const) {
     const section = candidate[key];
-    if (isRecord(section) && section.base !== undefined && JSON.stringify(section.base) !== JSON.stringify(stored[key].base))
+    if (isRecord(section) && section.base !== undefined && canonicalJson(section.base) !== canonicalJson(stored[key].base))
       throw new QuoteManagementInputError('A base das seções não pode ser alterada.');
   }
   const current = isRecord(candidate.current) ? candidate.current : candidate;
