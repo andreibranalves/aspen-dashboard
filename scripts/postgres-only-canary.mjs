@@ -117,7 +117,9 @@ async function readBody(response, checkName) {
 }
 
 function assertResponseOrigin(response, expectedOrigin) {
-  if (!response.url) return;
+  if (typeof response.url !== 'string' || response.url.trim() === '') {
+    throw new Error('Canary response missing response URL');
+  }
   let parsed;
   try {
     parsed = new URL(response.url);

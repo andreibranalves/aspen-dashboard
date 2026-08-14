@@ -31,36 +31,41 @@ function validCanaryEnv() {
   };
 }
 
+function withResponseUrl(response, url) {
+  if (!response.url) Object.defineProperty(response, 'url', { value: String(url), configurable: true });
+  return response;
+}
+
 function canaryFetch(overrides = {}) {
   return async (rawUrl, options = {}) => {
     const url = new globalThis.URL(String(rawUrl));
     const key = `${options.method || 'GET'} ${url.pathname}${url.search}`;
-    if (overrides[key]) return overrides[key];
+    if (overrides[key]) return withResponseUrl(overrides[key], url);
     if (key === 'POST /api/login') {
-      return new globalThis.Response('{"success":true}', {
+      return withResponseUrl(new globalThis.Response('{"success":true}', {
         status: 200,
         headers: { 'content-type': 'application/json', 'set-cookie': 'session=test; HttpOnly' },
-      });
+      }), url);
     }
     if (key === 'GET /api/quotations?id=ORC-1') {
-      return globalThis.Response.json({ id: 'ORC-1', revision_id: 'revision-1' });
+      return withResponseUrl(globalThis.Response.json({ id: 'ORC-1', revision_id: 'revision-1' }), url);
     }
     if (key === 'GET /api/quotation-preview?id=ORC-1&format=pdf') {
-      return new globalThis.Response('%PDF-1.4\n%%EOF', {
+      return withResponseUrl(new globalThis.Response('%PDF-1.4\n%%EOF', {
         status: 200,
         headers: {
           'content-type': 'application/pdf',
           'x-document-revision': 'revision-1',
         },
-      });
+      }), url);
     }
     if (url.pathname === '/api/public-quotation') {
-      return new globalThis.Response('<!doctype html><title>ORC-1</title>', {
+      return withResponseUrl(new globalThis.Response('<!doctype html><title>ORC-1</title>', {
         status: 200,
         headers: { 'content-type': 'text/html' },
-      });
+      }), url);
     }
-    return globalThis.Response.json({ ok: true });
+    return withResponseUrl(globalThis.Response.json({ ok: true }), url);
   };
 }
 
@@ -154,5 +159,18 @@ test('rejects a response URL that crosses origin', async () => {
       fetchImpl: canaryFetch({ 'GET /api/operational-status': response }),
     }),
     /cross-origin/,
+  );
+});
+
+test('rejects a response without a final URL', async () => {
+  const fake = canaryFetch();
+  const fetchImpl = async (url, options = {}) => {
+    const response = await fake(url, options);
+    Object.defineProperty(response, 'url', { value: '' });
+    return response;
+  };
+  await assert.rejects(
+    runCanary({ env: validCanaryEnv(), fetchImpl }),
+    /missing response URL/,
   );
 });
