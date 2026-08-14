@@ -64,3 +64,11 @@ node scripts/check-no-legacy-provider.mjs
 - Keep all three route maps synchronized when adding or removing endpoints.
 - Authentication and rate limiting run at the deployed API boundary.
 - Local development servers intentionally omit deployed authentication middleware.
+
+## OPERATOR ENVIRONMENT
+
+- Real cutover values stay outside the checkout at `$HOME/.config/aspen-dashboard/.env.local` or `.env`.
+- Keep the config directory mode `0700` and files mode `0600`.
+- Run `node scripts/cutover-env-status.mjs` before cutover work.
+- The preflight reports names and `present`/`missing` status only; never print or commit values.
+- Do not copy operator environment files into the repository.
