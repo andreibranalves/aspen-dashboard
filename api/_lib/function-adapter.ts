@@ -9,6 +9,11 @@ function normalizeBody(req: IncomingMessage): string {
   const contentType = req.headers?.['content-type'];
   const mediaType = Array.isArray(contentType) ? contentType[0] : contentType;
   if (mediaType?.split(';', 1)[0].trim().toLowerCase() === 'application/x-www-form-urlencoded') {
+    console.error('[DEBUG-quote-form-8f3c] body shape', {
+      type: typeof body,
+      constructor: body && typeof body === 'object' ? (body as { constructor?: { name?: string } }).constructor?.name : undefined,
+      keys: body && typeof body === 'object' ? Object.keys(body as object) : [],
+    });
     return new URLSearchParams(body as Record<string, string>).toString();
   }
   return JSON.stringify(body);
