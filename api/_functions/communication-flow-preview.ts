@@ -53,7 +53,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asCommunicationFlow(value: unknown): CommunicationFlow | null {
-  return isRecord(value) ? value as CommunicationFlow : null;
+  if (!isRecord(value)) return null;
+  if (value.steps !== undefined && !Array.isArray(value.steps)) return null;
+  if (Array.isArray(value.steps) && value.steps.some((step) => !isRecord(step))) return null;
+  const steps = Array.isArray(value.steps)
+    ? value.steps.map((step) => step as CommunicationFlowStep)
+    : undefined;
+  return {
+    ...value,
+    ...(steps ? { steps } : {}),
+  } as CommunicationFlow;
 }
 
 function errorDetails(value: unknown): Record<string, unknown> {

@@ -147,9 +147,11 @@ async function readFlows() {
       .map(migrateFlow)
       .filter((flow): flow is FlowRecord => flow !== null);
     if (normalized.length === 0) return null;
+    const storedSelectedFlowId = typeof selectedFlowId === 'string' ? selectedFlowId : '';
+    const firstFlowId = typeof normalized[0]?.id === 'string' ? normalized[0].id : null;
     return {
       flows: normalized,
-      selectedFlowId: selectedFlowId || normalized[0]?.id || null,
+      selectedFlowId: storedSelectedFlowId || firstFlowId,
       source: 'kv',
     };
   } catch (err: unknown) {
