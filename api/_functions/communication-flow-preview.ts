@@ -48,8 +48,16 @@ type CommunicationFlow = Record<string, unknown> & {
   max_media_per_product_group?: number;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function asCommunicationFlow(value: unknown): CommunicationFlow | null {
+  return isRecord(value) ? value as CommunicationFlow : null;
+}
+
 function errorDetails(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return isRecord(value) ? value : {};
 }
 
 // ── Template rendering ─────────────────────────────────────────────────────
@@ -282,9 +290,10 @@ export async function handler(
 ): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Método não permitido.' });
 
-  let payload;
+  let payload: Record<string, unknown>;
   try {
-    payload = JSON.parse(event.body || '{}');
+    const parsed: unknown = JSON.parse(event.body || '{}');
+    payload = isRecord(parsed) ? parsed : {};
   } catch {
     return jsonResponse(400, { error: 'JSON inválido.' });
   }
@@ -314,8 +323,11 @@ export async function handler(
     let flow: CommunicationFlow | null = null;
     if (flowId && !dependencies.resolveFlow) {
       try {
-        const flows = await kv.get(KV_KEY_FLOWS);
-        if (Array.isArray(flows)) flow = flows.find((f) => f.id === flowId);
+        const flows: unknown = await kv.get(KV_KEY_FLOWS);
+        if (Array.isArray(flows)) {
+          const candidate = flows.find((entry) => isRecord(entry) && entry.id === flowId);
+          flow = asCommunicationFlow(candidate);
+        }
       } catch {
         /* ignore */
       }
@@ -323,8 +335,8 @@ export async function handler(
     if (flowId && dependencies.resolveFlow) flow = await dependencies.resolveFlow(flowId);
 
     // Use provided flow or fallback to mock
-    if (!flow && payload.flow) {
-      flow = payload.flow;
+    if (!flow) {
+      flow = asCommunicationFlow(payload.flow);
     }
 
     if (!flow) {

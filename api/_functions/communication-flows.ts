@@ -17,8 +17,12 @@ import {
 
 type FlowRecord = Record<string, unknown>;
 
+function isRecord(value: unknown): value is FlowRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function errorDetails(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  return isRecord(value) ? value : {};
 }
 
 // ── Default flows (matching DEFAULT_WA_FLOWS but with product_media) ────────
@@ -100,8 +104,9 @@ function normalizeProductSummaryTemplate(template: unknown): string {
     : String(template || '');
 }
 
-function migrateStep(step: FlowRecord): FlowRecord | null {
-  const type = typeof step.type === 'string' ? step.type : '';
+function migrateStep(value: unknown): FlowRecord | null {
+  const step = isRecord(value) ? value : null;
+  const type = typeof step?.type === 'string' ? step.type : '';
   if (!step || !['text', STEP_TYPES.DOCUMENT, STEP_TYPES.PRODUCT_MEDIA].includes(type)) {
     return null;
   }
@@ -116,11 +121,13 @@ function migrateStep(step: FlowRecord): FlowRecord | null {
   return normalized;
 }
 
-function migrateFlow(flow: FlowRecord): FlowRecord {
+function migrateFlow(value: unknown): FlowRecord | null {
+  const flow = isRecord(value) ? value : null;
+  if (!flow) return null;
   const migrated = createFlow({
     ...flow,
     steps: Array.isArray(flow.steps)
-      ? flow.steps.map(migrateStep).filter(Boolean)
+      ? flow.steps.map(migrateStep).filter((step): step is FlowRecord => step !== null)
       : [],
   });
   if (!migrated.context) migrated.context = 'manual';
@@ -132,11 +139,14 @@ function migrateFlow(flow: FlowRecord): FlowRecord {
 async function readFlows() {
   try {
     const [flows, selectedFlowId] = await Promise.all([
-      kv.get(KV_KEY_FLOWS),
-      kv.get(KV_KEY_FLOWS_SELECTED),
+      kv.get(KV_KEY_FLOWS) as Promise<unknown>,
+      kv.get(KV_KEY_FLOWS_SELECTED) as Promise<unknown>,
     ]);
     if (!Array.isArray(flows) || flows.length === 0) return null;
-    const normalized = flows.map((flow) => migrateFlow(flow));
+    const normalized = flows
+      .map(migrateFlow)
+      .filter((flow): flow is FlowRecord => flow !== null);
+    if (normalized.length === 0) return null;
     return {
       flows: normalized,
       selectedFlowId: selectedFlowId || normalized[0]?.id || null,
@@ -209,24 +219,33 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
 
   // ── PUT: save flows ──
   if (method === 'PUT') {
-    let payload;
+    let payload: FlowRecord;
     try {
-      payload = JSON.parse(event.body || '{}');
+      const parsed: unknown = JSON.parse(event.body || '{}');
+      payload = isRecord(parsed) ? parsed : {};
     } catch {
       return jsonResponse(400, { error: 'JSON inválido.' });
     }
 
-    const { flows, selectedFlowId } = payload;
+    const flows = payload.flows;
+    const selectedFlowId = typeof payload.selectedFlowId === 'string' ? payload.selectedFlowId : '';
     if (!Array.isArray(flows) || flows.length === 0) {
       return jsonResponse(400, { error: 'Lista de fluxos inválida ou vazia.' });
     }
 
     try {
       // Normalize each flow
-      const normalized = flows.map((f, i) =>
-        migrateFlow({ ...f, id: f.id || `flow_${i}` }),
-      );
-      await writeFlows(normalized, selectedFlowId || normalized[0]?.id || '');
+      const normalized = flows
+        .map((value, index) => {
+          const flow = isRecord(value) ? value : {};
+          const id = typeof flow.id === 'string' && flow.id ? flow.id : `flow_${index}`;
+          return migrateFlow({ ...flow, id });
+        })
+        .filter((flow): flow is FlowRecord => flow !== null);
+      if (normalized.length === 0) {
+        return jsonResponse(400, { error: 'Lista de fluxos inválida ou vazia.' });
+      }
+      await writeFlows(normalized, selectedFlowId || String(normalized[0]?.id || ''));
       return jsonResponse(200, { success: true, source: 'kv' });
     } catch (err: unknown) {
       const details = errorDetails(err);

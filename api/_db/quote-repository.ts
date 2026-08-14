@@ -967,6 +967,9 @@ export function createPostgresQuoteDraftRepository(
                 observacoes: baseSections.condicoes_gerais.body,
               }
             );
+            if (requestObservations !== undefined && input.secoes !== undefined) {
+              inputText(requestObservations, 'Observações', 4000);
+            }
           } catch (error) {
             throw new QuoteDraftInputError(error instanceof Error ? error.message : 'Seções inválidas.');
           }
