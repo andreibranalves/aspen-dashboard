@@ -366,8 +366,12 @@ export default function AutoQuotePage() {
         }
         loadHistory();
       } catch (err) {
-        const message = err instanceof QuotationIssueApiError && err.status === 409
-          ? `${err.message} Atualize os preços e tente novamente.`
+        const apiError = err instanceof QuotationIssueApiError ? err : null;
+        const priceConflict = Boolean(apiError && isPriceAuthoritativeConflict(apiError));
+        const message = apiError?.status === 409
+          ? priceConflict
+            ? `${apiError.message} Atualize os preços e tente novamente.`
+            : apiError.message
           : err instanceof Error ? err.message : 'Não foi possível emitir o orçamento. Tente novamente.';
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, status: undefined, result: { success: false, error: message } } as StoredAutoQuoteDraft)
