@@ -82,10 +82,12 @@ export function inspectCutoverEnv({ env = process.env, exists = existsSync, read
     }
   }
 
-  const files = paths.map((path) => ({
-    path,
-    status: path === selectedPath ? selectedStatus : pathExists(path) ? 'present' : 'missing',
-  }));
+  const files = paths.map((path) => {
+    let status = 'missing';
+    if (path === selectedPath) status = selectedStatus;
+    else if (pathExists(path)) status = 'present';
+    return { path, status };
+  });
   const keys = requiredCutoverKeys.map((name) => ({
     name,
     status: availableKeys.has(name) ? 'present' : 'missing',
