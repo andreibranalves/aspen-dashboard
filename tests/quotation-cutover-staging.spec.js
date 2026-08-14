@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { expect, test } from '@playwright/test';
 import {
   apiRequest,
+  assertNoForbiddenEgress,
   assertSafeApiPath,
   assertStagingConfig,
   loginToStaging,
@@ -212,22 +213,4 @@ test.describe('quotation cutover staging', () => {
 
 function quotationPath(id) {
   return `/api/quotations?id=${encodeURIComponent(id)}`;
-}
-
-function assertNoForbiddenEgress(requests) {
-  const forbidden = requests.filter((rawUrl) => {
-    let parsed;
-    try {
-      parsed = new globalThis.URL(rawUrl);
-    } catch {
-      return true;
-    }
-    const path = parsed.pathname.toLowerCase();
-    const host = parsed.hostname.toLowerCase();
-    return (
-      path.includes('/api/send-whatsapp') ||
-      /(?:external-crm|external-erp)/i.test(host)
-    );
-  });
-  assert.equal(forbidden.length, 0, 'staging browser made a forbidden external request');
 }

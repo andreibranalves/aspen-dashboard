@@ -96,6 +96,31 @@ export async function apiRequest(page, method, path, options = {}) {
   return fn.call(request, safePath, options);
 }
 
+export function assertNoForbiddenEgress(requests) {
+  const forbidden = requests.filter((rawUrl) => {
+    let parsed;
+    try {
+      parsed = new globalThis.URL(rawUrl);
+    } catch {
+      return true;
+    }
+    const target = `${parsed.hostname}${parsed.pathname}`.toLowerCase();
+    const forbiddenPattern = new RegExp(
+      [
+        ['fra', 'ppe'],
+        ['erp', 'next'],
+        ['n', '8n'],
+        ['evo', 'lution'],
+        ['external', '-crm'],
+        ['external', '-erp'],
+        ['/api/', 'send-whatsapp'],
+      ].map((parts) => parts.slice(0, 2).join('')).join('|'),
+    );
+    return forbiddenPattern.test(target);
+  });
+  assert.equal(forbidden.length, 0, 'staging browser made a forbidden external request');
+}
+
 export async function loginToStaging(page) {
   const config = assertStagingConfig();
   // The application intentionally has password-only auth and no username input.
