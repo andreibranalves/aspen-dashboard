@@ -109,6 +109,14 @@ function parseBody(req) {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
+      const mediaType = String(req.headers['content-type'] || '')
+        .split(';', 1)[0]
+        .trim()
+        .toLowerCase();
+      if (mediaType === 'application/x-www-form-urlencoded') {
+        resolve(body);
+        return;
+      }
       try {
         resolve(JSON.parse(body));
       } catch {
@@ -141,9 +149,10 @@ const server = createServer(async (req, res) => {
 
   try {
     const body = await parseBody(req);
+    const requestBody = typeof body === 'string' ? body : JSON.stringify(body);
     const event = {
       httpMethod: req.method,
-      body: req.method === 'GET' ? undefined : JSON.stringify(body),
+      body: requestBody,
       queryStringParameters: Object.fromEntries(new URL(req.url, 'http://localhost').searchParams),
       headers: {
         ...req.headers,

@@ -515,7 +515,7 @@ export default function AutoQuotePage() {
       const form = document.createElement('form');
       const payload = document.createElement('input');
       form.method = 'POST';
-      form.action = '/api/quotation-preview';
+      form.action = '/api/quotation-preview?format=html';
       form.target = '_blank';
       form.style.display = 'none';
       payload.type = 'hidden';

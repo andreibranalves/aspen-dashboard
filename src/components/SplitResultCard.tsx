@@ -665,7 +665,7 @@ export default function SplitResultCard({
               disabled={isProcessing || !canCreate}
             >
               <Eye size={13} />
-              Visualizar PDF
+              Visualizar proposta
             </Button>
             <Button
               size="sm"

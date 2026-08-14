@@ -97,6 +97,19 @@ export function createQuotationPreviewHandler(
           resolveTemplate: resolveDraftTemplate,
         });
         const html = renderQuotationTemplate(snapshot.template, snapshot.viewModel);
+        if (event.queryStringParameters?.format === 'html') {
+          return {
+            statusCode: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              ...HTML_SECURITY_HEADERS,
+              'X-Quotation-Template-Key': snapshot.template.key,
+              'X-Quotation-Template-Version': 'preview',
+              'X-Quotation-Template-Hash': snapshot.template.hash,
+            },
+            body: html,
+          };
+        }
         const pdf = await renderPdf(html);
         if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) {
           return json(503, { error: 'O gerador retornou um PDF inválido. Tente novamente.' });

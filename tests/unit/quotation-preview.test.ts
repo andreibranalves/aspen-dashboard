@@ -28,16 +28,39 @@ async function pdfRender(html: string) { return Buffer.from('%PDF-1.7\n' + html 
 
 function rendered(response: any) { return Buffer.from(response.body || '', 'base64').toString(); }
 
-function post(value: unknown) {
+function post(value: unknown, queryStringParameters: Record<string, string> = {}) {
   return {
     httpMethod: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    queryStringParameters: {},
+    queryStringParameters,
     body: new URLSearchParams({ payload: JSON.stringify(value) }).toString(),
   } as any;
 }
 
-test('renders an unsaved quotation draft as secured HTML without loading a snapshot', async () => {
+test('renders an unsaved quotation draft as HTML when requested', async () => {
+  let renderCalls = 0;
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async (key) => key === template.key ? template : null,
+    renderPdf: async () => {
+      renderCalls += 1;
+      return Buffer.from('%PDF-1.7\\n%%EOF');
+    },
+  });
+
+  const response = await handler(post({ extracted }, { format: 'html' }));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers?.['Content-Type'], 'text/html; charset=utf-8');
+  assert.equal(response.isBase64Encoded, undefined);
+  assert.equal(response.headers?.['Content-Disposition'], undefined);
+  assert.match(response.body || '', /Pré-visualização/);
+  assert.match(response.body || '', /Cliente Preview/);
+  assert.match(response.body || '', /Produto Preview/);
+  assert.equal(renderCalls, 0);
+});
+
+test('renders an unsaved quotation draft as secured PDF by default', async () => {
   let snapshotReads = 0;
   let writes = 0;
   const handler = createQuotationPreviewHandler({
