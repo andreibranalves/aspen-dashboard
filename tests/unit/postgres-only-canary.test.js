@@ -13,6 +13,13 @@ test('requires a same-origin read-only Production canary configuration', () => {
     }),
     /without credentials/,
   );
+  assert.throws(
+    () => readCanaryConfig({
+      ...validCanaryEnv(),
+      CANARY_PUBLIC_QUOTATION_URL: 'https://other.example/api/public-quotation?token=x',
+    }),
+    /same origin/,
+  );
 });
 
 function validCanaryEnv() {
@@ -61,13 +68,38 @@ test('uses POST only for login and keeps every business check read-only', async 
   const calls = [];
   const fake = canaryFetch();
   const fetchImpl = async (url, options = {}) => {
-    calls.push({ url: String(url), method: options.method || 'GET' });
+    calls.push({ url: String(url), method: options.method || 'GET', headers: options.headers });
     return fake(url, options);
   };
   await runCanary({ env: validCanaryEnv(), fetchImpl });
   assert.equal(calls[0].method, 'POST');
   assert.equal(calls.slice(1).every((call) => call.method === 'GET'), true);
   assert.equal(calls.some((call) => /send-whatsapp|typebot-lead-capture/i.test(call.url)), false);
+  const publicCall = calls.find((call) => new globalThis.URL(call.url).pathname === '/api/public-quotation');
+  assert.ok(publicCall);
+  assert.equal(publicCall.headers?.cookie, undefined);
+  assert.equal(publicCall.headers?.Cookie, undefined);
+});
+
+test('fails on every forbidden provider marker', async () => {
+  const markers = [
+    ['fra', 'ppe'],
+    ['erp', 'next'],
+    ['CRM', '_CORE_'],
+    ['CRM', '_OPERATIONAL_MODE'],
+    ['CRM', '_QUOTES_ROLLOUT_STATE'],
+  ].map((parts) => parts.slice(0, 2).join(''));
+  for (const marker of markers) {
+    await assert.rejects(
+      runCanary({
+        env: validCanaryEnv(),
+        fetchImpl: canaryFetch({
+          'GET /api/products?limit=1': globalThis.Response.json({ provider: marker }),
+        }),
+      }),
+      /forbidden provider metadata/,
+    );
+  }
 });
 
 test('fails on provider metadata, wrong revision, invalid PDF and non-2xx responses', async () => {
@@ -102,4 +134,25 @@ test('fails on provider metadata, wrong revision, invalid PDF and non-2xx respon
       pattern,
     );
   }
+});
+
+test('requires redirect errors for every request', async () => {
+  const fake = canaryFetch();
+  const fetchImpl = async (url, options = {}) => {
+    assert.equal(options.redirect, 'error');
+    return fake(url, options);
+  };
+  await runCanary({ env: validCanaryEnv(), fetchImpl });
+});
+
+test('rejects a response URL that crosses origin', async () => {
+  const response = globalThis.Response.json({ ok: true });
+  Object.defineProperty(response, 'url', { value: 'https://other.example/api/operational-status' });
+  await assert.rejects(
+    runCanary({
+      env: validCanaryEnv(),
+      fetchImpl: canaryFetch({ 'GET /api/operational-status': response }),
+    }),
+    /cross-origin/,
+  );
 });

@@ -43,7 +43,10 @@ export function readCanaryConfig(env = process.env) {
   } catch {
     throw new Error('CANARY_PUBLIC_QUOTATION_URL must be a valid URL');
   }
-  if (publicUrl.origin !== baseUrl || publicUrl.username || publicUrl.password) {
+  if (publicUrl.origin !== baseUrl) {
+    throw new Error('CANARY_PUBLIC_QUOTATION_URL must use CANARY_BASE_URL same origin');
+  }
+  if (publicUrl.username || publicUrl.password) {
     throw new Error('CANARY_PUBLIC_QUOTATION_URL must use CANARY_BASE_URL without credentials');
   }
 
@@ -113,6 +116,17 @@ async function readBody(response, checkName) {
   return { text };
 }
 
+function assertResponseOrigin(response, expectedOrigin) {
+  if (!response.url) return;
+  let parsed;
+  try {
+    parsed = new URL(response.url);
+  } catch {
+    throw new Error('Canary received an invalid response URL');
+  }
+  if (parsed.origin !== expectedOrigin) throw new Error('Canary response cross-origin');
+}
+
 function parseJson(text, checkName) {
   try {
     return JSON.parse(text);
@@ -134,7 +148,11 @@ export async function runCanary({ env = process.env, fetchImpl = globalThis.fetc
   async function fetchCheck(name, rawPath, options = {}) {
     const url = sameOriginUrl(rawPath, config.baseUrl);
     const startedAt = Date.now();
-    const response = await fetchImpl(url, options);
+    const response = await fetchImpl(url, { ...options, redirect: 'error' });
+    assertResponseOrigin(response, url.origin);
+    if (response.status >= 300 && response.status < 400) {
+      throw new Error(`${name} returned redirect HTTP ${response.status}`);
+    }
     const body = await readBody(response, name);
     if (!response.ok) throw new Error(`${name} returned HTTP ${response.status}`);
     checks.push({ name, status: response.status, elapsedMs: Date.now() - startedAt });
