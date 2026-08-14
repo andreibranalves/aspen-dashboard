@@ -38,23 +38,30 @@
 - Custom `inet aspen_staging` input, output and forward chains use default `drop` policies.
 - Unrestricted Docker-bridge DNS and HTTPS allows were removed; only established/related forwarding remains.
 - nftables syntax, enabled service, PostgreSQL `select 1`, KV `/ping` and staging HTTPS probes passed.
-- An unlisted HTTPS probe was blocked.
+- Unlisted DNS probe to `9.9.9.9:53` and Frappe HTTPS probe were blocked at network level.
 - Reboot persistence passed: service enabled/active, app and Traefik running after reboot, health HTTP 200, Evolution stopped.
+- Protected evidence includes `probes.json`, `firewall-final.sha256`, `staging-e2e.log`, `staging-quotation-final.log` and `evidence.sha256` under `/root/aspen-staging-evidence/2026-08-10`.
+- Final staging container ID prefix: `797d33f450c2`; deployed commit marker: `5a029d1`; firewall ruleset SHA-256: `c6ce301044bc46c44989aafb7a758a4061497e67e54b499399a9374cc45505ce`.
 - Final staging quotation suite passed 2/2 after final credential rotation; earlier full staging suite passed 10/10.
 
 ## Production backup and deployment
 
 - Status: PASS.
-- Protected Production backup and checksum verified under `$HOME/.local/share/aspen-dashboard/postgres-only-finalization-20260814`.
+- Protected Production backup and checksum verified: `$HOME/.local/share/aspen-dashboard/postgres-only-finalization-20260814/backups/backup-2026-08-14T15-05-43-351Z.sql`, SHA-256 `012e4ebf3df5a4ce0639d629929edffb9eae75c3a337ba910653e5b42c93ffe4`.
+- Preflight, backup, migration and checksum command logs are protected in the same directory with mode `0600`.
 - Production migrations 0018 and 0019 applied after backup; final migration count is 20.
 - Final Production deployment: `dpl_EFZEMr79YnVYUxNxHJafP9X4nUVV`, commit `23c5feb`.
 - Production domains point to the final PostgreSQL-only build.
 - Previous rollback candidate: `dpl_9wytFmfpcHK5smL319dMqjUBKsqb`.
+- Cleanup preview: `dpl_FGWHThE9zWX75WsyCrLkBLnBudzv`; post-cleanup promotion: `dpl_73RoL3RSLRHQnq5GM5VCeTB4ND4w`.
 
 ## Production canary
 
 - Status: PASS.
-- Final read-only canary passed 10/10: login, operational status, products, leads/clients, quotation, PDF revision binding, CRM deals, sales orders, sales dashboard and public quotation.
+- Pre-cleanup read-only canary log: `production-canary-after-promotion.json`, 10/10.
+- Post-cleanup read-only canary log: `production-canary-after-cleanup.json`, 10/10.
+- Final DB-rotation read-only canary log: `production-canary-final-db-rotation.json`, 10/10.
+- Final read-only canary checks: login, operational status, products, leads/clients, quotation, PDF revision binding, CRM deals, sales orders, sales dashboard and public quotation.
 - No WhatsApp, Typebot or provider capture call was made.
 - Temporary public canary token was revoked after verification; follow-up request returned HTTP 404.
 
@@ -62,7 +69,8 @@
 
 - Status: PASS.
 - Forbidden legacy names absent from development, preview and production.
-- Plaintext `APP_PASSWORD` removed; `APP_PASSWORD_HASH` is encrypted and targets preview/production.
+- Removed names: `ERPNEXT_TOKEN` from preview/production; `CRM_CORE_PRODUCTS_ENABLED` from production; `CRM_CORE_QUOTES_ENABLED` and `CRM_QUOTES_ROLLOUT_STATE` from preview/production.
+- Plaintext `APP_PASSWORD` removed from preview/production; `APP_PASSWORD_HASH` is encrypted and targets preview/production.
 - Production and preview database variables synchronized to the final rotated Neon credential.
 
 ## Credential revocation
