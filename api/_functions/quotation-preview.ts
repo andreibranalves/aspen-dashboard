@@ -61,10 +61,7 @@ async function resolveCurrentDraftTemplate(key: string): Promise<QuotationTempla
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
   return {
     statusCode,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'X-Debug-quote-preview': '7b8cc90',
-    },
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify(payload),
   };
 }
