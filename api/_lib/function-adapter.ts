@@ -6,6 +6,11 @@ function normalizeBody(req: IncomingMessage): string {
   if (body === undefined || body === null) return '';
   if (typeof body === 'string') return body;
   if (Buffer.isBuffer(body)) return body.toString('utf8');
+  const contentType = req.headers?.['content-type'];
+  const mediaType = Array.isArray(contentType) ? contentType[0] : contentType;
+  if (mediaType?.split(';', 1)[0].trim().toLowerCase() === 'application/x-www-form-urlencoded') {
+    return new URLSearchParams(body as Record<string, string>).toString();
+  }
   return JSON.stringify(body);
 }
 

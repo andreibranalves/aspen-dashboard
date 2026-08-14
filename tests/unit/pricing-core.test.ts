@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   PricingUnavailableError,
   PricingValidationError,
+  parseMoneyCents,
   normalizeProductPricing,
   resolveProductPrice,
 } from '../../api/_functions/pricing-core.js';
@@ -27,6 +28,11 @@ describe('core pricing exact resolver', () => {
   it('uses base price when there are no tiers and rejects an unpriced product', () => {
     assert.equal(resolveProductPrice({ preco_base: '9.99', precos: [] }, '0.5').rate, '9.99');
     assert.throws(() => resolveProductPrice({ preco_base: null, precos: [] }, 30), PricingUnavailableError);
+  });
+
+  it('allows zero only when explicitly requested for non-price money fields', () => {
+    assert.equal(parseMoneyCents('0.00', 'Frete', true), 0n);
+    assert.throws(() => parseMoneyCents('0.00', 'Preço'), PricingValidationError);
   });
 
   it('applies urgent markup with integer-cents rounding', () => {

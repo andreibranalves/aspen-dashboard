@@ -106,9 +106,9 @@ export function parseScaledInteger(value: unknown, scale: number, label: string)
   return BigInt(integer) * 10n ** BigInt(scale) + BigInt(padded || '0');
 }
 
-export function parseMoneyCents(value: unknown, label = 'Preço'): bigint {
+export function parseMoneyCents(value: unknown, label = 'Preço', allowZero = false): bigint {
   const cents = parseScaledInteger(value, MONEY_SCALE, label);
-  if (cents <= 0n) throw new PricingValidationError(`${label} deve ser maior que zero.`);
+  if (cents < 0n || (!allowZero && cents === 0n)) throw new PricingValidationError(`${label} deve ser maior que zero.`);
   // NUMERIC(14,2) allows 12 integer digits plus two decimal places.
   if (cents > 99999999999999n) {
     throw new PricingValidationError(`${label} está fora do limite permitido.`);

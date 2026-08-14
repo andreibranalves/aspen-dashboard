@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
 import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
+import { toFunctionEvent } from '../../api/_lib/function-adapter.js';
 
 const template = getQuotationTemplate('padrao')!;
 const extracted = {
@@ -61,6 +62,23 @@ test('renders an unsaved quotation draft as secured HTML without loading a snaps
   assert.match(rendered(response), /25,00/);
   assert.equal(snapshotReads, 0);
   assert.equal(writes, 0);
+});
+
+test('accepts a form body parsed by the Vercel adapter', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
+  });
+  const response = await handler(toFunctionEvent({
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: { payload: JSON.stringify({ extracted }) },
+    url: '/api/quotation-preview',
+  } as any));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers?.['Content-Type'], 'application/pdf');
 });
 
 test('applies urgent markup to non-manual item prices', async () => {

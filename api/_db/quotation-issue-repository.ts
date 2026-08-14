@@ -266,7 +266,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
           subtotal += total;
           resolved.push({ sku, quantity, item, product: productBySku.get(sku)!, resolution, applied, total });
         }
-        const freight = parseMoneyCents(extracted.frete ?? settings.fretePadrao ?? '0.00', 'Frete');
+        const freight = parseMoneyCents(extracted.frete ?? settings.fretePadrao ?? '0.00', 'Frete', true);
         const total = subtotal + freight;
         const issuedAt = date(now(), started);
         let sourceRevision = input.sourceRevisionId ? (await tx.select().from(quoteRevisions).where(eq(quoteRevisions.id, input.sourceRevisionId)).for('update').limit(1))[0] : null;
