@@ -132,7 +132,9 @@ test('CLI treats blank and quote-only required values as missing', () => {
     });
 
     assert.equal(result.status, 1);
-    assert.match(result.stdout, new RegExp(`${requiredCutoverKeys[0]}: missing`));
+    for (const key of requiredCutoverKeys) {
+      assert.match(result.stdout, new RegExp(`${key}: missing`));
+    }
     assert.doesNotMatch(result.stdout, /unreadable/);
     assert.equal(result.stderr, '');
   });
