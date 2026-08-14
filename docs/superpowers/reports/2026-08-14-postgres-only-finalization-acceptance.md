@@ -9,7 +9,7 @@
 - Commit `5a029d1`: PASS; quotation section-base ordering fix.
 - Commit `8606d53`: PASS; regression fixture typing.
 - Commit `23c5feb`: PASS; canary metadata detection fix.
-- Historical ledger updated at `.worktrees/postgres-only-removal/.superpowers/sdd/2026-08-10-remocao-definitiva-frappe/progress.md`: Task 9 and Task 10 closed; historical branch integrated by squash/manual commit into `de0d4f6`, not ancestry merge.
+- Historical ledger `.superpowers/sdd/2026-08-10-remocao-definitiva-frappe/progress.md` on preserved `postgres-only-removal` was closed in commit `c32ab48`: Tasks 9 and 10 checked; historical branch integrated by squash/manual commit into `de0d4f6`, not ancestry merge.
 
 ## Local verification
 
@@ -59,9 +59,9 @@
 ## Production canary
 
 - Status: PASS.
-- Pre-cleanup read-only canary log: `production-canary-after-promotion.json`, 10/10.
-- Post-cleanup read-only canary log: `production-canary-after-cleanup.json`, 10/10.
-- Final DB-rotation read-only canary log: `production-canary-final-db-rotation.json`, 10/10.
+- Pre-cleanup canary: deployment `dpl_B8uCmgLgLh5ivvNsHPqDNS34FLUQ` (promotion of preview `dpl_7zjK3xYZazvxdebafHUpwwJAFdk2`), protected log `$HOME/.local/share/aspen-dashboard/postgres-only-finalization-20260814/production-canary-after-promotion.json`, 10/10.
+- Post-cleanup canary: deployment `dpl_73RoL3RSLRHQnq5GM5VCeTB4ND4w` (promotion of cleanup preview `dpl_FGWHThE9zWX75WsyCrLkBLnBudzv`), protected log `$HOME/.local/share/aspen-dashboard/postgres-only-finalization-20260814/production-canary-after-cleanup.json`, 10/10.
+- Final DB-rotation canary: deployment `dpl_EFZEMr79YnVYUxNxHJafP9X4nUVV`, protected log `$HOME/.local/share/aspen-dashboard/postgres-only-finalization-20260814/production-canary-final-db-rotation.json`, 10/10.
 - Final read-only canary checks: login, operational status, products, leads/clients, quotation, PDF revision binding, CRM deals, sales orders, sales dashboard and public quotation.
 - No WhatsApp, Typebot or provider capture call was made.
 - Temporary public canary token was revoked after verification; follow-up request returned HTTP 404.
