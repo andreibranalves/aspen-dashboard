@@ -9,6 +9,7 @@
 - Commit `5a029d1`: PASS; quotation section-base ordering fix.
 - Commit `8606d53`: PASS; regression fixture typing.
 - Commit `23c5feb`: PASS; canary metadata detection fix.
+- Historical ledger updated at `.worktrees/postgres-only-removal/.superpowers/sdd/2026-08-10-remocao-definitiva-frappe/progress.md`: Task 9 and Task 10 closed; historical branch integrated by squash/manual commit into `de0d4f6`, not ancestry merge.
 
 ## Local verification
 
