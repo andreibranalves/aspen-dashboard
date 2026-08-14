@@ -8,11 +8,7 @@
 //   1. System browser via spawn (fast — for VPS / local dev)
 //   2. @sparticuz/chromium + puppeteer-core (for Vercel / serverless)
 
-import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { existsSync } from 'node:fs';
 
 // ── Browser paths (system binaries, tried first) ────────────────────────────
 
@@ -87,7 +83,7 @@ function findSystemBrowser(): string | null {
   return null;
 }
 
-// ── Strategy 1: system browser via spawn ────────────────────────────────────
+// ── Strategy 1: system browser via Puppeteer ────────────────────────────────
 
 async function pdfWithSystemBrowser(
   html: string,
@@ -95,74 +91,31 @@ async function pdfWithSystemBrowser(
 ): Promise<Buffer> {
   const timeout = opts.timeout || 60000;
   const browserPath = findSystemBrowser()!;
-
-  const tmpDir = mkdtempSync(join(tmpdir(), 'aspen-pdf-'));
-  const htmlPath = join(tmpDir, 'quotation.html');
-  const pdfPath = join(tmpDir, 'quotation.pdf');
+  const puppeteer = await import('puppeteer-core');
+  const browser = await puppeteer.launch({
+    args: ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-software-rasterizer'],
+    executablePath: browserPath,
+    timeout,
+  });
 
   try {
-    writeFileSync(htmlPath, html, 'utf-8');
-    const fileUrl = pathToFileURL(htmlPath).href;
+    const page = await browser.newPage();
+    await page.setContent(html, {
+      waitUntil: 'networkidle0' as unknown as 'load',
+      timeout,
+    });
+    await page.evaluate('document.fonts.ready');
 
-    await new Promise<void>((resolve, reject) => {
-      const proc: ChildProcess = spawn(
-        browserPath,
-        [
-          '--headless=new',
-          '--disable-gpu',
-          '--no-sandbox',
-          '--disable-software-rasterizer',
-          '--print-to-pdf=' + pdfPath,
-          '--print-to-pdf-no-header',
-          '--no-pdf-header-footer',
-          fileUrl,
-        ],
-        {
-          timeout,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        }
-      );
-
-      let stderr = '';
-      proc.stderr!.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-
-      proc.on('error', (err: Error) => {
-        reject(
-          Object.assign(new Error(`Falha ao executar ${browserPath}: ${err.message}`), {
-            statusCode: 500,
-          })
-        );
-      });
-
-      proc.on('close', (code: number | null) => {
-        if (code !== 0) {
-          reject(
-            Object.assign(new Error(`Chrome headless encerrou com código ${code}.`), {
-              statusCode: 500,
-              detail: stderr.slice(0, 500),
-            })
-          );
-        } else {
-          resolve();
-        }
-      });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
+      preferCSSPageSize: true,
     });
 
-    if (!existsSync(pdfPath)) {
-      throw Object.assign(new Error('PDF não foi gerado pelo Chrome.'), { statusCode: 500 });
-    }
-
-    return readFileSync(pdfPath);
+    return Buffer.from(pdfBuffer);
   } finally {
-    try {
-      if (existsSync(htmlPath)) unlinkSync(htmlPath);
-      if (existsSync(pdfPath)) unlinkSync(pdfPath);
-      rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      /* non-fatal */
-    }
+    await browser.close().catch(() => {});
   }
 }
 
@@ -192,6 +145,7 @@ async function pdfWithSparticuz(html: string, opts: { timeout?: number } = {}): 
       waitUntil: 'networkidle0' as unknown as 'load',
       timeout,
     });
+    await page.evaluate('document.fonts.ready');
 
     const pdfBuffer = await page.pdf({
       format: 'A4',

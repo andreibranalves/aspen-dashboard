@@ -2605,6 +2605,48 @@ function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]
 
 validateDefinitions(DEFINITIONS);
 
+const GOOGLE_QUOTATION_FONT_LINK = /<link\b[^>]*href=["']https:\/\/fonts\.googleapis\.com\/css2\?[^"']*(?:Cormorant\+Garamond|DM\+Sans)[^"']*["'][^>]*>/i;
+const STABLE_QUOTATION_FONT_STYLE = String.raw`<style data-aspen-quotation-fonts>
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/cormorantgaramond/v21/co3bmX5slCNuHLi8bLeY9MK7whWMhyjYqXtK.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/dmsans/v17/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K6z9mXg.woff2) format('woff2');
+}
+</style>`;
+
+function withStableQuotationFonts(html: string): string {
+  if (!GOOGLE_QUOTATION_FONT_LINK.test(html) || !html.includes('</head>')) return html;
+  const withoutUnstableLink = html.replace(GOOGLE_QUOTATION_FONT_LINK, '');
+  return withoutUnstableLink.replace('</head>', `${STABLE_QUOTATION_FONT_STYLE}</head>`);
+}
+
+function quotationDocumentTitle(viewModel: QuotationTemplateViewModel): string {
+  const quoteNumber = String(viewModel.quote_number || '').trim();
+  const client = viewModel.client;
+  const clientName = client && typeof client === 'object'
+    ? String((client as Record<string, unknown>).name || '').trim()
+    : '';
+  return [quoteNumber, clientName].filter(Boolean).join(' - ');
+}
+
+function withQuotationDocumentTitle(html: string, viewModel: QuotationTemplateViewModel): string {
+  const title = quotationDocumentTitle(viewModel);
+  if (!title) return html;
+  const titleTag = `<title>${Handlebars.escapeExpression(title)}</title>`;
+  const titlePattern = /<title\b[^>]*>[\s\S]*?<\/title>/i;
+  if (titlePattern.test(html)) return html.replace(titlePattern, () => titleTag);
+  return html.replace(/<head\b[^>]*>/i, (head) => `${head}${titleTag}`);
+}
+
 export function renderQuotationTemplate(
   template: QuotationTemplate,
   viewModel: QuotationTemplateViewModel
@@ -2631,11 +2673,12 @@ export function renderQuotationTemplate(
     throw new Error('Não foi possível preparar o template do orçamento.', { cause: error });
   }
   try {
-    return compiled(viewModel, {
+    const html = compiled(viewModel, {
       allowProtoMethodsByDefault: false,
       allowProtoPropertiesByDefault: false,
       allowCallsToHelperMissing: false,
     });
+    return withQuotationDocumentTitle(withStableQuotationFonts(html), viewModel);
   } catch (error) {
     console.error(
       `[quotation-templates] render failed (${template.key})`,

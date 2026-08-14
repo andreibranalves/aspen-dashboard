@@ -306,6 +306,38 @@ test('AST validation rejects unescaped output and every helper surface outside i
   assert.equal(allowedHelpers, 'ok');
 });
 
+test('document title combines quote number and client name', () => {
+  const model = quotationSnapshotViewModel(snapshot);
+  model.quote_number = 'ORC-20261836';
+  model.quotation_name = 'ORC-20261836';
+  model.client = { ...model.client, name: 'Andrei Alves' };
+  const html = renderQuotationTemplate(
+    {
+      key: 'title',
+      name: 'Title',
+      is_default: false,
+      source: DEFAULT_QUOTATION_TEMPLATE.source.replace(
+        '<title>Orçamento {{quote_number}}</title>',
+        '<title>Orçamento {{quote_number}} - {{quotation_name}}</title>',
+      ),
+      hash: '0'.repeat(64),
+    },
+    model,
+  );
+
+  assert.match(html, /<title>ORC-20261836 - Andrei Alves<\/title>/);
+  assert.doesNotMatch(html, /Orçamento ORC-20261836 - ORC-20261836/);
+});
+
+test('rendered quotation replaces unstable Google Fonts CSS with stable font files', () => {
+  const model = quotationSnapshotViewModel(snapshot);
+  const html = renderQuotationTemplate(getQuotationTemplate('simples'), model);
+
+  assert.doesNotMatch(html, /fonts\.googleapis\.com\/css2/);
+  assert.match(html, /dmsans\/v17\/rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K6z9mXg\.woff2/);
+  assert.match(html, /cormorantgaramond\/v21\/co3bmX5slCNuHLi8bLeY9MK7whWMhyjYqXtK\.woff2/);
+});
+
 test('snapshot model canonicalizes legacy physical status', () => {
   const model = quotationSnapshotViewModel({
     ...snapshot,
