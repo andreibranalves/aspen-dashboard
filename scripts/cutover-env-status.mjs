@@ -39,38 +39,58 @@ export function resolveCutoverEnvFiles(env = process.env) {
   return [join(configDir, '.env.local'), join(configDir, '.env')];
 }
 
+function hasNonEmptyValue(rawValue) {
+  let value = rawValue.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value.length > 0;
+}
+
 export function readEnvKeys(filePath) {
   const keys = new Set();
   for (const rawLine of readFileSync(filePath, 'utf8').split(/\r?\n/)) {
     const match = rawLine.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/);
-    if (match) keys.add(match[1]);
+    if (match && hasNonEmptyValue(rawLine.slice(rawLine.indexOf('=') + 1))) keys.add(match[1]);
   }
   return keys;
 }
 
 export function inspectCutoverEnv({ env = process.env, exists = existsSync, readKeys = readEnvKeys } = {}) {
-  const files = [];
-  const availableKeys = new Set();
-
-  for (const path of resolveCutoverEnvFiles(env)) {
-    if (!exists(path)) {
-      files.push({ path, status: 'missing' });
-      continue;
-    }
-
+  const paths = resolveCutoverEnvFiles(env);
+  const explicitPath = String(env.CUTOVER_ENV_FILE || '').trim();
+  const pathExists = (path) => {
     try {
-      for (const key of readKeys(path)) availableKeys.add(key);
-      files.push({ path, status: 'present' });
+      return Boolean(exists(path));
     } catch {
-      files.push({ path, status: 'unreadable' });
+      return false;
+    }
+  };
+  const selectedPath = explicitPath ? paths[0] : paths.find(pathExists);
+  const availableKeys = new Set();
+  let selectedStatus = 'missing';
+
+  if (selectedPath && pathExists(selectedPath)) {
+    try {
+      for (const key of readKeys(selectedPath)) availableKeys.add(key);
+      selectedStatus = 'present';
+    } catch {
+      selectedStatus = 'missing';
     }
   }
 
+  const files = paths.map((path) => ({
+    path,
+    status: path === selectedPath ? selectedStatus : pathExists(path) ? 'present' : 'missing',
+  }));
   const keys = requiredCutoverKeys.map((name) => ({
     name,
     status: availableKeys.has(name) ? 'present' : 'missing',
   }));
-  const ok = files.every(({ status }) => status === 'present') && keys.every(({ status }) => status === 'present');
+  const ok = selectedStatus === 'present' && keys.every(({ status }) => status === 'present');
   return { files, keys, ok };
 }
 
