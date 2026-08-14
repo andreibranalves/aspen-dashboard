@@ -306,6 +306,17 @@ test('AST validation rejects unescaped output and every helper surface outside i
   assert.equal(allowedHelpers, 'ok');
 });
 
+test('snapshot model canonicalizes legacy physical status', () => {
+  const model = quotationSnapshotViewModel({
+    ...snapshot,
+    quotation: { ...snapshot.quotation, status: 'enviado' },
+    revision: { ...snapshot.revision, status: 'enviado' },
+    items: snapshot.items,
+  });
+  assert.equal(model.status_canonical, 'emitido');
+  assert.equal(model.revision_status, 'emitido');
+});
+
 test('snapshot model renders client, ordered loop, terms, totals and escaped input', () => {
   const originalCreatedAt = snapshot.quotation.createdAt.getTime();
   const model = quotationSnapshotViewModel(snapshot);

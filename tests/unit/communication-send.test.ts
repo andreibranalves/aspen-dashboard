@@ -34,6 +34,7 @@ function installBrowser(options: { locks?: unknown } = {}): { values: Map<string
 }
 
 test('only issued or approved quotations are sendable', () => {
+  assert.equal(isSendableQuotationStatus('emitido'), true);
   assert.equal(isSendableQuotationStatus('enviado'), true);
   assert.equal(isSendableQuotationStatus('aprovado'), true);
   assert.equal(isSendableQuotationStatus('rascunho'), false);

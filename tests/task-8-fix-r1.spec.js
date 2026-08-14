@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const revisionId = '22222222-2222-4222-8222-222222222222';
 const quotationId = 'ORC-20260001';
+const quotationUuid = '11111111-1111-4111-8111-111111111111';
 
 function json(route, body, status = 200, contentType = 'application/json') {
   return route.fulfill({ status, contentType, body: JSON.stringify(body) });
@@ -130,8 +131,15 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio', async ({ p
     orders: [{ nome: 'Cliente envio', email: 'cliente@example.test', telefone: '11999990000', origem: 'WhatsApp', items: [{ item_code: 'SKU-1', qty: 10 }] }],
   }));
   await page.route('**/api/pricing-lookup**', (route) => json(route, { success: true, items: [{ rate: 9, item_name: 'Produto' }] }));
-  await page.route('**/api/orcamento**', (route) => json(route, {
-    success: true, quotation_id: quotationId, quotation_uuid: '11111111-1111-4111-8111-111111111111', revision_id: revisionId,
+  await page.route('**/api/quotation-issues**', (route) => json(route, {
+    quotation_id: quotationUuid,
+    business_number: quotationId,
+    revision_id: revisionId,
+    revision_number: 1,
+    status: 'emitido',
+    issued_at: '2026-08-13T00:00:00.000Z',
+    valid_until: '2026-08-28',
+    pdf_url: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
   }));
   await page.route('**/api/send-whatsapp-flow**', (route) => {
     sendCount += 1;
@@ -148,14 +156,17 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio', async ({ p
   await page.locator('textarea').first().fill('10 produtos');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Criar orçamento' }).click();
+  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });
   await send.click();
-  await expect(page.getByText(/Transporte aceito; reconciliação necessária/i)).toBeVisible({ timeout: 10000 });
-  const acceptedButton = page.getByRole('button', { name: /Reconciliação pendente/i });
+  await expect(page.getByText('Envio aceito', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+  const acceptedButton = page.getByRole('button', { name: 'Envio aceito' });
   await expect(acceptedButton).toBeVisible();
   await expect(acceptedButton).toBeDisabled();
+  expect(sendCount).toBe(1);
+  await acceptedButton.click({ force: true });
   expect(sendCount).toBe(1);
 });
 

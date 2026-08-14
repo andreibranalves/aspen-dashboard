@@ -331,6 +331,78 @@ function invalidExecuteFlowResponse(): never {
   throw new CommunicationSendError('Resposta inválida do envio de WhatsApp.');
 }
 
+export type DeliveryProjection = {
+  kind: 'accepted' | 'retryable' | 'reconciling' | 'completed' | 'readonly';
+  label: string;
+  retryable: boolean;
+};
+
+function isVerifiedPdfFailure(value: unknown): boolean {
+  return typeof value === 'string' && /^PDF indisponível(?:\.|\. Tentar novamente\.?$)/i.test(value.trim());
+}
+
+export function projectDeliveryState(value: unknown): DeliveryProjection {
+  const source = isRecord(value) ? value : {};
+  const sendStatus = source.phase ?? source.send_status;
+  if (source.read_only === true || source.readOnly === true) {
+    return { kind: 'readonly', label: 'Operação somente leitura. Crie uma nova revisão.', retryable: false };
+  }
+  if (sendStatus === 'accepted_partial') {
+    return { kind: 'accepted', label: 'Envio aceito', retryable: false };
+  }
+  if (sendStatus === 'reconciling' || sendStatus === 'processing' || sendStatus === 'reserved' || sendStatus === 'pending' || sendStatus === 'transporting') {
+    return { kind: 'reconciling', label: 'Reconciliação necessária', retryable: false };
+  }
+  if (sendStatus === 'retryable') {
+    return isVerifiedPdfFailure(source.error)
+      ? { kind: 'retryable', label: 'PDF indisponível. Tentar novamente', retryable: true }
+      : { kind: 'retryable', label: 'Falha antes do transporte. Tentar novamente.', retryable: true };
+  }
+  if (sendStatus === 'completed') {
+    return { kind: 'completed', label: 'Enviado', retryable: false };
+  }
+  throw new CommunicationSendError('Resposta inválida do envio de WhatsApp.');
+}
+
+export function projectDeliveryFailure(error: unknown): DeliveryProjection {
+  if (error instanceof CommunicationSendError) {
+    if (error.deliveryAccepted || error.sendStatus === 'accepted_partial') {
+      return { kind: 'accepted', label: 'Envio aceito', retryable: false };
+    }
+    if (error.sendStatus === 'retryable') {
+      return isVerifiedPdfFailure(error.message)
+        ? { kind: 'retryable', label: 'PDF indisponível. Tentar novamente', retryable: true }
+        : { kind: 'retryable', label: 'Falha antes do transporte. Tentar novamente.', retryable: true };
+    }
+  }
+  return {
+    kind: 'reconciling',
+    label: 'Não foi possível confirmar o envio. Consulte o status antes de tentar novamente.',
+    retryable: false,
+  };
+}
+
+export interface DeliveryStatusIdentifiers {
+  quotationId: string;
+  revisionId: string;
+  flowId: string;
+}
+
+export async function fetchDeliveryStatus(input: DeliveryStatusIdentifiers): Promise<Record<string, unknown> | null> {
+  const params = new URLSearchParams({
+    quotation_uuid: input.quotationId,
+    revision_id: input.revisionId,
+    flow_id: input.flowId,
+  });
+  const response = await fetch(`/api/whatsapp-send-status?${params.toString()}`);
+  const data: unknown = await response.json().catch(() => ({}));
+  if (response.status === 404) return null;
+  if (!response.ok || !isRecord(data)) {
+    throw new Error(isRecord(data) ? asString(data.error, 'Não foi possível consultar o envio.') : 'Não foi possível consultar o envio.');
+  }
+  return data;
+}
+
 function requiredString(source: Record<string, unknown>, key: string): string {
   const value = source[key];
   if (typeof value !== 'string' || !value.trim()) invalidExecuteFlowResponse();
@@ -356,7 +428,7 @@ function optionalPhone(source: Record<string, unknown>, sendStatus: 'completed' 
   return value;
 }
 
-function projectExecuteFlowResponse(value: unknown): ExecuteFlowResponse {
+function projectExecuteFlowPayloadResponse(value: unknown): ExecuteFlowResponse {
   if (!isRecord(value) || value.success !== true) invalidExecuteFlowResponse();
   const sendStatus = value.send_status;
   if (sendStatus !== 'completed' && sendStatus !== 'dry_run') invalidExecuteFlowResponse();
@@ -417,5 +489,5 @@ export async function executeFlow(
       sendStatus,
     );
   }
-  return projectExecuteFlowResponse(data);
+  return projectExecuteFlowPayloadResponse(data);
 }

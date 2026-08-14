@@ -25,7 +25,7 @@ export function sendContextKey(context: SendContext): string {
 }
 
 export function isSendableQuotationStatus(status: unknown): boolean {
-  return status === 'enviado' || status === 'aprovado';
+  return status === 'emitido' || status === 'enviado' || status === 'aprovado';
 }
 
 export function sendIdempotencyKey(context: SendContext): string {

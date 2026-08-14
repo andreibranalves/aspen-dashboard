@@ -24,7 +24,7 @@ import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
-import type { Draft, DraftEdited, DraftItem } from '@/types/domain';
+import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/communicationApi';
 import type { QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 
@@ -38,12 +38,16 @@ export interface SplitResultCardProps {
   onRemoveItem: (draftIdx: number, itemIdx: number) => void;
   onAddItem: (draftIdx: number) => void;
   selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
-  onRefetchPricing: (draftIdx: number) => Promise<void>;
+  onRefetchPricing: (draftIdx: number) => Promise<Draft | undefined>;
   onCreateQuote: (draftIdx: number) => void;
   onPreviewQuote: (draftIdx: number) => void;
+  onNewRevision?: (draftIdx: number) => void;
+  issue?: QuotationIssueProjection;
+  issueError?: string;
+  pricingConflictItems?: string[];
   viewUrl?: string;
   waStatus?: {
-    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial';
+    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
     message?: string;
     deliveryAccepted?: boolean;
   };
@@ -75,6 +79,10 @@ export default function SplitResultCard({
   onRefetchPricing,
   onCreateQuote,
   onPreviewQuote,
+  onNewRevision,
+  issue,
+  issueError,
+  pricingConflictItems = [],
   viewUrl,
   waStatus,
   waSendEnabled = true,
@@ -93,7 +101,20 @@ export default function SplitResultCard({
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(false);
   const [showReExtract, setShowReExtract] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!pricingConflictItems.length) return;
+    setEditing(true);
+    const sku = pricingConflictItems[0];
+    const focus = () => {
+      const input = Array.from(cardRef.current?.querySelectorAll<HTMLInputElement>('[data-conflict-sku]') || [])
+        .find((candidate) => candidate.dataset.conflictSku === sku);
+      input?.focus();
+    };
+    const frame = window.requestAnimationFrame(focus);
+    return () => window.cancelAnimationFrame(frame);
+  }, [pricingConflictItems]);
   // ── Per-item product search (local state, like QuotationDetailPage) ──
   const [itemSearchTerms, setItemSearchTerms] = useState<Record<number, string>>({});
   const [itemResults, setItemResults] = useState<Record<number, Product[]>>({});
@@ -180,7 +201,7 @@ export default function SplitResultCard({
     [draft.index, onRemoveItem, activeSearchIdx]
   );
 
-  const isDone = draft.status === 'done' && draft.result?.success;
+  const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
   const resultData = draft.result?.data;
   const items = isDone
     ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || []
@@ -190,10 +211,13 @@ export default function SplitResultCard({
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const canCreate = validItems > 0 && Boolean(draft.edited.nome?.trim());
   const displayItems = editing ? items : items.filter((it) => it.item_code);
+  const immutableIssue = Boolean(issue);
+  const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
 
   function toggleEditing() {
     if (!editing) {
+      if (immutableIssue) return;
       // Pre-fill search terms with existing item codes
       const terms: Record<number, string> = {};
       items.forEach((item, ii) => {
@@ -215,9 +239,10 @@ export default function SplitResultCard({
 
   return (
     <div
+      ref={cardRef}
       className={cn(
         'rounded-xl border border-line bg-surface',
-        isProcessing && 'opacity-60 pointer-events-none'
+        isProcessing && !immutableIssue && 'opacity-60 pointer-events-none'
       )}
     >
       {/* ── Header ── */}
@@ -229,9 +254,10 @@ export default function SplitResultCard({
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-fg-muted">
-              Pedido {displayIdx + 1} de {totalDrafts}
-            </span>
+              <span className="text-xs font-medium text-fg-muted">
+                Pedido {displayIdx + 1} de {totalDrafts}
+              </span>
+
             {draft.edited.urgente && (
               <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/10 dark:text-red-300">
                 <AlertTriangle size={10} /> Urgente
@@ -239,7 +265,7 @@ export default function SplitResultCard({
             )}
             {isDone && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                <Check size={10} /> Orçamento criado
+                <Check size={10} /> Emitido
               </span>
             )}
           </div>
@@ -377,7 +403,13 @@ export default function SplitResultCard({
                   itemSearchTerms[ii] !== undefined ? itemSearchTerms[ii] : item.item_code || '';
 
                 return (
-                  <tr key={ii} className="border-b border-line last:border-b-0 hover:bg-surface/30">
+                  <tr
+                    key={ii}
+                    className={cn(
+                      'border-b border-line last:border-b-0 hover:bg-surface/30',
+                      pricingConflictItems.includes(item.item_code) && 'bg-amber-50 dark:bg-amber-500/10',
+                    )}
+                  >
                     <td className="py-2 pl-4 pr-3">
                       {editing ? (
                         <div className="relative item-search-cell">
@@ -480,6 +512,7 @@ export default function SplitResultCard({
                           onChange={(e) =>
                             onUpdateItem(draft.index, ii, 'rate', Number(e.target.value))
                           }
+                          data-conflict-sku={item.item_code || undefined}
                           className="mx-auto h-7 w-20 text-center text-xs"
                         />
                       ) : item.rate ? (
@@ -518,6 +551,13 @@ export default function SplitResultCard({
 
       {isDone && (
         <div className="px-4 pb-2 border-t border-line bg-surface/20">
+          {issue && (
+            <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 pt-3 text-xs text-fg-muted">
+              <strong className="text-fg">{issue.businessNumber}</strong>
+              <span>Revisão {issue.revisionNumber}</span>
+              <span>Validade: {issue.validUntil}</span>
+            </div>
+          )}
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
@@ -564,15 +604,15 @@ export default function SplitResultCard({
 
         {isDone ? (
           <>
-            {viewUrl ? (
+            {issueViewUrl ? (
               <a
-                href={viewUrl}
+                href={issueViewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
               >
                 <FileText size={13} />
-                Abrir orçamento
+                Abrir PDF
               </a>
             ) : (
               <span
@@ -580,8 +620,13 @@ export default function SplitResultCard({
                 className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg opacity-40"
               >
                 <FileText size={13} />
-                Abrir orçamento
+                Abrir PDF
               </span>
+            )}
+            {onNewRevision && (
+              <Button variant="ghost" size="sm" onClick={() => onNewRevision(draft.index)}>
+                Nova revisão
+              </Button>
             )}
             {waSendEnabled ? (
               <Button
@@ -589,17 +634,23 @@ export default function SplitResultCard({
                 disabled={waStatus?.state === 'sending'
                   || waStatus?.state === 'sent'
                   || waStatus?.state === 'reconciling'
-                  || waStatus?.state === 'accepted-partial'}
+                  || waStatus?.state === 'accepted-partial'
+                  || waStatus?.state === 'accepted'
+                  || waStatus?.state === 'readonly'}
                 onClick={() => onSendWhatsApp?.(draft.index)}
               >
                 <Phone size={13} />
                 {waStatus?.state === 'sent'
                   ? 'Enviado'
-                  : waStatus?.state === 'reconciling' || waStatus?.state === 'accepted-partial'
-                    ? 'Reconciliação pendente'
-                    : waStatus?.state === 'sending'
-                      ? 'Enviando…'
-                      : 'Enviar WhatsApp'}
+                  : waStatus?.state === 'accepted' || waStatus?.state === 'accepted-partial'
+                    ? 'Envio aceito'
+                    : waStatus?.state === 'reconciling'
+                      ? 'Reconciliação necessária'
+                      : waStatus?.state === 'readonly'
+                        ? 'Somente leitura'
+                        : waStatus?.state === 'sending'
+                          ? 'Enviando…'
+                          : 'Enviar WhatsApp'}
               </Button>
             ) : (
               <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>
@@ -614,7 +665,7 @@ export default function SplitResultCard({
               disabled={isProcessing || !canCreate}
             >
               <Eye size={13} />
-              Visualizar
+              Visualizar PDF
             </Button>
             <Button
               size="sm"
@@ -622,7 +673,7 @@ export default function SplitResultCard({
               disabled={isProcessing || !canCreate}
             >
               <Send size={13} />
-              Criar orçamento
+              Gerar orçamento
             </Button>
           </>
         )}
@@ -672,6 +723,10 @@ export default function SplitResultCard({
             </div>
           </div>
         </div>
+      )}
+
+      {issueError && !isDone && (
+        <p role="alert" className="border-t border-line px-4 py-3 text-xs text-destructive">{issueError}</p>
       )}
 
       {isDone && waStatus?.message && (

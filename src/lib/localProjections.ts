@@ -75,7 +75,7 @@ export interface ProjectedQuotationListRow {
   cliente: string;
   valor: number | string;
   status: string;
-  status_canonical: 'rascunho' | 'enviado' | 'aprovado' | 'perdido';
+  status_canonical: 'rascunho' | 'emitido' | 'aprovado' | 'perdido';
   revision_id: string;
 }
 
@@ -150,8 +150,12 @@ export interface ProjectedQuotationRevisionHistoryEntry {
 
 export interface ProjectedQuotationData {
   id: string;
+  quotation_id?: string;
+  quotation_uuid?: string;
   status: string;
   cliente?: string;
+  email?: string;
+  telefone?: string;
   data?: string;
   validade?: string;
   validity_date?: string;
@@ -308,9 +312,9 @@ function readAlias<T>(
   return result;
 }
 
-const QUOTATION_STATUSES = new Set(['rascunho', 'enviado', 'aprovado', 'perdido']);
+const QUOTATION_STATUSES = new Set(['rascunho', 'emitido', 'aprovado', 'perdido']);
 const QUOTATION_STATUS_LABELS = new Set([
-  'Rascunho', 'Enviado', 'Aprovado', 'Perdido',
+  'Rascunho', 'Emitido', 'Enviado', 'Aprovado', 'Perdido',
   'Draft', 'Issued', 'Open', 'Replied', 'Ordered', 'Lost', 'Expired', 'Cancelled',
 ]);
 const SALES_ORDER_STATUSES = new Set([
@@ -527,7 +531,8 @@ function projectRevisionHistory(value: unknown): ProjectedQuotationRevisionHisto
     const total = readMoney(source.total);
     const valueTotal = readMoney(source.valor);
     const status = readString(source.status);
-    const statusCanonical = readString(source.status_canonical);
+    const rawStatusCanonical = readString(source.status_canonical);
+    const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
     const hasTemplateKey = Object.prototype.hasOwnProperty.call(source, 'template_key');
     const hasTemplateVersion = Object.prototype.hasOwnProperty.call(source, 'template_version');
     const hasTemplateHash = Object.prototype.hasOwnProperty.call(source, 'template_hash');
@@ -657,7 +662,8 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
   if (!source) return null;
   const id = readIdentifier(source.id);
   const status = readString(source.status);
-  const statusCanonical = readString(source.status_canonical);
+  const rawStatusCanonical = readString(source.status_canonical);
+  const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
   const cliente = readIdentifier(source.cliente);
   const dataDate = readDate(source.data);
   const validade = readDate(source.validade) || readDate(source.validity_date);
@@ -665,6 +671,8 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
   const revision = readPositiveVersion(source.revision);
   const revisionNumber = readPositiveVersion(source.revision_number);
   const revisionId = readIdentifier(source.revision_id);
+  const quotationId = readIdentifier(source.quotation_id);
+  const quotationUuid = readIdentifier(source.quotation_uuid);
   const clientId = readIdentifier(source.client_id);
   const sectionsValue = Object.prototype.hasOwnProperty.call(source, 'secoes')
     ? source.secoes
@@ -714,6 +722,8 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
 
   const data: ProjectedQuotationData = {
     id,
+    ...(quotationId ? { quotation_id: quotationId } : {}),
+    ...(quotationUuid ? { quotation_uuid: quotationUuid } : {}),
     status,
     cliente,
     data: dataDate,
@@ -758,7 +768,8 @@ export function projectQuotationListRow(value: unknown): ProjectedQuotationListR
   const cliente = readIdentifier(source.cliente);
   const valor = readMoney(source.valor);
   const status = readString(source.status);
-  const statusCanonical = readString(source.status_canonical);
+  const rawStatusCanonical = readString(source.status_canonical);
+  const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
   const revisionId = readIdentifier(source.revision_id);
   if (
     !id || !data || !cliente || valor === undefined ||

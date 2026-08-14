@@ -29,6 +29,7 @@ import { handler as quotations } from '../api/_functions/quotations.js';
 import { handler as quotationTemplates } from '../api/_functions/quotation-templates.js';
 import { handler as orderTemplates } from '../api/_functions/order-templates.js';
 import { handler as quotationPreview } from '../api/_functions/quotation-preview.js';
+import { handler as quotationIssues } from '../api/_functions/quotation-issues.js';
 import { handler as publicQuotation } from '../api/_functions/public-quotation.js';
 import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
@@ -74,6 +75,7 @@ const ROUTES = {
   'quotation-templates': quotationTemplates,
   'order-templates': orderTemplates,
   'quotation-preview': quotationPreview,
+  'quotation-issues': quotationIssues,
   'public-quotation': publicQuotation,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,

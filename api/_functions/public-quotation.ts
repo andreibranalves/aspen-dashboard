@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { kv } from '@vercel/kv';
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../_lib/quotation-status.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
 import {
   quotationTemplateFromVersion,
@@ -94,11 +95,28 @@ export function isRevisionBoundPublicQuotationUrl(
   }
 }
 
-function ttl(value: unknown): number {
+function ttl(value: unknown, commercialSeconds?: number): number {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0
-    ? Math.min(parsed, MAX_TTL_SECONDS)
-    : DEFAULT_TTL_SECONDS;
+  const requested = Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_SECONDS;
+  const commercial = commercialSeconds === undefined ? MAX_TTL_SECONDS : Math.floor(commercialSeconds);
+  if (!Number.isFinite(commercial) || commercial <= 0) throw new Error('Orçamento vencido não pode ser compartilhado.');
+  return Math.min(requested, MAX_TTL_SECONDS, commercial);
+}
+
+function commercialTtlSeconds(
+  snapshot: NonNullable<Awaited<ReturnType<NonNullable<PublicQuotationDependencies['repository']>['get']>>>,
+  now: number,
+): number {
+  const issuedAt = snapshot.revision.issuedAt || snapshot.revision.createdAt;
+  const issuedTime = issuedAt instanceof Date ? issuedAt.getTime() : new Date(String(issuedAt || '')).getTime();
+  if (!Number.isFinite(issuedTime)) throw new Error('Validade comercial inválida.');
+  return (issuedTime + Number(snapshot.revision.validadeDias) * 24 * 60 * 60 * 1000 - now) / 1000;
+}
+
+function assertShareableStatus(value: unknown): void {
+  let status;
+  try { status = canonicalQuotationStatus(value); } catch { throw new Error('Estado comercial inválido.'); }
+  if (!isIssuedQuotationStatus(status)) throw new Error('Somente revisões emitidas podem ser compartilhadas.');
 }
 
 function renderSnapshot(
@@ -129,15 +147,16 @@ export async function issuePublicQuotationToken(
   if (!identifier) throw new Error('Revisão do orçamento não informada.');
   const snapshot = await repository.get(identifier);
   if (!snapshot) throw new Error('Orçamento não encontrado.');
-  if (snapshot.revision.status === 'rascunho') throw new Error('Rascunhos não podem ser compartilhados.');
+  assertShareableStatus(snapshot.revision.status);
   const now = input.now || (() => Date.now());
   const makeToken = input.token || (() => randomBytes(32).toString('base64url'));
   const rawToken = makeToken();
-  const expiresAt = now() + ttl(input.expiresInSeconds) * 1000;
+  const current = now();
+  const expiresAt = current + ttl(input.expiresInSeconds, commercialTtlSeconds(snapshot, current)) * 1000;
   await store.set(
     key(rawToken),
     { quotationId: snapshot.quotation.id, revisionId: snapshot.revision.id, expiresAt },
-    { ex: Math.ceil((expiresAt - now()) / 1000) },
+    { ex: Math.ceil((expiresAt - current) / 1000) },
   );
   return {
     token: rawToken,
@@ -155,7 +174,7 @@ export async function renderPublicQuotationPdf(
   const repository = dependencies.repository || createQuotationTemplateRepository();
   const snapshot = await repository.get(revisionId);
   const rendered = renderSnapshot(snapshot);
-  if (!rendered || rendered.snapshot.revision.status === 'rascunho') throw new Error('Orçamento não disponível para compartilhamento.');
+  if (!rendered || canonicalQuotationStatus(rendered.snapshot.revision.status) === 'rascunho') throw new Error('Orçamento não disponível para compartilhamento.');
   const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
   const pdf = await renderPdf(rendered.html);
   if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) throw new Error('Não foi possível gerar o PDF do orçamento.');
@@ -178,15 +197,17 @@ export function createPublicQuotationHandler(
         if (!identifier) return json(400, { error: 'Revisão do orçamento não informada.' });
         const snapshot = await repository.get(identifier);
         if (!snapshot) return json(404, { error: 'Orçamento não encontrado.' });
-        if (snapshot.revision.status === 'rascunho') {
-          return json(409, { error: 'Rascunhos não podem ser compartilhados.' });
-        }
+        try { assertShareableStatus(snapshot.revision.status); }
+        catch (error) { return json(409, { error: error instanceof Error ? error.message : 'Orçamento não pode ser compartilhado.' }); }
         const rawToken = makeToken();
-        const expiresAt = now() + ttl(input.expiresInSeconds) * 1000;
+        const current = now();
+        let expiresAt: number;
+        try { expiresAt = current + ttl(input.expiresInSeconds, commercialTtlSeconds(snapshot, current)) * 1000; }
+        catch (error) { return json(409, { error: error instanceof Error ? error.message : 'Orçamento vencido.' }); }
         await store.set(
           key(rawToken),
           { quotationId: snapshot.quotation.id, revisionId: snapshot.revision.id, expiresAt },
-          { ex: Math.ceil((expiresAt - now()) / 1000) }
+          { ex: Math.ceil((expiresAt - current) / 1000) }
         );
         return json(201, {
           token: rawToken,
@@ -215,7 +236,7 @@ export function createPublicQuotationHandler(
       if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' });
 
       const snapshot = await repository.get(record.revisionId);
-      if (!snapshot || snapshot.revision.id !== record.revisionId || snapshot.revision.status === 'rascunho') {
+      if (!snapshot || snapshot.revision.id !== record.revisionId || canonicalQuotationStatus(snapshot.revision.status) === 'rascunho') {
         return json(404, { error: 'Orçamento não encontrado.' });
       }
       const rendered = renderSnapshot(snapshot);

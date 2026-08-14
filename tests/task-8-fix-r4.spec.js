@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const revisionId = '22222222-2222-4222-8222-222222222201';
 const quotationId = 'ORC-20260001';
+const quotationUuid = '11111111-1111-4111-8111-111111111101';
 
 function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -37,11 +38,15 @@ async function setupAuto(page) {
     orders: [{ nome: 'Cliente teste', email: 'cliente@example.test', telefone: '11999990000', items: [{ item_code: 'CNG-001', qty: 1 }] }],
   }));
   await page.route('**/api/pricing-lookup**', (route) => json(route, { success: true, items: [{ rate: 9, item_name: 'Canga' }] }));
-  await page.route('**/api/orcamento**', (route) => json(route, {
-    success: true,
-    quotation_id: quotationId,
-    quotation_uuid: '11111111-1111-4111-8111-111111111101',
+  await page.route('**/api/quotation-issues**', (route) => json(route, {
+    quotation_id: quotationUuid,
+    business_number: quotationId,
     revision_id: revisionId,
+    revision_number: 1,
+    status: 'emitido',
+    issued_at: '2026-08-13T00:00:00.000Z',
+    valid_until: '2026-08-28',
+    pdf_url: `/api/quotation-preview?id=${quotationUuid}&format=pdf`,
   }));
   await page.route('**/api/communication-flows**', (route) => json(route, {
     success: true,
@@ -55,15 +60,15 @@ async function setupAuto(page) {
   await page.locator('textarea').first().fill('1 canga');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Criar orçamento' }).click();
+  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });
   return send;
 }
 
-test('accepted partial shows reconciling label, expires mounted, and safe replay stays provider-free', async ({ page }) => {
+test('accepted partial stays accepted and blocks automatic replay', async ({ page }) => {
   await setupAuto(page);
-  await page.clock.install();
   let sendCount = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {
     sendCount += 1;
@@ -76,13 +81,11 @@ test('accepted partial shows reconciling label, expires mounted, and safe replay
   });
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await send.click();
-  await expect(page.getByText(/Transporte aceito; reconciliação necessária/i)).toBeVisible();
-  const reconciling = page.getByRole('button', { name: 'Reconciliação pendente' });
-  await expect(reconciling).toBeDisabled();
-  await page.clock.fastForward(30_001);
-  await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeEnabled();
-  await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
-  await expect.poll(() => sendCount).toBe(2);
+  await expect(page.getByText('Envio aceito', { exact: true }).first()).toBeVisible();
+  const accepted = page.getByRole('button', { name: 'Envio aceito' });
+  await expect(accepted).toBeDisabled();
+  await accepted.click({ force: true });
+  expect(sendCount).toBe(1);
 });
 
 test('reserved response shows reconciling label and blocks duplicate send', async ({ page }) => {
@@ -98,45 +101,35 @@ test('reserved response shows reconciling label and blocks duplicate send', asyn
   });
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await send.click();
-  await expect(page.getByText(/Envio em andamento; aguarde a reconciliação/i)).toBeVisible();
-  const reconciling = page.getByRole('button', { name: 'Reconciliação pendente' });
+  await expect(page.getByText('Reconciliação necessária', { exact: true }).first()).toBeVisible();
+  const reconciling = page.getByRole('button', { name: 'Reconciliação necessária' });
   await expect(reconciling).toBeDisabled();
+  await reconciling.click({ force: true });
   expect(sendCount).toBe(1);
 });
 
-test('completed neutral replay without phone remains a completed UI status after expiry', async ({ page }) => {
+test('completed neutral replay without phone remains a completed UI status', async ({ page }) => {
   await setupAuto(page);
-  await page.clock.install();
   let sendCount = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {
     sendCount += 1;
-    if (sendCount === 1) {
-      return json(route, {
-        error: 'O transporte foi aceito e aguarda reconciliação.',
-        send_status: 'accepted_partial',
-        accepted_partial: true,
-        provider_accepted: true,
-      }, 503);
-    }
     const replay = successBody();
     delete replay.phone;
     return json(route, replay);
   });
   await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
-  await expect(page.getByRole('button', { name: 'Reconciliação pendente' })).toBeDisabled();
-  await page.clock.fastForward(30_001);
-  await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
   await expect(page.getByText('Orçamento enviado com sucesso!', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enviado' })).toBeDisabled();
   await expect(page.getByText('undefined', { exact: true })).toHaveCount(0);
-  expect(sendCount).toBe(2);
+  expect(sendCount).toBe(1);
 });
 
 test('flow switch gets an independent exact status key', async ({ page }) => {
   await setupAuto(page);
-  let sendCount = 0;
+  const sendRequests = [];
   await page.route('**/api/send-whatsapp-flow', (route) => {
-    sendCount += 1;
-    return json(route, successBody(sendCount === 1 ? 'flow-1' : 'flow-2'));
+    sendRequests.push(route.request().postDataJSON());
+    return json(route, successBody(sendRequests.length === 1 ? 'flow-1' : 'flow-2'));
   });
   await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
   await expect(page.getByText('Orçamento enviado com sucesso!', { exact: true })).toBeVisible();
@@ -147,7 +140,15 @@ test('flow switch gets an independent exact status key', async ({ page }) => {
     .selectOption('flow-2');
   await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeEnabled();
   await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
-  await expect.poll(() => sendCount).toBe(2);
+  await expect.poll(() => sendRequests.length).toBe(2);
+  expect(sendRequests).toEqual(['flow-1', 'flow-2'].map((flowId) => ({
+    quotation_id: quotationId,
+    quotation_uuid: quotationUuid,
+    business_number: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+    idempotency_key: `aspen:whatsapp-send:v2|${quotationId}|${revisionId}|${flowId}`,
+  })));
 });
 
 test('same component double click sends one backend request and failure cleanup re-enables button', async ({ page }) => {
@@ -159,9 +160,9 @@ test('same component double click sends one backend request and failure cleanup 
     sendCount += 1;
     if (fail && sendCount === 1) {
       await new Promise((resolve) => { releaseFirst = () => { resolve(); }; });
-      return json(route, { error: 'Falha temporária.' }, 500);
+      return json(route, { error: 'Falha temporária.', send_status: 'retryable' }, 503);
     }
-    if (fail) return json(route, { error: 'Falha temporária.' }, 500);
+    if (fail) return json(route, { error: 'Falha temporária.', send_status: 'retryable' }, 503);
     return json(route, successBody());
   });
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
@@ -171,7 +172,7 @@ test('same component double click sends one backend request and failure cleanup 
   });
   await expect.poll(() => sendCount).toBe(1);
   releaseFirst?.();
-  await expect(page.getByText('Falha temporária.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Falha antes do transporte. Tentar novamente.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeEnabled();
   fail = false;
   await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
@@ -188,7 +189,10 @@ test('malformed 2xx cannot render sent and forged localStorage has no authority'
   });
   await page.evaluate(() => globalThis.localStorage.setItem('aspen.whatsapp-send-locks-v1', JSON.stringify({ accepted: true })));
   await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();
-  await expect(page.getByText(/Resposta inválida do envio de WhatsApp/i)).toBeVisible();
+  await expect(page.getByText(/Não foi possível confirmar o envio/i)).toBeVisible();
+  const reconciling = page.getByRole('button', { name: 'Reconciliação necessária' });
+  await expect(reconciling).toBeDisabled();
+  await reconciling.click({ force: true });
   await expect(page.getByText('Orçamento enviado com sucesso!', { exact: true })).toHaveCount(0);
   expect(sendCount).toBe(1);
 });

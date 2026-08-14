@@ -31,6 +31,7 @@ import {
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
 import { snapshotFromLegacyRevision } from './quotation-template-snapshot.js';
+import { canonicalQuotationStatus, type QuotationStatus } from '../_lib/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -87,7 +88,7 @@ export interface QuoteDraftManagementListOptions {
   orderBy?: string;
 }
 
-export type CanonicalQuotationListStatus = 'rascunho' | 'enviado' | 'aprovado' | 'perdido';
+export type CanonicalQuotationListStatus = QuotationStatus;
 
 /**
  * Normalize the legacy/UI status vocabulary accepted by the quotations list
@@ -110,7 +111,7 @@ export function normalizeQuotationListStatus(
     lower === 'emitido' ||
     lower === 'enviado'
   )
-    return 'enviado';
+    return 'emitido';
   if (lower === 'ordered' || lower === 'aprovado') return 'aprovado';
   if (lower === 'lost' || lower === 'cancelled' || lower === 'perdido') return 'perdido';
   return undefined;
@@ -187,6 +188,7 @@ export interface QuoteDraftManagementDetail {
   revision: number;
   revision_number: number;
   status: string;
+  status_legacy: string;
   status_canonical: string;
   cliente: string;
   client_id: string;
@@ -246,6 +248,7 @@ export interface QuoteRevisionHistoryEntry {
   total: string;
   valor: string;
   status: string;
+  status_legacy: string;
   status_canonical: string;
   derived_expired: boolean;
   expiration_derived: boolean;
@@ -603,9 +606,7 @@ function compareMoneyValues(left: unknown, right: unknown): number {
 }
 
 function statusUi(value: string): string {
-  // Keep a concise UI vocabulary while exposing the canonical Portuguese
-  // state separately.  The aliases retain compatibility with old list
-  // consumers that still send/expect English labels.
+  // Keep historical display labels while status_canonical uses emitido.
   if (value === 'rascunho') return 'Rascunho';
   if (value === 'enviado' || value === 'emitido') return 'Enviado';
   if (value === 'aprovado') return 'Aprovado';
@@ -712,7 +713,7 @@ async function readRevisionHistory(
     const validityDate = validUntil(revision.createdAt, revision.validadeDias);
     const createdAt = asIso(revision.createdAt);
     const expired = isDerivedExpired(revision.createdAt, revision.validadeDias, now);
-    const statusCanonical = revision.status === 'emitido' ? 'enviado' : revision.status;
+    const statusCanonical = canonicalQuotationStatus(revision.status);
     return {
       id: revision.id,
       revision_id: revision.id,
@@ -727,6 +728,7 @@ async function readRevisionHistory(
       total: formatDbMoney(revision.total),
       valor: formatDbMoney(revision.total),
       status: statusUi(statusCanonical),
+      status_legacy: statusCanonical === 'emitido' ? 'enviado' : statusCanonical,
       status_canonical: statusCanonical,
       derived_expired: expired,
       expiration_derived: expired,
@@ -770,12 +772,9 @@ export async function readPostgresQuotationDetail(
   const productBySku = new Map(productRows.map((row) => [row.sku, row]));
   const updatedAt = asIso(quotation.updatedAt);
   const snapshot = mapSnapshot(revision, client || null);
-  const canonicalStatus =
-    (quotation.status === 'rascunho' ? revision.status : quotation.status) === 'emitido'
-      ? 'enviado'
-      : quotation.status === 'rascunho'
-        ? revision.status
-        : quotation.status;
+  const canonicalStatus = canonicalQuotationStatus(
+    quotation.status === 'rascunho' ? revision.status : quotation.status,
+  );
   const history = await readRevisionHistory(tx, quotation.id, now);
   const [templateVersion] = revision.templateVersionId
     ? await tx
@@ -798,6 +797,7 @@ export async function readPostgresQuotationDetail(
     revision: revision.version,
     revision_number: revision.version,
     status: statusUi(canonicalStatus),
+    status_legacy: canonicalStatus === 'emitido' ? 'enviado' : canonicalStatus,
     status_canonical: canonicalStatus,
     cliente: revision.clienteNome,
     client_id: quotation.clientId,
@@ -918,7 +918,7 @@ async function listRows(
   const candidates = searchMatches.filter((row) => {
     const rawState =
       row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
-    const state = rawState === 'emitido' ? 'enviado' : rawState;
+    const state = canonicalQuotationStatus(rawState);
     return !wantedStatus || state === wantedStatus;
   });
   const statusSummary: Record<string, number> = {
@@ -940,7 +940,7 @@ async function listRows(
   for (const row of searchMatches) {
     const rawState =
       row.quotation.status === 'rascunho' ? row.revision.status : row.quotation.status;
-    const state = rawState === 'emitido' ? 'enviado' : rawState;
+    const state = canonicalQuotationStatus(rawState);
     const key = statusUi(state);
     if (Object.prototype.hasOwnProperty.call(statusSummary, key)) statusSummary[key] += 1;
     if (key === 'Rascunho') statusSummary.Draft += 1;
@@ -1031,7 +1031,7 @@ async function listRows(
     .map(({ quotation, revision, client, name }) => {
       const updatedAt = asIso(quotation.updatedAt);
       const rawStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
-      const canonicalStatus = rawStatus === 'emitido' ? 'enviado' : rawStatus;
+      const canonicalStatus = canonicalQuotationStatus(rawStatus);
       return {
         id: quotation.businessNumber,
         quotation_id: quotation.businessNumber,
@@ -1050,6 +1050,7 @@ async function listRows(
         valor: formatDbMoney(revision.total),
         frete: formatDbMoney(revision.frete),
         status: statusUi(canonicalStatus),
+        status_legacy: canonicalStatus === 'emitido' ? 'enviado' : canonicalStatus,
         status_canonical: canonicalStatus,
         updated_at: updatedAt,
         updatedAt,
@@ -1523,9 +1524,10 @@ export function createPostgresQuoteDraftManagementRepository(
         const result = await db.transaction(async (tx) => {
           const quotation = await readLockedQuotation(tx, normalizedId);
           if (!quotation) throw new QuoteManagementNotFoundError();
-          if (quotation.status !== 'rascunho') {
+          const revision = await readRevision(tx, quotation.id);
+          if (canonicalQuotationStatus(quotation.status) !== 'rascunho' || !revision || canonicalQuotationStatus(revision.status) !== 'rascunho') {
             throw new QuoteManagementConflictError(
-              'Somente orçamentos em rascunho podem ser excluídos.'
+              'Somente orçamentos com agregado e revisão em rascunho podem ser excluídos.'
             );
           }
           const deletedAt = now().toISOString();

@@ -38,6 +38,10 @@ test('quotation projection rejects invented or malformed item domain values', ()
   ]) assert.equal(projectQuotationItem({ ...detail().items[0], ...patch }), null);
 });
 
+test('quotation projection canonicalizes legacy enviado status', () => {
+  assert.equal(projectQuotationDetail(detail())?.data.status_canonical, 'emitido');
+});
+
 test('quotation projection fails closed for revision, status, expiration, and sections', () => {
   for (const patch of [
     { revision: 0 }, { revision_number: 1.5 }, { status: 'Unknown' }, { status_canonical: 'unknown' },

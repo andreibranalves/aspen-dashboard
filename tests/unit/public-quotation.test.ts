@@ -92,6 +92,38 @@ test('accepts only revision-bound public quotation URLs', () => {
   assert.equal(isRevisionBoundPublicQuotationUrl('https://evil.example/?token=' + 'A'.repeat(32)), false);
 });
 
+test('public token expires with commercial validity and never exceeds 30 days', async () => {
+  const fakeStore = store();
+  const selected = snapshot('emitido');
+  selected.revision.issuedAt = new Date(now - 14 * 24 * 60 * 60 * 1000);
+  selected.revision.validadeDias = 15;
+  const issued = await issuePublicQuotationToken({
+    revisionId: selected.revision.id,
+    expiresInSeconds: 30 * 24 * 60 * 60,
+    repository: { get: async () => selected } as any,
+    store: fakeStore,
+    token: () => 'T'.repeat(32),
+    now: () => now,
+  });
+  assert.equal(issued.expiresAt, now + 24 * 60 * 60 * 1000);
+  assert.equal(fakeStore.writes[0].options?.ex, 24 * 60 * 60);
+
+  const longValidity = snapshot('aprovado');
+  longValidity.revision.issuedAt = new Date(now);
+  longValidity.revision.validadeDias = 90;
+  const longStore = store();
+  const bounded = await issuePublicQuotationToken({
+    revisionId: longValidity.revision.id,
+    expiresInSeconds: 90 * 24 * 60 * 60,
+    repository: { get: async () => longValidity } as any,
+    store: longStore,
+    token: () => 'U'.repeat(32),
+    now: () => now,
+  });
+  assert.equal(bounded.expiresAt, now + 30 * 24 * 60 * 60 * 1000);
+  assert.equal(longStore.writes[0].options?.ex, 30 * 24 * 60 * 60);
+});
+
 test('issues a hashed revision-bound token and renders immutable HTML without remote fetches', async () => {
   const fakeStore = store();
   const repository = { get: async (id: string) => id === '22222222-2222-4222-8222-222222222222' ? snapshot() : null };

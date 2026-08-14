@@ -606,7 +606,7 @@ async function dashboardStaleQuotations(
     .leftJoin(linkedOrder, eq(linkedOrder.quotationId, quotations.id))
     .where(
       and(
-        eq(quotations.status, 'enviado'),
+        eq(quotations.status, 'emitido'),
         sql`${quotationDate} <= ${cutoff}`,
         isNull(linkedOrder.id)
       )

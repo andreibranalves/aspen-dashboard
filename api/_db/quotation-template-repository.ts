@@ -14,6 +14,7 @@ import {
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { toSafeMultilineHtml } from './quotation-content.js';
+import { canonicalQuotationStatus } from '../_lib/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteDatabase = AppDatabase;
@@ -356,9 +357,9 @@ export function quotationSnapshotViewModel(
     quote_id: quotation.id,
     revision: revision.version,
     revision_number: revision.version,
-    status: quotation.status,
-    status_canonical: quotation.status,
-    revision_status: revision.status,
+    status: quotation.status === 'emitido' ? 'Enviado' : quotation.status,
+    status_canonical: canonicalQuotationStatus(quotation.status ?? revision.status ?? 'emitido'),
+    revision_status: canonicalQuotationStatus(revision.status ?? quotation.status ?? 'emitido'),
     quote_date: dateOnly(quotation.createdAt),
     date: dateOnly(quotation.createdAt),
     validity_date: validity.toISOString().slice(0, 10),

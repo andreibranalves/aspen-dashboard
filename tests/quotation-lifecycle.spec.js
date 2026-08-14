@@ -15,8 +15,8 @@ function detail(overrides = {}) {
     revision_id: '22222222-2222-4222-8222-222222222222',
     revision: 1,
     revision_number: 1,
-    status: 'Enviado',
-    status_canonical: 'enviado',
+    status: 'Emitido',
+    status_canonical: 'emitido',
     cliente: 'Cliente lifecycle',
     client_id: '33333333-3333-4333-8333-333333333333',
     validade_dias: 15,
@@ -77,8 +77,8 @@ function detail(overrides = {}) {
         subtotal: '90.00',
         total: '90.00',
         valor: '90.00',
-        status: 'Enviado',
-        status_canonical: 'enviado',
+        status: 'Emitido',
+        status_canonical: 'emitido',
         template_key: 'padrao',
         template_version: 1,
         template_hash: hash,
@@ -141,16 +141,42 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
   await page.goto(`/#/quotations/${id}`);
-  await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
   const itemRow = page.locator('tr').filter({ hasText: 'Produto lifecycle' }).first();
   await expect(itemRow.getByText('10', { exact: true })).toBeVisible();
   await expect(itemRow.getByText('10.000', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
 });
 
-test('core lifecycle emission forwards the concurrency token', async ({ page }) => {
+test('core lifecycle emission uses the current reviewed commercial fields and template', async ({ page }) => {
   let authoritative = detail({ status: 'Rascunho', status_canonical: 'rascunho' });
-  let postPayload;
+  let issuePayload;
+  let issueKey;
+  let savePayload;
+  await page.route('**/api/quotation-issues**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      issuePayload = request.postDataJSON();
+      issueKey = request.headers()['idempotency-key'];
+      authoritative = detail({ status: 'Emitido', status_canonical: 'emitido' });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          quotation_id: id,
+          quotation_uuid: detail().quotation_uuid,
+          revision_id: detail().revision_id,
+          revision_number: 1,
+          status: 'emitido',
+          issued_at: token,
+          valid_until: '2026-08-12',
+          pdf_url: `/api/quotation-preview?id=${detail().quotation_uuid}&format=pdf`,
+        }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not found' }) });
+  });
   await page.route('**/api/quotations**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
@@ -162,33 +188,147 @@ test('core lifecycle emission forwards the concurrency token', async ({ page }) 
       });
       return;
     }
-    if (request.method() === 'POST') {
-      postPayload = request.postDataJSON();
-      const validEmission =
-        postPayload.action === 'set_status' &&
-        postPayload.status === 'enviado' &&
-        postPayload.concurrency_token === token;
-      if (validEmission) authoritative = detail({ status: 'Enviado', status_canonical: 'enviado' });
-      await route.fulfill({
-        status: validEmission ? 200 : 400,
-        contentType: 'application/json',
-        body: JSON.stringify(validEmission ? authoritative : { error: 'Token de concorrência obrigatório.' }),
+    if (request.method() === 'PUT') {
+      savePayload = request.postDataJSON();
+      authoritative = detail({
+        status: 'Rascunho',
+        status_canonical: 'rascunho',
+        pagamento: savePayload.pagamento,
+        entrega: savePayload.entrega,
+        validade_dias: savePayload.validade_dias,
+        observacoes: savePayload.observacoes,
+        template_key: savePayload.template_key,
+        template_version_id: savePayload.template_version_id,
+        secoes: savePayload.secoes,
       });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+      return;
+    }
+    if (request.method() === 'POST') {
+      await route.fulfill({ status: 405, contentType: 'application/json', body: JSON.stringify({ error: 'legacy emission disabled' }) });
       return;
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
-  await routeTemplates(page);
+  await page.route('**/api/settings**', async (route) => fulfillJson(route, {}));
+  await page.route('**/api/quotation-templates**', async (route) => fulfillJson(route, {
+    templates: [
+      { key: 'padrao', name: 'Padrão', is_default: true, hash, current_version_id: '55555555-5555-4555-8555-555555555555' },
+      { key: 'minimalista', name: 'Minimalista', is_default: false, hash: 'a'.repeat(64), current_version_id: '77777777-7777-4777-8777-777777777777' },
+    ],
+  }));
   page.on('dialog', (dialog) => dialog.accept());
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Rascunho', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await page.getByLabel('Pagamento do orçamento').fill('30 dias após emissão');
+  await page.getByLabel('Entrega do orçamento').fill('7 dias úteis');
+  await page.getByLabel('Observações do orçamento').fill('Conteúdo revisado pelo operador');
+  await page.getByLabel('Modelo do orçamento').selectOption('minimalista');
+  await page.getByLabel('Título - Pagamento').fill('Pagamento revisado');
+  await page.getByRole('button', { name: /Salvar/ }).click();
+  await expect(page.getByText('Salvo.')).toBeVisible();
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await page.getByLabel('Validade do orçamento').fill('42');
+  await page.getByRole('button', { name: /Salvar/ }).click();
+  await expect(page.getByText('Salvo.')).toBeVisible();
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
-  expect(postPayload).toMatchObject({
-    action: 'set_status',
-    status: 'enviado',
-    concurrency_token: token,
+  expect(issueKey).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(issuePayload).toMatchObject({
+    sourceQuotationId: detail().quotation_uuid,
+    sourceRevisionId: detail().revision_id,
+    draft: { extracted: {
+      nome: 'Cliente lifecycle',
+      items: [{ item_code: 'SKU-1', qty: 10 }],
+      pagamento: '30 dias após emissão',
+      entrega: '7 dias úteis',
+      validade_dias: 42,
+      observacoes: 'Conteúdo revisado pelo operador',
+      template_key: 'minimalista',
+      template_version_id: '77777777-7777-4777-8777-777777777777',
+      secoes: { pagamento: { current: { title: 'Pagamento revisado' } } },
+    } },
   });
+});
+
+test('detail reload restores durable accepted, reconciling, completed and read-only delivery states', async ({ page }) => {
+  const phases = [
+    ['accepted_partial', 'Envio aceito'],
+    ['reconciling', 'Reconciliação necessária'],
+    ['completed', 'Enviado pelo WhatsApp'],
+    ['retryable', 'Somente leitura'],
+  ];
+  let phaseIndex = 0;
+  await page.route('**/api/quotations**', async (route) => fulfillJson(route, detail()));
+  await page.route('**/api/communication-flows**', async (route) => fulfillJson(route, {
+    success: true,
+    selectedFlowId: 'already-talking',
+    flows: [{ id: 'already-talking', name: 'Já conversando', context: 'already_talking', channel: 'whatsapp', vendor_name: 'Evolution', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1, steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }] }],
+  }));
+  await page.route('**/api/whatsapp-send-status**', async (route) => {
+    const [phase] = phases[phaseIndex];
+    await fulfillJson(route, { phase, read_only: phaseIndex === 3, revision_id: detail().revision_id, flow_id: 'already-talking' });
+  });
+  await routeTemplates(page);
+  for (phaseIndex = 0; phaseIndex < phases.length; phaseIndex += 1) {
+    await page.goto(`/#/quotations/${id}`);
+    await expect(page.getByRole('button', { name: phases[phaseIndex][1] })).toBeDisabled();
+    if (phaseIndex < phases.length - 1) await page.reload();
+  }
+});
+
+test('detail retryable status distinguishes verified PDF from generic failure', async ({ page }) => {
+  let pdfFailure = true;
+  await page.route('**/api/quotations**', async (route) => fulfillJson(route, detail()));
+  await page.route('**/api/communication-flows**', async (route) => fulfillJson(route, {
+    success: true,
+    selectedFlowId: 'already-talking',
+    flows: [{ id: 'already-talking', name: 'Já conversando', context: 'already_talking', channel: 'whatsapp', vendor_name: 'Evolution', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1, steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }] }],
+  }));
+  await page.route('**/api/whatsapp-send-status**', async (route) => fulfillJson(route, {
+    phase: 'retryable',
+    error: pdfFailure ? 'PDF indisponível. Tentar novamente.' : 'Falha de transporte.',
+    revision_id: detail().revision_id,
+    flow_id: 'already-talking',
+  }));
+  await routeTemplates(page);
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByText('PDF indisponível. Tentar novamente')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeEnabled();
+  pdfFailure = false;
+  await page.reload();
+  await expect(page.getByText('Falha antes do transporte. Tentar novamente.')).toBeVisible();
+  await expect(page.getByText('PDF indisponível. Tentar novamente')).toHaveCount(0);
+});
+
+test('expired detail blocks send, loss requires reason and emitted deletion remains hidden', async ({ page }) => {
+  let authoritative = detail({ derived_expired: true });
+  const posts = [];
+  await page.route('**/api/quotations**', async (route) => {
+    if (route.request().method() === 'POST') {
+      posts.push(route.request().postDataJSON());
+      authoritative = detail({ status: 'Perdido', status_canonical: 'perdido' });
+    }
+    await fulfillJson(route, authoritative);
+  });
+  await page.route('**/api/communication-flows**', async (route) => fulfillJson(route, { success: true, selectedFlowId: null, flows: [] }));
+  await routeTemplates(page);
+  let reason = '';
+  page.on('dialog', async (dialog) => {
+    if (dialog.type() === 'prompt') await dialog.accept(reason);
+    else await dialog.accept();
+  });
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeDisabled();
+  await expect(page.getByText('Orçamento vencido. Crie uma nova revisão.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Excluir' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Marcar como perdido' }).click();
+  await expect(page.getByText('Informe um motivo para marcar o orçamento como perdido.')).toBeVisible();
+  expect(posts).toHaveLength(0);
+  reason = 'Preço';
+  await page.getByRole('button', { name: 'Marcar como perdido' }).click();
+  expect(posts[0]).toMatchObject({ action: 'set_status', status: 'perdido', loss_reason: 'Preço', concurrency_token: token });
 });
 
 test('core lifecycle marks sent quotations and creates a revision from issued history', async ({
@@ -260,7 +400,7 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   });
   await routeTemplates(page);
   await page.goto(`/#/quotations/${id}`);
-  await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
   const modelPreview = page.waitForEvent('popup');

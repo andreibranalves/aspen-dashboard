@@ -99,6 +99,36 @@ function reservationStore() {
   return createFakeWhatsappReservationStore() as any;
 }
 
+function deliveryBoundary(initialState?: string) {
+  let current: any = initialState
+    ? { id: 'delivery', revisionId, phone: '5511999990000', flowId: 'direct-send', state: initialState, readOnly: false }
+    : null;
+  let providerClaims = 0;
+  const states: string[] = initialState ? [initialState] : [];
+  return {
+    get current() { return current; },
+    get providerClaims() { return providerClaims; },
+    get states() { return states; },
+    async getByRevision() { return current; },
+    async prepareDelivery(input: any) {
+      current ||= { id: 'delivery', revisionId: input.revisionId, phone: '5511999990000', flowId: input.flowId, state: 'pending', readOnly: false };
+      return { delivery: current, pdf: validPdf(), pdfSize: validPdf().length, pdfSignature: 'a'.repeat(64), validUntil: new Date(Date.now() + 86400000) };
+    },
+    async claimTransport() {
+      if (current?.state !== 'pending' && current?.state !== 'retryable') return null;
+      providerClaims += 1;
+      current = { ...current, state: 'transporting' };
+      states.push('transporting');
+      return current;
+    },
+    async recordState(input: any) {
+      current = { ...(current || {}), state: input.state, readOnly: false };
+      states.push(input.state);
+      return current;
+    },
+  };
+}
+
 function event(body: Record<string, unknown>) {
   return {
     httpMethod: 'POST',
@@ -138,9 +168,9 @@ function validPdf(size = 16): Buffer {
 test('snapshot path ignores obsolete caller/deal/name/items metadata', async () => {
   const restore = evolutionEnv();
   const originalFetch = globalThis.fetch;
-  let body: Record<string, unknown> | null = null;
+  const bodies: Array<Record<string, unknown>> = [];
   globalThis.fetch = (async (_input, init) => {
-    body = JSON.parse(String(init?.body || '{}'));
+    bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
     return new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 });
   }) as typeof fetch;
   try {
@@ -152,7 +182,7 @@ test('snapshot path ignores obsolete caller/deal/name/items metadata', async () 
       nome: 'Caller Name',
       deal_id: 'caller-deal',
       items: [{ item_code: 'EVIL-001' }],
-      sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'text', template: '(primeiro_nome)' }] },
+      sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'text', template: '(primeiro_nome)' }, { type: 'document', source: 'quotation_pdf' }] },
     }), {
       repository: repository(),
       store: store(),
@@ -163,13 +193,13 @@ test('snapshot path ignores obsolete caller/deal/name/items metadata', async () 
     assert.equal(result.message, undefined);
     assert.equal(result.number, '5511999990000');
     assert.equal(result.deal_id, null);
-    assert.equal((body as any)?.number, '5511999990000');
-    assert.equal((body as any)?.text, 'Cliente');
-    assert.equal((body as any)?.quotation_uuid, undefined);
-    assert.equal((body as any)?.revision_id, undefined);
-    assert.equal((body as any)?.nome, undefined);
-    assert.equal((body as any)?.deal_id, undefined);
-    assert.equal((body as any)?.items, undefined);
+    assert.equal(bodies[0]?.number, '5511999990000');
+    assert.equal(bodies[0]?.text, 'Cliente');
+    assert.equal(bodies[0]?.quotation_uuid, undefined);
+    assert.equal(bodies[0]?.revision_id, undefined);
+    assert.equal(bodies[0]?.nome, undefined);
+    assert.equal(bodies[0]?.deal_id, undefined);
+    assert.equal(bodies[0]?.items, undefined);
   } finally {
     globalThis.fetch = originalFetch;
     restore();
@@ -193,9 +223,9 @@ test('selected non-latest revision sends its recipient, name, and items instead 
   latest.revision.clienteTelefone = '21999990000';
   latest.items[0].revisionId = latestRevisionId;
   latest.items[0].produtoSku = 'BNE-001';
-  let providerBody: Record<string, unknown> | null = null;
+  const providerBodies: Array<Record<string, unknown>> = [];
   globalThis.fetch = (async (_input, init) => {
-    providerBody = JSON.parse(String(init?.body || '{}'));
+    providerBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
     return new Response(JSON.stringify({ accepted: true, message_id: 'provider-selected' }), { status: 200 });
   }) as typeof fetch;
   try {
@@ -203,7 +233,7 @@ test('selected non-latest revision sends its recipient, name, and items instead 
       quotation_id: businessNumber,
       revision_id: selectedRevisionId,
       nome: 'Caller Name',
-      sequence: { steps: [{ type: 'text', template: '(nome) - (produto_resumo)' }] },
+      sequence: { steps: [{ type: 'text', template: '(nome) - (produto_resumo)' }, { type: 'document', source: 'quotation_pdf' }] },
     }), {
       repository: {
         get: async (id: string) => id === selectedRevisionId ? selected : id === latestRevisionId ? latest : null,
@@ -212,7 +242,7 @@ test('selected non-latest revision sends its recipient, name, and items instead 
       token: () => publicToken,
     });
     assert.equal(response.statusCode, 200);
-    const capturedBody: any = providerBody;
+    const capturedBody: any = providerBodies[0];
     assert.equal(capturedBody?.number, '5511999990000');
     assert.equal(capturedBody?.text, 'Cliente Selecionado - cangas');
     assert.doesNotMatch(String(capturedBody?.text), /Mais Recente|Caller Name|bonés/i);
@@ -259,6 +289,7 @@ test('media-store read failure fails closed before provider or text steps', asyn
         steps: [
           { type: 'text', template: 'Texto não deve ser enviado' },
           { type: 'image', media: 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg' },
+          { type: 'document', source: 'quotation_pdf' },
         ],
       },
     }), {
@@ -295,6 +326,7 @@ test('unresolved requested flow media fails before any text transport', async ()
         steps: [
           { type: 'text', template: 'Texto não deve ser enviado' },
           { type: 'product_media', max_items: 1 },
+          { type: 'document', source: 'quotation_pdf' },
         ],
       }),
       repository: repository(),
@@ -342,6 +374,7 @@ test('flow sends an active uploaded MP4 as Evolution video with a safe filename'
         steps: [
           { type: 'text', template: 'Antes do vídeo' },
           { type: 'product_media', max_items: 1 },
+          { type: 'document', source: 'quotation_pdf' },
         ],
       }),
       repository: repository(),
@@ -367,7 +400,7 @@ test('flow sends an active uploaded MP4 as Evolution video with a safe filename'
       recordSendEvent: async () => 'video-event',
     });
     assert.equal(response.statusCode, 200);
-    assert.equal(providerBodies.length, 2);
+    assert.equal(providerBodies.length, 3);
     assert.equal(providerBodies[0]?.text, 'Antes do vídeo');
     assert.equal(providerBodies[1]?.mediatype, 'video');
     assert.equal(providerBodies[1]?.mimetype, 'video/mp4');
@@ -397,7 +430,7 @@ test('flow send response strips every media internal alias recursively', async (
         id: 'flow-redaction',
         name: 'Redação',
         max_media_per_product_group: 1,
-        steps: [{ type: 'product_media', max_items: 1 }],
+        steps: [{ type: 'product_media', max_items: 1 }, { type: 'document', source: 'quotation_pdf' }],
       }),
       resolveMedia: async () => [{
         type: 'image',
@@ -458,6 +491,7 @@ test('flow rejects unsupported active media before sending preceding text', asyn
         steps: [
           { type: 'text', template: 'Não enviar' },
           { type: 'product_media', max_items: 1 },
+          { type: 'document', source: 'quotation_pdf' },
         ],
       }),
       repository: repository(),
@@ -508,7 +542,7 @@ test('direct PostgreSQL send delivers an owned MP4 as Evolution video', async ()
     const response = await sendWhatsapp(event({
       quotation_id: businessNumber,
       revision_id: revisionId,
-      sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'video', media: videoUrl }] },
+      sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'video', media: videoUrl }, { type: 'document', source: 'quotation_pdf' }] },
     }), {
       repository: repository(),
       store: store(),
@@ -526,12 +560,113 @@ test('direct PostgreSQL send delivers an owned MP4 as Evolution video', async ()
       headBlob: async () => ({ url: videoUrl, pathname: videoPath, contentType: 'video/mp4', size: 11 }) as any,
     });
     assert.equal(response.statusCode, 200);
-    assert.equal(providerBodies.length, 1);
+    assert.equal(providerBodies.length, 2);
     assert.equal(providerBodies[0]?.mediatype, 'video');
     assert.equal(providerBodies[0]?.mimetype, 'video/mp4');
   } finally {
     globalThis.fetch = originalFetch;
     restore();
+  }
+});
+
+test('direct production path uses durable boundary and blocks replay', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const boundary = deliveryBoundary();
+  let providerCalls = 0;
+  globalThis.fetch = (async (_input, init) => { providerCalls += 1; return new Response(JSON.stringify({ accepted: true, message_id: `provider-${providerCalls}` }), { status: 200 }); }) as typeof fetch;
+  try {
+    const dependencies = { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any;
+    const body = { quotation_id: businessNumber, revision_id: revisionId, sequence: { delay_min_ms: 0, delay_max_ms: 0, steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] } };
+    const first = await sendWhatsapp(event(body), dependencies);
+    const second = await sendWhatsapp(event(body), dependencies);
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 200);
+    assert.equal(providerCalls, 2);
+    assert.equal(boundary.providerClaims, 1);
+  } finally { globalThis.fetch = originalFetch; restore(); }
+});
+
+test('business number plus quote revision alias constructs durable boundary', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const boundary = deliveryBoundary();
+  let factoryCalls = 0;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ accepted: true, message_id: 'provider-alias' }), { status: 200 })) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ business_number: businessNumber, quote_revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } }), {
+      repository: repository(), store: store(), token: () => publicToken,
+      deliveryRepositoryFactory: () => { factoryCalls += 1; return boundary; },
+    } as any);
+    assert.equal(response.statusCode, 200);
+    assert.equal(factoryCalls, 1);
+    assert.equal(boundary.current.state, 'completed');
+  } finally { globalThis.fetch = originalFetch; restore(); }
+});
+
+test('active and uncertain direct replays never call provider or overwrite state', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => { providerCalls += 1; return new Response('{}'); }) as typeof fetch;
+  try {
+    for (const state of ['transporting', 'accepted_partial']) {
+      const boundary = deliveryBoundary(state);
+      const response = await sendWhatsapp(event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } }), { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any);
+      assert.equal(response.statusCode, 409);
+      assert.equal(boundary.current.state, state);
+    }
+    const reconciling = deliveryBoundary('reconciling');
+    const response = await sendWhatsapp(event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [] } }), { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: reconciling } as any);
+    assert.equal(response.statusCode, 400);
+    assert.equal(reconciling.current.state, 'reconciling');
+    assert.equal(providerCalls, 0);
+  } finally { globalThis.fetch = originalFetch; restore(); }
+});
+
+test('retryable direct delivery is reclaimed once and overlapping replay cannot duplicate provider transport', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const boundary = deliveryBoundary('retryable');
+  let providerCalls = 0;
+  let releaseProvider!: () => void;
+  let notifyProviderStarted!: () => void;
+  const providerGate = new Promise<void>((resolve) => { releaseProvider = resolve; });
+  const providerStarted = new Promise<void>((resolve) => { notifyProviderStarted = resolve; });
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    notifyProviderStarted();
+    await providerGate;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-owned' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const dependencies = { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any;
+    const request = event({ quotation_id: businessNumber, revision_id: revisionId, sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] } });
+    const first = sendWhatsapp(request, dependencies);
+    await providerStarted;
+    const second = await sendWhatsapp(request, dependencies);
+    assert.equal(second.statusCode, 409);
+    assert.equal(providerCalls, 1);
+    assert.equal(boundary.providerClaims, 1);
+    releaseProvider();
+    assert.equal((await first).statusCode, 200);
+    assert.equal(boundary.current.state, 'completed');
+  } finally { releaseProvider(); globalThis.fetch = originalFetch; restore(); }
+});
+
+test('revision identifier aliases finish uncertain provider failures in reconciling', async () => {
+  for (const alias of ['revision_id', 'revisionId', 'quote_revision_id']) {
+    const restore = evolutionEnv();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new Error('network uncertain'); }) as typeof fetch;
+    const boundary = deliveryBoundary();
+    try {
+      const response = await sendWhatsapp(event({ quotation_id: businessNumber, [alias]: revisionId, sequence: { steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] } }), { repository: repository(), store: store(), token: () => publicToken, deliveryRepository: boundary } as any);
+      assert.equal(response.statusCode, 502);
+      assert.equal(boundary.current.state, 'reconciling');
+      assert.equal(boundary.states.at(-1), 'reconciling');
+      assert.equal(boundary.states.includes('retryable'), false);
+    } finally { globalThis.fetch = originalFetch; restore(); }
   }
 });
 

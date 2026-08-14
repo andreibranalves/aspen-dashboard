@@ -10,7 +10,7 @@ import {
   Image as ImageIcon,
   X,
 } from 'lucide-react';
-import { apiPost, apiGet, apiPatch } from '@/lib/api';
+import { apiPost, apiGet } from '@/lib/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 import OrderTemplateManager from '@/components/OrderTemplateManager';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/orderTemplatesApi';
@@ -20,8 +20,16 @@ import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
-import type { Draft } from '@/types/domain';
-import { fetchFlows, executeFlow, CommunicationSendError, type CommunicationFlow } from '@/lib/communicationApi';
+import type { Draft, StoredAutoQuoteDraft } from '@/types/domain';
+import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/autoQuoteDraftStorage';
+import {
+  buildQuotePayload,
+  getQuotationIssue,
+  issueQuotation,
+  isPriceAuthoritativeConflict,
+  QuotationIssueApiError,
+} from '@/lib/quotationIssueApi';
+import { fetchFlows, executeFlow, CommunicationSendError, projectDeliveryFailure, type CommunicationFlow } from '@/lib/communicationApi';
 import {
   executeWithSendLock,
   isSendableQuotationStatus,
@@ -49,37 +57,25 @@ interface QuoteLead {
 }
 
 interface WaStatus {
-  state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial';
+  state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
   message?: string;
   deliveryAccepted?: boolean;
 }
 
-function buildQuotePayload(draft: Draft) {
-  return {
-    extracted: {
-      nome: draft.edited.nome,
-      email: draft.edited.email || null,
-      telefone: draft.edited.telefone || null,
-      urgente: draft.edited.urgente,
-      origem: draft.edited.origem || undefined,
-      cnpj: draft.edited.cnpj || undefined,
-      endereco: draft.edited.endereco || undefined,
-      items: draft.edited.items
-        .filter((item) => item.item_code && item.qty > 0)
-        .map((item) => ({
-          item_code: item.item_code,
-          item_name: item.item_name || '',
-          qty: item.qty,
-          rate: item.rate,
-          manual_rate: item._rateManual === true,
-        })),
-      prazo_producao: draft.edited.prazo_producao || undefined,
-      ...(draft.edited.template_key ? { template_key: draft.edited.template_key } : {}),
-    },
-  };
+const WHATSAPP_STATUS_EXPIRY_MS = 30_000;
+
+function moneyCents(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) : null;
 }
 
-const WHATSAPP_STATUS_EXPIRY_MS = 30_000;
+function loadInitialAutoQuoteDrafts() {
+  try {
+    return typeof window === 'undefined' ? [] : loadAutoQuoteDrafts(window.localStorage);
+  } catch {
+    return [];
+  }
+}
 
 export default function AutoQuotePage() {
   // ── Helpers ──
@@ -88,6 +84,7 @@ export default function AutoQuotePage() {
   const [text, setText] = useState<string>('');
   const [extracting, setExtracting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [pricingConflictByDraft, setPricingConflictByDraft] = useState<Record<number, string[]>>({});
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
   const [bottomTab, setBottomTab] = useState<'leads' | 'recentes'>('leads');
@@ -185,7 +182,21 @@ export default function AutoQuotePage() {
     updateDraftField,
     selectProduct,
     buildDraftsFromOrders,
-  } = useExtractionDrafts();
+  } = useExtractionDrafts(loadInitialAutoQuoteDrafts());
+  const skipDraftPersistence = useRef(false);
+  const draftsHydrated = useRef(true);
+
+  useEffect(() => {
+    if (!draftsHydrated.current) {
+      draftsHydrated.current = true;
+      return;
+    }
+    if (skipDraftPersistence.current) {
+      skipDraftPersistence.current = false;
+      return;
+    }
+    saveAutoQuoteDrafts(window.localStorage, drafts);
+  }, [drafts]);
 
   // ── Image input ──
   const { imageData, imagePreview, clearImage, handleImageFile } = useImageInput();
@@ -310,11 +321,6 @@ export default function AutoQuotePage() {
           index: startIndex + offset,
         }));
         const next = [...prev, ...appendedDrafts];
-        try {
-          localStorage.setItem('aspen_drafts', JSON.stringify(next));
-        } catch (storageError) {
-          console.warn('[AutoQuotePage] failed to persist drafts:', (storageError as Error).message);
-        }
         return next;
       });
       loadHistory();
@@ -328,63 +334,175 @@ export default function AutoQuotePage() {
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
   const createSingleQuote = useCallback(
     async (draftIndex: number) => {
-      setDrafts((prev) => {
-        const idx = prev.findIndex((d) => d.index === draftIndex);
-        if (idx === -1) return prev;
-        const next = [...prev];
-        next[idx] = { ...next[idx], status: 'processing' };
-        return next;
-      });
-      const draft = await new Promise<Draft | undefined>((resolve) => {
-        setDrafts((prev) => {
-          resolve(prev.find((d) => d.index === draftIndex));
-          return prev;
-        });
-      });
+      const draft = drafts.find((candidate) => candidate.index === draftIndex) as StoredAutoQuoteDraft | undefined;
       if (!draft) return;
-      const payload = buildQuotePayload(draft);
+      const key = draft.issueIdempotencyKey || globalThis.crypto.randomUUID();
+      const requestDraft = { ...draft, issueIdempotencyKey: key };
+      const nextDraft = { ...requestDraft, status: 'processing' as const, result: undefined };
+      saveAutoQuoteDrafts(window.localStorage, drafts.map((candidate) => candidate.index === draftIndex ? nextDraft : candidate) as StoredAutoQuoteDraft[]);
+      setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+        ? ({ ...requestDraft, status: 'processing' as const, result: undefined } as StoredAutoQuoteDraft)
+        : candidate));
       try {
-        const res = await apiPost<Record<string, unknown>>('/orcamento', payload);
-        setDrafts((prev) => {
-          const idx = prev.findIndex((d) => d.index === draftIndex);
-          if (idx === -1) return prev;
-          const next = [...prev];
-          next[idx] = { ...next[idx], result: { success: true, data: res }, status: 'done' };
-          return next;
+        const issue = await issueQuotation(buildQuotePayload(requestDraft), key, {
+          sourceLeadId: selectedQuoteLeadId || undefined,
+          sourceQuotationId: draft.sourceQuotationId,
+          sourceRevisionId: draft.sourceRevisionId,
         });
-        loadHistory();
-        if (selectedQuoteLeadId && res.quotation_id) {
-          try {
-            await apiPatch('/quote-leads', {
-              id: selectedQuoteLeadId,
-              status: 'converted',
-              quotationId: String(res.quotation_id),
-            });
-          } catch (patchErr) {
-            console.warn(
-              '[AutoQuotePage] failed to mark quote lead converted:',
-              (patchErr as Error).message
-            );
-          }
+        const data = {
+          quotation_id: issue.businessNumber,
+          quotation_uuid: issue.quotationId,
+          revision_id: issue.revisionId,
+          revision_number: issue.revisionNumber,
+          status: 'emitido',
+          status_canonical: 'emitido',
+        };
+        setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+          ? ({ ...candidate, issue, result: { success: true, data }, status: 'done' } as StoredAutoQuoteDraft)
+          : candidate));
+        if (selectedQuoteLeadId) {
           setSelectedQuoteLeadId('');
           loadQuoteLeads();
         }
+        loadHistory();
       } catch (err) {
-        setDrafts((prev) => {
-          const idx = prev.findIndex((d) => d.index === draftIndex);
-          if (idx === -1) return prev;
-          const next = [...prev];
-          next[idx] = {
-            ...next[idx],
-            result: { success: false, error: (err as Error).message },
-            status: 'error',
-          };
-          return next;
-        });
+        const message = err instanceof QuotationIssueApiError && err.status === 409
+          ? `${err.message} Atualize os preços e tente novamente.`
+          : err instanceof Error ? err.message : 'Não foi possível emitir o orçamento. Tente novamente.';
+        setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+          ? ({ ...candidate, status: undefined, result: { success: false, error: message } } as StoredAutoQuoteDraft)
+          : candidate));
+        if (err instanceof QuotationIssueApiError && err.status === 409) {
+          if (/processamento|retomada|instantes/i.test(err.message)) {
+            const recovered = await getQuotationIssue(key);
+            if (recovered.state === 'completed') {
+              setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+                ? ({ ...candidate, issue: recovered, result: { success: true, data: { quotation_id: recovered.businessNumber, quotation_uuid: recovered.quotationId, revision_id: recovered.revisionId, revision_number: recovered.revisionNumber, status: 'emitido', status_canonical: 'emitido' } }, status: 'done' } as StoredAutoQuoteDraft)
+                : candidate));
+            }
+          } else if (isPriceAuthoritativeConflict(err)) {
+            const before = new Map(draft.edited.items.map((item) => [item.item_code, moneyCents(item.rate)]));
+            const data = err.data && typeof err.data === 'object' ? err.data as Record<string, unknown> : {};
+            const authoritative = data.authoritative && typeof data.authoritative === 'object'
+              ? data.authoritative as Record<string, unknown> : data;
+            const corrected = Array.isArray(authoritative.items) ? authoritative.items : [];
+            let changedItems: string[] = [];
+            if (corrected.length) {
+              const corrections = new Map(corrected.map((value) => {
+                const correction = value as Record<string, unknown>;
+                return [String(correction.item_code || correction.sku || ''), correction] as const;
+              }));
+              const changed = corrected.map((value) => {
+                const correction = value as Record<string, unknown>;
+                const sku = String(correction.item_code || correction.sku || '');
+                const rate = correction.rate ?? correction.authoritative_rate;
+                const beforeRate = before.get(sku);
+                return sku && moneyCents(rate) !== null && moneyCents(rate) !== beforeRate ? sku : '';
+              }).filter(Boolean);
+              changedItems = changed;
+              setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+                ? ({ ...candidate, edited: { ...candidate.edited, items: candidate.edited.items.map((item) => {
+                  const correction = corrections.get(item.item_code);
+                  const rate = correction?.rate ?? correction?.authoritative_rate;
+                  return correction && moneyCents(rate) !== null && moneyCents(rate) !== moneyCents(item.rate)
+                    ? { ...item, rate: Number(rate) } : item;
+                }) }, issueIdempotencyKey: undefined } as StoredAutoQuoteDraft)
+                : candidate));
+            } else {
+              const refreshed = await refetchDraftPricing(draftIndex);
+              changedItems = (refreshed?.edited.items || []).filter((item) =>
+                item.item_code && before.get(item.item_code) !== moneyCents(item.rate)
+              ).map((item) => item.item_code);
+            }
+            setPricingConflictByDraft((prev) => ({ ...prev, [draftIndex]: changedItems }));
+            setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
+              ? ({ ...candidate, issueIdempotencyKey: undefined } as StoredAutoQuoteDraft)
+              : candidate));
+          }
+        }
       }
     },
-    [loadHistory, loadQuoteLeads, selectedQuoteLeadId]
+    [drafts, loadHistory, loadQuoteLeads, refetchDraftPricing, selectedQuoteLeadId]
   );
+
+  const recoveredDrafts = useRef(new Set<number>());
+  const recoveryTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const recoveryAttempts = useRef(new Map<number, number>());
+  useEffect(() => () => {
+    for (const timer of recoveryTimers.current.values()) clearTimeout(timer);
+    recoveryTimers.current.clear();
+  }, []);
+  const recoverQuotationIssue = useCallback(async (draft: StoredAutoQuoteDraft) => {
+    if (!draft.issueIdempotencyKey || draft.issue || recoveredDrafts.current.has(draft.index) || recoveryTimers.current.has(draft.index)) return;
+    try {
+      const state = await getQuotationIssue(draft.issueIdempotencyKey);
+      if (state.state === 'processing') {
+        const attempt = (recoveryAttempts.current.get(draft.index) || 0) + 1;
+        recoveryAttempts.current.set(draft.index, attempt);
+        if (attempt > 3) {
+          recoveredDrafts.current.add(draft.index);
+          setDrafts((prev) => prev.map((candidate) => candidate.index === draft.index
+            ? ({ ...candidate, status: undefined, result: { success: false, error: 'A emissão continua em processamento. Tente novamente quando estiver pronta.' } } as StoredAutoQuoteDraft)
+            : candidate));
+          return;
+        }
+        const delay = Math.min(10_000, Math.max(500, state.retryAfterMs || 500));
+        setDrafts((prev) => prev.map((candidate) => candidate.index === draft.index
+          ? ({ ...candidate, status: 'processing' } as StoredAutoQuoteDraft) : candidate));
+        const timer = setTimeout(() => {
+          recoveryTimers.current.delete(draft.index);
+          recoverQuotationIssue(draft);
+        }, delay);
+        recoveryTimers.current.set(draft.index, timer);
+        return;
+      }
+      recoveredDrafts.current.add(draft.index);
+      const timer = recoveryTimers.current.get(draft.index);
+      if (timer) clearTimeout(timer);
+      recoveryTimers.current.delete(draft.index);
+      if (state.state === 'completed') {
+        const data = { quotation_id: state.businessNumber, quotation_uuid: state.quotationId, revision_id: state.revisionId, revision_number: state.revisionNumber, status: 'emitido', status_canonical: 'emitido' };
+        setDrafts((prev) => prev.map((candidate) => candidate.index === draft.index
+          ? ({ ...candidate, issue: state, result: { success: true, data }, status: 'done' } as StoredAutoQuoteDraft)
+          : candidate));
+      } else {
+        setDrafts((prev) => prev.map((candidate) => candidate.index === draft.index
+          ? ({ ...candidate, result: { success: false, error: state.error }, status: undefined } as StoredAutoQuoteDraft)
+          : candidate));
+      }
+    } catch {
+      recoveredDrafts.current.add(draft.index);
+      const timer = recoveryTimers.current.get(draft.index);
+      if (timer) clearTimeout(timer);
+      recoveryTimers.current.delete(draft.index);
+      setDrafts((prev) => prev.map((candidate) => candidate.index === draft.index
+        ? ({ ...candidate, status: undefined, result: { success: false, error: 'Não foi possível consultar a emissão. Tente novamente.' } } as StoredAutoQuoteDraft)
+        : candidate));
+    }
+  }, []);
+
+  useEffect(() => {
+    for (const draft of drafts as StoredAutoQuoteDraft[]) recoverQuotationIssue(draft);
+  }, [drafts, recoverQuotationIssue]);
+
+  const createNewRevision = useCallback((draftIndex: number) => {
+    setDrafts((prev) => {
+      const source = prev.find((candidate) => candidate.index === draftIndex) as StoredAutoQuoteDraft | undefined;
+      if (!source?.issue) return prev;
+      const nextIndex = Math.max(-1, ...prev.map((candidate) => candidate.index)) + 1;
+      const next = [...prev, {
+        ...source,
+        index: nextIndex,
+        issue: undefined,
+        issueIdempotencyKey: undefined,
+        sourceQuotationId: source.issue.quotationId,
+        sourceRevisionId: source.issue.revisionId,
+        status: undefined,
+        result: undefined,
+      } as StoredAutoQuoteDraft];
+      return next;
+    });
+  }, []);
 
   const previewSingleQuote = useCallback(
     (draftIndex: number) => {
@@ -454,6 +572,7 @@ export default function AutoQuotePage() {
   const handleReset = useCallback(() => {
     setText('');
     clearImage();
+    skipDraftPersistence.current = true;
     setDrafts([]);
     setError(null);
     setExtracting(false);
@@ -470,6 +589,7 @@ export default function AutoQuotePage() {
   }, [clearImage, setDrafts, setProductSearch]);
 
   const clearResults = useCallback(() => {
+    skipDraftPersistence.current = true;
     setDrafts([]);
     setProductSearch({});
     setWaStatusByContext({});
@@ -567,9 +687,9 @@ export default function AutoQuotePage() {
           setWaStatusByContext((prev) => ({
             ...prev,
             [contextKey]: {
-              state: 'accepted-partial',
+              state: 'accepted',
               deliveryAccepted: true,
-              message: 'Transporte aceito; reconciliação necessária. Não reenvie enquanto este estado estiver visível.',
+              message: 'Envio aceito; não significa entrega no aparelho. Reconciliação necessária.',
             },
           }));
           scheduleReconciliationExpiry(contextKey);
@@ -590,36 +710,21 @@ export default function AutoQuotePage() {
           ? err
           : new Error(err instanceof Error ? err.message : 'Erro ao enviar WhatsApp.');
         console.error('[sendWhatsApp] failed:', sendError.message);
-        const acceptedPartial = sendError instanceof CommunicationSendError
-          && (sendError.deliveryAccepted || sendError.sendStatus === 'accepted_partial');
-        const sendStatus = sendError instanceof CommunicationSendError ? sendError.sendStatus : null;
-        if (acceptedPartial) {
-          setWaStatusByContext((prev) => ({
-            ...prev,
-            [contextKey]: {
-              state: 'accepted-partial',
-              deliveryAccepted: true,
-              message: 'Transporte aceito; reconciliação necessária. Não reenvie enquanto este estado estiver visível.',
-            },
-          }));
+        const projection = projectDeliveryFailure(sendError);
+        setWaStatusByContext((prev) => ({
+          ...prev,
+          [contextKey]: {
+            state: projection.kind === 'accepted'
+              ? 'accepted'
+              : projection.kind === 'completed'
+                ? 'sent'
+                : projection.kind,
+            deliveryAccepted: projection.kind === 'accepted',
+            message: projection.label,
+          },
+        }));
+        if (projection.kind === 'accepted' || projection.kind === 'reconciling') {
           scheduleReconciliationExpiry(contextKey);
-        } else if (sendStatus === 'processing' || sendStatus === 'reconciling' || sendStatus === 'reserved') {
-          setWaStatusByContext((prev) => ({
-            ...prev,
-            [contextKey]: {
-              state: 'reconciling',
-              message: 'Envio em andamento; aguarde a reconciliação.',
-            },
-          }));
-          scheduleReconciliationExpiry(contextKey);
-        } else {
-          setWaStatusByContext((prev) => ({
-            ...prev,
-            [contextKey]: {
-              state: 'error',
-              message: sendError.message || 'Erro ao enviar WhatsApp.',
-            },
-          }));
         }
       } finally {
         activeSendKeys.current.delete(contextKey);
@@ -678,11 +783,6 @@ export default function AutoQuotePage() {
             ...next[idx],
             edited: { ...next[idx].edited, items: currentItems },
           };
-          try {
-            localStorage.setItem('aspen_drafts', JSON.stringify(next));
-          } catch (storageError) {
-            console.warn('[AutoQuotePage] failed to persist drafts:', (storageError as Error).message);
-          }
           return next;
         });
 
@@ -1051,7 +1151,15 @@ export default function AutoQuotePage() {
               {visibleDrafts.map((draft, displayIdx) => {
                 const isError = draft.status === 'error';
                 const isProcessing = draft.status === 'processing';
-                const resultData = draft.result?.data;
+                const issueProjection = (draft as StoredAutoQuoteDraft).issue;
+                const resultData = draft.result?.data || (issueProjection ? {
+                  quotation_id: issueProjection.businessNumber,
+                  quotation_uuid: issueProjection.quotationId,
+                  revision_id: issueProjection.revisionId,
+                  revision_number: issueProjection.revisionNumber,
+                  status: 'emitido',
+                  status_canonical: 'emitido',
+                } : undefined);
                 const quotationId = resultData?.quotation_id ? String(resultData.quotation_id) : '';
                 const relativeViewUrl = quotationId
                   ? `/#/quotations/${encodeURIComponent(quotationId)}`
@@ -1098,7 +1206,11 @@ export default function AutoQuotePage() {
                     onRefetchPricing={refetchDraftPricing}
                     onCreateQuote={createSingleQuote}
                     onPreviewQuote={previewSingleQuote}
-                    viewUrl={relativeViewUrl}
+                    onNewRevision={createNewRevision}
+                    issue={issueProjection}
+                    issueError={draft.result?.error}
+                    pricingConflictItems={pricingConflictByDraft[draft.index] || []}
+                    viewUrl={(draft as StoredAutoQuoteDraft).issue?.pdfUrl || relativeViewUrl}
                     waStatus={quotationSendable ? statusForContext(sendContext) : undefined}
                     waSendEnabled={quotationSendable}
                     waFlows={waFlows}

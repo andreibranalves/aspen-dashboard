@@ -334,7 +334,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       }
     };
     await assertStatusAliases(['Draft', 'Rascunho', 'rascunho', ' dRaFt ', ' RASCUNHO '], pendingDraft.quotation_name, 'rascunho');
-    await assertStatusAliases(['Issued', 'Open', 'Replied', 'Expired', 'emitido', 'Enviado', 'enviado', ' oPeN ', ' ENVIADO ', ' iSsUeD '], updated.quotation_name, 'enviado');
+    await assertStatusAliases(['Issued', 'Open', 'Replied', 'Expired', 'emitido', 'Enviado', 'enviado', ' oPeN ', ' ENVIADO ', ' iSsUeD '], updated.quotation_name, 'emitido');
     await assertStatusAliases(['Ordered', 'Aprovado', 'aprovado', ' OrDeReD ', ' APROVADO '], laterDraft.quotation_name, 'aprovado');
     await assertStatusAliases(['Lost', 'Cancelled', 'Perdido', 'perdido', ' cAnCeLLeD ', ' PERDIDO '], terminalDraft.quotation_name, 'perdido');
     const statusSummary = (await managementList({ limit: 200 })).statusSummary;
