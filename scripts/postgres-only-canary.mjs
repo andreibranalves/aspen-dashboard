@@ -97,22 +97,48 @@ function extractSessionCookie(headers) {
   return sessionCookie;
 }
 
-function inspectBody(text, checkName) {
-  const normalized = text.toLowerCase();
-  if (FORBIDDEN_METADATA.some((token) => normalized.includes(token.toLowerCase()))) {
-    throw new Error(`forbidden provider metadata in ${checkName}`);
+function includesForbiddenMetadata(value) {
+  const normalized = value.toLowerCase();
+  return FORBIDDEN_METADATA.some((token) => normalized.includes(token.toLowerCase()));
+}
+
+function isMetadataKey(key) {
+  const normalized = key.toLowerCase();
+  if (/(^|[_-])(provider|origin|source|mode)($|[_-])/.test(normalized)) return true;
+  const prefix = /^(provider|origin|source|mode)/i.exec(key)?.[0] || '';
+  const next = key[prefix.length];
+  return Boolean(prefix) && Boolean(next) && next === next.toUpperCase() && next !== next.toLowerCase();
+}
+
+function hasForbiddenJsonMetadata(value, metadataValue = false) {
+  if (Array.isArray(value)) return value.some((item) => hasForbiddenJsonMetadata(item, metadataValue));
+  if (value && typeof value === 'object') {
+    return Object.entries(value).some(([key, nested]) =>
+      includesForbiddenMetadata(key) || hasForbiddenJsonMetadata(nested, metadataValue || isMetadataKey(key))
+    );
   }
+  return metadataValue && typeof value === 'string' && includesForbiddenMetadata(value);
+}
+
+function inspectBody(text, checkName, contentType) {
+  let forbidden = includesForbiddenMetadata(text);
+  if (contentType.toLowerCase().includes('application/json')) {
+    try {
+      forbidden = hasForbiddenJsonMetadata(JSON.parse(text));
+    } catch {}
+  }
+  if (forbidden) throw new Error(`forbidden provider metadata in ${checkName}`);
 }
 
 async function readBody(response, checkName) {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.toLowerCase().includes('application/pdf')) {
     const bytes = new Uint8Array(await response.arrayBuffer());
-    inspectBody(new TextDecoder().decode(bytes), checkName);
+    inspectBody(new TextDecoder().decode(bytes), checkName, contentType);
     return { bytes };
   }
   const text = await response.text();
-  inspectBody(text, checkName);
+  inspectBody(text, checkName, contentType);
   return { text };
 }
 

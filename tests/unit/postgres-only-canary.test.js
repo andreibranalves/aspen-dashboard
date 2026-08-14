@@ -86,6 +86,39 @@ test('uses POST only for login and keeps every business check read-only', async 
   assert.equal(publicCall.headers?.Cookie, undefined);
 });
 
+test('allows historical provider words in non-metadata values', async () => {
+  await runCanary({
+    env: validCanaryEnv(),
+    fetchImpl: canaryFetch({
+      'GET /api/quotations?id=ORC-1': globalThis.Response.json({
+        id: 'ORC-1',
+        revision_id: 'revision-1',
+        template_key: ['fra', 'ppe'].slice(0, 2).join(''),
+        revision_history: [{ template_key: ['fra', 'ppe'].slice(0, 2).join('') }],
+      }),
+    }),
+  });
+});
+
+test('fails on nested and camel-case provider metadata', async () => {
+  const marker = ['fra', 'ppe'].slice(0, 2).join('');
+  for (const payload of [
+    { provider: { name: marker } },
+    { providerName: marker },
+    { sourceDetail: marker },
+    { Provider: marker },
+    { SOURCE: marker },
+  ]) {
+    await assert.rejects(
+      runCanary({
+        env: validCanaryEnv(),
+        fetchImpl: canaryFetch({ 'GET /api/products?limit=1': globalThis.Response.json(payload) }),
+      }),
+      /forbidden provider metadata/,
+    );
+  }
+});
+
 test('fails on every forbidden provider marker', async () => {
   const markers = [
     ['fra', 'ppe'],
