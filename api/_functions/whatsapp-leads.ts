@@ -440,8 +440,8 @@ export function isLikelyAttendantName(
 }
 
 export function resolveWhatsappDisplayName(
-  extracted: Record<string, any>,
-  snapshot: Record<string, any>,
+  extracted: Record<string, unknown>,
+  snapshot: Record<string, unknown>,
   fallbackPhone: string
 ): string {
   const preferred = [
@@ -478,7 +478,7 @@ export function formatLeadText(lead: Record<string, unknown>): string {
   return lines.join('\n');
 }
 
-export function getWhatsappLeadQuality(lead: Record<string, any>): {
+export function getWhatsappLeadQuality(lead: Record<string, unknown>): {
   isReady: boolean;
   missingFields: string[];
   statusLabel: string;
@@ -495,11 +495,11 @@ export function getWhatsappLeadQuality(lead: Record<string, any>): {
   return { isReady: false, missingFields, statusLabel: `Sem ${joined}` };
 }
 
-export function shouldIncludeWhatsappLead(lead: Record<string, any>): boolean {
+export function shouldIncludeWhatsappLead(lead: Record<string, unknown>): boolean {
   return getWhatsappLeadQuality(lead).isReady;
 }
 
-function leadIdentityKeys(value: Record<string, any>): string[] {
+function leadIdentityKeys(value: Record<string, unknown>): string[] {
   const keys: string[] = [];
   const phone = normalizeComparablePhone(value.telefone);
   const email = normalizeLeadEmail(value.email);
@@ -510,7 +510,7 @@ function leadIdentityKeys(value: Record<string, any>): string[] {
   return keys;
 }
 
-function stableLeadKey(value: Record<string, any>): string {
+function stableLeadKey(value: Record<string, unknown>): string {
   return [
     cleanText(value.id, 200),
     cleanText(value.nome, 200),
@@ -523,15 +523,15 @@ function stableLeadKey(value: Record<string, any>): string {
   ].join('|');
 }
 
-function compareLeadSnapshots(a: Record<string, any>, b: Record<string, any>): number {
+function compareLeadSnapshots(a: Record<string, unknown>, b: Record<string, unknown>): number {
   return timestampValue(b.timestamp) - timestampValue(a.timestamp) ||
     cleanText(a.id, 200).localeCompare(cleanText(b.id, 200)) ||
     stableLeadKey(a).localeCompare(stableLeadKey(b));
 }
 
-function leadProjection(value: Record<string, any>): Record<string, any> {
+function leadProjection(value: Record<string, unknown>): Record<string, unknown> {
   const quotationId = safeQuotationReference(value.quotationId);
-  const projected: Record<string, any> = {
+  const projected: Record<string, unknown> = {
     id: cleanText(value.id, 200),
     nome: cleanText(value.nome, 200),
     telefone: normalizeSnapshotPhone(value.telefone),
@@ -550,9 +550,9 @@ function leadProjection(value: Record<string, any>): Record<string, any> {
   return projected;
 }
 
-function mergeLeadComponent(component: Record<string, any>[]): Record<string, any> {
+function mergeLeadComponent(component: Record<string, unknown>[]): Record<string, unknown> {
   const ordered = component.map(leadProjection).sort(compareLeadSnapshots);
-  const merged: Record<string, any> = { ...(ordered[0] || {}) };
+  const merged: Record<string, unknown> = { ...(ordered[0] || {}) };
   for (const field of ['nome', 'resumo', 'produto', 'quantidade'] as const) {
     if (!merged[field]) {
       const source = ordered.find((candidate) => candidate[field]);
@@ -569,9 +569,9 @@ function mergeLeadComponent(component: Record<string, any>[]): Record<string, an
 }
 
 export function prioritizeWhatsappLeads(
-  leads: Record<string, any>[],
+  leads: Record<string, unknown>[],
   limit: number = MAX_LEADS
-): Record<string, any>[] {
+): Record<string, unknown>[] {
   const projected = leads.map(leadProjection);
   const parents = projected.map((_, index) => index);
   const find = (index: number): number => {
@@ -597,7 +597,7 @@ export function prioritizeWhatsappLeads(
       else union(previous, index);
     }
   });
-  const components = new Map<number, Record<string, any>[]>();
+  const components = new Map<number, Record<string, unknown>[]>();
   projected.forEach((lead, index) => {
     const root = find(index);
     const component = components.get(root);
@@ -617,9 +617,15 @@ function safeQuotationReference(value: unknown): string {
     : '';
 }
 
+type ConvertedQuotationIndex = {
+  phones: ReadonlyMap<string, unknown>;
+  emails: ReadonlyMap<string, unknown>;
+  names: ReadonlyMap<string, unknown>;
+};
+
 export function findConvertedQuotation(
-  lead: Record<string, any>,
-  converted: Record<string, any>
+  lead: Record<string, unknown>,
+  converted: ConvertedQuotationIndex
 ): string {
   const phone = normalizeComparablePhone(lead.telefone);
   if (phone && converted?.phones?.has(phone)) return safeQuotationReference(converted.phones.get(phone));
@@ -813,7 +819,7 @@ export function createHandler(deps: WhatsappLeadsDeps = {}): (event: FunctionEve
       const candidates = (await mapWithConcurrency(
         conversations,
         MAX_EXTRACTION_CONCURRENCY,
-        async (item): Promise<Record<string, any> | null> => {
+        async (item): Promise<Record<string, unknown> | null> => {
           const conversation = snapshotConversation(item);
           if (!conversation || !isValidBrazilWhatsappPhone(conversation.canonicalPhone)) return null;
           if (conversation.identityStatus !== 'verified' && conversation.identityStatus !== 'derived') return null;
@@ -842,7 +848,7 @@ export function createHandler(deps: WhatsappLeadsDeps = {}): (event: FunctionEve
             quantidade: extractedProjection.quantidade,
           });
         },
-      )).filter((candidate): candidate is Record<string, any> => candidate !== null);
+      )).filter((candidate): candidate is Record<string, unknown> => candidate !== null);
       return jsonResponse(200, { success: true, data: prioritizeWhatsappLeads(candidates) });
     } catch (error: unknown) {
       const record = typeof error === 'object' && error !== null ? error as Record<string, unknown> : {};

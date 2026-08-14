@@ -239,10 +239,12 @@ export function createHandler(
         quote_lead: { id: quoteLead.id, status: quoteLead.status },
         meta_capi: metaResult,
       });
-    } catch (err: any) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error('[typebot-lead-capture]', err?.logMessage || err?.message || err);
-      return jsonResponse(code, { error: err?.message || 'Erro interno.' });
+    } catch (err: unknown) {
+      const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+      const message = typeof details.message === 'string' ? details.message : 'Erro interno.';
+      console.error('[typebot-lead-capture]', details.logMessage || details.message || err);
+      return jsonResponse(code, { error: message });
     }
   };
 }

@@ -16,11 +16,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
       body: html,
     };
-  } catch (err: any) {
-    if (err?.statusCode === 404) {
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    if (details.statusCode === 404) {
       return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
     }
-    console.error('[view]', err?.message || err);
+    console.error('[view]', details.message || err);
     return { statusCode: 502, headers: { 'Content-Type': 'text/plain' }, body: 'Erro ao buscar orçamento' };
   }
 }

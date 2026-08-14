@@ -369,8 +369,7 @@ test('closes Unicode-escaped static-constructor identifiers and aliases', () => 
     assert.equal(result.status, 1);
     for (const line of [1, 2, 3, 4, 5, 7, 9])
       assert.match(result.stderr, new RegExp(`src/unicode-constructors\\.ts:${line}:provider name`));
-    for (const line of [8, 10])
-      assert.match(result.stderr, new RegExp(`src/unicode-constructors\\.ts:0:unsupported static string construction`));
+    assert.match(result.stderr, /src\/unicode-constructors\.ts:0:unsupported static string construction/);
   });
 });
 

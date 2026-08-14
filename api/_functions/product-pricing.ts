@@ -129,7 +129,7 @@ export async function resolveProductPricing(sku: string): Promise<Record<string,
 export async function saveProductPricing(
   sku: string,
   precos: Record<string, unknown>[],
-): Promise<Record<string, any>> {
+): Promise<Record<string, unknown>> {
   const repository = createPostgresPricingRepository();
   const current = await repository.get(sku);
   if (!current) {

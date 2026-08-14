@@ -22,6 +22,36 @@ import {
   type PostgresMediaRecord,
 } from './lib/postgres-media.js';
 
+type CommunicationFlowContext = Record<string, unknown> & {
+  Saudacao?: string;
+  nome?: string;
+  link?: string;
+  vendorName?: string;
+  empresa?: string;
+  productSummary?: string;
+  categories?: string[];
+  productPersonalizationAdjective?: string;
+  quotationId?: string;
+};
+
+type CommunicationFlowStep = Record<string, unknown> & {
+  type?: string;
+  template?: string;
+  source?: string;
+  caption?: string;
+  caption_template?: string;
+  max_items?: number;
+};
+
+type CommunicationFlow = Record<string, unknown> & {
+  steps?: CommunicationFlowStep[];
+  max_media_per_product_group?: number;
+};
+
+function errorDetails(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
 // ── Template rendering ─────────────────────────────────────────────────────
 
 function normalizeProductSummaryTemplate(template: unknown): string {
@@ -49,7 +79,7 @@ function productPersonalizationAdjectiveFromCategories(categories: string[] = []
 
 export function renderTemplate(
   template: string,
-  context: Record<string, any>,
+  context: CommunicationFlowContext,
   applicationOrigin = '',
 ): string {
   const ctx = { ...context };
@@ -110,7 +140,7 @@ const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   cachecol: 'm',
 };
 
-function detectCategories(items: Record<string, any>[] = []): string[] {
+function detectCategories(items: Record<string, unknown>[] = []): string[] {
   const categories: string[] = [];
   for (const item of items || []) {
     const sku = String(item?.sku || item?.item_code || item?.itemCode || '')
@@ -151,7 +181,7 @@ async function resolvePostgresQuotationContext(
   quotationId: string,
   revisionId: string,
   repository = createQuotationTemplateRepository(),
-): Promise<Record<string, any> | null> {
+): Promise<CommunicationFlowContext | null> {
   const snapshot = await repository.get(revisionId);
   if (!snapshot || snapshot.revision.id !== revisionId) return null;
   if (quotationId !== snapshot.quotation.id && quotationId !== snapshot.quotation.businessNumber) return null;
@@ -160,7 +190,7 @@ async function resolvePostgresQuotationContext(
   const items = (view.items || []) as Record<string, unknown>[];
   const categories = detectCategories(items);
   return {
-    nome: client.name || client.nome || '',
+    nome: String(client.name || client.nome || ''),
     quotationId: snapshot.quotation.businessNumber,
     link: '',
     vendorName: 'Juliana',
@@ -237,7 +267,7 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export type CommunicationFlowPreviewDependencies = {
-  resolveFlow?: (flowId: string) => Promise<Record<string, any> | null>;
+  resolveFlow?: (flowId: string) => Promise<CommunicationFlow | null>;
   resolvePostgresContext?: typeof resolvePostgresQuotationContext;
   resolveMedia?: typeof resolveMediaUrls;
   headBlob?: BlobHead;
@@ -281,7 +311,7 @@ export async function handler(
     const applicationOrigin = `${proto}://${host}`;
 
     // Resolve flow
-    let flow = null;
+    let flow: CommunicationFlow | null = null;
     if (flowId && !dependencies.resolveFlow) {
       try {
         const flows = await kv.get(KV_KEY_FLOWS);
@@ -359,7 +389,7 @@ export async function handler(
           )) {
             const caption = step.caption_template
               ? renderTemplate(step.caption_template, context, applicationOrigin).trim()
-              : m.caption || '';
+              : typeof m.caption === 'string' ? m.caption : '';
             previewSteps.push({
               type: m.kind === 'video' ? 'video' : 'image',
               url: m.url,
@@ -386,9 +416,11 @@ export async function handler(
       steps: previewSteps,
       warnings,
     });
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[comm-flow-preview]', err?.logMessage || err?.message || err);
-    return jsonResponse(code, { error: err?.message || 'Erro ao gerar preview.' });
+  } catch (err: unknown) {
+    const details = errorDetails(err);
+    const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+    const message = typeof details.message === 'string' ? details.message : 'Erro ao gerar preview.';
+    console.error('[comm-flow-preview]', details.logMessage || details.message || err);
+    return jsonResponse(code, { error: message });
   }
 }

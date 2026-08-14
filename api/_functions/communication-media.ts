@@ -40,7 +40,7 @@ import {
 // ---------------------------------------------------------------------------
 // Path extraction
 
-function extractId(event: Record<string, any>): string | null {
+function extractId(event: FunctionEvent & { rawUrl?: string }): string | null {
   const queryId = String(event.queryStringParameters?.id || '').trim();
   if (queryId) return queryId;
 
@@ -58,11 +58,11 @@ function extractId(event: Record<string, any>): string | null {
 // KV helpers
 
 export type MediaKvStore = {
-  eval: (...args: any[]) => Promise<any>;
-  get: (...args: any[]) => Promise<any>;
-  set: (...args: any[]) => Promise<any>;
-  scan: (...args: any[]) => Promise<any>;
-  del: (...args: any[]) => Promise<any>;
+  eval: (...args: unknown[]) => Promise<unknown>;
+  get: (...args: unknown[]) => Promise<unknown>;
+  set: (...args: unknown[]) => Promise<unknown>;
+  scan: (...args: unknown[]) => Promise<unknown>;
+  del: (...args: unknown[]) => Promise<unknown>;
 };
 
 const MEDIA_LUA_VERSION_LOOKUP = MEDIA_INTERNAL_VERSION_ALIASES
@@ -521,10 +521,11 @@ function errorLog(error: unknown): string {
   return String(error);
 }
 
-function errorResult(error: any, fallback: string, fallbackStatus = 503): FunctionResult {
-  const known = Number.isInteger(error?.statusCode);
-  return jsonResponse(known ? error.statusCode : fallbackStatus, {
-    error: known && typeof error?.message === 'string' ? error.message : fallback,
+function errorResult(error: unknown, fallback: string, fallbackStatus = 503): FunctionResult {
+  const details = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+  const known = Number.isInteger(details.statusCode);
+  return jsonResponse(known ? Number(details.statusCode) : fallbackStatus, {
+    error: known && typeof details.message === 'string' ? details.message : fallback,
   });
 }
 
@@ -598,7 +599,7 @@ export async function handler(
   }
 
   if (method === 'POST') {
-    let payload: Record<string, any>;
+    let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(event.body || '{}');
     } catch {
@@ -650,7 +651,7 @@ export async function handler(
   }
 
   if (method === 'PUT' && id) {
-    let payload: Record<string, any>;
+    let payload: Record<string, unknown>;
     try {
       payload = JSON.parse(event.body || '{}');
     } catch {

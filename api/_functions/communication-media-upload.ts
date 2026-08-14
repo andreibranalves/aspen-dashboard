@@ -29,6 +29,10 @@ const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   body: JSON.stringify(body),
 });
 
+function errorDetails(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
 // ── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
@@ -100,9 +104,11 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
     });
 
     return jsonResponse(200, result);
-  } catch (err: any) {
-    const code = Number.isInteger(err?.statusCode) ? err.statusCode : 400;
-    console.error('[comm-media-upload]', err?.logMessage || err?.message || err);
-    return jsonResponse(code, { error: err?.message || 'Erro ao gerar token de upload.' });
+  } catch (err: unknown) {
+    const details = errorDetails(err);
+    const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 400;
+    const message = typeof details.message === 'string' ? details.message : 'Erro ao gerar token de upload.';
+    console.error('[comm-media-upload]', details.logMessage || details.message || err);
+    return jsonResponse(code, { error: message });
   }
 }

@@ -24,6 +24,10 @@ function createHttpError(statusCode: number, publicMessage: string, logMessage?:
   return error;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function parseJsonSafely(raw: unknown): Record<string, unknown> | null {
   try { return JSON.parse(raw as string); } catch { return null; }
 }
@@ -35,12 +39,15 @@ function unwrapJsonText(raw: unknown): string {
 }
 
 function extractAssistantText(data: Record<string, unknown>): string {
-  const content: unknown = (data as any)?.choices?.[0]?.message?.content;
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  const firstChoice = isRecord(choices[0]) ? choices[0] : {};
+  const message = isRecord(firstChoice.message) ? firstChoice.message : {};
+  const content = message.content;
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
-      .filter((part: any) => part?.type === 'text' && typeof part.text === 'string')
-      .map((part: any) => part.text)
+      .filter((part) => isRecord(part) && part.type === 'text' && typeof part.text === 'string')
+      .map((part) => isRecord(part) ? String(part.text) : '')
       .join('');
   }
   return '';
@@ -162,13 +169,15 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ proposed }),
     };
-  } catch (err: any) {
-    const statusCode = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-    console.error('[edit-draft]', err?.logMessage || err?.message || err);
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    const statusCode = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+    const message = typeof details.message === 'string' ? details.message : 'Erro interno na edição.';
+    console.error('[edit-draft]', details.logMessage || details.message || err);
     return {
       statusCode,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err?.message || 'Erro interno na edição.' }),
+      body: JSON.stringify({ error: message }),
     };
   }
 }

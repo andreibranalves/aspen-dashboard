@@ -30,11 +30,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       body: buffer.toString('base64'),
       isBase64Encoded: true,
     };
-  } catch (err: any) {
-    if (err?.statusCode === 404 || err?.code === 'NOT_FOUND') {
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    if (details.statusCode === 404 || details.code === 'NOT_FOUND') {
       return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
     }
-    console.error('[pdf]', err?.message || err);
+    console.error('[pdf]', details.message || err);
     return { statusCode: 502, headers: { 'Content-Type': 'text/plain' }, body: 'Erro ao gerar PDF' };
   }
 }

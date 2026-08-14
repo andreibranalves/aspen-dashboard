@@ -276,10 +276,7 @@ export class MediaStoreReadError extends Error {
   }
 }
 
-type MediaCatalogStore = {
-  scan: (...args: any[]) => Promise<any>;
-  get: (...args: any[]) => Promise<any>;
-};
+type MediaCatalogStore = Pick<typeof kv, 'scan' | 'get'>;
 
 function parseMediaCatalogRecord(value: unknown): PostgresMediaRecord | null {
   if (typeof value === 'string') {

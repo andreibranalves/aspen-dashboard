@@ -69,8 +69,10 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       total: items.length,
       source: 'kv',
     });
-  } catch (err: any) {
-    console.error('[comm-send-events]', err?.logMessage || err?.message || err);
-    return jsonResponse(500, { error: err?.message || 'Erro ao listar histórico.' });
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    const message = typeof details.message === 'string' ? details.message : 'Erro ao listar histórico.';
+    console.error('[comm-send-events]', details.logMessage || details.message || err);
+    return jsonResponse(500, { error: message });
   }
 }

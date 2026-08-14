@@ -112,6 +112,38 @@ const CATEGORY_ALIASES: Record<string, string> = {
 
 const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
 
+type FlowContext = {
+  nome?: string;
+  quotationId?: string;
+  link?: string;
+  pdfBase64?: string;
+  postgresPath?: boolean;
+  applicationOrigin?: string;
+  permittedMedia: string[];
+  vendorName?: string;
+  productSummary?: string;
+  productPersonalizationAdjective?: string;
+  categories: string[];
+  maxMediaPerGroup?: number;
+};
+
+type FlowStep = Record<string, unknown> & {
+  type?: string;
+  template?: string;
+  source?: string;
+  caption?: string;
+  max_items?: number;
+};
+
+type FlowRecord = Record<string, unknown> & {
+  steps?: FlowStep[];
+  vendor_name?: string;
+  max_media_per_product_group?: number;
+  delay_min_seconds?: number;
+  delay_max_seconds?: number;
+  name?: string;
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const jsonResponse: JsonResponseFn = (statusCode, body) => ({
@@ -163,14 +195,14 @@ function pluralizeProductCategory(category: string): string {
   return PRODUCT_SUMMARY_PLURALS[category] || category;
 }
 
-function productPersonalizationAdjectiveFromCategories(categories = []) {
+function productPersonalizationAdjectiveFromCategories(categories: string[] = []): string {
   const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
   return genders.length > 0 && genders.every((gender) => gender === 'f')
     ? 'personalizadas'
     : 'personalizados';
 }
 
-function renderTemplate(template: string, context: Record<string, any>): string {
+function renderTemplate(template: string, context: FlowContext): string {
   const saudacao = getTimeBasedGreeting();
   const nome = context.nome || '';
   const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
@@ -531,7 +563,7 @@ async function recordSendEvent({
 
 // ── Flow resolution ────────────────────────────────────────────────────────
 
-async function resolveFlow(flowId: string): Promise<Record<string, any> | null> {
+async function resolveFlow(flowId: string): Promise<FlowRecord | null> {
   try {
     const flows = await kv.get(KV_KEY_FLOWS);
     if (Array.isArray(flows)) {
@@ -559,8 +591,8 @@ function publicFlowStep(step: Record<string, unknown>): Record<string, unknown> 
 }
 
 async function buildSteps(
-  flow: Record<string, any>,
-  context: Record<string, any>,
+  flow: FlowRecord,
+  context: FlowContext,
   mediaResolver: typeof resolveProductMedia = resolveProductMedia,
 ): Promise<Record<string, unknown>[]> {
   const steps: Record<string, unknown>[] = [];
@@ -639,7 +671,7 @@ export type SendWhatsappFlowDependencies = {
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
   resolveDeal?: Parameters<typeof loadPostgresSendContext>[0]['resolveDeal'];
   resolveMedia?: typeof resolveProductMedia;
-  resolveFlow?: (flowId: string) => Promise<Record<string, any> | null>;
+  resolveFlow?: (flowId: string) => Promise<FlowRecord | null>;
   checkDuplicate?: typeof checkDuplicate;
   recordSendEvent?: typeof recordSendEvent;
   reservationStore?: WhatsappSendReservationStore;
@@ -835,7 +867,7 @@ export async function handler(
 ): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') return jsonResponse(405, { error: 'Método não permitido.' });
 
-  let payload: Record<string, any>;
+  let payload: Record<string, unknown>;
   try {
     const parsed = JSON.parse(event.body || '{}');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('object');
@@ -1015,7 +1047,10 @@ export async function handler(
     if (!dryRun) {
       await dependencies.beforeTransport?.(reservationKey);
       for (let index = 0; index < steps.length; index += 1) {
-        if (index > 0) await wait(randomDelay(flow.delay_min_seconds * 1000, flow.delay_max_seconds * 1000));
+        if (index > 0) await wait(randomDelay(
+          Number(flow.delay_min_seconds || 0) * 1000,
+          Number(flow.delay_max_seconds || 0) * 1000,
+        ));
         if (!reservation) throw new WhatsappSendReservationStorageError();
         const transporting = await casWithRetry(reservationStore, {
           key: reservation.key,

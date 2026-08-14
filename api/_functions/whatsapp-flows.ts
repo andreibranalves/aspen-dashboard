@@ -116,8 +116,9 @@ async function readFlows() {
       };
     }
     return null;
-  } catch (err: any) {
-    console.warn('[whatsapp-flows] KV read failed:', err.message);
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    console.warn('[whatsapp-flows] KV read failed:', details.message || err);
     return null;
   }
 }
@@ -128,11 +129,12 @@ async function writeFlows(flows: unknown[], selectedFlowId: string): Promise<voi
   }
   try {
     await Promise.all([kv.set(KV_KEY_FLOWS, flows), kv.set(KV_KEY_SELECTED, selectedFlowId)]);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
     throw createHttpError(
       500,
       'Falha ao salvar fluxos.',
-      `[whatsapp-flows] KV write failed: ${err.message}`
+      `[whatsapp-flows] KV write failed: ${String(details.message || err)}`
     );
   }
 }
@@ -169,8 +171,9 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
           source: 'defaults',
         }),
       };
-    } catch (err: any) {
-      console.error('[whatsapp-flows] GET error:', err.message);
+    } catch (err: unknown) {
+      const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+      console.error('[whatsapp-flows] GET error:', details.message || err);
       return {
         statusCode: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -208,13 +211,15 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ success: true, source: 'kv' }),
       };
-    } catch (err: any) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error('[whatsapp-flows]', err?.logMessage || err?.message || err);
+    } catch (err: unknown) {
+      const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+      const message = typeof details.message === 'string' ? details.message : 'Erro ao salvar fluxos.';
+      console.error('[whatsapp-flows]', details.logMessage || details.message || err);
       return {
         statusCode: code,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: err?.message || 'Erro ao salvar fluxos.' }),
+        body: JSON.stringify({ error: message }),
       };
     }
   }

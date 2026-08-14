@@ -108,12 +108,14 @@ export function createHandler(repository: QuoteLeadRepository = LIVE_REPOSITORY)
       }
 
       return jsonResponse(405, { error: 'Método não permitido.' });
-    } catch (err: any) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error('[quote-leads]', err?.logMessage || err?.message || err);
-      return jsonResponse(code, {
-        error: err?.message || 'Erro interno ao buscar leads de orçamento.',
-      });
+    } catch (err: unknown) {
+      const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+      const message = typeof details.message === 'string'
+        ? details.message
+        : 'Erro interno ao buscar leads de orçamento.';
+      console.error('[quote-leads]', details.logMessage || details.message || err);
+      return jsonResponse(code, { error: message });
     }
   };
 }

@@ -990,10 +990,6 @@ export function createPostgresQuoteDraftRepository(
           requestFreight === undefined
             ? parseNonNegativeMoney(settings.frete_padrao, 'Frete')
             : parseNonNegativeMoney(requestFreight, 'Frete');
-        const observations =
-          requestObservations === undefined
-            ? settings.observacoes
-            : inputText(requestObservations, 'Observações', 4000);
         const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
         const resolvedItems: Array<{
           id: string;

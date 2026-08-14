@@ -9,7 +9,7 @@ import { getQuotationTemplate, renderQuotationTemplate } from '../_functions/lib
 import { renderQuotationPdf } from '../_functions/lib/quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from '../_functions/lib/quotation-document-storage.js';
 import { normalizeProductPricing, resolveProductPrice, formatMoneyCents, parseMoneyCents, parseScaledInteger, PricingUnavailableError, PricingValidationError } from '../_functions/pricing-core.js';
-import { createQuotationSectionsSnapshot, normalizeQuotationSections, type QuotationSectionsSnapshot } from './quotation-content.js';
+import { normalizeQuotationSections, type QuotationSectionsSnapshot } from './quotation-content.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 import { convertQuoteLeadInTransaction } from './quote-leads-repository.js';
 

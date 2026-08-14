@@ -15,6 +15,12 @@ import {
   STEP_TYPES,
 } from '../_lib/media-schema.js';
 
+type FlowRecord = Record<string, unknown>;
+
+function errorDetails(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
 // ── Default flows (matching DEFAULT_WA_FLOWS but with product_media) ────────
 
 const DEFAULT_FLOWS = [
@@ -94,11 +100,12 @@ function normalizeProductSummaryTemplate(template: unknown): string {
     : String(template || '');
 }
 
-function migrateStep(step: Record<string, any>): Record<string, any> | null {
-  if (!step || !['text', STEP_TYPES.DOCUMENT, STEP_TYPES.PRODUCT_MEDIA].includes(step.type)) {
+function migrateStep(step: FlowRecord): FlowRecord | null {
+  const type = typeof step.type === 'string' ? step.type : '';
+  if (!step || !['text', STEP_TYPES.DOCUMENT, STEP_TYPES.PRODUCT_MEDIA].includes(type)) {
     return null;
   }
-  const normalized: Record<string, any> = {
+  const normalized: FlowRecord = {
     ...step,
     template: normalizeProductSummaryTemplate(step.template),
     id: step.id || `step_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
@@ -109,7 +116,7 @@ function migrateStep(step: Record<string, any>): Record<string, any> | null {
   return normalized;
 }
 
-function migrateFlow(flow: Record<string, any>): Record<string, any> {
+function migrateFlow(flow: FlowRecord): FlowRecord {
   const migrated = createFlow({
     ...flow,
     steps: Array.isArray(flow.steps)
@@ -135,23 +142,25 @@ async function readFlows() {
       selectedFlowId: selectedFlowId || normalized[0]?.id || null,
       source: 'kv',
     };
-  } catch (err: any) {
-    console.warn('[communication-flows] KV read failed:', err.message);
+  } catch (err: unknown) {
+    const details = errorDetails(err);
+    console.warn('[communication-flows] KV read failed:', details.message || err);
     return null;
   }
 }
 
-async function writeFlows(flows: Record<string, any>[], selectedFlowId: string): Promise<void> {
+async function writeFlows(flows: FlowRecord[], selectedFlowId: string): Promise<void> {
   try {
     await Promise.all([
       kv.set(KV_KEY_FLOWS, flows),
       kv.set(KV_KEY_FLOWS_SELECTED, selectedFlowId || ''),
     ]);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const details = errorDetails(err);
     throw createHttpError(
       500,
       'Falha ao salvar fluxos.',
-      `[communication-flows] KV write failed: ${err.message}`
+      `[communication-flows] KV write failed: ${String(details.message || err)}`
     );
   }
 }
@@ -189,10 +198,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         selectedFlowId: DEFAULT_FLOWS[0].id,
         source: 'defaults',
       });
-    } catch (err: any) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error('[communication-flows]', err?.logMessage || err?.message || err);
-      return jsonResponse(code, { error: err?.message || 'Erro ao carregar fluxos.' });
+    } catch (err: unknown) {
+      const details = errorDetails(err);
+      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+      const message = typeof details.message === 'string' ? details.message : 'Erro ao carregar fluxos.';
+      console.error('[communication-flows]', details.logMessage || details.message || err);
+      return jsonResponse(code, { error: message });
     }
   }
 
@@ -217,10 +228,12 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
       );
       await writeFlows(normalized, selectedFlowId || normalized[0]?.id || '');
       return jsonResponse(200, { success: true, source: 'kv' });
-    } catch (err: any) {
-      const code = Number.isInteger(err?.statusCode) ? err.statusCode : 500;
-      console.error('[communication-flows]', err?.logMessage || err?.message || err);
-      return jsonResponse(code, { error: err?.message || 'Erro ao salvar fluxos.' });
+    } catch (err: unknown) {
+      const details = errorDetails(err);
+      const code = Number.isInteger(details.statusCode) ? Number(details.statusCode) : 500;
+      const message = typeof details.message === 'string' ? details.message : 'Erro ao salvar fluxos.';
+      console.error('[communication-flows]', details.logMessage || details.message || err);
+      return jsonResponse(code, { error: message });
     }
   }
 
