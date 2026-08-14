@@ -207,9 +207,9 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(pendingBefore?.secoes);
     const reorderedSectionBases = globalThis.structuredClone(pendingBefore.secoes);
     for (const key of ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const) {
-      reorderedSectionBases[key].base = Object.fromEntries(
-        Object.entries(reorderedSectionBases[key].base).reverse(),
-      );
+      const base = reorderedSectionBases[key].base;
+      const reorderedBase = Object.fromEntries(Object.entries(base).reverse()) as typeof base;
+      reorderedSectionBases[key].base = reorderedBase;
     }
     const reorderedBaseUpdate = await managementUpdate(pendingDraft.quotation_name, {
       concurrency_token: pendingBefore.concurrency_token,
