@@ -31,9 +31,9 @@ interface PricingRef {
   ii: number;
 }
 
-export function useExtractionDrafts() {
+export function useExtractionDrafts(initialDrafts: Draft[] = []) {
   // ── State ──
-  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [drafts, setDrafts] = useState<Draft[]>(initialDrafts);
   const [productSearch, setProductSearch] = useState<Record<number, ProductSearchEntry>>({});
   const productTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -292,14 +292,14 @@ export function useExtractionDrafts() {
 
   // ── Refetch pricing for a single draft (e.g. after qty change) ──
   const refetchDraftPricing = useCallback(
-    async (draftIdx: number) => {
+    async (draftIdx: number): Promise<Draft | undefined> => {
       const current = await new Promise<Draft | undefined>(resolve => {
         setDrafts(prev => {
           resolve(prev.find(d => d.index === draftIdx));
           return prev;
         });
       });
-      if (!current) return;
+      if (!current) return undefined;
       const priced = await fetchPricing([{ ...current }], current.edited.urgente);
       setDrafts(prev => {
         const idx = prev.findIndex(d => d.index === draftIdx);
@@ -308,6 +308,7 @@ export function useExtractionDrafts() {
         next[idx] = priced[0];
         return next;
       });
+      return priced[0];
     },
     [fetchPricing],
   );

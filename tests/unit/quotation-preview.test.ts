@@ -23,6 +23,10 @@ const extracted = {
   ],
 };
 
+async function pdfRender(html: string) { return Buffer.from('%PDF-1.7\n' + html + '\n%%EOF'); }
+
+function rendered(response: any) { return Buffer.from(response.body || '', 'base64').toString(); }
+
 function post(value: unknown) {
   return {
     httpMethod: 'POST',
@@ -34,41 +38,51 @@ function post(value: unknown) {
 
 test('renders an unsaved quotation draft as secured HTML without loading a snapshot', async () => {
   let snapshotReads = 0;
+  let writes = 0;
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => { snapshotReads += 1; return null; } },
     resolveDraftTemplate: async (key) => key === template.key ? template : null,
+    renderPdf: pdfRender,
+    recordWrite: async () => { writes += 1; },
     now: () => new Date('2026-08-11T12:00:00.000Z'),
   });
 
   const response = await handler(post({ extracted }));
 
   assert.equal(response.statusCode, 200);
-  assert.equal(response.headers?.['Content-Type'], 'text/html; charset=utf-8');
-  assert.match(response.headers?.['Content-Security-Policy'] || '', /script-src 'none'/);
-  assert.match(response.body || '', /Cliente Preview/);
-  assert.match(response.body || '', /Produto Preview/);
-  assert.match(response.body || '', /25,00/);
+  assert.equal(response.headers?.['Content-Type'], 'application/pdf');
+  assert.equal(response.isBase64Encoded, true);
+  assert.equal(response.headers?.['X-Content-Type-Options'], 'nosniff');
+  assert.equal(response.headers?.['Content-Disposition'], 'inline; filename="pre-visualizacao-orcamento.pdf"');
+  assert.equal(response.headers?.['Cache-Control'], 'no-store');
+  assert.match(rendered(response), /Pré-visualização/);
+  assert.match(rendered(response), /Cliente Preview/);
+  assert.match(rendered(response), /Produto Preview/);
+  assert.match(rendered(response), /25,00/);
   assert.equal(snapshotReads, 0);
+  assert.equal(writes, 0);
 });
 
 test('applies urgent markup to non-manual item prices', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const response = await handler(
     post({ extracted: { ...extracted, urgente: true, items: [{ ...extracted.items[0], qty: 1, rate: 10 }] } })
   );
 
   assert.equal(response.statusCode, 200);
-  assert.match(response.body || '', /R\$ 13,00/);
-  assert.match(response.body || '', /Total<\/span><span>R\$ 13,00/);
+  assert.match(rendered(response), /R\$ 13,00/);
+  assert.match(rendered(response), /Total<\/span><span>R\$ 13,00/);
 });
 
 test('leaves urgent manual item prices unchanged', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const response = await handler(
     post({
@@ -81,14 +95,15 @@ test('leaves urgent manual item prices unchanged', async () => {
   );
 
   assert.equal(response.statusCode, 200);
-  assert.match(response.body || '', /Total<\/span><span>R\$ 10,00/);
-  assert.doesNotMatch(response.body || '', /Total<\/span><span>R\$ 13,00/);
+  assert.match(rendered(response), /Total<\/span><span>R\$ 10,00/);
+  assert.doesNotMatch(rendered(response), /Total<\/span><span>R\$ 13,00/);
 });
 
 test('aggregates multi-line totals in exact cents', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const response = await handler(
     post({
@@ -103,13 +118,14 @@ test('aggregates multi-line totals in exact cents', async () => {
   );
 
   assert.equal(response.statusCode, 200);
-  assert.match(response.body || '', /Total<\/span><span>R\$ 0,30/);
+  assert.match(rendered(response), /Total<\/span><span>R\$ 0,30/);
 });
 
 test('rejects draft preview without a client name', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const response = await handler(post({ extracted: { ...extracted, nome: '' } }));
   assert.equal(response.statusCode, 400);
@@ -120,6 +136,7 @@ test('rejects non-number quantity and rate values', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const malformedValues: unknown[] = ['', false, [], null, {}];
   for (const field of ['qty', 'rate'] as const) {
@@ -142,6 +159,7 @@ test('rejects draft preview with an invalid template', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => null,
+    renderPdf: pdfRender,
   });
   const response = await handler(post({ extracted }));
   assert.equal(response.statusCode, 400);
@@ -152,6 +170,7 @@ test('rejects draft preview without valid items', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const response = await handler(post({ extracted: { ...extracted, items: [] } }));
   assert.equal(response.statusCode, 400);
@@ -168,6 +187,7 @@ test('preserves GET preview snapshot loading', async () => {
       },
     },
     resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
   });
   const response = await handler({
     httpMethod: 'GET',

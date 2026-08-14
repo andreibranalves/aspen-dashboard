@@ -9,6 +9,11 @@ import {
   WhatsappSendReservationStorageError,
 } from './lib/whatsapp-send-reservation-store.js';
 import { defaultWhatsappSendReservationStore } from './lib/whatsapp-send-reservation-store.js';
+import {
+  createPostgresQuotationDeliveryRepository,
+  type QuotationDelivery,
+  type QuotationDeliveryRepository,
+} from '../_db/quotation-delivery-repository.js';
 
 function json(statusCode: number, body: Record<string, unknown>): FunctionResult {
   return {
@@ -92,8 +97,36 @@ function publicStatus(record: WhatsappSendReservationRecord): Record<string, unk
   };
 }
 
+function deliveryStatus(delivery: QuotationDelivery, record?: WhatsappSendReservationRecord | null): Record<string, unknown> {
+  const activeLease = (delivery.state === 'pending' || delivery.state === 'transporting') && record;
+  return {
+    revision_id: delivery.revisionId,
+    flow_id: delivery.flowId,
+    phone: delivery.phone,
+    phase: activeLease
+      ? record.phase === 'reserved' ? 'pending' : record.phase
+      : delivery.state,
+    acceptance_id: delivery.providerAcceptanceId,
+    error: delivery.publicError,
+    read_only: delivery.readOnly,
+    resumable_until: delivery.resumableUntil.toISOString(),
+    updated_at: delivery.updatedAt.toISOString(),
+    ...(activeLease ? {
+      version: record.version,
+      steps_count: record.stepsCount,
+      current_step: record.currentStep ?? null,
+      accepted_step_numbers: record.acceptedSteps.map((step) => step.step),
+      accepted_step_count: record.acceptedSteps.length,
+    } : {}),
+  };
+}
+
 function malformedResponse(): FunctionResult {
   return json(503, { error: 'Estado de reconciliação inválido. Não é seguro continuar.' });
+}
+
+function reconciliationBody(): Record<string, unknown> {
+  return { error: 'A resolução não pôde ser sincronizada. Reconciliação necessária.', reconciliation_required: true };
 }
 
 async function strictRead(
@@ -164,6 +197,7 @@ function expectedVersion(body: Record<string, unknown>): number {
 
 export type WhatsappSendStatusDependencies = {
   reservationStore?: WhatsappSendReservationStore;
+  deliveryRepository?: Pick<QuotationDeliveryRepository, 'getByRevision' | 'recordState'>;
 };
 
 export async function handler(
@@ -174,18 +208,41 @@ export async function handler(
     return json(405, { error: 'Método não permitido.' });
   }
   const store = dependencies.reservationStore || defaultWhatsappSendReservationStore;
+  const useDefaultDeliveryRepository = !dependencies.deliveryRepository && !dependencies.reservationStore;
+  const deliveries = dependencies.deliveryRepository || createPostgresQuotationDeliveryRepository();
   let body: Record<string, unknown> = {};
   try {
     if (event.httpMethod !== 'GET') body = payloadObject(event);
     if (event.httpMethod !== 'GET') ensureSafeResolutionBody(body);
     const ids = identifiers(event, body);
-    let record = await strictRead(store, ids.key);
-    if (!record) return json(404, { error: 'Estado de envio não encontrado.' });
+    let record: WhatsappSendReservationRecord | null = null;
+    let leaseReadFailed = false;
+    const delivery = (dependencies.deliveryRepository || useDefaultDeliveryRepository)
+      ? await deliveries.getByRevision(ids.revisionId)
+      : null;
+    try {
+      record = await strictRead(store, ids.key);
+    } catch (error) {
+      leaseReadFailed = true;
+      if (!delivery || (delivery.state !== 'completed' && delivery.state !== 'reconciling')) throw error;
+    }
 
     if (event.httpMethod === 'GET') {
-      record = await staleReservedToRetryable(store, record);
-      return json(200, publicStatus(record));
+      if (!delivery && !record) return json(404, { error: 'Estado de envio não encontrado.' });
+      if (delivery && (delivery.flowId !== ids.flowId || (delivery.state === 'completed' || delivery.state === 'reconciling'))) {
+        return json(200, deliveryStatus(delivery));
+      }
+      if (record && !leaseReadFailed) record = await staleReservedToRetryable(store, record);
+      if (delivery) {
+        if (record?.phase === 'retryable' && delivery.state !== 'retryable') {
+          const updated = await deliveries.recordState({ revisionId: ids.revisionId, state: 'retryable', publicError: 'Falha antes do transporte.' });
+          return json(200, deliveryStatus(updated));
+        }
+        return json(200, deliveryStatus(delivery, record));
+      }
+      return json(200, publicStatus(record!));
     }
+    if (!record) return json(404, { error: 'Estado de envio não encontrado.' });
 
     const requestedTarget = body.resolution || body.target_phase || body.phase;
     const target = requestedTarget === 'reconciliation-closed' || requestedTarget === 'complete'
@@ -207,15 +264,31 @@ export async function handler(
       return json(409, { ...publicStatus(record), error: 'Este estado não pode ser resolvido manualmente.' });
     }
 
-    const result = await store.resolve({
-      key: ids.key,
-      expectedVersion: expectedVersion(body),
-      to: target,
-      confirmation: WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
-    });
+    const state = target === 'completed' ? 'completed' : 'retryable';
+    let updatedDelivery = delivery;
+    if (delivery) {
+      updatedDelivery = await deliveries.recordState({ revisionId: ids.revisionId, state });
+    }
+    let result;
+    try {
+      result = await store.resolve({
+        key: ids.key,
+        expectedVersion: expectedVersion(body),
+        to: target,
+        confirmation: WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
+      });
+    } catch {
+      if (delivery) {
+        await deliveries.recordState({ revisionId: ids.revisionId, state: 'reconciling', publicError: 'A resolução não pôde ser sincronizada. Reconciliação necessária.' }).catch(() => undefined);
+      }
+      return json(503, reconciliationBody());
+    }
     if (result.ok) {
       const resolved = parseWhatsappSendReservationRecord(result.record, ids.key);
-      return json(200, publicStatus(resolved));
+      return json(200, updatedDelivery ? deliveryStatus(updatedDelivery) : publicStatus(resolved));
+    }
+    if (delivery) {
+      await deliveries.recordState({ revisionId: ids.revisionId, state: 'reconciling', publicError: 'A resolução não pôde ser sincronizada. Reconciliação necessária.' }).catch(() => undefined);
     }
     const reread = await strictRead(store, ids.key);
     if (reread?.phase === 'completed' || reread?.phase === 'retryable') return json(409, publicStatus(reread));

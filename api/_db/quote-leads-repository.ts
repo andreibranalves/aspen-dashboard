@@ -56,7 +56,7 @@ export interface QuoteLeadRepositoryOptions {
 }
 
 type DatabaseProvider = () => AppDatabase;
-type QuoteLeadTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
+export type QuoteLeadTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 type QuoteLeadRow = typeof quoteLeads.$inferSelect;
 type CrmDealRow = typeof crmDeals.$inferSelect;
 type Timestamp = Date | string;
@@ -352,6 +352,34 @@ function cleanMergeInput(current: QuoteLeadRecord, patch: QuoteLeadPatch): Quote
   };
   if (patch.quotationId !== undefined) input.quotationId = patch.quotationId;
   return input;
+}
+
+/**
+ * Marks a lead as converted inside an already-open quotation transaction.
+ * The caller owns the transaction so a PDF or quotation write failure rolls
+ * this update back with the commercial aggregate.
+ */
+export async function convertQuoteLeadInTransaction(
+  transaction: QuoteLeadTransaction,
+  leadId: string,
+  quotationId: string,
+  timestamp: Date
+): Promise<void> {
+  if (!isUuid(leadId)) throw createHttpError(400, 'Identificador do lead inválido.');
+  if (!isUuid(quotationId)) throw createHttpError(400, 'Identificador do orçamento inválido.');
+  const [lead] = await transaction
+    .select()
+    .from(quoteLeads)
+    .where(eq(quoteLeads.id, leadId))
+    .for('update')
+    .limit(1);
+  if (!lead) throw createHttpError(404, 'Lead de orçamento não encontrado.');
+  if (lead.status === 'discarded') throw createHttpError(409, 'Lead de orçamento descartado não pode ser convertido.');
+  const updatedAt = strictAfter(timestamp, lead.updatedAt);
+  await transaction
+    .update(quoteLeads)
+    .set({ status: 'converted', quotationId, updatedAt })
+    .where(eq(quoteLeads.id, leadId));
 }
 
 export function createPostgresQuoteLeadRepository(

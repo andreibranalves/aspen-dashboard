@@ -21,6 +21,7 @@ import {
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
+import type { QuotationStatus } from '../_lib/quotation-status.js';
 
 /**
  * Global dashboard settings live in one deliberate singleton row. Keeping the
@@ -284,7 +285,9 @@ export const quotations = pgTable(
     clientId: uuid('client_id')
       .notNull()
       .references(() => clients.id),
-    status: varchar('status', { length: 32 }).notNull().default('rascunho'),
+    status: varchar('status', { length: 32 }).$type<QuotationStatus>().notNull().default('rascunho'),
+    issuedAt: timestamp('issued_at', { withTimezone: true }),
+    lossReason: text('loss_reason'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -297,7 +300,11 @@ export const quotations = pgTable(
     ),
     check(
       'quotations_status_check',
-      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`
+      sql`${table.status} IN ('rascunho', 'emitido', 'aprovado', 'perdido')`
+    ),
+    check(
+      'quotations_loss_reason_check',
+      sql`((${table.status} = 'perdido' AND ${table.lossReason} IS NOT NULL AND btrim(${table.lossReason}) <> '') OR (${table.status} <> 'perdido' AND ${table.lossReason} IS NULL))`
     ),
   ]
 );
@@ -313,8 +320,9 @@ export const quoteRevisions = pgTable(
       .notNull()
       .references(() => quotations.id, { onDelete: 'cascade' }),
     version: integer('version').notNull(),
-    status: varchar('status', { length: 32 }).notNull().default('rascunho'),
+    status: varchar('status', { length: 32 }).$type<QuotationStatus>().notNull().default('rascunho'),
     statusOriginal: varchar('status_original', { length: 64 }),
+    issuedAt: timestamp('issued_at', { withTimezone: true }),
     orderLinkage: varchar('order_linkage', { length: 32 }),
     orderPending: boolean('order_pending').notNull().default(false),
     validadeDias: integer('validade_dias').notNull(),
@@ -365,7 +373,52 @@ export const quoteRevisions = pgTable(
     ),
     check(
       'quote_revisions_status_check',
-      sql`${table.status} IN ('rascunho', 'enviado', 'aprovado', 'perdido')`
+      sql`${table.status} IN ('rascunho', 'emitido', 'aprovado', 'perdido')`
+    ),
+  ]
+);
+
+export const quotationIssueRequests = pgTable(
+  'quotation_issue_requests',
+  {
+    id: uuid('id').primaryKey(),
+    idempotencyKey: uuid('idempotency_key').notNull().unique(),
+    fingerprint: text('fingerprint').notNull(),
+    state: text('state').notNull(),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    publicError: text('public_error'),
+    quotationId: uuid('quotation_id').references(() => quotations.id),
+    revisionId: uuid('revision_id').references(() => quoteRevisions.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'quotation_issue_requests_state_check',
+      sql`${table.state} IN ('processing', 'retryable', 'completed')`
+    ),
+  ]
+);
+
+export const quotationDeliveries = pgTable(
+  'quotation_deliveries',
+  {
+    id: uuid('id').primaryKey(),
+    revisionId: uuid('revision_id').notNull().unique().references(() => quoteRevisions.id),
+    phone: text('phone').notNull(),
+    flowId: text('flow_id').notNull(),
+    state: text('state').notNull(),
+    providerAcceptanceId: text('provider_acceptance_id'),
+    publicError: text('public_error'),
+    diagnosticsExpiresAt: timestamp('diagnostics_expires_at', { withTimezone: true }),
+    resumableUntil: timestamp('resumable_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'quotation_deliveries_state_check',
+      sql`${table.state} IN ('pending', 'transporting', 'accepted_partial', 'completed', 'retryable', 'reconciling')`
     ),
   ]
 );

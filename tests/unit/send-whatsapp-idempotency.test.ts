@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
+import { QuotationDeliveryConflictError, QuotationDeliveryPdfError } from '../../api/_db/quotation-delivery-repository.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
@@ -101,7 +102,7 @@ function event(body: Record<string, unknown>) {
   } as any;
 }
 
-function flowDependencies(reservationStore: unknown) {
+function flowDependencies(reservationStore: unknown, overrides: Record<string, unknown> = {}) {
   return {
     reservationStore,
     resolveFlow: async () => ({
@@ -109,12 +110,14 @@ function flowDependencies(reservationStore: unknown) {
       name: 'Fluxo',
       delay_min_seconds: 0,
       delay_max_seconds: 0,
-      steps: [{ type: 'text', template: 'Olá' }],
+      steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }],
     }),
     repository: repository(),
     store: tokenStore(),
     token: () => publicToken,
+    renderPdf: async () => Buffer.from('%PDF-1.7\nbody\n%%EOF'),
     recordSendEvent: async () => 'event-1',
+    ...overrides,
   } as any;
 }
 
@@ -151,6 +154,163 @@ function evolutionEnv() {
   };
 }
 
+test('delivery PDF preparation failure preserves verified public classification before transport', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const states: Array<{ state: string; publicError?: string }> = [];
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'unexpected' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ quotation_id: businessNumber, revision_id: revisionId, flow_id: 'flow-pdf-failure' }),
+      flowDependencies(new AtomicReservationStore(), {
+        deliveryRepository: {
+          prepareDelivery: async () => { throw new QuotationDeliveryPdfError(); },
+          reserve: async () => { throw new Error('unreachable'); },
+          recordState: async (input: { state: string; publicError?: string }) => { states.push(input); },
+        },
+      }),
+    );
+    assert.equal(response.statusCode, 503);
+    const responseBody = JSON.parse(response.body || '{}');
+    assert.deepEqual(responseBody, {
+      error: 'PDF indisponível. Tentar novamente.',
+      send_status: 'retryable',
+    });
+    assert.deepEqual(states, [{ revisionId, state: 'retryable', publicError: 'PDF indisponível. Tentar novamente.' }]);
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restore();
+  }
+});
+
+test('PDF persistence failure returns conservative reconciliation without transport', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const states: Array<{ state: string; publicError?: string }> = [];
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'unexpected' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ quotation_id: businessNumber, revision_id: revisionId, flow_id: 'flow-pdf-persistence-failure' }),
+      flowDependencies(new AtomicReservationStore(), {
+        deliveryRepository: {
+          prepareDelivery: async () => { throw new QuotationDeliveryPdfError(); },
+          reserve: async () => { throw new Error('unreachable'); },
+          recordState: async (input: { state: string; publicError?: string }) => {
+            states.push(input);
+            if (input.state === 'retryable') throw new Error('CAS failed');
+          },
+        },
+      }),
+    );
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'O envio permanece em reconciliação. Não reenvie automaticamente.',
+      send_status: 'reconciling',
+      reconciliation_required: true,
+    });
+    assert.deepEqual(states.map(({ state }) => state), ['retryable', 'reconciling']);
+    assert.equal(states.at(-1)?.publicError, 'A falha do PDF não pôde ser persistida. Reconciliação necessária.');
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restore();
+  }
+});
+
+test('generic delivery preparation failure is not mislabeled as a PDF failure', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const states: Array<{ state: string; publicError?: string }> = [];
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'unexpected' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ quotation_id: businessNumber, revision_id: revisionId, flow_id: 'flow-generic-preparation-failure' }),
+      flowDependencies(new AtomicReservationStore(), {
+        deliveryRepository: {
+          prepareDelivery: async () => { throw Object.assign(new Error('Não foi possível preparar a entrega do orçamento.'), { statusCode: 503 }); },
+          reserve: async () => { throw new Error('unreachable'); },
+          recordState: async (input: { state: string; publicError?: string }) => { states.push(input); },
+        },
+      }),
+    );
+    const responseBody = JSON.parse(response.body || '{}');
+    assert.equal(response.statusCode, 503);
+    assert.doesNotMatch(String(responseBody.error), /PDF indisponível/i);
+    assert.equal(responseBody.send_status, undefined);
+    assert.equal(states.some((state) => /PDF indisponível/i.test(String(state.publicError))), false);
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restore();
+  }
+});
+
+test('missing KV never resends completed or reconciling PostgreSQL delivery', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => { providerCalls += 1; return new Response(JSON.stringify({ key: { id: 'provider-id' } }), { status: 200, headers: { 'content-type': 'application/json' } }); };
+  try {
+    for (const state of ['completed', 'reconciling']) {
+      const response = await sendWhatsappFlow(
+        event({ quotation_id: businessNumber, revision_id: revisionId, flow_id: `flow-pg-${state}` }),
+        flowDependencies(new AtomicReservationStore(), {
+          deliveryRepository: {
+            prepareDelivery: async () => { throw new QuotationDeliveryConflictError(`Entrega ${state} bloqueia reenvio.`); },
+            reserve: async () => { throw new Error('unreachable'); },
+            recordState: async () => { throw new Error('unreachable'); },
+          },
+        }),
+      );
+      assert.equal(response.statusCode, 409);
+    }
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restore();
+  }
+});
+
+test('provider response without acceptance persists reconciling summary', async () => {
+  const restore = evolutionEnv();
+  const originalFetch = globalThis.fetch;
+  const states: string[] = [];
+  globalThis.fetch = (async () => new Response(JSON.stringify({ accepted: false }), { status: 200 })) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ quotation_id: businessNumber, revision_id: revisionId, flow_id: 'flow-no-acceptance' }),
+      flowDependencies(new AtomicReservationStore(), {
+        deliveryRepository: {
+          prepareDelivery: async ({ revisionId: selectedRevision, flowId }: { revisionId: string; flowId: string }) => ({
+            delivery: { id: 'delivery', revisionId: selectedRevision, phone: '5511999990000', flowId, state: 'pending' },
+            pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'), pdfSize: 20, pdfSignature: 'a'.repeat(64), validUntil: new Date('2026-09-12T00:00:00.000Z'),
+          }),
+          reserve: async () => ({ id: 'delivery', state: 'pending' }),
+          recordState: async (input: { state: string }) => { states.push(input.state); },
+        },
+      }),
+    );
+    assert.equal(response.statusCode, 503);
+    assert.ok(states.includes('reconciling'));
+  } finally {
+    globalThis.fetch = originalFetch;
+    restore();
+  }
+});
+
 test('different flow keys reserve independently', async () => {
   const restore = evolutionEnv();
   const originalFetch = globalThis.fetch;
@@ -171,7 +331,7 @@ test('different flow keys reserve independently', async () => {
     );
     assert.equal(first.statusCode, 200);
     assert.equal(second.statusCode, 200);
-    assert.equal(providerCalls, 2);
+    assert.equal(providerCalls, 4);
   } finally {
     globalThis.fetch = originalFetch;
     restore();
@@ -198,7 +358,7 @@ test('same exact quotation revision flow reserves before transport and calls pro
     await new Promise((resolve) => setTimeout(resolve, 0));
     releaseProvider();
     const [firstResponse, secondResponse] = await Promise.all([first, second]);
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
     assert.ok([200, 409, 503].includes(firstResponse.statusCode || 0));
     assert.ok([200, 409, 503].includes(secondResponse.statusCode || 0));
     assert.equal(JSON.stringify(firstResponse).includes('provider-secret'), false);
@@ -232,7 +392,7 @@ test('completed replay projects a neutral result without recipient phone', async
     const body = JSON.parse(replay.body || '{}');
     assert.equal(body.send_status, 'completed');
     assert.equal(body.phone, undefined);
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
     restore();
@@ -265,7 +425,7 @@ test('safe pre-transport failure transitions to explicit retryable state', async
       flowDependencies(reservationStore),
     );
     assert.equal(second.statusCode, 200);
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
     restore();
@@ -322,7 +482,7 @@ test('accepted transport failure persists reconciliation and never resends', asy
     );
     assert.equal(first.statusCode, 503);
     assert.equal(JSON.parse(first.body || '{}').send_status, 'accepted_partial');
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
 
     const second = await sendWhatsappFlow(
       event({ quotation_id: businessNumber, revision_id: revisionId, flow_id: 'flow-accepted' }),
@@ -330,7 +490,7 @@ test('accepted transport failure persists reconciliation and never resends', asy
     );
     assert.equal(second.statusCode, 503);
     assert.equal(JSON.parse(second.body || '{}').send_status, 'accepted_partial');
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
     restore();
@@ -345,7 +505,7 @@ function seedReserved(store: AtomicReservationStore, flowId: string, updatedAt: 
     revisionId,
     flowId,
     schema: 3,
-    stepsCount: 1,
+    stepsCount: 2,
     phase: 'reserved',
     owner: 'stale-owner',
     version: 1,
@@ -376,7 +536,7 @@ test('crashed stale reserved reservation is taken over and sends once', async ()
     );
     assert.equal(response.statusCode, 200);
     assert.equal(JSON.parse(response.body || '{}').send_status, 'completed');
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
     restore();
@@ -407,7 +567,7 @@ test('two concurrent stale takeovers elect one provider sender', async () => {
     const responses = await Promise.all([first, second]);
     assert.ok(responses.some((response) => response.statusCode === 200));
     assert.ok(responses.some((response) => response.statusCode === 409 || response.statusCode === 503));
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
   } finally {
     releaseProvider?.();
     globalThis.fetch = originalFetch;

@@ -130,14 +130,44 @@ test(
       // The lifecycle repository only handles commercial transitions from an
       // already-issued revision. Seed that boundary explicitly; draft creation
       // itself must remain rascunho.
-      await db.update(quotations).set({ status: 'enviado' }).where(eq(quotations.id, draft.quotation_uuid));
-      await db.update(quoteRevisions).set({ status: 'enviado' }).where(eq(quoteRevisions.id, draft.revision_id));
+      await db.update(quotations).set({ status: 'emitido' }).where(eq(quotations.id, draft.quotation_uuid));
+      await db.update(quoteRevisions).set({ status: 'emitido' }).where(eq(quoteRevisions.id, draft.revision_id));
       const sent = await management.get!(draft.quotation_name);
       assert.ok(sent);
-      assert.equal(sent.status_canonical, 'enviado');
+      assert.equal(sent.status_canonical, 'emitido');
+      assert.equal(sent.status_legacy, 'enviado');
+      assert.equal(sent.status, 'Enviado');
+      // New writes use the canonical emitido state; the API keeps the legacy read projection.
       const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
         now: () => new Date('2026-07-03T12:00:00.000Z'),
       });
+
+      const lossDraft = await create.createDraft({
+        client_id: clientId,
+        items: [{ item_code: sku, qty: '1.000', manual_rate: true, rate: '12.00' }],
+      });
+      quotationIds.push(lossDraft.quotation_uuid);
+      await db.update(quotations).set({ status: 'emitido' }).where(eq(quotations.id, lossDraft.quotation_uuid));
+      await db.update(quoteRevisions).set({ status: 'emitido' }).where(eq(quoteRevisions.id, lossDraft.revision_id));
+      const lossDetail = await management.get!(lossDraft.quotation_name);
+      assert.ok(lossDetail);
+      await assert.rejects(
+        () => lifecycle.setStatus(lossDraft.quotation_name, {
+          status: 'perdido',
+          loss_reason: '   ',
+          concurrency_token: lossDetail.concurrency_token,
+        }),
+        /motivo/i,
+      );
+      const lost = await lifecycle.setStatus(lossDraft.quotation_name, {
+        status: 'perdido',
+        loss_reason: 'Preço acima do orçamento',
+        concurrency_token: lossDetail.concurrency_token,
+      });
+      assert.equal(lost.status_canonical, 'perdido');
+      const [lostRow] = await db.select().from(quotations).where(eq(quotations.id, lossDraft.quotation_uuid));
+      assert.equal(lostRow?.lossReason, 'Preço acima do orçamento');
+
       const approved = await lifecycle.setStatus(draft.quotation_name, {
         status: 'aprovado',
         concurrency_token: sent.concurrency_token,
@@ -158,7 +188,10 @@ test(
         .select()
         .from(productActivityEvents)
         .where(inArray(productActivityEvents.productSku, [sku, secondSku]));
-      assert.equal(activityBeforeRevision.filter((row) => row.tipo === 'orcamento').length, 2);
+      assert.equal(
+        activityBeforeRevision.filter((row) => row.tipo === 'orcamento' && row.referenceId?.includes(draft.quotation_uuid)).length,
+        2,
+      );
 
       const failingLifecycle = createPostgresQuotationLifecycleRepository(() => db, {
         now: () => new Date('2026-07-03T12:00:00.000Z'),

@@ -134,6 +134,13 @@
       "when": 1786573482719,
       "tag": "0018_postgres_only_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786643781179,
+      "tag": "0019_quotation_issue_delivery",
+      "breakpoints": true
     }
   ]
 }

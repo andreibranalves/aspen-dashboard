@@ -196,8 +196,8 @@ export function createCoreHandler(
         const lifecycle = lifecycleRepository(dependencies);
         if (action === 'set_status') {
           const status = payload.status;
-          if (status !== 'enviado' && status !== 'aprovado' && status !== 'perdido') {
-            throw new QuoteManagementInputError('Status inválido. Use "enviado", "aprovado" ou "perdido".');
+          if (status !== 'emitido' && status !== 'aprovado' && status !== 'perdido') {
+            throw new QuoteManagementInputError('Status inválido. Use "emitido", "aprovado" ou "perdido".');
           }
           const detail = await lifecycle.setStatus(query.id, payload as unknown as SetQuotationStatusInput);
           return json(200, sanitizeQuotationOutput(detail) as unknown as Record<string, unknown>);

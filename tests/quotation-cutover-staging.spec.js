@@ -91,7 +91,7 @@ test.describe('quotation cutover staging', () => {
       assert.equal(Object.prototype.hasOwnProperty.call(scratchDetail, 'origin'), false, 'scratch quotation must not expose origin metadata');
       assert.equal(
         scratchDetail.status_canonical,
-        'enviado',
+        'emitido',
         'scratch quotation must be a disposable sent fixture; draft transition is unsupported',
       );
       assert.ok(scratchDetail.revision_id && scratchDetail.concurrency_token);

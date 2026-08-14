@@ -18,12 +18,139 @@ import {
 import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
+import {
+  createDeliverQuotation,
+  type DeliverQuotationDependencies,
+  type DeliverQuotationInput,
+} from '../../api/_functions/lib/quotation-delivery.js';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';
 const businessNumber = 'ORC-20260001';
 const publicToken = 'A'.repeat(32);
 const ownedMediaUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
+const quotationPdfStep = { type: 'document', source: 'quotation_pdf' };
+
+function deliveryPolicyHarness(overrides: Partial<DeliverQuotationDependencies> = {}) {
+  const states: Array<Record<string, unknown>> = [];
+  let transportCalls = 0;
+  const dependencies: DeliverQuotationDependencies = {
+    now: () => new Date('2026-08-13T12:00:00.000Z'),
+    evolutionConfigured: () => true,
+    prepareDelivery: async ({ revisionId: selectedRevision, phone, flowId }) => ({
+      delivery: {
+        id: 'delivery-1', revisionId: selectedRevision, phone, flowId, state: 'pending',
+        providerAcceptanceId: null, publicError: null,
+        diagnosticsExpiresAt: new Date('2026-11-11T12:00:00.000Z'),
+        resumableUntil: new Date('2026-09-12T12:00:00.000Z'),
+        createdAt: new Date('2026-08-13T12:00:00.000Z'), updatedAt: new Date('2026-08-13T12:00:00.000Z'), readOnly: false,
+      },
+      pdf: Buffer.from('%PDF-1.7\nbody\n%%EOF'), pdfSize: 20, pdfSignature: 'a'.repeat(64),
+      validUntil: new Date('2026-08-20T12:00:00.000Z'),
+    }),
+    issuePublicLink: async ({ expiresInSeconds }) => ({ url: 'https://app.test/api/public-quotation?token=' + 'A'.repeat(32), expiresInSeconds }),
+    reserveTransport: async () => ({ kind: 'reserved' }),
+    recordState: async (input) => { states.push(input); },
+    transport: async () => { transportCalls += 1; return { accepted: true, acceptanceId: 'accept-1' }; },
+    ...overrides,
+  };
+  return {
+    deliver: createDeliverQuotation(dependencies),
+    states,
+    get transportCalls() { return transportCalls; },
+  };
+}
+
+function validDeliveryInput(overrides: Partial<DeliverQuotationInput> = {}): DeliverQuotationInput {
+  return {
+    revisionId: '22222222-2222-4222-8222-222222222222',
+    phone: '11999990000',
+    flowId: 'already-talking',
+    steps: [quotationPdfStep],
+    maxDelayMs: 0,
+    ...overrides,
+  };
+}
+
+
+test('delivery policy requires exactly one quotation PDF before transport', async () => {
+  for (const steps of [[{ type: 'text' }], [quotationPdfStep, quotationPdfStep]]) {
+    const harness = deliveryPolicyHarness();
+    await assert.rejects(harness.deliver(validDeliveryInput({ steps })), /exatamente um PDF/i);
+    assert.equal(harness.transportCalls, 0);
+  }
+});
+
+test('delivery policy validates phone, Evolution and 45 second budget before transport', async () => {
+  const missingPhone = deliveryPolicyHarness();
+  await assert.rejects(missingPhone.deliver(validDeliveryInput({ phone: '' })), /telefone/i);
+  assert.equal(missingPhone.transportCalls, 0);
+
+  const missingEvolution = deliveryPolicyHarness({ evolutionConfigured: () => false });
+  await assert.rejects(missingEvolution.deliver(validDeliveryInput()), /não configurada/i);
+  assert.equal(missingEvolution.transportCalls, 0);
+
+  const overBudget = deliveryPolicyHarness();
+  await assert.rejects(overBudget.deliver(validDeliveryInput({ maxDelayMs: 45_001 })), /45 segundos/i);
+  assert.equal(overBudget.transportCalls, 0);
+});
+
+test('delivery policy rejects draft, expired and PDF failures before transport', async () => {
+  for (const error of [
+    new Error('Somente revisões emitidas podem ser entregues.'),
+    new Error('A revisão do orçamento está vencida.'),
+    new Error('PDF indisponível. Tentar novamente.'),
+  ]) {
+    const harness = deliveryPolicyHarness({ prepareDelivery: async () => { throw error; } });
+    await assert.rejects(harness.deliver(validDeliveryInput()), new RegExp(error.message.split('.')[0], 'i'));
+    assert.equal(harness.transportCalls, 0);
+  }
+});
+
+test('delivery policy accepts approved revision contract, freezes operation and bounds link TTL', async () => {
+  let prepared: Record<string, unknown> | undefined;
+  let linkTtl = 0;
+  const harness = deliveryPolicyHarness({
+    prepareDelivery: async (input) => {
+      prepared = input;
+      return {
+        delivery: { id: 'delivery-1', revisionId: input.revisionId, phone: '5511999990000', flowId: input.flowId, state: 'pending' } as any,
+        pdf: Buffer.from('%PDF-1.7\nbody\n%%EOF'), pdfSize: 20, pdfSignature: 'a'.repeat(64),
+        validUntil: new Date('2026-10-13T12:00:00.000Z'),
+      };
+    },
+    issuePublicLink: async ({ expiresInSeconds }) => {
+      linkTtl = expiresInSeconds;
+      return { url: 'https://app.test/api/public-quotation?token=' + 'A'.repeat(32), expiresInSeconds };
+    },
+  });
+  const result = await harness.deliver(validDeliveryInput());
+  assert.deepEqual(prepared, {
+    revisionId: validDeliveryInput().revisionId,
+    phone: '5511999990000',
+    flowId: validDeliveryInput().flowId,
+  });
+  assert.equal(linkTtl, 30 * 24 * 60 * 60);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(harness.states.map((entry) => entry.state), ['pending', 'transporting', 'accepted_partial', 'completed']);
+});
+
+test('delivery policy persists retryable before acceptance and reconciling after uncertain acceptance', async () => {
+  const retryable = deliveryPolicyHarness({ transport: async () => { throw new Error('provider unavailable'); } });
+  await assert.rejects(retryable.deliver(validDeliveryInput()), /provider unavailable/i);
+  assert.equal(retryable.states.at(-1)?.state, 'retryable');
+
+  const pdfFailure = deliveryPolicyHarness({ prepareDelivery: async () => { throw new Error('Não foi possível gerar o PDF da revisão.'); } });
+  await assert.rejects(pdfFailure.deliver(validDeliveryInput()), /PDF da revisão/i);
+  assert.equal(pdfFailure.states.at(-1)?.state, 'retryable');
+
+  const reconciling = deliveryPolicyHarness({ transport: async () => ({ accepted: true }), recordState: async (input) => {
+    reconciling.states.push(input);
+    if (input.state === 'accepted_partial') throw new Error('CAS uncertain');
+  } });
+  await assert.rejects(reconciling.deliver(validDeliveryInput()), /reconciliação/i);
+  assert.equal(reconciling.states.at(-1)?.state, 'reconciling');
+});
 
 function mediaRecords() {
   return [{
@@ -182,7 +309,7 @@ test('PostgreSQL revision send does not resolve quotation data externally', asyn
       event({
         quotation_id: businessNumber,
         revision_id: revisionId,
-        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }] },
+        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }, { type: 'document', source: 'quotation_pdf' }] },
       }),
       {
         repository: repositoryFor(),
@@ -436,7 +563,7 @@ test('PostgreSQL endpoint rejects recipient ownership before provider setup', as
         quotation_id: businessNumber,
         revision_id: revisionId,
         telefone: '11988880000',
-        sequence: { steps: [{ type: 'text', template: 'Olá' }] },
+        sequence: { steps: [{ type: 'text', template: 'Olá' }, { type: 'document', source: 'quotation_pdf' }] },
       }),
       { repository: repositoryFor(), store: store(), token: () => publicToken },
     );
@@ -461,7 +588,7 @@ test('PostgreSQL endpoint completes local send after Evolution acceptance', asyn
       event({
         quotation_id: businessNumber,
         revision_id: revisionId,
-        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }] },
+        sequence: { steps: [{ type: 'text', template: 'Olá (primeiro_nome)' }, { type: 'document', source: 'quotation_pdf' }] },
       }),
       {
         repository: repositoryFor(),
@@ -470,7 +597,7 @@ test('PostgreSQL endpoint completes local send after Evolution acceptance', asyn
       },
     );
     assert.equal(response.statusCode, 200);
-    assert.equal(providerCalls, 1);
+    assert.equal(providerCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
@@ -523,7 +650,7 @@ test('PostgreSQL endpoint rejects arbitrary media before provider setup', async 
         quotation_id: businessNumber,
         revision_id: revisionId,
         sequence: {
-          steps: [{ type: 'image', media: 'https://evil.test/reference.jpg' }],
+          steps: [{ type: 'image', media: 'https://evil.test/reference.jpg' }, { type: 'document', source: 'quotation_pdf' }],
         },
       }),
       { repository: repositoryFor(), store: store(), token: () => publicToken },
@@ -556,7 +683,7 @@ test('PostgreSQL send downloads only an owned Blob media before Evolution', asyn
         sequence: {
           delay_min_ms: 0,
           delay_max_ms: 0,
-          steps: [{ type: 'image', media: ownedMediaUrl }],
+          steps: [{ type: 'image', media: ownedMediaUrl }, { type: 'document', source: 'quotation_pdf' }],
         },
       }),
       {
@@ -568,7 +695,7 @@ test('PostgreSQL send downloads only an owned Blob media before Evolution', asyn
       },
     );
     assert.equal(response.statusCode, 200);
-    assert.equal(evolutionBodies.length, 1);
+    assert.equal(evolutionBodies.length, 2);
     assert.equal(evolutionBodies[0]?.media, Buffer.from('image-bytes').toString('base64'));
   } finally {
     globalThis.fetch = originalFetch;
@@ -594,7 +721,7 @@ test('PostgreSQL send rejects stale or foreign-store media before provider trans
         event({
           quotation_id: businessNumber,
           revision_id: revisionId,
-          sequence: { steps: [{ type: 'image', media: ownedMediaUrl }] },
+          sequence: { steps: [{ type: 'image', media: ownedMediaUrl }, { type: 'document', source: 'quotation_pdf' }] },
         }),
         {
           repository: repositoryFor(),
@@ -630,11 +757,12 @@ test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key
         resolveFlow: async () => ({
           id: 'flow-postgres',
           name: 'Fluxo PostgreSQL',
-          steps: [{ type: 'text', template: '(produto_resumo)' }],
+          steps: [{ type: 'text', template: '(produto_resumo)' }, { type: 'document', source: 'quotation_pdf' }],
         }),
         repository: repositoryFor(),
         store: store(),
         token: () => publicToken,
+        renderPdf: async () => Buffer.from('%PDF-1.7\nbody\n%%EOF'),
         reservationStore: reservationStore(),
         checkDuplicate: async (id) => {
           duplicateKeys.push(id);
@@ -719,7 +847,8 @@ test('quotation references without a local revision cannot use the direct send p
       revision_id: revisionId,
       business_number: businessNumber,
     }));
-    assert.equal(response.statusCode, 503);
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body || '', /exatamente um PDF/i);
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;

@@ -35,6 +35,10 @@ import {
 } from './lib/postgres-media.js';
 import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
 import { createPostgresCrmDealRepository, type CrmDealRecord } from '../_db/crm-deals-repository.js';
+import {
+  createPostgresQuotationDeliveryRepository,
+  type QuotationDeliveryRepository,
+} from '../_db/quotation-delivery-repository.js';
 
 // ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
 function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
@@ -783,6 +787,8 @@ export type SendWhatsappHandlerDependencies = {
   mediaRecords?: Array<Record<string, unknown>>;
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
   resolveDeal?: LocalDealResolver;
+  deliveryRepository?: Pick<QuotationDeliveryRepository, 'claimTransport' | 'getByRevision' | 'prepareDelivery' | 'recordState'>;
+  deliveryRepositoryFactory?: () => Pick<QuotationDeliveryRepository, 'claimTransport' | 'getByRevision' | 'prepareDelivery' | 'recordState'>;
 };
 
 export async function handler(
@@ -801,6 +807,10 @@ export async function handler(
   }
 
   let providerAcceptedCount = 0;
+  let providerStarted = false;
+  let transportClaimed = false;
+  let deliveryRepository: SendWhatsappHandlerDependencies['deliveryRepository'];
+  let normalizedRevisionId = '';
   try {
     const dryRun = payload.dry_run === true || payload.dryRun === true;
     const quotationId = firstNonEmpty(
@@ -812,13 +822,17 @@ export async function handler(
       payload.quote_id as string | undefined,
     );
     const revisionId = firstNonEmpty(
-      payload.revision_id as string | undefined,
       payload.revisionId as string | undefined,
       payload.quote_revision_id as string | undefined,
+      payload.revision_id as string | undefined,
     );
+    normalizedRevisionId = revisionId;
     // Legacy provider/core markers are ignored. Quote and revision identifiers
     // alone select the immutable local snapshot path.
     const postgresPath = Boolean(quotationId || revisionId);
+    deliveryRepository = dependencies.deliveryRepository
+      || (postgresPath && dependencies.deliveryRepositoryFactory ? dependencies.deliveryRepositoryFactory() : undefined)
+      || (!dependencies.repository && postgresPath ? createPostgresQuotationDeliveryRepository() : undefined);
     const baseUrl = publicBaseUrl(event);
     const sequenceForResolution =
       (payload.whatsapp_sequence as Record<string, unknown> | undefined) ||
@@ -835,13 +849,15 @@ export async function handler(
       throw createHttpError(400, 'Mídia pública só pode ser enviada com uma revisão PostgreSQL.');
     }
 
-    const needPdf = Boolean(
-      sequenceForResolution &&
-      Array.isArray(sequenceForResolution.steps) &&
-      (sequenceForResolution.steps as Array<Record<string, unknown>>).some(
-        (step) => step.type === 'document' && step.source === 'quotation_pdf',
-      )
-    );
+    const quotationPdfSteps = sequenceForResolution && Array.isArray(sequenceForResolution.steps)
+      ? (sequenceForResolution.steps as Array<Record<string, unknown>>).filter(
+          (step) => step.type === 'document' && step.source === 'quotation_pdf',
+        ).length
+      : 0;
+    if (postgresPath && quotationPdfSteps !== 1) {
+      throw createHttpError(400, 'O fluxo deve conter exatamente um PDF do orçamento.');
+    }
+    const needPdf = quotationPdfSteps === 1;
     const resolved = postgresPath
       ? await loadPostgresSendContext({
           quotationId,
@@ -934,6 +950,8 @@ export async function handler(
         45000,
       );
       const steps = buildSequenceSteps({ payload, sequence, context, baseUrl });
+      const maximumDurationMs = Math.max(0, steps.length - 1) * delayMaxMs;
+      if (maximumDurationMs > 45_000) throw createHttpError(400, 'O fluxo deve caber no limite de 45 segundos.');
       if (steps.length === 0) {
         throw createHttpError(400, 'Sequência de WhatsApp vazia. Configure ao menos uma mensagem ou mídia.');
       }
@@ -951,11 +969,21 @@ export async function handler(
       );
 
       const evolution: EvolutionDeliveryResult[] = [];
+      if (!dryRun && deliveryRepository && resolved) {
+        const existing = await deliveryRepository.getByRevision(resolved.revisionId);
+        if (existing?.state === 'completed') return jsonResponse(200, { success: true, send_status: 'completed', quotation_id: messageQuotationId, number, steps: steps.map(publicSequenceStep) });
+        if (existing?.state === 'reconciling' || existing?.state === 'transporting' || existing?.state === 'accepted_partial' || existing?.readOnly) return jsonResponse(409, { error: 'O envio permanece em reconciliação. Não reenvie automaticamente.', send_status: existing?.state === 'transporting' ? 'transporting' : 'reconciling', reconciliation_required: true });
+        await deliveryRepository.prepareDelivery({ revisionId: resolved.revisionId, phone: resolved.phone, flowId: firstNonEmpty(payload.flow_id as string | undefined, payload.flowId as string | undefined) || 'direct-send' });
+        const claimed = await deliveryRepository.claimTransport(resolved.revisionId);
+        if (!claimed) return jsonResponse(409, { error: 'O envio já está em andamento ou requer reconciliação.', send_status: 'reconciling', reconciliation_required: true });
+        transportClaimed = true;
+      }
       if (!dryRun) {
         assertEvolutionConfig();
         for (let i = 0; i < steps.length; i++) {
           if (i > 0) await wait(randomDelay(delayMinMs, delayMaxMs));
           const step = steps[i];
+          providerStarted = true;
           const response = await sendStep(
             number,
             step,
@@ -964,8 +992,12 @@ export async function handler(
             context.revisionUrls || [],
             mediaVerification,
           );
-          if (!response.accepted) throw createHttpError(502, 'O provedor não confirmou a mensagem.');
+          if (!response.accepted) {
+            if (deliveryRepository && resolved) await deliveryRepository.recordState({ revisionId: resolved.revisionId, state: 'reconciling', publicError: 'A resposta do transporte não confirmou o resultado.' }).catch(() => undefined);
+            throw createHttpError(502, 'O provedor não confirmou a mensagem.');
+          }
           providerAcceptedCount += 1;
+          if (deliveryRepository && resolved) await deliveryRepository.recordState({ revisionId: resolved.revisionId, state: 'accepted_partial', providerAcceptanceId: response.providerMessageId });
           evolution.push(response);
 
           if (step.type === 'document' && step.approvedData === true && resolved) {
@@ -1006,6 +1038,7 @@ export async function handler(
         }
       }
 
+      if (!dryRun && deliveryRepository && resolved) await deliveryRepository.recordState({ revisionId: resolved.revisionId, state: 'completed' });
       return jsonResponse(200, {
         success: true,
         dry_run: dryRun,
@@ -1057,6 +1090,10 @@ export async function handler(
       err instanceof Error ? err.name : typeof err,
       code,
     );
+    if (deliveryRepository && normalizedRevisionId && (providerStarted || transportClaimed)) {
+      const uncertain = providerAcceptedCount > 0 || providerStarted;
+      await deliveryRepository.recordState({ revisionId: normalizedRevisionId, state: uncertain ? 'reconciling' : 'retryable', publicError: uncertain ? 'O envio permanece em reconciliação.' : 'Falha antes do transporte.' }).catch(() => undefined);
+    }
     if (providerAcceptedCount > 0) {
       return jsonResponse(502, {
         error: 'Parte da mensagem foi aceita; o envio foi interrompido após confirmação parcial.',

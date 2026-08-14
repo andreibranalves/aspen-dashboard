@@ -16,6 +16,11 @@ import { createHttpError } from '../_lib/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
 import {
+  createPostgresQuotationDeliveryRepository,
+  QuotationDeliveryPdfError,
+  type QuotationDeliveryRepository,
+} from '../_db/quotation-delivery-repository.js';
+import {
   isRevisionBoundPublicQuotationUrl,
 } from './public-quotation.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
@@ -638,6 +643,7 @@ export type SendWhatsappFlowDependencies = {
   checkDuplicate?: typeof checkDuplicate;
   recordSendEvent?: typeof recordSendEvent;
   reservationStore?: WhatsappSendReservationStore;
+  deliveryRepository?: Pick<QuotationDeliveryRepository, 'reserve' | 'recordState' | 'prepareDelivery'>;
   beforeTransport?: (idempotencyKey: string) => Promise<void>;
 };
 
@@ -842,6 +848,8 @@ export async function handler(
   const duplicateChecker = dependencies.checkDuplicate || checkDuplicate;
   const sendEventRecorder = dependencies.recordSendEvent || recordSendEvent;
   const reservationStore = dependencies.reservationStore || defaultWhatsappSendReservationStore;
+  const deliveryRepository = dependencies.deliveryRepository
+    || (Object.keys(dependencies).length === 0 ? createPostgresQuotationDeliveryRepository() : undefined);
   let reservation: WhatsappSendReservationRecord | null = null;
   let reservationKey!: string;
 
@@ -883,6 +891,16 @@ export async function handler(
 
     const flow = await flowResolver(flowId);
     if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
+    const configuredPdfSteps = (Array.isArray(flow.steps) ? flow.steps : []).filter(
+      (step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf',
+    ).length;
+    if (configuredPdfSteps !== 1) throw createHttpError(400, 'O fluxo deve conter exatamente um PDF do orçamento.');
+    const configuredSteps = Array.isArray(flow.steps) ? flow.steps.length : 0;
+    const maximumDelayMs = Math.max(0, configuredSteps - 1) * Math.max(0, Number(flow.delay_max_seconds || 0)) * 1000;
+    if (!Number.isFinite(maximumDelayMs) || maximumDelayMs > 45_000) {
+      throw createHttpError(400, 'O fluxo deve caber no limite de 45 segundos.');
+    }
+    if (!dryRun) assertEvolutionConfig();
 
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
     const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
@@ -892,7 +910,7 @@ export async function handler(
       revisionId,
       businessNumber: firstNonEmpty(payload.business_number, payload.businessNumber),
       recipientPhone: firstNonEmpty(payload.phone, payload.telefone) || undefined,
-      needPdf: (flow.steps || []).some((step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf'),
+      needPdf: !deliveryRepository,
       baseUrl,
       repository: dependencies.repository || createQuotationTemplateRepository(),
       store: dependencies.store,
@@ -902,6 +920,28 @@ export async function handler(
       readMediaRecords: dependencies.readMediaRecords,
       resolveDeal: dependencies.resolveDeal,
     });
+    if (!dryRun && deliveryRepository) {
+      try {
+        const prepared = await deliveryRepository.prepareDelivery({ revisionId, phone: context.phone, flowId });
+        context.pdfBase64 = prepared.pdf.toString('base64');
+      } catch (error) {
+        if (error instanceof QuotationDeliveryPdfError) {
+          const publicError = 'PDF indisponível. Tentar novamente.';
+          try {
+            await deliveryRepository.recordState({ revisionId, state: 'retryable', publicError });
+            return jsonResponse(503, { error: publicError, send_status: 'retryable' });
+          } catch {
+            await deliveryRepository.recordState({
+              revisionId,
+              state: 'reconciling',
+              publicError: 'A falha do PDF não pôde ser persistida. Reconciliação necessária.',
+            }).catch(() => undefined);
+            return jsonResponse(503, reconciliationBody());
+          }
+        }
+        throw error;
+      }
+    }
     const businessNumber = canonicalFlowQuotationId(quotationId, context.businessNumber);
     const link = resolveServerIssuedPublicLink(true, context.publicLink, baseUrl);
     const items = context.view.items as Record<string, unknown>[];
@@ -930,6 +970,11 @@ export async function handler(
     const steps = await buildSteps(flow, flowContext, mediaResolver);
     if (steps.length === 0) throw createHttpError(400, 'Fluxo não gerou nenhuma etapa válida.');
     if (steps.length > 64) throw createHttpError(400, 'O fluxo excede o limite de etapas reconciliáveis.');
+    const expandedDelayMaxMs = Math.max(0, Number(flow.delay_max_seconds || 0)) * 1000;
+    const expandedMaximumDurationMs = Math.max(0, steps.length - 1) * expandedDelayMaxMs;
+    if (!Number.isFinite(expandedMaximumDurationMs) || expandedMaximumDurationMs > 45_000) {
+      throw createHttpError(400, 'O fluxo deve caber no limite de 45 segundos.');
+    }
     const approvedRecords = steps.map((step) => step.approvedRecord).filter((record): record is PostgresMediaRecord => Boolean(record));
     await prepareFlowSteps(steps, baseUrl, approvedRecords, link ? [link] : [], mediaVerification);
 
@@ -960,6 +1005,7 @@ export async function handler(
         throw new WhatsappSendReservationStorageError('A quantidade de etapas da reserva não corresponde ao fluxo.');
       }
       reservation = validated;
+      await deliveryRepository?.recordState({ revisionId, state: 'pending' });
     }
 
     let duplicateWarning = false;
@@ -967,8 +1013,6 @@ export async function handler(
 
     const evolution: EvolutionDeliveryResult[] = [];
     if (!dryRun) {
-      // Configuration is deliberately checked after reservation and preparation.
-      assertEvolutionConfig();
       await dependencies.beforeTransport?.(reservationKey);
       for (let index = 0; index < steps.length; index += 1) {
         if (index > 0) await wait(randomDelay(flow.delay_min_seconds * 1000, flow.delay_max_seconds * 1000));
@@ -981,10 +1025,17 @@ export async function handler(
           to: 'transporting',
           currentStep: index,
         });
-        if (!transporting.ok) return await reservationConflictResponse(reservationStore, reservation.key, flowId, transporting);
+        if (!transporting.ok) {
+          await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'A reserva de transporte mudou. Reconciliação necessária.' });
+          return await reservationConflictResponse(reservationStore, reservation.key, flowId, transporting);
+        }
         reservation = transporting.record;
+        await deliveryRepository?.recordState({ revisionId, state: 'transporting' });
         const response = await sendStep(context.phone, steps[index], baseUrl, approvedRecords, link ? [link] : [], mediaVerification);
-        if (!response.accepted) return jsonResponse(503, reconciliationBody());
+        if (!response.accepted) {
+          await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'A resposta do transporte não confirmou o resultado. Reconciliação necessária.' }).catch(() => undefined);
+          return jsonResponse(503, reconciliationBody());
+        }
         // Persist neutral acceptance before any next step or bookkeeping.
         const accepted = await casWithRetry(reservationStore, {
           key: reservation.key,
@@ -996,8 +1047,16 @@ export async function handler(
           acceptedStep: { step: index, kind: stepKind(steps[index]) },
           errorMessage: 'O transporte foi aceito e aguarda reconciliação.',
         });
-        if (!accepted.ok) return await acceptedProviderCasFailure(reservationStore, reservation.key, flowId, accepted);
+        if (!accepted.ok) {
+          await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'O transporte foi aceito. Reconciliação necessária.' });
+          return await acceptedProviderCasFailure(reservationStore, reservation.key, flowId, accepted);
+        }
         reservation = accepted.record;
+        await deliveryRepository?.recordState({
+          revisionId,
+          state: 'accepted_partial',
+          providerAcceptanceId: response.providerMessageId,
+        });
         evolution.push(response);
       }
     }
@@ -1040,7 +1099,16 @@ export async function handler(
         to: 'completed',
         result: neutralTerminalResult(resultBody, steps),
       });
-      if (!completed.ok) return await reservationConflictResponse(reservationStore, reservation.key, flowId, completed);
+      if (!completed.ok) {
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'reconciling', publicError: 'A conclusão requer reconciliação.' });
+        return await reservationConflictResponse(reservationStore, reservation.key, flowId, completed);
+      }
+      try {
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'completed' });
+      } catch {
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'reconciling', publicError: 'A conclusão não pôde ser confirmada. Reconciliação necessária.' }).catch(() => undefined);
+        return jsonResponse(503, reconciliationBody());
+      }
     }
     return jsonResponse(200, resultBody);
   } catch (err: unknown) {
@@ -1066,8 +1134,14 @@ export async function handler(
         } catch {
           return jsonResponse(503, { error: 'Não foi possível persistir a falha segura antes do transporte. Não repita automaticamente.', send_status: 'reconciling', reconciliation_required: true });
         }
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'retryable', publicError: 'Falha antes do transporte.' });
         return jsonResponse(code, { error: 'Falha antes do transporte. Tente novamente.', send_status: 'retryable' });
       }
+      await deliveryRepository?.recordState({
+        revisionId: reservation.revisionId,
+        state: 'reconciling',
+        publicError: 'O envio permanece em reconciliação.',
+      }).catch(() => undefined);
       return jsonResponse(503, {
         error: 'O envio permanece em reconciliação. Não reenvie automaticamente.',
         send_status: currentPhase === 'accepted_partial' ? 'accepted_partial' : 'reconciling',

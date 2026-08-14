@@ -13,7 +13,7 @@ export interface WhatsAppSendPanelProps {
   selectedFlowId?: string;
   flows?: CommunicationFlow[];
   status?: {
-    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial';
+    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
     message?: string;
     deliveryAccepted?: boolean;
   };
@@ -63,25 +63,29 @@ export default function WhatsAppSendPanel({
                 type="button"
                 size="lg"
                 className="w-full"
-                disabled={status?.state === 'sending' || status?.state === 'reconciling' || status?.state === 'accepted-partial'}
+                disabled={status?.state === 'sending' || status?.state === 'reconciling' || status?.state === 'accepted-partial' || status?.state === 'accepted' || status?.state === 'readonly'}
                 onClick={onSend}
               >
                 <Phone size={16} />
                 {status?.state === 'sent'
                   ? 'Enviado pelo WhatsApp'
-                  : status?.state === 'reconciling' || status?.state === 'accepted-partial'
-                    ? 'Reconciliação pendente'
-                    : status?.state === 'sending'
-                      ? 'Enviando…'
-                      : 'Enviar via WhatsApp'}
+                  : status?.state === 'accepted' || status?.state === 'accepted-partial'
+                    ? 'Envio aceito'
+                    : status?.state === 'reconciling'
+                      ? 'Reconciliação necessária'
+                      : status?.state === 'readonly'
+                        ? 'Somente leitura'
+                        : status?.state === 'sending'
+                          ? 'Enviando…'
+                          : 'Enviar via WhatsApp'}
               </Button>
               {status?.message && (
                 <p
                   className={cn(
                     'text-xs leading-5 text-center',
-                    status.state === 'error'
+                    status.state === 'error' || status.state === 'retryable'
                       ? 'text-destructive'
-                      : status.deliveryAccepted
+                      : status.deliveryAccepted || status.state === 'accepted' || status.state === 'accepted-partial'
                         ? 'text-warning'
                         : 'text-fg-muted'
                   )}

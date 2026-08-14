@@ -39,6 +39,7 @@ import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/l
 
 const STATUS_LABELS: Record<string, string> = {
   rascunho: 'Rascunho',
+  emitido: 'Enviado',
   enviado: 'Enviado',
   aprovado: 'Aprovado',
   perdido: 'Perdido',

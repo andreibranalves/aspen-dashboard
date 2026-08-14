@@ -108,6 +108,24 @@ export interface Draft {
   result?: { success: boolean; data?: Record<string, unknown>; error?: string };
 }
 
+export interface QuotationIssueProjection {
+  quotationId: string;
+  businessNumber: string;
+  revisionId: string;
+  revisionNumber: number;
+  status: 'emitido';
+  issuedAt: string;
+  validUntil: string;
+  pdfUrl: string;
+}
+
+export interface StoredAutoQuoteDraft extends Draft {
+  issueIdempotencyKey?: string;
+  issue?: QuotationIssueProjection;
+  sourceQuotationId?: string;
+  sourceRevisionId?: string;
+}
+
 export interface ProductSearchEntry {
   term?: string;
   results?: Product[];

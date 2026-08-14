@@ -15,18 +15,24 @@ import {
 import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
+import {
+  assertQuotationTransition,
+  canonicalQuotationStatus,
+  isIssuedQuotationStatus,
+  type QuotationStatus,
+} from '../_lib/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const COMMERCIAL_STATES = new Set(['rascunho', 'enviado', 'aprovado', 'perdido']);
-const ISSUED_STATES = new Set(['enviado', 'aprovado', 'perdido']);
+const COMMERCIAL_STATES = new Set<QuotationStatus>(['rascunho', 'emitido', 'aprovado', 'perdido']);
 
-export type QuotationCommercialStatus = 'rascunho' | 'enviado' | 'aprovado' | 'perdido';
+export type QuotationCommercialStatus = QuotationStatus;
 
 export interface SetQuotationStatusInput {
-  status: 'enviado' | 'aprovado' | 'perdido';
+  status: 'emitido' | 'aprovado' | 'perdido';
+  loss_reason?: unknown;
   concurrency_token: unknown;
   concurrencyToken?: unknown;
 }
@@ -135,9 +141,9 @@ function assertToken(quotation: typeof quotations.$inferSelect, token: string): 
   }
 }
 
-function assertStatusInput(status: unknown): asserts status is 'enviado' | 'aprovado' | 'perdido' {
-  if (status !== 'enviado' && status !== 'aprovado' && status !== 'perdido') {
-    throw new QuoteManagementInputError('Status inválido. Use "enviado", "aprovado" ou "perdido".');
+function assertStatusInput(status: unknown): asserts status is 'emitido' | 'aprovado' | 'perdido' {
+  if (status !== 'emitido' && status !== 'aprovado' && status !== 'perdido') {
+    throw new QuoteManagementInputError('Status inválido. Use "emitido", "aprovado" ou "perdido".');
   }
 }
 
@@ -178,21 +184,29 @@ export function createPostgresQuotationLifecycleRepository(
           if (!revision) {
             throw new QuoteManagementConflictError('A revisão atual do orçamento não está disponível.');
           }
-          if (status === 'enviado') {
-            if (quotation.status !== 'rascunho' || revision.status !== 'rascunho') {
-              throw new QuoteManagementConflictError('Somente rascunhos podem ser emitidos.');
+          const sourceStatus = canonicalQuotationStatus(quotation.status);
+          const revisionStatus = canonicalQuotationStatus(revision.status);
+          try {
+            assertQuotationTransition(sourceStatus, status, typeof input.loss_reason === 'string' ? input.loss_reason : undefined);
+          } catch (error) {
+            throw new QuoteManagementConflictError(error instanceof Error ? error.message : 'Transição comercial inválida.');
+          }
+          if (status === 'emitido') {
+            if (sourceStatus !== 'rascunho' || revisionStatus !== 'rascunho') {
+              throw new QuoteManagementConflictError('Somente o agregado e a revisão em rascunho podem ser emitidos.');
             }
           } else {
-            if (quotation.status !== 'enviado') {
-              throw new QuoteManagementConflictError('Somente orçamentos enviados podem ser marcados como aprovados ou perdidos.');
+            if (sourceStatus !== 'emitido') {
+              throw new QuoteManagementConflictError('Somente orçamentos emitidos podem ser marcados como aprovados ou perdidos.');
             }
-            if (revision.status !== 'enviado') {
-              throw new QuoteManagementConflictError('A revisão enviada não está mais disponível para alteração comercial.');
+            if (revisionStatus !== 'emitido') {
+              throw new QuoteManagementConflictError('A revisão emitida não está mais disponível para alteração comercial.');
             }
           }
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
+          const lossReason = status === 'perdido' ? String(input.loss_reason).trim() : null;
           await tx.update(quoteRevisions).set({ status }).where(eq(quoteRevisions.id, revision.id));
-          await tx.update(quotations).set({ status, updatedAt }).where(eq(quotations.id, quotation.id));
+          await tx.update(quotations).set({ status, lossReason, updatedAt }).where(eq(quotations.id, quotation.id));
           const refreshed = await readDetail(tx, quotation.businessNumber, now);
           if (!refreshed) throw new QuoteManagementRepositoryError();
           return refreshed;
@@ -231,9 +245,8 @@ export function createPostgresQuotationLifecycleRepository(
             .where(and(eq(quoteRevisions.id, sourceRevisionId), eq(quoteRevisions.quotationId, quotation.id)))
             .limit(1);
           if (!source) throw new QuoteManagementNotFoundError('Revisão de origem não encontrada neste orçamento.');
-          const sourceStatus = source.status === 'emitido' ? 'enviado' : source.status;
-          if (!ISSUED_STATES.has(sourceStatus)) {
-            throw new QuoteManagementConflictError('Somente uma revisão já enviada pode originar uma nova revisão.');
+          if (!isIssuedQuotationStatus(source.status)) {
+            throw new QuoteManagementConflictError('Somente uma revisão já emitida pode originar uma nova revisão.');
           }
 
           const revisions = await tx

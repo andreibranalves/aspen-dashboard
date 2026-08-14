@@ -209,7 +209,7 @@ async function pdfWithSparticuz(html: string, opts: { timeout?: number } = {}): 
 // ── Main export ─────────────────────────────────────────────────────────────
 
 /** Render already-prepared quotation HTML from an immutable revision snapshot. */
-export async function renderQuotationPdfHtml(
+export async function renderQuotationPdf(
   html: string,
   opts: { timeout?: number } = {},
 ): Promise<Buffer> {
@@ -230,3 +230,5 @@ export async function renderQuotationPdfHtml(
     );
   }
 }
+
+export const renderQuotationPdfHtml = renderQuotationPdf;

@@ -6,6 +6,7 @@ import {
   canonicalWhatsappSendIdempotencyKey,
   WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
 } from '../../api/_functions/lib/whatsapp-send-reservation-store.js';
+import type { QuotationDelivery } from '../../api/_db/quotation-delivery-repository.js';
 
 const quotationId = 'quote-status';
 const revisionId = 'revision-status';
@@ -38,6 +39,29 @@ function event(method: string, body?: Record<string, unknown>, query: Record<str
     httpMethod: method,
     body: body ? JSON.stringify(body) : undefined,
     queryStringParameters: query,
+  } as any;
+}
+
+function delivery(state: QuotationDelivery['state']): QuotationDelivery {
+  return {
+    id: 'delivery-status', revisionId, phone: '5511999990000', flowId, state,
+    providerAcceptanceId: state === 'completed' ? 'accept-neutral' : null,
+    publicError: null,
+    diagnosticsExpiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+    resumableUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    createdAt: new Date(), updatedAt: new Date(), readOnly: false,
+  };
+}
+
+function deliveryRepository(initial: QuotationDelivery | null) {
+  let current = initial;
+  return {
+    async getByRevision(id: string) { return id === revisionId ? current : null; },
+    async recordState(input: any) {
+      if (!current) throw new Error('missing delivery');
+      current = { ...current, state: input.state, updatedAt: new Date() };
+      return current;
+    },
   } as any;
 }
 
@@ -96,6 +120,36 @@ function storeFor(initial: any) {
     async transition() { throw new Error('unused'); },
   } as any;
 }
+
+test('PostgreSQL completed summary wins when KV is missing or stale', async () => {
+  const response = await handler(event('GET', undefined, {
+    quotation_id: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+  }), {
+    reservationStore: storeFor(null),
+    deliveryRepository: deliveryRepository(delivery('completed')),
+  });
+  assert.equal(response.statusCode, 200);
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(body.phase, 'completed');
+  assert.equal(body.phone, '5511999990000');
+  assert.equal(body.acceptance_id, 'accept-neutral');
+  assert.equal(body.provider_id, undefined);
+});
+
+test('PostgreSQL reconciling summary is never erased by a completed KV lease', async () => {
+  const response = await handler(event('GET', undefined, {
+    quotation_id: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+  }), {
+    reservationStore: storeFor(null),
+    deliveryRepository: deliveryRepository(delivery('reconciling')),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body || '{}').phase, 'reconciling');
+});
 
 test('status is neutral and method constrained', async () => {
   const store = storeFor(record());
@@ -168,6 +222,64 @@ test('reconciliation requires conspicuous confirmation and version CAS', async (
   const body = JSON.parse(resolved.body || '{}');
   assert.equal(body.phase, 'completed');
   assert.equal(body.owner, undefined);
+});
+
+test('PostgreSQL terminal status survives KV outage', async () => {
+  const durable = delivery('completed');
+  const response = await handler(event('GET', undefined, {
+    quotation_id: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+  }), {
+    reservationStore: { async get() { throw new Error('KV unavailable'); } } as any,
+    deliveryRepository: deliveryRepository(durable),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body || '{}').phase, 'completed');
+});
+
+test('resolution does not finalize KV when PostgreSQL transition fails', async () => {
+  const store = storeFor(record('transporting'));
+  let resolveCalls = 0;
+  const failingDelivery = {
+    async getByRevision() { return delivery('reconciling'); },
+    async recordState() { throw new Error('database unavailable'); },
+  } as any;
+  const response = await handler(event('PATCH', {
+    quotation_id: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+    expected_version: 4,
+    resolution: 'completed',
+    confirmation: WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
+  }), {
+    reservationStore: { ...store, async resolve(input: any) { resolveCalls += 1; return store.resolve(input); } } as any,
+    deliveryRepository: failingDelivery,
+  });
+  assert.equal(response.statusCode, 400);
+  assert.equal(resolveCalls, 0);
+});
+
+test('resolution reports safe error when KV becomes unavailable after PostgreSQL transition', async () => {
+  const state = record('transporting');
+  let persisted: string | null = null;
+  const response = await handler(event('PATCH', {
+    quotation_id: quotationId,
+    revision_id: revisionId,
+    flow_id: flowId,
+    expected_version: 4,
+    resolution: 'completed',
+    confirmation: WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
+  }), {
+    reservationStore: { ...storeFor(state), async resolve() { throw new Error('KV unavailable'); } } as any,
+    deliveryRepository: {
+      async getByRevision() { return delivery('reconciling'); },
+      async recordState(input: any) { persisted = input.state; return { ...delivery('reconciling'), state: input.state }; },
+    } as any,
+  });
+  assert.equal(response.statusCode, 503);
+  assert.equal(persisted, 'reconciling');
+  assert.match(response.body || '', /Reconciliação necessária/i);
 });
 
 test('malformed status record fails closed without projecting arbitrary fields', async () => {

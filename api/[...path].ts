@@ -32,6 +32,7 @@ import { handler as quotations } from './_functions/quotations.js';
 import { handler as quotationTemplates } from './_functions/quotation-templates.js';
 import { handler as orderTemplates } from './_functions/order-templates.js';
 import { handler as quotationPreview } from './_functions/quotation-preview.js';
+import { handler as quotationIssues } from './_functions/quotation-issues.js';
 import { handler as publicQuotation } from './_functions/public-quotation.js';
 import { handler as salesDashboard } from './_functions/sales-dashboard.js';
 import { handler as salesOrderFromQuotation } from './_functions/sales-order-from-quotation.js';
@@ -79,6 +80,7 @@ const ROUTES: Record<string, HandlerFunction> = {
   'quotation-templates': quotationTemplates,
   'order-templates': orderTemplates,
   'quotation-preview': quotationPreview,
+  'quotation-issues': quotationIssues,
   'public-quotation': publicQuotation,
   'sales-dashboard': salesDashboard,
   'sales-order-from-quotation': salesOrderFromQuotation,

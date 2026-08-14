@@ -13,11 +13,22 @@ import {
   Save,
   X,
   Plus,
+  Phone,
   AlertTriangle,
   Loader2,
   Search,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { issueQuotation } from '@/lib/quotationIssueApi';
+import {
+  fetchDeliveryStatus,
+  fetchFlows,
+  executeFlow,
+  projectDeliveryFailure,
+  projectDeliveryState,
+  type CommunicationFlow,
+  type DeliveryProjection,
+} from '@/lib/communicationApi';
 import { searchProducts } from '@/lib/productCache';
 import type { Product } from '@/types/domain';
 import { formatBRL, formatDate } from '@/lib/formatters';
@@ -34,6 +45,7 @@ import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotat
 
 const STATUS_LABELS: Record<string, string> = {
   Rascunho: 'Rascunho',
+  Emitido: 'Emitido',
   Enviado: 'Enviado',
   Aprovado: 'Aprovado',
   Perdido: 'Perdido',
@@ -148,6 +160,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);
+  const [deliverySending, setDeliverySending] = useState(false);
+  const [deliveryState, setDeliveryState] = useState<DeliveryProjection | null>(null);
+  const [deliveryFlows, setDeliveryFlows] = useState<CommunicationFlow[]>([]);
+  const [deliveryFlowId, setDeliveryFlowId] = useState('');
   const [lifecycleAction, setLifecycleAction] = useState<
     'aprovado' | 'perdido' | 'create_revision' | null
   >(null);
@@ -202,6 +218,33 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setEditing(false);
     setConflict('');
   }, [initialData]);
+
+  useEffect(() => {
+    let active = true;
+    fetchFlows().then(async (result) => {
+      if (!active) return;
+      const flows = result.flows || [];
+      setDeliveryFlows(flows);
+      const preferred = flows.find((flow) => flow.context === 'already_talking');
+      const flowId = preferred?.id || result.selectedFlowId || flows[0]?.id || '';
+      setDeliveryFlowId(flowId);
+      if (!flowId || !initialData.quotation_uuid || !initialData.revision_id || initialData.status_canonical === 'rascunho') return;
+      const status = await fetchDeliveryStatus({
+        quotationId: initialData.quotation_uuid,
+        revisionId: initialData.revision_id,
+        flowId,
+      });
+      if (active) setDeliveryState(status ? projectDeliveryState(status) : null);
+    }).catch(() => {
+      if (active) {
+        setDeliveryFlows([]);
+        if (initialData.revision_id && initialData.status_canonical !== 'rascunho') {
+          setDeliveryState(projectDeliveryFailure(new Error('status unavailable')));
+        }
+      }
+    });
+    return () => { active = false; };
+  }, [initialData.id, initialData.quotation_id, initialData.quotation_uuid, initialData.revision_id, initialData.status_canonical]);
 
   useEffect(() => {
     let active = true;
@@ -487,6 +530,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [onReload]);
 
   const handleDelete = useCallback(async () => {
+    if (data.status_canonical !== 'rascunho') {
+      setMessage('Somente rascunhos podem ser excluídos.');
+      return;
+    }
     if (
       !confirm(
         `Tem certeza que deseja excluir o orçamento ${data.id}?\n\nEsta ação não pode ser desfeita.`
@@ -518,31 +565,41 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [data.id, data.revision_id, draftEditable, selectedVersionId]);
   const emitir = useCallback(async () => {
     if (!confirm(`Emitir orçamento ${data.id}? Após emissão não poderá ser editado.`)) return;
-    const token = concurrencyTokenRef.current;
-    if (!token) {
-      setConflict('Token de concorrência ausente. Recarregue o orçamento antes de emitir.');
-      return;
-    }
     setIssuing(true);
     setMessage('');
     setConflict('');
     try {
-      await apiPost(`/quotations?id=${encodeURIComponent(data.id)}`, {
-        action: 'set_status',
-        status: 'enviado',
-        concurrency_token: token,
-      });
-      setMessage('Orçamento emitido.');
+      const key = globalThis.crypto.randomUUID();
+      const issue = await issueQuotation({ extracted: {
+        nome: data.cliente || '', email: data.email || null, telefone: data.telefone || null,
+        items: items.map((item) => ({ item_code: item.sku, item_name: item.item_name, qty: Number(item.qty), rate: Number(item.applied_unit_price), manual_rate: item.manual_rate })),
+        prazo_producao: prazoProducao || undefined, frete: frete || undefined,
+        pagamento,
+        entrega,
+        validade_dias: Number(validadeDias),
+        observacoes,
+        template_key: selectedTemplate,
+        template_version_id: selectedVersionId || undefined,
+        secoes: sections,
+      } }, key, { sourceQuotationId: data.quotation_uuid || undefined, sourceRevisionId: data.revision_id || undefined });
+      setMessage(`Orçamento ${issue.businessNumber} emitido.`);
       await onReload();
     } catch (error) {
       setMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`);
     } finally {
       setIssuing(false);
     }
-  }, [concurrencyTokenRef, data.id, onReload]);
+  }, [data.cliente, data.email, data.id, data.quotation_uuid, data.revision_id, entrega, frete, items, observacoes, onReload, pagamento, prazoProducao, sections, selectedTemplate, selectedVersionId, validadeDias]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido') => {
+      const lossReason = status === 'perdido'
+        ? window.prompt('Informe o motivo da perda:')?.trim() || ''
+        : undefined;
+      if (status === 'perdido' && !lossReason) {
+        setMessage('Informe um motivo para marcar o orçamento como perdido.');
+        return;
+      }
       const token = concurrencyTokenRef.current;
       if (!token) {
         setConflict(
@@ -559,6 +616,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           {
             action: 'set_status',
             status,
+            ...(lossReason ? { loss_reason: lossReason } : {}),
             concurrency_token: token,
           }
         );
@@ -637,6 +695,24 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     const params = new URLSearchParams({ id: data.revision_id || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
   }, [data.id, data.revision_id]);
+  const sendIssuedQuotation = useCallback(async () => {
+    if (!data.revision_id || !deliveryFlowId || deliveryState && !deliveryState.retryable) return;
+    setDeliverySending(true);
+    setDeliveryState(null);
+    try {
+      await executeFlow({
+        quotation_id: data.quotation_id || data.id,
+        quotation_uuid: data.quotation_uuid || null,
+        revision_id: data.revision_id,
+        flow_id: deliveryFlowId,
+      });
+      setDeliveryState({ kind: 'completed', label: 'Enviado', retryable: false });
+    } catch (error) {
+      setDeliveryState(projectDeliveryFailure(error));
+    } finally {
+      setDeliverySending(false);
+    }
+  }, [data.id, data.quotation_id, data.quotation_uuid, data.revision_id, deliveryFlowId, deliveryState]);
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -880,7 +956,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             {templateError && <span className="text-xs text-destructive">{templateError}</span>}
           </div>
         )}
-        {data.status_canonical === 'enviado' && !editing && (
+        {(data.status_canonical === 'emitido' || data.status_canonical === 'enviado') && !editing && (
           <div
             className="px-6 py-3 border-b flex flex-wrap items-center gap-2"
             role="group"
@@ -1087,9 +1163,32 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             </>
           )}
           {data.status_canonical !== 'rascunho' && (
-            <Button variant="outline" size="sm" onClick={openIssuedDocument}>
-              <FileText size={14} /> Visualizar
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={openIssuedDocument}>
+                <FileText size={14} /> Visualizar
+              </Button>
+              <select
+                aria-label="Fluxo de WhatsApp"
+                className="h-8 rounded border border-line bg-surface px-2 text-xs"
+                value={deliveryFlowId}
+                onChange={(event) => setDeliveryFlowId(event.target.value)}
+                disabled={deliverySending || Boolean(deliveryState && !deliveryState.retryable)}
+              >
+                {deliveryFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={deliverySending || Boolean(deliveryState && !deliveryState.retryable) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
+                onClick={sendIssuedQuotation}
+              >
+                <Phone size={14} /> {deliveryState?.kind === 'accepted' ? 'Envio aceito' : deliveryState?.kind === 'reconciling' ? 'Reconciliação necessária' : deliveryState?.kind === 'completed' ? 'Enviado pelo WhatsApp' : deliveryState?.kind === 'readonly' ? 'Somente leitura' : deliverySending ? 'Enviando…' : 'Enviar WhatsApp'}
+              </Button>
+              {(data.expirada || data.is_expired || data.derived_expired) && (
+                <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
+              )}
+              {deliveryState && <span role="status" className="text-xs text-fg-muted">{deliveryState.label}</span>}
+            </>
           )}
           {draftEditable && !editing && (
             <Button
