@@ -17,10 +17,7 @@ const migrationPath = path.resolve(
 const migrationStatements = readFileSync(migrationPath, 'utf8')
   .split('--> statement-breakpoint')
   .map((statement) => statement.trim())
-  .filter(Boolean)
-  // Drizzle qualifies foreign-key targets with public; the transaction uses a
-  // temporary schema so the same committed statements run without touching it.
-  .map((statement) => statement.replace(/"public"\./g, ''));
+  .filter(Boolean);
 const migrationSkip = TEST_DATABASE_URL
   ? false
   : 'TEST_DATABASE_URL is required; PostgreSQL migration validation must run and may not be silently skipped.';
@@ -138,11 +135,89 @@ test(
             'SELECT count(*)::text AS count FROM "quotation_delivery_steps"'
           );
           assert.equal(stepRows[0]?.count, '0');
+
+          const firstRevisionId = '00000000-0000-4000-8000-000000000001';
+          await tx.unsafe(`
+            INSERT INTO "quotation_deliveries" (
+              "id", "revision_id", "phone", "flow_id", "flow_name", "state", "created_at", "updated_at"
+            ) VALUES (
+              '11000000-0000-4000-8000-000000000001', '${firstRevisionId}', '5511999999999',
+              'flow-other', 'flow-other', 'needs_review', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+          `);
+          await assert.rejects(
+            () =>
+              tx.savepoint(async (savepoint) => {
+                await savepoint.unsafe(`
+                INSERT INTO "quotation_deliveries" (
+                  "id", "revision_id", "phone", "flow_id", "flow_name", "state", "created_at", "updated_at"
+                ) VALUES (
+                  '12000000-0000-4000-8000-000000000001', '${firstRevisionId}', '5511999999999',
+                  'flow-other', 'flow-other', 'needs_review', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+              `);
+              }),
+            /quotation_deliveries_revision_flow_unique/
+          );
+
+          await tx.unsafe(`
+            INSERT INTO "quotation_delivery_steps" (
+              "id", "delivery_id", "position", "type", "payload_snapshot", "state", "created_at", "updated_at"
+            ) VALUES (
+              '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+              1, 'text', '{}'::jsonb, 'queued', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+          `);
+          await assert.rejects(
+            () =>
+              tx.savepoint(async (savepoint) => {
+                await savepoint.unsafe(`
+                INSERT INTO "quotation_delivery_steps" (
+                  "id", "delivery_id", "position", "type", "payload_snapshot", "state", "created_at", "updated_at"
+                ) VALUES (
+                  '20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+                  1, 'text', '{}'::jsonb, 'queued', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+              `);
+              }),
+            /quotation_delivery_steps_delivery_position_unique/
+          );
+          await tx.unsafe(`
+            INSERT INTO "quotation_delivery_steps" (
+              "id", "delivery_id", "position", "type", "payload_snapshot", "state", "provider_message_id", "created_at", "updated_at"
+            ) VALUES (
+              '20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+              2, 'text', '{}'::jsonb, 'server_ack', 'provider-message-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+          `);
+          await assert.rejects(
+            () =>
+              tx.savepoint(async (savepoint) => {
+                await savepoint.unsafe(`
+                INSERT INTO "quotation_delivery_steps" (
+                  "id", "delivery_id", "position", "type", "payload_snapshot", "state", "provider_message_id", "created_at", "updated_at"
+                ) VALUES (
+                  '20000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
+                  3, 'text', '{}'::jsonb, 'server_ack', 'provider-message-1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+              `);
+              }),
+            /quotation_delivery_steps_provider_message_id_unique/
+          );
+
+          const persistedStepRows = await tx.unsafe<{ count: string }[]>(
+            'SELECT count(*)::text AS count FROM "quotation_delivery_steps"'
+          );
+          assert.equal(persistedStepRows[0]?.count, '2');
           throw new RollbackMigration();
         });
       } catch (error) {
         if (!(error instanceof RollbackMigration)) throw error;
       }
+      const rollbackRows = await client.unsafe<{ schema_name: string | null }[]>(
+        `SELECT to_regnamespace('${schemaName}')::text AS schema_name`
+      );
+      assert.equal(rollbackRows[0]?.schema_name, null);
     } finally {
       await client.end({ timeout: 5 });
     }

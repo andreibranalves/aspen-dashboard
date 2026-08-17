@@ -63,7 +63,7 @@ SET
 --> statement-breakpoint
 ALTER TABLE "quotation_deliveries" ALTER COLUMN "flow_name" SET NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "quotation_delivery_steps" ADD CONSTRAINT "quotation_delivery_steps_delivery_id_quotation_deliveries_id_fk" FOREIGN KEY ("delivery_id") REFERENCES "public"."quotation_deliveries"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "quotation_delivery_steps" ADD CONSTRAINT "quotation_delivery_steps_delivery_id_quotation_deliveries_id_fk" FOREIGN KEY ("delivery_id") REFERENCES "quotation_deliveries"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "quotation_delivery_steps_delivery_position_unique" ON "quotation_delivery_steps" USING btree ("delivery_id","position");
 --> statement-breakpoint
