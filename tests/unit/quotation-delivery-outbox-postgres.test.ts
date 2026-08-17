@@ -492,7 +492,17 @@ test('confirmed_received records operator completion', async () => {
     leaseToken: claim.leaseToken,
     providerMessageId: 'provider-resolve-received',
   });
-  await setDelivery(delivery.id, { state: 'provider_accepted', updatedAt: old });
+  await setDelivery(delivery.id, { state: 'provider_accepted', updatedAt: now });
+  await assert.rejects(
+    repository.resolve({
+      deliveryId: delivery.id,
+      decision: 'confirmed_received',
+      note: 'Ainda aguardando o prazo mínimo.',
+      resolvedBy: 'authenticated-operator',
+    }),
+    /prazo de resolução/,
+  );
+  await setDelivery(delivery.id, { updatedAt: old });
   const resolved = await repository.resolve({
     deliveryId: delivery.id,
     decision: 'confirmed_received',
@@ -518,8 +528,8 @@ test('confirmed_not_received requeues only unresolved steps', async () => {
     acceptedAt: old,
     updatedAt: old,
   });
-  await setStep(unresolved.id, { state: 'needs_review', updatedAt: old });
-  await setDelivery(delivery.id, { state: 'needs_review', updatedAt: old });
+  await setStep(unresolved.id, { state: 'needs_review', updatedAt: now });
+  await setDelivery(delivery.id, { state: 'needs_review', updatedAt: now });
   const resolved = await repository.resolve({
     deliveryId: delivery.id,
     decision: 'confirmed_not_received',

@@ -172,6 +172,14 @@ export async function handler(
         });
         const delivery = await deliveryModule.enqueue({ revisionId, flowId });
         if (!delivery) return deliveryErrorResponse(new Error('Entrega ausente.'));
+        if (delivery.state === 'failed') {
+          return jsonResponse(400, {
+            error:
+              delivery.publicError ||
+              'O envio foi rejeitado antes do transporte. Corrija os dados e tente novamente.',
+            send_status: 'failed',
+          });
+        }
         return jsonResponse(delivery.state === 'delivered' ? 200 : 202, {
           success: true,
           delivery_id: delivery.id,

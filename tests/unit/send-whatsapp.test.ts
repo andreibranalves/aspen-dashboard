@@ -694,6 +694,28 @@ test('send-whatsapp-flow dry-run uses the extracted planner without rendering or
   }
 });
 
+function durableDelivery(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'delivery-fixture',
+    revisionId,
+    businessNumber,
+    clientName: 'Cliente Teste',
+    phone: '5511999990000',
+    flowId: 'flow-fixture',
+    flowName: 'Fluxo fixture',
+    state: 'provider_accepted',
+    completionSource: null,
+    publicError: null,
+    nextAttemptAt: null,
+    reconciliationDeadline: null,
+    deliveredAt: null,
+    createdAt: new Date('2026-08-17T12:00:00.000Z'),
+    updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+    steps: [],
+    ...overrides,
+  } as any;
+}
+
 test('send-whatsapp-flow returns durable provider state from the outbox module', async () => {
   let enqueueInput: unknown;
   const deliveryModule = {
@@ -734,6 +756,35 @@ test('send-whatsapp-flow returns durable provider state from the outbox module',
   assert.deepEqual(enqueueInput, { revisionId, flowId: 'flow-durable' });
   assert.equal(body.phone, undefined);
   assert.equal(body.delivery.phone, undefined);
+});
+
+test('send-whatsapp-flow preserves 200 success for a delivered durable state', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-delivered', quotation_id: quotationId, revision_id: revisionId }),
+    { deliveryModule: { async enqueue() { return durableDelivery({ state: 'delivered' }); } } } as any,
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.send_status, 'delivered');
+});
+
+test('send-whatsapp-flow does not report a durable failed replay as success', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-failed', quotation_id: quotationId, revision_id: revisionId }),
+    {
+      deliveryModule: {
+        async enqueue() {
+          return durableDelivery({ state: 'failed', publicError: 'A revisão do orçamento não está disponível para envio.' });
+        },
+      },
+    } as any,
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 400);
+  assert.equal(body.success, undefined);
+  assert.equal(body.send_status, 'failed');
+  assert.equal(body.error, 'A revisão do orçamento não está disponível para envio.');
 });
 
 test('send-whatsapp-flow sanitizes outbox failures', async () => {

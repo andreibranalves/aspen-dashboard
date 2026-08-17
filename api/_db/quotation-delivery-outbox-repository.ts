@@ -1407,7 +1407,10 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             'A entrega não está disponível para resolução.'
           );
         }
-        if (!updatedAt || now.getTime() - updatedAt.getTime() < PROVIDER_DELAY_MS) {
+        if (
+          delivery.state === 'provider_accepted' &&
+          (!updatedAt || now.getTime() - updatedAt.getTime() < PROVIDER_DELAY_MS)
+        ) {
           throw new QuotationDeliveryOutboxConflictError(
             'A entrega ainda não atingiu o prazo de resolução.'
           );
