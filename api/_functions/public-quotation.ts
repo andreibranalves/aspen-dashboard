@@ -9,7 +9,11 @@ import {
   resolveQuotationTemplate,
 } from './lib/quotation-templates.js';
 import { renderQuotationPdfHtml } from './lib/quotation-pdf-renderer.js';
-import { isValidPdfBuffer, quotationPdfChecksum } from './lib/quotation-document-storage.js';
+import {
+  isValidPdfBuffer,
+  MAX_QUOTATION_PDF_BYTES,
+  quotationPdfChecksum,
+} from './lib/quotation-document-storage.js';
 const TOKEN_PREFIX = 'aspen:public-quotation:';
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -243,7 +247,7 @@ export function createPublicQuotationHandler(
       if (!rendered) return json(404, { error: 'Orçamento não encontrado.' });
       if (event.queryStringParameters?.format === 'pdf') {
         const pdf = await renderPdf(rendered.html);
-        if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) {
+        if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf) || pdf.byteLength > MAX_QUOTATION_PDF_BYTES) {
           return json(503, { error: 'Não foi possível gerar o PDF do orçamento.' });
         }
         const templateVersion = rendered.snapshot.templateVersion

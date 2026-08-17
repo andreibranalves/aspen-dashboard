@@ -21,7 +21,11 @@ import {
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { renderQuotationPdf } from '../_functions/lib/quotation-pdf-renderer.js';
-import { isValidPdfBuffer, quotationPdfChecksum } from '../_functions/lib/quotation-document-storage.js';
+import {
+  isValidPdfBuffer,
+  MAX_QUOTATION_PDF_BYTES,
+  quotationPdfChecksum,
+} from '../_functions/lib/quotation-document-storage.js';
 import { normalizeWhatsappPhone } from '../_functions/lib/whatsapp-conversations-store.js';
 import { revisionSectionsSnapshot } from './quotation-revision-invariants.js';
 
@@ -29,7 +33,6 @@ type DatabaseProvider = () => AppDatabase;
 type DeliveryDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const RESUMABLE_DAYS = 30;
 const DIAGNOSTIC_DAYS = 90;
 const DELIVERY_STATES = ['pending', 'transporting', 'accepted_partial', 'completed', 'retryable', 'reconciling'] as const;
@@ -196,7 +199,7 @@ function retention(now: Date, days: number): Date {
 
 function validPdfLimit(value: unknown, fallback: number, rejectInvalid = false): number {
   if (value === undefined) return fallback;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > MAX_PDF_BYTES) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > MAX_QUOTATION_PDF_BYTES) {
     if (rejectInvalid) throw new QuotationDeliveryInputError('Limite de PDF inválido.');
     return fallback;
   }
@@ -361,7 +364,7 @@ export function createPostgresQuotationDeliveryRepository(
   const now = options.now || (() => new Date());
   const randomId = options.randomId || randomUUID;
   const renderPdf = options.renderPdf || renderQuotationPdf;
-  const maxPdfBytes = validPdfLimit(options.maxPdfBytes, MAX_PDF_BYTES);
+  const maxPdfBytes = validPdfLimit(options.maxPdfBytes, MAX_QUOTATION_PDF_BYTES);
 
   async function reserve(input: ReserveQuotationDeliveryInput): Promise<QuotationDelivery> {
     try { return await getDb().transaction((tx) => reserveInDatabase(tx, input, asDate(now(), new Date()), randomId)); }
