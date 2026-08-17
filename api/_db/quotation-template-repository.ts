@@ -9,8 +9,10 @@ import {
   quotations,
 } from './schema.js';
 import {
+  formatQuotationClientName,
   formatQuotationCurrency,
   formatQuotationDate,
+  formatQuotationPhone,
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { toSafeMultilineHtml } from './quotation-content.js';
@@ -323,13 +325,13 @@ export function quotationSnapshotViewModel(
   const total = nullable(revision.total);
   const client = {
     id: quotation.clientId,
-    name: revision.clienteNome,
-    nome: revision.clienteNome,
+    name: formatQuotationClientName(revision.clienteNome),
+    nome: formatQuotationClientName(revision.clienteNome),
     document: revision.clienteDocumento || '',
     documento: revision.clienteDocumento || '',
     email: revision.clienteEmail || '',
-    phone: revision.clienteTelefone || '',
-    telefone: revision.clienteTelefone || '',
+    phone: formatQuotationPhone(revision.clienteTelefone),
+    telefone: formatQuotationPhone(revision.clienteTelefone),
     address: [
       revision.clienteEndereco,
       revision.clienteNumero,

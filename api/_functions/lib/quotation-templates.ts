@@ -1700,6 +1700,26 @@ function formatDate(value: unknown): string {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(date);
 }
 
+function formatClientName(value: unknown): string {
+  const raw = String(value ?? '').trim().replace(/\s+/g, ' ');
+  if (!raw || /[<>]/.test(raw)) return raw;
+  return raw
+    .toLocaleLowerCase('pt-BR')
+    .replace(/(^|[\s'’-])\p{L}/gu, (letter) => letter.toLocaleUpperCase('pt-BR'));
+}
+
+function formatPhone(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  const local = digits.startsWith('55') && (digits.length === 12 || digits.length === 13)
+    ? digits.slice(2)
+    : digits;
+  if (local.length === 11) return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  if (local.length === 10) return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  return raw;
+}
+
 function createEnvironment(): typeof Handlebars {
   const environment = Handlebars.create();
   for (const helperName of Object.keys(environment.helpers)) {
@@ -2688,4 +2708,9 @@ export function renderQuotationTemplate(
   }
 }
 
-export { formatCurrency as formatQuotationCurrency, formatDate as formatQuotationDate };
+export {
+  formatClientName as formatQuotationClientName,
+  formatCurrency as formatQuotationCurrency,
+  formatDate as formatQuotationDate,
+  formatPhone as formatQuotationPhone,
+};

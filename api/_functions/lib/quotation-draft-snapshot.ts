@@ -1,6 +1,8 @@
 import {
+  formatQuotationClientName,
   formatQuotationCurrency,
   formatQuotationDate,
+  formatQuotationPhone,
   type QuotationTemplate,
   type QuotationTemplateViewModel,
 } from './quotation-templates.js';
@@ -170,13 +172,13 @@ function draftPreviewViewModel(
   ].filter(Boolean);
   const client = {
     id: 'preview-client',
-    name: extracted.nome,
-    nome: extracted.nome,
+    name: formatQuotationClientName(extracted.nome),
+    nome: formatQuotationClientName(extracted.nome),
     document: extracted.cnpj || '',
     documento: extracted.cnpj || '',
     email: extracted.email || '',
-    phone: extracted.telefone || '',
-    telefone: extracted.telefone || '',
+    phone: formatQuotationPhone(extracted.telefone),
+    telefone: formatQuotationPhone(extracted.telefone),
     address: addressParts.join(', '),
     notes: '',
     notes_snapshot: '',

@@ -11,7 +11,9 @@ import {
 } from './schema.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../_lib/quotation-status.js';
 import {
+  formatQuotationClientName,
   formatQuotationDate,
+  formatQuotationPhone,
   renderQuotationTemplate,
   type QuotationTemplate,
   type QuotationTemplateViewModel,
@@ -310,12 +312,12 @@ function revisionViewModel(
   const freight = money(revision.frete);
   const total = money(revision.total);
   const client = {
-    name: revision.clienteNome,
-    nome: revision.clienteNome,
+    name: formatQuotationClientName(revision.clienteNome),
+    nome: formatQuotationClientName(revision.clienteNome),
     document: revision.clienteDocumento || '',
     documento: revision.clienteDocumento || '',
     email: revision.clienteEmail || '',
-    phone: revision.clienteTelefone || '',
+    phone: formatQuotationPhone(revision.clienteTelefone),
     address: [revision.clienteEndereco, revision.clienteNumero, revision.clienteBairro, revision.clienteMunicipio, revision.clienteUf, revision.clienteCep].filter(Boolean).join(', '),
   };
   const sectionsSnapshot = revisionSectionsSnapshot(revision);

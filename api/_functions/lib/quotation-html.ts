@@ -1,5 +1,6 @@
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../_db/quotation-template-repository.js';
 import {
+  formatQuotationClientName,
   quotationTemplateFromVersion,
   renderQuotationTemplate,
   resolveQuotationTemplate,
@@ -32,6 +33,6 @@ export async function renderQuotationHtml(
 
   return {
     html,
-    customerName: snapshot.revision.clienteNome,
+    customerName: formatQuotationClientName(snapshot.revision.clienteNome),
   };
 }

@@ -37,6 +37,22 @@ function post(value: unknown, queryStringParameters: Record<string, string> = {}
   } as any;
 }
 
+test('formats draft client identity for display', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async (key) => key === template.key ? template : null,
+    renderPdf: pdfRender,
+  });
+
+  const response = await handler(post({
+    extracted: { ...extracted, nome: 'ANDREI ALVES', telefone: '21999999999' },
+  }, { format: 'html' }));
+
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body || '', /Andrei Alves/);
+  assert.match(response.body || '', /\(21\) 99999-9999/);
+});
+
 test('renders an unsaved quotation draft as HTML when requested', async () => {
   let renderCalls = 0;
   const handler = createQuotationPreviewHandler({

@@ -338,6 +338,20 @@ test('rendered quotation replaces unstable Google Fonts CSS with stable font fil
   assert.match(html, /cormorantgaramond\/v21\/co3bmX5slCNuHLi8bLeY9MK7whWMhyjYqXtK\.woff2/);
 });
 
+test('snapshot model formats client identity for display', () => {
+  const model = quotationSnapshotViewModel({
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      clienteNome: 'ANDREI ALVES',
+      clienteTelefone: '21999999999',
+    },
+  });
+
+  assert.equal(model.client.name, 'Andrei Alves');
+  assert.equal(model.client.phone, '(21) 99999-9999');
+});
+
 test('snapshot model canonicalizes legacy physical status', () => {
   const model = quotationSnapshotViewModel({
     ...snapshot,
