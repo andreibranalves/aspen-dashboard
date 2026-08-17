@@ -58,6 +58,24 @@ test('transport classifies provider outcomes without guessing network delivery',
   assert.equal(errorOf(transient).kind, 'transient_pre_transport');
 });
 
+test('transport rejects text control characters and oversized text before provider access', async () => {
+  let calls = 0;
+  const fetch = async () => {
+    calls += 1;
+    return response(200, { accepted: true, message_id: 'unexpected' });
+  };
+  for (const text of ['Olá\nCliente', 'x'.repeat(4_001)]) {
+    const error = await rejected(
+      sendFrozenStep({ phone: '5511999990000', step: { ...textStep, payload: { text } } }, {
+        ...config,
+        fetch,
+      }),
+    );
+    assert.equal(errorOf(error).kind, 'permanent_pre_transport');
+  }
+  assert.equal(calls, 0);
+});
+
 test('transport classifies malformed success, server failures and validation rejection', async () => {
   for (const body of [{}, { accepted: true }, 'not-json']) {
     const error = await rejected(

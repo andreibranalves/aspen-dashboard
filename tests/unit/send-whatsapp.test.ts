@@ -16,6 +16,11 @@ import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
 } from '../../api/_functions/lib/postgres-media.js';
+import {
+  createPostgresQuotationDeliveryRepository,
+  QuotationDeliveryConflictError,
+} from '../../api/_db/quotation-delivery-repository.js';
+import { quoteRevisions, quotationDeliveries } from '../../api/_db/schema.js';
 import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
@@ -270,6 +275,112 @@ function reservationStore() {
   return createFakeWhatsappReservationStore() as any;
 }
 
+function quotationDeliveryConditionPairs(condition: unknown): Record<string, unknown> {
+  const pairs: Record<string, unknown> = {};
+  const walk = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    const chunks = (value as { queryChunks?: unknown }).queryChunks;
+    if (!Array.isArray(chunks)) return;
+    let column: string | undefined;
+    for (const chunk of chunks) {
+      if (chunk && typeof chunk === 'object' && 'name' in chunk && (chunk as { table?: unknown }).table === quotationDeliveries) {
+        column = String((chunk as { name: string }).name);
+      } else if (column && chunk && typeof chunk === 'object' && 'value' in chunk && !Array.isArray((chunk as { value?: unknown }).value)) {
+        pairs[column] = (chunk as { value: unknown }).value;
+        column = undefined;
+      } else {
+        walk(chunk);
+      }
+    }
+  };
+  walk(condition);
+  return pairs;
+}
+
+function twoFlowDeliveryDatabase(revision: string) {
+  const now = new Date('2026-08-13T12:00:00.000Z');
+  const revisionRow = {
+    id: revision,
+    status: 'emitido',
+    issuedAt: now,
+    createdAt: now,
+    validadeDias: 30,
+  } as any;
+  const rows: Array<Record<string, any>> = [];
+  const camelColumn: Record<string, string> = {
+    revision_id: 'revisionId',
+    flow_id: 'flowId',
+    updated_at: 'updatedAt',
+    id: 'id',
+  };
+  const matches = (row: Record<string, any>, condition: unknown) => Object.entries(quotationDeliveryConditionPairs(condition))
+    .every(([column, value]) => {
+      const actual = row[camelColumn[column] || column];
+      return actual instanceof Date && value instanceof Date
+        ? actual.getTime() === value.getTime()
+        : actual === value;
+    });
+  const query = (source: unknown[]) => {
+    let result = [...source];
+    return {
+      where(condition: unknown) {
+        result = result.filter((row) => matches(row as Record<string, any>, condition));
+        return this;
+      },
+      limit(count: number) {
+        return Promise.resolve(result.slice(0, count));
+      },
+      then(resolve: (value: unknown[]) => unknown, reject: (error: unknown) => unknown) {
+        return Promise.resolve(result).then(resolve, reject);
+      },
+    };
+  };
+  const db = {
+    transaction: async (callback: (tx: unknown) => unknown) => callback(db),
+    select: () => ({
+      from(table: unknown) {
+        if (table === quoteRevisions) return query([revisionRow]);
+        if (table === quotationDeliveries) return query(rows);
+        return query([]);
+      },
+    }),
+    insert: () => ({
+      values(values: Record<string, unknown>) {
+        return {
+          onConflictDoNothing: () => ({
+            returning: async () => {
+              if (rows.some((row) => row.revisionId === values.revisionId && row.flowId === values.flowId)) return [];
+              const row = { ...values } as Record<string, any>;
+              rows.push(row);
+              return [row];
+            },
+          }),
+        };
+      },
+    }),
+    update: (table: unknown) => ({
+      set(values: Record<string, unknown>) {
+        return {
+          where(condition: unknown) {
+            const selected = table === quotationDeliveries ? rows.filter((row) => matches(row, condition)) : [];
+            return {
+              returning: async (projection?: Record<string, unknown>) => {
+                for (const row of selected) {
+                  for (const [key, value] of Object.entries(values)) {
+                    if (value !== undefined) row[key] = value;
+                  }
+                }
+                return projection ? selected.map((row) => ({ id: row.id })) : selected;
+              },
+            };
+          },
+        };
+      },
+    }),
+  };
+  return { db, now, rows };
+}
+
 function event(body: Record<string, unknown>) {
   return {
     httpMethod: 'POST',
@@ -277,6 +388,25 @@ function event(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   } as any;
 }
+
+test('quotation delivery compatibility scopes reads, claims and updates by flow', async () => {
+  const deliveryRevisionId = '22222222-2222-4222-8222-222222222222';
+  const fixture = twoFlowDeliveryDatabase(deliveryRevisionId);
+  const repository = createPostgresQuotationDeliveryRepository(() => fixture.db as any, { now: () => fixture.now });
+  await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511999990000', flowId: 'flow-a' });
+  await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511888880000', flowId: 'flow-b' });
+
+  await repository.recordState({ revisionId: deliveryRevisionId, flowId: 'flow-b', state: 'completed' });
+  const claimed = await repository.claimTransport(deliveryRevisionId, 'flow-a');
+  assert.equal(claimed?.state, 'transporting');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-a'))?.phone, '5511999990000');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-a'))?.state, 'transporting');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-b'))?.phone, '5511888880000');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-b'))?.state, 'completed');
+
+  await assert.rejects(repository.getByRevision(deliveryRevisionId), QuotationDeliveryConflictError);
+  await assert.rejects(repository.recordState({ revisionId: deliveryRevisionId, state: 'reconciling' }), QuotationDeliveryConflictError);
+});
 
 test('send-whatsapp rejects PostgreSQL send without quotation before transport', async () => {
   const originalFetch = globalThis.fetch;
@@ -524,6 +654,110 @@ test('flow planner keeps dry-run PDF references free of binary content', async (
   });
   assert.equal(plan.steps.at(-1)?.type, 'quotation_pdf');
   assert.equal(JSON.stringify(plan.steps).includes('base64'), false);
+});
+
+test('send-whatsapp-flow dry-run uses the extracted planner without rendering or transport', async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  let pdfCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'must-not-send' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ flow_id: 'flow-dry-run', quotation_id: quotationId, revision_id: revisionId, dry_run: true }),
+      {
+        resolveFlow: async () => ({
+          id: 'flow-dry-run',
+          name: 'Fluxo dry-run',
+          steps: [
+            { type: 'text', template: 'Olá (nome)' },
+            { type: 'document', source: 'quotation_pdf', caption: 'Orçamento (numero_pedido)' },
+          ],
+        }),
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+        renderPdf: async () => {
+          pdfCalls += 1;
+          throw new Error('PDF must not render in dry-run');
+        },
+      },
+    );
+    const body = JSON.parse(response.body || '{}');
+    assert.equal(response.statusCode, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.dry_run, true);
+    assert.equal(body.send_status, 'dry_run');
+    assert.deepEqual(body.steps.map((step: { type: string }) => step.type), ['text', 'document']);
+    assert.equal(JSON.stringify(body.steps).includes('base64'), false);
+    assert.equal(pdfCalls, 0);
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('send-whatsapp-flow preserves typed transport failure paths', async () => {
+  const cases = [
+    {
+      name: 'transient',
+      fetch: async () => new Response(JSON.stringify({ error: 'rate limit' }), { status: 429 }),
+      statusCode: 503,
+      state: 'retryable',
+      failureKind: 'transient_pre_transport',
+    },
+    {
+      name: 'permanent',
+      fetch: async () => new Response(JSON.stringify({ error: 'rejected' }), { status: 400 }),
+      statusCode: 400,
+      state: 'retryable',
+      failureKind: 'permanent_pre_transport',
+    },
+    {
+      name: 'ambiguous',
+      fetch: async () => { throw new Error('socket closed'); },
+      statusCode: 503,
+      state: 'reconciling',
+      failureKind: 'ambiguous',
+    },
+  ] as const;
+  for (const outcome of cases) {
+    const states: Array<Record<string, unknown>> = [];
+    const response = await sendWhatsappFlow(
+      event({ flow_id: `flow-${outcome.name}`, quotation_id: quotationId, revision_id: revisionId }),
+      {
+        resolveFlow: async () => ({
+          id: `flow-${outcome.name}`,
+          name: `Fluxo ${outcome.name}`,
+          steps: [{ type: 'text', template: 'Olá (nome)' }, { type: 'document', source: 'quotation_pdf' }],
+        }),
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+        renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+        deliveryRepository: {
+          reserve: async () => ({}) as any,
+          prepareDeliveryDocument: async () => ({
+            pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+            pdfSize: 20,
+            pdfSignature: 'a'.repeat(64),
+            validUntil: new Date('2026-08-20T12:00:00.000Z'),
+          }),
+          recordState: async (input) => { states.push(input as unknown as Record<string, unknown>); return {} as any; },
+        },
+        reservationStore: reservationStore(),
+        transport: { baseUrl: 'https://evolution.test', apiKey: 'test-key', instance: 'test-instance', fetch: outcome.fetch },
+        checkDuplicate: async () => false,
+        recordSendEvent: async () => 'synthetic-event',
+      },
+    );
+    assert.equal(response.statusCode, outcome.statusCode, outcome.name);
+    assert.equal(states.at(-1)?.state, outcome.state, outcome.name);
+    assert.equal(states.at(-1)?.failureKind, outcome.failureKind, outcome.name);
+    assert.equal(states.every((input) => input.flowId === `flow-${outcome.name}`), true, outcome.name);
+  }
 });
 
 test('Evolution response requires explicit provider acceptance', () => {

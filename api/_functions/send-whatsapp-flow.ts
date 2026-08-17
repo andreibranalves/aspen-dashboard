@@ -29,7 +29,11 @@ import {
   type DeliveryPlan,
   type DeliveryPlanInput,
 } from './lib/quotation-delivery-plan.js';
-import { sendFrozenStep, type EvolutionTransportDependencies } from './lib/evolution-transport.js';
+import {
+  EvolutionTransportError,
+  sendFrozenStep,
+  type EvolutionTransportDependencies,
+} from './lib/evolution-transport.js';
 import type { PreparedDeliveryDocument } from '../_db/quotation-delivery-repository.js';
 import { KV_KEY_SEND_EVENTS_PREFIX } from '../_lib/media-schema.js';
 import {
@@ -222,6 +226,40 @@ function reconciliationBody(phase = 'reconciling'): Record<string, unknown> {
     error: 'O envio permanece em reconciliação. Não reenvie automaticamente.',
     send_status: phase,
     reconciliation_required: true,
+  };
+}
+
+function transportFailureResponse(error: EvolutionTransportError): {
+  state: 'retryable' | 'reconciling';
+  failureKind: EvolutionTransportError['kind'];
+  statusCode: number;
+  publicError: string;
+  body: Record<string, unknown>;
+} {
+  if (error.kind === 'transient_pre_transport') {
+    return {
+      state: 'retryable',
+      failureKind: error.kind,
+      statusCode: 503,
+      publicError: 'Falha transitória antes do transporte. Tente novamente.',
+      body: { error: 'Falha transitória antes do transporte. Tente novamente.', send_status: 'retryable' },
+    };
+  }
+  if (error.kind === 'permanent_pre_transport') {
+    return {
+      state: 'retryable',
+      failureKind: error.kind,
+      statusCode: 400,
+      publicError: 'O envio foi rejeitado antes do transporte. Corrija os dados e tente novamente.',
+      body: { error: 'O envio foi rejeitado antes do transporte. Corrija os dados e tente novamente.', send_status: 'retryable' },
+    };
+  }
+  return {
+    state: 'reconciling',
+    failureKind: error.kind,
+    statusCode: 503,
+    publicError: 'O resultado do transporte requer reconciliação. Não reenvie automaticamente.',
+    body: reconciliationBody(),
   };
 }
 
@@ -453,7 +491,7 @@ export async function handler(
       revisionId,
       flowId,
       baseUrl,
-      needPdf: !deliveryRepository,
+      needPdf: !dryRun && !deliveryRepository,
       resolveFlow: flowResolver,
       repository: dependencies.repository || createQuotationTemplateRepository(),
       store: dependencies.store,
@@ -491,11 +529,12 @@ export async function handler(
         if (error instanceof QuotationDeliveryPdfError) {
           const publicError = 'PDF indisponível. Tentar novamente.';
           try {
-            await deliveryRepository.recordState({ revisionId, state: 'retryable', publicError });
+            await deliveryRepository.recordState({ revisionId, flowId, state: 'retryable', publicError });
             return jsonResponse(503, { error: publicError, send_status: 'retryable' });
           } catch {
             await deliveryRepository.recordState({
               revisionId,
+              flowId,
               state: 'reconciling',
               publicError: 'A falha do PDF não pôde ser persistida. Reconciliação necessária.',
             }).catch(() => undefined);
@@ -538,7 +577,7 @@ export async function handler(
         throw new WhatsappSendReservationStorageError('A quantidade de etapas da reserva não corresponde ao fluxo.');
       }
       reservation = validated;
-      await deliveryRepository?.recordState({ revisionId, state: 'pending' });
+      await deliveryRepository?.recordState({ revisionId, flowId, state: 'pending' });
     }
 
     let duplicateWarning = false;
@@ -559,17 +598,17 @@ export async function handler(
           currentStep: index,
         });
         if (!transporting.ok) {
-          await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'A reserva de transporte mudou. Reconciliação necessária.' });
+          await deliveryRepository?.recordState({ revisionId, flowId, state: 'reconciling', publicError: 'A reserva de transporte mudou. Reconciliação necessária.' });
           return await reservationConflictResponse(reservationStore, reservation.key, flowId, transporting);
         }
         reservation = transporting.record;
-        await deliveryRepository?.recordState({ revisionId, state: 'transporting' });
+        await deliveryRepository?.recordState({ revisionId, flowId, state: 'transporting' });
         const response = await sendFrozenStep(
           { phone: plan.phone, step: steps[index], document },
           dependencies.transport,
         );
         if (!response.accepted) {
-          await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'A resposta do transporte não confirmou o resultado. Reconciliação necessária.' }).catch(() => undefined);
+          await deliveryRepository?.recordState({ revisionId, flowId, state: 'reconciling', publicError: 'A resposta do transporte não confirmou o resultado. Reconciliação necessária.' }).catch(() => undefined);
           return jsonResponse(503, reconciliationBody());
         }
         // Persist neutral acceptance before any next step or bookkeeping.
@@ -584,12 +623,13 @@ export async function handler(
           errorMessage: 'O transporte foi aceito e aguarda reconciliação.',
         });
         if (!accepted.ok) {
-          await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'O transporte foi aceito. Reconciliação necessária.' });
+          await deliveryRepository?.recordState({ revisionId, flowId, state: 'reconciling', publicError: 'O transporte foi aceito. Reconciliação necessária.' });
           return await acceptedProviderCasFailure(reservationStore, reservation.key, flowId, accepted);
         }
         reservation = accepted.record;
         await deliveryRepository?.recordState({
           revisionId,
+          flowId,
           state: 'accepted_partial',
           providerAcceptanceId: response.providerMessageId,
         });
@@ -636,13 +676,13 @@ export async function handler(
         result: neutralTerminalResult(resultBody, publicSteps),
       });
       if (!completed.ok) {
-        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'reconciling', publicError: 'A conclusão requer reconciliação.' });
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, flowId, state: 'reconciling', publicError: 'A conclusão requer reconciliação.' });
         return await reservationConflictResponse(reservationStore, reservation.key, flowId, completed);
       }
       try {
-        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'completed' });
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, flowId, state: 'completed' });
       } catch {
-        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'reconciling', publicError: 'A conclusão não pôde ser confirmada. Reconciliação necessária.' }).catch(() => undefined);
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, flowId, state: 'reconciling', publicError: 'A conclusão não pôde ser confirmada. Reconciliação necessária.' }).catch(() => undefined);
         return jsonResponse(503, reconciliationBody());
       }
     }
@@ -654,8 +694,21 @@ export async function handler(
     if (err instanceof WhatsappSendReservationStorageError) {
       return jsonResponse(503, { error: 'Não foi possível consultar o estado durável do envio. Tente novamente sem repetir automaticamente.', send_status: 'reconciling', reconciliation_required: true });
     }
+    const transportFailure = err instanceof EvolutionTransportError
+      ? transportFailureResponse(err)
+      : null;
     if (reservation) {
       const currentPhase = reservationPhase(reservation);
+      if (transportFailure?.state === 'retryable' && currentPhase === 'transporting') {
+        await deliveryRepository?.recordState({
+          revisionId: reservation.revisionId,
+          flowId: reservation.flowId,
+          state: transportFailure.state,
+          failureKind: transportFailure.failureKind,
+          publicError: transportFailure.publicError,
+        }).catch(() => undefined);
+        return jsonResponse(transportFailure.statusCode, transportFailure.body);
+      }
       if (currentPhase === 'reserved') {
         try {
           const transitioned = await casWithRetry(reservationStore, {
@@ -670,12 +723,14 @@ export async function handler(
         } catch {
           return jsonResponse(503, { error: 'Não foi possível persistir a falha segura antes do transporte. Não repita automaticamente.', send_status: 'reconciling', reconciliation_required: true });
         }
-        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'retryable', publicError: 'Falha antes do transporte.' });
+        await deliveryRepository?.recordState({ revisionId: reservation.revisionId, flowId: reservation.flowId, state: 'retryable', publicError: 'Falha antes do transporte.' });
         return jsonResponse(code, { error: 'Falha antes do transporte. Tente novamente.', send_status: 'retryable' });
       }
       await deliveryRepository?.recordState({
         revisionId: reservation.revisionId,
+        flowId: reservation.flowId,
         state: 'reconciling',
+        failureKind: transportFailure?.failureKind,
         publicError: 'O envio permanece em reconciliação.',
       }).catch(() => undefined);
       return jsonResponse(503, {

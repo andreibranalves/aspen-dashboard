@@ -24,6 +24,7 @@ import { renderQuotationPdf } from '../_functions/lib/quotation-pdf-renderer.js'
 import { isValidPdfBuffer, quotationPdfChecksum } from '../_functions/lib/quotation-document-storage.js';
 import { normalizeWhatsappPhone } from '../_functions/lib/whatsapp-conversations-store.js';
 import { revisionSectionsSnapshot } from './quotation-revision-invariants.js';
+import type { TransportFailureKind } from '../_functions/lib/quotation-delivery-state.js';
 
 type DatabaseProvider = () => AppDatabase;
 type DeliveryDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -115,6 +116,9 @@ export interface ReserveQuotationDeliveryInput {
 
 export interface RecordQuotationDeliveryStateInput {
   revisionId: string;
+  flowId?: unknown;
+  flow_id?: unknown;
+  failureKind?: TransportFailureKind;
   state: QuotationDeliveryState;
   providerAcceptanceId?: unknown;
   provider_acceptance_id?: unknown;
@@ -131,9 +135,9 @@ export interface QuotationDeliveryRepository {
   reserveDelivery(input: ReserveQuotationDeliveryInput): Promise<QuotationDelivery>;
   recordState(input: RecordQuotationDeliveryStateInput): Promise<QuotationDelivery>;
   recordDeliveryState(input: RecordQuotationDeliveryStateInput): Promise<QuotationDelivery>;
-  claimTransport(revisionId: string): Promise<QuotationDelivery | null>;
-  getByRevision(revisionId: string): Promise<QuotationDelivery | null>;
-  readDeliveryByRevision(revisionId: string): Promise<QuotationDelivery | null>;
+  claimTransport(revisionId: string, flowId?: string): Promise<QuotationDelivery | null>;
+  getByRevision(revisionId: string, flowId?: string): Promise<QuotationDelivery | null>;
+  readDeliveryByRevision(revisionId: string, flowId?: string): Promise<QuotationDelivery | null>;
   prepareDeliveryDocument(revisionId: string): Promise<PreparedDeliveryDocument>;
   prepareDelivery(input: PrepareQuotationDeliveryInput): Promise<PreparedQuotationDelivery>;
   prepareQuotationDelivery(input: PrepareQuotationDeliveryInput): Promise<PreparedQuotationDelivery>;
@@ -259,8 +263,11 @@ async function readRow(db: DeliveryDatabase, revisionId: string, flowId?: string
   const where = flowId
     ? and(eq(quotationDeliveries.revisionId, revisionId), eq(quotationDeliveries.flowId, flowId))
     : eq(quotationDeliveries.revisionId, revisionId);
-  const [row] = await db.select().from(quotationDeliveries).where(where).limit(1);
-  return row || null;
+  const rows = await db.select().from(quotationDeliveries).where(where).limit(flowId ? 1 : 2);
+  if (!flowId && rows.length > 1) {
+    throw new QuotationDeliveryConflictError('O fluxo da entrega é obrigatório quando a revisão possui mais de uma entrega.');
+  }
+  return rows[0] || null;
 }
 
 async function assertEmittedRevision(db: DeliveryDatabase, revisionId: string, now: Date) {
@@ -400,17 +407,25 @@ export function createPostgresQuotationDeliveryRepository(
 
   async function recordState(input: RecordQuotationDeliveryStateInput): Promise<QuotationDelivery> {
     const revisionId = uuid(input?.revisionId, 'Identificador da revisão');
+    const flowIdInput = input.flowId ?? input.flow_id;
+    const flowId = flowIdInput === undefined ? undefined : flow(flowIdInput);
+    if (input.failureKind !== undefined && !['transient_pre_transport', 'permanent_pre_transport', 'ambiguous'].includes(input.failureKind)) {
+      throw new QuotationDeliveryInputError('Tipo de falha do transporte inválido.');
+    }
     if (!DELIVERY_STATES.includes(input?.state)) throw new QuotationDeliveryInputError('Estado de entrega inválido.');
     const providerAcceptanceId = safeAcceptanceId(input.providerAcceptanceId ?? input.provider_acceptance_id);
     const publicError = safePublicError(input.publicError ?? input.public_error);
     const current = asDate(now(), new Date());
     try {
       return await getDb().transaction(async (tx) => {
-        const row = await readRow(tx, revisionId);
+        const row = await readRow(tx, revisionId, flowId);
         if (!row) throw new QuotationDeliveryNotFoundError('Entrega da revisão não encontrada.');
         const currentDelivery = toDelivery(row, current);
         if (currentDelivery.readOnly) throw new QuotationDeliveryConflictError('O prazo de retomada desta entrega expirou. Crie uma nova revisão.');
-        if (!canRecordQuotationDeliveryState(currentDelivery.state, input.state)) {
+        const safePreTransportRetry = currentDelivery.state === 'transporting'
+          && input.state === 'retryable'
+          && (input.failureKind === 'transient_pre_transport' || input.failureKind === 'permanent_pre_transport');
+        if (!canRecordQuotationDeliveryState(currentDelivery.state, input.state) && !safePreTransportRetry) {
           throw new QuotationDeliveryConflictError('O estado durável desta entrega bloqueia nova tentativa de transporte. Consulte a entrega antes de continuar.');
         }
         if (options.beforeStateUpdate) await options.beforeStateUpdate();
@@ -420,8 +435,11 @@ export function createPostgresQuotationDeliveryRepository(
           publicError,
           deliveredAt: input.state === 'completed' ? current : undefined,
           updatedAt: current,
-        }).where(and(eq(quotationDeliveries.revisionId, revisionId), eq(quotationDeliveries.updatedAt, row.updatedAt)))
-          .returning({ id: quotationDeliveries.id });
+        }).where(and(
+          eq(quotationDeliveries.revisionId, revisionId),
+          eq(quotationDeliveries.flowId, row.flowId),
+          eq(quotationDeliveries.updatedAt, row.updatedAt),
+        )).returning({ id: quotationDeliveries.id });
         if (affected.length !== 1) throw new QuotationDeliveryConflictError('A entrega foi alterada por outra tentativa. Consulte o estado atual.');
         const updated = await readRow(tx, revisionId, row.flowId);
         if (!updated) throw new QuotationDeliveryRepositoryError();
@@ -434,18 +452,23 @@ export function createPostgresQuotationDeliveryRepository(
     }
   }
 
-  async function claimTransport(revisionIdInput: string): Promise<QuotationDelivery | null> {
+  async function claimTransport(revisionIdInput: string, flowIdInput?: string): Promise<QuotationDelivery | null> {
     const revisionId = uuid(revisionIdInput, 'Identificador da revisão');
+    const flowId = flowIdInput === undefined ? undefined : flow(flowIdInput);
     const current = asDate(now(), new Date());
     try {
       return await getDb().transaction(async (tx) => {
-        const row = await readRow(tx, revisionId);
+        const row = await readRow(tx, revisionId, flowId);
         if (!row) return null;
         const delivery = toDelivery(row, current);
         if (delivery.readOnly || blocksTransport(delivery.state)) return null;
         const [claimed] = await tx.update(quotationDeliveries).set({ state: 'processing', updatedAt: current })
-          .where(and(eq(quotationDeliveries.revisionId, revisionId), eq(quotationDeliveries.updatedAt, row.updatedAt), inArray(quotationDeliveries.state, ['queued', 'retry_scheduled'])))
-          .returning();
+          .where(and(
+            eq(quotationDeliveries.revisionId, revisionId),
+            eq(quotationDeliveries.flowId, row.flowId),
+            eq(quotationDeliveries.updatedAt, row.updatedAt),
+            inArray(quotationDeliveries.state, ['queued', 'retry_scheduled']),
+          )).returning();
         return claimed ? toDelivery(claimed, current) : null;
       });
     } catch (error) {
@@ -454,15 +477,20 @@ export function createPostgresQuotationDeliveryRepository(
     }
   }
 
-  async function getByRevision(revisionIdInput: string): Promise<QuotationDelivery | null> {
+  async function getByRevision(revisionIdInput: string, flowIdInput?: string): Promise<QuotationDelivery | null> {
     const revisionId = uuid(revisionIdInput, 'Identificador da revisão');
+    const flowId = flowIdInput === undefined ? undefined : flow(flowIdInput);
     const current = asDate(now(), new Date());
     try {
       return await getDb().transaction(async (tx) => {
-        const row = await readRow(tx, revisionId);
+        const row = await readRow(tx, revisionId, flowId);
         if (!row) return null;
         if (row.publicError && row.diagnosticsExpiresAt && current.getTime() >= asDate(row.diagnosticsExpiresAt, current).getTime()) {
-          await tx.update(quotationDeliveries).set({ publicError: null, updatedAt: row.updatedAt }).where(eq(quotationDeliveries.id, row.id));
+          await tx.update(quotationDeliveries).set({ publicError: null, updatedAt: row.updatedAt }).where(and(
+            eq(quotationDeliveries.id, row.id),
+            eq(quotationDeliveries.revisionId, revisionId),
+            eq(quotationDeliveries.flowId, row.flowId),
+          ));
           row.publicError = null;
         }
         return toDelivery(row, current);

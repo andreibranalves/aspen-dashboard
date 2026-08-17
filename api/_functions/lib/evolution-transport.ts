@@ -59,10 +59,11 @@ function text(value: unknown, label: string, required = true): string {
     if (!required) return '';
     permanentInput(`${label} inválido.`);
   }
-  const result = String(value).trim();
-  if (hasControlCharacters(result) || (required && !result) || result.length > 4_000) {
+  if (hasControlCharacters(value) || value.length > 4_000) {
     permanentInput(`${label} inválido.`);
   }
+  const result = value.trim();
+  if (required && !result) permanentInput(`${label} inválido.`);
   return result;
 }
 
@@ -109,9 +110,8 @@ function validateStep(step: FrozenDeliveryStep): void {
     permanentInput('Passo de entrega inválido.');
   }
   if (step.type === 'text') {
-    if (!step.payload || typeof step.payload.text !== 'string' || !step.payload.text.trim()) {
-      permanentInput('Texto do passo inválido.');
-    }
+    if (!step.payload) permanentInput('Texto do passo inválido.');
+    text(step.payload.text, 'Texto do passo');
     return;
   }
   if (step.type === 'media') {
