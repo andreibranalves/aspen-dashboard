@@ -16,9 +16,10 @@ import {
   Phone,
   AlertTriangle,
   Loader2,
+  Mail,
   Search,
 } from 'lucide-react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api';
 import { issueQuotation } from '@/lib/quotationIssueApi';
 import {
   fetchDeliveryStatus,
@@ -41,6 +42,7 @@ import {
   QuotationSectionsEditor,
   type QuotationSectionsSnapshot,
 } from '@/components/quotation/QuotationSectionsEditor';
+import { QuotationEmailDialog } from '@/components/quotation/QuotationEmailDialog';
 import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -162,6 +164,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [issuing, setIssuing] = useState(false);
   const [deliverySending, setDeliverySending] = useState(false);
   const [deliveryState, setDeliveryState] = useState<DeliveryProjection | null>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailSuccess, setEmailSuccess] = useState('');
+  const [emailAttemptId, setEmailAttemptId] = useState('');
   const [deliveryFlows, setDeliveryFlows] = useState<CommunicationFlow[]>([]);
   const [deliveryFlowId, setDeliveryFlowId] = useState('');
   const [lifecycleAction, setLifecycleAction] = useState<
@@ -713,6 +720,36 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setDeliverySending(false);
     }
   }, [data.id, data.quotation_id, data.quotation_uuid, data.revision_id, deliveryFlowId, deliveryState]);
+  const sendQuotationEmail = useCallback(async (recipient: string) => {
+    if (!data.revision_id) return;
+    const attemptId = emailAttemptId || globalThis.crypto.randomUUID();
+    setEmailAttemptId(attemptId);
+    setEmailSending(true);
+    setEmailError('');
+    setEmailSuccess('');
+    try {
+      await apiPost('/send-quotation-email', {
+        revision_id: data.revision_id,
+        recipient,
+        attempt_id: attemptId,
+      });
+      setEmailSuccess('E-mail aceito para envio.');
+      setEmailDialogOpen(false);
+      setEmailAttemptId('');
+      await onReload();
+    } catch (error) {
+      const apiError = error as ApiError;
+      const response = apiError.data as { retry_same_attempt?: unknown } | undefined;
+      if (response?.retry_same_attempt !== true) setEmailAttemptId('');
+      setEmailError(error instanceof Error ? error.message : 'Não foi possível enviar o e-mail.');
+    } finally {
+      setEmailSending(false);
+    }
+  }, [data.revision_id, emailAttemptId, onReload]);
+  const cancelEmailDialog = useCallback(() => {
+    setEmailError('');
+    setEmailDialogOpen(false);
+  }, []);
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -1167,6 +1204,16 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button variant="outline" size="sm" onClick={openIssuedDocument}>
                 <FileText size={14} /> Visualizar
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEmailError('');
+                  setEmailDialogOpen(true);
+                }}
+              >
+                <Mail size={14} /> {data.email_sent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+              </Button>
               <select
                 aria-label="Fluxo de WhatsApp"
                 className="h-8 rounded border border-line bg-surface px-2 text-xs"
@@ -1199,6 +1246,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             >
               <Trash2 size={14} /> Excluir
             </Button>
+          )}
+          {emailSuccess && (
+            <span role="status" aria-live="polite" className="text-xs text-fg-muted">
+              {emailSuccess}
+            </span>
           )}
           {message && (
             <span
@@ -1296,6 +1348,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </div>
         )}
       </div>
+      <QuotationEmailDialog
+        open={emailDialogOpen}
+        initialEmail={data.email || ''}
+        sending={emailSending}
+        error={emailError}
+        onCancel={cancelEmailDialog}
+        onSubmit={sendQuotationEmail}
+      />
     </div>
   );
 }
@@ -1325,7 +1385,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
 
   useEffect(() => { void loadDetail(); }, [loadDetail]);
 
-  if (loading) return <SkeletonDetail />;
+  if (loading && !data) return <SkeletonDetail />;
   if (error) {
     return (
       <div className="space-y-4 animate-fade-in">
