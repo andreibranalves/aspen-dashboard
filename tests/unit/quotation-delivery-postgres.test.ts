@@ -26,7 +26,6 @@ import {
   QuotationDeliveryPdfError,
   QuotationDeliveryRepositoryError,
 } from '../../api/_db/quotation-delivery-repository.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
 import type { QuotationSectionsSnapshot } from '../../api/_db/quotation-content.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -36,10 +35,10 @@ function pdfWithEof(): Buffer {
   return Buffer.from('%PDF-1.7\ncontent\n%%EOF');
 }
 
-const SECTION_TEMPLATE = '<!doctype html><html><body>{{quote_number}} {{client.name}} Telefone: {{client.phone}} Data: {{display.quote_date}} Validade: {{display.validity_date}} {{#each items}}{{name}}{{/each}} {{display.total}} {{secoes.pagamento.body_html}} {{secoes.condicoes_gerais.body_html}} {{secoes.prazo_producao.value}}</body></html>';
+const SECTION_TEMPLATE = '<!doctype html><html><body>{{quote_number}} {{client.name}} Telefone: {{client.phone}} Data: {{display.quote_date}} Validade: {{display.validity_date}} {{#each items}}{{name}} Quantidade: {{quantity}}{{/each}} {{display.total}} {{secoes.pagamento.body_html}} {{secoes.condicoes_gerais.body_html}} {{secoes.prazo_producao.value}}</body></html>';
 const SECTION_TEMPLATE_HASH = createHash('sha256').update(SECTION_TEMPLATE).digest('hex');
 
-function fakePreparationDatabase(options: { failRevisionRead?: boolean } = {}) {
+function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: unknown[] } = {}) {
   const now = new Date('2026-08-13T12:00:00.000Z');
   const revisionId = '00000000-0000-4000-8000-000000000001';
   const quotationId = '00000000-0000-4000-8000-000000000002';
@@ -79,7 +78,7 @@ function fakePreparationDatabase(options: { failRevisionRead?: boolean } = {}) {
           return new Query([revision], options.failRevisionRead && revisionReads > 1 ? new Error('database read failed') : undefined);
         }
         if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: SECTION_TEMPLATE, sourceHash: SECTION_TEMPLATE_HASH }]);
-        if (table === quoteRevisionItems) return new Query([]);
+        if (table === quoteRevisionItems) return new Query(options.items || []);
         if (table === quotations) return new Query([{ businessNumber: 'ORC-20260001' }]);
         return new Query([]);
       },
@@ -125,6 +124,35 @@ test('delivery PDF formats issue and validity dates for display', async () => {
   assert.match(renderedHtml, /Telefone: \(21\) 99999-9999/);
   assert.match(renderedHtml, /Data: 13\/08\/2026/);
   assert.match(renderedHtml, /Validade: 28\/08\/2026/);
+});
+
+test('delivery PDF removes storage scale from integer quantities', async () => {
+  const { db, now, revisionId } = fakePreparationDatabase({
+    items: [{
+      id: '00000000-0000-4000-8000-000000000005',
+      position: 0,
+      produtoSku: 'SKU-70',
+      produtoNome: 'Produto setenta',
+      produtoDescricao: '',
+      produtoUnidade: 'Und',
+      quantidade: '70.000',
+      precoAplicado: '10.00',
+      totalLinha: '700.00',
+    }],
+  });
+  let renderedHtml = '';
+  const repository = createPostgresQuotationDeliveryRepository(() => db, {
+    now: () => now,
+    renderPdf: async (html) => {
+      renderedHtml = html;
+      return pdfWithEof();
+    },
+  });
+
+  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+
+  assert.match(renderedHtml, /Quantidade: 70(?:<|\s)/);
+  assert.doesNotMatch(renderedHtml, /Quantidade: 70\.000/);
 });
 
 test('repository classifies renderer failures and invalid bytes as PDF failures', async () => {

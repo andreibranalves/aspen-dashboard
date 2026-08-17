@@ -13,6 +13,7 @@ import {
   formatQuotationCurrency,
   formatQuotationDate,
   formatQuotationPhone,
+  formatQuotationQuantity,
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { toSafeMultilineHtml } from './quotation-content.js';
@@ -182,13 +183,6 @@ function nullable(value: unknown): string {
   return value == null ? '' : String(value);
 }
 
-function formatQuantityForDisplay(value: string): string {
-  const match = /^([+-]?\d+)(?:\.(\d+))?$/.exec(value.trim());
-  if (!match) return value;
-  const fraction = (match[2] || '').replace(/0+$/, '');
-  return fraction ? `${match[1]}.${fraction}` : match[1];
-}
-
 const COMPARISON_BRACKETS = [
   { minimum: 30, label: '30 - 99' },
   { minimum: 100, label: '100 - 299' },
@@ -299,7 +293,7 @@ export function quotationSnapshotViewModel(
         marca: item.produtoMarca || '',
         qty: quantity,
         quantidade: quantity,
-        quantity: formatQuantityForDisplay(quantity),
+        quantity: formatQuotationQuantity(quantity),
         price_source: item.precoFonte,
         preco_fonte: item.precoFonte,
         tier_minimum: nullable(item.precoMinimoFaixa),
