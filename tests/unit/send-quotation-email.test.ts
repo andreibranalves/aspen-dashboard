@@ -13,6 +13,7 @@ import { ResendTransportError } from '../../api/_functions/lib/quotation-email.j
 
 const quotationId = '11111111-1111-4111-8111-111111111111';
 const revisionId = '22222222-2222-4222-8222-222222222222';
+const otherRevisionId = '55555555-5555-4555-8555-555555555555';
 const attemptId = '33333333-3333-4333-8333-333333333333';
 const otherAttemptId = '44444444-4444-4444-8444-444444444444';
 const NOW = new Date('2026-08-17T12:00:00.000Z');
@@ -63,6 +64,7 @@ type DeliveryOptions = {
   initial?: QuotationEmailDelivery | null;
   reserved?: QuotationEmailDelivery;
   markAcceptedError?: Error;
+  markFailedError?: Error;
 };
 
 function fakeDeliveries(calls: string[], options: DeliveryOptions = {}): QuotationEmailDeliveryRepository {
@@ -97,6 +99,7 @@ function fakeDeliveries(calls: string[], options: DeliveryOptions = {}): Quotati
     },
     async markFailed(input) {
       calls.push('markFailed');
+      if (options.markFailedError) throw options.markFailedError;
       current = delivery({
         ...current,
         state: 'failed',
@@ -229,6 +232,65 @@ test('returns an already accepted attempt without token or transport', async () 
   assert.deepEqual(calls, []);
 });
 
+test('rejects accepted attempts with mismatched revision or recipient before side effects', async () => {
+  for (const request of [
+    payload(attemptId, otherRevisionId),
+    payload(attemptId, revisionId, 'outro@example.com'),
+  ]) {
+    const calls: string[] = [];
+    const result = await handler(event('POST', request), {
+      deliveries: fakeDeliveries(calls, {
+        initial: delivery({
+          state: 'accepted',
+          publicToken: null,
+          providerEmailId: 'resend-email-1',
+          acceptedAt: NOW,
+        }),
+      }),
+      snapshots: {
+        get: async () => { throw new Error('snapshot must not be read'); },
+      } as any,
+      issueToken: async () => { throw new Error('token must not be issued'); },
+      transport: async () => { throw new Error('transport must not run'); },
+    });
+
+    assert.equal(result.statusCode, 409);
+    assert.deepEqual(parse(result), {
+      error: 'O identificador pertence a outra tentativa.',
+      retry_same_attempt: false,
+    });
+    assert.doesNotMatch(result.body || '', /cliente@example.com|resend-email-1/);
+    assert.deepEqual(calls, []);
+  }
+});
+
+test('rejects an accepted reservation with mismatched ownership before side effects', async () => {
+  const calls: string[] = [];
+  const result = await handler(event('POST', payload()), {
+    deliveries: fakeDeliveries(calls, {
+      reserved: delivery({
+        state: 'accepted',
+        revisionId: otherRevisionId,
+        recipient: 'outro@example.com',
+        publicToken: null,
+        providerEmailId: 'resend-email-2',
+        acceptedAt: NOW,
+      }),
+    }),
+    snapshots: snapshots(snapshot()),
+    issueToken: async () => { throw new Error('token must not be issued'); },
+    transport: async () => { throw new Error('transport must not run'); },
+  });
+
+  assert.equal(result.statusCode, 409);
+  assert.deepEqual(parse(result), {
+    error: 'O identificador pertence a outra tentativa.',
+    retry_same_attempt: false,
+  });
+  assert.doesNotMatch(result.body || '', /outro@example.com|resend-email-2/);
+  assert.deepEqual(calls, ['reserve']);
+});
+
 test('requires a new attempt after a failed attempt', async () => {
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries([], {
@@ -276,6 +338,29 @@ test('marks rejected Resend responses failed and forbids same-attempt retry', as
   assert.equal(result.statusCode, 502);
   assert.equal(parse(result).error, 'A Resend não aceitou o e-mail.');
   assert.equal(parse(result).retry_same_attempt, false);
+  assert.deepEqual(calls, ['reserve', 'markFailed']);
+});
+
+test('preserves ambiguous retry when failed persistence is not confirmed', async () => {
+  const calls: string[] = [];
+  const result = await handler(event('POST', payload()), {
+    deliveries: fakeDeliveries(calls, {
+      markFailedError: new Error('database secret'),
+    }),
+    snapshots: snapshots(snapshot()),
+    issueToken: acceptedToken(),
+    transport: async () => {
+      throw new ResendTransportError('provider secret', 'configuration');
+    },
+    token: () => 'stable-public-token',
+  });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(parse(result), {
+    error: 'O resultado do envio não pôde ser confirmado. Tente novamente.',
+    retry_same_attempt: true,
+  });
+  assert.doesNotMatch(result.body || '', /database secret|provider secret/);
   assert.deepEqual(calls, ['reserve', 'markFailed']);
 });
 
@@ -341,19 +426,53 @@ test('uses the stable token when another reservation wins the insert race', asyn
   assert.equal(issuedToken, 'racing-stable-token');
 });
 
-test('sanitizes unrelated pre-provider persistence failures', async () => {
-  const result = await handler(event('POST', payload()), {
-    deliveries: {
-      get: async () => { throw new Error('database password and stack trace'); },
-      reserve: async () => { throw new Error('must not reserve'); },
-      markAccepted: async () => { throw new Error('must not accept'); },
-      markFailed: async () => { throw new Error('must not fail'); },
-    },
-    snapshots: snapshots(snapshot()),
-    transport: async () => { throw new Error('must not send'); },
-  });
+test('uses safe internal 500 responses for unrelated pre-provider failures', async () => {
+  const cases: Array<[string, SendQuotationEmailDependencies]> = [
+    [
+      'lookup secret',
+      {
+        deliveries: {
+          get: async () => { throw new Error('lookup secret'); },
+          reserve: async () => { throw new Error('must not reserve'); },
+          markAccepted: async () => { throw new Error('must not accept'); },
+          markFailed: async () => { throw new Error('must not fail'); },
+        },
+      },
+    ],
+    [
+      'snapshot secret',
+      {
+        deliveries: fakeDeliveries([]),
+        snapshots: { get: async () => { throw new Error('snapshot secret'); } } as any,
+      },
+    ],
+    [
+      'token secret',
+      {
+        deliveries: fakeDeliveries([]),
+        snapshots: snapshots(snapshot()),
+        issueToken: async () => { throw new Error('token secret'); },
+      },
+    ],
+    [
+      'host secret',
+      {
+        deliveries: fakeDeliveries([]),
+        snapshots: snapshots(snapshot()),
+        issueToken: acceptedToken(),
+        transport: async () => { throw new Error('must not send'); },
+      },
+    ],
+  ];
 
-  assert.equal(result.statusCode, 503);
-  assert.equal(parse(result).retry_same_attempt, true);
-  assert.doesNotMatch(result.body || '', /database password|stack trace|Error/);
+  for (const [failure, dependencies] of cases) {
+    const request = failure === 'host secret'
+      ? event('POST', payload(), { host: 'invalid host' })
+      : event('POST', payload());
+    const result = await handler(request, dependencies);
+
+    assert.equal(result.statusCode, 500, failure);
+    assert.deepEqual(parse(result), { error: 'Erro interno. Tente novamente.' }, failure);
+    assert.doesNotMatch(result.body || '', /secret|stack trace|Error/, failure);
+  }
 });

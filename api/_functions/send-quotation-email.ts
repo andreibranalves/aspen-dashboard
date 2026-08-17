@@ -20,6 +20,7 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const AMBIGUOUS_ERROR = 'O resultado do envio não pôde ser confirmado. Tente novamente.';
+const INTERNAL_ERROR = 'Erro interno. Tente novamente.';
 
 type QuotationSnapshotRepository = ReturnType<typeof createQuotationTemplateRepository>;
 
@@ -97,6 +98,10 @@ function ambiguousResponse(): FunctionResult {
   return json(503, { error: AMBIGUOUS_ERROR, retry_same_attempt: true });
 }
 
+function internalErrorResponse(): FunctionResult {
+  return json(500, { error: INTERNAL_ERROR });
+}
+
 function publicMessage(kind: ResendTransportError['kind']): string {
   if (kind === 'configuration') return 'Envio por e-mail não configurado.';
   if (kind === 'rejected') return 'A Resend não aceitou o e-mail.';
@@ -122,6 +127,22 @@ function repositoryErrorResponse(error: unknown): FunctionResult | null {
   return null;
 }
 
+async function markFailed(
+  deliveries: QuotationEmailDeliveryRepository,
+  attemptId: string,
+  revisionId: string,
+  publicError: string,
+): Promise<boolean> {
+  try {
+    const failed = await deliveries.markFailed({ attemptId, publicError });
+    if (failed?.state === 'failed') return true;
+  } catch {
+    // Keep the pending attempt retryable when failure persistence is unconfirmed.
+  }
+  logFailure(attemptId, revisionId, 'markFailed');
+  return false;
+}
+
 async function transportFailure(
   error: unknown,
   deliveries: QuotationEmailDeliveryRepository,
@@ -130,10 +151,11 @@ async function transportFailure(
 ): Promise<FunctionResult> {
   if (error instanceof ResendTransportError) {
     logFailure(attemptId, revisionId, error.kind);
-    if (error.kind !== 'uncertain') {
-      await deliveries
-        .markFailed({ attemptId, publicError: publicMessage(error.kind) })
-        .catch(() => undefined);
+    if (
+      error.kind !== 'uncertain' &&
+      !(await markFailed(deliveries, attemptId, revisionId, publicMessage(error.kind)))
+    ) {
+      return ambiguousResponse();
     }
     if (error.kind === 'rejected') {
       return json(502, {
@@ -173,16 +195,16 @@ export async function handler(
     const transport = dependencies.transport || sendQuotationEmailViaResend;
 
     const existing = await deliveries.get(attemptId);
+    if (existing && (existing.revisionId !== revisionId || existing.recipient !== normalizedRecipient)) {
+      return json(409, {
+        error: 'O identificador pertence a outra tentativa.',
+        retry_same_attempt: false,
+      });
+    }
     if (existing?.state === 'accepted') return acceptedResponse(existing);
     if (existing?.state === 'failed') {
       return json(409, {
         error: 'Crie uma nova tentativa para reenviar o e-mail.',
-        retry_same_attempt: false,
-      });
-    }
-    if (existing && (existing.revisionId !== revisionId || existing.recipient !== normalizedRecipient)) {
-      return json(409, {
-        error: 'O identificador pertence a outra tentativa.',
         retry_same_attempt: false,
       });
     }
@@ -199,19 +221,19 @@ export async function handler(
       recipient: normalizedRecipient,
       publicToken: (dependencies.token || (() => randomBytes(32).toString('base64url')))(),
     });
-    if (reservation.delivery.state === 'accepted') return acceptedResponse(reservation.delivery);
-    if (reservation.delivery.state === 'failed') {
-      return json(409, {
-        error: 'Crie uma nova tentativa para reenviar o e-mail.',
-        retry_same_attempt: false,
-      });
-    }
     if (
       reservation.delivery.revisionId !== revisionId ||
       reservation.delivery.recipient !== normalizedRecipient
     ) {
       return json(409, {
         error: 'O identificador pertence a outra tentativa.',
+        retry_same_attempt: false,
+      });
+    }
+    if (reservation.delivery.state === 'accepted') return acceptedResponse(reservation.delivery);
+    if (reservation.delivery.state === 'failed') {
+      return json(409, {
+        error: 'Crie uma nova tentativa para reenviar o e-mail.',
         retry_same_attempt: false,
       });
     }
@@ -262,6 +284,6 @@ export async function handler(
     const response = repositoryErrorResponse(error);
     if (response) return response;
     logFailure(attemptId, revisionId, 'persistence');
-    return ambiguousResponse();
+    return internalErrorResponse();
   }
 }
