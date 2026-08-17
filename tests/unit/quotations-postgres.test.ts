@@ -361,26 +361,77 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(statusSummary.Aprovado >= 1);
     assert.ok(statusSummary.Perdido >= 1);
 
-    const emailAttemptId = randomUUID();
-    await db.insert(quotationEmailDeliveries).values({
-      id: emailAttemptId,
-      revisionId: updated.revision_id,
-      recipient: 'cliente@example.com',
-      state: 'accepted',
-      providerEmailId: 'resend-email-1',
-      publicError: null,
-      acceptedAt: new Date('2026-08-17T12:00:00.000Z'),
-      createdAt: new Date('2026-08-17T11:59:00.000Z'),
-      updatedAt: new Date('2026-08-17T12:00:00.000Z'),
-    });
+    const pendingEmailAttemptId = randomUUID();
+    const failedEmailAttemptId = randomUUID();
+    await db.insert(quotationEmailDeliveries).values([
+      {
+        id: pendingEmailAttemptId,
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: 'pending-token',
+        state: 'pending',
+        providerEmailId: null,
+        publicError: null,
+        acceptedAt: null,
+        createdAt: new Date('2026-08-17T11:57:00.000Z'),
+        updatedAt: new Date('2026-08-17T11:58:00.000Z'),
+      },
+      {
+        id: failedEmailAttemptId,
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: null,
+        state: 'failed',
+        providerEmailId: null,
+        publicError: 'Falha conhecida.',
+        acceptedAt: null,
+        createdAt: new Date('2026-08-17T11:58:00.000Z'),
+        updatedAt: new Date('2026-08-17T11:59:00.000Z'),
+      },
+    ]);
+    const noAcceptedList = await managementList({ page: 1, limit: 50 });
+    const noAcceptedRow = noAcceptedList.rows.find((row) => row.revision_id === updated.revision_id);
+    assert.equal(noAcceptedRow?.email_sent, false);
+    assert.equal(noAcceptedRow?.email_sent_at, null);
+    const noAcceptedDetail = await managementGet(updated.quotation_name);
+    assert.ok(noAcceptedDetail);
+    assert.equal(noAcceptedDetail.email_sent, false);
+    assert.equal(noAcceptedDetail.email_sent_at, null);
+
+    await db.insert(quotationEmailDeliveries).values([
+      {
+        id: randomUUID(),
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: null,
+        state: 'accepted',
+        providerEmailId: 'resend-email-1',
+        publicError: null,
+        acceptedAt: new Date('2026-08-17T12:00:00.000Z'),
+        createdAt: new Date('2026-08-17T11:59:00.000Z'),
+        updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+      },
+      {
+        id: randomUUID(),
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: null,
+        state: 'accepted',
+        providerEmailId: 'resend-email-2',
+        publicError: null,
+        acceptedAt: new Date('2026-08-17T12:05:00.000Z'),
+        createdAt: new Date('2026-08-17T12:04:00.000Z'),
+        updatedAt: new Date('2026-08-17T12:05:00.000Z'),
+      },
+    ]);
     const sentList = await managementList({ page: 1, limit: 50 });
     const sentRow = sentList.rows.find((row) => row.revision_id === updated.revision_id);
     assert.equal(sentRow?.email_sent, true);
-    assert.equal(sentRow?.email_sent_at, '2026-08-17T12:00:00.000Z');
+    assert.equal(sentRow?.email_sent_at, '2026-08-17T12:05:00.000Z');
     const sentDetail = await managementGet(updated.quotation_name);
     assert.ok(sentDetail);
     assert.equal(sentDetail.email_sent, true);
-    assert.equal(sentDetail?.email_sent_at, '2026-08-17T12:00:00.000Z');
+    assert.equal(sentDetail.email_sent_at, '2026-08-17T12:05:00.000Z');
 
     const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
       now: () => new Date('2026-08-17T12:01:00.000Z'),
