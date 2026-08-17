@@ -330,8 +330,21 @@ function nowFrom(clock: () => Date): Date {
   return new Date(value.getTime());
 }
 
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value);
+  return (
+    actual.length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  );
+}
+
 function normalizeSnapshot(value: unknown): FrozenDeliveryStep {
-  if (!isRecord(value) || !Number.isInteger(value.position) || (value.position as number) < 0) {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, ['position', 'type', 'payload', 'delayMs']) ||
+    !Number.isInteger(value.position) ||
+    (value.position as number) < 0
+  ) {
     throw new QuotationDeliveryOutboxInputError('Snapshot de entrega inválido.');
   }
   const position = value.position as number;
@@ -340,7 +353,7 @@ function normalizeSnapshot(value: unknown): FrozenDeliveryStep {
     throw new QuotationDeliveryOutboxInputError('Snapshot de entrega inválido.');
   }
   if (value.type === 'text') {
-    if (!isRecord(value.payload))
+    if (!isRecord(value.payload) || !exactKeys(value.payload, ['text']))
       throw new QuotationDeliveryOutboxInputError('Snapshot de entrega inválido.');
     return {
       position,
@@ -352,6 +365,7 @@ function normalizeSnapshot(value: unknown): FrozenDeliveryStep {
   if (value.type === 'media') {
     if (
       !isRecord(value.payload) ||
+      !exactKeys(value.payload, ['mediaType', 'url', 'fileName', 'caption']) ||
       (value.payload.mediaType !== 'image' && value.payload.mediaType !== 'document')
     ) {
       throw new QuotationDeliveryOutboxInputError('Snapshot de entrega inválido.');
@@ -369,7 +383,10 @@ function normalizeSnapshot(value: unknown): FrozenDeliveryStep {
     };
   }
   if (value.type === 'quotation_pdf') {
-    if (!isRecord(value.payload))
+    if (
+      !isRecord(value.payload) ||
+      !exactKeys(value.payload, ['revisionId', 'fileName', 'caption'])
+    )
       throw new QuotationDeliveryOutboxInputError('Snapshot de entrega inválido.');
     return {
       position,
@@ -560,14 +577,14 @@ function buildStepView(row: DeliveryStepRow, now: Date): DeliveryStepView {
 }
 
 function stepSnapshot(row: DeliveryStepRow): FrozenDeliveryStep {
+  const payload = isRecord(row.payloadSnapshot) ? { ...row.payloadSnapshot } : {};
+  const delayMs = typeof payload.delayMs === 'number' ? payload.delayMs : 0;
+  delete payload.delayMs;
   return normalizeSnapshot({
     position: row.position,
     type: row.type,
-    payload: row.payloadSnapshot,
-    delayMs:
-      isRecord(row.payloadSnapshot) && typeof row.payloadSnapshot.delayMs === 'number'
-        ? row.payloadSnapshot.delayMs
-        : 0,
+    payload,
+    delayMs,
   });
 }
 
@@ -949,9 +966,9 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         const nowIso = now.toISOString();
         const recovered = (await tx.execute(sql`
           UPDATE quotation_delivery_steps s
-          SET state = 'retry_scheduled',
+          SET state = 'reconciling',
               next_attempt_at = NULL,
-              reconciliation_deadline = NULL,
+              reconciliation_deadline = ${new Date(now.getTime() + configuredReconciliationMs).toISOString()},
               updated_at = ${nowIso}
           WHERE s.state = 'sending'
             AND s.provider_message_id IS NULL
