@@ -42,6 +42,7 @@ import { handler as sendQuotationEmail } from './_functions/send-quotation-email
 import { handler as sendWhatsappFlow } from './_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from './_functions/whatsapp-send-status.js';
 import { handler as settings } from './_functions/settings.js';
+import { handler as quotationEmailTemplate } from './_functions/quotation-email-template.js';
 import { handler as typebotLeadCapture } from './_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from './_functions/whatsapp-conversations.js';
 import { handler as whatsappFlows } from './_functions/whatsapp-flows.js';
@@ -91,6 +92,7 @@ const ROUTES: Record<string, HandlerFunction> = {
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   settings,
+  'quotation-email-template': quotationEmailTemplate,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-flows': whatsappFlows,

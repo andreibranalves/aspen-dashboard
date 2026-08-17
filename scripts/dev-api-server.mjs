@@ -39,6 +39,7 @@ import { handler as sendQuotationEmail } from '../api/_functions/send-quotation-
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
 import { handler as settings } from '../api/_functions/settings.js';
+import { handler as quotationEmailTemplate } from '../api/_functions/quotation-email-template.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
 import { handler as whatsappFlows } from '../api/_functions/whatsapp-flows.js';
@@ -87,6 +88,7 @@ const ROUTES = {
   'whatsapp-send-status': whatsappSendStatus,
   pdf,
   settings,
+  'quotation-email-template': quotationEmailTemplate,
   'operational-status': operationalStatus,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
