@@ -92,21 +92,41 @@ test('preflight requires Resend key and verified sender without printing values'
   assert.ok(!requiredCutoverKeys.includes('RESEND_REPLY_TO'));
 
   const secret = 're_secret_must_not_leak';
+  const sender = 'Aspen <orcamentos@example.com>';
   withTempDir((root) => {
-    const path = writeCompleteEnvFile(join(root, '.env'), '', {
-      RESEND_API_KEY: secret,
-      RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
-    });
-    const result = inspectCutoverEnv({
-      env: {
-        HOME: '/tmp/aspen-test',
-        CUTOVER_ENV_FILE: path,
-      },
-    });
-    const output = formatCutoverEnvStatus(result);
-    assert.doesNotMatch(output, new RegExp(secret));
-    assert.match(output, /RESEND_API_KEY: present/);
-    assert.match(output, /RESEND_FROM_EMAIL: present/);
+    const path = join(root, '.env');
+    const inspect = (values) => {
+      writeCompleteEnvFile(path, '', values);
+      return inspectCutoverEnv({ env: { CUTOVER_ENV_FILE: path } });
+    };
+    const assertSecretSafeOutput = (result) => {
+      const output = formatCutoverEnvStatus(result);
+      assert.doesNotMatch(output, new RegExp(secret));
+      assert.doesNotMatch(output, new RegExp(sender));
+    };
+
+    const completeResult = inspect({ RESEND_API_KEY: secret, RESEND_FROM_EMAIL: sender });
+    assert.equal(completeResult.ok, true);
+    assert.match(formatCutoverEnvStatus(completeResult), /RESEND_API_KEY: present/);
+    assert.match(formatCutoverEnvStatus(completeResult), /RESEND_FROM_EMAIL: present/);
+    assertSecretSafeOutput(completeResult);
+
+    for (const [missingKey, values, presentKey] of [
+      ['RESEND_API_KEY', { RESEND_API_KEY: '', RESEND_FROM_EMAIL: sender }, 'RESEND_FROM_EMAIL'],
+      ['RESEND_FROM_EMAIL', { RESEND_API_KEY: secret, RESEND_FROM_EMAIL: '' }, 'RESEND_API_KEY'],
+    ]) {
+      const result = inspect(values);
+      assert.equal(result.ok, false);
+      assert.deepEqual(result.keys.find(({ name }) => name === missingKey), {
+        name: missingKey,
+        status: 'missing',
+      });
+      assert.deepEqual(result.keys.find(({ name }) => name === presentKey), {
+        name: presentKey,
+        status: 'present',
+      });
+      assertSecretSafeOutput(result);
+    }
   });
 });
 
