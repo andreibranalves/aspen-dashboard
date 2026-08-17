@@ -114,9 +114,11 @@ export function validateQuotationEmailTemplate(value: unknown): QuotationEmailTe
 }
 
 function replaceTokens(value: string, input: QuotationEmailRenderInput): string {
-  return value
-    .split('{{nome_cliente}}').join(input.customerName)
-    .split('{{numero_orcamento}}').join(input.businessNumber);
+  return value.replace(TEMPLATE_TOKEN_PATTERN, (token) => {
+    if (token === '{{nome_cliente}}') return input.customerName;
+    if (token === '{{numero_orcamento}}') return input.businessNumber;
+    return token;
+  });
 }
 
 function escapeHtml(value: string): string {

@@ -22,6 +22,20 @@ test('default template preserves the current quotation email', () => {
   assert.match(rendered.text, /Ver orçamento: https:\/\/app\.example\.com/);
 });
 
+test('renderer does not recursively interpolate token-shaped input', () => {
+  const rendered = renderQuotationEmailTemplate({
+    ...DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+    subject: 'Contato {{nome_cliente}}',
+    message: 'Cliente: {{nome_cliente}}',
+  }, {
+    ...renderInput,
+    customerName: 'Nome {{numero_orcamento}}',
+  });
+  assert.equal(rendered.subject, 'Contato Nome {{numero_orcamento}}');
+  assert.match(rendered.html, /Cliente: Nome \{\{numero_orcamento\}\}/);
+  assert.match(rendered.text, /Cliente: Nome \{\{numero_orcamento\}\}/);
+});
+
 test('validator normalizes valid fields and rejects unknown tokens', () => {
   const valid = validateQuotationEmailTemplate({
     subject: '  Orçamento {{numero_orcamento}}  ',
