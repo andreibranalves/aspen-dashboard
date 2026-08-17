@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import { createPostgresQuoteDraftRepository } from '../../api/_db/quote-repository.js';
+import { createPostgresQuotationLifecycleRepository } from '../../api/_db/quotation-lifecycle-repository.js';
 import {
   createPostgresQuoteDraftManagementRepository,
   QuoteManagementConflictError,
@@ -20,7 +22,7 @@ import {
   getQuotationTemplateManifest,
   renderQuotationTemplate,
 } from '../../api/_functions/lib/quotation-templates.js';
-import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
+import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotationEmailDeliveries, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -358,6 +360,45 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(statusSummary.Enviado >= 1);
     assert.ok(statusSummary.Aprovado >= 1);
     assert.ok(statusSummary.Perdido >= 1);
+
+    const emailAttemptId = randomUUID();
+    await db.insert(quotationEmailDeliveries).values({
+      id: emailAttemptId,
+      revisionId: updated.revision_id,
+      recipient: 'cliente@example.com',
+      state: 'accepted',
+      providerEmailId: 'resend-email-1',
+      publicError: null,
+      acceptedAt: new Date('2026-08-17T12:00:00.000Z'),
+      createdAt: new Date('2026-08-17T11:59:00.000Z'),
+      updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+    });
+    const sentList = await managementList({ page: 1, limit: 50 });
+    const sentRow = sentList.rows.find((row) => row.revision_id === updated.revision_id);
+    assert.equal(sentRow?.email_sent, true);
+    assert.equal(sentRow?.email_sent_at, '2026-08-17T12:00:00.000Z');
+    const sentDetail = await managementGet(updated.quotation_name);
+    assert.ok(sentDetail);
+    assert.equal(sentDetail.email_sent, true);
+    assert.equal(sentDetail?.email_sent_at, '2026-08-17T12:00:00.000Z');
+
+    const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
+      now: () => new Date('2026-08-17T12:01:00.000Z'),
+    });
+    const nextRevision = await lifecycle.createRevision(updated.quotation_name, {
+      source_revision_id: updated.revision_id,
+      concurrency_token: sentDetail.concurrency_token,
+    });
+    const currentList = await managementList({ page: 1, limit: 50 });
+    const currentRow = currentList.rows.find((row) => row.id === updated.quotation_name);
+    assert.equal(currentRow?.revision_id, nextRevision.revision_id);
+    assert.equal(currentRow?.email_sent, false);
+    assert.equal(currentRow?.email_sent_at, null);
+    const currentDetail = await managementGet(updated.quotation_name);
+    assert.equal(currentDetail?.revision_id, nextRevision.revision_id);
+    assert.equal(currentDetail?.email_sent, false);
+    assert.equal(currentDetail?.email_sent_at, null);
+
     const [product] = await db.select().from(products).where(eq(products.sku, sku));
     const [tier] = await db.select().from(productPricingTiers).where(eq(productPricingTiers.productSku, sku));
     const [settingsAfter] = await db.select().from(appSettings).where(eq(appSettings.singletonId, 1));
