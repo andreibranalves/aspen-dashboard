@@ -119,7 +119,7 @@ export interface EvolutionMessageEvent {
 export interface QuotationDeliveryModule {
   enqueue(input: DeliveryIdentity): Promise<DeliveryAggregate>;
   process(deliveryId?: string): Promise<DeliveryAggregate | null>;
-  processDue(limit?: number): Promise<{ processed: number; remaining: boolean }>;
+  processDue(limit: number): Promise<{ processed: number; remaining: boolean }>;
   applyEvolutionEvent(event: EvolutionMessageEvent): Promise<DeliveryAggregate | null>;
   get(input: {
     deliveryId?: string;
@@ -568,7 +568,7 @@ export function createQuotationDeliveryModule(
   }
 
   async function processDue(
-    requestedLimit = DEFAULT_PROCESS_DUE_LIMIT
+    requestedLimit: number
   ): Promise<{ processed: number; remaining: boolean }> {
     const limit = validateBatchLimit(requestedLimit);
     await repository.expireReconciliations(limit);

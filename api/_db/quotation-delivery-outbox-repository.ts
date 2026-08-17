@@ -4,11 +4,13 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   ilike,
   inArray,
   isNull,
   lte,
+  lt,
   notInArray,
   or,
   sql,
@@ -842,6 +844,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             flowId: normalized.flowId,
             flowName: normalized.flowName,
             state: 'queued',
+            nextAttemptAt: new Date(now.getTime() + normalized.steps[0]!.delayMs),
             createdAt: now,
             updatedAt: now,
           })
@@ -871,7 +874,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         }
         if (inserted) {
           await tx.insert(quotationDeliverySteps).values(
-            normalized.steps.map((step) => ({
+            normalized.steps.map((step, index) => ({
               id: randomUUID(),
               deliveryId,
               position: step.position,
@@ -879,6 +882,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               payloadSnapshot: { ...step.payload, delayMs: step.delayMs },
               state: 'queued',
               attemptCount: 0,
+              nextAttemptAt: index === 0 ? new Date(now.getTime() + step.delayMs) : null,
               createdAt: now,
               updatedAt: now,
             }))
@@ -977,7 +981,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               FROM quotation_deliveries d
               WHERE d.id = s.delivery_id
                 AND d.lease_until IS NOT NULL
-                AND d.lease_until <= CURRENT_TIMESTAMP
+                AND d.lease_until <= ${nowIso}
                 AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
             )
           RETURNING s.delivery_id
@@ -997,10 +1001,21 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           FROM quotation_delivery_steps s
           JOIN quotation_deliveries d ON d.id = s.delivery_id
           WHERE s.state IN ('queued', 'retry_scheduled')
-            AND (s.next_attempt_at IS NULL OR s.next_attempt_at <= CURRENT_TIMESTAMP)
-            AND (d.lease_until IS NULL OR d.lease_until <= CURRENT_TIMESTAMP)
+            AND s.next_attempt_at IS NOT NULL
+            AND s.next_attempt_at <= ${nowIso}
+            AND (d.lease_until IS NULL OR d.lease_until <= ${nowIso})
             AND (${requestedId}::uuid IS NULL OR d.id = ${requestedId}::uuid)
-          ORDER BY COALESCE(s.next_attempt_at, s.created_at), s.position
+            AND NOT EXISTS (
+              SELECT 1
+              FROM quotation_delivery_steps prior
+              WHERE prior.delivery_id = s.delivery_id
+                AND prior.position < s.position
+                AND (
+                  prior.state NOT IN ('server_ack', 'delivered', 'read')
+                  OR prior.provider_message_id IS NULL
+                )
+            )
+          ORDER BY s.next_attempt_at, s.position
           FOR UPDATE OF d, s SKIP LOCKED
           LIMIT 1
         `)) as Array<{ id: string; delivery_id: string }>;
@@ -1038,6 +1053,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           )
           .returning();
         if (!updatedStep) throw new QuotationDeliveryOutboxRepositoryError();
+        await syncDeliveryState(tx, selected.delivery_id, now);
         const delivery = await readAggregate(tx, selected.delivery_id, now);
         if (!delivery) throw new QuotationDeliveryOutboxRepositoryError();
         const claimedStep = delivery.steps.find((step) => step.id === selected.id);
@@ -1088,6 +1104,44 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             'A etapa não está disponível para confirmação.'
           );
         }
+        const predecessors = await tx
+          .select({
+            state: quotationDeliverySteps.state,
+            providerMessageId: quotationDeliverySteps.providerMessageId,
+          })
+          .from(quotationDeliverySteps)
+          .where(
+            and(
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+              lt(quotationDeliverySteps.position, step.position)
+            )
+          );
+        if (
+          predecessors.some(
+            (predecessor) =>
+              !['server_ack', 'delivered', 'read'].includes(predecessor.state) ||
+              !predecessor.providerMessageId
+          )
+        ) {
+          throw new QuotationDeliveryOutboxConflictError(
+            'As etapas anteriores ainda não foram aceitas.'
+          );
+        }
+        const [nextStep] = await tx
+          .select()
+          .from(quotationDeliverySteps)
+          .where(
+            and(
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+              gt(quotationDeliverySteps.position, step.position)
+            )
+          )
+          .orderBy(asc(quotationDeliverySteps.position))
+          .limit(1);
+        const nextAttemptAt =
+          nextStep && ['queued', 'retry_scheduled'].includes(nextStep.state)
+            ? new Date(now.getTime() + stepSnapshot(nextStep).delayMs)
+            : null;
         const updated = await tx.execute(sql`
           UPDATE quotation_delivery_steps s
           SET provider_message_id = ${providerMessageId},
@@ -1102,6 +1156,18 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         `);
         if (!updated.length)
           throw new QuotationDeliveryOutboxConflictError('O lease da etapa expirou ou é inválido.');
+        if (nextStep && nextAttemptAt) {
+          await tx
+            .update(quotationDeliverySteps)
+            .set({ nextAttemptAt, updatedAt: now })
+            .where(
+              and(
+                eq(quotationDeliverySteps.id, nextStep.id),
+                eq(quotationDeliverySteps.deliveryId, deliveryId),
+                inArray(quotationDeliverySteps.state, ['queued', 'retry_scheduled'])
+              )
+            );
+        }
         await syncDeliveryState(tx, deliveryId, now);
         const cleared = await tx
           .update(quotationDeliveries)
@@ -1378,6 +1444,28 @@ export function createPostgresQuotationDeliveryOutboxRepository(
                   isNull(quotationDeliverySteps.providerMessageId)
                 )
           );
+        if (input.decision === 'confirmed_not_received') {
+          const [nextStep] = await tx
+            .select()
+            .from(quotationDeliverySteps)
+            .where(
+              and(
+                eq(quotationDeliverySteps.deliveryId, deliveryId),
+                eq(quotationDeliverySteps.state, 'queued')
+              )
+            )
+            .orderBy(asc(quotationDeliverySteps.position))
+            .limit(1);
+          if (nextStep) {
+            await tx
+              .update(quotationDeliverySteps)
+              .set({
+                nextAttemptAt: new Date(now.getTime() + stepSnapshot(nextStep).delayMs),
+                updatedAt: now,
+              })
+              .where(eq(quotationDeliverySteps.id, nextStep.id));
+          }
+        }
         await tx
           .update(quotationDeliveries)
           .set({

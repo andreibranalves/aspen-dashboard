@@ -179,7 +179,7 @@ class FakeRepository {
         state: 'queued',
         attemptCount: 0,
         publicError: null,
-        nextAttemptAt: null,
+        nextAttemptAt: snapshot.position === 0 ? new Date(now.getTime() + snapshot.delayMs) : null,
         reconciliationDeadline: null,
         acceptedAt: null,
         deliveredAt: null,
@@ -246,7 +246,7 @@ class FakeRepository {
           .filter((candidate) => candidate.position < step.position)
           .some((candidate) => !['server_ack', 'delivered', 'read'].includes(candidate.state));
         if (previous) continue;
-        const due = !step.nextAttemptAt || step.nextAttemptAt <= now;
+        const due = Boolean(step.nextAttemptAt && step.nextAttemptAt <= now);
         if (!due || !['queued', 'retry_scheduled'].includes(step.state)) continue;
         step.state = 'sending';
         step.attemptCount += 1;
@@ -516,7 +516,7 @@ test('expired reconciliation is promoted before due processing', async () => {
   const reconciling = await module.enqueue({ ...identity, flowId: 'expiry' });
   assert.equal(reconciling.state, 'reconciling');
   clock.value = new Date(start.getTime() + 120_000);
-  const batch = await module.processDue();
+  const batch = await module.processDue(20);
   assert.deepEqual(batch, { processed: 0, remaining: false });
   assert.equal((await module.get({ deliveryId: reconciling.id }))?.state, 'needs_review');
 });

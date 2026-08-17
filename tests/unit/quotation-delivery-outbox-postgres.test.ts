@@ -20,7 +20,9 @@ import {
 import {
   createPostgresQuotationDeliveryOutboxRepository,
   type EnqueueDeliveryRecord,
+  type FrozenDeliveryStep,
 } from '../../api/_db/quotation-delivery-outbox-repository.js';
+import { createQuotationDeliveryModule } from '../../api/_functions/lib/quotation-delivery-outbox.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -42,6 +44,8 @@ const businessNumber = `ORC-${String(Date.now()).slice(-8)}`;
 let sqlClient: ReturnType<typeof postgres> | undefined;
 let db: ReturnType<typeof drizzle<typeof schema>>;
 let repository: ReturnType<typeof createPostgresQuotationDeliveryOutboxRepository>;
+let integrationClock: Date;
+let integrationRepository: ReturnType<typeof createPostgresQuotationDeliveryOutboxRepository>;
 
 const textStep = (position = 0, text = `step-${position}`) => ({
   position,
@@ -122,6 +126,10 @@ test.before(async () => {
     createdAt: now,
   });
   repository = createPostgresQuotationDeliveryOutboxRepository(() => db, { now: () => now });
+  integrationClock = new Date(now);
+  integrationRepository = createPostgresQuotationDeliveryOutboxRepository(() => db, {
+    now: () => new Date(integrationClock),
+  });
 });
 
 test.after(async () => {
@@ -159,6 +167,101 @@ test('enqueue is idempotent by revision and flow but independent across flows', 
       ] as unknown as EnqueueDeliveryRecord['steps'],
     })
   );
+});
+
+test('claim and markAccepted enforce ordered predecessor gating after unsafe outcomes', async () => {
+  for (const [suffix, kind] of [
+    ['retry', 'transient_pre_transport'],
+    ['failed', 'permanent_pre_transport'],
+    ['ambiguous', 'ambiguous'],
+  ] as const) {
+    const delivery = await repository.enqueue(
+      input({
+        flowId: `ordered-${suffix}`,
+        steps: [textStep(0), textStep(1)],
+      })
+    );
+    const first = await repository.claim({ deliveryId: delivery.id });
+    assert.ok(first);
+    await repository.markFailure({
+      deliveryId: delivery.id,
+      stepId: first.step.id,
+      leaseToken: first.leaseToken,
+      kind,
+      code: `ORDERED_${suffix.toUpperCase()}`,
+      publicError: 'Falha segura antes da próxima etapa.',
+    });
+    await setStep(delivery.steps[1]!.id, {
+      nextAttemptAt: new Date(now.getTime() - 1_000),
+    });
+    assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
+  }
+
+  const manual = await repository.enqueue(
+    input({ flowId: 'ordered-mark-accepted', steps: [textStep(0), textStep(1)] })
+  );
+  const leaseToken = randomUUID();
+  await setDelivery(manual.id, {
+    state: 'processing',
+    leaseToken,
+    leaseUntil: new Date(now.getTime() + 90_000),
+  });
+  await setStep(manual.steps[1]!.id, { state: 'sending', attemptCount: 1 });
+  await assert.rejects(
+    repository.markAccepted({
+      deliveryId: manual.id,
+      stepId: manual.steps[1]!.id,
+      leaseToken,
+      providerMessageId: 'ordered-mark-accepted-provider',
+    })
+  );
+});
+
+test('module integration persists frozen delay and waits for the due predecessor', async () => {
+  const flowId = 'module-postgres-delay';
+  const steps: FrozenDeliveryStep[] = [textStep(0), { ...textStep(1), delayMs: 60_000 }];
+  const calls: number[] = [];
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    planner: async () => ({
+      revisionId: ids.revision,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Module PostgreSQL delay',
+      steps,
+    }),
+    transport: async ({ step }) => {
+      calls.push(step.position);
+      return { accepted: true as const, providerMessageId: `module-provider-${calls.length}` };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+
+  const first = await module.enqueue({ revisionId: ids.revision, flowId });
+  assert.deepEqual(calls, [0]);
+  assert.equal(first.state, 'queued');
+  assert.equal(first.steps[1]?.nextAttemptAt?.getTime(), integrationClock.getTime() + 60_000);
+  const stored = await db
+    .select({
+      position: quotationDeliverySteps.position,
+      nextAttemptAt: quotationDeliverySteps.nextAttemptAt,
+    })
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.deliveryId, first.id))
+    .orderBy(quotationDeliverySteps.position);
+  assert.equal(stored[1]?.nextAttemptAt?.getTime(), integrationClock.getTime() + 60_000);
+
+  const blocked = await module.process(first.id);
+  assert.equal(blocked?.state, 'queued');
+  assert.deepEqual(calls, [0]);
+
+  integrationClock = new Date(integrationClock.getTime() + 60_000);
+  const completed = await module.process(first.id);
+  assert.equal(completed?.state, 'provider_accepted');
+  assert.deepEqual(calls, [0, 1]);
 });
 
 test('two claims produce one lease and accepted steps never reclaim', async () => {
