@@ -13,34 +13,25 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 import type { HttpError } from '../_lib/http-error.js';
 import { kv } from '@vercel/kv';
 import { createHttpError } from '../_lib/http-error.js';
-import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
 import {
   createPostgresQuotationDeliveryRepository,
   QuotationDeliveryPdfError,
   type QuotationDeliveryRepository,
 } from '../_db/quotation-delivery-repository.js';
-import {
-  isRevisionBoundPublicQuotationUrl,
-} from './public-quotation.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
+import type { EvolutionDeliveryResult } from './lib/evolution-delivery.js';
 import {
-  allowedMediaMimeTypes,
-  downloadApprovedMedia,
-  normalizeOwnedBlobUrl,
-  readCommunicationMediaRecords,
-  safeMediaFilename,
-  stripMediaInternals,
-  verifyOwnedBlobRecord,
-  isMediaTombstone,
-  type BlobHead,
-  type PostgresMediaRecord,
-} from './lib/postgres-media.js';
-import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
-import {
-  KV_KEY_FLOWS,
-  KV_KEY_SEND_EVENTS_PREFIX,
-} from '../_lib/media-schema.js';
+  canonicalFlowQuotationId,
+  createDeliveryPlan,
+  detectCategories,
+  flowProductSummary,
+  type DeliveryPlan,
+  type DeliveryPlanInput,
+} from './lib/quotation-delivery-plan.js';
+import { sendFrozenStep, type EvolutionTransportDependencies } from './lib/evolution-transport.js';
+import type { PreparedDeliveryDocument } from '../_db/quotation-delivery-repository.js';
+import { KV_KEY_SEND_EVENTS_PREFIX } from '../_lib/media-schema.js';
 import {
   canonicalWhatsappSendIdempotencyKey,
   defaultWhatsappSendReservationStore,
@@ -54,95 +45,7 @@ import {
   WhatsappSendReservationStorageError,
 } from './lib/whatsapp-send-reservation-store.js';
 
-function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
-  return {
-    baseUrl: (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, ''),
-    apiKey: (process.env.EVOLUTION_API_KEY || '').trim(),
-    instance: (process.env.EVOLUTION_INSTANCE || '').trim(),
-  };
-}
-
-const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
-  CNG: 'canga',
-  LNC: 'lenço',
-  BNE: 'boné',
-  TWL: 'toalha',
-  CHP: 'chapéu',
-  ECO: 'ecobag',
-  CHC: 'cachecol',
-};
-const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
-  canga: 'cangas',
-  lenço: 'lenços',
-  boné: 'bonés',
-  toalha: 'toalhas',
-  chapéu: 'chapéus',
-  ecobag: 'ecobags',
-  cachecol: 'cachecóis',
-};
-const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
-  canga: 'f',
-  lenço: 'm',
-  boné: 'm',
-  toalha: 'f',
-  chapéu: 'm',
-  ecobag: 'f',
-  cachecol: 'm',
-};
-const CATEGORY_ALIASES: Record<string, string> = {
-  canga: 'canga',
-  cangas: 'canga',
-  lenco: 'lenço',
-  lenço: 'lenço',
-  lenços: 'lenço',
-  bone: 'boné',
-  boné: 'boné',
-  bonés: 'boné',
-  chapeu: 'chapéu',
-  chapéu: 'chapéu',
-  chapéus: 'chapéu',
-  toalha: 'toalha',
-  toalhas: 'toalha',
-  ecobag: 'ecobag',
-  ecobags: 'ecobag',
-  cachecol: 'cachecol',
-  cachecóis: 'cachecol',
-  cachecois: 'cachecol',
-};
-
 const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
-
-type FlowContext = {
-  nome?: string;
-  quotationId?: string;
-  link?: string;
-  pdfBase64?: string;
-  postgresPath?: boolean;
-  applicationOrigin?: string;
-  permittedMedia: string[];
-  vendorName?: string;
-  productSummary?: string;
-  productPersonalizationAdjective?: string;
-  categories: string[];
-  maxMediaPerGroup?: number;
-};
-
-type FlowStep = Record<string, unknown> & {
-  type?: string;
-  template?: string;
-  source?: string;
-  caption?: string;
-  max_items?: number;
-};
-
-type FlowRecord = Record<string, unknown> & {
-  steps?: FlowStep[];
-  vendor_name?: string;
-  max_media_per_product_group?: number;
-  delay_min_seconds?: number;
-  delay_max_seconds?: number;
-  name?: string;
-};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -172,325 +75,7 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function randomDelay(minMs: number, maxMs: number): number {
-  if (maxMs <= minMs) return minMs;
-  return Math.round(minMs + Math.random() * (maxMs - minMs));
-}
-
-// ── Template rendering ─────────────────────────────────────────────────────
-
-function normalizeProductSummaryTemplate(template: unknown): string {
-  return String(template || '')
-    .replace(
-      /\(produto_resumo\)\s+personalizado\(a\)/g,
-      '(produto_resumo) (produto_adjetivo_personalizado)'
-    )
-    .replace(
-      /\(produto_resumo\)\s+personalizados\(as\)/g,
-      '(produto_resumo) (produto_adjetivo_personalizado)'
-    );
-}
-
-function pluralizeProductCategory(category: string): string {
-  return PRODUCT_SUMMARY_PLURALS[category] || category;
-}
-
-function productPersonalizationAdjectiveFromCategories(categories: string[] = []): string {
-  const genders = categories.map((category) => PRODUCT_CATEGORY_GENDERS[category]).filter(Boolean);
-  return genders.length > 0 && genders.every((gender) => gender === 'f')
-    ? 'personalizadas'
-    : 'personalizados';
-}
-
-function renderTemplate(template: string, context: FlowContext): string {
-  const saudacao = getTimeBasedGreeting();
-  const nome = context.nome || '';
-  const primeiroNome = nome.trim().split(/\s+/)[0] || nome;
-  const groups = context.categories || [];
-  const grupoProduto = groups.length > 0 ? groups[0] : 'produto';
-
-  const productPersonalizationAdjective =
-    context.productPersonalizationAdjective ||
-    productPersonalizationAdjectiveFromCategories(context.categories);
-
-  return normalizeProductSummaryTemplate(template)
-    .replace(/\(Saudacao\)/g, saudacao)
-    .replace(/\(nome\)/g, nome)
-    .replace(/\(primeiro_nome\)/g, primeiroNome)
-    .replace(/\(numero_pedido\)/g, context.quotationId || '')
-    .replace(/\(empresa\)/g, 'Aspen Estamparia')
-    .replace(/\(link_orcamento\)/g, context.link || '')
-    .replace(/\(vendedora\)/g, context.vendorName || 'Juliana')
-    .replace(/\(produto_resumo\)/g, context.productSummary || 'produtos')
-    .replace(/\(produto_adjetivo_personalizado\)/g, productPersonalizationAdjective)
-    .replace(/\(grupo_produto\)/g, grupoProduto);
-}
-
-// ── Category detection ─────────────────────────────────────────────────────
-
-function normalizeCategory(value: unknown): string {
-  const key = String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  return CATEGORY_ALIASES[key] || key;
-}
-
-function detectCategories(items: Record<string, unknown>[] = []): string[] {
-  const categories: string[] = [];
-  for (const item of items) {
-    const sku = String((item.sku as string) || (item.item_code as string) || (item.itemCode as string) || '')
-      .trim()
-      .toUpperCase();
-    const prefix = sku.split('-')[0];
-    const category = PRODUCT_CATEGORY_BY_PREFIX[prefix];
-    if (category && !categories.includes(category)) categories.push(category);
-  }
-  return categories;
-}
-
-function productSummaryFromCategories(categories: string[] = []): string {
-  const labels = categories.map(pluralizeProductCategory);
-  if (!labels.length) return 'produtos';
-  if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} e ${labels[1]}`;
-  return `${labels.slice(0, -1).join(', ')} e ${labels.at(-1)}`;
-}
-
-export function canonicalFlowQuotationId(quotationId: string, businessNumber: string): string {
-  return businessNumber || quotationId;
-}
-
-export function flowProductSummary(
-  _postgresPath: boolean,
-  _callerSummary: unknown,
-  items: Record<string, unknown>[],
-): string {
-  return productSummaryFromCategories(detectCategories(items));
-}
-
-// ── Evolution API ──────────────────────────────────────────────────────────
-
-function assertEvolutionConfig() {
-  const { baseUrl, apiKey, instance } = evolutionConfig();
-  const missing = [];
-  if (!baseUrl) missing.push('EVOLUTION_BASE_URL');
-  if (!apiKey) missing.push('EVOLUTION_API_KEY');
-  if (!instance) missing.push('EVOLUTION_INSTANCE');
-  if (missing.length > 0) {
-    throw createHttpError(
-      500,
-      'Integração do WhatsApp não configurada.',
-      `missing env: ${missing.join(', ')}`
-    );
-  }
-}
-
-type EvolutionTransportOutcome = 'unknown' | 'retryable';
-
-function transportError(
-  statusCode: number,
-  message: string,
-  outcome: EvolutionTransportOutcome,
-  logMessage?: string,
-): Error & { transportOutcome: EvolutionTransportOutcome } {
-  const error = createHttpError(statusCode, message, logMessage) as Error & {
-    transportOutcome?: EvolutionTransportOutcome;
-  };
-  error.transportOutcome = outcome;
-  return error as Error & { transportOutcome: EvolutionTransportOutcome };
-}
-
-async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
-  const { baseUrl, apiKey } = evolutionConfig();
-  const url = `${baseUrl}${path}`;
-  let res, responseBody;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: apiKey },
-      body: JSON.stringify(body),
-    });
-    responseBody = await res.json().catch(() => null);
-    } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw transportError(
-      502,
-      'Falha ao conectar com o WhatsApp.',
-      'unknown',
-      `Evolution fetch failed: ${msg}`
-    );
-  }
-  if (!res.ok) {
-    throw transportError(
-      400,
-      'Não foi possível enviar a mensagem.',
-      'retryable',
-      `Evolution HTTP ${res.status}`
-    );
-  }
-  const delivery = normalizeEvolutionDelivery(responseBody);
-  if (!delivery) {
-    // A response without explicit acceptance may follow an accepted transport.
-    throw transportError(502, 'O provedor não confirmou o recebimento da mensagem.', 'unknown');
-  }
-  return delivery;
-}
-
-async function sendText(number: string, text: string): Promise<EvolutionDeliveryResult> {
-  const { instance } = evolutionConfig();
-  return evolutionPost(`/message/sendText/${encodeURIComponent(instance)}`, {
-    number,
-    text,
-  });
-}
-
-async function prepareFlowSteps(
-  steps: Record<string, unknown>[],
-  baseUrl: string,
-  records: PostgresMediaRecord[] = [],
-  revisionUrls: string[] = [],
-  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
-): Promise<Record<string, unknown>[]> {
-  for (const step of steps) {
-    if (step.type === 'text' || step.generatedMedia === 'quotation_pdf') continue;
-    const source = String(step.media || '').trim();
-    if (!source) throw createHttpError(400, 'A etapa de mídia não possui conteúdo.');
-    const stepType = step.type === 'document' ? 'document' : step.type === 'video' ? 'video' : 'image';
-    const declaredMime = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
-    if (declaredMime && !allowedMediaMimeTypes(stepType).includes(declaredMime)) {
-      throw createHttpError(400, 'O tipo MIME não corresponde à etapa do fluxo.');
-    }
-    const downloaded = await downloadApprovedMedia({
-      url: source,
-      origin: baseUrl,
-      stepType,
-      records,
-      revisionUrls,
-      headFn: verification.headFn,
-      blobToken: verification.blobToken,
-      blobStoreId: verification.blobStoreId,
-    });
-    step.deliveryMedia = downloaded.base64;
-    step.mimetype = downloaded.mimeType;
-  }
-  return steps;
-}
-
-async function sendMedia(
-  number: string,
-  step: Record<string, unknown>,
-  baseUrl: string,
-  records: PostgresMediaRecord[] = [],
-  revisionUrls: string[] = [],
-  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
-): Promise<EvolutionDeliveryResult> {
-  let media = String(step.deliveryMedia || '').trim();
-  if (!media) {
-    const source = String(step.media || '').trim();
-    if (!source) throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
-    const stepType = step.type === 'document' ? 'document' : step.type === 'video' ? 'video' : 'image';
-    const declaredMime = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
-    if (declaredMime && !allowedMediaMimeTypes(stepType).includes(declaredMime)) {
-      throw createHttpError(400, 'O tipo MIME não corresponde à etapa do fluxo.');
-    }
-    const downloaded = await downloadApprovedMedia({
-      url: source,
-      origin: baseUrl,
-      stepType,
-      records,
-      revisionUrls,
-      headFn: verification.headFn,
-      blobToken: verification.blobToken,
-      blobStoreId: verification.blobStoreId,
-    });
-    media = downloaded.base64;
-    step.mimetype = downloaded.mimeType;
-  }
-  if (!/^[A-Za-z0-9+/=_-]+$/.test(media)) {
-    throw createHttpError(400, 'Dados de mídia não autorizados.');
-  }
-
-  const { instance } = evolutionConfig();
-  const mimeType = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
-  const mediaType = step.type === 'document'
-    ? 'document'
-    : mimeType === 'video/mp4'
-      ? 'video'
-      : 'image';
-  if (!allowedMediaMimeTypes(mediaType).includes(mimeType)) {
-    throw createHttpError(400, 'O tipo MIME de mídia não é permitido.');
-  }
-  return evolutionPost(`/message/sendMedia/${encodeURIComponent(instance)}`, {
-    number,
-    mediatype: mediaType,
-    mimetype: mimeType,
-    caption: step.caption || '',
-    media,
-    fileName: safeMediaFilename(step.fileName, mimeType, mediaType === 'video' ? 'referencia' : mediaType),
-  });
-}
-
-async function sendStep(
-  number: string,
-  step: Record<string, unknown>,
-  baseUrl: string,
-  records: PostgresMediaRecord[] = [],
-  revisionUrls: string[] = [],
-  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
-): Promise<EvolutionDeliveryResult> {
-  if (step.type === 'text') return sendText(number, String(step.text || ''));
-  return sendMedia(number, step, baseUrl, records, revisionUrls, verification);
-}
-
-// ── Media resolution ───────────────────────────────────────────────────────
-
-async function resolveProductMedia(
-  categories: string[],
-  maxPerGroup = 1,
-  applicationOrigin = '',
-  readRecords: () => Promise<PostgresMediaRecord[]> = readCommunicationMediaRecords,
-  verification: { headFn?: BlobHead; blobToken?: string; blobStoreId?: string } = {},
-): Promise<Record<string, unknown>[]> {
-  if (!categories.length) return [];
-  const media = (await readRecords()).filter((item) => item.active === true && !isMediaTombstone(item));
-  const byGroup: Record<string, Array<Record<string, unknown>>> = {};
-  for (const item of media as Array<Record<string, unknown>>) {
-    const group = normalizeCategory(item.product_group);
-    if (!group || !item.blob_url) continue;
-    (byGroup[group] = byGroup[group] || []).push(item);
-  }
-
-  const resolved: Record<string, unknown>[] = [];
-  for (const cat of categories) {
-    const assets = (byGroup[normalizeCategory(cat)] || []).slice(0, maxPerGroup);
-    for (const asset of assets) {
-      let verified;
-      try {
-        verified = await verifyOwnedBlobRecord(asset, applicationOrigin, {
-          headFn: verification.headFn,
-          token: verification.blobToken,
-          storeId: verification.blobStoreId,
-          expectedProductGroup: normalizeCategory(cat),
-        });
-      } catch (error) {
-        if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-        throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
-      }
-      const type = verified.contentType === 'video/mp4' ? 'video' : 'image';
-      resolved.push({
-        type,
-        media: verified.url,
-        approvedRecord: asset,
-        mimetype: verified.contentType,
-        fileName: safeMediaFilename(asset.pathname, verified.contentType),
-        caption: asset.caption || '',
-      });
-    }
-  }
-  return resolved;
-}
+export { canonicalFlowQuotationId, createDeliveryPlan, flowProductSummary };
 
 // ── Duplicate detection ─────────────────────────────────────────────────────
 
@@ -561,100 +146,34 @@ async function recordSendEvent({
   return eventId;
 }
 
-// ── Flow resolution ────────────────────────────────────────────────────────
-
-async function resolveFlow(flowId: string): Promise<FlowRecord | null> {
-  try {
-    const flows = await kv.get(KV_KEY_FLOWS);
-    if (Array.isArray(flows)) {
-      const flow = flows.find((f) => f.id === flowId);
-      if (flow) return flow;
-    }
-  } catch {
-    /* ignore */
+function publicFrozenStep(step: DeliveryPlan['steps'][number]): Record<string, unknown> {
+  if (step.type === 'text') return { type: 'text', text: step.payload.text };
+  if (step.type === 'media') {
+    const type = step.payload.mediaType === 'image' && /\.mp4$/i.test(step.payload.fileName)
+      ? 'video'
+      : step.payload.mediaType;
+    return {
+      type,
+      media: step.payload.url,
+      fileName: step.payload.fileName,
+      caption: step.payload.caption,
+    };
   }
-  return null;
+  return {
+    type: 'document',
+    media: 'quotation_pdf',
+    media_ref: 'quotation_pdf',
+    generatedMedia: 'quotation_pdf',
+    fileName: step.payload.fileName,
+    caption: step.payload.caption,
+  };
 }
 
-// ── Build planned steps from flow ──────────────────────────────────────────
-
-function publicFlowStep(step: Record<string, unknown>): Record<string, unknown> {
-  const publicStep = { ...step };
-  delete publicStep.approvedData;
-  delete publicStep.deliveryMedia;
-  delete publicStep.approvedRecord;
-  if (step.generatedMedia === 'quotation_pdf') {
-    publicStep.media = 'quotation_pdf';
-    publicStep.media_ref = 'quotation_pdf';
-  }
-  return stripMediaInternals(publicStep);
-}
-
-async function buildSteps(
-  flow: FlowRecord,
-  context: FlowContext,
-  mediaResolver: typeof resolveProductMedia = resolveProductMedia,
-): Promise<Record<string, unknown>[]> {
-  const steps: Record<string, unknown>[] = [];
-  let pdfAdded = false;
-
-  for (const rawStep of flow.steps || []) {
-    if (rawStep.type === 'text') {
-      const text = renderTemplate(rawStep.template || '', context).trim();
-      if (text) steps.push({ type: 'text', text });
-    } else if (rawStep.type === 'document' && rawStep.source === 'quotation_pdf') {
-      if (!pdfAdded) {
-        if (!context.quotationId || !context.pdfBase64) {
-          throw createHttpError(503, 'Não foi possível preparar o PDF do orçamento.');
-        }
-        const caption = rawStep.caption ? renderTemplate(rawStep.caption, context).trim() : '';
-        steps.push({
-          type: 'document',
-          media: 'quotation_pdf',
-          deliveryMedia: context.pdfBase64,
-          generatedMedia: 'quotation_pdf',
-          approvedData: true,
-          mimetype: 'application/pdf',
-          fileName: `${context.quotationId}.pdf`,
-          caption,
-        });
-        pdfAdded = true;
-      }
-    } else if (rawStep.type === 'product_media') {
-      const maxItems = rawStep.max_items || context.maxMediaPerGroup || flow.max_media_per_product_group || 1;
-      const mediaSteps = await mediaResolver(
-        context.categories,
-        maxItems,
-        context.applicationOrigin || '',
-      );
-      if (mediaSteps.length === 0) {
-        throw createHttpError(400, 'A etapa de mídia não encontrou imagens autorizadas.');
-      }
-      for (const mediaStep of mediaSteps) {
-        const media = String(mediaStep.media || '').trim();
-        if (!media) throw createHttpError(400, 'A etapa de mídia não possui conteúdo.');
-        try {
-          normalizeOwnedBlobUrl(media, context.applicationOrigin || '');
-        } catch {
-          throw createHttpError(400, 'Mídia pública inválida para cotação PostgreSQL.');
-        }
-        if (media && !context.permittedMedia.includes(media)) context.permittedMedia.push(media);
-        steps.push(mediaStep);
-      }
-    }
-  }
-
-  return steps;
-}
-
-export function resolveServerIssuedPublicLink(
-  postgresPath: boolean,
-  serverIssuedLink: unknown,
-  applicationOrigin: string,
-): string {
-  return postgresPath && isRevisionBoundPublicQuotationUrl(serverIssuedLink, applicationOrigin)
-    ? serverIssuedLink
-    : '';
+function frozenStepKind(step: DeliveryPlan['steps'][number]): WhatsappSendAcceptedStepKind {
+  if (step.type === 'text') return 'text';
+  if (step.type === 'quotation_pdf') return 'document';
+  if (step.payload.mediaType === 'document') return 'document';
+  return /\.mp4$/i.test(step.payload.fileName) ? 'video' : 'image';
 }
 
 // ── Handler ─────────────────────────────────────────────────────────────────
@@ -663,19 +182,21 @@ export type SendWhatsappFlowDependencies = {
   repository?: ReturnType<typeof createQuotationTemplateRepository>;
   store?: Parameters<typeof loadPostgresSendContext>[0]['store'];
   token?: () => string;
-  headBlob?: BlobHead;
+  headBlob?: DeliveryPlanInput['headBlob'];
   blobToken?: string;
   blobStoreId?: string;
   renderPdf?: Parameters<typeof loadPostgresSendContext>[0]['renderPdf'];
   mediaRecords?: Array<Record<string, unknown>>;
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
   resolveDeal?: Parameters<typeof loadPostgresSendContext>[0]['resolveDeal'];
-  resolveMedia?: typeof resolveProductMedia;
-  resolveFlow?: (flowId: string) => Promise<FlowRecord | null>;
+  resolveMedia?: DeliveryPlanInput['resolveMedia'];
+  resolveFlow?: DeliveryPlanInput['resolveFlow'];
   checkDuplicate?: typeof checkDuplicate;
   recordSendEvent?: typeof recordSendEvent;
   reservationStore?: WhatsappSendReservationStore;
-  deliveryRepository?: Pick<QuotationDeliveryRepository, 'reserve' | 'recordState' | 'prepareDelivery'>;
+  deliveryRepository?: Pick<QuotationDeliveryRepository, 'reserve' | 'recordState'> &
+    Partial<Pick<QuotationDeliveryRepository, 'prepareDelivery' | 'prepareDeliveryDocument'>>;
+  transport?: EvolutionTransportDependencies;
   beforeTransport?: (idempotencyKey: string) => Promise<void>;
 };
 
@@ -876,7 +397,7 @@ export async function handler(
     return jsonResponse(400, { error: 'JSON inválido.' });
   }
 
-  const flowResolver = dependencies.resolveFlow || resolveFlow;
+  const flowResolver = dependencies.resolveFlow;
   const duplicateChecker = dependencies.checkDuplicate || checkDuplicate;
   const sendEventRecorder = dependencies.recordSendEvent || recordSendEvent;
   const reservationStore = dependencies.reservationStore || defaultWhatsappSendReservationStore;
@@ -921,29 +442,19 @@ export async function handler(
       }
     }
 
-    const flow = await flowResolver(flowId);
-    if (!flow) throw createHttpError(404, 'Fluxo não encontrado.');
-    const configuredPdfSteps = (Array.isArray(flow.steps) ? flow.steps : []).filter(
-      (step: Record<string, unknown>) => step.type === 'document' && step.source === 'quotation_pdf',
-    ).length;
-    if (configuredPdfSteps !== 1) throw createHttpError(400, 'O fluxo deve conter exatamente um PDF do orçamento.');
-    const configuredSteps = Array.isArray(flow.steps) ? flow.steps.length : 0;
-    const maximumDelayMs = Math.max(0, configuredSteps - 1) * Math.max(0, Number(flow.delay_max_seconds || 0)) * 1000;
-    if (!Number.isFinite(maximumDelayMs) || maximumDelayMs > 45_000) {
-      throw createHttpError(400, 'O fluxo deve caber no limite de 45 segundos.');
-    }
-    if (!dryRun) assertEvolutionConfig();
-
     const host = (event.headers?.host as string | undefined) || 'project-xr5jg.vercel.app';
     const proto = ((event.headers?.['x-forwarded-proto'] as string | undefined) || 'https').split(',')[0].trim();
     const baseUrl = `${proto}://${host}`;
-    const context = await loadPostgresSendContext({
+    let context!: Awaited<ReturnType<typeof loadPostgresSendContext>>;
+    let document: PreparedDeliveryDocument | undefined;
+    const planInput: DeliveryPlanInput = {
       quotationId,
-      revisionId,
       businessNumber: firstNonEmpty(payload.business_number, payload.businessNumber),
-      recipientPhone: firstNonEmpty(payload.phone, payload.telefone) || undefined,
-      needPdf: !deliveryRepository,
+      revisionId,
+      flowId,
       baseUrl,
+      needPdf: !deliveryRepository,
+      resolveFlow: flowResolver,
       repository: dependencies.repository || createQuotationTemplateRepository(),
       store: dependencies.store,
       token: dependencies.token,
@@ -951,11 +462,31 @@ export async function handler(
       mediaRecords: dependencies.mediaRecords,
       readMediaRecords: dependencies.readMediaRecords,
       resolveDeal: dependencies.resolveDeal,
-    });
+      resolveMedia: dependencies.resolveMedia
+        ? (categories, maxItems, origin) => dependencies.resolveMedia!(categories, maxItems, origin)
+        : undefined,
+      headBlob: dependencies.headBlob,
+      blobToken: dependencies.blobToken,
+      blobStoreId: dependencies.blobStoreId,
+      onContext: (resolved) => { context = resolved; },
+    };
+    const plan = await createDeliveryPlan(planInput);
+    const steps = plan.steps;
+    const businessNumber = plan.businessNumber;
+    const items = context.view.items as Record<string, unknown>[];
+    const categories = detectCategories(items);
+    const productSummary = flowProductSummary(true, undefined, items);
+
     if (!dryRun && deliveryRepository) {
       try {
-        const prepared = await deliveryRepository.prepareDelivery({ revisionId, phone: context.phone, flowId });
-        context.pdfBase64 = prepared.pdf.toString('base64');
+        if (deliveryRepository.prepareDeliveryDocument) {
+          await deliveryRepository.reserve({ revisionId, phone: plan.phone, flowId });
+          document = await deliveryRepository.prepareDeliveryDocument(revisionId);
+        } else if (deliveryRepository.prepareDelivery) {
+          document = await deliveryRepository.prepareDelivery({ revisionId, phone: plan.phone, flowId });
+        } else {
+          throw new Error('Preparação compatível indisponível.');
+        }
       } catch (error) {
         if (error instanceof QuotationDeliveryPdfError) {
           const publicError = 'PDF indisponível. Tentar novamente.';
@@ -973,42 +504,12 @@ export async function handler(
         }
         throw error;
       }
+    } else if (!dryRun && context.pdfBase64) {
+      const pdf = Buffer.from(context.pdfBase64, 'base64');
+      if (pdf.length === 0) throw new QuotationDeliveryPdfError('O PDF da revisão é inválido. Tente novamente.');
+      document = { pdf, pdfSize: pdf.length, pdfSignature: '', validUntil: new Date(0) };
     }
-    const businessNumber = canonicalFlowQuotationId(quotationId, context.businessNumber);
-    const link = resolveServerIssuedPublicLink(true, context.publicLink, baseUrl);
-    const items = context.view.items as Record<string, unknown>[];
-    const categories = detectCategories(items);
-    const productSummary = flowProductSummary(true, undefined, items);
-    const flowContext = {
-      nome: context.nome,
-      quotationId: businessNumber,
-      link,
-      pdfBase64: context.pdfBase64,
-      postgresPath: true,
-      applicationOrigin: baseUrl,
-      permittedMedia: link ? [link] : [],
-      vendorName: flow.vendor_name || 'Juliana',
-      productSummary,
-      categories,
-      maxMediaPerGroup: flow.max_media_per_product_group || 1,
-    };
-    const mediaVerification = { headFn: dependencies.headBlob, blobToken: dependencies.blobToken, blobStoreId: dependencies.blobStoreId };
-    const injectedMediaReader = dependencies.mediaRecords
-      ? async () => dependencies.mediaRecords as PostgresMediaRecord[]
-      : dependencies.readMediaRecords
-        ? async () => (await dependencies.readMediaRecords!()) as PostgresMediaRecord[]
-        : readCommunicationMediaRecords;
-    const mediaResolver = dependencies.resolveMedia || ((cats, maxItems, origin) => resolveProductMedia(cats, maxItems, origin, injectedMediaReader, mediaVerification));
-    const steps = await buildSteps(flow, flowContext, mediaResolver);
-    if (steps.length === 0) throw createHttpError(400, 'Fluxo não gerou nenhuma etapa válida.');
-    if (steps.length > 64) throw createHttpError(400, 'O fluxo excede o limite de etapas reconciliáveis.');
-    const expandedDelayMaxMs = Math.max(0, Number(flow.delay_max_seconds || 0)) * 1000;
-    const expandedMaximumDurationMs = Math.max(0, steps.length - 1) * expandedDelayMaxMs;
-    if (!Number.isFinite(expandedMaximumDurationMs) || expandedMaximumDurationMs > 45_000) {
-      throw createHttpError(400, 'O fluxo deve caber no limite de 45 segundos.');
-    }
-    const approvedRecords = steps.map((step) => step.approvedRecord).filter((record): record is PostgresMediaRecord => Boolean(record));
-    await prepareFlowSteps(steps, baseUrl, approvedRecords, link ? [link] : [], mediaVerification);
+    const publicSteps = steps.map(publicFrozenStep);
 
     if (!dryRun) {
       let decision;
@@ -1047,10 +548,7 @@ export async function handler(
     if (!dryRun) {
       await dependencies.beforeTransport?.(reservationKey);
       for (let index = 0; index < steps.length; index += 1) {
-        if (index > 0) await wait(randomDelay(
-          Number(flow.delay_min_seconds || 0) * 1000,
-          Number(flow.delay_max_seconds || 0) * 1000,
-        ));
+        if (index > 0 && steps[index].delayMs > 0) await wait(steps[index].delayMs);
         if (!reservation) throw new WhatsappSendReservationStorageError();
         const transporting = await casWithRetry(reservationStore, {
           key: reservation.key,
@@ -1066,7 +564,10 @@ export async function handler(
         }
         reservation = transporting.record;
         await deliveryRepository?.recordState({ revisionId, state: 'transporting' });
-        const response = await sendStep(context.phone, steps[index], baseUrl, approvedRecords, link ? [link] : [], mediaVerification);
+        const response = await sendFrozenStep(
+          { phone: plan.phone, step: steps[index], document },
+          dependencies.transport,
+        );
         if (!response.accepted) {
           await deliveryRepository?.recordState({ revisionId, state: 'reconciling', publicError: 'A resposta do transporte não confirmou o resultado. Reconciliação necessária.' }).catch(() => undefined);
           return jsonResponse(503, reconciliationBody());
@@ -1079,7 +580,7 @@ export async function handler(
           from: 'transporting',
           to: 'accepted_partial',
           currentStep: index,
-          acceptedStep: { step: index, kind: stepKind(steps[index]) },
+          acceptedStep: { step: index, kind: frozenStepKind(steps[index]) },
           errorMessage: 'O transporte foi aceito e aguarda reconciliação.',
         });
         if (!accepted.ok) {
@@ -1102,8 +603,8 @@ export async function handler(
         quotationId: businessNumber,
         phone: context.phone,
         flowId,
-        flowName: String(flow.name || 'Fluxo'),
-        steps: steps.map(publicFlowStep),
+        flowName: plan.flowName,
+        steps: publicSteps,
         evolution,
         duplicateWarning,
       });
@@ -1115,14 +616,14 @@ export async function handler(
       duplicate_warning: duplicateWarning,
       duplicate_message: duplicateWarning ? 'Este fluxo já foi enviado para este telefone há menos de 30 minutos.' : '',
       flow_id: flowId,
-      flow_name: String(flow.name || 'Fluxo'),
+      flow_name: plan.flowName,
       quotation_id: businessNumber || null,
       deal_id: context.dealId || null,
       phone: context.phone,
       product_summary: productSummary,
       categories,
       steps_count: steps.length,
-      steps: steps.map(publicFlowStep),
+      steps: publicSteps,
       send_event_id: sendEventId,
     };
     if (reservation) {
@@ -1132,7 +633,7 @@ export async function handler(
         expectedVersion: reservation.version,
         from: 'accepted_partial',
         to: 'completed',
-        result: neutralTerminalResult(resultBody, steps),
+        result: neutralTerminalResult(resultBody, publicSteps),
       });
       if (!completed.ok) {
         await deliveryRepository?.recordState({ revisionId: reservation.revisionId, state: 'reconciling', publicError: 'A conclusão requer reconciliação.' });

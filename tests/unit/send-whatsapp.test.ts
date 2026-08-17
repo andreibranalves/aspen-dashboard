@@ -7,6 +7,7 @@ import {
 } from '../../api/_functions/send-whatsapp.js';
 import {
   canonicalFlowQuotationId,
+  createDeliveryPlan,
   flowProductSummary,
   handler as sendWhatsappFlow,
 } from '../../api/_functions/send-whatsapp-flow.js';
@@ -503,6 +504,26 @@ test('flow PostgreSQL content and duplicate keys use canonical snapshot values',
   assert.equal(canonicalFlowQuotationId('quote-uuid', businessNumber), businessNumber);
   assert.equal(flowProductSummary(true, 'texto adulterado', [{ item_code: 'CNG-001' }]), 'cangas');
   assert.equal(flowProductSummary(false, 'texto legado', [{ item_code: 'CNG-001' }]), 'cangas');
+});
+
+test('flow planner keeps dry-run PDF references free of binary content', async () => {
+  const plan = await createDeliveryPlan({
+    revisionId,
+    flowId: 'flow-plan',
+    businessNumber,
+    baseUrl: 'https://app.test',
+    context: { businessNumber, nome: 'Cliente Teste', phone: '5511999990000', items: [] },
+    flow: {
+      id: 'flow-plan',
+      steps: [
+        { type: 'text', template: 'Olá (nome)' },
+        { type: 'document', source: 'quotation_pdf' },
+      ],
+    },
+    random: () => 0,
+  });
+  assert.equal(plan.steps.at(-1)?.type, 'quotation_pdf');
+  assert.equal(JSON.stringify(plan.steps).includes('base64'), false);
 });
 
 test('Evolution response requires explicit provider acceptance', () => {
