@@ -32,6 +32,10 @@ export interface VercelRequestLike {
   headers?: Record<string, string | string[] | undefined>;
   query?: Record<string, string | string[] | undefined>;
   body?: unknown;
+  rawBody?: string | Uint8Array;
+  readable?: boolean;
+  readableEnded?: boolean;
+  resume?: () => unknown;
 }
 
 export interface VercelResponseLike {

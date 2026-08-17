@@ -128,7 +128,7 @@ function requestHeader(
 function requestBodyByteLength(body: unknown): number {
   if (body === undefined || body === null) return 0;
   if (typeof body === 'string') return Buffer.byteLength(body, 'utf8');
-  if (Buffer.isBuffer(body)) return body.length;
+  if (body instanceof Uint8Array) return body.byteLength;
   if (body && typeof (body as { on?: unknown }).on === 'function') {
     return Number.POSITIVE_INFINITY;
   }
@@ -140,12 +140,32 @@ function requestBodyByteLength(body: unknown): number {
   }
 }
 
+function rejectUnboundedRequest(req: VercelRequestLike): true {
+  req.resume?.();
+  return true;
+}
+
+function isUnboundedReadableRequest(req: VercelRequestLike): boolean {
+  return req.readable === true && req.readableEnded !== true;
+}
+
 function isOversizedEvolutionWebhookRequest(req: VercelRequestLike): boolean {
   const rawContentLength = requestHeader(req, 'content-length');
   if (rawContentLength !== undefined) {
     const contentLength = Number(rawContentLength);
-    if (!Number.isSafeInteger(contentLength) || contentLength < 0) return true;
-    if (contentLength > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) return true;
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      return rejectUnboundedRequest(req);
+    }
+    if (contentLength > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) {
+      return rejectUnboundedRequest(req);
+    }
+  }
+
+  if (req.rawBody !== undefined && requestBodyByteLength(req.rawBody) > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) {
+    return rejectUnboundedRequest(req);
+  }
+  if (rawContentLength === undefined && isUnboundedReadableRequest(req)) {
+    return rejectUnboundedRequest(req);
   }
   return requestBodyByteLength(req.body) > MAX_EVOLUTION_WEBHOOK_BODY_BYTES;
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
 import test from 'node:test';
 
 import apiHandler from '../../api/[...path].js';
@@ -57,6 +58,23 @@ function dependencies() {
 }
 
 const authorization = { authorization: `Bearer ${webhookSecret}` };
+
+function responseFixture() {
+  return {
+    statusCode: 0,
+    value: undefined as unknown,
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value: unknown) {
+      this.value = value;
+    },
+    send(value: unknown) {
+      this.value = value;
+    },
+  };
+}
 
 test('webhook rejects missing secret and accepts duplicate known event neutrally', async () => {
   const deps = dependencies();
@@ -131,20 +149,7 @@ test('deployed catch-all rejects oversized valid webhook JSON before dispatch', 
   const body = JSON.stringify({ ...payload(), padding: 'x'.repeat(MAX_EVOLUTION_WEBHOOK_BODY_BYTES) });
   assert.ok(Buffer.byteLength(body, 'utf8') > MAX_EVOLUTION_WEBHOOK_BODY_BYTES);
 
-  const response = {
-    statusCode: 0,
-    value: undefined as unknown,
-    status(code: number) {
-      this.statusCode = code;
-      return this;
-    },
-    json(value: unknown) {
-      this.value = value;
-    },
-    send(value: unknown) {
-      this.value = value;
-    },
-  };
+  const response = responseFixture();
   await apiHandler(
     {
       method: 'POST',
@@ -157,6 +162,22 @@ test('deployed catch-all rejects oversized valid webhook JSON before dispatch', 
     } as any,
     response as any,
   );
+
+  assert.equal(response.statusCode, 413);
+  assert.deepEqual(response.value, { error: 'Corpo da requisição excede o limite permitido.' });
+});
+
+test('deployed catch-all rejects an unbounded readable webhook without content length', async () => {
+  const body = JSON.stringify({ ...payload(), padding: 'x'.repeat(MAX_EVOLUTION_WEBHOOK_BODY_BYTES) });
+  const request = Readable.from([body]);
+  Object.assign(request, {
+    method: 'POST',
+    url: '/api/evolution-webhook',
+    headers: { authorization: `Bearer ${webhookSecret}` },
+  });
+  const response = responseFixture();
+
+  await apiHandler(request as any, response as any);
 
   assert.equal(response.statusCode, 413);
   assert.deepEqual(response.value, { error: 'Corpo da requisição excede o limite permitido.' });
