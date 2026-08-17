@@ -23,6 +23,7 @@
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "npm run build:api && TZ=UTC node --test tests/unit/*.test.{js,ts}",
     "test:e2e": "npx playwright test",
+    "test:e2e:staging": "DOTENV_CONFIG_PATH=$HOME/.config/aspen-dashboard/.env.local STAGING_E2E=1 npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report",
     "test:whatsapp": "node scripts/test-whatsapp-sequence.mjs",

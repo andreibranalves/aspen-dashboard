@@ -62,7 +62,7 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   await page.waitForTimeout(500);
   const previewRequest = page.waitForRequest('**/api/quotation-preview');
   const previewPopup = page.waitForEvent('popup').catch(() => null);
-  await page.getByRole('button', { name: 'Visualizar PDF' }).click();
+  await page.getByRole('button', { name: 'Visualizar proposta' }).click();
   await Promise.race([previewRequest, previewPopup]);
   await expect.poll(() => previewWrites).toBe(1);
   expect(previewWrites).toBe(1);

@@ -1,8 +1,15 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
+import { loadLocalEnv } from './scripts/load-env.mjs';
+
+loadLocalEnv();
 
 const PORT = 5173;
 const IS_STAGING = process.env.STAGING_E2E === '1';
+const STAGING_SPEC_FILES = [
+  '**/postgres-only-cutover.spec.js',
+  '**/quotation-cutover-staging.spec.js',
+];
 
 function parseOrigin(value, label) {
   let parsed;
@@ -57,6 +64,7 @@ export default defineConfig({
   ...(IS_STAGING
     ? {}
     : {
+        testIgnore: STAGING_SPEC_FILES,
         webServer: {
           command: 'npx vite --port 5173',
           url: BASE_URL,
