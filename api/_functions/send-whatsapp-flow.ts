@@ -39,6 +39,7 @@ import { KV_KEY_SEND_EVENTS_PREFIX } from '../_lib/media-schema.js';
 import {
   canonicalWhatsappSendIdempotencyKey,
   defaultWhatsappSendReservationStore,
+  WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
   isWhatsappSendReservationStale,
   parseWhatsappSendReservationRecord,
   sanitizeWhatsappSendTerminalResult,
@@ -699,14 +700,57 @@ export async function handler(
       : null;
     if (reservation) {
       const currentPhase = reservationPhase(reservation);
-      if (transportFailure?.state === 'retryable' && currentPhase === 'transporting') {
-        await deliveryRepository?.recordState({
-          revisionId: reservation.revisionId,
-          flowId: reservation.flowId,
-          state: transportFailure.state,
-          failureKind: transportFailure.failureKind,
-          publicError: transportFailure.publicError,
-        }).catch(() => undefined);
+      if (
+        transportFailure?.state === 'retryable'
+        && currentPhase === 'transporting'
+        && reservation.acceptedSteps.length === 0
+      ) {
+        try {
+          await deliveryRepository?.recordState({
+            revisionId: reservation.revisionId,
+            flowId: reservation.flowId,
+            state: transportFailure.state,
+            failureKind: transportFailure.failureKind,
+            publicError: transportFailure.publicError,
+          });
+        } catch {
+          await deliveryRepository?.recordState({
+            revisionId: reservation.revisionId,
+            flowId: reservation.flowId,
+            state: 'reconciling',
+            failureKind: 'ambiguous',
+            publicError: 'A falha não pôde ser persistida. Reconciliação necessária.',
+          }).catch(() => undefined);
+          return jsonResponse(503, reconciliationBody());
+        }
+        let transitioned: WhatsappSendReservationCasResult;
+        try {
+          transitioned = await reservationStore.resolve({
+            key: reservation.key,
+            expectedVersion: reservation.version,
+            to: 'retryable',
+            confirmation: WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
+          });
+        } catch {
+          await deliveryRepository?.recordState({
+            revisionId: reservation.revisionId,
+            flowId: reservation.flowId,
+            state: 'reconciling',
+            failureKind: 'ambiguous',
+            publicError: 'A falha não pôde ser reconciliada. Reconciliação necessária.',
+          }).catch(() => undefined);
+          return jsonResponse(503, reconciliationBody());
+        }
+        if (!transitioned.ok) {
+          await deliveryRepository?.recordState({
+            revisionId: reservation.revisionId,
+            flowId: reservation.flowId,
+            state: 'reconciling',
+            failureKind: 'ambiguous',
+            publicError: 'A reserva não pôde ser atualizada. Reconciliação necessária.',
+          }).catch(() => undefined);
+          return await reservationConflictResponse(reservationStore, reservation.key, reservation.flowId, transitioned);
+        }
         return jsonResponse(transportFailure.statusCode, transportFailure.body);
       }
       if (currentPhase === 'reserved') {

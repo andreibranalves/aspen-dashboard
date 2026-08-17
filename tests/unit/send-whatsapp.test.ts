@@ -699,7 +699,7 @@ test('send-whatsapp-flow dry-run uses the extracted planner without rendering or
   }
 });
 
-test('send-whatsapp-flow preserves typed transport failure paths', async () => {
+test('send-whatsapp-flow preserves typed transport failure paths and retry phases', async () => {
   const cases = [
     {
       name: 'transient',
@@ -724,40 +724,119 @@ test('send-whatsapp-flow preserves typed transport failure paths', async () => {
     },
   ] as const;
   for (const outcome of cases) {
+    const flowId = `flow-${outcome.name}`;
     const states: Array<Record<string, unknown>> = [];
-    const response = await sendWhatsappFlow(
-      event({ flow_id: `flow-${outcome.name}`, quotation_id: quotationId, revision_id: revisionId }),
-      {
-        resolveFlow: async () => ({
-          id: `flow-${outcome.name}`,
-          name: `Fluxo ${outcome.name}`,
-          steps: [{ type: 'text', template: 'Olá (nome)' }, { type: 'document', source: 'quotation_pdf' }],
+    const reservations = reservationStore();
+    let transportCalls = 0;
+    const dependencies = {
+      resolveFlow: async () => ({
+        id: flowId,
+        name: `Fluxo ${outcome.name}`,
+        steps: [{ type: 'text', template: 'Olá (nome)' }, { type: 'document', source: 'quotation_pdf' }],
+      }),
+      repository: repositoryFor(),
+      store: store(),
+      token: () => publicToken,
+      renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+      deliveryRepository: {
+        reserve: async () => ({}) as any,
+        prepareDeliveryDocument: async () => ({
+          pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+          pdfSize: Buffer.from('%PDF-1.7\\nbody\\n%%EOF').length,
+          pdfSignature: 'a'.repeat(64),
+          validUntil: new Date('2026-08-20T12:00:00.000Z'),
         }),
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
-        deliveryRepository: {
-          reserve: async () => ({}) as any,
-          prepareDeliveryDocument: async () => ({
-            pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
-            pdfSize: 20,
-            pdfSignature: 'a'.repeat(64),
-            validUntil: new Date('2026-08-20T12:00:00.000Z'),
-          }),
-          recordState: async (input) => { states.push(input as unknown as Record<string, unknown>); return {} as any; },
-        },
-        reservationStore: reservationStore(),
-        transport: { baseUrl: 'https://evolution.test', apiKey: 'test-key', instance: 'test-instance', fetch: outcome.fetch },
-        checkDuplicate: async () => false,
-        recordSendEvent: async () => 'synthetic-event',
+        recordState: async (input) => { states.push(input as unknown as Record<string, unknown>); return {} as any; },
       },
+      reservationStore: reservations,
+      transport: {
+        baseUrl: 'https://evolution.test',
+        apiKey: 'test-key',
+        instance: 'test-instance',
+        fetch: async (...args: Parameters<typeof outcome.fetch>) => {
+          transportCalls += 1;
+          if (outcome.name === 'transient' && transportCalls > 1) {
+            return new Response(JSON.stringify({ accepted: true, message_id: `provider-${transportCalls}` }), { status: 200 });
+          }
+          return outcome.fetch(...args);
+        },
+      },
+      checkDuplicate: async () => false,
+      recordSendEvent: async () => 'synthetic-event',
+    };
+    const response = await sendWhatsappFlow(
+      event({ flow_id: flowId, quotation_id: quotationId, revision_id: revisionId }),
+      dependencies,
     );
     assert.equal(response.statusCode, outcome.statusCode, outcome.name);
-    assert.equal(states.at(-1)?.state, outcome.state, outcome.name);
-    assert.equal(states.at(-1)?.failureKind, outcome.failureKind, outcome.name);
-    assert.equal(states.every((input) => input.flowId === `flow-${outcome.name}`), true, outcome.name);
+    const failedState = states.at(-1);
+    assert.equal(failedState?.state, outcome.state, outcome.name);
+    assert.equal(failedState?.failureKind, outcome.failureKind, outcome.name);
+    assert.equal(states.every((input) => input.flowId === flowId), true, outcome.name);
+    const [reservationKey] = reservations.records.keys();
+    const stored = await reservations.get(reservationKey);
+    assert.equal(stored?.phase, outcome.state === 'retryable' ? 'retryable' : 'transporting', outcome.name);
+
+    if (outcome.name === 'transient') {
+      const retry = await sendWhatsappFlow(
+        event({ flow_id: flowId, quotation_id: quotationId, revision_id: revisionId }),
+        dependencies,
+      );
+      assert.equal(retry.statusCode, 200);
+      assert.equal((await reservations.get(reservationKey))?.phase, 'completed');
+      assert.equal(transportCalls, 3);
+    } else {
+      assert.equal(transportCalls, 1, outcome.name);
+    }
   }
+});
+
+test('send-whatsapp-flow does not return retryable when repository persistence fails', async () => {
+  const flowId = 'flow-persistence-failure';
+  const reservations = reservationStore();
+  const states: Array<Record<string, unknown>> = [];
+  const response = await sendWhatsappFlow(
+    event({ flow_id: flowId, quotation_id: quotationId, revision_id: revisionId }),
+    {
+      resolveFlow: async () => ({
+        id: flowId,
+        name: 'Fluxo persistência',
+        steps: [{ type: 'text', template: 'Olá (nome)' }, { type: 'document', source: 'quotation_pdf' }],
+      }),
+      repository: repositoryFor(),
+      store: store(),
+      token: () => publicToken,
+      deliveryRepository: {
+        reserve: async () => ({}) as any,
+        prepareDeliveryDocument: async () => ({
+          pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+          pdfSize: Buffer.from('%PDF-1.7\\nbody\\n%%EOF').length,
+          pdfSignature: 'a'.repeat(64),
+          validUntil: new Date('2026-08-20T12:00:00.000Z'),
+        }),
+        recordState: async (input) => {
+          const state = input as unknown as Record<string, unknown>;
+          states.push(state);
+          if (state.state === 'retryable') throw new Error('database unavailable');
+          return {} as any;
+        },
+      },
+      reservationStore: reservations,
+      transport: {
+        baseUrl: 'https://evolution.test',
+        apiKey: 'test-key',
+        instance: 'test-instance',
+        fetch: async () => new Response(JSON.stringify({ error: 'rate limit' }), { status: 429 }),
+      },
+      checkDuplicate: async () => false,
+      recordSendEvent: async () => 'synthetic-event',
+    },
+  );
+  assert.equal(response.statusCode, 503);
+  assert.equal(JSON.parse(response.body || '{}').send_status, 'reconciling');
+  assert.equal(states.at(-1)?.state, 'reconciling');
+  const [reservationKey] = reservations.records.keys();
+  assert.equal((await reservations.get(reservationKey))?.phase, 'transporting');
 });
 
 test('Evolution response requires explicit provider acceptance', () => {
