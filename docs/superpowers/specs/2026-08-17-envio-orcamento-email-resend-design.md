@@ -50,6 +50,7 @@ Campos mínimos:
 - `id`: UUID fornecido como identificador idempotente da tentativa.
 - `revision_id`: chave estrangeira para `quote_revisions`.
 - `recipient`: endereço normalizado usado no envio.
+- `public_token`: token público aleatório mantido somente enquanto a tentativa estiver `pending`.
 - `state`: `pending`, `accepted` ou `failed`.
 - `provider_email_id`: identificador retornado pela Resend, quando aceito.
 - `public_error`: mensagem segura em português para falha conhecida.
@@ -104,10 +105,11 @@ Uma nova ação explícita de reenvio cria outro `attempt_id`.
 
 ## Preparação do documento
 
-O endpoint reutiliza a preparação de entrega existente para carregar o snapshot imutável da revisão e gerar o PDF.
-O PDF anexado e o link público devem apontar para a mesma `revision_id`.
-O link usa o mecanismo público existente e respeita a validade e retenção atuais do orçamento.
-O limite de tamanho do PDF reutiliza a validação existente.
+O endpoint carrega o snapshot imutável da revisão e emite um único token público para a tentativa.
+O corpo usa a URL HTML desse token e o anexo usa a mesma URL com `format=pdf`.
+A Resend baixa o PDF pela URL assinada e o entrega como anexo ao destinatário.
+As duas URLs apontam para a mesma `revision_id` e respeitam a validade e retenção atuais do orçamento.
+O endpoint público aplica o limite de tamanho do PDF já usado pelo produto.
 Nenhum documento é reconstruído a partir do estado editável do navegador.
 
 ## Integração Resend
@@ -123,16 +125,18 @@ A requisição envia:
 - `to` com o destinatário confirmado.
 - Assunto `Orçamento <número> - Aspen`.
 - Corpo HTML simples com nome do cliente e link público.
-- PDF em base64 com nome derivado do número do orçamento.
+- Anexo remoto com `path` apontando para a URL pública assinada com `format=pdf` e nome derivado do número do orçamento.
 
 O HTML escapa todo conteúdo vindo do orçamento e do cliente.
+O token público é persistido temporariamente na tentativa `pending`, reutilizado em toda repetição idempotente e apagado ao mudar para `accepted` ou `failed`.
+Isso mantém corpo e anexo iguais quando a mesma tentativa precisa ser repetida.
 A resposta precisa conter um identificador de e-mail antes de a tentativa mudar para `accepted`.
 Falhas HTTP, respostas inválidas e timeouts mudam a tentativa para `failed` quando for seguro afirmar que a Resend não aceitou a mensagem.
 Uma resposta ambígua mantém a tentativa `pending`, permitindo repetição com a mesma chave idempotente.
 Detalhes técnicos ficam somente nos logs do servidor.
 
 A documentação atual da Resend usada no desenho é `/websites/resend` no Context7.
-Ela confirma anexos por conteúdo binário ou base64, retorno com identificador e chaves idempotentes válidas por 24 horas.
+Ela confirma anexos remotos por `path`, retorno com identificador e chaves idempotentes válidas por 24 horas.
 
 ## Configuração operacional
 
@@ -213,9 +217,10 @@ Testes unitários cobrem:
 
 - Validação e normalização do destinatário.
 - Rejeição de revisão em rascunho.
-- Preparação do PDF e do link para a mesma revisão.
+- Preparação das URLs HTML e PDF para a mesma revisão.
+- Reutilização do mesmo token público em uma repetição idempotente.
 - Corpo HTML escapado.
-- Chamada Resend com anexo, remetente e chave idempotente.
+- Chamada Resend com anexo remoto, remetente e chave idempotente.
 - Transição `pending` para `accepted` após resposta com identificador.
 - Transição segura para `failed` após recusa conhecida.
 - Manutenção de `pending` após resposta ambígua.
