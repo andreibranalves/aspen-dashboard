@@ -1,32 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  renderQuotationEmailHtml,
   ResendTransportError,
   sendQuotationEmailViaResend,
 } from '../../api/_functions/lib/quotation-email.js';
 
 const input = {
   recipient: 'cliente@example.com',
-  customerName: '<Cliente & Filhos>',
   businessNumber: 'ORC-42',
-  publicUrl: 'https://app.example.com/api/public-quotation?token=abc',
   attachmentUrl: 'https://app.example.com/api/public-quotation?token=abc&format=pdf',
   attemptId: '11111111-1111-4111-8111-111111111111',
+  subject: 'Proposta ORC-42',
+  html: '<p>Olá, Cliente</p>',
+  text: 'Olá, Cliente',
 };
 
 function expectTransportError(error: unknown, kind: ResendTransportError['kind']): boolean {
   return error instanceof ResendTransportError && error.kind === kind;
 }
 
-test('quotation email escapes customer data and keeps the public URL', () => {
-  const html = renderQuotationEmailHtml(input);
-  assert.match(html, /&lt;Cliente &amp; Filhos&gt;/);
-  assert.doesNotMatch(html, /<Cliente/);
-  assert.match(html, /https:\/\/app\.example\.com\/api\/public-quotation\?token=abc/);
-});
-
-test('Resend request contains sender, attachment and idempotency key', async () => {
+test('Resend request contains rendered content, sender, attachment and idempotency key', async () => {
   let capturedUrl = '';
   let capturedInit: RequestInit | undefined;
   const result = await sendQuotationEmailViaResend(input, {
@@ -54,6 +47,9 @@ test('Resend request contains sender, attachment and idempotency key', async () 
   assert.equal(body.from, 'Aspen <orcamentos@example.com>');
   assert.deepEqual(body.to, ['cliente@example.com']);
   assert.equal(body.reply_to, 'vendas@example.com');
+  assert.equal(body.subject, input.subject);
+  assert.equal(body.html, input.html);
+  assert.equal(body.text, input.text);
   assert.equal(body.attachments[0].filename, 'orcamento-ORC-42.pdf');
   assert.equal(body.attachments[0].path, input.attachmentUrl);
   assert.equal(body.attachments[0].content, undefined);

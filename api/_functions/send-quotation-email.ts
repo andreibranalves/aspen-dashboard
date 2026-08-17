@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto';
 
+import {
+  renderQuotationEmailTemplate,
+} from '../_lib/quotation-email-template.js';
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import { isIssuedQuotationStatus } from '../_lib/quotation-status.js';
 import {
@@ -11,6 +14,10 @@ import {
   type QuotationEmailDeliveryRepository,
 } from '../_db/quotation-email-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
+import {
+  createPostgresQuotationEmailTemplateRepository,
+  type QuotationEmailTemplateRepository,
+} from '../_db/quotation-email-template-repository.js';
 import { normalizeClientEmail } from './client-schema.js';
 import { issuePublicQuotationToken } from './public-quotation.js';
 import {
@@ -31,6 +38,7 @@ type PublicQuotationToken = Awaited<ReturnType<typeof issuePublicQuotationToken>
 export interface SendQuotationEmailDependencies {
   deliveries?: QuotationEmailDeliveryRepository;
   snapshots?: QuotationSnapshotRepository;
+  templates?: Pick<QuotationEmailTemplateRepository, 'get'>;
   issueToken?: typeof issuePublicQuotationToken;
   transport?: typeof sendQuotationEmailViaResend;
   token?: () => string;
@@ -230,6 +238,7 @@ export async function handler(
     const now = dependencies.now || (() => new Date());
     const deliveries = dependencies.deliveries || createPostgresQuotationEmailDeliveryRepository(undefined, { now });
     const snapshots = dependencies.snapshots || createQuotationTemplateRepository();
+    const templates = dependencies.templates || createPostgresQuotationEmailTemplateRepository();
     const issueToken = dependencies.issueToken || issuePublicQuotationToken;
     const transport = dependencies.transport || sendQuotationEmailViaResend;
 
@@ -254,12 +263,16 @@ export async function handler(
       return json(409, { error: 'Emita o orçamento antes de enviar por e-mail.' });
     }
     const baseUrl = publicBaseUrl(event, dependencies.env || process.env);
+    const templateForReservation = existing?.templateSnapshot || await templates.get();
+    const createPublicToken = dependencies.token || (() => randomBytes(32).toString('base64url'));
+    const publicTokenForReservation = existing?.publicToken || createPublicToken();
 
     const reservation = await deliveries.reserve({
       attemptId,
       revisionId,
       recipient: normalizedRecipient,
-      publicToken: (dependencies.token || (() => randomBytes(32).toString('base64url')))(),
+      publicToken: publicTokenForReservation,
+      templateSnapshot: templateForReservation,
     });
     if (
       reservation.delivery.revisionId !== revisionId ||
@@ -277,6 +290,8 @@ export async function handler(
         retry_same_attempt: false,
       });
     }
+    const template = reservation.delivery.templateSnapshot;
+    if (!template) return internalErrorResponse();
     const publicToken = reservation.delivery.publicToken;
     if (!publicToken) {
       return json(409, {
@@ -295,16 +310,21 @@ export async function handler(
     const publicUrl = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
     const attachmentUrl = `${publicUrl}&format=pdf`;
 
+    const rendered = renderQuotationEmailTemplate(template, {
+      customerName: snapshot.revision.clienteNome || 'Cliente',
+      businessNumber: snapshot.quotation.businessNumber,
+      publicUrl,
+    });
+
     let sent: { id: string };
     try {
       sent = await transport(
         {
           recipient: normalizedRecipient,
-          customerName: snapshot.revision.clienteNome || 'Cliente',
           businessNumber: snapshot.quotation.businessNumber,
-          publicUrl,
           attachmentUrl,
           attemptId,
+          ...rendered,
         },
         { env: dependencies.env },
       );

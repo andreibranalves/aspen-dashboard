@@ -1,5 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 
+import {
+  validateQuotationEmailTemplate,
+  type QuotationEmailTemplate,
+} from '../_lib/quotation-email-template.js';
 import { getDatabase, type AppDatabase } from './client.js';
 import { quotationEmailDeliveries } from './schema.js';
 
@@ -12,6 +16,7 @@ type ReserveInput = {
   revisionId: string;
   recipient: string;
   publicToken: string;
+  templateSnapshot: QuotationEmailTemplate;
 };
 type AcceptedInput = { attemptId: string; providerEmailId: string };
 type FailedInput = { attemptId: string; publicError: string };
@@ -26,6 +31,7 @@ export interface QuotationEmailDelivery {
   state: QuotationEmailDeliveryState;
   providerEmailId: string | null;
   publicError: string | null;
+  templateSnapshot: QuotationEmailTemplate | null;
   acceptedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -106,7 +112,11 @@ function validateReserveInput(input: ReserveInput): ReserveInput {
   if (!publicToken || stripControlCharacters(publicToken) !== publicToken) {
     throw new QuotationEmailDeliveryInputError('Token público inválido.');
   }
-  return { attemptId, revisionId, recipient, publicToken };
+  const template = validateQuotationEmailTemplate(candidate.templateSnapshot);
+  if (!template.ok) {
+    throw new QuotationEmailDeliveryInputError('Modelo de e-mail inválido.');
+  }
+  return { attemptId, revisionId, recipient, publicToken, templateSnapshot: template.value };
 }
 
 function validateAcceptedInput(input: AcceptedInput): AcceptedInput {
@@ -150,6 +160,7 @@ function toDelivery(row: QuotationEmailDeliveryRow): QuotationEmailDelivery {
     state: row.state as QuotationEmailDeliveryState,
     providerEmailId: row.providerEmailId ?? null,
     publicError: row.publicError ?? null,
+    templateSnapshot: row.templateSnapshot ?? null,
     acceptedAt: row.acceptedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -248,6 +259,7 @@ async function transitionAccepted(
       providerEmailId: normalized.providerEmailId,
       publicError: null,
       publicToken: null,
+      templateSnapshot: null,
       acceptedAt: current,
       updatedAt: current,
     })
@@ -279,6 +291,7 @@ async function transitionFailed(
       providerEmailId: null,
       publicError: normalized.publicError,
       publicToken: null,
+      templateSnapshot: null,
       acceptedAt: null,
       updatedAt: current,
     })
@@ -329,6 +342,7 @@ export function createPostgresQuotationEmailDeliveryRepository(
             state: 'pending',
             providerEmailId: null,
             publicError: null,
+            templateSnapshot: normalized.templateSnapshot,
             acceptedAt: null,
             createdAt: current,
             updatedAt: current,

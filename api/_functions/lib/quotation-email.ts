@@ -1,10 +1,11 @@
 export interface SendQuotationEmailTransportInput {
   recipient: string;
-  customerName: string;
   businessNumber: string;
-  publicUrl: string;
   attachmentUrl: string;
   attemptId: string;
+  subject: string;
+  html: string;
+  text: string;
 }
 
 export interface ResendTransportDependencies {
@@ -21,25 +22,6 @@ export class ResendTransportError extends Error {
   ) {
     super(message);
   }
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character]!);
-}
-
-export function renderQuotationEmailHtml(
-  input: Pick<SendQuotationEmailTransportInput, 'customerName' | 'businessNumber' | 'publicUrl'>
-): string {
-  const customerName = escapeHtml(input.customerName);
-  const businessNumber = escapeHtml(input.businessNumber);
-  const publicUrl = escapeHtml(input.publicUrl);
-  return `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#1f2937"><p>Olá, ${customerName}.</p><p>Segue o orçamento ${businessNumber} em anexo.</p><p><a href="${publicUrl}" style="display:inline-block;padding:12px 18px;background:#166534;color:#fff;text-decoration:none;border-radius:6px">Ver orçamento</a></p><p>Atenciosamente,<br>Aspen</p></body></html>`;
 }
 
 export async function sendQuotationEmailViaResend(
@@ -75,8 +57,9 @@ export async function sendQuotationEmailViaResend(
       body: JSON.stringify({
         from,
         to: [input.recipient],
-        subject: `Orçamento ${input.businessNumber} - Aspen`,
-        html: renderQuotationEmailHtml(input),
+        subject: input.subject,
+        html: input.html,
+        text: input.text,
         ...(replyTo ? { reply_to: replyTo } : {}),
         attachments: [{
           filename: `orcamento-${input.businessNumber}.pdf`,

@@ -8,6 +8,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
+import {
+  DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+} from '../../api/_lib/quotation-email-template.js';
 import * as schema from '../../api/_db/schema.js';
 import type { AppDatabase } from '../../api/_db/client.js';
 import {
@@ -102,21 +105,28 @@ test(
         const repository = createPostgresQuotationEmailDeliveryRepository(() => db, {
           now: () => new Date(NOW),
         });
+        const templateSnapshot = {
+          ...DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+          subject: 'Proposta {{numero_orcamento}}',
+        };
         const first = await repository.reserve({
           attemptId: ids.firstAttempt,
           revisionId: ids.firstRevision,
           recipient: 'cliente@example.com',
           publicToken: 'stable-public-token',
+          templateSnapshot,
         });
         assert.equal(first.kind, 'reserved');
         assert.equal(first.delivery.state, 'pending');
         assert.equal(first.delivery.publicToken, 'stable-public-token');
+        assert.deepEqual(first.delivery.templateSnapshot, templateSnapshot);
 
         const duplicate = await repository.reserve({
           attemptId: ids.firstAttempt,
           revisionId: ids.firstRevision,
           recipient: 'cliente@example.com',
           publicToken: 'discarded-racing-token',
+          templateSnapshot: DEFAULT_QUOTATION_EMAIL_TEMPLATE,
         });
         assert.equal(duplicate.kind, 'existing');
         assert.equal(duplicate.delivery.id, ids.firstAttempt);
@@ -128,6 +138,7 @@ test(
             revisionId: ids.secondRevision,
             recipient: 'outro@example.com',
             publicToken: 'other-public-token',
+            templateSnapshot,
           }),
           /identificador.*outra tentativa/i
         );
@@ -138,6 +149,7 @@ test(
         });
         assert.equal(accepted.state, 'accepted');
         assert.equal(accepted.publicToken, null);
+        assert.equal(accepted.templateSnapshot, null);
         assert.equal(accepted.acceptedAt?.toISOString(), '2026-08-17T12:00:00.000Z');
 
         const repeated = await repository.markAccepted({
@@ -157,6 +169,7 @@ test(
           revisionId: ids.firstRevision,
           recipient: 'cliente@example.com',
           publicToken: 'second-public-token',
+          templateSnapshot,
         });
         assert.equal(second.delivery.state, 'pending');
         const failed = await repository.markFailed({
@@ -165,6 +178,7 @@ test(
         });
         assert.equal(failed.state, 'failed');
         assert.equal(failed.publicToken, null);
+        assert.equal(failed.templateSnapshot, null);
         assert.equal(failed.publicError, 'Falha conhecida.');
         const repeatedFailed = await repository.markFailed({
           attemptId: ids.secondAttempt,
