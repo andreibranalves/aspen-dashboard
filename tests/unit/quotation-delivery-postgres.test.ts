@@ -38,11 +38,12 @@ function pdfWithEof(): Buffer {
 const SECTION_TEMPLATE = '<!doctype html><html><body>{{quote_number}} {{client.name}} Telefone: {{client.phone}} Data: {{display.quote_date}} Validade: {{display.validity_date}} {{#each items}}{{name}} Quantidade: {{quantity}}{{/each}} {{display.total}} {{secoes.pagamento.body_html}} {{secoes.condicoes_gerais.body_html}} {{secoes.prazo_producao.value}}</body></html>';
 const SECTION_TEMPLATE_HASH = createHash('sha256').update(SECTION_TEMPLATE).digest('hex');
 
-function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: unknown[] } = {}) {
+function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: unknown[]; total?: string } = {}) {
   const now = new Date('2026-08-13T12:00:00.000Z');
   const revisionId = '00000000-0000-4000-8000-000000000001';
   const quotationId = '00000000-0000-4000-8000-000000000002';
   const templateVersionId = '00000000-0000-4000-8000-000000000003';
+  const revisionTotal = options.total ?? '10.00';
   const revision = {
     id: revisionId, quotationId, version: 1, status: 'emitido', issuedAt: now, createdAt: now,
     validadeDias: 15, pagamento: 'Pix', entrega: '', fretePadrao: '0.00', frete: '0.00',
@@ -50,7 +51,7 @@ function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: 
     templateVersionId, sectionsSnapshot: null, clienteNome: 'ANDREI ALVES', clienteTelefone: '21999999999',
     clienteEmail: null, clienteDocumento: null, clienteEndereco: null, clienteNumero: null,
     clienteBairro: null, clienteComplemento: null, clienteMunicipio: null, clienteUf: null,
-    clienteCep: null, clienteNotas: null, subtotal: '10.00', total: '10.00',
+    clienteCep: null, clienteNotas: null, subtotal: revisionTotal, total: revisionTotal,
   } as any;
   const delivery = {
     id: '00000000-0000-4000-8000-000000000004', revisionId, phone: '5511999990000', flowId: 'flow',
@@ -153,6 +154,23 @@ test('delivery PDF removes storage scale from integer quantities', async () => {
 
   assert.match(renderedHtml, /Quantidade: 70(?:<|\s)/);
   assert.doesNotMatch(renderedHtml, /Quantidade: 70\.000/);
+});
+
+test('delivery PDF formats monetary totals with thousands separator', async () => {
+  const { db, now, revisionId } = fakePreparationDatabase({ total: '2500.00' });
+  let renderedHtml = '';
+  const repository = createPostgresQuotationDeliveryRepository(() => db, {
+    now: () => now,
+    renderPdf: async (html) => {
+      renderedHtml = html;
+      return pdfWithEof();
+    },
+  });
+
+  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+
+  assert.match(renderedHtml, /R\$ 2\.500,00/);
+  assert.doesNotMatch(renderedHtml, /R\$ 2500,00/);
 });
 
 test('repository classifies renderer failures and invalid bytes as PDF failures', async () => {

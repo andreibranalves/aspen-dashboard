@@ -12,6 +12,7 @@ import {
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../_lib/quotation-status.js';
 import {
   formatQuotationClientName,
+  formatQuotationCurrency,
   formatQuotationDate,
   formatQuotationPhone,
   formatQuotationQuantity,
@@ -287,7 +288,7 @@ function revisionViewModel(
   now: Date,
 ): QuotationTemplateViewModel {
   const until = validUntil(revision);
-  const money = (value: string) => `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
+  const money = formatQuotationCurrency;
   const itemView = items.sort((a, b) => a.position - b.position).map((item) => ({
     id: item.id,
     position: item.position,
