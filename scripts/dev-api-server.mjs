@@ -37,6 +37,7 @@ import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
+import { handler as quotationDeliveries } from '../api/_functions/quotation-deliveries.js';
 import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
@@ -83,6 +84,7 @@ const ROUTES = {
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
+  'quotation-deliveries': quotationDeliveries,
   pdf,
   settings,
   'operational-status': operationalStatus,
@@ -128,7 +130,7 @@ function parseBody(req) {
 
 const server = createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {

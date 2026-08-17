@@ -1,19 +1,17 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
-  canonicalWhatsappSendIdempotencyKey,
-  isWhatsappSendReservationStale,
-  parseWhatsappSendReservationRecord,
-  WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
-  type WhatsappSendReservationRecord,
-  type WhatsappSendReservationStore,
-  WhatsappSendReservationStorageError,
-} from './lib/whatsapp-send-reservation-store.js';
-import { defaultWhatsappSendReservationStore } from './lib/whatsapp-send-reservation-store.js';
-import {
-  createPostgresQuotationDeliveryRepository,
-  type QuotationDelivery,
-  type QuotationDeliveryRepository,
-} from '../_db/quotation-delivery-repository.js';
+  createQuotationDeliveryModule,
+  type QuotationDeliveryModule,
+} from './lib/quotation-delivery-outbox.js';
+import { deliveryErrorResponse } from './quotation-deliveries.js';
+
+export type WhatsappSendStatusDependencies = {
+  deliveryModule?: QuotationDeliveryModule;
+};
+
+class HandlerInputError extends Error {
+  readonly statusCode = 400;
+}
 
 function json(statusCode: number, body: Record<string, unknown>): FunctionResult {
   return {
@@ -23,13 +21,12 @@ function json(statusCode: number, body: Record<string, unknown>): FunctionResult
   };
 }
 
-function identifier(value: unknown, label: string): string {
-  if (typeof value !== 'string') throw new Error(`${label} inválido.`);
-  const normalized = value.trim();
-  if (!normalized || normalized.length > 255 || normalized.includes('://') || normalized.includes('/') || normalized.includes('\\')) {
-    throw new Error(`${label} inválido.`);
+function queryValue(event: FunctionEvent, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = event.queryStringParameters?.[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
   }
-  return normalized;
+  return undefined;
 }
 
 function payloadObject(event: FunctionEvent): Record<string, unknown> {
@@ -38,266 +35,145 @@ function payloadObject(event: FunctionEvent): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object');
     return value as Record<string, unknown>;
   } catch {
-    throw new Error('JSON inválido.');
+    throw new HandlerInputError('JSON inválido.');
   }
 }
 
-function queryValue(event: FunctionEvent, ...keys: string[]): unknown {
-  for (const key of keys) {
-    const value = event.queryStringParameters?.[key];
-    if (typeof value === 'string' && value.trim()) return value;
+function identifier(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new HandlerInputError(`${label} inválido.`);
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized.length > 255 ||
+    normalized.includes('/') ||
+    normalized.includes('\\') ||
+    [...normalized].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  ) {
+    throw new HandlerInputError(`${label} inválido.`);
   }
-  return undefined;
+  return normalized;
 }
 
-function identifiers(event: FunctionEvent, body: Record<string, unknown> = {}): {
-  quotationId: string;
+function ids(event: FunctionEvent, body: Record<string, unknown> = {}): {
+  deliveryId?: string;
+  revisionId?: string;
+  flowId?: string;
+} {
+  const delivery = body.id || body.delivery_id || body.deliveryId || queryValue(event, 'id', 'delivery_id', 'deliveryId');
+  if (delivery !== undefined && delivery !== null && delivery !== '') {
+    return { deliveryId: identifier(delivery, 'Identificador da entrega') };
+  }
+  const revision = body.revision_id || body.revisionId || queryValue(event, 'revision_id', 'revisionId');
+  const flow = body.flow_id || body.flowId || queryValue(event, 'flow_id', 'flowId');
+  if (!revision || !flow) {
+    throw new HandlerInputError('Revisão e fluxo são obrigatórios.');
+  }
+  return {
+    revisionId: identifier(revision, 'Identificador da revisão'),
+    flowId: identifier(flow, 'Fluxo'),
+  };
+}
+
+function publicStatus(delivery: {
+  id: string;
   revisionId: string;
   flowId: string;
-  key: string;
-} {
-  const quotationId = identifier(
-    body.quotation_uuid || body.quotationUuid || body.quotation_id || body.quotationId
-      || queryValue(event, 'quotation_uuid', 'quotationUuid', 'quotation_id', 'quotationId'),
-    'Identificador do orçamento',
-  );
-  const revisionId = identifier(
-    body.revision_id || body.revisionId || queryValue(event, 'revision_id', 'revisionId'),
-    'Identificador da revisão',
-  );
-  const flowId = identifier(
-    body.flow_id || body.flowId || queryValue(event, 'flow_id', 'flowId'),
-    'Identificador do fluxo',
-  );
+  state: string;
+  publicError: string | null;
+  updatedAt: Date;
+}): Record<string, unknown> {
   return {
-    quotationId,
-    revisionId,
-    flowId,
-    key: canonicalWhatsappSendIdempotencyKey(quotationId, revisionId, flowId),
-  };
-}
-
-function publicStatus(record: WhatsappSendReservationRecord): Record<string, unknown> {
-  return {
-    quotation_id: record.quotationId,
-    revision_id: record.revisionId,
-    flow_id: record.flowId,
-    version: record.version,
-    phase: record.phase,
-    steps_count: record.stepsCount,
-    stale: record.phase === 'reserved' && isWhatsappSendReservationStale(record),
-    current_step: record.currentStep ?? null,
-    accepted_step_numbers: record.acceptedSteps.map((step) => step.step),
-    accepted_step_count: record.acceptedSteps.length,
-    created_at: record.createdAt,
-    updated_at: record.updatedAt,
-    reserved_at: record.reservedAt,
-    transport_started_at: record.transportStartedAt ?? null,
-    resolved_at: record.resolvedAt ?? null,
-  };
-}
-
-function deliveryStatus(delivery: QuotationDelivery, record?: WhatsappSendReservationRecord | null): Record<string, unknown> {
-  const activeLease = (delivery.state === 'pending' || delivery.state === 'transporting') && record;
-  return {
+    delivery_id: delivery.id,
     revision_id: delivery.revisionId,
     flow_id: delivery.flowId,
-    phone: delivery.phone,
-    phase: activeLease
-      ? record.phase === 'reserved' ? 'pending' : record.phase
-      : delivery.state,
-    acceptance_id: delivery.providerAcceptanceId,
-    error: delivery.publicError,
-    read_only: delivery.readOnly,
-    resumable_until: delivery.resumableUntil.toISOString(),
-    updated_at: delivery.updatedAt.toISOString(),
-    ...(activeLease ? {
-      version: record.version,
-      steps_count: record.stepsCount,
-      current_step: record.currentStep ?? null,
-      accepted_step_numbers: record.acceptedSteps.map((step) => step.step),
-      accepted_step_count: record.acceptedSteps.length,
-    } : {}),
+    phase: delivery.state,
+    error: delivery.publicError || null,
+    updated_at: delivery.updatedAt instanceof Date
+      ? delivery.updatedAt.toISOString()
+      : new Date(String(delivery.updatedAt)).toISOString(),
   };
 }
 
-function malformedResponse(): FunctionResult {
-  return json(503, { error: 'Estado de reconciliação inválido. Não é seguro continuar.' });
-}
-
-function reconciliationBody(): Record<string, unknown> {
-  return { error: 'A resolução não pôde ser sincronizada. Reconciliação necessária.', reconciliation_required: true };
-}
-
-async function strictRead(
-  store: WhatsappSendReservationStore,
-  key: string,
-): Promise<WhatsappSendReservationRecord | null> {
-  const value = await store.get(key);
-  if (!value) return null;
-  return parseWhatsappSendReservationRecord(value, key);
-}
-
-async function staleReservedToRetryable(
-  store: WhatsappSendReservationStore,
-  record: WhatsappSendReservationRecord,
-): Promise<WhatsappSendReservationRecord> {
-  if (record.phase !== 'reserved' || !isWhatsappSendReservationStale(record)) return record;
-  const compareAndSet = store.compareAndSet || store.cas;
-  if (typeof compareAndSet !== 'function') throw new WhatsappSendReservationStorageError();
-  const result = await compareAndSet({
-    key: record.key,
-    owner: record.owner,
-    expectedVersion: record.version,
-    from: 'reserved',
-    to: 'retryable',
-    errorMessage: 'Falha antes do transporte.',
-  });
-  if (!result || typeof result !== 'object' || typeof result.ok !== 'boolean') {
-    throw new WhatsappSendReservationStorageError();
-  }
-  if (result.ok) return parseWhatsappSendReservationRecord(result.record, record.key);
-  if (result.record?.phase === 'retryable') return parseWhatsappSendReservationRecord(result.record, record.key);
-  throw new WhatsappSendReservationStorageError();
-}
-
-const RESOLUTION_KEYS = new Set([
-  'quotation_uuid',
-  'quotationUuid',
-  'quotation_id',
-  'quotationId',
+const BODY_KEYS = new Set([
+  'id',
+  'delivery_id',
+  'deliveryId',
   'revision_id',
   'revisionId',
   'flow_id',
   'flowId',
-  'expected_version',
-  'expectedVersion',
-  'version',
-  'resolution',
-  'target_phase',
-  'phase',
-  'confirmation',
-  'confirm',
+  'decision',
+  'note',
+  'resolved_by',
 ]);
 
-function ensureSafeResolutionBody(body: Record<string, unknown>): void {
-  if (Object.keys(body).some((key) => !RESOLUTION_KEYS.has(key))) {
-    throw new Error('A resolução aceita apenas identificadores locais, versão e confirmação.');
-  }
-  for (const key of ['provider', 'provider_id', 'message_id', 'url', 'raw', 'phone', 'telefone', 'media']) {
-    if (Object.prototype.hasOwnProperty.call(body, key)) throw new Error('Dados do provedor não são aceitos.');
+function ensureSafeBody(body: Record<string, unknown>): void {
+  if (Object.keys(body).some((key) => !BODY_KEYS.has(key))) {
+    throw new HandlerInputError('A resolução aceita apenas identificadores e justificativa.');
   }
 }
 
-function expectedVersion(body: Record<string, unknown>): number {
-  const value = body.expected_version ?? body.expectedVersion ?? body.version;
-  if (!Number.isSafeInteger(value) || Number(value) < 1) throw new Error('Versão esperada inválida.');
-  return Number(value);
+function decisionAndNote(body: Record<string, unknown>): {
+  decision: 'confirmed_received' | 'confirmed_not_received';
+  note: string;
+} {
+  const decision = body.decision;
+  if (decision !== 'confirmed_received' && decision !== 'confirmed_not_received') {
+    throw new HandlerInputError('Decisão de resolução inválida.');
+  }
+  const note = typeof body.note === 'string' ? body.note.trim() : '';
+  if (
+    note.length < 3 ||
+    note.length > 500 ||
+    [...note].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  ) {
+    throw new HandlerInputError('Justificativa inválida.');
+  }
+  return { decision, note };
 }
-
-export type WhatsappSendStatusDependencies = {
-  reservationStore?: WhatsappSendReservationStore;
-  deliveryRepository?: Pick<QuotationDeliveryRepository, 'getByRevision' | 'recordState'>;
-};
 
 export async function handler(
   event: FunctionEvent,
   dependencies: WhatsappSendStatusDependencies = {},
 ): Promise<FunctionResult> {
-  if (event.httpMethod !== 'GET' && event.httpMethod !== 'PATCH' && event.httpMethod !== 'POST') {
+  if (event.httpMethod !== 'GET' && event.httpMethod !== 'PATCH') {
     return json(405, { error: 'Método não permitido.' });
   }
-  const store = dependencies.reservationStore || defaultWhatsappSendReservationStore;
-  const useDefaultDeliveryRepository = !dependencies.deliveryRepository && !dependencies.reservationStore;
-  const deliveries = dependencies.deliveryRepository || createPostgresQuotationDeliveryRepository();
-  let body: Record<string, unknown> = {};
+  const deliveryModule = dependencies.deliveryModule || createQuotationDeliveryModule();
   try {
-    if (event.httpMethod !== 'GET') body = payloadObject(event);
-    if (event.httpMethod !== 'GET') ensureSafeResolutionBody(body);
-    const ids = identifiers(event, body);
-    let record: WhatsappSendReservationRecord | null = null;
-    let leaseReadFailed = false;
-    const delivery = (dependencies.deliveryRepository || useDefaultDeliveryRepository)
-      ? await deliveries.getByRevision(ids.revisionId)
-      : null;
-    try {
-      record = await strictRead(store, ids.key);
-    } catch (error) {
-      leaseReadFailed = true;
-      if (!delivery || (delivery.state !== 'completed' && delivery.state !== 'reconciling')) throw error;
-    }
-
-    if (event.httpMethod === 'GET') {
-      if (!delivery && !record) return json(404, { error: 'Estado de envio não encontrado.' });
-      if (delivery && (delivery.flowId !== ids.flowId || (delivery.state === 'completed' || delivery.state === 'reconciling'))) {
-        return json(200, deliveryStatus(delivery));
-      }
-      if (record && !leaseReadFailed) record = await staleReservedToRetryable(store, record);
-      if (delivery) {
-        if (record?.phase === 'retryable' && delivery.state !== 'retryable') {
-          const updated = await deliveries.recordState({ revisionId: ids.revisionId, state: 'retryable', publicError: 'Falha antes do transporte.' });
-          return json(200, deliveryStatus(updated));
-        }
-        return json(200, deliveryStatus(delivery, record));
-      }
-      return json(200, publicStatus(record!));
-    }
-    if (!record) return json(404, { error: 'Estado de envio não encontrado.' });
-
-    const requestedTarget = body.resolution || body.target_phase || body.phase;
-    const target = requestedTarget === 'reconciliation-closed' || requestedTarget === 'complete'
-      ? 'completed'
-      : requestedTarget === 'confirmed-not-delivered' || requestedTarget === 'retry'
-        ? 'retryable'
-        : requestedTarget;
-    if (target !== 'completed' && target !== 'retryable') throw new Error('Resolução inválida.');
-    if ((body.confirmation ?? body.confirm) !== WHATSAPP_SEND_RESOLUTION_CONFIRMATION) {
-      return json(400, {
-        error: `Confirmação explícita obrigatória: ${WHATSAPP_SEND_RESOLUTION_CONFIRMATION}.`,
+    const body = event.httpMethod === 'GET' ? {} : payloadObject(event);
+    if (event.httpMethod !== 'GET') ensureSafeBody(body);
+    if (event.httpMethod === 'PATCH') {
+      const resolution = decisionAndNote(body);
+      const identity = ids(event, body);
+      const delivery = identity.deliveryId
+        ? await deliveryModule.get({ deliveryId: identity.deliveryId })
+        : await deliveryModule.get({ identity: { revisionId: identity.revisionId!, flowId: identity.flowId! } });
+      if (!delivery) return json(404, { error: 'Estado de envio não encontrado.' });
+      const resolved = await deliveryModule.resolve({
+        deliveryId: delivery.id,
+        decision: resolution.decision,
+        note: resolution.note,
+        resolvedBy: 'authenticated-operator',
       });
-    }
-    if (record.phase === 'reserved' && isWhatsappSendReservationStale(record)) {
-      record = await staleReservedToRetryable(store, record);
-    }
-    if (record.phase !== 'transporting' && record.phase !== 'accepted_partial') {
-      if (record.phase === 'completed' || record.phase === 'retryable') return json(409, publicStatus(record));
-      return json(409, { ...publicStatus(record), error: 'Este estado não pode ser resolvido manualmente.' });
+      return json(200, publicStatus(resolved));
     }
 
-    const state = target === 'completed' ? 'completed' : 'retryable';
-    let updatedDelivery = delivery;
-    if (delivery) {
-      updatedDelivery = await deliveries.recordState({ revisionId: ids.revisionId, state });
-    }
-    let result;
-    try {
-      result = await store.resolve({
-        key: ids.key,
-        expectedVersion: expectedVersion(body),
-        to: target,
-        confirmation: WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
-      });
-    } catch {
-      if (delivery) {
-        await deliveries.recordState({ revisionId: ids.revisionId, state: 'reconciling', publicError: 'A resolução não pôde ser sincronizada. Reconciliação necessária.' }).catch(() => undefined);
-      }
-      return json(503, reconciliationBody());
-    }
-    if (result.ok) {
-      const resolved = parseWhatsappSendReservationRecord(result.record, ids.key);
-      return json(200, updatedDelivery ? deliveryStatus(updatedDelivery) : publicStatus(resolved));
-    }
-    if (delivery) {
-      await deliveries.recordState({ revisionId: ids.revisionId, state: 'reconciling', publicError: 'A resolução não pôde ser sincronizada. Reconciliação necessária.' }).catch(() => undefined);
-    }
-    const reread = await strictRead(store, ids.key);
-    if (reread?.phase === 'completed' || reread?.phase === 'retryable') return json(409, publicStatus(reread));
-    return json(result.reason === 'conflict' ? 409 : 503, {
-      error: 'A versão mudou. Consulte o estado atual antes de reconciliar novamente.',
-      reconciliation_required: true,
-    });
+    const identity = ids(event, body);
+    const delivery = identity.deliveryId
+      ? await deliveryModule.get({ deliveryId: identity.deliveryId })
+      : await deliveryModule.get({ identity: { revisionId: identity.revisionId!, flowId: identity.flowId! } });
+    if (!delivery) return json(404, { error: 'Estado de envio não encontrado.' });
+
+    return json(200, publicStatus(delivery));
   } catch (error) {
-    if (error instanceof WhatsappSendReservationStorageError) return malformedResponse();
-    return json(400, { error: error instanceof Error ? error.message : 'Requisição inválida.' });
+    if (error instanceof HandlerInputError) return json(400, { error: error.message });
+    return deliveryErrorResponse(error);
   }
 }

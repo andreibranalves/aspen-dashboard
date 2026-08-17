@@ -23,7 +23,6 @@ import {
 import { quoteRevisions, quotationDeliveries } from '../../api/_db/schema.js';
 import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
-import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
@@ -269,10 +268,6 @@ function store() {
     },
     del: async (key: string) => values.delete(key),
   };
-}
-
-function reservationStore() {
-  return createFakeWhatsappReservationStore() as any;
 }
 
 function quotationDeliveryConditionPairs(condition: unknown): Record<string, unknown> {
@@ -699,144 +694,55 @@ test('send-whatsapp-flow dry-run uses the extracted planner without rendering or
   }
 });
 
-test('send-whatsapp-flow preserves typed transport failure paths and retry phases', async () => {
-  const cases = [
-    {
-      name: 'transient',
-      fetch: async () => new Response(JSON.stringify({ error: 'rate limit' }), { status: 429 }),
-      statusCode: 503,
-      state: 'retryable',
-      failureKind: 'transient_pre_transport',
+test('send-whatsapp-flow returns durable provider state from the outbox module', async () => {
+  let enqueueInput: unknown;
+  const deliveryModule = {
+    async enqueue(input: unknown) {
+      enqueueInput = input;
+      return {
+        id: 'delivery-1',
+        revisionId,
+        businessNumber,
+        clientName: 'Cliente Teste',
+        phone: '5511999990000',
+        flowId: 'flow-durable',
+        flowName: 'Fluxo durável',
+        state: 'provider_accepted',
+        completionSource: null,
+        publicError: null,
+        nextAttemptAt: null,
+        reconciliationDeadline: null,
+        deliveredAt: null,
+        createdAt: new Date('2026-08-17T12:00:00.000Z'),
+        updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+        steps: [
+          { id: 'step-1', position: 0, type: 'text', state: 'server_ack', attemptCount: 1, publicError: null, nextAttemptAt: null, acceptedAt: new Date(), deliveredAt: null, readAt: null, updatedAt: new Date() },
+          { id: 'step-2', position: 1, type: 'quotation_pdf', state: 'queued', attemptCount: 0, publicError: null, nextAttemptAt: null, acceptedAt: null, deliveredAt: null, readAt: null, updatedAt: new Date() },
+        ],
+      };
     },
-    {
-      name: 'permanent',
-      fetch: async () => new Response(JSON.stringify({ error: 'rejected' }), { status: 400 }),
-      statusCode: 400,
-      state: 'retryable',
-      failureKind: 'permanent_pre_transport',
-    },
-    {
-      name: 'ambiguous',
-      fetch: async () => { throw new Error('socket closed'); },
-      statusCode: 503,
-      state: 'reconciling',
-      failureKind: 'ambiguous',
-    },
-  ] as const;
-  for (const outcome of cases) {
-    const flowId = `flow-${outcome.name}`;
-    const states: Array<Record<string, unknown>> = [];
-    const reservations = reservationStore();
-    let transportCalls = 0;
-    const dependencies = {
-      resolveFlow: async () => ({
-        id: flowId,
-        name: `Fluxo ${outcome.name}`,
-        steps: [{ type: 'text', template: 'Olá (nome)' }, { type: 'document', source: 'quotation_pdf' }],
-      }),
-      repository: repositoryFor(),
-      store: store(),
-      token: () => publicToken,
-      renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
-      deliveryRepository: {
-        reserve: async () => ({}) as any,
-        prepareDeliveryDocument: async () => ({
-          pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
-          pdfSize: Buffer.from('%PDF-1.7\\nbody\\n%%EOF').length,
-          pdfSignature: 'a'.repeat(64),
-          validUntil: new Date('2026-08-20T12:00:00.000Z'),
-        }),
-        recordState: async (input) => { states.push(input as unknown as Record<string, unknown>); return {} as any; },
-      },
-      reservationStore: reservations,
-      transport: {
-        baseUrl: 'https://evolution.test',
-        apiKey: 'test-key',
-        instance: 'test-instance',
-        fetch: async (...args: Parameters<typeof outcome.fetch>) => {
-          transportCalls += 1;
-          if (outcome.name === 'transient' && transportCalls > 1) {
-            return new Response(JSON.stringify({ accepted: true, message_id: `provider-${transportCalls}` }), { status: 200 });
-          }
-          return outcome.fetch(...args);
-        },
-      },
-      checkDuplicate: async () => false,
-      recordSendEvent: async () => 'synthetic-event',
-    };
-    const response = await sendWhatsappFlow(
-      event({ flow_id: flowId, quotation_id: quotationId, revision_id: revisionId }),
-      dependencies,
-    );
-    assert.equal(response.statusCode, outcome.statusCode, outcome.name);
-    const failedState = states.at(-1);
-    assert.equal(failedState?.state, outcome.state, outcome.name);
-    assert.equal(failedState?.failureKind, outcome.failureKind, outcome.name);
-    assert.equal(states.every((input) => input.flowId === flowId), true, outcome.name);
-    const [reservationKey] = reservations.records.keys();
-    const stored = await reservations.get(reservationKey);
-    assert.equal(stored?.phase, outcome.state === 'retryable' ? 'retryable' : 'transporting', outcome.name);
-
-    if (outcome.name === 'transient') {
-      const retry = await sendWhatsappFlow(
-        event({ flow_id: flowId, quotation_id: quotationId, revision_id: revisionId }),
-        dependencies,
-      );
-      assert.equal(retry.statusCode, 200);
-      assert.equal((await reservations.get(reservationKey))?.phase, 'completed');
-      assert.equal(transportCalls, 3);
-    } else {
-      assert.equal(transportCalls, 1, outcome.name);
-    }
-  }
+  } as any;
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-durable', quotation_id: quotationId, revision_id: revisionId }),
+    { deliveryModule },
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 202);
+  assert.equal(body.success, true);
+  assert.equal(body.delivery_id, 'delivery-1');
+  assert.equal(body.send_status, 'provider_accepted');
+  assert.deepEqual(enqueueInput, { revisionId, flowId: 'flow-durable' });
+  assert.equal(body.phone, undefined);
+  assert.equal(body.delivery.phone, undefined);
 });
 
-test('send-whatsapp-flow does not return retryable when repository persistence fails', async () => {
-  const flowId = 'flow-persistence-failure';
-  const reservations = reservationStore();
-  const states: Array<Record<string, unknown>> = [];
+test('send-whatsapp-flow sanitizes outbox failures', async () => {
   const response = await sendWhatsappFlow(
-    event({ flow_id: flowId, quotation_id: quotationId, revision_id: revisionId }),
-    {
-      resolveFlow: async () => ({
-        id: flowId,
-        name: 'Fluxo persistência',
-        steps: [{ type: 'text', template: 'Olá (nome)' }, { type: 'document', source: 'quotation_pdf' }],
-      }),
-      repository: repositoryFor(),
-      store: store(),
-      token: () => publicToken,
-      deliveryRepository: {
-        reserve: async () => ({}) as any,
-        prepareDeliveryDocument: async () => ({
-          pdf: Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
-          pdfSize: Buffer.from('%PDF-1.7\\nbody\\n%%EOF').length,
-          pdfSignature: 'a'.repeat(64),
-          validUntil: new Date('2026-08-20T12:00:00.000Z'),
-        }),
-        recordState: async (input) => {
-          const state = input as unknown as Record<string, unknown>;
-          states.push(state);
-          if (state.state === 'retryable') throw new Error('database unavailable');
-          return {} as any;
-        },
-      },
-      reservationStore: reservations,
-      transport: {
-        baseUrl: 'https://evolution.test',
-        apiKey: 'test-key',
-        instance: 'test-instance',
-        fetch: async () => new Response(JSON.stringify({ error: 'rate limit' }), { status: 429 }),
-      },
-      checkDuplicate: async () => false,
-      recordSendEvent: async () => 'synthetic-event',
-    },
+    event({ flow_id: 'flow-failure', quotation_id: quotationId, revision_id: revisionId }),
+    { deliveryModule: { async enqueue() { throw new Error('provider secret'); } } as any },
   );
   assert.equal(response.statusCode, 503);
-  assert.equal(JSON.parse(response.body || '{}').send_status, 'reconciling');
-  assert.equal(states.at(-1)?.state, 'reconciling');
-  const [reservationKey] = reservations.records.keys();
-  assert.equal((await reservations.get(reservationKey))?.phase, 'transporting');
+  assert.doesNotMatch(response.body || '', /provider secret/i);
 });
 
 test('Evolution response requires explicit provider acceptance', () => {
@@ -1074,46 +980,38 @@ test('PostgreSQL send rejects stale or foreign-store media before provider trans
   }
 });
 
-test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  const duplicateKeys: string[] = [];
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-flow' }), { status: 200 })) as typeof fetch;
-  try {
-    const response = await sendWhatsappFlow(
-      event({
-        flow_id: 'flow-postgres',
-        quotation_id: quotationId,
-        revision_id: revisionId,
-      }),
-      {
-        resolveFlow: async () => ({
-          id: 'flow-postgres',
-          name: 'Fluxo PostgreSQL',
-          steps: [{ type: 'text', template: '(produto_resumo)' }, { type: 'document', source: 'quotation_pdf' }],
-        }),
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        renderPdf: async () => Buffer.from('%PDF-1.7\nbody\n%%EOF'),
-        reservationStore: reservationStore(),
-        checkDuplicate: async (id) => {
-          duplicateKeys.push(id);
-          return true;
+test('PostgreSQL flow endpoint accepts an injected durable delivery module', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-postgres', quotation_id: quotationId, revision_id: revisionId }),
+    {
+      deliveryModule: {
+        async enqueue() {
+          return {
+            id: 'delivery-postgres',
+            revisionId,
+            businessNumber,
+            clientName: 'Cliente Teste',
+            phone: '5511999990000',
+            flowId: 'flow-postgres',
+            flowName: 'Fluxo PostgreSQL',
+            state: 'delivered',
+            completionSource: 'provider_receipt',
+            publicError: null,
+            nextAttemptAt: null,
+            reconciliationDeadline: null,
+            deliveredAt: new Date('2026-08-17T12:00:00.000Z'),
+            createdAt: new Date('2026-08-17T12:00:00.000Z'),
+            updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+            steps: [],
+          };
         },
-        recordSendEvent: async () => 'synthetic-flow-event',
-      },
-    );
-    const body = JSON.parse(response.body || '{}');
-    assert.equal(response.statusCode, 200);
-    assert.equal(body.product_summary, 'cangas');
-    assert.equal(body.duplicate_warning, true);
-    assert.deepEqual(duplicateKeys, [businessNumber]);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
+      } as any,
+    },
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.send_status, 'delivered');
+  assert.equal(body.delivery.completion_source, 'provider_receipt');
 });
 
 test('PostgreSQL preview rejects external media before rendering output', async () => {

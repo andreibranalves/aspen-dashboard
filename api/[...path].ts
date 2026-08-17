@@ -40,6 +40,7 @@ import { handler as salesOrders } from './_functions/sales-orders.js';
 import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from './_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from './_functions/whatsapp-send-status.js';
+import { handler as quotationDeliveries } from './_functions/quotation-deliveries.js';
 import { handler as settings } from './_functions/settings.js';
 import { handler as typebotLeadCapture } from './_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from './_functions/whatsapp-conversations.js';
@@ -88,6 +89,7 @@ const ROUTES: Record<string, HandlerFunction> = {
   'send-whatsapp': sendWhatsapp,
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
+  'quotation-deliveries': quotationDeliveries,
   settings,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,

@@ -2,7 +2,7 @@
 // Used by function-adapter, auth, rate-limit, and every _functions/* handler.
 
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
 export type FunctionHeaders = Record<string, string | string[] | undefined>;
 
