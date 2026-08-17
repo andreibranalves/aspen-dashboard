@@ -45,7 +45,10 @@ import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
 import { handler as quotationDeliveries } from '../api/_functions/quotation-deliveries.js';
-import { handler as evolutionWebhook } from '../api/_functions/evolution-webhook.js';
+import {
+  handler as evolutionWebhook,
+  MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
+} from '../api/_functions/evolution-webhook.js';
 import { handler as quotationDeliveryWorker } from '../api/_functions/quotation-delivery-worker.js';
 import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
@@ -129,11 +132,52 @@ const MIME_TYPES = {
   '.woff': 'font/woff',
 };
 
-function parseBody(req) {
-  return new Promise((resolve) => {
+class RequestBodyTooLargeError extends Error {
+  statusCode = 413;
+
+  constructor() {
+    super('Corpo da requisição excede o limite permitido.');
+  }
+}
+
+function chunkByteLength(chunk) {
+  return Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+}
+
+function parseBody(req, maxBytes = Number.POSITIVE_INFINITY) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
     let body = '';
-    req.on('data', (chunk) => (body += chunk));
+    let bytes = 0;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      req.resume();
+      reject(error);
+    };
+
+    req.on('error', fail);
+    const rawContentLength = req.headers['content-length'];
+    const contentLength = Number(
+      Array.isArray(rawContentLength) ? rawContentLength[0] : rawContentLength,
+    );
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      fail(new RequestBodyTooLargeError());
+      return;
+    }
+
+    req.on('data', (chunk) => {
+      if (settled) return;
+      bytes += chunkByteLength(chunk);
+      if (bytes > maxBytes) {
+        fail(new RequestBodyTooLargeError());
+        return;
+      }
+      body += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+    });
     req.on('end', () => {
+      if (settled) return;
+      settled = true;
       const mediaType = String(req.headers['content-type'] || '')
         .split(';', 1)[0]
         .trim()
@@ -228,7 +272,13 @@ const server = createServer(async (req, res) => {
     }
 
     try {
-      const body = req.method !== 'GET' ? await parseBody(req) : {};
+      const body =
+        req.method !== 'GET'
+          ? await parseBody(
+              req,
+              routeName === 'evolution-webhook' ? MAX_EVOLUTION_WEBHOOK_BODY_BYTES : undefined,
+            )
+          : {};
       let requestBody;
       if (req.method !== 'GET') {
         requestBody = typeof body === 'string' ? body : JSON.stringify(body);
@@ -263,13 +313,18 @@ const server = createServer(async (req, res) => {
         : Number.isInteger(err?.statusCode)
           ? err.statusCode
           : 500;
-      console.error(`[api/${routeName}]`, err instanceof Error ? err.name : typeof err);
+      if (code !== 413) {
+        console.error(`[api/${routeName}]`, err instanceof Error ? err.name : typeof err);
+      }
       res.writeHead(code, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
-          error: isPublicQuotation
-            ? 'Não foi possível consultar o orçamento. Tente novamente.'
-            : 'Erro interno. Tente novamente.',
+          error:
+            code === 413
+              ? 'Corpo da requisição excede o limite permitido.'
+              : isPublicQuotation
+                ? 'Não foi possível consultar o orçamento. Tente novamente.'
+                : 'Erro interno. Tente novamente.',
         })
       );
     }

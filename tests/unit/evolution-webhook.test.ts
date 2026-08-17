@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import apiHandler from '../../api/[...path].js';
 import {
   handler as webhook,
   MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
@@ -124,6 +125,41 @@ test('webhook fails closed when machine secret is absent or shorter than 32 UTF-
     environment: { ...base, EVOLUTION_WEBHOOK_SECRET: 's'.repeat(31) },
   });
   assert.equal(shortSecret.statusCode, 401);
+});
+
+test('deployed catch-all rejects oversized valid webhook JSON before dispatch', async () => {
+  const body = JSON.stringify({ ...payload(), padding: 'x'.repeat(MAX_EVOLUTION_WEBHOOK_BODY_BYTES) });
+  assert.ok(Buffer.byteLength(body, 'utf8') > MAX_EVOLUTION_WEBHOOK_BODY_BYTES);
+
+  const response = {
+    statusCode: 0,
+    value: undefined as unknown,
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(value: unknown) {
+      this.value = value;
+    },
+    send(value: unknown) {
+      this.value = value;
+    },
+  };
+  await apiHandler(
+    {
+      method: 'POST',
+      url: '/api/evolution-webhook',
+      headers: {
+        authorization: `Bearer ${webhookSecret}`,
+        'content-length': String(Buffer.byteLength(body, 'utf8')),
+      },
+      body,
+    } as any,
+    response as any,
+  );
+
+  assert.equal(response.statusCode, 413);
+  assert.deepEqual(response.value, { error: 'Corpo da requisição excede o limite permitido.' });
 });
 
 test('webhook normalizes the event name while preserving recognized receipt statuses', async () => {

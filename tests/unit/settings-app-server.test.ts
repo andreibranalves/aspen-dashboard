@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { randomBytes } from 'node:crypto';
-import { createServer } from 'node:http';
+import { createServer, request } from 'node:http';
 import { once } from 'node:events';
 import { describe, it } from 'node:test';
 
@@ -63,7 +63,99 @@ async function stopServer(appServer: AppServerProcess): Promise<void> {
   }
 }
 
+async function postChunked(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<{ status: number; body: string }> {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const client = request(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: 'POST',
+        headers,
+      },
+      (response) => {
+        let responseBody = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => (responseBody += chunk));
+        response.on('end', () => resolve({ status: response.statusCode || 0, body: responseBody }));
+      },
+    );
+    client.on('error', reject);
+    client.end(body);
+  });
+}
+
 describe('app-server authentication handoff', () => {
+  it('rejects oversized valid Evolution webhook JSON at the HTTP boundary', async () => {
+    const port = await getAvailablePort();
+    const webhookSecret = 'w'.repeat(32);
+    const appServer = spawn(process.execPath, ['scripts/app-server.mjs'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PORT: String(port),
+        NODE_ENV: 'production',
+        APP_AUTH_BYPASS: 'true',
+        EVOLUTION_WEBHOOK_SECRET: webhookSecret,
+        EVOLUTION_INSTANCE: 'boundary-instance',
+        DATABASE_URL: '',
+        KV_REST_API_URL: '',
+        KV_REST_API_TOKEN: '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    appServer.stdout.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+    appServer.stderr.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const body = JSON.stringify({
+      event: 'MESSAGES_UPDATE',
+      instance: 'boundary-instance',
+      data: { keyId: 'boundary-message', fromMe: true, status: 'DELIVERY_ACK' },
+      padding: 'x'.repeat(64 * 1024),
+    });
+    assert.ok(Buffer.byteLength(body, 'utf8') > 64 * 1024);
+
+    try {
+      const ready = await waitForServer(`${baseUrl}/api/login`, appServer);
+      assert.equal(ready.status, 405, output);
+
+      const headers = {
+        Authorization: `Bearer ${webhookSecret}`,
+        'Content-Type': 'application/json',
+      };
+      const withContentLength = await fetch(`${baseUrl}/api/evolution-webhook`, {
+        method: 'POST',
+        headers,
+        body,
+      });
+      assert.equal(withContentLength.status, 413);
+      assert.deepEqual(await withContentLength.json(), {
+        error: 'Corpo da requisição excede o limite permitido.',
+      });
+
+      const chunked = await postChunked(`${baseUrl}/api/evolution-webhook`, headers, body);
+      assert.equal(chunked.status, 413);
+      assert.deepEqual(JSON.parse(chunked.body), {
+        error: 'Corpo da requisição excede o limite permitido.',
+      });
+      assert.equal(output.includes('[api/evolution-webhook]'), false);
+    } finally {
+      await stopServer(appServer);
+    }
+  });
+
   it('forwards login and logout Set-Cookie headers while protecting settings in production', async () => {
     const port = await getAvailablePort();
     const password = randomBytes(24).toString('base64url');

@@ -41,7 +41,10 @@ import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from './_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from './_functions/whatsapp-send-status.js';
 import { handler as quotationDeliveries } from './_functions/quotation-deliveries.js';
-import { handler as evolutionWebhook } from './_functions/evolution-webhook.js';
+import {
+  handler as evolutionWebhook,
+  MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
+} from './_functions/evolution-webhook.js';
 import { handler as quotationDeliveryWorker } from './_functions/quotation-delivery-worker.js';
 import { handler as settings } from './_functions/settings.js';
 import { handler as typebotLeadCapture } from './_functions/typebot-lead-capture.js';
@@ -109,11 +112,54 @@ const ROUTES: Record<string, HandlerFunction> = {
   logout,
 };
 
+function requestHeader(
+  req: VercelRequestLike,
+  name: string,
+): string | undefined {
+  const canonicalName = name
+    .split('-')
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join('-');
+  const value = req.headers?.[name] ?? req.headers?.[canonicalName];
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function requestBodyByteLength(body: unknown): number {
+  if (body === undefined || body === null) return 0;
+  if (typeof body === 'string') return Buffer.byteLength(body, 'utf8');
+  if (Buffer.isBuffer(body)) return body.length;
+  if (body && typeof (body as { on?: unknown }).on === 'function') {
+    return Number.POSITIVE_INFINITY;
+  }
+  try {
+    const serialized = JSON.stringify(body);
+    return typeof serialized === 'string' ? Buffer.byteLength(serialized, 'utf8') : 0;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function isOversizedEvolutionWebhookRequest(req: VercelRequestLike): boolean {
+  const rawContentLength = requestHeader(req, 'content-length');
+  if (rawContentLength !== undefined) {
+    const contentLength = Number(rawContentLength);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) return true;
+    if (contentLength > MAX_EVOLUTION_WEBHOOK_BODY_BYTES) return true;
+  }
+  return requestBodyByteLength(req.body) > MAX_EVOLUTION_WEBHOOK_BODY_BYTES;
+}
+
 export default async function handler(
   req: VercelRequestLike,
   res: VercelResponseLike
 ): Promise<void> {
   const routeName = getRouteName(req);
+
+  if (routeName === 'evolution-webhook' && isOversizedEvolutionWebhookRequest(req)) {
+    res.status(413).json({ error: 'Corpo da requisição excede o limite permitido.' });
+    return;
+  }
 
   // ── Auth guard ──
   if (!isAuthenticated(req)) {
