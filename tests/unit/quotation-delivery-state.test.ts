@@ -9,11 +9,15 @@ import {
 } from '../../api/_functions/lib/quotation-delivery-state.js';
 
 test('receipts advance monotonically and all steps must be delivered', () => {
+  assert.equal(applyReceipt('queued', 'PENDING'), 'queued');
+  assert.equal(applyReceipt('server_ack', 'READ'), 'read');
+  assert.equal(applyReceipt('server_ack', 'PLAYED'), 'read');
   assert.equal(applyReceipt('server_ack', 'DELIVERY_ACK'), 'delivered');
   assert.equal(applyReceipt('delivered', 'SERVER_ACK'), 'delivered');
   assert.equal(applyReceipt('read', 'DELIVERY_ACK'), 'read');
   assert.equal(applyReceipt('server_ack', 'ERROR'), 'needs_review');
   assert.equal(applyReceipt('delivered', 'ERROR'), 'delivered');
+  assert.equal(aggregateDeliveryState([]), 'queued');
   assert.equal(aggregateDeliveryState(['delivered', 'read']), 'delivered');
   assert.equal(aggregateDeliveryState(['delivered', 'server_ack']), 'provider_accepted');
 });

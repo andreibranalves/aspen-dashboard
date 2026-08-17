@@ -72,7 +72,7 @@ export function aggregateDeliveryState(states: DeliveryStepState[]): DeliverySta
   if (states.some((state) => state === 'reconciling')) return 'reconciling';
   if (states.some((state) => state === 'failed')) return 'failed';
   if (states.some((state) => state === 'retry_scheduled')) return 'retry_scheduled';
-  if (states.every((state) => ['server_ack', 'delivered', 'read'].includes(state)))
+  if (states.length > 0 && states.every((state) => ['server_ack', 'delivered', 'read'].includes(state)))
     return 'provider_accepted';
   if (states.some((state) => state === 'sending')) return 'processing';
   return 'queued';
