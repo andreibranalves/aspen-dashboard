@@ -404,21 +404,75 @@ export const quotationDeliveries = pgTable(
   'quotation_deliveries',
   {
     id: uuid('id').primaryKey(),
-    revisionId: uuid('revision_id').notNull().unique().references(() => quoteRevisions.id),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id),
     phone: text('phone').notNull(),
     flowId: text('flow_id').notNull(),
+    flowName: text('flow_name').notNull(),
     state: text('state').notNull(),
     providerAcceptanceId: text('provider_acceptance_id'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    reconciliationDeadline: timestamp('reconciliation_deadline', { withTimezone: true }),
     publicError: text('public_error'),
+    completionSource: text('completion_source'),
+    resolvedBy: text('resolved_by'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolutionNote: text('resolution_note'),
     diagnosticsExpiresAt: timestamp('diagnostics_expires_at', { withTimezone: true }),
     resumableUntil: timestamp('resumable_until', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
   (table) => [
+    uniqueIndex('quotation_deliveries_revision_flow_unique').on(table.revisionId, table.flowId),
+    index('quotation_deliveries_due_idx').on(table.state, table.nextAttemptAt),
     check(
       'quotation_deliveries_state_check',
-      sql`${table.state} IN ('pending', 'transporting', 'accepted_partial', 'completed', 'retryable', 'reconciling')`
+      sql`${table.state} IN ('queued', 'processing', 'provider_accepted', 'reconciling', 'retry_scheduled', 'needs_review', 'delivered', 'failed')`
+    ),
+    check(
+      'quotation_deliveries_completion_source_check',
+      sql`${table.completionSource} IS NULL OR ${table.completionSource} IN ('provider_receipt', 'operator', 'legacy_provider_ack')`
+    ),
+  ]
+);
+
+export const quotationDeliverySteps = pgTable(
+  'quotation_delivery_steps',
+  {
+    id: uuid('id').primaryKey(),
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .references(() => quotationDeliveries.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    type: text('type').notNull(),
+    payloadSnapshot: jsonb('payload_snapshot').notNull(),
+    state: text('state').notNull(),
+    providerMessageId: text('provider_message_id').unique(),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    reconciliationDeadline: timestamp('reconciliation_deadline', { withTimezone: true }),
+    publicError: text('public_error'),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('quotation_delivery_steps_delivery_position_unique').on(
+      table.deliveryId,
+      table.position
+    ),
+    index('quotation_delivery_steps_due_idx').on(table.state, table.nextAttemptAt),
+    check(
+      'quotation_delivery_steps_state_check',
+      sql`${table.state} IN ('queued', 'sending', 'server_ack', 'reconciling', 'retry_scheduled', 'needs_review', 'delivered', 'read', 'failed')`
     ),
   ]
 );
