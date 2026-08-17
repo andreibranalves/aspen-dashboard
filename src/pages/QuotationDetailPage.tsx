@@ -177,6 +177,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [emailSuccess, setEmailSuccess] = useState('');
   const [emailAttemptId, setEmailAttemptId] = useState('');
   const [emailAttemptRecipient, setEmailAttemptRecipient] = useState('');
+  const [confirmedEmailAcceptedKey, setConfirmedEmailAcceptedKey] = useState('');
   const [deliveryFlows, setDeliveryFlows] = useState<CommunicationFlow[]>([]);
   const [deliveryFlowId, setDeliveryFlowId] = useState('');
   const [lifecycleAction, setLifecycleAction] = useState<
@@ -235,8 +236,12 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [initialData]);
 
   useEffect(() => {
+    setConfirmedEmailAcceptedKey((current) =>
+      current === `${data.id}:${data.revision_id}` ? current : ''
+    );
     setEmailDialogOpen(false);
     setEmailError('');
+    setEmailSuccess('');
     setEmailAttemptId('');
     setEmailAttemptRecipient('');
   }, [data.id, data.revision_id]);
@@ -754,6 +759,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         recipient: recipientValue,
         attempt_id: attemptId,
       });
+      setConfirmedEmailAcceptedKey(`${data.id}:${data.revision_id}`);
       setEmailSuccess('E-mail aceito para envio.');
       setEmailDialogOpen(false);
       setEmailAttemptId('');
@@ -771,11 +777,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } finally {
       setEmailSending(false);
     }
-  }, [data.revision_id, emailAttemptId, emailAttemptRecipient, onReload]);
+  }, [data.id, data.revision_id, emailAttemptId, emailAttemptRecipient, onReload]);
   const cancelEmailDialog = useCallback(() => {
     setEmailError('');
     setEmailDialogOpen(false);
   }, []);
+
+  const emailSent = data.email_sent || confirmedEmailAcceptedKey === `${data.id}:${data.revision_id}`;
 
   return (
     <div className="space-y-4 max-w-[1060px] mx-auto">
@@ -1238,7 +1246,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   setEmailDialogOpen(true);
                 }}
               >
-                <Mail size={14} /> {data.email_sent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
+                <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
               </Button>
               <select
                 aria-label="Fluxo de WhatsApp"
@@ -1390,6 +1398,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   const [data, setData] = useState<QuotationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadWarning, setReloadWarning] = useState(false);
   const concurrencyTokenRef = useRef('');
   const dataRef = useRef<QuotationData | null>(null);
 
@@ -1401,6 +1410,7 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
     const hasExistingDetail = dataRef.current?.id === id;
     setLoading(true);
     setError(null);
+    setReloadWarning(false);
     if (!hasExistingDetail) concurrencyTokenRef.current = '';
     try {
       const result = await apiGet<unknown>(`/quotations?id=${encodeURIComponent(id)}`);
@@ -1412,6 +1422,8 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
     } catch (err) {
       if (!hasExistingDetail) {
         setError(err instanceof Error ? err.message : 'Erro ao carregar orçamento.');
+      } else {
+        setReloadWarning(true);
       }
     } finally {
       setLoading(false);
@@ -1437,5 +1449,25 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
     );
   }
   if (!data) return null;
-  return <CoreQuotationDetail data={data} navigate={navigate} onReload={loadDetail} concurrencyTokenRef={concurrencyTokenRef} />;
+  return (
+    <div className="space-y-3">
+      {reloadWarning && (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-fg-muted"
+        >
+          <span>Não foi possível atualizar o orçamento. Exibindo os dados anteriores.</span>
+          <Button variant="outline" size="sm" onClick={() => void loadDetail()}>
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+      <CoreQuotationDetail
+        data={data}
+        navigate={navigate}
+        onReload={loadDetail}
+        concurrencyTokenRef={concurrencyTokenRef}
+      />
+    </div>
+  );
 }

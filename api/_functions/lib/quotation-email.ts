@@ -90,7 +90,13 @@ export async function sendQuotationEmailViaResend(
   }
 
   if (!response.ok) {
-    throw new ResendTransportError('A Resend não aceitou o e-mail.', 'rejected');
+    const kind = response.status >= 500 && response.status <= 599 ? 'uncertain' : 'rejected';
+    throw new ResendTransportError(
+      kind === 'uncertain'
+        ? 'O resultado do envio não pôde ser confirmado.'
+        : 'A Resend não aceitou o e-mail.',
+      kind,
+    );
   }
   const payload = await response.json().catch(() => null) as { id?: unknown } | null;
   if (!payload || typeof payload.id !== 'string' || !payload.id.trim()) {

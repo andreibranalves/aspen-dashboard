@@ -84,6 +84,24 @@ test('HTTP 422 from Resend is rejected', async () => {
   );
 });
 
+test('HTTP 5xx from Resend is uncertain without exposing provider details', async () => {
+  const providerBody = 'provider-secret-body';
+  await assert.rejects(
+    sendQuotationEmailViaResend(input, {
+      env: { RESEND_API_KEY: 'secret-test-key', RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>' },
+      fetchFn: async () => new Response(JSON.stringify({ error: providerBody }), { status: 503 }),
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ResendTransportError);
+      assert.equal(error.kind, 'uncertain');
+      assert.equal(error.message, 'O resultado do envio não pôde ser confirmado.');
+      assert.doesNotMatch(error.message, new RegExp(providerBody));
+      assert.doesNotMatch(error.message, /secret-test-key/);
+      return true;
+    },
+  );
+});
+
 test('network failures are uncertain', async () => {
   await assert.rejects(
     sendQuotationEmailViaResend(input, {

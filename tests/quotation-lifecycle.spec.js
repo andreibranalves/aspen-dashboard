@@ -392,7 +392,9 @@ test('accepted quotation email feedback survives a failed authoritative reload',
   await expect.poll(() => quotationGets).toBeGreaterThan(1);
   await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
   await expect(page.getByText('Erro ao carregar orçamento')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Enviar por e-mail' })).toBeVisible();
+  await expect(page.getByText('Não foi possível atualizar o orçamento. Exibindo os dados anteriores.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reenviar por e-mail' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enviar por e-mail', exact: true })).toHaveCount(0);
 });
 
 test('quotation email network failures show only a safe Portuguese message', async ({ page }) => {

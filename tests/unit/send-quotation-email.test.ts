@@ -9,7 +9,10 @@ import {
   handler,
   type SendQuotationEmailDependencies,
 } from '../../api/_functions/send-quotation-email.js';
-import { ResendTransportError } from '../../api/_functions/lib/quotation-email.js';
+import {
+  ResendTransportError,
+  sendQuotationEmailViaResend,
+} from '../../api/_functions/lib/quotation-email.js';
 
 const quotationId = '11111111-1111-4111-8111-111111111111';
 const revisionId = '22222222-2222-4222-8222-222222222222';
@@ -25,7 +28,7 @@ function event(
 ): FunctionEvent {
   return {
     httpMethod: method,
-    headers: { host: 'app.example.com', 'x-forwarded-proto': 'https', ...headers },
+    headers: { host: 'localhost:5173', 'x-forwarded-proto': 'https', ...headers },
     queryStringParameters: {},
     body: typeof body === 'string' ? body : JSON.stringify(body),
   };
@@ -181,8 +184,86 @@ test('normalizes recipient and never accepts a body-provided base URL', async ()
   });
 
   assert.equal(result.statusCode, 200);
-  assert.match(sentUrl, /^https:\/\/app\.example\.com\/api\/public-quotation/);
+  assert.match(sentUrl, /^https:\/\/localhost:5173\/api\/public-quotation/);
   assert.doesNotMatch(sentUrl, /evil\.example/);
+});
+
+test('uses the trusted deployment origin instead of request host or body origin', async () => {
+  let sentUrl = '';
+  const result = await handler(event('POST', {
+    ...payload(),
+    base_url: 'https://body-attacker.example',
+  }, {
+    host: 'attacker.example.com',
+    'x-forwarded-host': 'attacker.example.com',
+  }), {
+    deliveries: fakeDeliveries([]),
+    snapshots: snapshots(snapshot()),
+    issueToken: acceptedToken(),
+    transport: async (input) => {
+      sentUrl = input.publicUrl;
+      return { id: 'resend-email-1' };
+    },
+    env: { VERCEL_PROJECT_PRODUCTION_URL: 'trusted.example.com' },
+    token: () => 'stable-public-token',
+    now: () => NOW,
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.match(sentUrl, /^https:\/\/trusted\.example\.com\/api\/public-quotation/);
+  assert.doesNotMatch(sentUrl, /attacker|body-attacker/);
+});
+
+test('rejects an untrusted production request host without sending', async () => {
+  let transportCalls = 0;
+  const result = await handler(event('POST', payload(), {
+    host: 'attacker.example.com',
+    'x-forwarded-host': 'attacker.example.com',
+  }), {
+    deliveries: fakeDeliveries([]),
+    snapshots: snapshots(snapshot()),
+    issueToken: acceptedToken(),
+    transport: async () => {
+      transportCalls += 1;
+      return { id: 'resend-email-1' };
+    },
+    env: {},
+    token: () => 'stable-public-token',
+    now: () => NOW,
+  });
+
+  assert.equal(result.statusCode, 500);
+  assert.deepEqual(parse(result), { error: 'Erro interno. Tente novamente.' });
+  assert.equal(transportCalls, 0);
+  assert.doesNotMatch(result.body || '', /attacker\.example\.com|stable-public-token/);
+});
+
+test('classifies a provider HTTP 5xx as uncertain and keeps the attempt pending', async () => {
+  const providerBody = 'provider-secret-body';
+  const calls: string[] = [];
+  const result = await handler(event('POST', payload()), {
+    deliveries: fakeDeliveries(calls),
+    snapshots: snapshots(snapshot()),
+    issueToken: acceptedToken(),
+    transport: async (input, transportDependencies) => sendQuotationEmailViaResend(input, {
+      env: transportDependencies?.env,
+      fetchFn: async () => new Response(JSON.stringify({ error: providerBody }), { status: 503 }),
+    }),
+    env: {
+      RESEND_API_KEY: 'secret-test-key',
+      RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
+    },
+    token: () => 'stable-public-token',
+    now: () => NOW,
+  });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(parse(result), {
+    error: 'O resultado do envio não pôde ser confirmado. Tente novamente.',
+    retry_same_attempt: true,
+  });
+  assert.deepEqual(calls, ['reserve']);
+  assert.doesNotMatch(result.body || '', /provider-secret-body|secret-test-key/);
 });
 
 test('rejects non-POST, malformed JSON, invalid UUID and invalid e-mail', async () => {

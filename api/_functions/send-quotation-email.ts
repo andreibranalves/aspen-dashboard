@@ -19,6 +19,8 @@ import {
 } from './lib/quotation-email.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const LOCAL_HOST = /^(?:localhost|127\.0\.0\.1|\[::1\]|::1)(?::\d{1,5})?$/i;
 const AMBIGUOUS_ERROR = 'O resultado do envio não pôde ser confirmado. Tente novamente.';
 const INTERNAL_ERROR = 'Erro interno. Tente novamente.';
 
@@ -70,14 +72,51 @@ function recipient(value: unknown): string {
   }
 }
 
-function publicBaseUrl(event: FunctionEvent): string {
-  const headers = event.headers || {};
-  const forwardedProto = String(headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
-  const host = String(headers['x-forwarded-host'] || headers.host || '').split(',')[0].trim();
-  if (!host || !/^[a-z0-9.-]+(?::\d+)?$/i.test(host)) {
+function firstHeader(value: string | string[] | undefined): string {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === 'string' ? candidate.split(',')[0].trim() : '';
+}
+
+function strictOrigin(value: string, allowHttp: boolean): string {
+  const raw = value.trim();
+  const hasProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(raw);
+  const candidate = hasProtocol ? raw : `https://${raw}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
     throw new Error('Origem da aplicação indisponível.');
   }
-  return `${forwardedProto === 'http' ? 'http' : 'https'}://${host}`;
+  const protocolAllowed = parsed.protocol === 'https:' || (allowHttp && parsed.protocol === 'http:');
+  const hostnameAllowed = HOSTNAME.test(parsed.hostname) || /^\[[0-9a-f:.]+\]$/i.test(parsed.hostname);
+  if (
+    !protocolAllowed ||
+    !hostnameAllowed ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error('Origem da aplicação indisponível.');
+  }
+  return parsed.origin;
+}
+
+function publicBaseUrl(event: FunctionEvent, env: typeof process.env = process.env): string {
+  const configuredOrigin = [env.VERCEL_PROJECT_PRODUCTION_URL, env.VERCEL_URL]
+    .find((value) => typeof value === 'string' && value.trim());
+  if (configuredOrigin) return strictOrigin(configuredOrigin, false);
+
+  const headers = event.headers || {};
+  const host = firstHeader(headers['x-forwarded-host']) || firstHeader(headers.host);
+  if (!LOCAL_HOST.test(host)) throw new Error('Origem da aplicação indisponível.');
+  const protocol = firstHeader(headers['x-forwarded-proto']) || 'http';
+  if (protocol !== 'http' && protocol !== 'https') {
+    throw new Error('Origem da aplicação indisponível.');
+  }
+  const originHost = host === '::1' ? `[${host}]` : host;
+  return strictOrigin(`${protocol}://${originHost}`, true);
 }
 
 function acceptedResponse(delivery: QuotationEmailDelivery): FunctionResult {
@@ -214,6 +253,7 @@ export async function handler(
     if (!isIssuedQuotationStatus(snapshot.revision.status)) {
       return json(409, { error: 'Emita o orçamento antes de enviar por e-mail.' });
     }
+    const baseUrl = publicBaseUrl(event, dependencies.env || process.env);
 
     const reservation = await deliveries.reserve({
       attemptId,
@@ -252,7 +292,6 @@ export async function handler(
       now: () => now().getTime(),
     };
     const token: PublicQuotationToken = await issueToken(tokenInput);
-    const baseUrl = publicBaseUrl(event);
     const publicUrl = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
     const attachmentUrl = `${publicUrl}&format=pdf`;
 
