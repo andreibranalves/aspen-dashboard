@@ -5,8 +5,6 @@ import {
   AlertTriangle,
   RotateCcw,
   History,
-  MessageCircle,
-  RefreshCw,
   Image as ImageIcon,
   X,
 } from 'lucide-react';
@@ -44,18 +42,6 @@ interface HistoryItem {
   valor?: string | number;
 }
 
-interface QuoteLead {
-  id: string;
-  nome?: string;
-  email?: string;
-  telefone?: string;
-  pedidoTexto?: string;
-  texto?: string;
-  source?: string;
-  status?: 'new' | 'converted' | 'discarded';
-  quotationId?: string | null;
-}
-
 interface WaStatus {
   state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
   message?: string;
@@ -87,11 +73,6 @@ export default function AutoQuotePage() {
   const [pricingConflictByDraft, setPricingConflictByDraft] = useState<Record<number, string[]>>({});
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
-  const [bottomTab, setBottomTab] = useState<'leads' | 'recentes'>('leads');
-  const [quoteLeads, setQuoteLeads] = useState<QuoteLead[]>([]);
-  const [quoteLeadsLoading, setQuoteLeadsLoading] = useState<boolean>(false);
-  const [quoteLeadsError, setQuoteLeadsError] = useState<string | null>(null);
-  const [selectedQuoteLeadId, setSelectedQuoteLeadId] = useState<string>('');
 
   // ── Quotation template ──
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
@@ -220,23 +201,6 @@ export default function AutoQuotePage() {
     loadHistory();
   }, [loadHistory]);
 
-  const loadQuoteLeads = useCallback(async () => {
-    setQuoteLeadsLoading(true);
-    setQuoteLeadsError(null);
-    try {
-      const res = await apiGet<{ data?: QuoteLead[] }>('/quote-leads?limit=5');
-      setQuoteLeads(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      setQuoteLeadsError((err as Error).message || 'Erro ao buscar leads de orçamento.');
-    } finally {
-      setQuoteLeadsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadQuoteLeads();
-  }, [loadQuoteLeads]);
-
   const loadCommunicationFlows = useCallback(async () => {
     try {
       const data = await fetchFlows();
@@ -257,22 +221,6 @@ export default function AutoQuotePage() {
   useEffect(() => {
     loadCommunicationFlows();
   }, [loadCommunicationFlows]);
-
-  // ── Pre-quote handoff from inbox ──
-  useEffect(() => {
-    try {
-      const prequoteText = window.sessionStorage.getItem('aspen_prequote_text');
-      const prequoteId = window.sessionStorage.getItem('aspen_prequote_id');
-      if (!prequoteText && !prequoteId) return;
-      if (prequoteText) setText(prequoteText);
-      if (prequoteId) setSelectedQuoteLeadId(prequoteId);
-      window.sessionStorage.removeItem('aspen_prequote_text');
-      window.sessionStorage.removeItem('aspen_prequote_id');
-      document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch {
-      // sessionStorage unavailable — ignore
-    }
-  }, []);
 
   // ── Remove main padding so panels fill viewport edge-to-edge ──
   useEffect(() => {
@@ -345,7 +293,6 @@ export default function AutoQuotePage() {
         : candidate));
       try {
         const issue = await issueQuotation(buildQuotePayload(requestDraft), key, {
-          sourceLeadId: selectedQuoteLeadId || undefined,
           sourceQuotationId: draft.sourceQuotationId,
           sourceRevisionId: draft.sourceRevisionId,
         });
@@ -360,10 +307,6 @@ export default function AutoQuotePage() {
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, issue, result: { success: true, data }, status: 'done' } as StoredAutoQuoteDraft)
           : candidate));
-        if (selectedQuoteLeadId) {
-          setSelectedQuoteLeadId('');
-          loadQuoteLeads();
-        }
         loadHistory();
       } catch (err) {
         const apiError = err instanceof QuotationIssueApiError ? err : null;
@@ -426,7 +369,7 @@ export default function AutoQuotePage() {
         }
       }
     },
-    [drafts, loadHistory, loadQuoteLeads, refetchDraftPricing, selectedQuoteLeadId]
+    [drafts, loadHistory, refetchDraftPricing]
   );
 
   const recoveredDrafts = useRef(new Set<number>());
@@ -558,20 +501,6 @@ export default function AutoQuotePage() {
     }
   }, []);
 
-  const useQuoteLead = useCallback((lead: QuoteLead) => {
-    setSelectedQuoteLeadId(lead.id || '');
-    setText(
-      lead.texto ||
-        [
-          lead.nome ? `Nome: ${lead.nome}` : 'Nome:',
-          lead.email ? `E-mail: ${lead.email}` : 'E-mail:',
-          lead.telefone ? `Telefone: ${lead.telefone}` : 'Telefone:',
-          lead.pedidoTexto ? `Pedido: ${lead.pedidoTexto}` : 'Pedido:',
-        ].join('\n')
-    );
-    document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
-
   // ── Reset ──
   const handleReset = useCallback(() => {
     setText('');
@@ -583,7 +512,6 @@ export default function AutoQuotePage() {
     setProductSearch({});
     setWaStatusByContext({});
     setWaFlowByDraft({});
-    setSelectedQuoteLeadId('');
     setOrderTemplateId('');
     try {
       localStorage.removeItem('aspen_drafts');
@@ -598,7 +526,6 @@ export default function AutoQuotePage() {
     setProductSearch({});
     setWaStatusByContext({});
     setWaFlowByDraft({});
-    setSelectedQuoteLeadId('');
     try {
       localStorage.removeItem('aspen_drafts');
     } catch (storageError) {
@@ -963,158 +890,50 @@ export default function AutoQuotePage() {
             )}
           </div>
 
-          {/* ── Bottom tabs: recent quotations + quote leads ── */}
+          {/* ── Bottom panel: recent quotations ── */}
           <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[300px] lg:h-[340px]">
-            <div className="mb-3 flex items-center justify-between gap-2 shrink-0">
-              <div className="inline-flex rounded-lg bg-surface-muted p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setBottomTab('leads')}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                    bottomTab === 'leads'
-                      ? 'bg-surface text-fg shadow-sm'
-                      : 'text-fg-muted hover:text-fg'
-                  )}
-                >
-                  <MessageCircle size={13} />
-                  Leads
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBottomTab('recentes')}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                    bottomTab === 'recentes'
-                      ? 'bg-surface text-fg shadow-sm'
-                      : 'text-fg-muted hover:text-fg'
-                  )}
-                >
-                  <History size={13} />
-                  Recentes
-                </button>
-              </div>
-
-              {bottomTab === 'leads' && (
-                <button
-                  type="button"
-                  onClick={loadQuoteLeads}
-                  disabled={quoteLeadsLoading}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-muted hover:text-fg disabled:opacity-60"
-                >
-                  <RefreshCw size={12} className={quoteLeadsLoading ? 'animate-spin' : ''} />
-                  Atualizar
-                </button>
-              )}
+            <div className="mb-3 flex items-center gap-1.5 shrink-0 text-xs font-medium text-fg-muted">
+              <History size={13} />
+              Recentes
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-6 md:px-6">
-              {bottomTab === 'recentes' ? (
-                historyLoading ? (
-                  <div className="space-y-2 h-full">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="h-10 rounded-lg bg-surface-muted animate-pulse" />
-                    ))}
-                  </div>
-                ) : history.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {history.map((item, idx) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => loadHistoryItem(item)}
-                        className={cn(
-                          'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
-                          idx === history.length - 1 && 'pb-1'
-                        )}
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-fg truncate">
-                            {item.cliente || 'Cliente'}
-                          </p>
-                          <p className="text-xs text-fg-muted truncate">{item.id}</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
-                          <span className="text-[11px] text-fg-muted whitespace-nowrap">
-                            {formatDate(item.data)}
-                          </span>
-                          <span className="text-xs font-medium text-fg whitespace-nowrap">
-                            {formatBRL(item.valor)}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )
-              ) : quoteLeadsLoading ? (
-                <div className="space-y-1 h-full">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between rounded-lg px-3 py-1.5 animate-pulse"
-                    >
-                      <div className="space-y-1">
-                        <div className="h-4 w-28 rounded bg-surface-muted" />
-                        <div className="h-3 w-44 rounded bg-surface-muted" />
-                      </div>
-                      <div className="h-5 w-20 rounded-full bg-surface-muted" />
-                    </div>
+              {historyLoading ? (
+                <div className="space-y-2 h-full">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-10 rounded-lg bg-surface-muted animate-pulse" />
                   ))}
                 </div>
-              ) : quoteLeadsError ? (
+              ) : history.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-destructive">{quoteLeadsError}</p>
-                </div>
-              ) : quoteLeads.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-fg-muted">Nenhum lead de orçamento pendente.</p>
+                  <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {quoteLeads.map((lead) => {
-                    const tagLabel =
-                      lead.quotationId || (lead.status === 'new' ? 'Novo lead' : 'Lead');
-                    const tagClass = lead.quotationId
-                      ? 'bg-primary/10 text-primary'
-                      : 'bg-emerald-500/10 text-success';
-                    const displayName = lead.nome || 'Nome não identificado';
-                    const displayEmail = lead.email || '';
-
-                    return (
-                      <button
-                        key={lead.id}
-                        type="button"
-                        onClick={() => useQuoteLead(lead)}
-                        className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-fg truncate">
-                            {lead.telefone
-                              ? `(${lead.telefone.slice(2, 4)}) ${lead.telefone.slice(4, 9)}-${lead.telefone.slice(9)}`
-                              : 'Telefone não identificado'}
-                          </p>
-                          <p className="text-xs leading-tight text-fg-muted truncate">
-                            {displayName}
-                            {displayEmail ? <span className="text-fg-muted/60 mx-1">-</span> : null}
-                            {displayEmail ? (
-                              <span className="text-[11px] text-fg-muted/80">{displayEmail}</span>
-                            ) : null}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5 ml-2">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${tagClass}`}
-                          >
-                            {tagLabel}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
+                  {history.map((item, idx) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => loadHistoryItem(item)}
+                      className={cn(
+                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
+                        idx === history.length - 1 && 'pb-1'
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-fg truncate">{item.cliente || 'Cliente'}</p>
+                        <p className="text-xs text-fg-muted truncate">{item.id}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-[11px] text-fg-muted whitespace-nowrap">
+                          {formatDate(item.data)}
+                        </span>
+                        <span className="text-xs font-medium text-fg whitespace-nowrap">
+                          {formatBRL(item.valor)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

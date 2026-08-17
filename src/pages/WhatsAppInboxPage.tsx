@@ -15,7 +15,6 @@ import { Input } from '@/components/ui/input';
 import { fmtPhone, formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import {
-  createWhatsappPreQuote,
   extractWhatsappQuote,
   fetchWhatsappConversations,
   fetchWhatsappConversation,
@@ -23,7 +22,6 @@ import {
   sendWhatsappMessage,
   syncMessagesForConversation,
   syncWhatsappConversations,
-  updateWhatsappConversationStatus,
   type WhatsappConversation,
   type WhatsappConversationDetail,
   type WhatsappConversationStatus,
@@ -229,22 +227,6 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
     }
   }, [draft, selected, sending]);
 
-  const createPreQuote = useCallback(async () => {
-    if (!selected) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await createWhatsappPreQuote(selected.id, extraction?.extractedPayload);
-      const updated = await updateWhatsappConversationStatus(selected.id, 'quote_lead_created');
-      setConversations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      navigate?.('/pre-orcamentos');
-    } catch (err) {
-      setError((err as Error).message || 'Erro ao criar pré-orçamento.');
-    } finally {
-      setSaving(false);
-    }
-  }, [extraction?.extractedPayload, navigate, selected]);
-
   return (
     <div className="mx-auto max-w-[1320px] space-y-5 pb-10 animate-fade-in">
       <PageHeader title="WhatsApp" />
@@ -438,20 +420,6 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                 <Bot size={14} />
                 Extrair orçamento
               </Button>
-              <Button
-                className="w-full"
-                variant="outline"
-                onClick={createPreQuote}
-                disabled={
-                  saving ||
-                  !selected.canonicalPhone ||
-                  selected.identityStatus === 'unresolved' ||
-                  selected.identityStatus === 'conflict'
-                }
-              >
-                Criar pré-orçamento
-              </Button>
-
               {quotationAttachments.length > 0 && (
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                   <p className="mb-2 text-xs font-semibold uppercase text-primary">

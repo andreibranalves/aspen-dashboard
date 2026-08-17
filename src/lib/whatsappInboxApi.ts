@@ -132,18 +132,6 @@ export async function extractWhatsappQuote(
   return result.data;
 }
 
-export async function createWhatsappPreQuote(
-  conversationId: string,
-  extractedPayload?: Record<string, unknown>
-): Promise<unknown> {
-  const result = await apiPost<ApiEnvelope<unknown>>('/whatsapp-conversations', {
-    action: 'create-quote-lead',
-    id: conversationId,
-    extractedPayload,
-  });
-  return result.data;
-}
-
 export async function sendWhatsappMessage(
   conversationId: string,
   text: string

@@ -28,7 +28,6 @@ export interface BreadcrumbItem {
 
 const PAGE_LABELS: Record<string, string> = {
   '/dashboard': 'Início',
-  '/pre-orcamentos': 'Pré-orçamentos',
   '/quotations': 'Orçamentos',
   '/auto': 'Auto — Extração',
   '/manual': 'Novo Orçamento',

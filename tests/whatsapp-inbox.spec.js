@@ -137,9 +137,7 @@ test.describe('WhatsApp Inbox Page', () => {
     await expect(page.getByRole('button', { name: /Extrair orçamento/ })).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByRole('button', { name: /Criar pré-orçamento/ })).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(page.getByRole('button', { name: /Criar pré-orçamento/ })).toHaveCount(0);
   });
 
   test('shows CRM match card when conversation has linked lead', async ({ page }) => {

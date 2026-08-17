@@ -308,6 +308,19 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect(page.getByRole('button', { name: /Extrair/i })).toBeVisible();
   });
 
+  test('não exibe a fila de pré-orçamentos no CRM', async ({ page }) => {
+    await setupApiMocks(page);
+    await page.goto('/#/auto');
+    await page.waitForSelector('textarea', { timeout: 10000 });
+
+    await expect(page.getByRole('button', { name: 'Pré-orçamentos', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Leads', exact: true })).toHaveCount(0);
+
+    await page.goto('/#/pre-orcamentos');
+    await page.waitForSelector('textarea', { timeout: 10000 });
+    await expect(page.getByText('Pré-orçamentos', { exact: true })).toHaveCount(0);
+  });
+
   test('submissão de texto exibe rascunhos para revisão', async ({ page }) => {
     await setupApiMocks(page);
     /** @type {any} */
@@ -343,7 +356,7 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     const previewRequestPromise = page.context().waitForEvent('request', {
       predicate: (request) => request.url().includes('/api/quotation-preview'),
     });
-    await page.getByRole('button', { name: 'Visualizar PDF' }).click();
+    await page.getByRole('button', { name: 'Visualizar proposta' }).click();
     const previewRequest = await previewRequestPromise;
     const previewPayload = JSON.parse(new globalThis.URLSearchParams(previewRequest.postData() || '').get('payload') || '{}');
     expect(previewPayload.extracted.items[0].item_name).toBe(customItemName);
@@ -480,18 +493,13 @@ test.describe('Auto Quote — Fluxo Principal', () => {
     await expect(submitBtn).toBeEnabled();
   });
 
-  test('card do WhatsApp preenche a textarea sem extrair automaticamente', async ({ page }) => {
+  test('Auto não exibe seleção de pré-orçamentos', async ({ page }) => {
     await setupApiMocks(page);
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
 
-    await page.getByRole('button', { name: /^Leads$/i }).click();
-    const quoteLead = page.getByRole('button').filter({ hasText: 'Maria WhatsApp' });
-    await expect(quoteLead).toBeVisible();
-    await quoteLead.click();
-
-    const textarea = page.locator('textarea').first();
-    await expect(textarea).toHaveValue(MOCK_WHATSAPP_LEADS.data[0].texto);
+    await expect(page.getByRole('button', { name: /^Leads$/i })).toHaveCount(0);
+    await expect(page.getByText('Maria WhatsApp', { exact: true })).toHaveCount(0);
     await expect(page.getByText(/Resultados \(/i)).toHaveCount(0);
   });
 });
