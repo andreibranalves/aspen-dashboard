@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,19 @@ export function QuotationDeliveryStatus({
   const [note, setNote] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !decision) return;
+    if (!dialog.open) dialog.showModal();
+    noteRef.current?.focus();
+    return () => {
+      if (dialog.open) dialog.close();
+    };
+  }, [decision]);
 
   if (!delivery && !pending) return null;
 
@@ -53,16 +66,27 @@ export function QuotationDeliveryStatus({
         : 'text-fg';
 
   const openDialog = (nextDecision: DeliveryResolution) => {
+    const activeElement = document.activeElement;
+    previousFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null;
     setDecision(nextDecision);
     setNote('');
     setDialogError(null);
   };
 
-  const closeDialog = () => {
-    if (submitting) return;
+  const resetDialog = () => {
     setDecision(null);
     setNote('');
     setDialogError(null);
+    const previousFocus = previousFocusRef.current;
+    previousFocusRef.current = null;
+    if (previousFocus && document.contains(previousFocus)) previousFocus.focus();
+  };
+
+  const closeDialog = () => {
+    if (submitting) return;
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+    else resetDialog();
   };
 
   const submitResolution = async (event: FormEvent<HTMLFormElement>) => {
@@ -138,12 +162,14 @@ export function QuotationDeliveryStatus({
       )}
       {decision && (
         <dialog
-          open
+          ref={dialogRef}
+          aria-modal="true"
           aria-labelledby={titleId}
           onCancel={(event) => {
             event.preventDefault();
             closeDialog();
           }}
+          onClose={resetDialog}
           className="max-w-md rounded-xl border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
         >
           <form onSubmit={submitResolution} className="space-y-4 p-5">
@@ -160,6 +186,7 @@ export function QuotationDeliveryStatus({
             <label className="block space-y-1" htmlFor={noteId}>
               <span className="font-medium">Justificativa</span>
               <textarea
+                ref={noteRef}
                 id={noteId}
                 aria-label="Justificativa"
                 minLength={3}

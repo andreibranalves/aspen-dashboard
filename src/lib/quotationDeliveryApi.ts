@@ -183,9 +183,38 @@ function inputInteger(value: unknown, label: string, maximum: number): number {
   return value;
 }
 
+const ISO_TIMESTAMP =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
 function timestamp(value: unknown): string {
   const result = text(value);
-  if (Number.isNaN(Date.parse(result))) invalidResponse();
+  const match = ISO_TIMESTAMP.exec(result);
+  if (!match) invalidResponse();
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const timezone = match[7];
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  const offsetMatch = timezone === 'Z' ? null : /[+-](\d{2}):(\d{2})/.exec(timezone);
+  const offsetHours = offsetMatch ? Number(offsetMatch[1]) : 0;
+  const offsetMinutes = offsetMatch ? Number(offsetMatch[2]) : 0;
+  if (
+    !daysInMonth ||
+    day < 1 ||
+    day > daysInMonth ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHours > 23 ||
+    offsetMinutes > 59 ||
+    Number.isNaN(Date.parse(result))
+  ) {
+    invalidResponse();
+  }
   return result;
 }
 

@@ -143,6 +143,8 @@ test('strict delivery parsing rejects missing IDs, unknown states, invalid steps
       steps: [{ ...(fixture().steps as Record<string, unknown>[])[0], state: 'unknown' }],
     },
     { ...fixture(), updated_at: 'not-a-timestamp' },
+    { ...fixture(), updated_at: '2026-02-30T12:00:00.000Z' },
+    { ...fixture(), next_attempt_at: '2026-02-29T12:00:00.000Z' },
   ];
   try {
     for (const body of invalidBodies) {
