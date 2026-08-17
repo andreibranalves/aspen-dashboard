@@ -141,6 +141,13 @@
       "when": 1786643781179,
       "tag": "0019_quotation_issue_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786989316718,
+      "tag": "0020_quotation_email_deliveries",
+      "breakpoints": true
     }
   ]
 }

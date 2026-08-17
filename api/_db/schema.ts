@@ -423,6 +423,39 @@ export const quotationDeliveries = pgTable(
   ]
 );
 
+export const quotationEmailDeliveries = pgTable(
+  'quotation_email_deliveries',
+  {
+    id: uuid('id').primaryKey(),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id, { onDelete: 'cascade' }),
+    recipient: varchar('recipient', { length: 254 }).notNull(),
+    publicToken: text('public_token'),
+    state: text('state').notNull(),
+    providerEmailId: text('provider_email_id').unique(),
+    publicError: text('public_error'),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'quotation_email_deliveries_state_check',
+      sql`${table.state} IN ('pending', 'accepted', 'failed')`
+    ),
+    check(
+      'quotation_email_deliveries_public_token_check',
+      sql`(${table.state} = 'pending' AND btrim(${table.publicToken}) <> '') OR (${table.state} IN ('accepted', 'failed') AND ${table.publicToken} IS NULL)`
+    ),
+    index('quotation_email_deliveries_revision_state_accepted_idx').on(
+      table.revisionId,
+      table.state,
+      table.acceptedAt
+    ),
+  ]
+);
+
 /** Product and price snapshots for one revision.  The product FK deliberately
  * uses PostgreSQL's default NO ACTION behavior so history cannot disappear
  * when a catalog row is archived or deleted in a future migration. */

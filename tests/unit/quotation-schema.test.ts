@@ -6,6 +6,7 @@ import {
   appSettings,
   quoteRevisions,
   quotationDeliveries,
+  quotationEmailDeliveries,
   quotationIssueRequests,
   quotations,
   quotationTemplates,
@@ -28,7 +29,13 @@ test('quotation template schema exposes versioned templates and snapshots', () =
   const quotationConfig = getTableConfig(quotations);
   const issueConfig = getTableConfig(quotationIssueRequests);
   const deliveryConfig = getTableConfig(quotationDeliveries);
+  const emailDeliveryConfig = getTableConfig(quotationEmailDeliveries);
   assert.equal(quotationIssueRequests.idempotencyKey.isUnique, true);
+  assert.equal(quotationEmailDeliveries.id.name, 'id');
+  assert.equal(quotationEmailDeliveries.revisionId.name, 'revision_id');
+  assert.equal(quotationEmailDeliveries.providerEmailId.name, 'provider_email_id');
+  assert.equal(quotationEmailDeliveries.publicToken.name, 'public_token');
+  assert.equal(quotationEmailDeliveries.providerEmailId.isUnique, true);
   assert.equal(quotationDeliveries.revisionId.isUnique, true);
   const renderCheck = (check: (typeof issueConfig.checks)[number]) =>
     check.value.queryChunks
@@ -45,17 +52,22 @@ test('quotation template schema exposes versioned templates and snapshots', () =
   const deliveryStateCheck = deliveryConfig.checks.find(
     (item) => item.name === 'quotation_deliveries_state_check'
   );
+  const emailStateCheck = emailDeliveryConfig.checks.find(
+    (item) => item.name === 'quotation_email_deliveries_state_check'
+  );
   const lossReasonCheck = quotationConfig.checks.find(
     (item) => item.name === 'quotations_loss_reason_check'
   );
   assert.ok(issueStateCheck);
   assert.ok(deliveryStateCheck);
+  assert.ok(emailStateCheck);
   assert.ok(lossReasonCheck);
   assert.equal(renderCheck(issueStateCheck), "state IN ('processing', 'retryable', 'completed')");
   assert.equal(
     renderCheck(deliveryStateCheck),
     "state IN ('pending', 'transporting', 'accepted_partial', 'completed', 'retryable', 'reconciling')"
   );
+  assert.equal(renderCheck(emailStateCheck), "state IN ('pending', 'accepted', 'failed')");
   assert.match(renderCheck(lossReasonCheck), /status = 'perdido'/);
   assert.match(renderCheck(lossReasonCheck), /btrim\(loss_reason\) <> ''/);
   assert.match(renderCheck(lossReasonCheck), /loss_reason IS NULL/);
