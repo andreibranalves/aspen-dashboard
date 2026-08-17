@@ -35,6 +35,7 @@ import { handler as salesDashboard } from '../api/_functions/sales-dashboard.js'
 import { handler as salesOrderFromQuotation } from '../api/_functions/sales-order-from-quotation.js';
 import { handler as salesOrders } from '../api/_functions/sales-orders.js';
 import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
+import { handler as sendQuotationEmail } from '../api/_functions/send-quotation-email.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
 import { handler as settings } from '../api/_functions/settings.js';
@@ -81,6 +82,7 @@ const ROUTES = {
   'sales-order-from-quotation': salesOrderFromQuotation,
   'sales-orders': salesOrders,
   'send-whatsapp': sendWhatsapp,
+  'send-quotation-email': sendQuotationEmail,
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   pdf,
