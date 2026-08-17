@@ -6,6 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
+  formatCutoverEnvStatus,
   inspectCutoverEnv,
   readEnvKeys,
   requiredCutoverKeys,
@@ -24,10 +25,10 @@ function withTempDir(callback) {
   }
 }
 
-function writeCompleteEnvFile(path, extra = '') {
+function writeCompleteEnvFile(path, extra = '', values = {}) {
   writeFileSync(
     path,
-    `${requiredCutoverKeys.map((key) => `${key}=present`).join('\n')}\n${extra}`,
+    `${requiredCutoverKeys.map((key) => `${key}=${values[key] ?? 'present'}`).join('\n')}\n${extra}`,
   );
   return path;
 }
@@ -82,6 +83,30 @@ test('reports key presence without returning environment values', () => {
     assert.deepEqual(result.keys[1], { name: requiredCutoverKeys[1], status: 'missing' });
     assert.equal(result.ok, false);
     assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
+  });
+});
+
+test('preflight requires Resend key and verified sender without printing values', () => {
+  assert.ok(requiredCutoverKeys.includes('RESEND_API_KEY'));
+  assert.ok(requiredCutoverKeys.includes('RESEND_FROM_EMAIL'));
+  assert.ok(!requiredCutoverKeys.includes('RESEND_REPLY_TO'));
+
+  const secret = 're_secret_must_not_leak';
+  withTempDir((root) => {
+    const path = writeCompleteEnvFile(join(root, '.env'), '', {
+      RESEND_API_KEY: secret,
+      RESEND_FROM_EMAIL: 'Aspen <orcamentos@example.com>',
+    });
+    const result = inspectCutoverEnv({
+      env: {
+        HOME: '/tmp/aspen-test',
+        CUTOVER_ENV_FILE: path,
+      },
+    });
+    const output = formatCutoverEnvStatus(result);
+    assert.doesNotMatch(output, new RegExp(secret));
+    assert.match(output, /RESEND_API_KEY: present/);
+    assert.match(output, /RESEND_FROM_EMAIL: present/);
   });
 });
 
