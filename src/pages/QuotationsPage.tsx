@@ -369,6 +369,17 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     );
   };
 
+  const EmailMarker = ({ row }: { row: QuotationRow }) => (
+    <div className="flex flex-col items-start gap-0.5">
+      <span className={row.email_sent ? 'text-xs font-medium text-success' : 'text-xs text-fg-muted'}>
+        {row.email_sent ? 'E-mail enviado' : 'E-mail não enviado'}
+      </span>
+      {row.email_sent_at && (
+        <span className="text-[11px] text-fg-muted">{formatDate(row.email_sent_at)}</span>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
       {/* PageHeader + primary action */}
@@ -469,6 +480,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <TableHead>Cliente</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>E-mail</TableHead>
                 <TableHead className="text-center w-[180px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -499,6 +511,9 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       status={row.status_canonical || 'unknown'}
                       label={STATUS_LABELS[row.status_canonical || ''] || 'Status desconhecido'}
                     />
+                  </TableCell>
+                  <TableCell>
+                    <EmailMarker row={row} />
                   </TableCell>
                   <TableCell className="text-center">{actionButtons(row)}</TableCell>
                 </TableRow>
@@ -536,6 +551,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   label={STATUS_LABELS[row.status_canonical || ''] || 'Status desconhecido'}
                 />
               </div>
+              <EmailMarker row={row} />
               <div className="flex items-center justify-between text-sm">
                 <span className="text-fg-muted">{row.cliente || '—'}</span>
                 <span className="text-fg-muted text-xs">{formatDate(row.data)}</span>

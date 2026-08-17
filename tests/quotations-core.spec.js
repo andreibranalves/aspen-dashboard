@@ -15,6 +15,13 @@ function detail(overrides = {}) {
     status_canonical: 'rascunho',
     cliente: 'Cliente local',
     client_id: '33333333-3333-4333-8333-333333333333',
+    cliente_snapshot: {
+      id: '33333333-3333-4333-8333-333333333333',
+      nome: 'Cliente local',
+      email: 'cliente@example.com',
+    },
+    email_sent: false,
+    email_sent_at: null,
     validade_dias: 15,
     validade: '2026-07-16',
     data: '2026-07-01',
@@ -40,6 +47,61 @@ function detail(overrides = {}) {
     ...overrides,
   };
 }
+
+test('email markers render on desktop and mobile', async ({ page }) => {
+  const rows = [
+    {
+      id: 'ORC-EMAIL-1',
+      data: '2026-08-17',
+      cliente: 'Cliente Enviado',
+      valor: '100.00',
+      status: 'Enviado',
+      status_canonical: 'emitido',
+      revision_id: '11111111-1111-4111-8111-111111111111',
+      email_sent: true,
+      email_sent_at: '2026-08-17T12:00:00.000Z',
+    },
+    {
+      id: 'ORC-EMAIL-2',
+      data: '2026-08-17',
+      cliente: 'Cliente Pendente',
+      valor: '200.00',
+      status: 'Enviado',
+      status_canonical: 'emitido',
+      revision_id: '22222222-2222-4222-8222-222222222222',
+      email_sent: false,
+      email_sent_at: null,
+    },
+  ];
+  await page.route('**/api/quotations**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: rows,
+        pagination: { page: 1, limit: 10, total: rows.length, total_pages: 1 },
+        status_summary: { Enviado: rows.length },
+      }),
+    });
+  });
+
+  await page.goto('/#/quotations');
+  const desktopRows = page.getByRole('row');
+  await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('E-mail enviado');
+  await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
+  const pendingDesktopRow = desktopRows.filter({ hasText: 'ORC-EMAIL-2' });
+  await expect(pendingDesktopRow).toContainText('E-mail não enviado');
+  await expect(pendingDesktopRow.getByText('E-mail não enviado').locator('..')).not.toContainText('17/08/2026');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const mobileCards = page.locator('[class~="md:hidden"] > div');
+  await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('E-mail enviado');
+  await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
+  const pendingMobileCard = mobileCards.filter({ hasText: 'ORC-EMAIL-2' });
+  await expect(pendingMobileCard).toContainText('E-mail não enviado');
+  await expect(pendingMobileCard.getByText('E-mail não enviado').locator('..')).not.toContainText('17/08/2026');
+});
 
 test('local quotations list/search/open/edit and surface optimistic conflicts', async ({ page }) => {
   const customItemName = 'Lenço 100 x 100 cm';
