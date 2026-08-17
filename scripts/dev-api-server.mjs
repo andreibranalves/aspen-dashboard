@@ -38,6 +38,8 @@ import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
 import { handler as quotationDeliveries } from '../api/_functions/quotation-deliveries.js';
+import { handler as evolutionWebhook } from '../api/_functions/evolution-webhook.js';
+import { handler as quotationDeliveryWorker } from '../api/_functions/quotation-delivery-worker.js';
 import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
@@ -85,6 +87,8 @@ const ROUTES = {
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   'quotation-deliveries': quotationDeliveries,
+  'evolution-webhook': evolutionWebhook,
+  'quotation-delivery-worker': quotationDeliveryWorker,
   pdf,
   settings,
   'operational-status': operationalStatus,

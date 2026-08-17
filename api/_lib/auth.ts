@@ -4,6 +4,7 @@ import { isValidSessionSecret, SESSION_COOKIE_NAME, verifySessionToken } from '.
 
 const PUBLIC_ROUTES = new Set(['typebot-lead-capture']);
 const AUTH_ROUTES = new Set(['login', 'logout']);
+const MACHINE_ROUTES = new Set(['evolution-webhook', 'quotation-delivery-worker']);
 const MAX_COOKIE_HEADER_LENGTH = 8192;
 
 export interface AuthEnvironment {
@@ -47,6 +48,10 @@ export function getAuthConfiguration(environment: AuthEnvironment = process.env)
   };
 }
 
+export function isMachineRoute(routeName: string): boolean {
+  return MACHINE_ROUTES.has(routeName);
+}
+
 export function getRouteName(req: VercelRequestLike): string {
   const path = req.query?.path;
   if (Array.isArray(path)) return path[0] as string;
@@ -79,6 +84,7 @@ export function isAuthenticated(
 ): boolean {
   const routeName = getRouteName(req);
   const method = String(req.method || '').toUpperCase();
+  if (isMachineRoute(routeName)) return true;
   if (routeName === 'public-quotation' && method === 'GET') return true;
   if (PUBLIC_ROUTES.has(routeName) || AUTH_ROUTES.has(routeName)) return true;
 

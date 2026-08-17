@@ -6,7 +6,7 @@ import type {
   FunctionResult,
 } from './_lib/types.js';
 import { wrapFunctionHandler } from './_lib/function-adapter.js';
-import { isAuthenticated, getRouteName } from './_lib/auth.js';
+import { isAuthenticated, getRouteName, isMachineRoute } from './_lib/auth.js';
 import { checkRateLimitAsync } from './_lib/rate-limit.js';
 
 import { handler as crmDeals } from './_functions/crm-deals.js';
@@ -41,6 +41,8 @@ import { handler as sendWhatsapp } from './_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from './_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from './_functions/whatsapp-send-status.js';
 import { handler as quotationDeliveries } from './_functions/quotation-deliveries.js';
+import { handler as evolutionWebhook } from './_functions/evolution-webhook.js';
+import { handler as quotationDeliveryWorker } from './_functions/quotation-delivery-worker.js';
 import { handler as settings } from './_functions/settings.js';
 import { handler as typebotLeadCapture } from './_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from './_functions/whatsapp-conversations.js';
@@ -90,6 +92,8 @@ const ROUTES: Record<string, HandlerFunction> = {
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   'quotation-deliveries': quotationDeliveries,
+  'evolution-webhook': evolutionWebhook,
+  'quotation-delivery-worker': quotationDeliveryWorker,
   settings,
   'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
@@ -109,6 +113,8 @@ export default async function handler(
   req: VercelRequestLike,
   res: VercelResponseLike
 ): Promise<void> {
+  const routeName = getRouteName(req);
+
   // ── Auth guard ──
   if (!isAuthenticated(req)) {
     res.status(401).json({ error: 'Não autorizado. Faça login em /api/login.' });
@@ -116,12 +122,10 @@ export default async function handler(
   }
 
   // ── Rate limit ──
-  if (!(await checkRateLimitAsync(req))) {
+  if (!isMachineRoute(routeName) && !(await checkRateLimitAsync(req))) {
     res.status(429).json({ error: 'Muitas requisições. Aguarde um minuto.' });
     return;
   }
-
-  const routeName = getRouteName(req);
   const routeHandler = ROUTES[routeName];
 
   if (!routeHandler) {

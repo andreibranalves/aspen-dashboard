@@ -9,7 +9,7 @@ import { extname, join, normalize } from 'node:path';
 
 // Load local config before API handlers are evaluated.
 import './load-env-side-effect.mjs';
-import { isAuthenticated } from '../api/_lib/auth.js';
+import { isAuthenticated, isMachineRoute } from '../api/_lib/auth.js';
 import { checkRateLimitAsync } from '../api/_lib/rate-limit.js';
 
 // Import API handlers
@@ -45,6 +45,8 @@ import { handler as sendWhatsapp } from '../api/_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../api/_functions/whatsapp-send-status.js';
 import { handler as quotationDeliveries } from '../api/_functions/quotation-deliveries.js';
+import { handler as evolutionWebhook } from '../api/_functions/evolution-webhook.js';
+import { handler as quotationDeliveryWorker } from '../api/_functions/quotation-delivery-worker.js';
 import { handler as settings } from '../api/_functions/settings.js';
 import { handler as typebotLeadCapture } from '../api/_functions/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../api/_functions/whatsapp-conversations.js';
@@ -93,6 +95,8 @@ const ROUTES = {
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   'quotation-deliveries': quotationDeliveries,
+  'evolution-webhook': evolutionWebhook,
+  'quotation-delivery-worker': quotationDeliveryWorker,
   settings,
   'operational-status': operationalStatus,
   'typebot-lead-capture': typebotLeadCapture,
@@ -211,7 +215,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if (!(await checkRateLimitAsync(req))) {
+    if (!isMachineRoute(routeName) && !(await checkRateLimitAsync(req))) {
       res.writeHead(429, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Muitas requisições. Aguarde um minuto.' }));
       return;
