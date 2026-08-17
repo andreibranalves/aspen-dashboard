@@ -8,12 +8,24 @@ import { Button } from '@/components/ui/button';
 import { flowToSequencePayload, getFlowSummary, normalizeFlow } from '@/lib/whatsappFlows';
 import type { Flow } from '@/lib/whatsappFlows';
 import type { CommunicationFlow } from '@/lib/communicationApi';
+import { projectDelivery, type DeliveryView } from '@/lib/quotationDeliveryApi';
 
 export interface WhatsAppSendPanelProps {
   selectedFlowId?: string;
   flows?: CommunicationFlow[];
+  delivery?: DeliveryView | null;
+  pending?: boolean;
+  /** @deprecated Use delivery and pending. Kept for the legacy quotation surface during migration. */
   status?: {
-    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
+    state?:
+      | 'sending'
+      | 'sent'
+      | 'error'
+      | 'reconciling'
+      | 'accepted-partial'
+      | 'accepted'
+      | 'retryable'
+      | 'readonly';
     message?: string;
     deliveryAccepted?: boolean;
   };
@@ -25,14 +37,21 @@ export interface WhatsAppSendPanelProps {
 export default function WhatsAppSendPanel({
   selectedFlowId,
   flows = [],
+  delivery = null,
+  pending = false,
   status,
   onSelectFlow,
   onSend,
   hideButton = false,
 }: WhatsAppSendPanelProps) {
-  const selectedFlow = normalizeFlow(((flows.find((f) => f.id === selectedFlowId) || flows[0] || {})) as unknown as Partial<Flow>);
+  const selectedFlow = normalizeFlow(
+    (flows.find((f) => f.id === selectedFlowId) || flows[0] || {}) as unknown as Partial<Flow>
+  );
   const sequence = selectedFlow ? flowToSequencePayload(selectedFlow) : null;
   const hasValidSteps = sequence && sequence.steps.length > 0;
+  const deliveryProjection = delivery ? projectDelivery(delivery) : null;
+  const isPending = pending || status?.state === 'sending';
+  const deliveryBlocksSend = Boolean(delivery && delivery.state !== 'failed');
 
   return (
     <>
@@ -63,34 +82,51 @@ export default function WhatsAppSendPanel({
                 type="button"
                 size="lg"
                 className="w-full"
-                disabled={status?.state === 'sending' || status?.state === 'reconciling' || status?.state === 'accepted-partial' || status?.state === 'accepted' || status?.state === 'readonly'}
+                disabled={
+                  isPending ||
+                  deliveryBlocksSend ||
+                  status?.state === 'reconciling' ||
+                  status?.state === 'accepted-partial' ||
+                  status?.state === 'accepted' ||
+                  status?.state === 'readonly'
+                }
                 onClick={onSend}
               >
                 <Phone size={16} />
-                {status?.state === 'sent'
-                  ? 'Enviado pelo WhatsApp'
-                  : status?.state === 'accepted' || status?.state === 'accepted-partial'
-                    ? 'Envio aceito'
-                    : status?.state === 'reconciling'
-                      ? 'Reconciliação necessária'
-                      : status?.state === 'readonly'
-                        ? 'Somente leitura'
-                        : status?.state === 'sending'
-                          ? 'Enviando…'
-                          : 'Enviar via WhatsApp'}
+                {delivery
+                  ? delivery.state === 'failed'
+                    ? 'Enviar via WhatsApp'
+                    : isPending
+                      ? 'Enviando…'
+                      : deliveryProjection?.label
+                  : status?.state === 'sent'
+                    ? 'Enviado pelo WhatsApp'
+                    : status?.state === 'accepted' || status?.state === 'accepted-partial'
+                      ? 'Envio aceito'
+                      : status?.state === 'reconciling'
+                        ? 'Reconciliação necessária'
+                        : status?.state === 'readonly'
+                          ? 'Somente leitura'
+                          : status?.state === 'sending'
+                            ? 'Enviando…'
+                            : 'Enviar via WhatsApp'}
               </Button>
-              {status?.message && (
+              {(status?.message || delivery?.publicError) && (
                 <p
                   className={cn(
                     'text-xs leading-5 text-center',
-                    status.state === 'error' || status.state === 'retryable'
+                    status?.state === 'error' ||
+                      status?.state === 'retryable' ||
+                      delivery?.state === 'failed'
                       ? 'text-destructive'
-                      : status.deliveryAccepted || status.state === 'accepted' || status.state === 'accepted-partial'
+                      : status?.deliveryAccepted ||
+                          status?.state === 'accepted' ||
+                          status?.state === 'accepted-partial'
                         ? 'text-warning'
                         : 'text-fg-muted'
                   )}
                 >
-                  {status.message}
+                  {delivery?.publicError || status?.message}
                 </p>
               )}
             </>

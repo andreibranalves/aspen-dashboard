@@ -491,3 +491,22 @@ export async function executeFlow(
   }
   return projectExecuteFlowPayloadResponse(data);
 }
+
+// Durable delivery helpers remain available from the communication API during migration.
+export {
+  deliveryPollDelay,
+  enqueueDelivery,
+  fetchDelivery,
+  listDeliveries,
+  projectDelivery,
+  resolveDelivery,
+} from './quotationDeliveryApi.ts';
+export type {
+  DeliveryIdentity,
+  DeliveryListFilters,
+  DeliveryPage,
+  DeliveryResolution,
+  DeliveryStepView,
+  DeliveryState,
+  DeliveryView,
+} from './quotationDeliveryApi.ts';
