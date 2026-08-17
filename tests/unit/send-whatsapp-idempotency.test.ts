@@ -40,14 +40,17 @@ test('PostgreSQL revision and flow identity leave transport idempotency to the o
   const identities: Array<{ revisionId: string; flowId: string }> = [];
   const records = new Map<string, any>();
   let transportCalls = 0;
+  const transport = async (flowId: string) => {
+    transportCalls += 1;
+    return durableDelivery({ flowId });
+  };
   const deliveryModule = {
     async enqueue(input: { revisionId: string; flowId: string }) {
       identities.push(input);
       const key = `${input.revisionId}:${input.flowId}`;
       let delivery = records.get(key);
       if (!delivery) {
-        transportCalls += 1;
-        delivery = durableDelivery({ flowId: input.flowId });
+        delivery = await transport(input.flowId);
         records.set(key, delivery);
       }
       return delivery;
