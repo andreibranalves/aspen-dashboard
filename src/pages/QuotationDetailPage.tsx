@@ -139,6 +139,13 @@ function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
   return cloneSections(existing);
 }
 
+const EMAIL_AMBIGUOUS_ERROR = 'O resultado do envio não pôde ser confirmado. Tente novamente.';
+const EMAIL_SEND_ERROR = 'Não foi possível enviar o e-mail. Tente novamente.';
+
+function normalizeEmailRecipient(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function asCoreItems(items: QuotationItem[] | undefined): CoreQuotationItem[] {
   return (items || []).map((item) => ({
     _key: item._key || makeItemKey(),
@@ -169,6 +176,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [emailError, setEmailError] = useState('');
   const [emailSuccess, setEmailSuccess] = useState('');
   const [emailAttemptId, setEmailAttemptId] = useState('');
+  const [emailAttemptRecipient, setEmailAttemptRecipient] = useState('');
   const [deliveryFlows, setDeliveryFlows] = useState<CommunicationFlow[]>([]);
   const [deliveryFlowId, setDeliveryFlowId] = useState('');
   const [lifecycleAction, setLifecycleAction] = useState<
@@ -225,6 +233,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setEditing(false);
     setConflict('');
   }, [initialData]);
+
+  useEffect(() => {
+    setEmailDialogOpen(false);
+    setEmailError('');
+    setEmailAttemptId('');
+    setEmailAttemptRecipient('');
+  }, [data.id, data.revision_id]);
 
   useEffect(() => {
     let active = true;
@@ -722,30 +737,41 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [data.id, data.quotation_id, data.quotation_uuid, data.revision_id, deliveryFlowId, deliveryState]);
   const sendQuotationEmail = useCallback(async (recipient: string) => {
     if (!data.revision_id) return;
-    const attemptId = emailAttemptId || globalThis.crypto.randomUUID();
+    const recipientValue = recipient.trim();
+    const sameRecipient =
+      emailAttemptId &&
+      emailAttemptRecipient &&
+      normalizeEmailRecipient(emailAttemptRecipient) === normalizeEmailRecipient(recipientValue);
+    const attemptId = sameRecipient ? emailAttemptId : globalThis.crypto.randomUUID();
     setEmailAttemptId(attemptId);
+    setEmailAttemptRecipient(recipientValue);
     setEmailSending(true);
     setEmailError('');
     setEmailSuccess('');
     try {
       await apiPost('/send-quotation-email', {
         revision_id: data.revision_id,
-        recipient,
+        recipient: recipientValue,
         attempt_id: attemptId,
       });
       setEmailSuccess('E-mail aceito para envio.');
       setEmailDialogOpen(false);
       setEmailAttemptId('');
+      setEmailAttemptRecipient('');
       await onReload();
     } catch (error) {
       const apiError = error as ApiError;
       const response = apiError.data as { retry_same_attempt?: unknown } | undefined;
-      if (response?.retry_same_attempt !== true) setEmailAttemptId('');
-      setEmailError(error instanceof Error ? error.message : 'Não foi possível enviar o e-mail.');
+      const retrySameAttempt = response?.retry_same_attempt === true;
+      if (!retrySameAttempt) {
+        setEmailAttemptId('');
+        setEmailAttemptRecipient('');
+      }
+      setEmailError(retrySameAttempt ? EMAIL_AMBIGUOUS_ERROR : EMAIL_SEND_ERROR);
     } finally {
       setEmailSending(false);
     }
-  }, [data.revision_id, emailAttemptId, onReload]);
+  }, [data.revision_id, emailAttemptId, emailAttemptRecipient, onReload]);
   const cancelEmailDialog = useCallback(() => {
     setEmailError('');
     setEmailDialogOpen(false);
@@ -1350,7 +1376,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       </div>
       <QuotationEmailDialog
         open={emailDialogOpen}
-        initialEmail={data.email || ''}
+        initialEmail={emailAttemptRecipient || data.email || ''}
         sending={emailSending}
         error={emailError}
         onCancel={cancelEmailDialog}
@@ -1365,19 +1391,28 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const concurrencyTokenRef = useRef('');
+  const dataRef = useRef<QuotationData | null>(null);
+
+  useEffect(() => {
+    dataRef.current = null;
+  }, [id]);
 
   const loadDetail = useCallback(async () => {
+    const hasExistingDetail = dataRef.current?.id === id;
     setLoading(true);
     setError(null);
-    concurrencyTokenRef.current = '';
+    if (!hasExistingDetail) concurrencyTokenRef.current = '';
     try {
       const result = await apiGet<unknown>(`/quotations?id=${encodeURIComponent(id)}`);
       const projection = projectQuotationDetail(result);
       if (!projection) throw new Error('Resposta inválida ao carregar orçamento.');
       concurrencyTokenRef.current = projection.concurrencyToken;
+      dataRef.current = projection.data;
       setData(projection.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar orçamento.');
+      if (!hasExistingDetail) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar orçamento.');
+      }
     } finally {
       setLoading(false);
     }
