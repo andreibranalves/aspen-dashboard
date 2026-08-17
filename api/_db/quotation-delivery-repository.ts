@@ -11,6 +11,7 @@ import {
 } from './schema.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../_lib/quotation-status.js';
 import {
+  formatQuotationDate,
   renderQuotationTemplate,
   type QuotationTemplate,
   type QuotationTemplateViewModel,
@@ -345,7 +346,7 @@ function revisionViewModel(
     secoes: sections,
     sections_snapshot: sections,
     subtotal: revision.subtotal, freight: revision.frete, frete: revision.frete, total: revision.total,
-    display: { quote_date: issuedAt.toISOString().slice(0, 10), validity_date: until.toISOString().slice(0, 10), subtotal, freight, total },
+    display: { quote_date: formatQuotationDate(issuedAt), validity_date: formatQuotationDate(until), subtotal, freight, total },
   };
 }
 

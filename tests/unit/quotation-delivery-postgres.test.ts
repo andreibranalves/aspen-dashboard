@@ -36,7 +36,7 @@ function pdfWithEof(): Buffer {
   return Buffer.from('%PDF-1.7\ncontent\n%%EOF');
 }
 
-const SECTION_TEMPLATE = '<!doctype html><html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}} {{secoes.pagamento.body_html}} {{secoes.condicoes_gerais.body_html}} {{secoes.prazo_producao.value}}</body></html>';
+const SECTION_TEMPLATE = '<!doctype html><html><body>{{quote_number}} {{client.name}} Data: {{display.quote_date}} Validade: {{display.validity_date}} {{#each items}}{{name}}{{/each}} {{display.total}} {{secoes.pagamento.body_html}} {{secoes.condicoes_gerais.body_html}} {{secoes.prazo_producao.value}}</body></html>';
 const SECTION_TEMPLATE_HASH = createHash('sha256').update(SECTION_TEMPLATE).digest('hex');
 
 function fakePreparationDatabase(options: { failRevisionRead?: boolean } = {}) {
@@ -106,6 +106,23 @@ test('repository does not classify database reads as PDF failures', async () => 
     repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' }),
     (error: unknown) => error instanceof QuotationDeliveryRepositoryError && !(error instanceof QuotationDeliveryPdfError),
   );
+});
+
+test('delivery PDF formats issue and validity dates for display', async () => {
+  const { db, now, revisionId } = fakePreparationDatabase();
+  let renderedHtml = '';
+  const repository = createPostgresQuotationDeliveryRepository(() => db, {
+    now: () => now,
+    renderPdf: async (html) => {
+      renderedHtml = html;
+      return pdfWithEof();
+    },
+  });
+
+  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+
+  assert.match(renderedHtml, /Data: 13\/08\/2026/);
+  assert.match(renderedHtml, /Validade: 28\/08\/2026/);
 });
 
 test('repository classifies renderer failures and invalid bytes as PDF failures', async () => {
