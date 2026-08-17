@@ -117,6 +117,12 @@ O salvamento substituirá atomicamente o documento global.
 O endpoint será separado da API geral de Configurações para evitar que uma tela sobrescreva campos pertencentes à outra.
 A implementação não criará tabela própria, histórico, versões ou registro por usuário.
 
+A tabela `quotation_email_deliveries` receberá o campo `template_snapshot` JSONB anulável para o snapshot temporário do modelo.
+A primeira reserva de uma tentativa armazenará somente o modelo com placeholders, sem destinatário ou dados renderizados.
+Retries da mesma tentativa pendente usarão esse snapshot para repetir exatamente o mesmo payload sob a mesma chave de idempotência.
+A conclusão confirmada como aceita ou falha apagará o snapshot.
+Nenhum conteúdo do modelo permanecerá no histórico terminal.
+
 ## API
 
 A aplicação terá um endpoint autenticado com os seguintes métodos:
@@ -170,6 +176,9 @@ Ele substituirá `{{nome_cliente}}` e `{{numero_orcamento}}` pelos dados da revi
 O assunto, o HTML e o texto simples renderizados serão passados ao transporte.
 O remetente e o reply-to continuarão vindo das variáveis de ambiente.
 A idempotência existente continuará baseada na tentativa de envio.
+A primeira tentativa reservará o modelo ativo com placeholders antes de chamar a Resend.
+Uma tentativa pendente repetida reutilizará o modelo reservado, mesmo que o modelo global tenha mudado depois.
+Estados terminais limparão o snapshot temporário.
 
 Uma falha ao carregar ou validar a configuração bloqueará o envio.
 O sistema não usará silenciosamente um modelo diferente do configurado.
@@ -177,7 +186,7 @@ O cliente receberá uma mensagem genérica em português.
 Logs não incluirão destinatário, conteúdo renderizado, PDF, segredo, erro bruto do banco ou resposta bruta do provider.
 
 E-mails já enviados permanecerão imutáveis.
-O histórico continuará armazenando somente os metadados de entrega já previstos.
+O histórico terminal continuará armazenando somente os metadados de entrega já previstos.
 
 ## Estados e falhas da interface
 
@@ -199,7 +208,9 @@ O renderizador escapará HTML antes de produzir a mensagem final.
 Somente os dois tokens permitidos serão interpolados.
 O endpoint permanecerá atrás da autenticação e do rate limiting da fronteira implantada.
 
-A configuração não armazenará credenciais, destinatários ou conteúdo por envio.
+A configuração não armazenará credenciais ou destinatários.
+Somente tentativas pendentes manterão temporariamente o modelo não renderizado necessário para retry idempotente.
+Estados terminais apagarão esse snapshot e não reterão conteúdo adicional.
 O preview não utilizará dados reais de clientes.
 Mensagens e logs não exporão dados pessoais ou detalhes internos.
 
@@ -242,6 +253,9 @@ Mensagens e logs não exporão dados pessoais ou detalhes internos.
 - O link público e o PDF permanecem automáticos.
 - O transporte recebe HTML e texto simples.
 - Falha de configuração impede a chamada à Resend.
+- A primeira reserva mantém o modelo não renderizado da tentativa pendente.
+- Retry pendente reutiliza o snapshot mesmo após alteração do modelo global.
+- Estados aceito e falha limpam o snapshot temporário.
 - Idempotência e estados de entrega existentes não sofrem regressão.
 - O E2E usa transporte controlado e nunca envia e-mail real.
 
@@ -254,6 +268,6 @@ Mensagens e logs não exporão dados pessoais ou detalhes internos.
 5. Salvar ativa o conteúdo para todos os próximos e-mails de orçamento.
 6. Um envio posterior usa o assunto e o corpo configurados com as duas variáveis resolvidas.
 7. Link público, botão estrutural, PDF, remetente e reply-to continuam controlados pelo sistema.
-8. E-mails enviados anteriormente não mudam e nenhum conteúdo adicional é retido no histórico.
+8. Retries pendentes repetem o modelo originalmente reservado e estados terminais não retêm conteúdo adicional.
 9. Falhas preservam o texto digitado e não expõem dados sensíveis.
 10. Testes automatizados comprovam validação, renderização, persistência, interface e integração sem chamar a Resend real.
