@@ -34,7 +34,7 @@
 - **Vite builds into `public/`** with `emptyOutDir: false`.
 - **Hash-based routing** uses `useHashRoute` and manual dispatch in `App.tsx`.
 - **Backend handlers** receive Lambda-shaped events and return `{ statusCode, body }`.
-- **Local API development** uses `scripts/dev-api-server.mjs` on port 8888.
+- **Local API development** uses `npm run dev` (`scripts/vite-dev.mjs`), which runs `scripts/app-server.mjs` on port 8888 behind the Vite `/api` proxy.
 - **Errors** returned to users are written in Brazilian Portuguese.
 - **PostgreSQL** is the source of truth for products, clients, quotations, CRM, orders and activity.
 - **Evolution API** is the only WhatsApp transport.
@@ -60,8 +60,8 @@ node scripts/check-no-legacy-provider.mjs
 
 ## NOTES
 
-- `ROUTES` maps are duplicated across `api/[...path].ts`, `scripts/dev-api-server.mjs` and `scripts/app-server.mjs`.
-- Keep all three route maps synchronized when adding or removing endpoints.
+- `api/_app/routes.ts` is the single route map shared by the Vercel catch-all and `scripts/app-server.mjs`.
+- Register new endpoints once in `api/_app/routes.ts`.
 - Authentication and rate limiting run at the deployed API boundary.
 - Local development servers intentionally omit deployed authentication middleware.
 
