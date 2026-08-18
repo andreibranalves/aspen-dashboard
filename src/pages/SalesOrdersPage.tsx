@@ -8,10 +8,10 @@ import {
 } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Search, ShoppingCart, TrendingUp, DollarSign, Package } from 'lucide-react';
-import { apiGet } from '@/lib/api';
-import { formatBRL } from '@/lib/formatters';
+import { apiGet } from '@/lib/api/api';
+import { formatBRL } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

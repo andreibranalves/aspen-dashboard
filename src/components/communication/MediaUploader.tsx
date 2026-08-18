@@ -5,8 +5,8 @@
 import { useState, useRef, useCallback, type DragEvent } from 'react';
 import { Upload, Loader2, AlertCircle } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
-import { createMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi';
-import type { ProductGroup } from '@/lib/communicationApi';
+import { createMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/api/communicationApi';
+import type { ProductGroup } from '@/lib/api/communicationApi';
 
 export interface MediaUploaderProps {
   onUploadComplete?: () => void;

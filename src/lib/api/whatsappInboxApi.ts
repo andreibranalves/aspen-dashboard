@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from '@/lib/api';
+import { apiGet, apiPatch, apiPost } from '@/lib/api/api';
 
 export interface WhatsappAttachment {
   id: string;

@@ -1,7 +1,7 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
-import PageLoader from '@/components/PageLoader';
+import PageLoader from '@/components/shared/PageLoader';
 
 import AutoQuotePage from '@/pages/AutoQuotePage';
 import LoginPage from '@/pages/LoginPage';

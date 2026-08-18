@@ -17,16 +17,16 @@ import {
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatBRL, capitalize } from '@/lib/formatters';
+import { formatBRL, capitalize } from '@/lib/formatting/formatters';
 import { DEFAULT_LEAD_SOURCE, LEAD_SOURCES } from '@/lib/clientMetadata';
-import { isUnpricedProduct, searchProducts } from '@/lib/productCache';
+import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
 import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection } from '@/types/domain';
-import type { CommunicationFlow } from '@/lib/communicationApi';
-import type { QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
+import type { CommunicationFlow } from '@/lib/api/communicationApi';
+import type { QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 
 export interface SplitResultCardProps {
   draft: Draft;

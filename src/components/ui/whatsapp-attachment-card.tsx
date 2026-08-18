@@ -1,5 +1,5 @@
 import { FileText, Image as ImageIcon, Music, FileSpreadsheet } from 'lucide-react';
-import { type WhatsappAttachment } from '@/lib/whatsappInboxApi';
+import { type WhatsappAttachment } from '@/lib/api/whatsappInboxApi';
 import { cn } from '@/lib/utils';
 
 export function WhatsAppAttachmentCard({ attachment }: { attachment: WhatsappAttachment }) {

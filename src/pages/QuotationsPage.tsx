@@ -18,13 +18,13 @@ import {
   PlusCircle,
   Copy,
 } from 'lucide-react';
-import { apiGet, apiPost, apiDelete } from '@/lib/api';
-import { formatBRL, formatDate } from '@/lib/formatters';
-import { buildQuotationPreviewUrl } from '@/lib/printFormats';
+import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
+import { formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table,
@@ -34,7 +34,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table';
-import SkeletonTable from '@/components/SkeletonTable';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
 
 const STATUS_LABELS: Record<string, string> = {

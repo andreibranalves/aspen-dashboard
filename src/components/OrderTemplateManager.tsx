@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Archive, ChevronDown, ChevronUp, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
-import ConfirmDialog from '@/components/ConfirmDialog';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { isUnpricedProduct, searchProducts } from '@/lib/productCache';
+import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import {
   archiveOrderTemplate,
   createOrderTemplate,
   updateOrderTemplate,
   type OrderTemplate,
-} from '@/lib/orderTemplatesApi';
+} from '@/lib/api/orderTemplatesApi';
 import type { Product } from '@/types/domain';
 
 interface OrderTemplateManagerProps {

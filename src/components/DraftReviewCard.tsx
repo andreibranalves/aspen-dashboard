@@ -5,9 +5,9 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { Check, X, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatBRL } from '@/lib/formatters';
+import { formatBRL } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
-import Skeleton from '@/components/Skeleton';
+import Skeleton from '@/components/shared/Skeleton';
 import CustomerMetadataForm from '@/components/CustomerMetadataForm';
 import DraftItemTable from '@/components/DraftItemTable';
 import type { Address } from '@/lib/clientMetadata';

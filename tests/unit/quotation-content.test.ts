@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizePublicQuotationUrl } from '../../src/lib/printFormats.ts';
+import { normalizePublicQuotationUrl } from '../../src/lib/formatting/printFormats.ts';
 import {
   DEFAULT_QUOTATION_SECTIONS,
   combineLegacyConditions,

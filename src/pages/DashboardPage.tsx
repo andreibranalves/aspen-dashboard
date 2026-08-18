@@ -11,10 +11,10 @@ import {
   ExternalLink,
   type LucideIcon,
 } from 'lucide-react';
-import { apiGet } from '@/lib/api';
-import { formatBRL, capitalize } from '@/lib/formatters';
+import { apiGet } from '@/lib/api/api';
+import { formatBRL, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
 

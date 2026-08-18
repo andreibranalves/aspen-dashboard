@@ -8,32 +8,32 @@ import {
   Image as ImageIcon,
   X,
 } from 'lucide-react';
-import { apiPost, apiGet } from '@/lib/api';
-import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
+import { apiPost, apiGet } from '@/lib/api/api';
+import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import OrderTemplateManager from '@/components/OrderTemplateManager';
-import { listOrderTemplates, type OrderTemplate } from '@/lib/orderTemplatesApi';
-import { capitalize, formatBRL, formatDate } from '@/lib/formatters';
+import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
+import { capitalize, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
 import type { Draft, StoredAutoQuoteDraft } from '@/types/domain';
-import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/autoQuoteDraftStorage';
+import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/storage/autoQuoteDraftStorage';
 import {
   buildQuotePayload,
   getQuotationIssue,
   issueQuotation,
   isPriceAuthoritativeConflict,
   QuotationIssueApiError,
-} from '@/lib/quotationIssueApi';
-import { fetchFlows, executeFlow, CommunicationSendError, projectDeliveryFailure, type CommunicationFlow } from '@/lib/communicationApi';
+} from '@/lib/api/quotationIssueApi';
+import { fetchFlows, executeFlow, CommunicationSendError, projectDeliveryFailure, type CommunicationFlow } from '@/lib/api/communicationApi';
 import {
   executeWithSendLock,
   isSendableQuotationStatus,
   sendContextKey,
   type SendContext,
-} from '@/lib/communicationSend';
+} from '@/lib/api/communicationSend';
 
 interface HistoryItem {
   id: string;

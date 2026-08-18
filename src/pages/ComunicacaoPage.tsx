@@ -5,7 +5,7 @@
 import { useState, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import FlowEditorTab from '@/components/communication/FlowEditorTab';
 import MediaUploader from '@/components/communication/MediaUploader';
 import MediaLibrary from '@/components/communication/MediaLibrary';

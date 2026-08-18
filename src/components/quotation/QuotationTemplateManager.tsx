@@ -12,7 +12,7 @@ import {
   validateQuotationTemplate,
   type QuotationTemplateDetail,
   type QuotationTemplateMetadata,
-} from '@/lib/quotationTemplatesApi';
+} from '@/lib/api/quotationTemplatesApi';
 
 interface QuotationTemplateManagerProps {
   onTemplatesChanged?: (defaultKey?: string) => void;

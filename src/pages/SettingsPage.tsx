@@ -9,12 +9,12 @@ import {
   Save,
   SlidersHorizontal,
 } from 'lucide-react';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QuotationSectionsEditor } from '@/components/quotation/QuotationSectionsEditor';
 import { QuotationTemplateManager } from '@/components/quotation/QuotationTemplateManager';
-import { getSettings, saveSettings, type DashboardSettings } from '@/lib/settingsApi';
+import { getSettings, saveSettings, type DashboardSettings } from '@/lib/api/settingsApi';
 
 interface SettingsForm {
   validade_dias: string;

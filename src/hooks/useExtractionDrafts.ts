@@ -3,8 +3,8 @@
 // Extracted from AutoQuotePage.jsx.
 
 import { useState, useCallback, useRef } from 'react';
-import { apiPost } from '@/lib/api';
-import { isUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/productCache';
+import { apiPost } from '@/lib/api/api';
+import { isUnpricedProduct, searchProducts as cachedSearchProducts } from '@/lib/api/productCache';
 import type {
   Draft,
   DraftEdited,

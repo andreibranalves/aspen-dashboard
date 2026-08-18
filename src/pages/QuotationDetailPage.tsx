@@ -18,8 +18,8 @@ import {
   Loader2,
   Search,
 } from 'lucide-react';
-import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api';
-import { issueQuotation } from '@/lib/quotationIssueApi';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/lib/api/api';
+import { issueQuotation } from '@/lib/api/quotationIssueApi';
 import {
   fetchDeliveryStatus,
   fetchFlows,
@@ -28,15 +28,15 @@ import {
   projectDeliveryState,
   type CommunicationFlow,
   type DeliveryProjection,
-} from '@/lib/communicationApi';
-import { searchProducts } from '@/lib/productCache';
+} from '@/lib/api/communicationApi';
+import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
-import { formatBRL, formatDate } from '@/lib/formatters';
+import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import SkeletonDetail from '@/components/SkeletonDetail';
+import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import {
   QuotationSectionsEditor,
   type QuotationSectionsSnapshot,

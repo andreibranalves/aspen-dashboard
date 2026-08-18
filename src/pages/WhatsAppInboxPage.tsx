@@ -8,11 +8,11 @@ import {
   Search,
   User,
 } from 'lucide-react';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { WhatsAppAttachmentCard } from '@/components/ui/whatsapp-attachment-card';
 import { Input } from '@/components/ui/input';
-import { fmtPhone, formatDate } from '@/lib/formatters';
+import { fmtPhone, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
   extractWhatsappQuote,
@@ -27,7 +27,7 @@ import {
   type WhatsappConversationStatus,
   type WhatsappExtractionResult,
   type WhatsappMessage,
-} from '@/lib/whatsappInboxApi';
+} from '@/lib/api/whatsappInboxApi';
 
 const STATUS_FILTERS: Array<{ value: WhatsappConversationStatus | 'all'; label: string }> = [
   { value: 'all', label: 'Todas' },

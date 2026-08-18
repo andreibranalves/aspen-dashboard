@@ -8,12 +8,12 @@ import {
   ArchiveRestore,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
-import { apiGet, apiDelete, apiPatch } from '@/lib/api';
-import { formatBRL } from '@/lib/formatters';
-import { clearProductCache } from '@/lib/productCache';
+import { apiGet, apiDelete, apiPatch } from '@/lib/api/api';
+import { formatBRL } from '@/lib/formatting/formatters';
+import { clearProductCache } from '@/lib/api/productCache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import SkeletonTable from '@/components/SkeletonTable';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,

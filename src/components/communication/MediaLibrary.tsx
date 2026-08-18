@@ -3,10 +3,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Filter } from 'lucide-react';
-import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/communicationApi';
-import type { MediaItem, ProductGroup } from '@/lib/communicationApi';
+import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/api/communicationApi';
+import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
 import MediaGridItem from '@/components/communication/MediaGridItem';
-import ConfirmDialog from '@/components/ConfirmDialog';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import SkeletonComunicacao from '@/components/SkeletonComunicacao';
 
 export interface MediaLibraryProps {

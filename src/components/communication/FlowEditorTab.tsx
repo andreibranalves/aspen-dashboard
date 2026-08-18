@@ -18,9 +18,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fetchFlows, saveFlows } from '@/lib/communicationApi';
-import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/communicationApi';
-import { renderFlowTemplate } from '@/lib/whatsappFlows';
+import { fetchFlows, saveFlows } from '@/lib/api/communicationApi';
+import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/api/communicationApi';
+import { renderFlowTemplate } from '@/lib/api/whatsappFlows';
 import SkeletonComunicacao from '@/components/SkeletonComunicacao';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 

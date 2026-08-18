@@ -1,4 +1,4 @@
-import type { QuotationSectionsSettings } from '@/lib/settingsApi';
+import type { QuotationSectionsSettings } from '@/lib/api/settingsApi';
 import { Button } from '@/components/ui/button';
 
 export interface QuotationSectionsSnapshot {

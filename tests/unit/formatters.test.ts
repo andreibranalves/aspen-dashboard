@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatBRL, fmtPhone, capitalize, formatDate } from '../../src/lib/formatters.ts';
+import { formatBRL, fmtPhone, capitalize, formatDate } from '../../src/lib/formatting/formatters.ts';
 
 describe('formatBRL', () => {
   it('formats integer with BRL', () => {

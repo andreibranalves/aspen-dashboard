@@ -21,13 +21,13 @@ import {
   Archive,
   ArchiveRestore,
 } from 'lucide-react';
-import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from '@/lib/api';
-import { clearProductCache } from '@/lib/productCache';
-import { formatBRL, formatDate } from '@/lib/formatters';
+import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from '@/lib/api/api';
+import { clearProductCache } from '@/lib/api/productCache';
+import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSetTopBarActions } from '@/components/layout/Layout';
-import SkeletonDetail from '@/components/SkeletonDetail';
+import SkeletonDetail from '@/components/shared/SkeletonDetail';
 
 interface Produto {
   sku: string;

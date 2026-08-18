@@ -5,8 +5,8 @@
 import { GripVertical, X, Plus, Package, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
-import { formatBRL } from '@/lib/formatters';
-import { isUnpricedProduct } from '@/lib/productCache';
+import { formatBRL } from '@/lib/formatting/formatters';
+import { isUnpricedProduct } from '@/lib/api/productCache';
 import type { Dispatch, SetStateAction } from 'react';
 import type { Product, Draft, DraftItem, ProductSearchEntry } from '@/types/domain';
 

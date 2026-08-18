@@ -2,7 +2,7 @@ import type {
   DraftItem,
   QuotationIssueProjection,
   StoredAutoQuoteDraft,
-} from '../types/domain.ts';
+} from '../../types/domain.ts';
 
 export const AUTO_QUOTE_DRAFTS_STORAGE_KEY = 'aspen_drafts';
 export const AUTO_QUOTE_DRAFTS_STORAGE_VERSION = 1;

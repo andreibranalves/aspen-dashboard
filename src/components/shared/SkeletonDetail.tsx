@@ -1,4 +1,4 @@
-import Skeleton from '@/components/Skeleton';
+import Skeleton from '@/components/shared/Skeleton';
 
 /**
  * SkeletonDetail — simula uma página de detalhe durante o carregamento.

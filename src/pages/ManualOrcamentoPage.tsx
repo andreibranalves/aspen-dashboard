@@ -23,14 +23,14 @@ import {
   Trash2,
   UserPlus,
 } from 'lucide-react';
-import { apiGet, apiPost } from '@/lib/api';
-import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
+import { apiGet, apiPost } from '@/lib/api/api';
+import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import {
   isUnpricedProduct,
   searchProducts as cachedSearchProducts,
-} from '@/lib/productCache';
+} from '@/lib/api/productCache';
 import type { OrcamentoResponse, Product } from '@/types/domain';
-import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatters';
+import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

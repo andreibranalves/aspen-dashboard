@@ -3,8 +3,8 @@
 
 import { useState } from 'react';
 import { Trash2, Image, Video } from 'lucide-react';
-import { GROUP_LABELS } from '@/lib/communicationApi';
-import type { MediaItem } from '@/lib/communicationApi';
+import { GROUP_LABELS } from '@/lib/api/communicationApi';
+import type { MediaItem } from '@/lib/api/communicationApi';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '';

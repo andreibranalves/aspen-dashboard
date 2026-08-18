@@ -1,4 +1,4 @@
-import Skeleton from '@/components/Skeleton';
+import Skeleton from '@/components/shared/Skeleton';
 
 /**
  * SkeletonComunicacao — skeleton da página de Comunicação.

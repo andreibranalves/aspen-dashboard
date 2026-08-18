@@ -1,4 +1,4 @@
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPut } from '@/lib/api/api';
 
 export interface QuotationSectionSettings {
   enabled: boolean;

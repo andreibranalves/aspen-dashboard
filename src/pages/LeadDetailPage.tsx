@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { AlertTriangle, Archive, ArchiveRestore, Check, Edit3, FileText, Mail, MapPin, Phone, Save, UserRound, X } from 'lucide-react';
-import { apiGet, apiPut, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { apiGet, apiPut, apiPost, apiPatch, apiDelete } from '@/lib/api/api';
 import type { LeadCreateResponse } from '@/types/domain';
-import { fmtPhone, formatBRL, formatDate } from '@/lib/formatters';
-import PageHeader from '@/components/PageHeader';
-import SkeletonDetail from '@/components/SkeletonDetail';
+import { fmtPhone, formatBRL, formatDate } from '@/lib/formatting/formatters';
+import PageHeader from '@/components/shared/PageHeader';
+import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

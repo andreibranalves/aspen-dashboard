@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
 import { Search, Phone, Mail, AlertTriangle, Users, Eye, ChevronRight, Archive, ArchiveRestore, UserPlus, Check, X } from 'lucide-react';
-import { apiGet, apiPut, apiPatch, apiDelete } from '@/lib/api';
-import { fmtPhone } from '@/lib/formatters';
+import { apiGet, apiPut, apiPatch, apiDelete } from '@/lib/api/api';
+import { fmtPhone } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import PageHeader from '@/components/PageHeader';
+import PageHeader from '@/components/shared/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import SkeletonTable from '@/components/SkeletonTable';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import { DetailDrawer } from '@/components/DetailDrawer';
 import { QualityBadges, type QualityBadge } from '@/components/QualityBadges';
 import { ContextActions, type ContextAction } from '@/components/ContextActions';

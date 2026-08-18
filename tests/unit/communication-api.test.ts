@@ -7,8 +7,8 @@ import {
   fetchDeliveryStatus,
   projectDeliveryFailure,
   projectDeliveryState,
-} from '../../src/lib/communicationApi.ts';
-import { getQuotationIssue, issueQuotation, isPriceAuthoritativeConflict, QuotationIssueApiError } from '../../src/lib/quotationIssueApi.ts';
+} from '../../src/lib/api/communicationApi.ts';
+import { getQuotationIssue, issueQuotation, isPriceAuthoritativeConflict, QuotationIssueApiError } from '../../src/lib/api/quotationIssueApi.ts';
 
 const payload = {
   quotation_id: 'ORC-20260001',

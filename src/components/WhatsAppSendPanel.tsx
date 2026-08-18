@@ -5,9 +5,9 @@
 import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { flowToSequencePayload, getFlowSummary, normalizeFlow } from '@/lib/whatsappFlows';
-import type { Flow } from '@/lib/whatsappFlows';
-import type { CommunicationFlow } from '@/lib/communicationApi';
+import { flowToSequencePayload, getFlowSummary, normalizeFlow } from '@/lib/api/whatsappFlows';
+import type { Flow } from '@/lib/api/whatsappFlows';
+import type { CommunicationFlow } from '@/lib/api/communicationApi';
 
 export interface WhatsAppSendPanelProps {
   selectedFlowId?: string;
