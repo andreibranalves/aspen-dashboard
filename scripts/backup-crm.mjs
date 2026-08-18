@@ -28,6 +28,14 @@ import {
 } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  assertProtectedFile,
+  assertSamePostgresTarget,
+  parsePostgresUrl,
+  postgresIdentity,
+  postgresServiceEnvironment,
+  readPostgresServiceTarget,
+} from './postgres-target.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = resolve(__filename, '..');
@@ -175,84 +183,11 @@ function connectionUrl(name) {
   return value;
 }
 
-export function parseConnectionUrl(raw, name = 'DATABASE_URL') {
-  let parsed;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new Error(`${name} inválida.`);
-  }
-  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
-    throw new Error(`${name} deve usar o esquema PostgreSQL.`);
-  }
-  const database = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
-  if (!database || !parsed.hostname) throw new Error(`${name} precisa informar host e database.`);
-  return {
-    raw,
-    host: parsed.hostname,
-    port: parsed.port || '5432',
-    user: decodeURIComponent(parsed.username),
-    password: decodeURIComponent(parsed.password),
-    database,
-    sslmode: parsed.searchParams.get('sslmode') || undefined,
-  };
-}
-
-export function connectionIdentity(connection) {
-  return [connection.host, connection.port, connection.database]
-    .map((value) => value.toLowerCase())
-    .join('|');
-}
-
-function readServiceTarget(serviceName, serviceFile, expectedDatabase, label) {
-  let active = false;
-  const values = {};
-  try {
-    for (const rawLine of readFileSync(serviceFile, 'utf8').split(/\r?\n/)) {
-      const line = rawLine.trim();
-      const section = line.match(/^\[([^\]]+)\]$/);
-      if (section) {
-        active = section[1].trim() === serviceName;
-        continue;
-      }
-      if (!active || !line || line.startsWith('#')) continue;
-      const separator = line.indexOf('=');
-      if (separator !== -1) values[line.slice(0, separator).trim().toLowerCase()] = line.slice(separator + 1).trim();
-    }
-  } catch {
-    throw new Error('PGSERVICEFILE não pôde ser lido.');
-  }
-  const target = {
-    host: values.host,
-    port: values.port || '5432',
-    database: values.dbname || values.database,
-  };
-  if (values.hostaddr && values.hostaddr !== target.host)
-    throw new Error(`${label} não pode sobrescrever host com hostaddr.`);
-  if (!target.host || !target.database) throw new Error(`${label} não informa host e database.`);
-  if (expectedDatabase && target.database !== expectedDatabase)
-    throw new Error(`Database esperado não corresponde a ${label}.`);
-  return { name: serviceName, file: serviceFile, expectedDatabase, target };
-}
+export const parseConnectionUrl = parsePostgresUrl;
+export const connectionIdentity = postgresIdentity;
 
 function serviceEnvironment(service) {
-  const serviceEnv = { ...process.env };
-  for (const key of Object.keys(serviceEnv)) {
-    if (key.startsWith('PG')) delete serviceEnv[key];
-  }
-  delete serviceEnv.DATABASE_URL;
-  delete serviceEnv.RESTORE_DATABASE_URL;
-  delete serviceEnv.TEST_DATABASE_URL;
-  serviceEnv.PGSERVICEFILE = service.file;
-  serviceEnv.PGSERVICE = service.name;
-  if (process.env.PGPASSFILE) serviceEnv.PGPASSFILE = process.env.PGPASSFILE;
-  return serviceEnv;
-}
-
-function assertProtectedFile(filepath, label) {
-  const stat = lstatSync(resolve(filepath));
-  if (!stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o600)
-    throw new Error(`${label} deve ser arquivo regular com permissão 0600.`);
+  return postgresServiceEnvironment(service);
 }
 
 function readNamedServiceTarget() {
@@ -264,7 +199,12 @@ function readNamedServiceTarget() {
     throw new Error('RESTORE_PG_SERVICE, RESTORE_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
   assertProtectedFile(serviceFile, 'PGSERVICEFILE');
   assertProtectedFile(passFile, 'PGPASSFILE');
-  return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'RESTORE_PG_SERVICE');
+  return readPostgresServiceTarget({
+    serviceName,
+    serviceFile,
+    expectedDatabase,
+    label: 'RESTORE_PG_SERVICE',
+  });
 }
 
 function readCutoverServiceTarget() {
@@ -277,7 +217,12 @@ function readCutoverServiceTarget() {
     throw new Error('CUTOVER_PG_SERVICE, CUTOVER_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.');
   assertProtectedFile(serviceFile, 'PGSERVICEFILE');
   assertProtectedFile(passFile, 'PGPASSFILE');
-  return readServiceTarget(serviceName, serviceFile, expectedDatabase, 'CUTOVER_PG_SERVICE');
+  return readPostgresServiceTarget({
+    serviceName,
+    serviceFile,
+    expectedDatabase,
+    label: 'CUTOVER_PG_SERVICE',
+  });
 }
 
 function assertNamedServiceDatabase(service, label) {
@@ -295,25 +240,21 @@ function assertCutoverServiceTarget(connection) {
     throw new Error(
       'CUTOVER_PG_SERVICE, CUTOVER_EXPECTED_DATABASE, PGSERVICEFILE e PGPASSFILE são obrigatórios.'
     );
-  if (
-    service.target.host.toLowerCase() !== connection.host.toLowerCase() ||
-    service.target.port !== connection.port ||
-    service.target.database !== connection.database
-  ) {
-    throw new Error('DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.');
-  }
+  assertSamePostgresTarget(
+    connection,
+    service,
+    'DATABASE_URL e CUTOVER_PG_SERVICE não apontam para o mesmo destino.'
+  );
   assertNamedServiceDatabase(service, 'CUTOVER_PG_SERVICE');
 }
 
 function assertRestoreServiceTarget(restore) {
   const service = readNamedServiceTarget();
-  if (
-    service.target.host.toLowerCase() !== restore.host.toLowerCase() ||
-    service.target.port !== restore.port ||
-    service.target.database !== restore.database
-  ) {
-    throw new Error('RESTORE_DATABASE_URL e RESTORE_PG_SERVICE não apontam para o mesmo destino.');
-  }
+  assertSamePostgresTarget(
+    restore,
+    service,
+    'RESTORE_DATABASE_URL e RESTORE_PG_SERVICE não apontam para o mesmo destino.'
+  );
   assertNamedServiceDatabase(service, 'RESTORE_PG_SERVICE');
   return service;
 }

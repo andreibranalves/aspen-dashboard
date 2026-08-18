@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  connectionIdentity,
   parseConnectionUrl,
   postgresEnv,
   exceedsMegabyteQuota,
@@ -14,6 +15,7 @@ import {
   chooseHistoricalLineageTable,
   quoteIdentifier,
 } from '../../scripts/backup-crm.mjs';
+import { postgresIdentity } from '../../scripts/postgres-target.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const script = path.join(root, 'scripts/backup-crm.mjs');
@@ -30,6 +32,31 @@ function run(args: string[], env: NodeJS.ProcessEnv) {
 test('named psql service calls use libpq service syntax', () => {
   assert.match(backupSource, /'--dbname', `service=\$\{service\.name\}`/);
   assert.doesNotMatch(backupSource, /'--dbname', service\.name/);
+});
+
+test('PostgreSQL target parser normalizes the credential-free identity fields', () => {
+  const first = parseConnectionUrl(
+    'postgresql://first-user:first-pass@STAGING.TEST:5433/aspen_test'
+  );
+  const second = parseConnectionUrl(
+    'postgresql://second-user:second-pass@staging.test:5433/aspen_test'
+  );
+
+  assert.deepEqual(
+    [first.host, first.port, first.database],
+    [second.host, second.port, second.database]
+  );
+});
+
+test('PostgreSQL target parser rejects non-PostgreSQL and incomplete URLs', () => {
+  assert.throws(() => parseConnectionUrl('https://staging.test/aspen_test'), /PostgreSQL/);
+  assert.throws(() => parseConnectionUrl('postgresql:///aspen_test'), /host e database/);
+  assert.throws(() => parseConnectionUrl('postgresql://staging.test'), /host e database/);
+});
+
+test('backup preserves the public connection identity alias', () => {
+  const connection = parseConnectionUrl('postgresql://user@staging.test/aspen_test');
+  assert.equal(connectionIdentity(connection), postgresIdentity(connection));
 });
 
 test('explicit backup destination is outside checkout and mode 0700', () => {
