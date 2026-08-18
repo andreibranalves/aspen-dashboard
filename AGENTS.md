@@ -62,8 +62,8 @@ node scripts/check-no-legacy-provider.mjs
 
 - `api/_app/routes.ts` is the single route map shared by the Vercel catch-all and `scripts/app-server.mjs`.
 - Register new endpoints once in `api/_app/routes.ts`.
-- Authentication and rate limiting run at the deployed API boundary.
-- Local development servers intentionally omit deployed authentication middleware.
+- Authentication and rate limiting run in the shared API pipeline at deployed and local Node boundaries.
+- Local development may set `APP_AUTH_BYPASS=true` for development-only auth bypass; the bypass is unavailable in production.
 
 ## OPERATOR ENVIRONMENT
 

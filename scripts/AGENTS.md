@@ -17,7 +17,7 @@ scripts/
 
 - Keep executable scripts in `.mjs` files.
 - Load local environment values before importing API handlers.
-- Keep the route map in `api/_app/routes.ts` synchronized with `app-server.mjs` and the Vercel catch-all.
+- `api/_app/routes.ts` is the single route map, imported by both `app-server.mjs` and the Vercel catch-all; new endpoints are registered there once.
 - Manual browser harnesses use `BASE_URL` and local mocks.
 - Never print credentials, tokens, connection strings or personal data.
 - Do not run scripts against deployed or production systems from local tests.
