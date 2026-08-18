@@ -1,28 +1,11 @@
-# `api/_shared` - middleware and shared request helpers
+# `api/_shared`
 
-This directory contains authentication, rate limiting, errors and small domain-neutral helpers.
+Estas regras complementam o `AGENTS.md` da raiz para autenticação, rate limiting, erros e helpers neutros de domínio.
 
-## Structure
-
-```text
-api/_shared/
-├── auth.ts
-├── password.ts
-├── session.ts
-├── http-error.ts
-└── rate-limit.ts
-```
-
-## Conventions
-
-- Keep endpoint handlers and database writes outside this directory.
-- Export small named helpers.
-- HTTP contract types (`FunctionEvent`, `FunctionResult`) and the function adapter live in `api/_http/`.
-- Authentication configuration fails closed when required settings are missing.
-- Session cookies contain signed identifiers, never passwords or secret values.
-
-## Security
-
-- Do not add header-based authentication fallbacks.
-- Do not log cookies, authorization headers, connection strings or personal data.
-- Keep rate limiting as a best-effort guard and enforce business limits at repositories.
+- Mantenha handlers de endpoints, regras de negócio e escritas no banco fora deste diretório.
+- Mantenha os contratos HTTP e adapters de transporte em `api/_http/`.
+- Configuração de autenticação deve falhar de forma fechada quando valores obrigatórios estiverem ausentes.
+- Cookies de sessão devem conter apenas identificadores assinados, nunca senhas ou segredos.
+- Não adicione autenticação alternativa por headers.
+- Não registre cookies, headers de autorização, connection strings ou dados pessoais.
+- Trate rate limiting como proteção complementar e aplique limites de negócio nos repositórios.
