@@ -6,7 +6,7 @@
 
 ```
 ./
-├── src/              # React SPA (built into public/)
+├── src/              # React SPA: app/ (rotas+navegacao), features/<dominio>/, components/ (ui, shared, layout), lib/ (api, formatting, storage), hooks/
 ├── api/              # Vercel API catch-all + handlers
 │   ├── [...path].ts  # single dispatch router
 │   ├── _app/         # routes.ts + handle-request.ts (pipeline compartilhado)
@@ -26,8 +26,8 @@
 | Task | Location |
 | --- | --- |
 | Add API endpoint | `api/modules/*` + `api/_app/routes.ts` |
-| Add frontend page | `src/pages/*.tsx` + `src/App.tsx` |
-| Shared UI component | `src/components/ui/*.tsx` |
+| Add frontend page | `src/features/<dominio>/pages/*.tsx` + registro em `src/app/routes.tsx` |
+| Shared UI component | `src/components/ui/*.tsx` (primitivos) + `src/components/shared/*.tsx` (compartilhados entre features) |
 | Business logic / handlers | `api/modules/*.ts` |
 | Shared auth/errors/rate-limit | `api/_shared/` |
 | HTTP pipeline e adapters | `api/_app/`, `api/_http/` |
@@ -41,7 +41,7 @@
 
 - **ESM only** - `.js` imports require explicit extension in backend source.
 - **Vite builds into `public/`** with `emptyOutDir: false`.
-- **Hash-based routing** uses `useHashRoute` and manual dispatch in `App.tsx`.
+- **Hash-based routing**: única fonte em `src/app/routes.tsx` (match + render + nav), dispatch em `src/app/App.tsx` via `useHashRoute`; sem React Router.
 - **Backend handlers** receive Lambda-shaped events and return `{ statusCode, body }`.
 - **Local API development** uses `npm run dev` (`scripts/vite-dev.mjs`), which runs `scripts/app-server.mjs` on port 8888 behind the Vite `/api` proxy.
 - **Errors** returned to users are written in Brazilian Portuguese.
