@@ -146,6 +146,37 @@ test('rejects production identity and unexpected current database', () => {
   });
 });
 
+test('localizes malformed percent-encoded target URLs', () => {
+  withProtectedFiles(({ serviceFile, passFile }) => {
+    const env = completeEnv(serviceFile, passFile);
+    for (const key of ['STAGING_DATABASE_URL', 'PRODUCTION_DATABASE_URL']) {
+      assert.throws(
+        () =>
+          runMigrationPreflight({
+            env: {
+              ...env,
+              [key]: `postgresql://operator:${secret}@staging.test:5433/aspen_%ZZ`,
+            },
+            execute: () => 'aspen_stage\n',
+            now: fixedNow,
+          }),
+        (error) => {
+          assert.match(error.message, new RegExp(`${key} inválida\\.`));
+          const output = formatMigrationPreflightFailure(error, fixedNow);
+          assert.match(output, /FAIL preflight de migration: .*inválida\./);
+          assert.doesNotMatch(output, /URI malformed|URIError|staging\.test|%ZZ/);
+          assert.doesNotMatch(output, new RegExp(secret));
+          return true;
+        }
+      );
+    }
+
+    const output = formatMigrationPreflightFailure(new URIError('URI malformed'), fixedNow);
+    assert.match(output, /FAIL preflight de migration: URL PostgreSQL inválida\./);
+    assert.doesNotMatch(output, /URI malformed|URIError/);
+  });
+});
+
 test('hides tool failures and all sensitive values', () => {
   withProtectedFiles(({ serviceFile, passFile }) => {
     const env = completeEnv(serviceFile, passFile);

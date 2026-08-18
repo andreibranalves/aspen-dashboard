@@ -28,6 +28,15 @@ function requiredEnvironment(env) {
   }
 }
 
+function parseMigrationPostgresUrl(raw, name) {
+  try {
+    return parsePostgresUrl(raw, name);
+  } catch (error) {
+    if (error instanceof URIError) throw new Error(`${name} inválida.`, { cause: error });
+    throw error;
+  }
+}
+
 export function runMigrationPreflight({
   env = process.env,
   execute = execFileSync,
@@ -37,8 +46,8 @@ export function runMigrationPreflight({
   assertProtectedFile(env.PGSERVICEFILE, 'PGSERVICEFILE');
   assertProtectedFile(env.PGPASSFILE, 'PGPASSFILE');
 
-  const staging = parsePostgresUrl(env.STAGING_DATABASE_URL, 'STAGING_DATABASE_URL');
-  const production = parsePostgresUrl(env.PRODUCTION_DATABASE_URL, 'PRODUCTION_DATABASE_URL');
+  const staging = parseMigrationPostgresUrl(env.STAGING_DATABASE_URL, 'STAGING_DATABASE_URL');
+  const production = parseMigrationPostgresUrl(env.PRODUCTION_DATABASE_URL, 'PRODUCTION_DATABASE_URL');
   const service = readPostgresServiceTarget({
     serviceName: env.STAGING_PG_SERVICE,
     serviceFile: env.PGSERVICEFILE,
@@ -101,7 +110,12 @@ export function formatMigrationPreflight(result) {
 }
 
 export function formatMigrationPreflightFailure(error, now = () => new Date()) {
-  const message = error instanceof Error ? error.message : 'Falha inesperada.';
+  const message =
+    error instanceof URIError
+      ? 'URL PostgreSQL inválida.'
+      : error instanceof Error
+        ? error.message
+        : 'Falha inesperada.';
   return `timestamp: ${now().toISOString()}\nFAIL preflight de migration: ${message}\n`;
 }
 
