@@ -1,0 +1,69 @@
+# Migrations PostgreSQL
+
+## Regra principal
+
+Migrations são mudanças HIGH e nunca executam implicitamente no startup, build ou CI padrão.
+
+`npm run db:migrate` continua sendo o único apply e deve ser invocado explicitamente.
+
+## Classificação
+
+Toda migration nova começa com `-- migration-risk: additive` ou `-- migration-risk: destructive`.
+
+Additive acrescenta estrutura compatível.
+
+Destructive remove, renomeia ou torna estrutura ou dados incompatíveis.
+
+O cabeçalho declara risco, mas não substitui review humano.
+
+## Expand-contract
+
+Mudança destructive segue `expand -> deploy compatível -> migrate data -> contract`.
+
+Contract não ocorre antes de a aplicação deixar de depender da estrutura antiga e a migração de dados estar validada.
+
+## Gate estático
+
+Execute `npm run check:db-migrations`.
+
+O gate recusa alteração de migration histórica e classificação inválida.
+
+## Gate staging
+
+O shell operacional aprovado fornece `STAGING_DATABASE_URL`, `STAGING_PG_SERVICE`, `PRODUCTION_DATABASE_URL`, `PGSERVICEFILE` e `PGPASSFILE`.
+
+`PGSERVICEFILE` e `PGPASSFILE` devem ter modo `0600`.
+
+Execute, nesta ordem:
+
+```bash
+npm run check:db-migrations
+node scripts/cutover-env-status.mjs
+npm run db:migration:preflight
+TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
+npm run test:e2e:staging
+```
+
+Pare na primeira falha.
+
+Nunca execute o apply usando somente `DATABASE_URL`.
+
+## Evidência
+
+Salve stdout dos gates em diretório operacional protegido fora do checkout.
+
+A evidência contém commit, timestamp, migration, risco e resultados redigidos.
+
+Nunca salve URL, host, usuário, senha, PII, payload ou linha de dados.
+
+## Falhas
+
+O preflight é read-only e executa somente `SELECT current_database()`.
+
+Falha de preflight não chama migration.
+
+Falha de migration não libera E2E, Preview ou Production.
+
+Não existe rollback automático para SQL arbitrário.
+
+Restore usa o procedimento de backup existente e um alvo explicitamente isolado.

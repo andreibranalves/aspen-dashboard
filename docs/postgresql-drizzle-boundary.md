@@ -55,6 +55,7 @@ Execute antes de enviar uma mudança:
 
 ```bash
 npm run check:db-boundary
+npm run check:db-migrations
 ```
 
 O check procura imports diretos de Drizzle, `postgres`, schema e client sob `api/modules/`.
@@ -63,7 +64,9 @@ Imports de repositories continuam permitidos.
 
 A saída contém somente caminho, linha e motivo.
 
-O check não lê ambiente, abre banco, executa migration ou faz chamadas externas.
+Nenhum dos checks executa migration ou abre escrita no banco.
+
+Os checks não leem ambiente, abrem banco ou fazem chamadas externas.
 
 ## Evolução
 
@@ -71,6 +74,6 @@ Extraia uma exceção para um repository quando uma mudança de domínio tocar a
 
 A extração deve preservar o comportamento, adicionar testes de comportamento e remover a entrada correspondente da allowlist na mesma mudança.
 
-A política operacional de migrations HIGH está documentada separadamente na Fase 16.
+A política operacional HIGH está em [Migrations PostgreSQL](./database-migrations.md).
 
 Não altere migrations históricas para resolver uma violação de boundary.

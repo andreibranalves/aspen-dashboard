@@ -51,6 +51,8 @@ Não use esta lane quando houver escrita externa, migration, autenticação, per
 
 Use para migrations, autenticação, envio WhatsApp, integrações externas, permissões e mudanças destrutivas.
 
+Consulte o [runbook Migrations PostgreSQL](./database-migrations.md).
+
 ```text
 CI
 -> todos unit
@@ -68,14 +70,26 @@ Checks locais e controlados:
 
 ```bash
 npm run verify:full
+npm run check:db-migrations
 node scripts/cutover-env-status.mjs
-test -n "${STAGING_DATABASE_URL:-}" && TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
+npm run db:migration:preflight
+TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
 npm run test:e2e:staging
 ```
 
-Antes da migration, `node scripts/cutover-env-status.mjs` deve retornar sucesso.
+O check estático roda no CI.
 
-`STAGING_DATABASE_URL` deve ser fornecida pelo shell operacional aprovado e apontar para um banco staging não produtivo.
+O preflight, apply e E2E staging são opt-in.
+
+`STAGING_DATABASE_URL` e `STAGING_PG_SERVICE` precisam representar o mesmo staging.
+
+A identidade staging não pode igualar produção.
+
+Stdout redigido fica fora do checkout.
+
+Qualquer falha interrompe a lane.
+
+Antes da migration, `node scripts/cutover-env-status.mjs` deve retornar sucesso.
 
 A configuração do Drizzle prioriza `TEST_DATABASE_URL`, por isso o comando copia o alvo staging para `TEST_DATABASE_URL` e esvazia `DATABASE_URL`.
 
@@ -83,9 +97,7 @@ Depois da migration bem-sucedida, execute `npm run test:e2e:staging` antes de Pr
 
 Nunca execute `npm run db:migrate` usando somente `DATABASE_URL` ou apontando para produção.
 
-`test:e2e:staging` e `db:migrate` são opt-in.
-
-Execute-os somente com o ambiente operacional aprovado e sem imprimir credenciais, dados de produção ou PII.
+Execute os comandos operacionais somente com o ambiente aprovado e sem imprimir credenciais, dados de produção ou PII.
 
 Migrations não executam no startup, no CI padrão ou implicitamente durante o build.
 
