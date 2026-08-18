@@ -3,23 +3,23 @@ import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 
-import AutoQuotePage from '@/pages/AutoQuotePage';
-import LoginPage from '@/pages/LoginPage';
+import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
+import LoginPage from '@/app/LoginPage';
 
-const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
-const QuotationsPage = lazy(() => import('@/pages/QuotationsPage'));
-const QuotationDetailPage = lazy(() => import('@/pages/QuotationDetailPage'));
-const SalesOrdersPage = lazy(() => import('@/pages/SalesOrdersPage'));
-const SalesOrderDetailPage = lazy(() => import('@/pages/SalesOrderDetailPage'));
-const CrmKanbanPage = lazy(() => import('@/pages/CrmKanbanPage'));
-const ProductsPage = lazy(() => import('@/pages/ProductsPage'));
-const ProductDetailPage = lazy(() => import('@/pages/ProductDetailPage'));
-const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
-const LeadDetailPage = lazy(() => import('@/pages/LeadDetailPage'));
-const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
-const ManualOrcamentoPage = lazy(() => import('@/pages/ManualOrcamentoPage'));
-const ComunicacaoPage = lazy(() => import('@/pages/ComunicacaoPage'));
-const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
+const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage'));
+const QuotationsPage = lazy(() => import('@/features/quotations/pages/QuotationsPage'));
+const QuotationDetailPage = lazy(() => import('@/features/quotations/pages/QuotationDetailPage'));
+const SalesOrdersPage = lazy(() => import('@/features/sales-orders/pages/SalesOrdersPage'));
+const SalesOrderDetailPage = lazy(() => import('@/features/sales-orders/pages/SalesOrderDetailPage'));
+const CrmKanbanPage = lazy(() => import('@/features/crm/pages/CrmKanbanPage'));
+const ProductsPage = lazy(() => import('@/features/products/pages/ProductsPage'));
+const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDetailPage'));
+const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
+const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
+const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
+const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
+const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
+const WhatsAppInboxPage = lazy(() => import('@/features/whatsapp/pages/WhatsAppInboxPage'));
 
 function renderPage(route: string, navigate: (hash: string) => void) {
   if (route === '/login') return <LoginPage navigate={navigate} />;

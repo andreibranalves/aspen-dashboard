@@ -23,7 +23,7 @@ import { isUnpricedProduct, searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
+import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPanel';
 import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
 import type { QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';

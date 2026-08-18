@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
-import SkeletonComunicacao from '@/components/SkeletonComunicacao';
+import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 
 interface SendEvent {
   id: string;

@@ -10,12 +10,12 @@ import {
 } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
-import OrderTemplateManager from '@/components/OrderTemplateManager';
+import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
 import { capitalize, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import SplitResultCard from '@/components/SplitResultCard';
+import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
 import type { Draft, StoredAutoQuoteDraft } from '@/types/domain';

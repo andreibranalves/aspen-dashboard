@@ -1,4 +1,4 @@
-import type { QuotationSectionsSnapshot } from '@/components/quotation/QuotationSectionsEditor';
+import type { QuotationSectionsSnapshot } from '@/features/quotations/components/QuotationSectionsEditor';
 import type { Product } from '@/types/domain';
 
 export interface ProjectedAddress {

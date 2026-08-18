@@ -8,8 +8,8 @@ import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { QualityBadges } from '@/components/QualityBadges';
-import { ContextActions, type ContextAction } from '@/components/ContextActions';
+import { QualityBadges } from '@/features/customers/components/QualityBadges';
+import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
 import { projectClientDetail, type ProjectedClientDetail } from '@/lib/localProjections';
 
 interface Address {

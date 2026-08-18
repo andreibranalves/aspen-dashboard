@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PIPELINE } from '@/lib/constants';
-import SkeletonKanban from '@/components/SkeletonKanban';
+import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 
 interface Deal {
   id: string;

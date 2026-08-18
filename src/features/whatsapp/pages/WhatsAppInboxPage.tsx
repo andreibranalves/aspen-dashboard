@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
-import { WhatsAppAttachmentCard } from '@/components/ui/whatsapp-attachment-card';
+import { WhatsAppAttachmentCard } from '@/features/whatsapp/components/whatsapp-attachment-card';
 import { Input } from '@/components/ui/input';
 import { fmtPhone, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';

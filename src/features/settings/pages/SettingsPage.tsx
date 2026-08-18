@@ -12,8 +12,8 @@ import {
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { QuotationSectionsEditor } from '@/components/quotation/QuotationSectionsEditor';
-import { QuotationTemplateManager } from '@/components/quotation/QuotationTemplateManager';
+import { QuotationSectionsEditor } from '@/features/quotations/components/QuotationSectionsEditor';
+import { QuotationTemplateManager } from '@/features/quotations/components/QuotationTemplateManager';
 import { getSettings, saveSettings, type DashboardSettings } from '@/lib/api/settingsApi';
 
 interface SettingsForm {

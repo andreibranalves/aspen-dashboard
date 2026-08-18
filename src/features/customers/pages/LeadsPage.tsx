@@ -8,9 +8,9 @@ import PageHeader from '@/components/shared/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
-import { DetailDrawer } from '@/components/DetailDrawer';
-import { QualityBadges, type QualityBadge } from '@/components/QualityBadges';
-import { ContextActions, type ContextAction } from '@/components/ContextActions';
+import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
+import { QualityBadges, type QualityBadge } from '@/features/customers/components/QualityBadges';
+import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
 import {
   projectClientDetail,
   projectClientListResponse,

@@ -40,7 +40,7 @@ import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import {
   QuotationSectionsEditor,
   type QuotationSectionsSnapshot,
-} from '@/components/quotation/QuotationSectionsEditor';
+} from '@/features/quotations/components/QuotationSectionsEditor';
 import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
 
 const STATUS_LABELS: Record<string, string> = {

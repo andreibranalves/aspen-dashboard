@@ -6,11 +6,11 @@ import { useState, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
-import FlowEditorTab from '@/components/communication/FlowEditorTab';
-import MediaUploader from '@/components/communication/MediaUploader';
-import MediaLibrary from '@/components/communication/MediaLibrary';
-import SendHistoryTab from '@/components/communication/SendHistoryTab';
-import ChannelsTab from '@/components/communication/ChannelsTab';
+import FlowEditorTab from '@/features/communication/components/FlowEditorTab';
+import MediaUploader from '@/features/communication/components/MediaUploader';
+import MediaLibrary from '@/features/communication/components/MediaLibrary';
+import SendHistoryTab from '@/features/communication/components/SendHistoryTab';
+import ChannelsTab from '@/features/communication/components/ChannelsTab';
 
 interface TabItem {
   id: string;

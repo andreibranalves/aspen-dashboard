@@ -5,9 +5,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Filter } from 'lucide-react';
 import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/api/communicationApi';
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
-import MediaGridItem from '@/components/communication/MediaGridItem';
+import MediaGridItem from '@/features/communication/components/MediaGridItem';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import SkeletonComunicacao from '@/components/SkeletonComunicacao';
+import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 
 export interface MediaLibraryProps {
   refreshKey?: number | string;

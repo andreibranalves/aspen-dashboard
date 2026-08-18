@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { fetchFlows, saveFlows } from '@/lib/api/communicationApi';
 import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/api/communicationApi';
 import { renderFlowTemplate } from '@/lib/api/whatsappFlows';
-import SkeletonComunicacao from '@/components/SkeletonComunicacao';
+import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 
 // ── Constants ──────────────────────────────────────────────────────────────
