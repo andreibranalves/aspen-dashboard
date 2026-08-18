@@ -137,20 +137,28 @@ function event(body: Record<string, unknown>) {
   } as any;
 }
 
-function evolutionEnv() {
+function evolutionEnv(
+  overrides: { appEnv?: string; writes?: string } = {},
+) {
   const previous = {
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
+    appEnv: process.env.APP_ENV,
+    writes: process.env.EXTERNAL_WRITES_ENABLED,
   };
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
+  process.env.APP_ENV = overrides.appEnv || 'production';
+  process.env.EXTERNAL_WRITES_ENABLED = overrides.writes || '1';
   return () => {
     for (const [key, value] of Object.entries({
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
+      APP_ENV: previous.appEnv,
+      EXTERNAL_WRITES_ENABLED: previous.writes,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

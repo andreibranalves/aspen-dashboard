@@ -12,6 +12,7 @@
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 import type { HttpError } from '../_shared/http-error.js';
 import { kv } from '@vercel/kv';
+import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import { createQuotationTemplateRepository } from '../infrastructure/db/repositories/quotation-template-repository.js';
@@ -285,6 +286,7 @@ function assertEvolutionConfig() {
       `missing env: ${missing.join(', ')}`
     );
   }
+  assertExternalWritesAllowed('evolution');
 }
 
 type EvolutionTransportOutcome = 'unknown' | 'retryable';
@@ -304,6 +306,7 @@ function transportError(
 
 async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
   const { baseUrl, apiKey } = evolutionConfig();
+  assertExternalWritesAllowed('evolution');
   const url = `${baseUrl}${path}`;
   let res, responseBody;
   try {

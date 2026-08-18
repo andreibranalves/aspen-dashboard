@@ -2,6 +2,7 @@
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import {
@@ -627,10 +628,12 @@ function assertEvolutionConfig(): void {
       `[send-whatsapp] missing env: ${missing.join(', ')}`
     );
   }
+  assertExternalWritesAllowed('evolution');
 }
 
 async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
   const { baseUrl, apiKey } = evolutionConfig();
+  assertExternalWritesAllowed('evolution');
   const url = `${baseUrl}${path}`;
   let res: Response;
   let responseBody: unknown;

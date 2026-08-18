@@ -529,20 +529,28 @@ test('Evolution response requires explicit provider acceptance', () => {
   assert.equal(normalizeEvolutionDelivery({}), null);
 });
 
-function withEvolutionEnv() {
+function withEvolutionEnv(
+  overrides: { appEnv?: string; writes?: string } = {},
+) {
   const previous = {
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
+    appEnv: process.env.APP_ENV,
+    writes: process.env.EXTERNAL_WRITES_ENABLED,
   };
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
+  process.env.APP_ENV = overrides.appEnv || 'production';
+  process.env.EXTERNAL_WRITES_ENABLED = overrides.writes || '1';
   return () => {
     for (const [key, value] of Object.entries({
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
+      APP_ENV: previous.appEnv,
+      EXTERNAL_WRITES_ENABLED: previous.writes,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -812,6 +820,69 @@ test('PostgreSQL preview rejects external media before rendering output', async 
   );
   assert.equal(response.statusCode, 400);
   assert.match(response.body || '', /Mídia externa proibida/);
+});
+
+test('non-dry legacy endpoint blocks Evolution when external writes are disabled', async () => {
+  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    throw new Error('fetch must not run');
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Integrações externas desativadas neste ambiente.',
+    });
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('flow endpoint blocks Evolution when external writes are disabled', async () => {
+  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    throw new Error('fetch must not run');
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ flow_id: 'flow-disabled', quotation_id: businessNumber, revision_id: revisionId }),
+      {
+        resolveFlow: async () => ({
+          id: 'flow-disabled',
+          name: 'Fluxo bloqueado',
+          delay_min_seconds: 0,
+          delay_max_seconds: 0,
+          steps: [
+            { type: 'text', template: 'Olá' },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        }),
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+        renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+        resolveDeal: async () => null,
+        recordSendEvent: async () => 'event-disabled',
+        reservationStore: reservationStore(),
+      } as any,
+    );
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Integrações externas desativadas neste ambiente.',
+    });
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
 });
 
 test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
