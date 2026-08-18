@@ -55,7 +55,7 @@ Use para migrations, autenticação, envio WhatsApp, integrações externas, per
 CI
 -> todos unit
 -> build
--> staging DB
+-> staging DB migration
 -> full E2E
 -> backup
 -> Preview
@@ -68,9 +68,20 @@ Checks locais e controlados:
 
 ```bash
 npm run verify:full
+node scripts/cutover-env-status.mjs
+test -n "${STAGING_DATABASE_URL:-}" && TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
 npm run test:e2e:staging
-npm run db:migrate
 ```
+
+Antes da migration, `node scripts/cutover-env-status.mjs` deve retornar sucesso.
+
+`STAGING_DATABASE_URL` deve ser fornecida pelo shell operacional aprovado e apontar para um banco staging não produtivo.
+
+A configuração do Drizzle prioriza `TEST_DATABASE_URL`, por isso o comando copia o alvo staging para `TEST_DATABASE_URL` e esvazia `DATABASE_URL`.
+
+Depois da migration bem-sucedida, execute `npm run test:e2e:staging` antes de Preview.
+
+Nunca execute `npm run db:migrate` usando somente `DATABASE_URL` ou apontando para produção.
 
 `test:e2e:staging` e `db:migrate` são opt-in.
 
