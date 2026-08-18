@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { afterEach } from 'node:test';
-import type { VercelResponseLike } from '../../api/_lib/types.js';
-import { createHttpError } from '../../api/_lib/http-error.js';
+import type { VercelResponseLike } from '../../api/_http/types.js';
+import { createHttpError } from '../../api/_shared/http-error.js';
 import { handleApiRequest, normalizeHandlerError } from '../../api/_app/handle-request.js';
 import { routes } from '../../api/_app/routes.js';
 

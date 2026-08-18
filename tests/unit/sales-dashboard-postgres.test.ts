@@ -16,7 +16,7 @@ import {
   type SalesOrdersRepository,
 } from '../../api/_db/sales-orders-repository.js';
 import { createSalesDashboardHandler } from '../../api/_functions/sales-dashboard.js';
-import type { FunctionEvent } from '../../api/_lib/types.js';
+import type { FunctionEvent } from '../../api/_http/types.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

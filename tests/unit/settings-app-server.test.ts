@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { describe, it } from 'node:test';
 
-import { createPasswordHash } from '../../api/_lib/password.js';
+import { createPasswordHash } from '../../api/_shared/password.js';
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));

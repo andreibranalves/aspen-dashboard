@@ -11,7 +11,7 @@ import postgres from 'postgres';
 
 import * as schema from '../../api/_db/schema.js';
 import { createPostgresCrmDealRepository } from '../../api/_db/crm-deals-repository.js';
-import type { FunctionEvent } from '../../api/_lib/types.js';
+import type { FunctionEvent } from '../../api/_http/types.js';
 import { createCrmDealsHandler } from '../../api/_functions/crm-deals.js';
 import { createCrmUpdateDealHandler } from '../../api/_functions/crm-update-deal.js';
 import { createCrmPruneCandidatesHandler } from '../../api/_functions/crm-prune-candidates.js';

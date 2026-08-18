@@ -20,7 +20,7 @@ import {
 } from '../../api/_db/sales-orders-repository.js';
 import { createSalesOrderFromQuotationHandler } from '../../api/_functions/sales-order-from-quotation.js';
 import { createSalesOrdersHandler } from '../../api/_functions/sales-orders.js';
-import type { FunctionEvent } from '../../api/_lib/types.js';
+import type { FunctionEvent } from '../../api/_http/types.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

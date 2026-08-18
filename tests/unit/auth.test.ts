@@ -7,9 +7,9 @@ import {
   isAuthenticated,
   isDevelopmentAuthBypassEnabled,
   isProductionEnvironment,
-} from '../../api/_lib/auth.js';
-import { createPasswordHash } from '../../api/_lib/password.js';
-import { createSessionToken } from '../../api/_lib/session.js';
+} from '../../api/_shared/auth.js';
+import { createPasswordHash } from '../../api/_shared/password.js';
+import { createSessionToken } from '../../api/_shared/session.js';
 
 function randomSecret(): string {
   return randomBytes(32).toString('base64url');
