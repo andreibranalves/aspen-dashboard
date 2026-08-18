@@ -41,6 +41,18 @@ test('rejects comment-spaced static and dynamic imports', () => {
   ]);
 });
 
+test('rejects form-feed whitespace in static and dynamic imports', () => {
+  const violations = findPostgresBoundaryViolations([
+    source('api/modules/static-form-feed.ts', "import\f'postgres';\n"),
+    source('api/modules/dynamic-form-feed.ts', "import(\f'postgres');\n"),
+  ]);
+
+  assert.deepEqual(violations, [
+    { path: 'api/modules/dynamic-form-feed.ts', line: 1, target: 'postgres' },
+    { path: 'api/modules/static-form-feed.ts', line: 1, target: 'postgres' },
+  ]);
+});
+
 test('rejects direct postgres imports and dynamic database imports', () => {
   const violations = findPostgresBoundaryViolations([
     source('api/modules/new-feature.ts', "import postgres from 'postgres';\n"),

@@ -27,8 +27,8 @@ const ALLOWED_IMPORTS = {
   },
 };
 
-const IMPORT_GAP = String.raw`(?:[\t\r\n ]|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;
-const LEADING_IMPORT_GAP = String.raw`(?:[\t ]|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;
+const IMPORT_GAP = String.raw`(?:\s|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;
+const LEADING_IMPORT_GAP = String.raw`(?:[^\S\r\n]|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;
 const STATIC_IMPORT_PATTERN = new RegExp(
   String.raw`^${LEADING_IMPORT_GAP}(import)${IMPORT_GAP}(?:(?:([\s\S]*?)${IMPORT_GAP}from${IMPORT_GAP}))?(['"])([^'"]+)\3${IMPORT_GAP};?`,
   'gmd'
