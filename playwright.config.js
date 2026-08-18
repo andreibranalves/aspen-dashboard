@@ -66,11 +66,18 @@ export default defineConfig({
     : {
         testIgnore: STAGING_SPEC_FILES,
         webServer: {
-          command: 'npx vite --port 5173',
+          command: 'node scripts/vite-dev.mjs',
           url: BASE_URL,
-          reuseExistingServer: !process.env.CI,
+          // Own isolated stack: never reuse another worktree's Vite/API ports.
+          reuseExistingServer: false,
           timeout: 20_000,
           cwd: '.',
+          env: {
+            NODE_ENV: 'test',
+            APP_AUTH_BYPASS: 'true',
+            API_PORT: '0',
+            PORT: String(PORT),
+          },
         },
       }),
 });
