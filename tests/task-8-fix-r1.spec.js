@@ -184,6 +184,7 @@ test('projeções locais descartam marcadores proibidos de cliente e cotação',
   await page.route('**/api/quotations**', (route) => json(route, {
     id: quotationId, quotation_id: quotationId, quotation_uuid: '11111111-1111-4111-8111-111111111111', revision_id: revisionId,
     revision: 1, revision_number: 1, status: 'Enviado', status_canonical: 'enviado', cliente: 'Cliente legítimo', client_id: '33333333-3333-4333-8333-333333333333',
+    cliente_snapshot: { id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente legítimo' },
     data: '2026-08-10', validade: '2026-08-25', validade_dias: 15, pagamento: '', entrega: '', frete_padrao: '0.00', frete: '0.00', observacoes: '', prazo_producao: '',
     template_key: 'padrao', template_padrao: 'padrao', template_hash: 'ee159f5ad83ae26cabd2eb8c00fc6a0227319290ee24809055cc23da0a26108e', template_version_id: null, template_version: null,
     secoes: { schema_version: 1, prazo_producao: { base: { enabled: true, title: 'Prazo' }, current: { enabled: true, title: 'Prazo' } }, pagamento: { base: { enabled: true, title: 'Pagamento', body: '' }, current: { enabled: true, title: 'Pagamento', body: '' } }, condicoes_gerais: { base: { enabled: true, title: 'Condições', body: '' }, current: { enabled: true, title: 'Condições', body: '' } } },
