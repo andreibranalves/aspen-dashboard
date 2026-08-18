@@ -1,5 +1,5 @@
 import { Suspense, lazy, type ReactNode } from 'react';
-import { useHashRoute } from '@/hooks/useHashRoute';
+import { useHashRoute, type SetHashRouteGuard } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/PageLoader';
 
@@ -21,7 +21,11 @@ const ManualOrcamentoPage = lazy(() => import('@/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/pages/ComunicacaoPage'));
 const WhatsAppInboxPage = lazy(() => import('@/pages/WhatsAppInboxPage'));
 
-function renderPage(route: string, navigate: (hash: string) => void) {
+function renderPage(
+  route: string,
+  navigate: (hash: string) => void,
+  setNavigationGuard: SetHashRouteGuard,
+) {
   if (route === '/login') return <LoginPage navigate={navigate} />;
 
   if (route.startsWith('/quotations/')) {
@@ -94,7 +98,7 @@ function renderPage(route: string, navigate: (hash: string) => void) {
       page = <ManualOrcamentoPage />;
       break;
     case '/comunicacao':
-      page = <ComunicacaoPage />;
+      page = <ComunicacaoPage setNavigationGuard={setNavigationGuard} />;
       break;
     case '/whatsapp-inbox':
       page = <WhatsAppInboxPage navigate={navigate} />;
@@ -108,13 +112,13 @@ function renderPage(route: string, navigate: (hash: string) => void) {
 }
 
 export default function App() {
-  const [route, navigate] = useHashRoute();
+  const [route, navigate, setNavigationGuard] = useHashRoute();
 
   if (route === '/login') return <LoginPage navigate={navigate} />;
 
   return (
     <Layout route={route} onNavigate={navigate}>
-      {renderPage(route, navigate)}
+      {renderPage(route, navigate, setNavigationGuard)}
     </Layout>
   );
 }
