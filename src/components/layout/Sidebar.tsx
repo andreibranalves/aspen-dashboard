@@ -9,6 +9,7 @@ import {
   Users,
   Settings,
   MessageCircle,
+  Send,
   Menu,
   X,
   Moon,
@@ -33,6 +34,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { hash: '/auto', label: 'Auto', icon: Sparkles },
       { hash: '/whatsapp-inbox', label: 'WhatsApp', icon: MessageCircle },
+      { hash: '/whatsapp-deliveries', label: 'Envios WhatsApp', icon: Send },
       { hash: '/dashboard', label: 'Dashboard', icon: BarChart3 },
       { hash: '/sales-orders', label: 'Pedidos', icon: ShoppingCart },
       { hash: '/crm', label: 'CRM', icon: Columns3 },

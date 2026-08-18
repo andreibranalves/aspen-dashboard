@@ -37,6 +37,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/leads': 'Clientes',
   '/settings': 'Configurações',
   '/whatsapp-inbox': 'WhatsApp',
+  '/whatsapp-deliveries': 'Envios WhatsApp',
 };
 
 function getBreadcrumb(route: string): BreadcrumbItem[] {
