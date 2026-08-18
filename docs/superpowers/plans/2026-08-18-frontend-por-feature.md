@@ -413,7 +413,7 @@ cat > /tmp/move-map.json <<'EOF'
   "src/components/communication/MediaLibrary.tsx": "src/features/communication/components/MediaLibrary.tsx",
   "src/components/communication/MediaUploader.tsx": "src/features/communication/components/MediaUploader.tsx",
   "src/components/communication/SendHistoryTab.tsx": "src/features/communication/components/SendHistoryTab.tsx",
-  "src/components/communication/SkeletonComunicacao.tsx": "src/features/communication/components/SkeletonComunicacao.tsx",
+  "src/components/SkeletonComunicacao.tsx": "src/features/communication/components/SkeletonComunicacao.tsx",
   "src/pages/SettingsPage.tsx": "src/features/settings/pages/SettingsPage.tsx"
 }
 EOF
