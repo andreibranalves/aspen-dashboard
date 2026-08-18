@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { assertExternalWritesAllowed } from '../../../_shared/external-writes.js';
 
 export type MetaLeadEvent = {
   eventId: string;
@@ -15,6 +16,7 @@ export function hashForMeta(value: string) {
 export async function sendMetaLeadEvent(event: MetaLeadEvent) {
   const accessToken = String(process.env.META_CAPI_ACCESS_TOKEN || '').trim();
   if (!accessToken) return { sent: false, reason: 'missing_token' } as const;
+  assertExternalWritesAllowed('meta-capi');
 
   const pixelId = String(process.env.META_PIXEL_ID || '565904716543317').trim();
   const userData: Record<string, string[]> = {};

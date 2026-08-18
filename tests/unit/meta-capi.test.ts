@@ -6,6 +6,8 @@ import { hashForMeta, sendMetaLeadEvent } from '../../api/infrastructure/integra
 const ORIGINAL_ENV = {
   META_CAPI_ACCESS_TOKEN: process.env.META_CAPI_ACCESS_TOKEN,
   META_PIXEL_ID: process.env.META_PIXEL_ID,
+  APP_ENV: process.env.APP_ENV,
+  EXTERNAL_WRITES_ENABLED: process.env.EXTERNAL_WRITES_ENABLED,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -20,6 +22,18 @@ afterEach(() => {
     delete process.env.META_PIXEL_ID;
   } else {
     process.env.META_PIXEL_ID = ORIGINAL_ENV.META_PIXEL_ID;
+  }
+
+  if (ORIGINAL_ENV.APP_ENV === undefined) {
+    delete process.env.APP_ENV;
+  } else {
+    process.env.APP_ENV = ORIGINAL_ENV.APP_ENV;
+  }
+
+  if (ORIGINAL_ENV.EXTERNAL_WRITES_ENABLED === undefined) {
+    delete process.env.EXTERNAL_WRITES_ENABLED;
+  } else {
+    process.env.EXTERNAL_WRITES_ENABLED = ORIGINAL_ENV.EXTERNAL_WRITES_ENABLED;
   }
 
   globalThis.fetch = ORIGINAL_FETCH;
@@ -47,9 +61,11 @@ describe('meta-capi', () => {
   it('sendMetaLeadEvent posts to Graph API v25.0 with correct pixel id', async () => {
     process.env.META_CAPI_ACCESS_TOKEN = 'test-token';
     process.env.META_PIXEL_ID = '565904716543317';
+    process.env.APP_ENV = 'production';
+    process.env.EXTERNAL_WRITES_ENABLED = '1';
 
     const calls: { url: string; body: unknown }[] = [];
-    globalThis.fetch = (async (url, options = {}) => {
+    globalThis.fetch = (async (url, options: RequestInit = {}) => {
       const parsed = typeof options.body === 'string' ? JSON.parse(options.body) : null;
       calls.push({ url: url as string, body: parsed });
       return {
@@ -98,5 +114,26 @@ describe('meta-capi', () => {
     assert.equal(customData.content_name, 'qualified_typebot_lead');
     assert.equal(customData.lead_type, 'corporate_quote');
     assert.equal(customData.quantity, '100 unidades');
+  });
+
+  it('does not post when Meta writes are disabled', async () => {
+    process.env.META_CAPI_ACCESS_TOKEN = 'test-token';
+    process.env.APP_ENV = 'preview';
+    process.env.EXTERNAL_WRITES_ENABLED = '0';
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      throw new Error('fetch must not run');
+    }) as typeof globalThis.fetch;
+
+    await assert.rejects(
+      sendMetaLeadEvent({ eventId: 'blocked-event', email: 'teste@example.com' }),
+      (error: Error & { statusCode?: number }) => {
+        assert.equal(error.statusCode, 503);
+        assert.equal(error.message, 'Integrações externas desativadas neste ambiente.');
+        return true;
+      },
+    );
+    assert.equal(calls, 0);
   });
 });
