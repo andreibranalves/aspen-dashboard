@@ -12,14 +12,34 @@
 
 | Comando | Resultado | Tempo de parede | Observação |
 | --- | --- | ---: | --- |
-| `time npm run check` | Falhou, exit `127` | `0.334s` | Parou em `npm run lint`: `eslint: not found`. Type-check, Tailwind e build não foram executados por este comando. |
-| `time npm run test:unit` | Falhou, exit `2` | `3.184s` | `npm run build:api` falhou com tipos `node`/`vite/client` ausentes e `TS5101` sobre `baseUrl`; testes não foram executados. |
-| `time npx playwright test` | Falhou, exit `1` | `3.092s` | `npx` baixou temporariamente Playwright `1.62.1`, mas `playwright.config.js` não encontrou o pacote local `@playwright/test`; nenhum spec foi executado. |
-| `node --test tests/unit/route-map.test.ts` | Passou | `0.095s` | Mapa atual expõe os 44 nomes esperados nos três arquivos. |
+| `time npm run check` | Passou, exit `0` | `16.478s` | Lint, type-check, Tailwind e build (api + vite) concluíram com sucesso. |
+| `time npm run test:unit` | Passou, exit `0` | cerca de `52s` | 703 testes, 674 pass, 29 skip, 0 fail (execução estabelecida posteriormente ao commit de baseline). |
+| `time npx playwright test` | Falhou, exit `1` | `8m51s` | 58 pass, 31 fail; ver classificação abaixo. Artefatos em `test-results/` e `playwright-report/`. |
+| `node --test tests/unit/route-map.test.ts` | Passou | `0.070s` | Mapa atual expõe os 44 nomes esperados nos três arquivos. |
 
-Os três checks principais não chegaram à execução funcional porque as dependências locais e tipos de desenvolvimento não estão instalados ou resolvidos neste checkout.
-As falhas não foram classificadas como falhas de lógica da aplicação.
-Nenhum spec Playwright chegou a rodar, portanto não houve falha específica classificável como staging-only.
+A dependência e o toolchain estavam íntegros na rodada de Fix 2: `npm run check` e `npm run test:unit` passaram, e o Playwright chegou a executar todos os specs locais.
+As 31 falhas de Playwright são falhas reais de execução local; nenhuma pertence a spec staging-only.
+
+## Classificação das falhas Playwright (31)
+
+Specs staging-only (`tests/postgres-only-cutover.spec.js` e `tests/quotation-cutover-staging.spec.js`) são ignorados localmente via `testIgnore` no `playwright.config.js`.
+Nenhuma das 31 falhas veio desses specs: 0 falha staging-only, 31 falhas locais reais.
+
+| Spec | Falhas | Primeira linha de erro |
+| --- | ---: | --- |
+| `orcamento.spec.js` | 1 | `Test timeout of 60000ms exceeded. Error: locator.click: Test timeout of 60000ms exceeded.` (`:558`) |
+| `products-core.spec.js` | 5 | 3x `Test timeout of 60000ms exceeded. Error: locator.click/fill: ...` (`:491`, `:630`, `:305`); 2x `Error: expect(locator).toBeVisible() failed` - `getByText(/10,00/)` (`:214`), `getByText('Produto novo', { exact: true })` (`:267`) |
+| `quotation-cutover.spec.js` | 1 | `Error: expect(locator).toBeVisible() failed` - `getByText('Enviado', { exact: true })` (`:99`) |
+| `quotation-lifecycle.spec.js` | 6 | 0 visible: `getByText('Emitido')` (`:334`), `getByText('Rascunho')` (`:151`), `getByText('Emitido')` (`:115`), `getByText('PDF indisponível. Tentar novamente')` (`:281`); 2x `toBeDisabled` - `'Envio aceito'` (`:255`), `'Enviar WhatsApp'` (`:305`) |
+| `quotation-templates-core.spec.js` | 4 | `getByLabel('Modelo do orçamento')` visible (`:61`), `toHaveValue "arquivado"` (`:145`), `toBeDisabled` `getByLabel('Título - Pagamento')` (`:180`), visible `'Revisão 2'` (`:198`) |
+| `quotations-core.spec.js` | 2 | visible `'Produto local'` (`:44`), `toHaveValue "simples"` (`:123`) |
+| `settings.spec.js` | 2 | 2x `Test timeout of 60000ms exceeded. Error: locator.fill/click: ...` (`:20`, `:222`) |
+| `task-8-fix-r1.spec.js` | 2 | `locator.fill` timeout (`:113`); visible `'Produto legítimo'` (`:173`) |
+| `task-8-fix-r4.spec.js` | 6 | 6x `Test timeout of 60000ms exceeded. Error: locator.fill: ...` (`:70`, `:91`, `:111`, `:127`, `:154`, `:183`) |
+| `whatsapp-inbox.spec.js` | 2 | visible `getByRole('button', { name: 'Novas' })` (`:5`); `TimeoutError: page.waitForSelector: Timeout 10000ms exceeded` - `'Sincronizar'` (`:35`) |
+
+Origem das linhas de erro: `error-context.md` por artefato em `test-results/` e dados de `playwright-report/`.
+As falhas foram registradas sem alteração de aplicação ou teste.
 
 ## Endpoints
 
@@ -159,9 +179,9 @@ Ainda não foi feita a confirmação de quais testes fazem chamadas reais e quai
 
 ## Limitações e riscos residuais
 
-- `npm run check` não validou lint, type-check, Tailwind ou build porque `eslint` não está disponível localmente.
-- `npm run test:unit` não executou testes porque o build da API não encontrou `@types/node` e `vite/client` e reportou a opção `baseUrl` depreciada pela versão de TypeScript disponível.
-- `npx playwright test` não executou specs porque `@playwright/test` não está instalado no projeto.
+- As 31 falhas locais de Playwright não foram corrigidas neste task: Task 1 é somente baseline.
+  Causas prováveis (não confirmadas aqui): estado de login/auth na sessão E2E e asserções de visible/value que não atingiram o estado esperado em tempo hábil.
 - O status de migrations aplicadas em produção permanece desconhecido até uma consulta com `DATABASE_URL` de produção.
 - Antes da Task 2, o teste de paridade confirma somente que os três mapas atuais têm os mesmos 44 nomes.
+- Os tempos de `test:unit` (52s) e Playwright (8m51s) foram medidos em execuções posteriores ao commit de baseline e podem variar conforme a máquina.
 - Este baseline não inclui mudanças de código ou alterações de banco.
