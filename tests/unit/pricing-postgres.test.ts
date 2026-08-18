@@ -12,10 +12,10 @@ import { createPostgresPricingRepository } from '../../api/_db/pricing-repositor
 import { createPostgresProductCatalogRepository } from '../../api/_db/product-catalog-repository.js';
 import { createPostgresProductsRepository } from '../../api/_db/products-repository.js';
 import { productActivityEvents, productPricingTiers, products } from '../../api/_db/schema.js';
-import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
+import { resolveProductPrice } from '../../api/modules/pricing-core.js';
 import * as schema from '../../api/_db/schema.js';
-import { createCoreHandler as createProductsCoreHandler } from '../../api/_functions/products-core.js';
-import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/_functions/product-update-core.js';
+import { createCoreHandler as createProductsCoreHandler } from '../../api/modules/products-core.js';
+import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/modules/product-update-core.js';
 
 const TEST_DATABASE_URL = process.env.TEST_PRICING_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

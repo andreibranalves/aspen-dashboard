@@ -38,7 +38,7 @@ import {
   parseScaledInteger,
   resolveProductPrice,
   type PricingResolution,
-} from '../_functions/pricing-core.js';
+} from '../modules/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
 import {
   normalizeQuotationSections,

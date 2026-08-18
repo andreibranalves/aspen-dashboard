@@ -7,7 +7,7 @@ import {
   parseMoneyCents,
   normalizeProductPricing,
   resolveProductPrice,
-} from '../../api/_functions/pricing-core.js';
+} from '../../api/modules/pricing-core.js';
 import { LEGACY_PRICING_FIXTURES } from '../fixtures/legacy-pricing-fixtures.ts';
 
 describe('core pricing exact resolver', () => {

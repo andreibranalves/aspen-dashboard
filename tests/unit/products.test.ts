@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createHandler as createProductsBoundary } from '../../api/_functions/products.js';
-import { createHandler as createDetailBoundary } from '../../api/_functions/product-detail.js';
-import { createHandler as createUpdateBoundary } from '../../api/_functions/product-update.js';
-import { createCoreHandler as createProductsCore } from '../../api/_functions/products-core.js';
-import { createCoreHandler as createDetailCore } from '../../api/_functions/product-detail-core.js';
-import { createCoreHandler as createUpdateCore } from '../../api/_functions/product-update-core.js';
+import { createHandler as createProductsBoundary } from '../../api/modules/products.js';
+import { createHandler as createDetailBoundary } from '../../api/modules/product-detail.js';
+import { createHandler as createUpdateBoundary } from '../../api/modules/product-update.js';
+import { createCoreHandler as createProductsCore } from '../../api/modules/products-core.js';
+import { createCoreHandler as createDetailCore } from '../../api/modules/product-detail-core.js';
+import { createCoreHandler as createUpdateCore } from '../../api/modules/product-update-core.js';
 import type {
   ProductCreateInput,
   ProductListOptions,

@@ -12,7 +12,7 @@ import {
   QUANTITY_SCALE,
   URGENT_DENOMINATOR,
   URGENT_NUMERATOR,
-} from '../pricing-core.js';
+} from '../../modules/pricing-core.js';
 
 export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (

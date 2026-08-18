@@ -18,7 +18,7 @@ import { productPricingTiers, products } from './schema.js';
 import {
   normalizeProductPricing,
   type PricingTierInput,
-} from '../_functions/pricing-core.js';
+} from '../modules/pricing-core.js';
 import {
   pricingRecordFromNormalized,
   type PricingReplaceInput,

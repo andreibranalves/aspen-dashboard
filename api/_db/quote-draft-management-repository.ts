@@ -24,7 +24,7 @@ import {
   parseScaledInteger,
   resolveProductPrice,
   type PricingResolution,
-} from '../_functions/pricing-core.js';
+} from '../modules/pricing-core.js';
 import {
   combineLegacyConditions,
   normalizeQuotationSections,

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createCoreHandler as createLookupCoreHandler, createHandler as createLookupHandler } from '../../api/_functions/pricing-lookup.js';
-import { createCoreHandler as createPricingCoreHandler, createHandler as createPricingHandler } from '../../api/_functions/product-pricing.js';
-import { createHandler as createPricingUpdateHandler } from '../../api/_functions/product-pricing-update.js';
-import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/_functions/product-update-core.js';
+import { createCoreHandler as createLookupCoreHandler, createHandler as createLookupHandler } from '../../api/modules/pricing-lookup.js';
+import { createCoreHandler as createPricingCoreHandler, createHandler as createPricingHandler } from '../../api/modules/product-pricing.js';
+import { createHandler as createPricingUpdateHandler } from '../../api/modules/product-pricing-update.js';
+import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/modules/product-update-core.js';
 import type { ProductRecord, ProductsRepository } from '../../api/_db/products-repository.js';
 import type { PricingRepository, ProductPricingRecord } from '../../api/_db/pricing-repository.js';
 

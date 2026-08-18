@@ -8,7 +8,7 @@ import {
   normalizeProductPricing,
   type NormalizedProductPricing,
   type PricingTierInput,
-} from '../_functions/pricing-core.js';
+} from '../modules/pricing-core.js';
 
 export interface PricingTierRecord {
   minimum_quantity: string;
