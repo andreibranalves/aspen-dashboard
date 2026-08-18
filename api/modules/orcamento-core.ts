@@ -7,7 +7,7 @@ import {
   QuoteDraftRepositoryError,
   type QuoteDraftCreateInput,
   type QuoteDraftRepository,
-} from '../_db/quote-repository.js';
+} from '../infrastructure/db/repositories/quote-repository.js';
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface OrcamentoCoreDependencies {

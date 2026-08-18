@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
-import { clients, type ClientRow } from './client-schema.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { clients, type ClientRow } from '../client-schema.js';
 import {
   ClientDuplicateError,
   ClientInputError,
@@ -22,13 +22,13 @@ import {
   type ClientPatchInput,
   type ClientRecord,
   type ClientWriteInput,
-} from '../modules/client-schema.js';
-import type { ClientRepository } from '../modules/client-repository.js';
+} from '../../../modules/client-schema.js';
+import type { ClientRepository } from '../../../modules/client-repository.js';
 
 export type {
   ClientRepository,
   MemoryClientRepositoryOptions,
-} from '../modules/client-repository.js';
+} from '../../../modules/client-repository.js';
 export type {
   ClientAddress,
   ClientCreateInput,
@@ -39,7 +39,7 @@ export type {
   ClientStatus,
   ClientUpdateInput,
   ClientWriteInput,
-} from '../modules/client-schema.js';
+} from '../../../modules/client-schema.js';
 
 type DatabaseProvider = () => AppDatabase;
 

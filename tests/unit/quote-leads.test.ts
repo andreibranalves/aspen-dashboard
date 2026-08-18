@@ -12,7 +12,7 @@ import {
   quoteLeadIdentityKey,
   type QuoteLeadRecord,
   type QuoteLeadRepository,
-} from '../../api/_db/quote-leads-repository.js';
+} from '../../api/infrastructure/db/repositories/quote-leads-repository.js';
 import { makeQuoteLead, parseJsonResult } from './pre-quote-fixtures.ts';
 
 const UUID_1 = '00000000-0000-4000-8000-000000000001';

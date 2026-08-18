@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import {
   quoteRevisionItems,
   quoteRevisions,
   quotationDeliveries,
   quotationTemplateVersions,
   quotations,
-} from './schema.js';
-import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../modules/quotation-status.js';
+} from '../schema.js';
+import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../../../modules/quotation-status.js';
 import {
   formatQuotationClientName,
   formatQuotationCurrency,
@@ -19,11 +19,11 @@ import {
   renderQuotationTemplate,
   type QuotationTemplate,
   type QuotationTemplateViewModel,
-} from '../modules/quotation-template-catalog.js';
-import { renderQuotationPdf } from '../modules/quotation-pdf-renderer.js';
-import { isValidPdfBuffer, quotationPdfChecksum } from '../modules/quotation-document-storage.js';
-import { normalizeWhatsappPhone } from '../modules/whatsapp-conversations-store.js';
-import { revisionSectionsSnapshot } from './quotation-revision-invariants.js';
+} from '../../../modules/quotation-template-catalog.js';
+import { renderQuotationPdf } from '../../../modules/quotation-pdf-renderer.js';
+import { isValidPdfBuffer, quotationPdfChecksum } from '../../../modules/quotation-document-storage.js';
+import { normalizeWhatsappPhone } from '../../../modules/whatsapp-conversations-store.js';
+import { revisionSectionsSnapshot } from '../quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;
 type DeliveryDatabase = AppDatabase | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

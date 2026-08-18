@@ -9,13 +9,13 @@ import {
   type QuoteDraftManagementListOptions,
   type QuoteDraftManagementRepository,
   type QuoteDraftManagementUpdateInput,
-} from '../_db/quote-draft-management-repository.js';
+} from '../infrastructure/db/repositories/quote-draft-management-repository.js';
 import {
   createPostgresQuotationLifecycleRepository,
   type CreateQuotationRevisionInput,
   type QuotationLifecycleRepository,
   type SetQuotationStatusInput,
-} from '../_db/quotation-lifecycle-repository.js';
+} from '../infrastructure/db/repositories/quotation-lifecycle-repository.js';
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 
 export interface QuotationsCoreDependencies {

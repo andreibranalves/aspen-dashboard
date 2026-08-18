@@ -1,11 +1,11 @@
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
-import { getDatabase } from '../_db/client.js';
-import { readCurrentQuotationTemplateVersion } from '../_db/quotation-template-library-repository.js';
+import { getDatabase } from '../infrastructure/db/client.js';
+import { readCurrentQuotationTemplateVersion } from '../infrastructure/db/repositories/quotation-template-library-repository.js';
 import {
   createQuotationTemplateRepository,
   quotationSnapshotViewModel,
   QuotationTemplateSnapshotRepositoryError,
-} from '../_db/quotation-template-repository.js';
+} from '../infrastructure/db/repositories/quotation-template-repository.js';
 import {
   quotationTemplateFromVersion,
   QuotationTemplateResolutionError,

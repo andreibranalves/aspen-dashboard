@@ -3,12 +3,12 @@ import {
   createPostgresProductsRepository,
   ProductRepositoryError,
   type ProductsRepository,
-} from '../_db/products-repository.js';
+} from '../infrastructure/db/repositories/products-repository.js';
 import {
   createPostgresPricingRepository,
   PricingRepositoryError,
   type PricingRepository,
-} from '../_db/pricing-repository.js';
+} from '../infrastructure/db/repositories/pricing-repository.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 

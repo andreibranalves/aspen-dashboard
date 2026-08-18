@@ -1,9 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 
-import type { QuoteDatabase } from './quote-draft-management-repository.js';
+import type { QuoteDatabase } from './repositories/quote-draft-management-repository.js';
 import { quotationTemplateVersions, quotationTemplates } from './schema.js';
-import { snapshotFromLegacyRevision } from '../modules/quotation-template-snapshot.js';
-import type { QuotationSectionsSnapshot } from '../modules/quotation-content.js';
+import { snapshotFromLegacyRevision } from '../../modules/quotation-template-snapshot.js';
+import type { QuotationSectionsSnapshot } from '../../modules/quotation-content.js';
 
 export async function resolveQuotationRevisionMetadata(
   tx: QuoteDatabase,

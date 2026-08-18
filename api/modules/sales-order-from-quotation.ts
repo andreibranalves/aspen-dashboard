@@ -4,7 +4,7 @@ import { createHttpError } from '../_shared/http-error.js';
 import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
-} from '../_db/sales-orders-repository.js';
+} from '../infrastructure/db/repositories/sales-orders-repository.js';
 
 export interface SalesOrderFromQuotationHandlerDependencies {
   repository?: SalesOrdersRepository;

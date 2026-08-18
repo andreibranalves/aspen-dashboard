@@ -3,7 +3,7 @@ import {
   createPostgresProductActivityRepository,
   ProductActivityRepositoryError,
   type ProductActivityRepository,
-} from '../_db/product-activity-repository.js';
+} from '../infrastructure/db/repositories/product-activity-repository.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 

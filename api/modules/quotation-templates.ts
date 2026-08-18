@@ -6,7 +6,7 @@ import {
   QuotationTemplateLibraryInputError,
   QuotationTemplateLibraryNotFoundError,
   QuotationTemplateLibraryRepositoryError,
-} from '../_db/quotation-template-library-repository.js';
+} from '../infrastructure/db/repositories/quotation-template-library-repository.js';
 
 function json(statusCode: number, payload: object): FunctionResult {
   return {

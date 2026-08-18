@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import { and, asc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
-import { acquireQuotationWriteLock } from './quotation-write-lock.js';
+import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import {
   appSettings,
   clients,
@@ -17,7 +17,7 @@ import {
   quotations,
   quotationTemplateVersions,
   quotationTemplates,
-} from './schema.js';
+} from '../schema.js';
 import {
   ClientInputError,
   normalizeClientAddress,
@@ -27,7 +27,7 @@ import {
   normalizeClientNotes,
   normalizeClientPhone,
   type ClientAddress,
-} from '../modules/client-schema.js';
+} from '../../../modules/client-schema.js';
 import {
   PricingUnavailableError,
   PricingValidationError,
@@ -38,15 +38,15 @@ import {
   parseScaledInteger,
   resolveProductPrice,
   type PricingResolution,
-} from '../modules/pricing-core.js';
+} from '../../../modules/pricing-core.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
 import {
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
-} from '../modules/quotation-content.js';
+} from '../../../modules/quotation-content.js';
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
-import { getQuotationTemplate } from '../modules/quotation-template-catalog.js';
-import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
+import { getQuotationTemplate } from '../../../modules/quotation-template-catalog.js';
+import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

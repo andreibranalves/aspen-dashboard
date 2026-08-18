@@ -4,15 +4,15 @@ import {
   ProductRepositoryError,
   type ProductUpdateInput,
   type ProductsRepository,
-} from '../_db/products-repository.js';
+} from '../infrastructure/db/repositories/products-repository.js';
 import {
   createPostgresPricingRepository,
   type PricingRepository,
-} from '../_db/pricing-repository.js';
+} from '../infrastructure/db/repositories/pricing-repository.js';
 import {
   createPostgresProductCatalogRepository,
   type ProductCatalogRepository,
-} from '../_db/product-catalog-repository.js';
+} from '../infrastructure/db/repositories/product-catalog-repository.js';
 import {
   normalizeProductPricing,
   type PricingTierInput,

@@ -5,7 +5,7 @@ import {
   type Settings,
   type SettingsInput,
   type SettingsRepository,
-} from '../_db/settings-repository.js';
+} from '../infrastructure/db/repositories/settings-repository.js';
 import {
   normalizeQuotationSections,
   validateQuotationSections,

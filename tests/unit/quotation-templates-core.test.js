@@ -21,7 +21,7 @@ import {
   quotationSnapshotViewModel,
   QuotationTemplateSnapshotRepositoryError,
   readQuotationTemplateSnapshot,
-} from '../../api/_db/quotation-template-repository.js';
+} from '../../api/infrastructure/db/repositories/quotation-template-repository.js';
 import { createQuotationPreviewHandler } from '../../api/modules/quotation-preview.js';
 import {
   createQuotationSectionsSnapshot,
@@ -33,7 +33,7 @@ import {
   quoteRevisions,
   quotationTemplateVersions,
   quotations,
-} from '../../api/_db/schema.js';
+} from '../../api/infrastructure/db/schema.js';
 
 const snapshot = {
   quotation: {

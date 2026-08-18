@@ -2,7 +2,7 @@ import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
   dialect: 'postgresql',
-  schema: './api/_db/schema.ts',
+  schema: './api/infrastructure/db/schema.ts',
   out: './drizzle',
   dbCredentials: {
     // TEST_DATABASE_URL lets the committed migration be verified without ever

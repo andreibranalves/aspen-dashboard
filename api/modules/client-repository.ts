@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { createPostgresClientRepository as postgresFactory } from '../_db/client-repository.js';
+import { createPostgresClientRepository as postgresFactory } from '../infrastructure/db/repositories/client-repository.js';
 
 import {
   ClientDuplicateError,

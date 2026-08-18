@@ -3,11 +3,11 @@ import {
   createPostgresPricingRepository,
   PricingRepositoryError,
   type PricingRepository,
-} from '../_db/pricing-repository.js';
+} from '../infrastructure/db/repositories/pricing-repository.js';
 import {
   createPostgresProductsRepository,
   type ProductsRepository,
-} from '../_db/products-repository.js';
+} from '../infrastructure/db/repositories/products-repository.js';
 import {
   PricingUnavailableError,
   PricingValidationError,

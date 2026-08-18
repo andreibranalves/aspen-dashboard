@@ -10,7 +10,7 @@ import {
   quotations,
   quotationTemplates,
   quotationTemplateVersions,
-} from '../../api/_db/schema.js';
+} from '../../api/infrastructure/db/schema.js';
 
 test('quotation template schema exposes versioned templates and snapshots', () => {
   assert.equal(appSettings.quotationSections.name, 'quotation_sections');

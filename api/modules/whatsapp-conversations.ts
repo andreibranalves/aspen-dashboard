@@ -8,7 +8,7 @@ import type {
 import { createHttpError } from '../_shared/http-error.js';
 import { handler as extractHandler } from './extract.js';
 import { sendText } from './send-whatsapp.js';
-import { createPostgresQuoteLeadRepository } from '../_db/quote-leads-repository.js';
+import { createPostgresQuoteLeadRepository } from '../infrastructure/db/repositories/quote-leads-repository.js';
 import {
   cleanText,
   getWhatsappConversation,

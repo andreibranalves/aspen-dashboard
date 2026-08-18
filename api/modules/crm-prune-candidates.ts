@@ -3,7 +3,7 @@ import { createHttpError } from '../_shared/http-error.js';
 import {
   createPostgresCrmDealRepository,
   type CrmDealRepository,
-} from '../_db/crm-deals-repository.js';
+} from '../infrastructure/db/repositories/crm-deals-repository.js';
 import {
   getPruneCandidates,
   parseDealIds,

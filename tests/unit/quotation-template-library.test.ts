@@ -4,7 +4,7 @@ import { createQuotationTemplatesHandler } from '../../api/modules/quotation-tem
 import {
   QuotationTemplateLibraryConflictError,
   QuotationTemplateLibraryInputError,
-} from '../../api/_db/quotation-template-library-repository.js';
+} from '../../api/infrastructure/db/repositories/quotation-template-library-repository.js';
 
 const repository = {
   list: async (active?: boolean) => ({

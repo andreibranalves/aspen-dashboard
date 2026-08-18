@@ -14,12 +14,12 @@ import type { HttpError } from '../_shared/http-error.js';
 import { kv } from '@vercel/kv';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
-import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
+import { createQuotationTemplateRepository } from '../infrastructure/db/repositories/quotation-template-repository.js';
 import {
   createPostgresQuotationDeliveryRepository,
   QuotationDeliveryPdfError,
   type QuotationDeliveryRepository,
-} from '../_db/quotation-delivery-repository.js';
+} from '../infrastructure/db/repositories/quotation-delivery-repository.js';
 import {
   isRevisionBoundPublicQuotationUrl,
 } from './public-quotation.js';
@@ -36,7 +36,7 @@ import {
   type BlobHead,
   type PostgresMediaRecord,
 } from './postgres-media.js';
-import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from '../_functions/lib/evolution-delivery.js';
+import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from '../infrastructure/integrations/evolution/evolution-delivery.js';
 import {
   KV_KEY_FLOWS,
   KV_KEY_SEND_EVENTS_PREFIX,

@@ -8,12 +8,12 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 
-import { createPostgresPricingRepository } from '../../api/_db/pricing-repository.js';
-import { createPostgresProductCatalogRepository } from '../../api/_db/product-catalog-repository.js';
-import { createPostgresProductsRepository } from '../../api/_db/products-repository.js';
-import { productActivityEvents, productPricingTiers, products } from '../../api/_db/schema.js';
+import { createPostgresPricingRepository } from '../../api/infrastructure/db/repositories/pricing-repository.js';
+import { createPostgresProductCatalogRepository } from '../../api/infrastructure/db/repositories/product-catalog-repository.js';
+import { createPostgresProductsRepository } from '../../api/infrastructure/db/repositories/products-repository.js';
+import { productActivityEvents, productPricingTiers, products } from '../../api/infrastructure/db/schema.js';
 import { resolveProductPrice } from '../../api/modules/pricing-core.js';
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 import { createCoreHandler as createProductsCoreHandler } from '../../api/modules/products-core.js';
 import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/modules/product-update-core.js';
 

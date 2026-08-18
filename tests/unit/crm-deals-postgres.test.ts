@@ -9,8 +9,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
-import { createPostgresCrmDealRepository } from '../../api/_db/crm-deals-repository.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
+import { createPostgresCrmDealRepository } from '../../api/infrastructure/db/repositories/crm-deals-repository.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 import { createCrmDealsHandler } from '../../api/modules/crm-deals.js';
 import { createCrmUpdateDealHandler } from '../../api/modules/crm-update-deal.js';
@@ -19,7 +19,7 @@ import {
   CRM_PIPELINE,
   type CrmDealRecord,
   type CrmDealRepository,
-} from '../../api/_db/crm-deals-repository.js';
+} from '../../api/infrastructure/db/repositories/crm-deals-repository.js';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;

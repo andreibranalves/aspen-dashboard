@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { eq } from 'drizzle-orm';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 import {
   clients,
   products,
@@ -18,14 +18,14 @@ import {
   quotationDeliveries,
   quotationTemplateVersions,
   quotationTemplates,
-} from '../../api/_db/schema.js';
+} from '../../api/infrastructure/db/schema.js';
 import {
   canRecordQuotationDeliveryState,
   createPostgresQuotationDeliveryRepository,
   QuotationDeliveryConflictError,
   QuotationDeliveryPdfError,
   QuotationDeliveryRepositoryError,
-} from '../../api/_db/quotation-delivery-repository.js';
+} from '../../api/infrastructure/db/repositories/quotation-delivery-repository.js';
 import type { QuotationSectionsSnapshot } from '../../api/modules/quotation-content.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;

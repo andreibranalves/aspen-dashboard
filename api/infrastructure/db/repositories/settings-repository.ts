@@ -1,12 +1,12 @@
 import { eq } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
-import { appSettings } from './schema.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { appSettings } from '../schema.js';
 import {
   DEFAULT_QUOTATION_SECTIONS,
   normalizeQuotationSections,
   type QuotationSectionsSettings,
-} from '../modules/quotation-content.js';
+} from '../../../modules/quotation-content.js';
 
 export interface Settings {
   validade_dias: number;

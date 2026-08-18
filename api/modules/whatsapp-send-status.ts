@@ -13,7 +13,7 @@ import {
   createPostgresQuotationDeliveryRepository,
   type QuotationDelivery,
   type QuotationDeliveryRepository,
-} from '../_db/quotation-delivery-repository.js';
+} from '../infrastructure/db/repositories/quotation-delivery-repository.js';
 
 function json(statusCode: number, body: Record<string, unknown>): FunctionResult {
   return {

@@ -14,10 +14,10 @@ import {
   type ProductActivityEventInput,
   type ProductActivityRecord,
   type ProductActivityRepository,
-} from '../../api/_db/product-activity-repository.js';
-import { products, productActivityEvents } from '../../api/_db/schema.js';
+} from '../../api/infrastructure/db/repositories/product-activity-repository.js';
+import { products, productActivityEvents } from '../../api/infrastructure/db/schema.js';
 import { createHandler } from '../../api/modules/product-activity.js';
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_ACTIVITY_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

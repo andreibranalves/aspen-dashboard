@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { createHandler } from '../../api/modules/settings.js';
-import type { Settings, SettingsRepository } from '../../api/_db/settings-repository.js';
+import type { Settings, SettingsRepository } from '../../api/infrastructure/db/repositories/settings-repository.js';
 
 const DEFAULT_SETTINGS: Settings = {
   validade_dias: 15,

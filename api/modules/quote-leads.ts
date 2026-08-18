@@ -10,7 +10,7 @@ import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRepository,
   type QuoteLeadStatus,
-} from '../_db/quote-leads-repository.js';
+} from '../infrastructure/db/repositories/quote-leads-repository.js';
 
 const LIVE_REPOSITORY = createPostgresQuoteLeadRepository();
 

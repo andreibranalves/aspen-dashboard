@@ -8,7 +8,7 @@ import {
   createQuotationTemplateRepository,
   quotationSnapshotViewModel,
   type QuotationTemplateSnapshot,
-} from '../_db/quotation-template-repository.js';
+} from '../infrastructure/db/repositories/quotation-template-repository.js';
 import {
   issuePublicQuotationToken,
   isRevisionBoundPublicQuotationUrl,
@@ -33,12 +33,12 @@ import {
   type BlobHead,
   type PostgresMediaRecord,
 } from './postgres-media.js';
-import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from '../_functions/lib/evolution-delivery.js';
-import { createPostgresCrmDealRepository, type CrmDealRecord } from '../_db/crm-deals-repository.js';
+import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from '../infrastructure/integrations/evolution/evolution-delivery.js';
+import { createPostgresCrmDealRepository, type CrmDealRecord } from '../infrastructure/db/repositories/crm-deals-repository.js';
 import {
   createPostgresQuotationDeliveryRepository,
   type QuotationDeliveryRepository,
-} from '../_db/quotation-delivery-repository.js';
+} from '../infrastructure/db/repositories/quotation-delivery-repository.js';
 
 // ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
 function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {

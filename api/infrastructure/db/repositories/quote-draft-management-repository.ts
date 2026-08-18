@@ -1,9 +1,9 @@
 import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
-import { acquireQuotationWriteLock } from './quotation-write-lock.js';
+import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import {
   clients,
   products,
@@ -13,7 +13,7 @@ import {
   quotations,
   quotationTemplateVersions,
   quotationTemplates,
-} from './schema.js';
+} from '../schema.js';
 import {
   PricingUnavailableError,
   PricingValidationError,
@@ -24,14 +24,14 @@ import {
   parseScaledInteger,
   resolveProductPrice,
   type PricingResolution,
-} from '../modules/pricing-core.js';
+} from '../../../modules/pricing-core.js';
 import {
   combineLegacyConditions,
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
-} from '../modules/quotation-content.js';
-import { snapshotFromLegacyRevision } from '../modules/quotation-template-snapshot.js';
-import { canonicalQuotationStatus, type QuotationStatus } from '../modules/quotation-status.js';
+} from '../../../modules/quotation-content.js';
+import { snapshotFromLegacyRevision } from '../../../modules/quotation-template-snapshot.js';
+import { canonicalQuotationStatus, type QuotationStatus } from '../../../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

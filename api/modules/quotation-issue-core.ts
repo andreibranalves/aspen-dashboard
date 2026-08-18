@@ -4,9 +4,9 @@ import {
   type QuotationIssueInput,
   type QuotationIssueResult,
   type QuotationIssueStatus,
-} from '../_db/quotation-issue-repository.js';
+} from '../infrastructure/db/repositories/quotation-issue-repository.js';
 
-export type { QuotationIssueInput, QuotationIssueResult, QuotationIssueStatus } from '../_db/quotation-issue-repository.js';
+export type { QuotationIssueInput, QuotationIssueResult, QuotationIssueStatus } from '../infrastructure/db/repositories/quotation-issue-repository.js';
 export { quotationIssueFingerprint };
 
 export function createQuotationIssueCore() {

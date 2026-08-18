@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import {
   appendProductActivityEvents,
   type ProductActivityEventInput,
@@ -14,11 +14,11 @@ import {
   type ProductRecord,
   type ProductUpdateInput,
 } from './products-repository.js';
-import { productPricingTiers, products } from './schema.js';
+import { productPricingTiers, products } from '../schema.js';
 import {
   normalizeProductPricing,
   type PricingTierInput,
-} from '../modules/pricing-core.js';
+} from '../../../modules/pricing-core.js';
 import {
   pricingRecordFromNormalized,
   type PricingReplaceInput,

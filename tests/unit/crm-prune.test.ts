@@ -12,7 +12,7 @@ import type {
   CrmDealRepository,
   CrmPruneCandidate,
   CrmPruneResult,
-} from '../../api/_db/crm-deals-repository.js';
+} from '../../api/infrastructure/db/repositories/crm-deals-repository.js';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 

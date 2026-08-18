@@ -20,8 +20,8 @@ import {
   DEFAULT_QUOTATION_SECTIONS,
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
-} from '../modules/quotation-content.js';
-import type { QuotationStatus } from '../modules/quotation-status.js';
+} from '../../modules/quotation-content.js';
+import type { QuotationStatus } from '../../modules/quotation-status.js';
 
 /**
  * Global dashboard settings live in one deliberate singleton row. Keeping the

@@ -1,14 +1,14 @@
 import { asc, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
-import { productPricingTiers, products } from './schema.js';
+import { productPricingTiers, products } from '../schema.js';
 import {
   normalizeProductPricing,
   type NormalizedProductPricing,
   type PricingTierInput,
-} from '../modules/pricing-core.js';
+} from '../../../modules/pricing-core.js';
 
 export interface PricingTierRecord {
   minimum_quantity: string;

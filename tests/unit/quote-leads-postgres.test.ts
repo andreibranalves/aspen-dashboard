@@ -10,11 +10,11 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRecord,
-} from '../../api/_db/quote-leads-repository.js';
+} from '../../api/infrastructure/db/repositories/quote-leads-repository.js';
 import { createHandler as createTypebotHandler } from '../../api/modules/typebot-lead-capture.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -33,7 +33,7 @@ test('active lead paths depend on KV-free pure logic only', () => {
       path.dirname(fileURLToPath(import.meta.url)),
       '..',
       '..',
-      'api/_db/quote-leads-repository.ts'
+      'api/infrastructure/db/repositories/quote-leads-repository.ts'
     ),
     'utf8'
   );

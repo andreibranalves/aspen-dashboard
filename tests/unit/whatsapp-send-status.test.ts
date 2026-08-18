@@ -6,7 +6,7 @@ import {
   canonicalWhatsappSendIdempotencyKey,
   WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
 } from '../../api/modules/whatsapp-send-reservation-store.js';
-import type { QuotationDelivery } from '../../api/_db/quotation-delivery-repository.js';
+import type { QuotationDelivery } from '../../api/infrastructure/db/repositories/quotation-delivery-repository.js';
 
 const quotationId = 'quote-status';
 const revisionId = 'revision-status';

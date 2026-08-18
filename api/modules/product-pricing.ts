@@ -3,7 +3,7 @@ import {
   createPostgresPricingRepository,
   PricingRepositoryError,
   type PricingRepository,
-} from '../_db/pricing-repository.js';
+} from '../infrastructure/db/repositories/pricing-repository.js';
 import { normalizeProductPricing, type PricingTierInput } from './pricing-core.js';
 
 export const BRACKETS = [30, 100, 300, 500, 1000];

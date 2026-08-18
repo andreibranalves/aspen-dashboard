@@ -8,7 +8,7 @@ import {
   QuoteDraftRepositoryError,
   type QuoteDraftRepository,
   type QuoteDuplicateResult,
-} from '../_db/quote-repository.js';
+} from '../infrastructure/db/repositories/quote-repository.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 export type DuplicateQuotationRepository = Pick<

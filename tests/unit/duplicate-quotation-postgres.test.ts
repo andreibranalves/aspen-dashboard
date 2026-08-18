@@ -12,7 +12,7 @@ import postgres from 'postgres';
 import {
   createPostgresQuoteDraftRepository,
   QuoteDraftConflictError,
-} from '../../api/_db/quote-repository.js';
+} from '../../api/infrastructure/db/repositories/quote-repository.js';
 import {
   clients,
   crmDeals,
@@ -23,8 +23,8 @@ import {
   quotationTemplateVersions,
   quotationTemplates,
   quotations,
-} from '../../api/_db/schema.js';
-import * as schema from '../../api/_db/schema.js';
+} from '../../api/infrastructure/db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 import { createHandler } from '../../api/modules/duplicate-quotation.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DUPLICATE_DATABASE_URL;

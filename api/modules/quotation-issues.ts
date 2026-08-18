@@ -5,7 +5,7 @@ import {
   QuotationIssueInputError,
   QuotationIssueRepositoryError,
   type QuotationIssueRepositoryOptions,
-} from '../_db/quotation-issue-repository.js';
+} from '../infrastructure/db/repositories/quotation-issue-repository.js';
 
 function json(statusCode: number, payload: unknown): FunctionResult {
   return { statusCode, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, body: JSON.stringify(payload) };

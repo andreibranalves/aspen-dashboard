@@ -6,17 +6,17 @@ import {
   type ProductListOptions,
   type ProductsRepository,
   type ProductStatus,
-} from '../_db/products-repository.js';
+} from '../infrastructure/db/repositories/products-repository.js';
 import {
   createPostgresPricingRepository,
   type PricingRepository,
   type ProductPricingRecord,
-} from '../_db/pricing-repository.js';
+} from '../infrastructure/db/repositories/pricing-repository.js';
 import { normalizeProductPricing, type PricingTierInput } from './pricing-core.js';
 import {
   createPostgresProductCatalogRepository,
   type ProductCatalogRepository,
-} from '../_db/product-catalog-repository.js';
+} from '../infrastructure/db/repositories/product-catalog-repository.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;
 

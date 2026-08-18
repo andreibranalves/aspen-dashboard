@@ -2,7 +2,7 @@ import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/type
 import {
   createOrderTemplateRepository,
   type OrderTemplateRepository,
-} from '../_db/order-template-repository.js';
+} from '../infrastructure/db/repositories/order-template-repository.js';
 
 function json(statusCode: number, payload: object): FunctionResult {
   return {

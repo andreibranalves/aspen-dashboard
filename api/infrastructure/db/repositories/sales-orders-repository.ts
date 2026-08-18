@@ -16,7 +16,7 @@ import {
 import { alias } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
 import {
   clients,
@@ -27,7 +27,7 @@ import {
   salesOrderItems,
   salesOrderSequences,
   salesOrders,
-} from './schema.js';
+} from '../schema.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

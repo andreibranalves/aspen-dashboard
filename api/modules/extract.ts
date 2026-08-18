@@ -3,7 +3,7 @@ import {
   createOrderTemplateRepository,
   type OrderTemplateRecord,
   type OrderTemplateRepository,
-} from '../_db/order-template-repository.js';
+} from '../infrastructure/db/repositories/order-template-repository.js';
 
 // ── Regras de extração padrão ──
 export const DEFAULT_RULES = `Rule 0 — SKU Explícito (TEXTO): Se o cliente informar SKUs explícitos NO CORPO DO TEXTO (ex: alguém digitou "CNG-SAL-70"), use exatamente esses SKUs sem expandir.

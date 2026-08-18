@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { kv } from '@vercel/kv';
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from './quotation-status.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../infrastructure/db/repositories/quotation-template-repository.js';
 import {
   quotationTemplateFromVersion,
   renderQuotationTemplate,

@@ -4,7 +4,7 @@ import {
   createPostgresSalesOrdersRepository,
   type DashboardPeriod,
   type SalesOrdersRepository,
-} from '../_db/sales-orders-repository.js';
+} from '../infrastructure/db/repositories/sales-orders-repository.js';
 
 export interface SalesDashboardHandlerDependencies {
   repository?: Pick<SalesOrdersRepository, 'dashboard'>;

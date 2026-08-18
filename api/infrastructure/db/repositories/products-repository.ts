@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
-import { products } from './schema.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { products } from '../schema.js';
 
 export type ProductStatus = 'active' | 'archived' | 'all';
 

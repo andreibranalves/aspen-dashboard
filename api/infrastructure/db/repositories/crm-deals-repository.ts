@@ -1,8 +1,8 @@
 import { and, asc, desc, eq, ilike, inArray, lte, ne, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
-import { crmDeals, quoteRevisions, quotations, salesOrders } from './schema.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { crmDeals, quoteRevisions, quotations, salesOrders } from '../schema.js';
 
 export const CRM_PIPELINE = [
   'Novo Lead',

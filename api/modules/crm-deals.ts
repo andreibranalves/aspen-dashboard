@@ -5,7 +5,7 @@ import {
   createPostgresCrmDealRepository,
   type CrmDealRecord,
   type CrmDealRepository,
-} from '../_db/crm-deals-repository.js';
+} from '../infrastructure/db/repositories/crm-deals-repository.js';
 
 export interface CrmDealsHandlerDependencies {
   repository?: CrmDealRepository;

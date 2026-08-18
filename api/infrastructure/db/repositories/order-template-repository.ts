@@ -1,8 +1,8 @@
 import { asc, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
-import { orderTemplateItems, orderTemplates, products } from './schema.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { orderTemplateItems, orderTemplates, products } from '../schema.js';
 
 export interface OrderTemplateItem {
   sku: string;

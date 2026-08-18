@@ -1,7 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
 import {
   readPostgresQuotationDetail,
@@ -12,15 +12,15 @@ import {
   type QuoteDatabase,
   type QuoteDraftManagementDetail,
 } from './quote-draft-management-repository.js';
-import { quoteRevisionItems, quoteRevisions, quotations } from './schema.js';
-import { acquireQuotationWriteLock } from './quotation-write-lock.js';
-import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
+import { quoteRevisionItems, quoteRevisions, quotations } from '../schema.js';
+import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
+import { revisionSectionsSnapshot, resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
 import {
   assertQuotationTransition,
   canonicalQuotationStatus,
   isIssuedQuotationStatus,
   type QuotationStatus,
-} from '../modules/quotation-status.js';
+} from '../../../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

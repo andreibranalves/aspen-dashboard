@@ -7,7 +7,7 @@ import {
   QuoteDraftInputError,
   readSelectedTemplate,
   type TemplateSelectionLookup,
-} from '../../api/_db/quote-repository.js';
+} from '../../api/infrastructure/db/repositories/quote-repository.js';
 
 function event(body: unknown) {
   return {

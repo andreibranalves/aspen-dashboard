@@ -9,8 +9,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
-import { createPostgresQuoteLeadRepository } from '../../api/_db/quote-leads-repository.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
+import { createPostgresQuoteLeadRepository } from '../../api/infrastructure/db/repositories/quote-leads-repository.js';
 import { createHandler as createWhatsappHandler } from '../../api/modules/whatsapp-conversations.js';
 import { createPostgresWhatsappCrmRepository, resolveWhatsappCrmMatch } from '../../api/modules/whatsapp-crm-match.js';
 import type { WhatsappConversation } from '../../api/modules/whatsapp-conversations-store.js';

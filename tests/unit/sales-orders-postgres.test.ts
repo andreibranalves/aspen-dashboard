@@ -10,14 +10,14 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 import {
   createPostgresSalesOrdersRepository,
   type CreateSalesOrderResult,
   type SalesOrderDetail,
   type SalesOrderListOptions,
   type SalesOrdersRepository,
-} from '../../api/_db/sales-orders-repository.js';
+} from '../../api/infrastructure/db/repositories/sales-orders-repository.js';
 import { createSalesOrderFromQuotationHandler } from '../../api/modules/sales-order-from-quotation.js';
 import { createSalesOrdersHandler } from '../../api/modules/sales-orders.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
@@ -212,7 +212,7 @@ test('sales handlers keep Portuguese validation and not-found contracts', async 
 
 test('sales order runtime contains no network or rollout dependency', () => {
   for (const relative of [
-    'api/_db/sales-orders-repository.ts',
+    'api/infrastructure/db/repositories/sales-orders-repository.ts',
     'api/modules/sales-orders.ts',
     'api/modules/sales-order-from-quotation.ts',
   ]) {

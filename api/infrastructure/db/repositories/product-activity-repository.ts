@@ -1,8 +1,8 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 
-import { getDatabase, type AppDatabase } from './client.js';
-import { productActivityEvents } from './schema.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { productActivityEvents } from '../schema.js';
 
 export const PRODUCT_ACTIVITY_TYPES = ['produto', 'preco', 'orcamento', 'pedido'] as const;
 export type ProductActivityType = (typeof PRODUCT_ACTIVITY_TYPES)[number];

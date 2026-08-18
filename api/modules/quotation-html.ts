@@ -1,4 +1,4 @@
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../infrastructure/db/repositories/quotation-template-repository.js';
 import {
   formatQuotationClientName,
   quotationTemplateFromVersion,

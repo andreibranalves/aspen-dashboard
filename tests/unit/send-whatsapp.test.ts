@@ -15,7 +15,7 @@ import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
 } from '../../api/modules/postgres-media.js';
-import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
+import { normalizeEvolutionDelivery } from '../../api/infrastructure/integrations/evolution/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 import {

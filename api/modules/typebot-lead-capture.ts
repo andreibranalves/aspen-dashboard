@@ -10,8 +10,8 @@ import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRecord,
   type QuoteLeadRepository,
-} from '../_db/quote-leads-repository.js';
-import { sendMetaLeadEvent } from '../_functions/lib/meta-capi.js';
+} from '../infrastructure/db/repositories/quote-leads-repository.js';
+import { sendMetaLeadEvent } from '../infrastructure/integrations/meta-capi/meta-capi.js';
 
 const LIVE_REPOSITORY = createPostgresQuoteLeadRepository();
 

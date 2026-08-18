@@ -6,7 +6,7 @@ import {
   SALES_ORDER_STATUSES,
   type SalesOrderListOptions,
   type SalesOrdersRepository,
-} from '../_db/sales-orders-repository.js';
+} from '../infrastructure/db/repositories/sales-orders-repository.js';
 
 export interface SalesOrdersHandlerDependencies {
   repository?: SalesOrdersRepository;

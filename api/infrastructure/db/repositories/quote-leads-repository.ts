@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import { and, asc, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
 
-import { createHttpError } from '../_shared/http-error.js';
-import { getDatabase, type AppDatabase } from './client.js';
-import { crmDeals, quoteLeads, quotations } from './schema.js';
+import { createHttpError } from '../../../_shared/http-error.js';
+import { getDatabase, type AppDatabase } from '../client.js';
+import { crmDeals, quoteLeads, quotations } from '../schema.js';
 import {
   formatQuoteLeadText,
   mergeQuoteLead,
@@ -13,10 +13,10 @@ import {
   type QuoteLead,
   type QuoteLeadAttribution,
   type QuoteLeadStatus,
-} from '../modules/quote-leads-pure.js';
+} from '../../../modules/quote-leads-pure.js';
 
-export { quoteLeadIdentityKey } from '../modules/quote-leads-pure.js';
-export type { QuoteLeadStatus } from '../modules/quote-leads-pure.js';
+export { quoteLeadIdentityKey } from '../../../modules/quote-leads-pure.js';
+export type { QuoteLeadStatus } from '../../../modules/quote-leads-pure.js';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;

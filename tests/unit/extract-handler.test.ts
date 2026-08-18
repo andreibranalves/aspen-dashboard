@@ -5,7 +5,7 @@ import { createExtractHandler, handler } from '../../api/modules/extract.js';
 import {
   OrderTemplateConflictError,
   OrderTemplateNotFoundError,
-} from '../../api/_db/order-template-repository.js';
+} from '../../api/infrastructure/db/repositories/order-template-repository.js';
 
 function event(method: string, body: unknown) {
   return {

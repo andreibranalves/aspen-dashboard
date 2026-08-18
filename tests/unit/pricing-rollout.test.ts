@@ -5,8 +5,8 @@ import { createCoreHandler as createLookupCoreHandler, createHandler as createLo
 import { createCoreHandler as createPricingCoreHandler, createHandler as createPricingHandler } from '../../api/modules/product-pricing.js';
 import { createHandler as createPricingUpdateHandler } from '../../api/modules/product-pricing-update.js';
 import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/modules/product-update-core.js';
-import type { ProductRecord, ProductsRepository } from '../../api/_db/products-repository.js';
-import type { PricingRepository, ProductPricingRecord } from '../../api/_db/pricing-repository.js';
+import type { ProductRecord, ProductsRepository } from '../../api/infrastructure/db/repositories/products-repository.js';
+import type { PricingRepository, ProductPricingRecord } from '../../api/infrastructure/db/repositories/pricing-repository.js';
 
 function event(method: string, body: unknown, query: Record<string, string> = {}) {
   return {

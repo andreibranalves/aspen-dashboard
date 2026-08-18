@@ -10,11 +10,11 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/infrastructure/db/schema.js';
 import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
-} from '../../api/_db/sales-orders-repository.js';
+} from '../../api/infrastructure/db/repositories/sales-orders-repository.js';
 import { createSalesDashboardHandler } from '../../api/modules/sales-dashboard.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 

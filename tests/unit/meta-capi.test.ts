@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { hashForMeta, sendMetaLeadEvent } from '../../api/_functions/lib/meta-capi.js';
+import { hashForMeta, sendMetaLeadEvent } from '../../api/infrastructure/integrations/meta-capi/meta-capi.js';
 
 const ORIGINAL_ENV = {
   META_CAPI_ACCESS_TOKEN: process.env.META_CAPI_ACCESS_TOKEN,

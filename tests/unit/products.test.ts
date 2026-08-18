@@ -14,8 +14,8 @@ import type {
   ProductUpdateInput,
   ProductStatus,
   ProductsRepository,
-} from '../../api/_db/products-repository.js';
-import { isDuplicateProductError } from '../../api/_db/products-repository.js';
+} from '../../api/infrastructure/db/repositories/products-repository.js';
+import { isDuplicateProductError } from '../../api/infrastructure/db/repositories/products-repository.js';
 
 function event(method: string, body?: unknown, query: Record<string, string> = {}) {
   return {

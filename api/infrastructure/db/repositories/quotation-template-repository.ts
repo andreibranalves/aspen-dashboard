@@ -1,13 +1,13 @@
 import { asc, desc, eq, or } from 'drizzle-orm';
 
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import {
   quotationTemplateVersions,
   quotationTemplates,
   quoteRevisionItems,
   quoteRevisions,
   quotations,
-} from './schema.js';
+} from '../schema.js';
 import {
   formatQuotationClientName,
   formatQuotationCurrency,
@@ -15,9 +15,9 @@ import {
   formatQuotationPhone,
   formatQuotationQuantity,
   type QuotationTemplateViewModel,
-} from '../modules/quotation-template-catalog.js';
-import { toSafeMultilineHtml } from '../modules/quotation-content.js';
-import { canonicalQuotationStatus } from '../modules/quotation-status.js';
+} from '../../../modules/quotation-template-catalog.js';
+import { toSafeMultilineHtml } from '../../../modules/quotation-content.js';
+import { canonicalQuotationStatus } from '../../../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteDatabase = AppDatabase;

@@ -1,18 +1,18 @@
 import { and, desc, eq, max, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
-import { getDatabase, type AppDatabase } from './client.js';
+import { getDatabase, type AppDatabase } from '../client.js';
 import {
   appSettings,
   quotationTemplateVersions,
   quotationTemplates,
   quoteRevisions,
-} from './schema.js';
+} from '../schema.js';
 import {
   renderQuotationTemplate,
   validateQuotationHtmlSource,
   validateQuotationTemplateSource,
   QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
-} from '../modules/quotation-template-catalog.js';
+} from '../../../modules/quotation-template-catalog.js';
 import { type QuoteDatabase } from './quote-draft-management-repository.js';
 
 export interface QuotationTemplateListItem {

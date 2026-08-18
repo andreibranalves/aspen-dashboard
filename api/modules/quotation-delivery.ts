@@ -2,7 +2,7 @@ import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
 import type {
   PreparedQuotationDelivery,
   QuotationDeliveryState,
-} from '../_db/quotation-delivery-repository.js';
+} from '../infrastructure/db/repositories/quotation-delivery-repository.js';
 
 const MAX_FLOW_DURATION_MS = 45_000;
 const MAX_PUBLIC_LINK_TTL_SECONDS = 30 * 24 * 60 * 60;

@@ -1,5 +1,5 @@
 // Shared runtime types for the legacy Lambda handler contract.
-// Used by function-adapter, auth, rate-limit, and every _functions/* handler.
+// Used by function-adapter, auth, rate-limit, and every api/modules handler.
 
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS';

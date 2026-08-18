@@ -11,7 +11,7 @@ import { kv } from '@vercel/kv';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import { KV_KEY_FLOWS } from './media-schema.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../infrastructure/db/repositories/quotation-template-repository.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 import {
   readCommunicationMediaRecords,
