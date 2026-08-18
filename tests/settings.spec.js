@@ -16,7 +16,7 @@ const INITIAL_SETTINGS = {
   },
 };
 
-test.describe('Configurações de orçamento', () => {
+test.describe('Configurações de orçamento @quotations', () => {
   test('carrega, edita e salva todos os valores padrão', async ({ page }) => {
     let settings = { ...INITIAL_SETTINGS };
     let receivedPayload;

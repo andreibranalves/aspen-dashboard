@@ -1,7 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
-test.describe('WhatsApp Inbox Page', () => {
+test.describe('WhatsApp Inbox Page @whatsapp @external @critical', () => {
   test('page loads with full layout: sidebar, header, filters, three-column inbox', async ({
     page,
   }) => {

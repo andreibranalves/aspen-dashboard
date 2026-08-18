@@ -45,7 +45,7 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
   return { requests, releasePost: () => releasePost?.() };
 }
 
-test('preview and emission use explicit UI clicks with one stable idempotent POST', async ({ page }) => {
+test('preview and emission use explicit UI clicks with one stable idempotent POST @quotations @critical', async ({ page }) => {
   const { requests, releasePost } = await setup(page, null, {
     quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1,
     status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
@@ -86,7 +86,7 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   expect(requests.some((request) => request.url().includes('send-whatsapp'))).toBe(false);
 });
 
-test('GET recovery is read-only after a lost POST response', async ({ page }) => {
+test('GET recovery is read-only after a lost POST response @quotations @critical', async ({ page }) => {
   const { requests } = await setup(page, { state: 'completed', quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1, status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf' });
   await page.goto('/#/auto');
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();

@@ -35,7 +35,7 @@ const DETAIL = {
 
 /** @typedef {typeof DETAIL & { id?: string, nome?: string, archived?: boolean, updated?: boolean }} ClientDetail */
 
-test.describe('Clientes locais', () => {
+test.describe('Clientes locais @crm @smoke', () => {
   test('exibe Cliente sem Lead e permite abrir detalhe', async ({ page }) => {
     await page.route('**/api/leads-clients**', async (route) => {
       await route.fulfill({

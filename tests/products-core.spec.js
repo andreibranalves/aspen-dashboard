@@ -190,7 +190,7 @@ async function mockProductApi(page, initialRows) {
   return { rows, requests, updates };
 }
 
-test.describe('Produtos — catálogo principal', () => {
+test.describe('Produtos — catálogo principal @products @smoke', () => {
   test('cria produto core com preços no POST atômico sem segundo update de pricing', async ({ page }) => {
     const { requests, updates, rows } = await mockProductApi(page, []);
     await page.goto('/#/products/new');

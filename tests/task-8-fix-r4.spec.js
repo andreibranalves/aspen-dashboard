@@ -67,7 +67,7 @@ async function setupAuto(page) {
   return send;
 }
 
-test('accepted partial stays accepted and blocks automatic replay', async ({ page }) => {
+test('accepted partial stays accepted and blocks automatic replay @quotations @critical', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {
@@ -88,7 +88,7 @@ test('accepted partial stays accepted and blocks automatic replay', async ({ pag
   expect(sendCount).toBe(1);
 });
 
-test('reserved response shows reconciling label and blocks duplicate send', async ({ page }) => {
+test('reserved response shows reconciling label and blocks duplicate send @quotations @critical', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {
@@ -108,7 +108,7 @@ test('reserved response shows reconciling label and blocks duplicate send', asyn
   expect(sendCount).toBe(1);
 });
 
-test('completed neutral replay without phone remains a completed UI status', async ({ page }) => {
+test('completed neutral replay without phone remains a completed UI status @quotations @critical', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {
@@ -124,7 +124,7 @@ test('completed neutral replay without phone remains a completed UI status', asy
   expect(sendCount).toBe(1);
 });
 
-test('flow switch gets an independent exact status key', async ({ page }) => {
+test('flow switch gets an independent exact status key @quotations @critical', async ({ page }) => {
   await setupAuto(page);
   const sendRequests = [];
   await page.route('**/api/send-whatsapp-flow', (route) => {
@@ -151,7 +151,7 @@ test('flow switch gets an independent exact status key', async ({ page }) => {
   })));
 });
 
-test('same component double click sends one backend request and failure cleanup re-enables button', async ({ page }) => {
+test('same component double click sends one backend request and failure cleanup re-enables button @quotations @critical', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
   let fail = true;
@@ -180,7 +180,7 @@ test('same component double click sends one backend request and failure cleanup 
   expect(sendCount).toBe(2);
 });
 
-test('malformed 2xx cannot render sent and forged localStorage has no authority', async ({ page }) => {
+test('malformed 2xx cannot render sent and forged localStorage has no authority @quotations @critical', async ({ page }) => {
   await setupAuto(page);
   let sendCount = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {

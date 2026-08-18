@@ -292,7 +292,7 @@ async function setupLeadsMocks(page) {
 
 // ── Tests ──
 
-test.describe('Auto Quote — Fluxo Principal', () => {
+test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
   test('página /auto carrega com formulário visível', async ({ page }) => {
     await setupApiMocks(page);
     await page.goto('/#/auto');
@@ -504,7 +504,7 @@ test.describe('Auto Quote — Fluxo Principal', () => {
   });
 });
 
-test.describe('Leads — Página single e visualização rápida', () => {
+test.describe('Leads — Página single e visualização rápida @crm', () => {
   test('clique na linha abre a página própria do lead', async ({ page }) => {
     await setupLeadsMocks(page);
     await page.goto('/#/leads');
@@ -554,7 +554,7 @@ test.describe('Leads — Página single e visualização rápida', () => {
   });
 });
 
-test.describe('Orçamento manual — clientes unificados', () => {
+test.describe('Orçamento manual — clientes unificados @quotations', () => {
   test('usa a resposta local para mostrar Cliente e não oferece escolha de Lead', async ({ page }) => {
     await page.route('**/api/leads-clients**', async (route) => {
       await route.fulfill({

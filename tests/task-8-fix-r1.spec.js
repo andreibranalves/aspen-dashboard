@@ -8,7 +8,7 @@ function json(route, body, status = 200, contentType = 'application/json') {
   return route.fulfill({ status, contentType, body: JSON.stringify(body) });
 }
 
-test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada', async ({ page }) => {
+test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quotations @critical', async ({ page }) => {
   const requests = [];
   await page.route('**/api/quotations**', (route) => json(route, {
     data: [{
@@ -43,7 +43,7 @@ test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada', asyn
   await opened.close();
 });
 
-test('pedidos usa métricas canônicas, nomes neutros e somente status suportados', async ({ page }) => {
+test('pedidos usa métricas canônicas, nomes neutros e somente status suportados @quotations @critical', async ({ page }) => {
   const sentStatuses = [];
   await page.route('**/api/sales-dashboard**', (route) => json(route, {
     success: true,
@@ -95,7 +95,7 @@ test('pedidos usa métricas canônicas, nomes neutros e somente status suportado
   await expect(page.getByText('11111111-1111-4111-8111-111111111111', { exact: true })).toHaveCount(0);
 });
 
-test('detalhe de pedido não expõe UUID quando customer_name falta', async ({ page }) => {
+test('detalhe de pedido não expõe UUID quando customer_name falta @quotations @critical', async ({ page }) => {
   const uuid = '11111111-1111-4111-8111-111111111111';
   await page.route('**/api/sales-orders**', (route) => json(route, {
     id: 'PED-2026-0001',
@@ -110,7 +110,7 @@ test('detalhe de pedido não expõe UUID quando customer_name falta', async ({ p
   await expect(page.getByText(uuid, { exact: true })).toHaveCount(0);
 });
 
-test('envio parcialmente aceito fica em reconciliação sem reenvio', async ({ page }) => {
+test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations @critical', async ({ page }) => {
   let sendCount = 0;
   await page.route('**/api/quotation-templates**', (route) => json(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true, current_version_id: revisionId }],
@@ -170,7 +170,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio', async ({ p
   expect(sendCount).toBe(1);
 });
 
-test('projeções locais descartam marcadores proibidos de cliente e cotação', async ({ page }) => {
+test('projeções locais descartam marcadores proibidos de cliente e cotação @quotations @critical', async ({ page }) => {
   const marker = 'FORBIDDEN_MARKER';
   await page.route('**/api/leads-clients**', (route) => json(route, {
     data: [{ id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente legítimo', provider_marker: marker }],
@@ -202,7 +202,7 @@ test('projeções locais descartam marcadores proibidos de cliente e cotação',
   await expect(page.locator('a[href="https://evil.test"]')).toHaveCount(0);
 });
 
-test('métricas ausentes ou contagens inválidas exibem erro e não inventam zeros', async ({ page }) => {
+test('métricas ausentes ou contagens inválidas exibem erro e não inventam zeros @quotations @critical', async ({ page }) => {
   let summary = { total_revenue: 0, revenue_delta: 0, orders_count: 0, orders_delta: 0, avg_ticket: 0, avg_ticket_delta: 0, open_orders: 0, conversion_rate: 0, conversion_delta: 0 };
   await page.route('**/api/sales-dashboard**', (route) => json(route, { success: true, summary }));
   await page.route('**/api/sales-orders**', (route) => json(route, { success: true, items: [], has_more: false }));

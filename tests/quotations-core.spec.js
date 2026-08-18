@@ -41,7 +41,7 @@ function detail(overrides = {}) {
   };
 }
 
-test('local quotations list/search/open/edit and surface optimistic conflicts', async ({ page }) => {
+test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({ page }) => {
   const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;
   let lastPutPayload;
@@ -120,7 +120,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts', 
   await expect(page.getByRole('button', { name: 'Recarregar' })).toBeVisible();
 });
 
-test('pré-seleciona o modelo padrão em rascunho já existente', async ({ page }) => {
+test('pré-seleciona o modelo padrão em rascunho já existente @quotations @smoke', async ({ page }) => {
   await page.route('**/api/leads-clients**', async (route) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });

@@ -6,7 +6,7 @@ function json(route, body, status = 200) {
 
 const pagination = { page: 1, limit: 10, total: 2, total_pages: 1 };
 
-test('listas locais falham fechadas quando a segunda linha é inválida', async ({ page }) => {
+test('listas locais falham fechadas quando a segunda linha é inválida @smoke', async ({ page }) => {
   await page.route('**/api/leads-clients**', (route) => json(route, {
     data: [
       { id: 'client-1', nome: 'Cliente válido' },
@@ -32,7 +32,7 @@ test('listas locais falham fechadas quando a segunda linha é inválida', async 
   await expect(page.getByText('Produto válido', { exact: true })).toHaveCount(0);
 });
 
-test('listas locais preservam resposta vazia válida e removem metadata desconhecida', async ({ page }) => {
+test('listas locais preservam resposta vazia válida e removem metadata desconhecida @smoke', async ({ page }) => {
   const marker = 'UNKNOWN_METADATA_MARKER';
   await page.route('**/api/leads-clients**', (route) => json(route, {
     data: [],
@@ -53,7 +53,7 @@ test('listas locais preservam resposta vazia válida e removem metadata desconhe
   await expect(page.getByText(marker, { exact: true })).toHaveCount(0);
 });
 
-test('dashboard inválido exibe retry e nunca mascara métrica como zero', async ({ page }) => {
+test('dashboard inválido exibe retry e nunca mascara métrica como zero @smoke', async ({ page }) => {
   await page.route('**/api/sales-dashboard**', (route) => json(route, {
     success: true,
     period: { label: '30 dias', from: '2026-08-01', to: '2026-08-30' },
