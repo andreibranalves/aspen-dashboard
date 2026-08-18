@@ -272,6 +272,20 @@ test('quotation detail loads the same durable delivery without clicking send', a
   await expect(page.getByRole('button', { name: /enviar via whatsapp/i })).toBeDisabled();
 });
 
+test('browser reload during processing keeps the durable processing state', async ({ page }) => {
+  await mockDetail(page, 'processing');
+  let transportCalls = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    transportCalls += 1;
+    return json(route, { error: 'reload must not send' }, 500);
+  });
+  await page.goto(`/#/quotations/${quotationId}`);
+  await expect(page.getByText('Enviando', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Enviando', { exact: true })).toBeVisible();
+  expect(transportCalls).toBe(0);
+});
+
 test('failed delivery stays blocked until a new revision', async ({ page }) => {
   await routeCommonAuto(page);
   const lifecycle = await mockDeliveryLifecycle(page, ['failed']);

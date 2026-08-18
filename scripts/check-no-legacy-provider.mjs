@@ -92,6 +92,8 @@ const providerTokenHashes = new Map([
   ['553e0ed6a0fe65d112fb240a1ee1680cfb387736f4bb1654191d300050b38f77', 'removed external outbox module'],
   ['7c9c9d506b9b97bb175e45ccade2eec6a90d6cf5c1941cecdcd6a09d43ae1e02', 'removed external outbox module'],
   ['84bf0cd276f31497434ad21d9f4c2734cabac1e2165dde1a95a10f2136c351df', 'removed external outbox module'],
+  ['4c6a0d26f391cbf8118035a366edfa8a93b7bd9aa256e688abf45f714fbc8255', 'retired reservation module'],
+  ['d4bc6527eeaa8ca75a559fc266cfe353a108592b897af962b51cc926c16ec2f6', 'retired quotation delivery module'],
 ]);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 const componentHashes = {
@@ -150,6 +152,56 @@ function isInActiveRoot(path) {
   return activeRoots.some((activeRoot) => path === activeRoot || path.startsWith(`${activeRoot}/`));
 }
 
+const retiredModuleLabels = new Set([
+  'retired reservation module',
+  'retired quotation delivery module',
+]);
+const historicalRetiredSources = new Map([
+  ['b1e2778835f2d9fdfc6dd14c829f9706fdcdcde39e5422140953a1c2321d9230', {
+    sourceHash: 'e9b48bd924ab0cea261eb5d1dfab146d0821c9283be043fe2381dc4429dcc83e',
+    label: 'retired quotation delivery module',
+  }],
+  ['d1441eda171b9911317a415212621431fd3d5d576f5beac090e6330140c2915c', {
+    sourceHash: '0ed224e818cf05ca32d04b4d372afce21f42ec28459cbe0bdb516dbed8d2cb29',
+    label: 'retired reservation module',
+  }],
+  ['abb9515383169bbf3ee8fd3c184b157d484e60aaebf0ccd0f052274cde16b17b', {
+    sourceHash: '5ef50b1bcfb2c33cdb5d3fd2128b189269934f52122adddc0df2142c93d3ebed',
+    label: 'retired reservation module',
+  }],
+]);
+
+function activeRetiredModuleLabels(paths) {
+  const active = new Set();
+  for (const path of paths) {
+    if (!path.startsWith('api/') || !path.endsWith('.ts')) continue;
+    const fileName = path.slice(path.lastIndexOf('/') + 1, -3);
+    const label = providerTokenHashes.get(hash(fileName));
+    if (retiredModuleLabels.has(label)) active.add(label);
+  }
+  return active;
+}
+
+function ignoredRetiredModuleLabels(path, bytes, activeLabels) {
+  const ignored = new Set();
+  if (path.startsWith('api/')) {
+    const fileName = path.slice(path.lastIndexOf('/') + 1);
+    const stem = fileName.replace(/(?:\.js)?\.map$|\.js$|\.ts$/, '');
+    const label = providerTokenHashes.get(hash(stem));
+    if (retiredModuleLabels.has(label) && activeLabels.has(label)) ignored.add(label);
+  }
+  const historical = historicalRetiredSources.get(hash(path));
+  if (
+    historical &&
+    activeLabels.has(historical.label) &&
+    bytes &&
+    hash(bytes) === historical.sourceHash
+  ) {
+    ignored.add(historical.label);
+  }
+  return ignored;
+}
+
 function scopedPaths() {
   const output = execFileSync(
     'git',
@@ -187,8 +239,8 @@ function lineNumberAt(source, index) {
   return source.slice(0, Math.max(0, index)).split('\n').length;
 }
 
-function checkPath(path) {
-  return detectForbidden(path).map(({ label }) => `${path}:0:${label}`);
+function checkPath(path, ignoredLabels = new Set()) {
+  return detectForbidden(path, false, ignoredLabels).map(({ label }) => `${path}:0:${label}`);
 }
 
 function supportsStaticFolding(path) {
@@ -416,14 +468,17 @@ function isPathToken(source, start, end) {
   return !previous || /[/."'`]/.test(previous) && (!next || /[./"'`]/.test(next));
 }
 
-function inspectForbiddenToken(rawToken, index, source, folded, add) {
+function inspectForbiddenToken(rawToken, index, source, folded, add, ignoredLabels) {
   const token = rawToken.includes('\\u') ? decodeLiteral(rawToken) : rawToken;
   if (token === null || token === undefined) return;
   const normalized = token.toLowerCase();
   const label = providerTokenHashes.get(hash(normalized));
   const end = index + rawToken.length;
-  if (label && label !== 'compatibility doctype' &&
-      (folded || !label.includes('module') || isPathToken(source, index, end)))
+  const retiredModuleToken = retiredModuleLabels.has(label);
+  if (label && !ignoredLabels.has(label) && label !== 'compatibility doctype' &&
+      (retiredModuleToken
+        ? isPathToken(source, index, end)
+        : (folded || !label.includes('module') || isPathToken(source, index, end))))
     add(label, index);
   if (token.includes('-')) {
     for (const part of token.split('-')) {
@@ -449,15 +504,15 @@ function inspectForbiddenToken(rawToken, index, source, folded, add) {
 const escapedIdentifierPart = String.raw`(?:[A-Za-z0-9_$]|\\u(?:\\{[0-9a-fA-F]+\\}|[0-9a-fA-F]{4}))+`;
 const escapedIdentifierPattern = new RegExp(`${escapedIdentifierPart}(?:-${escapedIdentifierPart})*`, 'g');
 
-function detectForbidden(source, folded = false) {
+function detectForbidden(source, folded = false, ignoredLabels = new Set()) {
   const findings = new Map();
   const add = (label, index) => {
     if (!findings.has(label)) findings.set(label, index);
   };
   for (const match of source.matchAll(/[A-Za-z0-9_$]+(?:-[A-Za-z0-9_$]+)*/g))
-    inspectForbiddenToken(match[0], match.index, source, folded, add);
+    inspectForbiddenToken(match[0], match.index, source, folded, add, ignoredLabels);
   for (const match of source.matchAll(escapedIdentifierPattern)) {
-    if (match[0].includes('\\u')) inspectForbiddenToken(match[0], match.index, source, folded, add);
+    if (match[0].includes('\\u')) inspectForbiddenToken(match[0], match.index, source, folded, add, ignoredLabels);
   }
   return [...findings.entries()].map(([label, index]) => ({ label, index }));
 }
@@ -1119,14 +1174,14 @@ function staticStrings(source, depth = 0) {
   return { expressions, unavailable: false, suspicious: constructors.suspicious, unsupportedConstructor: constructors.unsupportedConstructor };
 }
 
-function checkText(path, bytes) {
+function checkText(path, bytes, ignoredLabels = new Set()) {
   if (bytes.byteLength > MAX_ACTIVE_SOURCE_BYTES) return [`${path}:0:source too large`];
   const source = bytes.includes(0) ? bytes.toString('latin1') : bytes.toString('utf8');
   const findings = definitionMarkerPattern.test(source)
     ? [`${path}:0:invalid guard definition markers`]
     : [];
   // Raw scan is intentionally first and never replaced by parser masking.
-  for (const { label, index } of detectForbidden(source))
+  for (const { label, index } of detectForbidden(source, false, ignoredLabels))
     findings.push(`${path}:${lineNumberAt(source, index)}:${label}`);
   if (supportsStaticFolding(path)) {
     try {
@@ -1136,7 +1191,7 @@ function checkText(path, bytes) {
       } else {
         if (folded.unsupportedConstructor) findings.push(`${path}:0:unsupported static string construction`);
         for (const literal of folded.expressions) {
-          for (const { label, index } of detectForbidden(literal.value, true))
+          for (const { label, index } of detectForbidden(literal.value, true, ignoredLabels))
             findings.push(`${path}:${lineNumberAt(source, literal.start + index)}:${label}`);
         }
       }
@@ -1257,7 +1312,9 @@ export function safeReadCandidate(rawPath, { rootDir = root, beforeOpen } = {}) 
 
 function scan() {
   const findings = [];
-  for (const rawPath of scopedPaths()) {
+  const paths = scopedPaths();
+  const activeLabels = activeRetiredModuleLabels(paths);
+  for (const rawPath of paths) {
     const normalized = normalizeCandidatePath(rawPath);
     if (normalized.invalid) {
       findings.push(`${normalized.path}:0:path traversal/outside roots`);
@@ -1265,8 +1322,9 @@ function scan() {
     }
     const path = normalized.path;
     if (!isInActiveRoot(path) || isExcluded(path)) continue;
-    findings.push(...checkPath(path));
     const result = safeReadCandidate(path);
+    const ignoredLabels = ignoredRetiredModuleLabels(path, result.bytes, activeLabels);
+    findings.push(...checkPath(path, ignoredLabels));
     if (result.kind === 'missing' || result.kind === 'skip') continue;
     if (result.kind === 'symlink') {
       findings.push(`${path}:0:tracked symlink forbidden`);
@@ -1280,7 +1338,7 @@ function scan() {
       findings.push(`${path}:0:unreadable active source`);
       continue;
     }
-    findings.push(...checkText(path, result.bytes));
+    findings.push(...checkText(path, result.bytes, ignoredLabels));
   }
   const uniqueFindings = [...new Set(findings)].sort();
   if (uniqueFindings.length > 0) {

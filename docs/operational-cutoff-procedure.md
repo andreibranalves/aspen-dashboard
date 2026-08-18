@@ -30,6 +30,53 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 
 Nenhuma etapa deste documento executa deploy, alteração de ambiente, migração ou acesso a serviço remoto.
 
+## Configuração operacional de corte
+
+Os nomes de configuração necessários são:
+
+```text
+EVOLUTION_WEBHOOK_SECRET
+CRON_SECRET
+EVOLUTION_INSTANCE
+```
+
+Configure o webhook `MESSAGES_UPDATE` da Evolution com um cabeçalho `Authorization` personalizado.
+
+Confirme que `/api/evolution-webhook` rejeita requisições sem bearer e com bearer incorreto.
+
+Confirme que o cron da Vercel invoca `/api/quotation-delivery-worker` a cada minuto.
+
+Inspecione **Envios WhatsApp** para localizar linhas ativas e acionáveis.
+
+Execute uma entrega real controlada usando um orçamento aprovado existente e um destinatário designado.
+
+Verifique que cada identificador de mensagem do provedor alcança `DELIVERY_ACK`.
+
+Verifique que logs não exibem segredos nem números de telefone.
+
+Em rollback de código, não faça rollback da migração, porque ela é aditiva e linhas legadas continuam legíveis.
+
+Não registre valores dessas variáveis neste repositório, em comandos ou em relatórios.
+
+## Gate controlado de staging
+
+A execução local termina antes do passo controlado de staging.
+
+No gate, execute primeiro:
+
+```bash
+node scripts/cutover-env-status.mjs
+npm run test:e2e:staging -- --list
+```
+
+Depois, use somente o orçamento controlado identificado pelo ambiente do operador.
+
+Não crie uma cotação ou fixture para essa validação.
+
+Confirme recebimento do webhook, execução do worker, entrega no dispositivo, estado da página e ausência de mensagem duplicada.
+
+Se não houver `DELIVERY_ACK`, interrompa o corte e mantenha os módulos de reserva Redis até corrigir a configuração do provedor.
+
 ## Comandos de verificação e corte
 
 Execute as verificações locais antes dos testes de staging:

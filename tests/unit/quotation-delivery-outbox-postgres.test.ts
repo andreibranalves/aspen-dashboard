@@ -22,6 +22,7 @@ import {
   type EnqueueDeliveryRecord,
   type FrozenDeliveryStep,
 } from '../../api/_db/quotation-delivery-outbox-repository.js';
+import { EvolutionTransportError } from '../../api/_functions/lib/evolution-transport.js';
 import { createQuotationDeliveryModule } from '../../api/_functions/lib/quotation-delivery-outbox.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -264,6 +265,50 @@ test('module integration persists frozen delay and waits for the due predecessor
   assert.deepEqual(calls, [0, 1]);
 });
 
+test('accepted step followed by a retryable next step preserves order and call count', async () => {
+  integrationClock = new Date(now);
+  const flowId = 'accepted-then-retryable-postgres';
+  const steps: FrozenDeliveryStep[] = [textStep(0), textStep(1)];
+  let transportCalls = 0;
+  const module = createQuotationDeliveryModule({
+    repository: integrationRepository,
+    planner: async () => ({
+      revisionId: ids.revision,
+      businessNumber,
+      clientName: 'Cliente outbox',
+      phone: '5511999999999',
+      flowId,
+      flowName: 'Accepted then retryable',
+      steps,
+    }),
+    transport: async () => {
+      transportCalls += 1;
+      if (transportCalls === 2) {
+        throw new EvolutionTransportError(
+          'Tente novamente.',
+          'transient_pre_transport',
+          'EVOLUTION_RATE_LIMIT',
+        );
+      }
+      return { accepted: true as const, providerMessageId: `provider-accepted-retry-${transportCalls}` };
+    },
+    now: () => new Date(integrationClock),
+    logger: () => {},
+  });
+
+  const retry = await module.enqueue({ revisionId: ids.revision, flowId });
+  assert.equal(retry.state, 'retry_scheduled');
+  assert.equal(retry.steps[0]?.state, 'server_ack');
+  assert.equal(retry.steps[1]?.state, 'retry_scheduled');
+  assert.equal(transportCalls, 2);
+  integrationClock = new Date(integrationClock.getTime() + 60_000);
+  const completed = await module.process(retry.id);
+  assert.equal(completed?.state, 'provider_accepted');
+  assert.equal(completed?.steps[0]?.state, 'server_ack');
+  assert.equal(completed?.steps[1]?.state, 'server_ack');
+  assert.equal(transportCalls, 3);
+});
+
 test('two claims produce one lease and accepted steps never reclaim', async () => {
   const delivery = await repository.enqueue(
     input({
@@ -288,7 +333,30 @@ test('two claims produce one lease and accepted steps never reclaim', async () =
   assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
 });
 
-test('expired lease enters reconciliation without automatic retry', async () => {
+test('two independent workers claim one due step and make one transport call', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'two-workers-postgres', steps: [textStep()] })
+  );
+  let transportCalls = 0;
+  const makeModule = () =>
+    createQuotationDeliveryModule({
+      repository,
+      transport: async () => {
+        transportCalls += 1;
+        return { accepted: true as const, providerMessageId: 'provider-two-workers' };
+      },
+      now: () => now,
+      logger: () => {},
+    });
+  const [a, b] = await Promise.all([
+    makeModule().process(delivery.id),
+    makeModule().process(delivery.id),
+  ]);
+  assert.equal(transportCalls, 1);
+  assert.equal((await repository.get(delivery.id))?.state, 'provider_accepted');
+});
+
+test('worker crash after claim before transport enters reconciliation without a provider call', async () => {
   const delivery = await repository.enqueue(
     input({
       flowId: 'claim-expired',
@@ -298,12 +366,45 @@ test('expired lease enters reconciliation without automatic retry', async () => 
   );
   const first = await repository.claim({ deliveryId: delivery.id });
   assert.ok(first);
+  let transportCalls = 0;
   await setDelivery(delivery.id, { leaseUntil: new Date(now.getTime() - 1_000) });
   assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
+  assert.equal(transportCalls, 0);
   assert.equal((await repository.get(delivery.id))?.state, 'reconciling');
   await setDelivery(delivery.id, { reconciliationDeadline: old });
   assert.equal(await repository.expireReconciliations(10), 1);
   assert.equal((await repository.get(delivery.id))?.state, 'needs_review');
+});
+
+test('worker crash after provider acceptance does not resend after lease expiry', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'claim-after-provider', steps: [textStep()] })
+  );
+  const claimed = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claimed);
+  let transportCalls = 0;
+  const providerResponse = {
+    accepted: true as const,
+    providerMessageId: 'provider-crash-after-acceptance',
+  };
+  const transport = async () => {
+    transportCalls += 1;
+    return providerResponse;
+  };
+  assert.equal((await transport()).accepted, true);
+  assert.equal(transportCalls, 1);
+  await setDelivery(delivery.id, { leaseUntil: new Date(now.getTime() - 1_000) });
+  assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
+  const recovered = await repository.get(delivery.id);
+  assert.equal(recovered?.state, 'reconciling');
+  assert.equal(recovered?.steps[0]?.state, 'reconciling');
+  const [stored] = await db
+    .select({ providerMessageId: quotationDeliverySteps.providerMessageId })
+    .from(quotationDeliverySteps)
+    .where(eq(quotationDeliverySteps.id, delivery.steps[0]!.id));
+  assert.equal(stored?.providerMessageId, null);
+  assert.equal(providerResponse.providerMessageId, 'provider-crash-after-acceptance');
+  assert.equal(transportCalls, 1);
 });
 
 test('providerMessageId is unique and invalid leases cannot update a step', async () => {
@@ -350,38 +451,101 @@ test('providerMessageId is unique and invalid leases cannot update a step', asyn
   );
 });
 
-test('duplicate and out-of-order receipts are monotonic', async () => {
+test('duplicate SERVER_ACK receipts are monotonic without another transport call', async () => {
   const delivery = await repository.enqueue(
-    input({
-      flowId: 'receipts',
-      flowName: 'Receipts',
-      steps: [textStep()],
-    })
+    input({ flowId: 'duplicate-server-ack', steps: [textStep()] })
   );
   const claim = await repository.claim({ deliveryId: delivery.id });
   assert.ok(claim);
+  let transportCalls = 0;
+  const transport = async () => {
+    transportCalls += 1;
+    return { accepted: true as const, providerMessageId: 'provider-duplicate-server-ack' };
+  };
+  const accepted = await transport();
   await repository.markAccepted({
     deliveryId: delivery.id,
     stepId: claim.step.id,
     leaseToken: claim.leaseToken,
-    providerMessageId: 'provider-receipt-order',
+    providerMessageId: accepted.providerMessageId,
   });
-  const delivered = await repository.applyReceipt({
-    providerMessageId: 'provider-receipt-order',
-    status: 'DELIVERY_ACK',
-  });
-  assert.equal(delivered?.state, 'delivered');
-  const duplicate = await repository.applyReceipt({
-    providerMessageId: 'provider-receipt-order',
-    status: 'DELIVERY_ACK',
-  });
-  assert.deepEqual(duplicate, delivered);
-  const late = await repository.applyReceipt({
-    providerMessageId: 'provider-receipt-order',
+  const first = await repository.applyReceipt({
+    providerMessageId: 'provider-duplicate-server-ack',
     status: 'SERVER_ACK',
   });
-  assert.equal(late?.state, 'delivered');
-  assert.equal(late?.steps[0]?.state, 'delivered');
+  const second = await repository.applyReceipt({
+    providerMessageId: 'provider-duplicate-server-ack',
+    status: 'SERVER_ACK',
+  });
+  assert.equal(first?.state, 'provider_accepted');
+  assert.deepEqual(second, first);
+  assert.equal(transportCalls, 1);
+  assert.equal((await repository.get(delivery.id))?.state, 'provider_accepted');
+});
+
+test('DELIVERY_ACK after needs_review resolves the persisted provider key', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'delayed-delivery-ack-postgres', steps: [textStep()] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  let transportCalls = 0;
+  const transport = async () => {
+    transportCalls += 1;
+    return { accepted: true as const, providerMessageId: 'provider-delayed-delivery-ack' };
+  };
+  const accepted = await transport();
+  await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId: accepted.providerMessageId,
+  });
+  await setStep(delivery.steps[0]!.id, {
+    state: 'needs_review',
+    publicError: 'Aguardando recibo.',
+    updatedAt: now,
+  });
+  await setDelivery(delivery.id, { state: 'needs_review', publicError: 'Aguardando recibo.' });
+  const resolved = await repository.applyReceipt({
+    providerMessageId: 'provider-delayed-delivery-ack',
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(resolved?.state, 'delivered');
+  assert.equal(resolved?.steps[0]?.state, 'delivered');
+  assert.equal(transportCalls, 1);
+});
+
+test('READ before DELIVERY_ACK remains delivered without another transport call', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'read-before-delivery-postgres', steps: [textStep()] })
+  );
+  const claim = await repository.claim({ deliveryId: delivery.id });
+  assert.ok(claim);
+  let transportCalls = 0;
+  const transport = async () => {
+    transportCalls += 1;
+    return { accepted: true as const, providerMessageId: 'provider-read-before-delivery' };
+  };
+  const accepted = await transport();
+  await repository.markAccepted({
+    deliveryId: delivery.id,
+    stepId: claim.step.id,
+    leaseToken: claim.leaseToken,
+    providerMessageId: accepted.providerMessageId,
+  });
+  const read = await repository.applyReceipt({
+    providerMessageId: 'provider-read-before-delivery',
+    status: 'READ',
+  });
+  const lateDelivery = await repository.applyReceipt({
+    providerMessageId: 'provider-read-before-delivery',
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(read?.state, 'delivered');
+  assert.equal(lateDelivery?.state, 'delivered');
+  assert.equal(lateDelivery?.steps[0]?.state, 'read');
+  assert.equal(transportCalls, 1);
 });
 
 test('list supports filtering and pagination without provider payloads', async () => {
@@ -545,4 +709,20 @@ test('confirmed_not_received requeues only unresolved steps', async () => {
     .from(quotationDeliverySteps)
     .where(eq(quotationDeliverySteps.id, accepted.id));
   assert.equal(stored[0]?.providerMessageId, 'provider-resolve-accepted');
+
+  let transportCalls = 0;
+  const recovery = createQuotationDeliveryModule({
+    repository,
+    transport: async () => {
+      transportCalls += 1;
+      return { accepted: true as const, providerMessageId: 'provider-resolve-requeued' };
+    },
+    now: () => now,
+    logger: () => {},
+  });
+  const requeued = await recovery.process(delivery.id);
+  assert.equal(transportCalls, 1);
+  assert.equal(requeued?.state, 'provider_accepted');
+  assert.equal(requeued?.steps.find((step) => step.id === accepted.id)?.state, 'server_ack');
+  assert.equal(requeued?.steps.find((step) => step.id === unresolved.id)?.state, 'server_ack');
 });

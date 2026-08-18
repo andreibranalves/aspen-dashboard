@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { EvolutionTransportError } from '../../api/_functions/lib/evolution-transport.js';
+import {
+  EvolutionTransportError,
+  sendFrozenStep,
+} from '../../api/_functions/lib/evolution-transport.js';
 import {
   aggregateDeliveryState,
   applyReceipt,
@@ -101,12 +104,15 @@ class FakeRepository {
       snapshots: FrozenDeliveryStep[];
       leaseToken?: string;
       leaseUntil?: Date;
+      providerIds?: Map<string, string>;
     }
   >();
   private sequence = 0;
   readonly clock: () => Date;
-  constructor(clock: () => Date) {
+  readonly failAfterAcceptedPersistence: boolean;
+  constructor(clock: () => Date, options: { failAfterAcceptedPersistence?: boolean } = {}) {
     this.clock = clock;
+    this.failAfterAcceptedPersistence = options.failAfterAcceptedPersistence === true;
   }
 
   private clone(row: {
@@ -289,8 +295,8 @@ class FakeRepository {
     row.leaseToken = undefined;
     row.leaseUntil = undefined;
     this.sync(row);
-    const accepted = row as typeof row & { providerIds?: Map<string, string> };
-    (accepted.providerIds ||= new Map()).set(step.id, input.providerMessageId);
+    (row.providerIds ||= new Map()).set(step.id, input.providerMessageId);
+    if (this.failAfterAcceptedPersistence) throw new Error('bookkeeping failed after acceptance');
     return this.clone(row);
   }
 
@@ -332,9 +338,9 @@ class FakeRepository {
     status: 'ERROR' | 'PENDING' | 'SERVER_ACK' | 'DELIVERY_ACK' | 'READ' | 'PLAYED';
   }): Promise<DeliveryAggregate | null> {
     for (const row of this.rows.values()) {
-      const stepIndex = (row as typeof row & { providerIds?: Map<string, string> }).providerIds;
       const step =
-        stepIndex && [...stepIndex.entries()].find(([, id]) => id === input.providerMessageId)?.[0];
+        row.providerIds &&
+        [...row.providerIds.entries()].find(([, id]) => id === input.providerMessageId)?.[0];
       const view = step && row.aggregate.steps.find((candidate) => candidate.id === step);
       if (!view) continue;
       const state = applyReceipt(view.state, input.status);
@@ -399,16 +405,24 @@ function dependencies(
     transport?: FakeTransport;
     preparePdf?: (revisionId: string) => Promise<PreparedDocument>;
     logger?: (event: DeliveryLogEvent) => void;
+    failAfterAcceptedPersistence?: boolean;
+    transportSend?: (
+      input: { phone: string; step: FrozenDeliveryStep; document?: unknown }
+    ) => Promise<{ accepted: true; providerMessageId: string }>;
   } = {}
 ) {
   const clock = options.clock || { value: new Date(start) };
-  const repository = options.repository || new FakeRepository(() => new Date(clock.value));
+  const repository =
+    options.repository ||
+    new FakeRepository(() => new Date(clock.value), {
+      failAfterAcceptedPersistence: options.failAfterAcceptedPersistence,
+    });
   const transport = options.transport || new FakeTransport();
   const planner = async () => plan(options.steps);
   const module = createQuotationDeliveryModule({
     repository,
     planner,
-    transport: transport.send.bind(transport),
+    transport: options.transportSend || transport.send.bind(transport),
     preparePdf:
       options.preparePdf ||
       (async () => ({
@@ -422,6 +436,13 @@ function dependencies(
     logger: options.logger || (() => {}),
   });
   return { module, repository, transport, clock };
+}
+
+function httpResponse(status: number, body: unknown): Response {
+  return new Response(
+    typeof body === 'string' ? body : JSON.stringify(body),
+    { status, headers: { 'content-type': 'application/json' } },
+  );
 }
 
 test('enqueue starts immediately and never resends an accepted step', async () => {
@@ -443,7 +464,34 @@ test('ambiguous outcome stops later steps and requires reconciliation', async ()
   const { module } = dependencies({ transport });
   const result = await module.enqueue(identity);
   assert.equal(result.state, 'reconciling');
+  assert.equal(result.steps[0]?.state, 'reconciling');
   assert.equal(transport.calls.length, 1);
+});
+
+test('HTTP 5xx and malformed HTTP 2xx never retry an ambiguous transport', async () => {
+  for (const [suffix, response] of [
+    ['server-error', httpResponse(503, { error: 'provider detail' })],
+    ['malformed-success', httpResponse(200, '{')],
+  ] as const) {
+    let transportCalls = 0;
+    const { module } = dependencies({
+      transportSend: async (input) => {
+        transportCalls += 1;
+        return sendFrozenStep(input as Parameters<typeof sendFrozenStep>[0], {
+          baseUrl: 'https://evolution.test',
+          apiKey: 'test-key',
+          instance: 'test-instance',
+          fetch: async () => response,
+        });
+      },
+    });
+    const result = await module.enqueue({ ...identity, flowId: `http-${suffix}` });
+    assert.equal(transportCalls, 1);
+    assert.equal(result.state, 'reconciling');
+    assert.equal(result.steps[0]?.state, 'reconciling');
+    assert.equal((await module.process(result.id))?.state, 'reconciling');
+    assert.equal(transportCalls, 1);
+  }
 });
 
 test('transient failure schedules a bounded retry and permanent failure does not retry', async () => {
@@ -464,6 +512,8 @@ test('transient failure schedules a bounded retry and permanent failure does not
   clock.value = new Date(start.getTime() + 60_000);
   const retried = await transient.module.process(retry.id);
   assert.equal(retried?.state, 'provider_accepted');
+  assert.equal(retried?.steps[0]?.state, 'server_ack');
+  assert.equal(retried?.steps[1]?.state, 'server_ack');
   assert.equal(transientTransport.calls.length, 3);
 
   const permanentTransport = new FakeTransport();
@@ -506,6 +556,82 @@ test('zero-delay steps process in order and delayed steps never sleep in process
   clock.value = new Date(start.getTime() + 1_000);
   assert.equal((await delayed.module.process(first.id))?.state, 'provider_accepted');
   assert.equal(delayed.transport.calls.length, 2);
+});
+
+test('worker crash after claim but before transport reconciles without a provider call', async () => {
+  const clock = { value: new Date(start) };
+  const { repository, transport } = dependencies({
+    clock,
+    steps: [textStep(0)],
+  });
+  const queued = await repository.enqueue({ ...plan([textStep(0)]), flowId: 'crash-before-transport' });
+  assert.ok(await repository.claim({ deliveryId: queued.id }));
+  assert.equal(transport.calls.length, 0);
+  assert.equal((await repository.get(queued.id))?.state, 'processing');
+
+  clock.value = new Date(start.getTime() + 90_000);
+  const recovered = await dependencies({ repository, transport, clock }).module.process(queued.id);
+  assert.equal(recovered?.state, 'reconciling');
+  assert.equal(recovered?.steps[0]?.state, 'reconciling');
+  assert.equal(transport.calls.length, 0);
+});
+
+test('worker crash after provider acceptance does not resend after lease expiry', async () => {
+  const clock = { value: new Date(start) };
+  const { repository, transport } = dependencies({
+    clock,
+    steps: [textStep(0)],
+  });
+  const queued = await repository.enqueue({ ...plan([textStep(0)]), flowId: 'crash-after-provider' });
+  const claimed = await repository.claim({ deliveryId: queued.id });
+  assert.ok(claimed);
+  const accepted = await transport.send({
+    phone: claimed.delivery.phone,
+    step: claimed.step.snapshot,
+  });
+  assert.equal(accepted.accepted, true);
+  assert.equal(transport.calls.length, 1);
+  assert.equal((await repository.get(queued.id))?.state, 'processing');
+
+  clock.value = new Date(start.getTime() + 90_000);
+  const recovered = await dependencies({ repository, transport, clock }).module.process(queued.id);
+  assert.equal(recovered?.state, 'reconciling');
+  assert.equal(recovered?.steps[0]?.state, 'reconciling');
+  assert.equal(transport.calls.length, 1);
+});
+
+test('two independent workers claim one due step and make one transport call', async () => {
+  const repository = new FakeRepository(() => new Date(start));
+  const transport = new FakeTransport();
+  const first = dependencies({ repository, transport });
+  const second = dependencies({ repository, transport });
+  const queued = await repository.enqueue({ ...plan([textStep(0)]), flowId: 'two-workers' });
+
+  const [a, b] = await Promise.all([
+    first.module.process(queued.id),
+    second.module.process(queued.id),
+  ]);
+  assert.ok(['processing', 'provider_accepted'].includes(a?.state || ''));
+  assert.ok(['processing', 'provider_accepted'].includes(b?.state || ''));
+  assert.equal((await repository.get(queued.id))?.state, 'provider_accepted');
+  assert.equal(transport.calls.length, 1);
+});
+
+test('provider key survives a later bookkeeping failure without a resend', async () => {
+  const { module, repository, transport } = dependencies({
+    steps: [textStep(0)],
+    failAfterAcceptedPersistence: true,
+  });
+  const result = await module.enqueue({ ...identity, flowId: 'bookkeeping-failure' });
+  const persisted = repository.rows.get(result.id);
+  assert.ok(persisted?.providerIds?.get(result.steps[0]!.id));
+  assert.equal(result.state, 'provider_accepted');
+  assert.equal(result.steps[0]?.state, 'server_ack');
+  assert.equal(transport.calls.length, 1);
+
+  const replay = await module.process(result.id);
+  assert.equal(replay?.state, 'provider_accepted');
+  assert.equal(transport.calls.length, 1);
 });
 
 test('expired reconciliation is promoted before due processing', async () => {
@@ -558,9 +684,23 @@ test('receipt aggregation is monotonic and unknown provider IDs are neutral', as
     instance: 'test-instance',
     providerMessageId: 'provider-1',
     fromMe: true,
-    status: 'DELIVERY_ACK',
+    status: 'SERVER_ACK',
   });
   assert.equal(first?.state, 'provider_accepted');
+  const duplicate = await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'SERVER_ACK',
+  });
+  assert.equal(duplicate?.state, 'provider_accepted');
+  const deliveryAck = await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(deliveryAck?.state, 'provider_accepted');
   const second = await module.applyEvolutionEvent({
     instance: 'test-instance',
     providerMessageId: 'provider-2',
@@ -579,6 +719,47 @@ test('receipt aggregation is monotonic and unknown provider IDs are neutral', as
     null
   );
   assert.equal(accepted.steps.length, 2);
+});
+
+test('a delayed DELIVERY_ACK resolves a needs_review step without another transport call', async () => {
+  const { module, repository, transport } = dependencies({ steps: [textStep(0)] });
+  const accepted = await module.enqueue({ ...identity, flowId: 'delayed-delivery-ack' });
+  const row = repository.rows.get(accepted.id)!;
+  row.aggregate.steps[0]!.state = 'needs_review';
+  row.aggregate.steps[0]!.publicError = 'Aguardando recibo.';
+  row.aggregate.state = 'needs_review';
+  row.aggregate.publicError = 'Aguardando recibo.';
+  const resolved = await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(resolved?.state, 'delivered');
+  assert.equal(resolved?.steps[0]?.state, 'delivered');
+  assert.equal(transport.calls.length, 1);
+});
+
+test('READ before DELIVERY_ACK remains delivered and never resends', async () => {
+  const { module, transport } = dependencies({ steps: [textStep(0)] });
+  const accepted = await module.enqueue({ ...identity, flowId: 'read-before-delivery' });
+  const read = await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'READ',
+  });
+  assert.equal(read?.state, 'delivered');
+  const lateDelivery = await module.applyEvolutionEvent({
+    instance: 'test-instance',
+    providerMessageId: 'provider-1',
+    fromMe: true,
+    status: 'DELIVERY_ACK',
+  });
+  assert.equal(lateDelivery?.state, 'delivered');
+  assert.equal(lateDelivery?.steps[0]?.state, 'read');
+  assert.equal(transport.calls.length, 1);
+  assert.equal(accepted.steps[0]?.state, 'server_ack');
 });
 
 test('PDF is prepared only for the due PDF step and failures are classified before transport', async () => {

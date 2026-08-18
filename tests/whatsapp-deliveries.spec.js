@@ -160,6 +160,35 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
 });
 
+test('browser absent while cron completes delivery leaves one durable delivered row', async ({ page }) => {
+  let state = 'processing';
+  let workerRuns = 0;
+  let transportCalls = 0;
+  let sendCalls = 0;
+  await page.route('**/api/send-whatsapp-flow', (route) => {
+    sendCalls += 1;
+    return json(route, { success: false, error: 'browser send must not run' }, 500);
+  });
+  await page.route('**/api/quotation-deliveries**', (route) =>
+    json(route, listResponse([delivery(state, { number: 'ORC-CRON-COMPLETE' })]))
+  );
+
+  const runCronWithoutBrowser = () => {
+    workerRuns += 1;
+    transportCalls += 1;
+    state = 'delivered';
+  };
+  runCronWithoutBrowser();
+
+  await page.goto('/#/whatsapp-deliveries');
+  await expect(page.getByText('ORC-CRON-COMPLETE')).toBeVisible();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  expect(workerRuns).toBe(1);
+  expect(transportCalls).toBe(1);
+  expect(sendCalls).toBe(0);
+  expect(state).toBe('delivered');
+});
+
 test('filters expose Portuguese controls and query state, search, and period', async ({ page }) => {
   const deliveredDelivery = delivery('delivered', {
     number: 'ORC-DELIVERED',
