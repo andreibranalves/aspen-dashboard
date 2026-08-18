@@ -54,9 +54,12 @@ Use para migrations, autenticação, envio WhatsApp, integrações externas, per
 Consulte o [runbook Migrations PostgreSQL](./database-migrations.md).
 
 ```text
-CI
+CI (somente checks estáticos)
 -> todos unit
 -> build
+-> check:db-migrations
+
+Fluxo HIGH controlado e opt-in (fora do CI padrão)
 -> staging DB migration
 -> full E2E
 -> backup
@@ -77,9 +80,9 @@ TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
 npm run test:e2e:staging
 ```
 
-O check estático roda no CI.
+A CI executa somente os checks estáticos; não executa migration nem E2E staging.
 
-O preflight, apply e E2E staging são opt-in.
+O fluxo de staging, incluindo preflight, apply e E2E staging, é controlado e opt-in, fora do CI padrão.
 
 `STAGING_DATABASE_URL` e `STAGING_PG_SERVICE` precisam representar o mesmo staging.
 

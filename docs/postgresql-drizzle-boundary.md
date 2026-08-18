@@ -64,9 +64,9 @@ Imports de repositories continuam permitidos.
 
 A saída contém somente caminho, linha e motivo.
 
-Nenhum dos checks executa migration ou abre escrita no banco.
+Nenhum dos checks lê credenciais de banco nem acessa o ambiente operacional de destino, não abre conexão com banco, não executa migrations e não escreve.
 
-Os checks não leem ambiente, abrem banco ou fazem chamadas externas.
+O `check:db-migrations` lê `MIGRATION_BASE_REF` apenas para inspecionar o diff Git local; não acessa um alvo de banco nem faz chamadas externas.
 
 ## Evolução
 
