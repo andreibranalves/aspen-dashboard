@@ -218,7 +218,7 @@ export default function SplitResultCard({
   const immutableIssue = Boolean(issue);
   const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
-  const deliveryBlocksSend = Boolean(delivery && delivery.state !== 'failed');
+  const deliveryBlocksSend = Boolean(delivery);
 
   function toggleEditing() {
     if (!editing) {
@@ -651,7 +651,7 @@ export default function SplitResultCard({
                 onClick={() => onSendWhatsApp?.(draft.index)}
               >
                 <Phone size={13} />
-                {deliveryPending ? 'Enviando…' : 'Enviar via WhatsApp'}
+                Enviar via WhatsApp
               </Button>
             ) : (
               <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>

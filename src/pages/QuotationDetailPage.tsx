@@ -707,7 +707,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       !data.revision_id ||
       !deliveryFlowId ||
       deliveryPending ||
-      Boolean(delivery && delivery.state !== 'failed') ||
+      Boolean(delivery) ||
       Boolean(data.expirada || data.is_expired || data.derived_expired)
     ) return;
     try {
@@ -1197,10 +1197,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button
                 variant="outline"
                 size="sm"
-                disabled={deliveryPending || Boolean(delivery && delivery.state !== 'failed') || Boolean(data.expirada || data.is_expired || data.derived_expired)}
+                disabled={deliveryPending || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
                 onClick={sendIssuedQuotation}
               >
-                <Phone size={14} /> {deliveryPending ? 'Enviando…' : 'Enviar via WhatsApp'}
+                <Phone size={14} /> Enviar via WhatsApp
               </Button>
               {(data.expirada || data.is_expired || data.derived_expired) && (
                 <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>

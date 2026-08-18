@@ -46,7 +46,9 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
   const inFlightRefreshesRef = useRef(new Set<string>());
   const inFlightEnqueuesRef = useRef(new Map<string, Promise<DeliveryView>>());
   const [deliveriesByKey, setDeliveriesByKey] = useState<DeliveriesByKey>({});
-  const [pendingKeys, setPendingKeys] = useState<string[]>([]);
+  const [pendingKeys, setPendingKeys] = useState<string[]>(() =>
+    uniqueIdentities.map(deliveryIdentityKey)
+  );
   const [errorByKey, setErrorByKey] = useState<DeliveryErrorsByKey>({});
   const [pollVersion, setPollVersion] = useState(0);
 
@@ -54,6 +56,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     const key = deliveryIdentityKey(identity);
     if (inFlightRefreshesRef.current.has(key)) return;
     inFlightRefreshesRef.current.add(key);
+    setPendingKeys((previous) => addKey(previous, key));
     try {
       const delivery = await fetchDelivery(identity);
       if (
@@ -70,6 +73,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
         delete next[key];
         return next;
       });
+      setPendingKeys((previous) => removeKey(previous, key));
     } catch (error) {
       if (
         !mountedRef.current ||
@@ -180,7 +184,11 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     setDeliveriesByKey((previous) =>
       Object.fromEntries(Object.entries(previous).filter(([key]) => validKeys.has(key)))
     );
-    setPendingKeys((previous) => previous.filter((key) => validKeys.has(key)));
+    setPendingKeys((previous) => {
+      let next = previous.filter((key) => validKeys.has(key));
+      for (const key of validKeys) next = addKey(next, key);
+      return next;
+    });
     setErrorByKey((previous) =>
       Object.fromEntries(Object.entries(previous).filter(([key]) => validKeys.has(key)))
     );

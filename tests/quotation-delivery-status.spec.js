@@ -272,6 +272,48 @@ test('quotation detail loads the same durable delivery without clicking send', a
   await expect(page.getByRole('button', { name: /enviar via whatsapp/i })).toBeDisabled();
 });
 
+test('failed delivery stays blocked until a new revision', async ({ page }) => {
+  await routeCommonAuto(page);
+  const lifecycle = await mockDeliveryLifecycle(page, ['failed']);
+  await issueAutoQuote(page);
+  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  await send.click();
+  await expect(page.getByText('Falhou', { exact: true })).toBeVisible();
+  await expect(send).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Nova revisão' })).toBeVisible();
+  await send.click({ force: true });
+  expect(lifecycle.getSendCount()).toBe(1);
+});
+
+test('initial identity lookup disables send before its first response', async ({ page }) => {
+  await mockDetail(page, 'delivered');
+  let lookupStarted = false;
+  let releaseLookup;
+  const lookupReleased = new Promise((resolve) => { releaseLookup = resolve; });
+  await page.route('**/api/whatsapp-send-status**', async (route) => {
+    lookupStarted = true;
+    await lookupReleased;
+    return json(route, statusResponse('delivered'));
+  });
+  await page.goto(`/#/quotations/${quotationId}`);
+  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  await expect(send).toBeVisible();
+  await expect.poll(() => lookupStarted).toBe(true);
+  await expect(send).toBeDisabled();
+  releaseLookup?.();
+  await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+});
+
+test('initial identity lookup failure keeps warning and blocks blind send', async ({ page }) => {
+  await mockDetail(page, 'delivered');
+  await page.route('**/api/whatsapp-send-status**', (route) =>
+    json(route, { error: 'status unavailable' }, 503));
+  await page.goto(`/#/quotations/${quotationId}`);
+  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  await expect(page.getByText('status unavailable', { exact: true })).toBeVisible();
+  await expect(send).toBeDisabled();
+});
+
 test('flow switching uses a distinct revision and flow status', async ({ page }) => {
   await routeCommonAuto(page);
   const indexes = new Map();

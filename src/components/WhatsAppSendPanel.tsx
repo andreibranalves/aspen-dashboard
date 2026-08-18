@@ -51,7 +51,7 @@ export default function WhatsAppSendPanel({
   const hasValidSteps = sequence && sequence.steps.length > 0;
   const deliveryProjection = delivery ? projectDelivery(delivery) : null;
   const isPending = pending || status?.state === 'sending';
-  const deliveryBlocksSend = Boolean(delivery && delivery.state !== 'failed');
+  const deliveryBlocksSend = Boolean(delivery);
 
   return (
     <>
@@ -94,11 +94,9 @@ export default function WhatsAppSendPanel({
               >
                 <Phone size={16} />
                 {delivery
-                  ? delivery.state === 'failed'
-                    ? 'Enviar via WhatsApp'
-                    : isPending
-                      ? 'Enviando…'
-                      : deliveryProjection?.label
+                  ? isPending
+                    ? 'Enviando…'
+                    : deliveryProjection?.label
                   : status?.state === 'sent'
                     ? 'Enviado pelo WhatsApp'
                     : status?.state === 'accepted' || status?.state === 'accepted-partial'
