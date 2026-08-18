@@ -318,6 +318,9 @@ test('flow switching uses a distinct revision and flow status', async ({ page })
   await routeCommonAuto(page);
   const indexes = new Map();
   let sendCount = 0;
+  let flow2LookupStarted = false;
+  let releaseFlow2Lookup;
+  const flow2LookupReleased = new Promise((resolve) => { releaseFlow2Lookup = resolve; });
   const states = { [flowId]: ['delivered'], 'flow-2': ['queued'] };
   await page.route('**/api/send-whatsapp-flow', (route) => {
     const body = route.request().postDataJSON();
@@ -334,10 +337,16 @@ test('flow switching uses a distinct revision and flow status', async ({ page })
       delivery: delivery(state, selectedFlowId),
     });
   });
-  await page.route('**/api/whatsapp-send-status**', (route) => {
+  await page.route('**/api/whatsapp-send-status**', async (route) => {
     const selectedFlowId = new globalThis.URL(route.request().url()).searchParams.get('flow_id');
     const index = indexes.get(selectedFlowId);
-    if (index === undefined) return json(route, { error: 'not found' }, 404);
+    if (index === undefined) {
+      if (selectedFlowId === 'flow-2') {
+        flow2LookupStarted = true;
+        await flow2LookupReleased;
+      }
+      return json(route, { error: 'not found' }, 404);
+    }
     return json(route, statusResponse(states[selectedFlowId][index], selectedFlowId));
   });
   await page.route('**/api/quotation-deliveries**', (route) => {
@@ -350,9 +359,14 @@ test('flow switching uses a distinct revision and flow status', async ({ page })
   await issueAutoQuote(page);
   await page.getByRole('button', { name: /enviar via whatsapp/i }).click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
+  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
   await page.getByText('Fluxo de WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
-  await expect(page.getByRole('button', { name: /enviar via whatsapp/i })).toBeEnabled();
-  await page.getByRole('button', { name: /enviar via whatsapp/i }).click();
+  await expect.poll(() => flow2LookupStarted).toBe(true);
+  await expect(send).toBeDisabled();
+  expect(sendCount).toBe(1);
+  releaseFlow2Lookup?.();
+  await expect(send).toBeEnabled();
+  await send.click();
   await expect(page.getByText('Na fila', { exact: true })).toBeVisible();
   await expect.poll(() => sendCount).toBe(2);
   expect([...indexes.keys()]).toEqual([flowId, 'flow-2']);

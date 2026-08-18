@@ -49,6 +49,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
   const [pendingKeys, setPendingKeys] = useState<string[]>(() =>
     uniqueIdentities.map(deliveryIdentityKey)
   );
+  const [resolvedKeys, setResolvedKeys] = useState<string[]>([]);
   const [errorByKey, setErrorByKey] = useState<DeliveryErrorsByKey>({});
   const [pollVersion, setPollVersion] = useState(0);
 
@@ -57,6 +58,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     if (inFlightRefreshesRef.current.has(key)) return;
     inFlightRefreshesRef.current.add(key);
     setPendingKeys((previous) => addKey(previous, key));
+    setResolvedKeys((previous) => removeKey(previous, key));
     try {
       const delivery = await fetchDelivery(identity);
       if (
@@ -67,6 +69,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
       if (delivery) {
         setDeliveriesByKey((previous) => ({ ...previous, [key]: delivery }));
       }
+      setResolvedKeys((previous) => addKey(previous, key));
       setErrorByKey((previous) => {
         if (!(key in previous)) return previous;
         const next = { ...previous };
@@ -80,6 +83,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
         !identitiesRef.current.some((current) => deliveryIdentityKey(current) === key)
       )
         return;
+      setResolvedKeys((previous) => removeKey(previous, key));
       setErrorByKey((previous) => ({
         ...previous,
         [key]: errorMessage(error, 'Não foi possível atualizar a entrega.'),
@@ -184,6 +188,7 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     setDeliveriesByKey((previous) =>
       Object.fromEntries(Object.entries(previous).filter(([key]) => validKeys.has(key)))
     );
+    setResolvedKeys((previous) => previous.filter((key) => validKeys.has(key)));
     setPendingKeys((previous) => {
       let next = previous.filter((key) => validKeys.has(key));
       for (const key of validKeys) next = addKey(next, key);
@@ -238,9 +243,21 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
     []
   );
 
+  const synchronouslyPendingKeys = useMemo(() => {
+    const resolved = new Set(resolvedKeys);
+    return uniqueIdentities
+      .map(deliveryIdentityKey)
+      .filter((key) => !resolved.has(key));
+  }, [resolvedKeys, uniqueIdentities]);
+  const pendingKeysForReturn = useMemo(() => {
+    const keys = new Set(pendingKeys);
+    synchronouslyPendingKeys.forEach((key) => keys.add(key));
+    return [...keys];
+  }, [pendingKeys, synchronouslyPendingKeys]);
+
   return {
     deliveriesByKey,
-    pendingKeys,
+    pendingKeys: pendingKeysForReturn,
     errorByKey,
     enqueue,
     resolve,

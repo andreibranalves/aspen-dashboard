@@ -619,6 +619,10 @@ export default function AutoQuotePage() {
           : 'Nenhum fluxo de WhatsApp disponível.');
         return;
       }
+      if (deliveryPendingForContext(context)) {
+        setError('Aguarde a consulta do status de entrega antes de enviar.');
+        return;
+      }
       const contextKey = sendContextKey(context);
       if (activeSendKeys.current.has(contextKey)) return;
       activeSendKeys.current.add(contextKey);
@@ -635,7 +639,7 @@ export default function AutoQuotePage() {
         activeSendKeys.current.delete(contextKey);
       }
     },
-    [defaultWaFlowId, drafts, enqueue, sendContextForDraft, waFlowByDraft, waFlows]
+    [defaultWaFlowId, deliveryPendingForContext, drafts, enqueue, sendContextForDraft, waFlowByDraft, waFlows]
   );
 
   // ── Re-extract handlers (add more items to an existing draft) ──
