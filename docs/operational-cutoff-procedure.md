@@ -30,6 +30,45 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 
 Nenhuma etapa deste documento executa deploy, alteração de ambiente, migração ou acesso a serviço remoto.
 
+## Preview como staging
+
+Preview é o staging padrão para branches e releases candidatos.
+
+| Controle                  | Preview              | Production               |
+| ------------------------- | -------------------- | ------------------------ |
+| `APP_ENV`                 | `preview`            | `production`             |
+| `EXTERNAL_WRITES_ENABLED` | `0`                  | `1`                      |
+| Banco                     | PostgreSQL staging   | PostgreSQL production    |
+| KV/Blob                   | recursos staging     | recursos production      |
+| Evolution                 | credenciais ausentes | credenciais configuradas |
+| Meta CAPI                 | token ausente        | token configurado        |
+| Typebot                   | token ausente        | token configurado        |
+
+A ausência de credenciais é intencional e complementa o guard de aplicação e o egress bloqueado.
+Valores reais permanecem no ambiente operacional fora deste checkout.
+
+### Checklist Preview
+
+- `APP_ENV=preview` configurado no ambiente Preview.
+- `EXTERNAL_WRITES_ENABLED=0` configurado no ambiente Preview.
+- Banco, KV e Blob apontam para recursos de staging.
+- Credenciais Evolution, Meta CAPI e Typebot não estão presentes em Preview.
+- `STAGING_EXTERNAL_PROVIDERS_DISABLED=1` configurado no executor staging.
+- `STAGING_EGRESS_BLOCKED=1` configurado no executor staging.
+- `STAGING_FIXTURE_RESET=1` configurado antes da suíte mutável.
+- Suítes locais e staging executadas somente com fixtures descartáveis.
+
+## Transição VPS -> Preview
+
+1. Criar Preview a partir da branch candidata.
+2. Executar a suíte staging com egress bloqueado e fixtures descartáveis.
+3. Registrar resultado, falhas e riscos operacionais.
+4. Repetir o ciclo por releases suficientes para obter confiança.
+5. Manter a VPS como fallback durante a observação.
+6. Remover runtime e infraestrutura VPS somente após decisão operacional explícita.
+
+Nenhuma etapa deste documento altera o Vercel Dashboard, faz deploy, migra banco ou remove Docker, Traefik, nftables e scripts.
+
 ## Comandos de verificação e corte
 
 Execute as verificações locais antes dos testes de staging:
