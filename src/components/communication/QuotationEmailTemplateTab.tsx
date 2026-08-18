@@ -320,7 +320,8 @@ export default function QuotationEmailTemplateTab({
                     role="alert"
                   >
                     <AlertCircle size={18} className="mt-0.5 shrink-0 text-destructive" />
-                    <span>{saveError || fieldErrors._form}</span>
+                    {saveError && <span>{saveError}</span>}
+                    {fieldErrors._form && <span>{fieldErrors._form}</span>}
                   </div>
                 )}
 
