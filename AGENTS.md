@@ -8,9 +8,14 @@
 ./
 ├── src/              # React SPA (built into public/)
 ├── api/              # Vercel API catch-all + handlers
-│   ├── [...path].js  # single dispatch router
-│   ├── _lib/         # auth, rate-limit, function-adapter
-│   └── _functions/   # handlers + shared libraries
+│   ├── [...path].ts  # single dispatch router
+│   ├── _app/         # routes.ts + handle-request.ts (pipeline compartilhado)
+│   ├── _http/        # adapters de transporte (vercel, node) + contrato HTTP
+│   ├── _shared/      # auth, errors, rate-limit e helpers compartilhados
+│   ├── modules/      # regras de negócio e handlers por domínio (flat)
+│   └── infrastructure/
+│       ├── db/       # schema.ts + repositórios PostgreSQL
+│       └── integrations/  # Evolution, Meta CAPI e demais clientes externos
 ├── scripts/          # dev servers + local test harnesses
 ├── public/           # Vite build output + static assets
 └── docs/             # product and operational documentation
