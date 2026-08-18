@@ -1,10 +1,10 @@
 // Pipeline HTTP único: auth -> rate limit -> dispatch -> normalização de erro.
 // Runtimes (Vercel, Node) apenas adaptam transporte para este contrato.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { VercelRequestLike, VercelResponseLike } from '../_lib/types.js';
-import { getRouteName, isAuthenticated } from '../_lib/auth.js';
-import { checkRateLimitAsync } from '../_lib/rate-limit.js';
-import { wrapFunctionHandler } from '../_lib/function-adapter.js';
+import type { VercelRequestLike, VercelResponseLike } from '../_http/types.js';
+import { getRouteName, isAuthenticated } from '../_shared/auth.js';
+import { checkRateLimitAsync } from '../_shared/rate-limit.js';
+import { wrapFunctionHandler } from '../_http/function-adapter.js';
 import { routes } from './routes.js';
 
 export function normalizeHandlerError(

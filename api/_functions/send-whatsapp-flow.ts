@@ -9,10 +9,10 @@
 // Reuses Evolution delivery patterns from send-whatsapp.js.
 // Storage: Vercel KV for flows, media, and send events.
 
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
-import type { HttpError } from '../_lib/http-error.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
+import type { HttpError } from '../_shared/http-error.js';
 import { kv } from '@vercel/kv';
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
 import {
@@ -40,7 +40,7 @@ import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/
 import {
   KV_KEY_FLOWS,
   KV_KEY_SEND_EVENTS_PREFIX,
-} from '../_lib/media-schema.js';
+} from '../modules/media-schema.js';
 import {
   canonicalWhatsappSendIdempotencyKey,
   defaultWhatsappSendReservationStore,

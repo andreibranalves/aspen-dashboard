@@ -1,8 +1,8 @@
 // ── Login handler ────────────────────────────────────────────────────────────
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { getAuthConfiguration } from '../_lib/auth.js';
-import { isValidPasswordInput, verifyPassword } from '../_lib/password.js';
-import { createSessionCookie, createSessionToken } from '../_lib/session.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { getAuthConfiguration } from '../_shared/auth.js';
+import { isValidPasswordInput, verifyPassword } from '../_shared/password.js';
+import { createSessionCookie, createSessionToken } from '../_shared/session.js';
 
 function jsonResponse(statusCode: number, body: Record<string, unknown>): FunctionResult {
   return {

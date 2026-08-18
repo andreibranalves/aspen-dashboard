@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { getDatabase } from '../_db/client.js';
 import { readCurrentQuotationTemplateVersion } from '../_db/quotation-template-library-repository.js';
 import {

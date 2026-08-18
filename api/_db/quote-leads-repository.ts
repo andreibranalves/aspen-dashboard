@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { and, asc, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
 
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import { getDatabase, type AppDatabase } from './client.js';
 import { crmDeals, quoteLeads, quotations } from './schema.js';
 import {

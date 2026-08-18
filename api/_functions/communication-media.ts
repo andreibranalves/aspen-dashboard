@@ -1,5 +1,5 @@
 // GET    /api/communication-media        - list media assets (scan KV by prefix)
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 import { randomUUID } from 'node:crypto';
 // GET    /api/communication-media/:id    - single media asset
 // POST   /api/communication-media        - create media asset metadata (after Blob upload)
@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 
 import { kv } from '@vercel/kv';
 import { del as blobDelete, head as blobHead } from '@vercel/blob';
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   MAX_IMAGE_BYTES,
   MAX_VIDEO_BYTES,
@@ -35,7 +35,7 @@ import {
   PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
   createMediaAsset,
-} from '../_lib/media-schema.js';
+} from '../modules/media-schema.js';
 
 // ---------------------------------------------------------------------------
 // Path extraction

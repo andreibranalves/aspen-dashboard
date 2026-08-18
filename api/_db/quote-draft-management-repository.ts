@@ -31,7 +31,7 @@ import {
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
 import { snapshotFromLegacyRevision } from './quotation-template-snapshot.js';
-import { canonicalQuotationStatus, type QuotationStatus } from '../_lib/quotation-status.js';
+import { canonicalQuotationStatus, type QuotationStatus } from '../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

@@ -1,5 +1,5 @@
 // GET /api/sales-dashboard - aggregated local sales metrics.
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import {
   createPostgresSalesOrdersRepository,
   type DashboardPeriod,

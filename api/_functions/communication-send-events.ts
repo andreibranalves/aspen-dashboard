@@ -1,5 +1,5 @@
 // GET /api/communication-send-events
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 //
 // Lists WhatsApp flow send events from KV.
 // Query params: quotation_id, phone, flow_id, status, limit (default 50)
@@ -8,7 +8,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 // TTL: 7 days (set by send-whatsapp-flow.js on write)
 
 import { kv } from '@vercel/kv';
-import { KV_KEY_SEND_EVENTS_PREFIX } from '../_lib/media-schema.js';
+import { KV_KEY_SEND_EVENTS_PREFIX } from '../modules/media-schema.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

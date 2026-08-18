@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { kv } from '@vercel/kv';
-import type { VercelRequestLike } from './types.js';
+import type { VercelRequestLike } from '../_http/types.js';
 import { getRouteName } from './auth.js';
 
 const WINDOW_MS = 60_000;

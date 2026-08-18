@@ -1,8 +1,8 @@
 // POST /api/send-whatsapp — sends quotation messages via Evolution API.
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { createHttpError } from '../_lib/http-error.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import {
   createQuotationTemplateRepository,

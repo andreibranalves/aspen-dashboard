@@ -1,5 +1,5 @@
 // POST /api/communication-flow-preview
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 //
 // Renders a CommunicationFlow into a preview array of steps with resolved
 // template variables and media selections. Can work with mock context
@@ -8,9 +8,9 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 // Used by flow editor preview and pre-send confirmation dialog.
 
 import { kv } from '@vercel/kv';
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
-import { KV_KEY_FLOWS } from '../_lib/media-schema.js';
+import { KV_KEY_FLOWS } from '../modules/media-schema.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
 import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 import {

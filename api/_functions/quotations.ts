@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { handler as coreHandler } from './quotations-core.js';
 
 type Handler = (event: FunctionEvent) => Promise<FunctionResult>;

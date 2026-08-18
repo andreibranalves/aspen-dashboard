@@ -1,5 +1,5 @@
 // POST /api/edit-draft — interpret a natural-language edit prompt against
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 // a current draft and return proposed changes.
 
 const EDIT_SYSTEM_PROMPT = `Você é um assistente de edição de cotação da Aspen Estamparia.

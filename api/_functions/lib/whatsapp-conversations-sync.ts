@@ -1,4 +1,4 @@
-import { createHttpError } from '../../_lib/http-error.js';
+import { createHttpError } from '../../_shared/http-error.js';
 import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
 import {
   normalizeWhatsappConversationInput,

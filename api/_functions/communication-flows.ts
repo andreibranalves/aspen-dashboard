@@ -1,5 +1,5 @@
 // GET /api/communication-flows — returns flows from aspen:communication:flows KV
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 // PUT /api/communication-flows — saves flows to aspen:communication:flows KV
 //
 // Stores flow definitions in the local aspen:communication:* namespace.
@@ -7,13 +7,13 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 // Storage: Vercel KV. Keys: aspen:communication:flows, aspen:communication:flows:selected
 
 import { kv } from '@vercel/kv';
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   KV_KEY_FLOWS,
   KV_KEY_FLOWS_SELECTED,
   createFlow,
   STEP_TYPES,
-} from '../_lib/media-schema.js';
+} from '../modules/media-schema.js';
 
 type FlowRecord = Record<string, unknown>;
 

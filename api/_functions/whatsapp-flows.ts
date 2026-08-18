@@ -1,5 +1,5 @@
 // GET  /api/whatsapp-flows  — returns all flows + selected flow ID
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 // PUT  /api/whatsapp-flows  — saves flows (body: { flows, selectedFlowId })
 // Storage: Vercel KV (primary), falls back to localStorage-like defaults if KV unavailable.
 //
@@ -7,7 +7,7 @@ import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 // Works on both Vercel (auto-injected) and VPS (when env vars are set in .env).
 
 import { kv } from '@vercel/kv';
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 
 // ── Default flows (same as frontend DEFAULT_WA_FLOWS) ───────────────────────
 

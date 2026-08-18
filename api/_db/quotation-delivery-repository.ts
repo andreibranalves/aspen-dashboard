@@ -9,7 +9,7 @@ import {
   quotationTemplateVersions,
   quotations,
 } from './schema.js';
-import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../_lib/quotation-status.js';
+import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../modules/quotation-status.js';
 import {
   formatQuotationClientName,
   formatQuotationCurrency,

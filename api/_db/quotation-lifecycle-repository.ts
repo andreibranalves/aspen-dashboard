@@ -20,7 +20,7 @@ import {
   canonicalQuotationStatus,
   isIssuedQuotationStatus,
   type QuotationStatus,
-} from '../_lib/quotation-status.js';
+} from '../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];

@@ -1,6 +1,6 @@
 // ── Logout handler ───────────────────────────────────────────────────────────
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { clearSessionCookie } from '../_lib/session.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { clearSessionCookie } from '../_shared/session.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {

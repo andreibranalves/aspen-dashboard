@@ -1,5 +1,5 @@
 // Única definição de rotas da API. Novos endpoints são registrados aqui, uma única vez.
-import type { LegacyHandler } from '../_lib/types.js';
+import type { LegacyHandler } from '../_http/types.js';
 
 import { handler as crmDeals } from '../_functions/crm-deals.js';
 import { handler as crmUpdateDeal } from '../_functions/crm-update-deal.js';

@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import {
   createOrderTemplateRepository,
   type OrderTemplateRepository,

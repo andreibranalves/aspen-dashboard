@@ -4,8 +4,8 @@ import type {
   FunctionResult,
   JsonResponseFn,
   LegacyHandler,
-} from '../_lib/types.js';
-import { createHttpError } from '../_lib/http-error.js';
+} from '../_http/types.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRecord,

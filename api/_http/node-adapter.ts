@@ -1,7 +1,7 @@
 // Adapter de transporte para node:http puro (dev local e staging VPS).
 // Adapta CORS, OPTIONS, body e query para o contrato do pipeline compartilhado.
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { VercelResponseLike } from '../_lib/types.js';
+import type { VercelResponseLike } from './types.js';
 import { handleApiRequest } from '../_app/handle-request.js';
 
 const CORS_HEADERS = {

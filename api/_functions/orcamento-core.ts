@@ -1,4 +1,4 @@
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import {
   createPostgresQuoteDraftRepository,
   QuoteDraftConflictError,

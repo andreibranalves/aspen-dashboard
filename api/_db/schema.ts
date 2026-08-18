@@ -21,7 +21,7 @@ import {
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
-import type { QuotationStatus } from '../_lib/quotation-status.js';
+import type { QuotationStatus } from '../modules/quotation-status.js';
 
 /**
  * Global dashboard settings live in one deliberate singleton row. Keeping the

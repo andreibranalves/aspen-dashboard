@@ -1,4 +1,4 @@
-import type { VercelRequestLike } from './types.js';
+import type { VercelRequestLike } from '../_http/types.js';
 import { isValidPasswordHash } from './password.js';
 import { isValidSessionSecret, SESSION_COOKIE_NAME, verifySessionToken } from './session.js';
 

@@ -1,4 +1,4 @@
-import { createHttpError } from '../../_lib/http-error.js';
+import { createHttpError } from '../../_shared/http-error.js';
 import {
   CRM_PRUNE_LOST_REASON,
   CRM_PRUNE_LOST_STATUS,

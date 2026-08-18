@@ -1,5 +1,5 @@
 // GET /api/whatsapp-leads - recent verified WhatsApp conversation snapshots.
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 import {
   getWhatsappMessages,
   listWhatsappConversations,

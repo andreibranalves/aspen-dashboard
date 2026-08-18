@@ -1,5 +1,5 @@
 // POST /api/communication-media-upload
-import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/types.js';
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 //
 // Vercel Blob client upload token generation using handleUpload from @vercel/blob/client.
 //
@@ -13,13 +13,13 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_lib/type
 // Requires BLOB_READ_WRITE_TOKEN env var (set by Vercel when Blob store is linked).
 
 import { handleUpload } from '@vercel/blob/client';
-import { createHttpError } from '../_lib/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
   MAX_SIZE_IMAGE,
   MAX_SIZE_VIDEO,
-} from '../_lib/media-schema.js';
+} from '../modules/media-schema.js';
 
 // ── JSON response helper ───────────────────────────────────────────────────
 

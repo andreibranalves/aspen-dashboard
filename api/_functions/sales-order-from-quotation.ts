@@ -1,6 +1,6 @@
 // POST /api/sales-order-from-quotation - transactional local conversion.
-import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
-import { createHttpError } from '../_lib/http-error.js';
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,

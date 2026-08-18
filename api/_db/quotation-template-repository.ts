@@ -17,7 +17,7 @@ import {
   type QuotationTemplateViewModel,
 } from '../_functions/lib/quotation-templates.js';
 import { toSafeMultilineHtml } from './quotation-content.js';
-import { canonicalQuotationStatus } from '../_lib/quotation-status.js';
+import { canonicalQuotationStatus } from '../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteDatabase = AppDatabase;
