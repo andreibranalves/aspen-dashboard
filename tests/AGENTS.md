@@ -13,7 +13,7 @@ tests/
 
 ## Conventions
 
-- Import backend source from `api/_functions` or `api/_db` directly.
+- Import backend source from `api/modules` or `api/infrastructure/db` directly.
 - Use `node:assert/strict` and restore modified globals in `afterEach`.
 - Mock HTTP requests and database repositories in unit tests.
 - Playwright tests use hash routes and mock API responses with `page.route()`.

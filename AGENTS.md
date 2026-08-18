@@ -20,12 +20,16 @@
 
 | Task | Location |
 | --- | --- |
-| Add API endpoint | `api/_functions/*.ts` + `api/[...path].ts` |
+| Add API endpoint | `api/modules/*` + `api/_app/routes.ts` |
 | Add frontend page | `src/pages/*.tsx` + `src/App.tsx` |
 | Shared UI component | `src/components/ui/*.tsx` |
-| Database schema | `api/_db/schema.ts` |
-| PostgreSQL repository | `api/_db/*.ts` |
-| PDF generation | `api/_functions/pdf.ts` + `api/_functions/lib/quotation-pdf.ts` |
+| Business logic / handlers | `api/modules/<dominio>/` |
+| Shared auth/errors/rate-limit | `api/_shared/` |
+| HTTP pipeline e adapters | `api/_app/`, `api/_http/` |
+| Database schema | `api/infrastructure/db/schema.ts` |
+| PostgreSQL repository | `api/infrastructure/db/repositories/*.ts` |
+| External integrations | `api/infrastructure/integrations/*/` |
+| PDF generation | `api/modules/pdf.ts` + `api/modules/quotation-pdf.ts` |
 | Tests | `tests/unit/*.test.*`, `tests/*.spec.js` |
 
 ## CONVENTIONS

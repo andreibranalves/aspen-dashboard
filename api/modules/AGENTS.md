@@ -1,14 +1,15 @@
-# `api/_functions` - Serverless handlers and shared libraries
+# `api/modules` - domain business logic and HTTP handlers
 
-Handlers are dispatched by `api/[...path].ts` and shared libraries have no default export.
+Handlers are dispatched by `api/[...path].ts`; shared libraries have no default export.
 
 ## Structure
 
-```
-api/_functions/
-├── *.ts                         # request handlers
-├── lib/                         # shared domain and transport libraries
-└── pricing-core.ts              # PostgreSQL pricing rules
+```text
+api/modules/
+└── *.ts                         # handlers, services and domain helpers (flat,
+                                 # one file per domain: quotations, products,
+                                 # crm, customers, sales-orders, whatsapp,
+                                 # communication, system)
 ```
 
 ## Where to look
@@ -31,10 +32,10 @@ api/_functions/
 
 ## Conventions
 
-- Handlers receive a Vercel or Express-shaped event and return `{ statusCode, headers?, body }`.
-- Register every endpoint in all three synchronized route maps.
-- PostgreSQL repositories own durable business state and transaction boundaries.
-- Evolution is the only WhatsApp delivery transport.
+- Handlers receive a Lambda-shaped event and return `{ statusCode, headers?, body }`.
+- Register every endpoint once in `api/_app/routes.ts`.
+- PostgreSQL repositories live in `api/infrastructure/db/repositories/` and own durable business state and transaction boundaries.
+- Evolution is the only WhatsApp delivery transport; its delivery helper lives in `api/infrastructure/integrations/evolution/`.
 - Communication media uses Vercel KV and Vercel Blob.
 - Shared error helpers return neutral Portuguese messages and log only safe error classes.
 

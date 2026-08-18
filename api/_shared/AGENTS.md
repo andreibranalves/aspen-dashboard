@@ -1,25 +1,23 @@
-# `api/_lib` - middleware and shared request helpers
+# `api/_shared` - middleware and shared request helpers
 
-This directory contains authentication, rate limiting, request adapters, media constants and small domain-neutral helpers.
+This directory contains authentication, rate limiting, errors and small domain-neutral helpers.
 
 ## Structure
 
-```
-api/_lib/
+```text
+api/_shared/
 ├── auth.ts
 ├── password.ts
 ├── session.ts
-├── function-adapter.ts
-├── rate-limit.ts
-└── media-schema.ts
+├── http-error.ts
+└── rate-limit.ts
 ```
 
 ## Conventions
 
 - Keep endpoint handlers and database writes outside this directory.
 - Export small named helpers.
-- `getRouteName()` must match the route names used by the catch-all and local servers.
-- `function-adapter.ts` owns query-string decoding for local and deployed requests.
+- HTTP contract types (`FunctionEvent`, `FunctionResult`) and the function adapter live in `api/_http/`.
 - Authentication configuration fails closed when required settings are missing.
 - Session cookies contain signed identifiers, never passwords or secret values.
 
