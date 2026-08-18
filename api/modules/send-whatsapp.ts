@@ -862,11 +862,7 @@ export async function handler(
       throw createHttpError(400, 'O fluxo deve conter exatamente um PDF do orçamento.');
     }
     if (!dryRun && postgresPath) {
-      const config = evolutionConfig();
-      const appEnv = String(process.env.APP_ENV || '').trim().toLowerCase();
-      if (appEnv === 'preview' || (config.baseUrl && config.apiKey && config.instance)) {
-        assertExternalWritesAllowed('evolution');
-      }
+      assertEvolutionConfig();
     }
     const needPdf = quotationPdfSteps === 1;
     const resolved = postgresPath

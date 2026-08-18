@@ -290,8 +290,9 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
 
 Preservar a validação de configuração antes do guard para que credenciais ausentes continuem falhando sem rede.
 
-No caminho PostgreSQL não-dry de `api/modules/send-whatsapp.ts`, executar o preflight Evolution com `assertExternalWritesAllowed('evolution')` depois da validação básica de payload/PDF e antes de `loadPostgresSendContext`, emissão de token ou qualquer chamada ao repositório de entrega.
-Quando o ambiente local não tem configuração Evolution, preservar as validações locais existentes e deixar `assertEvolutionConfig()` bloquear antes do `fetch`.
+No caminho PostgreSQL não-dry de `api/modules/send-whatsapp.ts`, executar `assertEvolutionConfig()` incondicionalmente depois da validação básica de payload/PDF e antes de `loadPostgresSendContext`, emissão de token ou qualquer chamada ao repositório de entrega.
+Isso bloqueia tanto writes não autorizados quanto configuração Evolution ausente antes de qualquer mutação local.
+Testes que exercitam validações posteriores devem configurar explicitamente um ambiente Evolution autorizado.
 O bloco de sequência pode manter a defesa de transporte, evitando repetir o preflight quando `postgresPath` já foi validado.
 
 Em `api/modules/send-whatsapp-flow.ts`, repetir a mesma regra em `assertEvolutionConfig` e na função `evolutionPost`.

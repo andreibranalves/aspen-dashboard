@@ -613,7 +613,70 @@ test('PostgreSQL sequence blocks before token or delivery state when external wr
   }
 });
 
+test('PostgreSQL sequence blocks before token or delivery state when Evolution config is missing', async () => {
+  const restoreEnv = withEvolutionEnv();
+  delete process.env.EVOLUTION_API_KEY;
+  const tokenStore = store();
+  const deliveryCalls: string[] = [];
+  let tokenCalls = 0;
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    throw new Error('fetch must not run');
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(
+      event({
+        quotation_id: businessNumber,
+        revision_id: revisionId,
+        sequence: {
+          steps: [
+            { type: 'text', template: 'Olá' },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        },
+      }),
+      {
+        repository: repositoryFor(),
+        store: tokenStore,
+        token: () => {
+          tokenCalls += 1;
+          return publicToken;
+        },
+        deliveryRepository: {
+          getByRevision: async () => {
+            deliveryCalls.push('getByRevision');
+            return null;
+          },
+          prepareDelivery: async () => {
+            deliveryCalls.push('prepareDelivery');
+            return undefined;
+          },
+          claimTransport: async () => {
+            deliveryCalls.push('claimTransport');
+            return true;
+          },
+          recordState: async () => {
+            deliveryCalls.push('recordState');
+          },
+        } as any,
+      },
+    );
+    assert.equal(response.statusCode, 500);
+    assert.match(response.body || '', /Integração do WhatsApp não configurada/i);
+    assert.equal(providerCalls, 0);
+    assert.deepEqual(deliveryCalls, []);
+    assert.equal(tokenCalls, 0);
+    assert.equal(tokenStore.values.size, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
 test('PostgreSQL endpoint rejects recipient ownership before provider setup', async () => {
+  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -635,6 +698,7 @@ test('PostgreSQL endpoint rejects recipient ownership before provider setup', as
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
@@ -668,6 +732,7 @@ test('PostgreSQL endpoint completes local send after Evolution acceptance', asyn
 });
 
 test('PostgreSQL endpoint rejects PDF preparation before provider setup', async () => {
+  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -697,10 +762,12 @@ test('PostgreSQL endpoint rejects PDF preparation before provider setup', async 
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
 test('PostgreSQL endpoint rejects arbitrary media before provider setup', async () => {
+  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -723,6 +790,7 @@ test('PostgreSQL endpoint rejects arbitrary media before provider setup', async 
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
