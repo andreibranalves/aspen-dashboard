@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, type ClipboardEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type ClipboardEvent } from 'react';
 import {
   Sparkles,
   FileText,
@@ -27,13 +27,13 @@ import {
   isPriceAuthoritativeConflict,
   QuotationIssueApiError,
 } from '@/lib/quotationIssueApi';
-import { fetchFlows, executeFlow, CommunicationSendError, projectDeliveryFailure, type CommunicationFlow } from '@/lib/communicationApi';
+import { fetchFlows, type CommunicationFlow } from '@/lib/communicationApi';
 import {
-  executeWithSendLock,
-  isSendableQuotationStatus,
-  sendContextKey,
-  type SendContext,
-} from '@/lib/communicationSend';
+  deliveryIdentityKey,
+  useQuotationDeliveries,
+} from '@/hooks/useQuotationDeliveries';
+import type { DeliveryView } from '@/lib/quotationDeliveryApi';
+import { isSendableQuotationStatus, sendContextKey, type SendContext } from '@/lib/communicationSend';
 
 interface HistoryItem {
   id: string;
@@ -41,14 +41,6 @@ interface HistoryItem {
   data?: string;
   valor?: string | number;
 }
-
-interface WaStatus {
-  state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
-  message?: string;
-  deliveryAccepted?: boolean;
-}
-
-const WHATSAPP_STATUS_EXPIRY_MS = 30_000;
 
 function moneyCents(value: unknown): number | null {
   const numeric = Number(value);
@@ -132,18 +124,10 @@ export default function AutoQuotePage() {
   }, [loadTemplates]);
 
   // ── WhatsApp send state ──
-  const [waStatusByContext, setWaStatusByContext] = useState<Record<string, WaStatus>>({});
   const [waFlows, setWaFlows] = useState<CommunicationFlow[]>([]);
   const [defaultWaFlowId, setDefaultWaFlowId] = useState<string>('');
   const [waFlowByDraft, setWaFlowByDraft] = useState<Record<number, string>>({});
   const activeSendKeys = useRef(new Set<string>());
-  const reconciliationTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-
-  useEffect(() => () => {
-    for (const timer of reconciliationTimers.current.values()) clearTimeout(timer);
-    reconciliationTimers.current.clear();
-  }, []);
-
   // ── Re-extract state (add items to existing draft) ──
   const [reExtractTextByDraft, setReExtractTextByDraft] = useState<Record<number, string>>({});
   const [reExtractLoadingByDraft, setReExtractLoadingByDraft] = useState<Record<number, boolean>>(
@@ -166,6 +150,33 @@ export default function AutoQuotePage() {
   } = useExtractionDrafts(loadInitialAutoQuoteDrafts());
   const skipDraftPersistence = useRef(false);
   const draftsHydrated = useRef(true);
+  const activeDrafts = drafts.filter((draft) => !draft.discarded);
+  const deliveryIdentities = useMemo(() => activeDrafts.flatMap((draft) => {
+    const issue = (draft as StoredAutoQuoteDraft).issue;
+    const resultData = draft.result?.data || (issue ? {
+      quotation_id: issue.businessNumber,
+      revision_id: issue.revisionId,
+      status_canonical: 'emitido',
+    } : undefined);
+    const status = resultData?.status_canonical || resultData?.status;
+    const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
+    const revisionId = typeof resultData?.revision_id === 'string'
+      ? resultData.revision_id
+      : typeof resultData?.quote_revision_id === 'string'
+        ? resultData.quote_revision_id
+        : '';
+    const flowId = waFlowByDraft[draft.index] || defaultWaFlowId || waFlows[0]?.id || '';
+    return quotationId && revisionId && flowId && isSendableQuotationStatus(status)
+      ? [{ revisionId, flowId }]
+      : [];
+  }), [activeDrafts, defaultWaFlowId, waFlowByDraft, waFlows]);
+  const {
+    deliveriesByKey,
+    pendingKeys,
+    errorByKey,
+    enqueue,
+    resolve,
+  } = useQuotationDeliveries(deliveryIdentities);
 
   useEffect(() => {
     if (!draftsHydrated.current) {
@@ -510,7 +521,6 @@ export default function AutoQuotePage() {
     setError(null);
     setExtracting(false);
     setProductSearch({});
-    setWaStatusByContext({});
     setWaFlowByDraft({});
     setOrderTemplateId('');
     try {
@@ -524,7 +534,6 @@ export default function AutoQuotePage() {
     skipDraftPersistence.current = true;
     setDrafts([]);
     setProductSearch({});
-    setWaStatusByContext({});
     setWaFlowByDraft({});
     try {
       localStorage.removeItem('aspen_drafts');
@@ -535,7 +544,11 @@ export default function AutoQuotePage() {
 
   // ── WhatsApp handlers ──
   const sendContextForDraft = useCallback((draft: Draft, flowId: string): SendContext | null => {
-    const resultData = draft.result?.data;
+    const issue = (draft as StoredAutoQuoteDraft).issue;
+    const resultData = draft.result?.data || (issue ? {
+      quotation_id: issue.businessNumber,
+      revision_id: issue.revisionId,
+    } : undefined);
     const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
     const revisionId = typeof resultData?.revision_id === 'string'
       ? resultData.revision_id
@@ -546,29 +559,31 @@ export default function AutoQuotePage() {
     return { quotationId, revisionId, flowId };
   }, []);
 
-  const statusForContext = useCallback((context: SendContext | null): WaStatus | undefined => {
+  const deliveryForContext = useCallback((context: SendContext | null): DeliveryView | null => {
+    if (!context) return null;
+    return deliveriesByKey[deliveryIdentityKey(context)] || null;
+  }, [deliveriesByKey]);
+
+  const deliveryErrorForContext = useCallback((context: SendContext | null): string | undefined => {
     if (!context) return undefined;
-    return waStatusByContext[sendContextKey(context)];
-  }, [waStatusByContext]);
+    return errorByKey[deliveryIdentityKey(context)];
+  }, [errorByKey]);
+
+  const deliveryPendingForContext = useCallback((context: SendContext | null): boolean => {
+    if (!context) return false;
+    return pendingKeys.includes(deliveryIdentityKey(context));
+  }, [pendingKeys]);
+
+  const resolveDeliveryForContext = useCallback(
+    (delivery: DeliveryView | null, decision: 'confirmed_received' | 'confirmed_not_received', note: string) => {
+      if (!delivery) return Promise.resolve();
+      return resolve(delivery.id, decision, note);
+    },
+    [resolve]
+  );
 
   const handleSelectWhatsAppFlow = useCallback((draftIndex: number, flowId: string) => {
     setWaFlowByDraft((prev) => ({ ...prev, [draftIndex]: flowId }));
-  }, []);
-
-  const scheduleReconciliationExpiry = useCallback((contextKey: string) => {
-    const previous = reconciliationTimers.current.get(contextKey);
-    if (previous) clearTimeout(previous);
-    const timer = setTimeout(() => {
-      reconciliationTimers.current.delete(contextKey);
-      setWaStatusByContext((prev) => {
-        const current = prev[contextKey];
-        if (current?.state !== 'reconciling' && current?.state !== 'accepted-partial') return prev;
-        const next = { ...prev };
-        delete next[contextKey];
-        return next;
-      });
-    }, WHATSAPP_STATUS_EXPIRY_MS);
-    reconciliationTimers.current.set(contextKey, timer);
   }, []);
 
   const handleSendWhatsApp = useCallback(
@@ -579,7 +594,11 @@ export default function AutoQuotePage() {
         setError('Pedido não encontrado.');
         return;
       }
-      const resultData = draft.result?.data;
+      const issue = (draft as StoredAutoQuoteDraft).issue;
+      const resultData = draft.result?.data || (issue ? {
+        quotation_id: issue.businessNumber,
+        revision_id: issue.revisionId,
+      } : undefined);
       const quotationId = typeof resultData?.quotation_id === 'string' ? resultData.quotation_id : '';
       if (!quotationId) {
         console.warn('[sendWhatsApp] missing quotation_id — draft not processed yet:', {
@@ -603,65 +622,20 @@ export default function AutoQuotePage() {
       const contextKey = sendContextKey(context);
       if (activeSendKeys.current.has(contextKey)) return;
       activeSendKeys.current.add(contextKey);
-      setWaStatusByContext((prev) => ({ ...prev, [contextKey]: { state: 'sending' } }));
 
       try {
-        const result = await executeWithSendLock(context, (idempotencyKey) => executeFlow({
-          quotation_id: context.quotationId,
-          quotation_uuid: (resultData?.quotation_uuid as string | null) || (resultData?.quote_id as string | null) || null,
-          business_number: context.quotationId,
-          revision_id: context.revisionId,
-          flow_id: context.flowId,
-          idempotency_key: idempotencyKey,
-        }));
-        if (result.kind === 'accepted') {
-          setWaStatusByContext((prev) => ({
-            ...prev,
-            [contextKey]: {
-              state: 'accepted',
-              deliveryAccepted: true,
-              message: 'Envio aceito; não significa entrega no aparelho. Reconciliação necessária.',
-            },
-          }));
-          scheduleReconciliationExpiry(contextKey);
-          return;
-        }
-        const response = result.response;
-        setWaStatusByContext((prev) => ({
-          ...prev,
-          [contextKey]: {
-            state: 'sent',
-            message: response.duplicate_warning
-              ? response.duplicate_message || 'Fluxo já processado.'
-              : 'Orçamento enviado com sucesso!',
-          },
-        }));
+        await enqueue({
+          quotationId: context.quotationId,
+          revisionId: context.revisionId,
+          flowId: context.flowId,
+        });
       } catch (err) {
-        const sendError = err instanceof CommunicationSendError
-          ? err
-          : new Error(err instanceof Error ? err.message : 'Erro ao enviar WhatsApp.');
-        console.error('[sendWhatsApp] failed:', sendError.message);
-        const projection = projectDeliveryFailure(sendError);
-        setWaStatusByContext((prev) => ({
-          ...prev,
-          [contextKey]: {
-            state: projection.kind === 'accepted'
-              ? 'accepted'
-              : projection.kind === 'completed'
-                ? 'sent'
-                : projection.kind,
-            deliveryAccepted: projection.kind === 'accepted',
-            message: projection.label,
-          },
-        }));
-        if (projection.kind === 'accepted' || projection.kind === 'reconciling') {
-          scheduleReconciliationExpiry(contextKey);
-        }
+        console.error('[sendWhatsApp] failed:', err instanceof Error ? err.message : err);
       } finally {
         activeSendKeys.current.delete(contextKey);
       }
     },
-    [defaultWaFlowId, drafts, scheduleReconciliationExpiry, sendContextForDraft, waFlowByDraft, waFlows]
+    [defaultWaFlowId, drafts, enqueue, sendContextForDraft, waFlowByDraft, waFlows]
   );
 
   // ── Re-extract handlers (add more items to an existing draft) ──
@@ -729,7 +703,6 @@ export default function AutoQuotePage() {
     [drafts, reExtractTextByDraft, refetchDraftPricing]
   );
 
-  const activeDrafts = drafts.filter((d) => !d.discarded);
   const visibleDrafts = [...activeDrafts].reverse();
 
   return (
@@ -1013,6 +986,9 @@ export default function AutoQuotePage() {
                 const sendContext = quotationSendable && quotationId && revisionId && selectedFlowId
                   ? { quotationId, revisionId, flowId: selectedFlowId }
                   : null;
+                const delivery = deliveryForContext(sendContext);
+                const deliveryPending = deliveryPendingForContext(sendContext);
+                const deliveryError = deliveryErrorForContext(sendContext);
 
                 return (
                   <SplitResultCard
@@ -1034,12 +1010,17 @@ export default function AutoQuotePage() {
                     issueError={draft.result?.error}
                     pricingConflictItems={pricingConflictByDraft[draft.index] || []}
                     viewUrl={(draft as StoredAutoQuoteDraft).issue?.pdfUrl || relativeViewUrl}
-                    waStatus={quotationSendable ? statusForContext(sendContext) : undefined}
+                    delivery={quotationSendable ? delivery : null}
+                    deliveryPending={quotationSendable && deliveryPending}
+                    deliveryError={quotationSendable ? deliveryError : undefined}
                     waSendEnabled={quotationSendable}
                     waFlows={waFlows}
                     waSelectedFlowId={selectedFlowId}
                     onSelectWhatsAppFlow={handleSelectWhatsAppFlow}
                     onSendWhatsApp={handleSendWhatsApp}
+                    onResolveDelivery={async (decision, note) => {
+                      await resolveDeliveryForContext(delivery, decision, note);
+                    }}
                     templates={templates}
                     templateLoading={templateLoading}
                     templateError={templateError}

@@ -24,8 +24,10 @@ import type { Product } from '@/types/domain';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/components/WhatsAppSendPanel';
+import QuotationDeliveryStatus from '@/components/QuotationDeliveryStatus';
 import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/communicationApi';
+import type { DeliveryResolution, DeliveryView } from '@/lib/quotationDeliveryApi';
 import type { QuotationTemplateMetadata } from '@/lib/quotationTemplatesApi';
 
 export interface SplitResultCardProps {
@@ -46,11 +48,9 @@ export interface SplitResultCardProps {
   issueError?: string;
   pricingConflictItems?: string[];
   viewUrl?: string;
-  waStatus?: {
-    state?: 'sending' | 'sent' | 'error' | 'reconciling' | 'accepted-partial' | 'accepted' | 'retryable' | 'readonly';
-    message?: string;
-    deliveryAccepted?: boolean;
-  };
+  delivery?: DeliveryView | null;
+  deliveryPending?: boolean;
+  deliveryError?: string;
   waSendEnabled?: boolean;
   waFlows?: CommunicationFlow[];
   waSelectedFlowId?: string;
@@ -60,6 +60,7 @@ export interface SplitResultCardProps {
   onRetryTemplates?: () => void;
   onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
   onSendWhatsApp?: (draftIdx: number) => void;
+  onResolveDelivery?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
   reExtractText?: string;
   reExtractLoading?: boolean;
   onReExtractTextChange?: (draftIdx: number, value: string) => void;
@@ -84,7 +85,9 @@ export default function SplitResultCard({
   issueError,
   pricingConflictItems = [],
   viewUrl,
-  waStatus,
+  delivery = null,
+  deliveryPending = false,
+  deliveryError,
   waSendEnabled = true,
   waFlows = [],
   waSelectedFlowId = '',
@@ -94,6 +97,7 @@ export default function SplitResultCard({
   onRetryTemplates,
   onSelectWhatsAppFlow,
   onSendWhatsApp,
+  onResolveDelivery,
   reExtractText = '',
   reExtractLoading = false,
   onReExtractTextChange,
@@ -214,6 +218,7 @@ export default function SplitResultCard({
   const immutableIssue = Boolean(issue);
   const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
+  const deliveryBlocksSend = Boolean(delivery && delivery.state !== 'failed');
 
   function toggleEditing() {
     if (!editing) {
@@ -561,11 +566,22 @@ export default function SplitResultCard({
           <WhatsAppSendPanel
             selectedFlowId={waSelectedFlowId}
             flows={waFlows}
-            status={waStatus}
+            delivery={delivery}
+            pending={deliveryPending}
             onSelectFlow={(flowId) => onSelectWhatsAppFlow?.(draft.index, flowId)}
             onSend={() => onSendWhatsApp?.(draft.index)}
             hideButton
           />
+          <QuotationDeliveryStatus
+            delivery={delivery}
+            pending={deliveryPending}
+            onResolve={onResolveDelivery}
+          />
+          {deliveryError && (
+            <p role="status" className="text-xs leading-5 text-warning">
+              {deliveryError}
+            </p>
+          )}
         </div>
       )}
 
@@ -631,26 +647,11 @@ export default function SplitResultCard({
             {waSendEnabled ? (
               <Button
                 size="sm"
-                disabled={waStatus?.state === 'sending'
-                  || waStatus?.state === 'sent'
-                  || waStatus?.state === 'reconciling'
-                  || waStatus?.state === 'accepted-partial'
-                  || waStatus?.state === 'accepted'
-                  || waStatus?.state === 'readonly'}
+                disabled={deliveryPending || deliveryBlocksSend}
                 onClick={() => onSendWhatsApp?.(draft.index)}
               >
                 <Phone size={13} />
-                {waStatus?.state === 'sent'
-                  ? 'Enviado'
-                  : waStatus?.state === 'accepted' || waStatus?.state === 'accepted-partial'
-                    ? 'Envio aceito'
-                    : waStatus?.state === 'reconciling'
-                      ? 'Reconciliação necessária'
-                      : waStatus?.state === 'readonly'
-                        ? 'Somente leitura'
-                        : waStatus?.state === 'sending'
-                          ? 'Enviando…'
-                          : 'Enviar WhatsApp'}
+                {deliveryPending ? 'Enviando…' : 'Enviar via WhatsApp'}
               </Button>
             ) : (
               <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>
@@ -729,20 +730,6 @@ export default function SplitResultCard({
         <p role="alert" className="border-t border-line px-4 py-3 text-xs text-destructive">{issueError}</p>
       )}
 
-      {isDone && waStatus?.message && (
-        <p
-          className={cn(
-            'px-4 pb-3 text-xs leading-5 text-center',
-            waStatus.state === 'error'
-              ? 'text-destructive'
-              : waStatus.deliveryAccepted
-                ? 'text-warning'
-                : 'text-fg-muted'
-          )}
-        >
-          {waStatus.message}
-        </p>
-      )}
     </div>
   );
 }
