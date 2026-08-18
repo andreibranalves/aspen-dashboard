@@ -72,7 +72,7 @@ function collectChanges(executeGit, baseRef) {
   const seen = new Set(changes.map(changeKey));
 
   for (const change of untrackedChanges(
-    executeGit(['ls-files', '--others', '--exclude-standard', '-z', '--', 'drizzle/*.sql']),
+    executeGit(['ls-files', '--others', '--exclude-standard', '-z', '--', 'drizzle/*.sql'])
   )) {
     if (seen.has(changeKey(change))) continue;
     changes.push(change);
@@ -132,7 +132,7 @@ export function formatMigrationCheck(result) {
 
   for (const assessment of result.assessments) {
     lines.push(
-      `${assessment.result} ${assessment.path} status=${assessment.status} risk=${assessment.risk} result=${assessment.result}`,
+      `${assessment.result} ${assessment.path} status=${assessment.status} risk=${assessment.risk} result=${assessment.result}`
     );
   }
   return lines.join('\n');
@@ -148,7 +148,7 @@ function runCli() {
     process.exitCode = result.violations.length > 0 ? 1 : 0;
   } catch {
     process.stderr.write(
-      `timestamp: ${new Date().toISOString()}\nFAIL check de migrations: não foi possível inspecionar o diff Git.\n`,
+      `timestamp: ${new Date().toISOString()}\nFAIL check de migrations: não foi possível inspecionar o diff Git.\n`
     );
     process.exitCode = 1;
   }

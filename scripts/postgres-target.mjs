@@ -27,9 +27,7 @@ export function parsePostgresUrl(raw, name = 'DATABASE_URL') {
 }
 
 export function postgresIdentity(connection) {
-  return [connection.host, connection.port, connection.database]
-    .map((value) => value.toLowerCase())
-    .join('|');
+  return [connection.host.toLowerCase(), connection.port, connection.database].join('|');
 }
 
 export function assertProtectedFile(filepath, label) {
@@ -82,10 +80,7 @@ export function readPostgresServiceTarget({ serviceName, serviceFile, expectedDa
 }
 
 export function assertSamePostgresTarget(connection, service, message) {
-  const serviceIdentity = [service.target.host, service.target.port, service.target.database]
-    .map((value) => value.toLowerCase())
-    .join('|');
-  if (postgresIdentity(connection) !== serviceIdentity) throw new Error(message);
+  if (postgresIdentity(connection) !== postgresIdentity(service.target)) throw new Error(message);
 }
 
 export function postgresServiceEnvironment(service, inheritedEnv = process.env) {

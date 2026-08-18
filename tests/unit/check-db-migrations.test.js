@@ -83,7 +83,7 @@ test('parses NUL name-status records and rename paths', () => {
         previousPath: 'drizzle/0001_old.sql',
         status: 'R100',
       },
-    ],
+    ]
   );
 });
 
@@ -101,7 +101,7 @@ test('accepts a classified untracked migration and redacts SQL contents', () => 
     const secret = 'sentinel-secret-value';
     writeFileSync(
       path.join(root, 'drizzle/0001_additive.sql'),
-      `\n-- migration-risk: additive\nSELECT '${secret}';\n`,
+      `\n-- migration-risk: additive\nSELECT '${secret}';\n`
     );
     const result = check(root);
     assert.deepEqual(result.violations, []);
@@ -139,7 +139,7 @@ test('rejects modification and deletion of historical migrations', () => {
     let result = check(root);
     assert.deepEqual(
       result.violations.map(({ status }) => status),
-      ['M'],
+      ['M']
     );
 
     git(root, 'restore', 'drizzle/0000_history.sql');
@@ -147,23 +147,29 @@ test('rejects modification and deletion of historical migrations', () => {
     result = check(root);
     assert.deepEqual(
       result.violations.map(({ status }) => status),
-      ['D'],
+      ['D']
     );
   });
 });
 
 test('rejects staged modification and detects staged additions', () => {
   withRepository((root) => {
-    writeFileSync(path.join(root, 'drizzle/0000_history.sql'), 'ALTER TABLE history ADD COLUMN staged int;\n');
+    writeFileSync(
+      path.join(root, 'drizzle/0000_history.sql'),
+      'ALTER TABLE history ADD COLUMN staged int;\n'
+    );
     git(root, 'add', 'drizzle/0000_history.sql');
     let result = check(root);
-    assert.deepEqual(result.violations.map(({ status }) => status), ['M']);
+    assert.deepEqual(
+      result.violations.map(({ status }) => status),
+      ['M']
+    );
 
     git(root, 'restore', '--staged', 'drizzle/0000_history.sql');
     git(root, 'restore', 'drizzle/0000_history.sql');
     writeFileSync(
       path.join(root, 'drizzle/0001_staged.sql'),
-      '-- migration-risk: additive\nCREATE TABLE staged (id int);\n',
+      '-- migration-risk: additive\nCREATE TABLE staged (id int);\n'
     );
     git(root, 'add', 'drizzle/0001_staged.sql');
     result = check(root);
@@ -178,7 +184,7 @@ test('rejects rename or copy of a historical migration', () => {
   withRepository((root) => {
     renameSync(
       path.join(root, 'drizzle/0000_history.sql'),
-      path.join(root, 'drizzle/0001_renamed.sql'),
+      path.join(root, 'drizzle/0001_renamed.sql')
     );
     let result = check(root);
     assert.ok(result.violations.some(({ status }) => status.startsWith('R') || status === 'D'));
@@ -186,13 +192,13 @@ test('rejects rename or copy of a historical migration', () => {
     git(root, 'reset', '--hard', 'HEAD');
     writeFileSync(
       path.join(root, 'drizzle/0001_copy.sql'),
-      readFileSync(path.join(root, 'drizzle/0000_history.sql'), 'utf8'),
+      readFileSync(path.join(root, 'drizzle/0000_history.sql'), 'utf8')
     );
     git(root, 'add', '.');
     result = check(root);
     assert.ok(
       result.violations.some(({ status }) => status.startsWith('C')) ||
-        result.violations.some(({ reason }) => reason === 'invalid-risk'),
+        result.violations.some(({ reason }) => reason === 'invalid-risk')
     );
   });
 });
@@ -202,7 +208,7 @@ test('uses MIGRATION_BASE_REF semantics across committed branch changes', () => 
     const base = git(root, 'rev-parse', 'HEAD').trim();
     writeFileSync(
       path.join(root, 'drizzle/0001_committed.sql'),
-      '-- migration-risk: destructive\nDROP TABLE future_contract;\n',
+      '-- migration-risk: destructive\nDROP TABLE future_contract;\n'
     );
     git(root, 'add', '.');
     git(root, 'commit', '-qm', 'add migration');

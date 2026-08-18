@@ -30,7 +30,7 @@ function run(args: string[], env: NodeJS.ProcessEnv) {
 }
 
 test('named psql service calls use libpq service syntax', () => {
-  assert.match(backupSource, /'--dbname', `service=\$\{service\.name\}`/);
+  assert.match(backupSource, /'--dbname'\s*,\s*`service=\$\{service\.name\}`/);
   assert.doesNotMatch(backupSource, /'--dbname', service\.name/);
 });
 
@@ -46,6 +46,13 @@ test('PostgreSQL target parser normalizes the credential-free identity fields', 
     [first.host, first.port, first.database],
     [second.host, second.port, second.database]
   );
+});
+
+test('PostgreSQL target identity preserves database name case', () => {
+  const lower = parseConnectionUrl('postgresql://staging.test/aspen_test');
+  const upper = parseConnectionUrl('postgresql://staging.test/ASPEN_TEST');
+
+  assert.notEqual(postgresIdentity(lower), postgresIdentity(upper));
 });
 
 test('PostgreSQL target parser rejects non-PostgreSQL and incomplete URLs', () => {
@@ -301,9 +308,14 @@ test('discovers exactly one historical lineage table by suffix and full column s
   );
   assert.throws(() => quoteIdentifier('public";DROP TABLE x'), /inválido/);
   assert.throws(
-    () => chooseHistoricalLineageTable([
-      { schema: 'public', table: 'duplicate_import_lineage', columns: [...columns.slice(1), 'updated_at'] },
-    ]),
+    () =>
+      chooseHistoricalLineageTable([
+        {
+          schema: 'public',
+          table: 'duplicate_import_lineage',
+          columns: [...columns.slice(1), 'updated_at'],
+        },
+      ]),
     /ausente ou ambígua/
   );
 });

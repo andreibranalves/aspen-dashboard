@@ -290,7 +290,12 @@ export function postgresEnv(connection, database = connection.database, inherite
 }
 
 function connectionUrlForDatabase(connection, database) {
-  const parsed = new URL(connection.raw);
+  let parsed;
+  try {
+    parsed = new URL(connection.raw);
+  } catch {
+    throw new Error('URL PostgreSQL inválida.');
+  }
   parsed.pathname = `/${encodeURIComponent(database)}`;
   return parsed.toString();
 }

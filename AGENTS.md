@@ -52,7 +52,8 @@
 
 - Do not add provider fallbacks or rollout branches.
 - Do not expose database errors, stack traces, secrets or personal data in HTTP responses.
-- Do not modify historical files under `drizzle/`.
+- If a subagent unexpectedly needs to create or edit migration artifacts, alter migration strategy, or resolve a Drizzle schema/migration ambiguity, it must stop and contact the parent before continuing.
+- Never modify historical files under `drizzle/` or run migrations without explicit task authorization.
 - Do not edit generated Vite output under `public/` during source changes.
 - Do not add dependencies without explicit approval.
 - Do not commit `.env`, credentials or production data.
