@@ -51,7 +51,13 @@ function delivery(state, options = {}) {
       },
     ],
     next_attempt_at: state === 'retry_scheduled' ? updatedAt : null,
-    reconciliation_deadline: delayed ? '2020-01-01T00:00:00.000Z' : null,
+    action_deadline:
+      state === 'provider_accepted'
+        ? delayed
+          ? '2020-01-01T00:00:00.000Z'
+          : '2099-01-01T00:00:00.000Z'
+        : null,
+    reconciliation_deadline: state === 'reconciling' ? '2099-01-01T00:00:00.000Z' : null,
     delivered_at: isDelivered ? updatedAt : null,
     updated_at: updatedAt,
     provider_message_id: 'provider-message-raw-must-not-render',
@@ -70,7 +76,7 @@ function summary(data, overrides = {}) {
     active: data.filter((item) => activeStates.has(item.state)).length,
     requires_action: data.filter((item) => item.state === 'needs_review').length,
     retry_scheduled: data.filter((item) => item.state === 'retry_scheduled').length,
-    delayed: data.filter((item) => item.reconciliation_deadline).length,
+    delayed: data.filter((item) => item.action_deadline && item.state === 'provider_accepted').length,
     delivered_last_24_hours: data.filter((item) => item.state === 'delivered').length,
     ...overrides,
   };
@@ -304,6 +310,7 @@ test('pagination requests the next page and delayed accepted deliveries stay act
   await expect(page.getByText(delayedDelivery.business_number)).toBeVisible();
   await expect(page.getByText(/aceitação do provedor está atrasada/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirmado que não recebeu, reenviar' })).toBeVisible();
 });
 
 test('empty state and API failure remain readable and actionable', async ({ page }) => {

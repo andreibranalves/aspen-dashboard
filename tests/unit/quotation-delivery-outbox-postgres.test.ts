@@ -566,6 +566,11 @@ test('list supports filtering and pagination without provider payloads', async (
     publicError: 'operator-safe',
   });
   await setDelivery(deliveries[2].id, { state: 'provider_accepted', updatedAt: old });
+  const delayedAggregate = await repository.get(deliveries[2].id);
+  assert.equal(
+    delayedAggregate?.actionDeadline?.getTime(),
+    old.getTime() + 86_400_000,
+  );
   const page = await repository.list({ search: 'list-unique', page: 1, pageSize: 2 });
   assert.equal(page.total, 3);
   assert.equal(page.data.length, 2);
@@ -678,7 +683,7 @@ test('confirmed_received records operator completion', async () => {
   assert.equal(resolved.steps[0]?.state, 'delivered');
 });
 
-test('confirmed_not_received requeues only unresolved steps', async () => {
+test('confirmed_not_received requeues every non-delivered step and clears stale provider correlation', async () => {
   const delivery = await repository.enqueue(
     input({
       flowId: 'resolve-not-received',
@@ -701,27 +706,34 @@ test('confirmed_not_received requeues only unresolved steps', async () => {
     resolvedBy: 'authenticated-operator',
   });
   assert.equal(resolved.state, 'queued');
-  assert.equal(resolved.steps.find((step) => step.id === accepted.id)?.state, 'server_ack');
+  assert.equal(resolved.steps.find((step) => step.id === accepted.id)?.state, 'queued');
   assert.equal(resolved.steps.find((step) => step.id === unresolved.id)?.state, 'queued');
   assert.equal(resolved.steps.find((step) => step.id === accepted.id)?.publicError, null);
   const stored = await db
-    .select({ providerMessageId: quotationDeliverySteps.providerMessageId })
+    .select({
+      providerMessageId: quotationDeliverySteps.providerMessageId,
+      acceptedAt: quotationDeliverySteps.acceptedAt,
+    })
     .from(quotationDeliverySteps)
     .where(eq(quotationDeliverySteps.id, accepted.id));
-  assert.equal(stored[0]?.providerMessageId, 'provider-resolve-accepted');
+  assert.equal(stored[0]?.providerMessageId, null);
+  assert.equal(stored[0]?.acceptedAt, null);
 
   let transportCalls = 0;
   const recovery = createQuotationDeliveryModule({
     repository,
     transport: async () => {
       transportCalls += 1;
-      return { accepted: true as const, providerMessageId: 'provider-resolve-requeued' };
+      return {
+        accepted: true as const,
+        providerMessageId: `provider-resolve-requeued-${transportCalls}`,
+      };
     },
     now: () => now,
     logger: () => {},
   });
   const requeued = await recovery.process(delivery.id);
-  assert.equal(transportCalls, 1);
+  assert.equal(transportCalls, 2);
   assert.equal(requeued?.state, 'provider_accepted');
   assert.equal(requeued?.steps.find((step) => step.id === accepted.id)?.state, 'server_ack');
   assert.equal(requeued?.steps.find((step) => step.id === unresolved.id)?.state, 'server_ack');

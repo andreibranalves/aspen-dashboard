@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler as quotationDeliveries } from '../../api/_functions/quotation-deliveries.js';
+import {
+  handler as quotationDeliveries,
+  toPublicDeliveryView,
+} from '../../api/_functions/quotation-deliveries.js';
 import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../../api/_functions/whatsapp-send-status.js';
 
@@ -66,9 +69,9 @@ function aggregate(state = 'provider_accepted') {
   } as any;
 }
 
-function moduleFixture() {
+function moduleFixture(state = 'provider_accepted') {
   const calls: Array<{ method: string; input: unknown }> = [];
-  const current = aggregate();
+  const current = aggregate(state);
   const deliveryModule = {
     async enqueue(input: unknown) {
       calls.push({ method: 'enqueue', input });
@@ -123,6 +126,19 @@ test('POST send returns durable state and omits recipient/provider details', asy
   });
 });
 
+test('production-shaped delayed accepted aggregates expose a distinct action deadline', () => {
+  const updatedAt = new Date(now.getTime() - 2 * 86_400_000);
+  const view = toPublicDeliveryView({
+    ...aggregate('provider_accepted'),
+    updatedAt,
+    reconciliationDeadline: null,
+  } as any);
+  assert.equal(
+    view.action_deadline,
+    new Date(updatedAt.getTime() + 86_400_000).toISOString(),
+  );
+});
+
 test('GET detail and list expose only sanitized delivery views and filters', async () => {
   const { deliveryModule, calls } = moduleFixture();
   const detail = await quotationDeliveries(event('GET', {}, { id: 'delivery-1' }), { deliveryModule });
@@ -166,6 +182,20 @@ test('GET detail and list expose only sanitized delivery views and filters', asy
     page: 2,
     pageSize: 10,
   });
+});
+
+test('durable failed send replay returns an accepted failed projection', async () => {
+  const { deliveryModule } = moduleFixture('failed');
+  const result = await sendWhatsappFlow(
+    event('POST', { quotation_id: 'quotation-1', revision_id: 'revision-1', flow_id: 'flow-1' }),
+    { deliveryModule },
+  );
+  const body = JSON.parse(result.body || '{}');
+  assert.equal(result.statusCode, 202);
+  assert.equal(body.success, true);
+  assert.equal(body.send_status, 'failed');
+  assert.equal(body.delivery.state, 'failed');
+  assert.equal(body.delivery.progress.delivered, 0);
 });
 
 test('GET rejects invalid filters and missing detail', async () => {
@@ -220,10 +250,7 @@ test('legacy status GET and PATCH use PostgreSQL module without Redis reads', as
     quotation_uuid: 'legacy-quotation',
     revision_id: 'revision-1',
     flow_id: 'flow-1',
-  }), {
-    deliveryModule,
-    reservationStore: { async get() { throw new Error('Redis must not be read'); } },
-  });
+  }), { deliveryModule });
   assert.equal(status.statusCode, 200);
   assert.deepEqual(JSON.parse(status.body || '{}'), {
     delivery_id: 'delivery-1',

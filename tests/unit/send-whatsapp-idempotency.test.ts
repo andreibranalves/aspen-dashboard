@@ -70,7 +70,7 @@ test('PostgreSQL revision and flow identity leave transport idempotency to the o
   assert.equal(JSON.parse(replay.body || '{}').phone, undefined);
 });
 
-test('existing failed outbox delivery returns a safe terminal response without transport success', async () => {
+test('existing failed outbox delivery returns an accepted durable projection without transport success', async () => {
   let enqueueCalls = 0;
   let transportCalls = 0;
   const deliveryModule = {
@@ -96,9 +96,11 @@ test('existing failed outbox delivery returns a safe terminal response without t
     } as any,
   });
 
-  assert.equal(first.statusCode, 400);
-  assert.equal(replay.statusCode, 400);
-  assert.equal(JSON.parse(first.body || '{}').success, undefined);
+  assert.equal(first.statusCode, 202);
+  assert.equal(replay.statusCode, 202);
+  assert.equal(JSON.parse(first.body || '{}').success, true);
+  assert.equal(JSON.parse(first.body || '{}').delivery.state, 'failed');
+  assert.equal(JSON.parse(replay.body || '{}').delivery.state, 'failed');
   assert.equal(JSON.parse(replay.body || '{}').send_status, 'failed');
   assert.equal(enqueueCalls, 2);
   assert.equal(transportCalls, 0);

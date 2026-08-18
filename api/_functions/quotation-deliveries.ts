@@ -1,6 +1,7 @@
 import type { FunctionEvent, FunctionResult } from '../_lib/types.js';
 import {
   createQuotationDeliveryModule,
+  PROVIDER_DELAY_WARNING_MS,
   QuotationDeliveryModuleInputError,
   type QuotationDeliveryModule,
 } from './lib/quotation-delivery-outbox.js';
@@ -141,6 +142,14 @@ export function toPublicDeliveryView(
 ): PublicDeliveryView {
   const steps = Array.isArray(delivery.steps) ? delivery.steps : [];
   const delivered = steps.filter((step) => step.state === 'delivered' || step.state === 'read').length;
+  const actionDeadline =
+    delivery.state === 'provider_accepted'
+      ? delivery.actionDeadline instanceof Date && !Number.isNaN(delivery.actionDeadline.getTime())
+        ? delivery.actionDeadline
+        : delivery.updatedAt instanceof Date && !Number.isNaN(delivery.updatedAt.getTime())
+          ? new Date(delivery.updatedAt.getTime() + PROVIDER_DELAY_WARNING_MS)
+          : null
+      : null;
   const view: PublicDeliveryView = {
     id: text(delivery.id),
     revision_id: text(delivery.revisionId),
@@ -166,6 +175,7 @@ export function toPublicDeliveryView(
       updated_at: iso(step.updatedAt),
     })),
     next_attempt_at: iso(delivery.nextAttemptAt),
+    action_deadline: iso(actionDeadline),
     reconciliation_deadline: iso(delivery.reconciliationDeadline),
     delivered_at: iso(delivery.deliveredAt),
     created_at: iso(delivery.createdAt),

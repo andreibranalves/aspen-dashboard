@@ -38,6 +38,7 @@ function fixture(overrides: Partial<DeliveryView> = {}): Record<string, unknown>
       },
     ],
     nextAttemptAt: null,
+    actionDeadline: null,
     reconciliationDeadline: null,
     deliveredAt: null,
     updatedAt,
@@ -65,6 +66,7 @@ function fixture(overrides: Partial<DeliveryView> = {}): Record<string, unknown>
       updated_at: step.updatedAt,
     })),
     next_attempt_at: delivery.nextAttemptAt,
+    action_deadline: delivery.actionDeadline,
     reconciliation_deadline: delivery.reconciliationDeadline,
     delivered_at: delivery.deliveredAt,
     updated_at: delivery.updatedAt,
@@ -81,8 +83,20 @@ function response(body: unknown, status = 200): Response {
 test('projector distinguishes provider acceptance from device delivery', () => {
   const providerAccepted = projectDelivery({
     ...fixture({ state: 'provider_accepted' }),
+    state: 'provider_accepted',
+    updatedAt,
+    actionDeadline: null,
   } as unknown as DeliveryView);
   assert.equal(providerAccepted.label, 'Aceito pela Evolution');
+  const delayedAccepted = projectDelivery({
+    ...fixture({ state: 'provider_accepted' }),
+    state: 'provider_accepted',
+    updatedAt,
+    actionDeadline: '2000-01-01T00:00:00.000Z',
+    reconciliationDeadline: null,
+  } as unknown as DeliveryView);
+  assert.equal(delayedAccepted.requiresAction, true);
+  assert.equal(delayedAccepted.delayed, true);
   assert.equal(
     projectDelivery({ ...fixture({ state: 'delivered' }) } as unknown as DeliveryView).label,
     'Entregue'
@@ -207,6 +221,33 @@ test('enqueueDelivery validates the durable response and sends stable identity f
       revision_id: 'revision-1',
       flow_id: 'flow-1',
     });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('enqueueDelivery accepts a durable failed replay without claiming delivery', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    response({
+      success: true,
+      delivery_id: 'delivery-1',
+      send_status: 'failed',
+      revision_id: 'revision-1',
+      flow_id: 'flow-1',
+      delivery: fixture({
+        state: 'failed',
+        publicError: 'O envio foi rejeitado antes do transporte.',
+      }),
+    }, 202)) as typeof fetch;
+  try {
+    const delivery = await enqueueDelivery({
+      quotationId: 'quotation-1',
+      revisionId: 'revision-1',
+      flowId: 'flow-1',
+    });
+    assert.equal(delivery.state, 'failed');
+    assert.equal(delivery.progress.delivered, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

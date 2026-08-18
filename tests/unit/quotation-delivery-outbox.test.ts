@@ -124,6 +124,7 @@ class FakeRepository {
       createdAt: new Date(row.aggregate.createdAt),
       updatedAt: new Date(row.aggregate.updatedAt),
       nextAttemptAt: row.aggregate.nextAttemptAt && new Date(row.aggregate.nextAttemptAt),
+      actionDeadline: row.aggregate.actionDeadline && new Date(row.aggregate.actionDeadline),
       reconciliationDeadline:
         row.aggregate.reconciliationDeadline && new Date(row.aggregate.reconciliationDeadline),
       deliveredAt: row.aggregate.deliveredAt && new Date(row.aggregate.deliveredAt),
@@ -148,6 +149,8 @@ class FakeRepository {
         .map((step) => step.reconciliationDeadline!)
         .sort((a, b) => a.getTime() - b.getTime())[0] || null;
     row.aggregate.updatedAt = now;
+    row.aggregate.actionDeadline =
+      row.aggregate.state === 'provider_accepted' ? new Date(now.getTime() + 86_400_000) : null;
     if (row.aggregate.state === 'delivered') {
       row.aggregate.deliveredAt ||= now;
       row.aggregate.publicError = null;
@@ -174,6 +177,7 @@ class FakeRepository {
       completionSource: null,
       publicError: null,
       nextAttemptAt: null,
+      actionDeadline: null,
       reconciliationDeadline: null,
       deliveredAt: null,
       createdAt: now,

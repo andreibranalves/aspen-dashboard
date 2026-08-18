@@ -50,12 +50,7 @@ export function QuotationDeliveryStatus({
   if (!delivery && !pending) return null;
 
   const projection = delivery ? projectDelivery(delivery) : null;
-  const delayed = Boolean(
-    delivery &&
-    delivery.state === 'provider_accepted' &&
-    delivery.reconciliationDeadline !== null &&
-    Date.parse(delivery.reconciliationDeadline) <= Date.now()
-  );
+  const delayed = projection?.delayed === true;
   const canResolve = Boolean(delivery && projection?.requiresAction && onResolve);
   const statusLabel = pending && !delivery ? 'Enviando' : projection?.label || 'Enviando';
   const statusTone =

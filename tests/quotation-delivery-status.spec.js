@@ -51,7 +51,10 @@ function delivery(state, selectedFlowId = flowId, selectedRevisionId = revisionI
       updated_at: updatedAt,
     }],
     next_attempt_at: state === 'retry_scheduled' ? '2026-08-17T12:01:00.000Z' : null,
-    reconciliation_deadline: state === 'provider_accepted' || state === 'reconciling'
+    action_deadline: state === 'provider_accepted'
+      ? '2099-01-01T00:00:00.000Z'
+      : null,
+    reconciliation_deadline: state === 'reconciling'
       ? '2099-01-01T00:00:00.000Z'
       : null,
     delivered_at: delivered ? updatedAt : null,

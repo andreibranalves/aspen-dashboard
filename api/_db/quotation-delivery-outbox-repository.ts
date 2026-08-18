@@ -8,7 +8,6 @@ import {
   gte,
   ilike,
   inArray,
-  isNull,
   lte,
   lt,
   notInArray,
@@ -189,6 +188,7 @@ export interface DeliveryAggregate {
   completionSource: CompletionSource | null;
   publicError: string | null;
   nextAttemptAt: Date | null;
+  actionDeadline: Date | null;
   reconciliationDeadline: Date | null;
   deliveredAt: Date | null;
   createdAt: Date;
@@ -624,6 +624,8 @@ async function readAggregate(
     .from(quotationDeliverySteps)
     .where(eq(quotationDeliverySteps.deliveryId, deliveryId))
     .orderBy(asc(quotationDeliverySteps.position), asc(quotationDeliverySteps.id));
+  const updatedAt = requiredDate(row.updatedAt, now);
+  const state = row.state as DeliveryState;
   return {
     id: row.id,
     revisionId: row.revisionId,
@@ -632,14 +634,18 @@ async function readAggregate(
     phone: row.phone,
     flowId: row.flowId,
     flowName: row.flowName,
-    state: row.state as DeliveryState,
+    state,
     completionSource: safeCompletionSource(row.completionSource),
     publicError: safeStoredError(row.publicError),
     nextAttemptAt: asDate(row.nextAttemptAt),
+    actionDeadline:
+      state === 'provider_accepted'
+        ? new Date(updatedAt.getTime() + PROVIDER_DELAY_MS)
+        : null,
     reconciliationDeadline: asDate(row.reconciliationDeadline),
     deliveredAt: asDate(row.deliveredAt),
     createdAt: requiredDate(row.createdAt, now),
-    updatedAt: requiredDate(row.updatedAt, now),
+    updatedAt,
     steps: steps.map((step) => buildStepView(step, now)),
   };
 }
@@ -1429,6 +1435,8 @@ export function createPostgresQuotationDeliveryOutboxRepository(
                 }
               : {
                   state: 'queued',
+                  providerMessageId: null,
+                  acceptedAt: null,
                   nextAttemptAt: null,
                   reconciliationDeadline: null,
                   publicError: null,
@@ -1436,16 +1444,10 @@ export function createPostgresQuotationDeliveryOutboxRepository(
                 }
           )
           .where(
-            input.decision === 'confirmed_received'
-              ? and(
-                  eq(quotationDeliverySteps.deliveryId, deliveryId),
-                  notInArray(quotationDeliverySteps.state, ['delivered', 'read'])
-                )
-              : and(
-                  eq(quotationDeliverySteps.deliveryId, deliveryId),
-                  notInArray(quotationDeliverySteps.state, ['delivered', 'read']),
-                  isNull(quotationDeliverySteps.providerMessageId)
-                )
+            and(
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+              notInArray(quotationDeliverySteps.state, ['delivered', 'read'])
+            )
           );
         if (input.decision === 'confirmed_not_received') {
           const [nextStep] = await tx

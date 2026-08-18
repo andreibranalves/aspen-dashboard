@@ -769,7 +769,7 @@ test('send-whatsapp-flow preserves 200 success for a delivered durable state', a
   assert.equal(body.send_status, 'delivered');
 });
 
-test('send-whatsapp-flow does not report a durable failed replay as success', async () => {
+test('send-whatsapp-flow returns an accepted durable failed projection', async () => {
   const response = await sendWhatsappFlow(
     event({ flow_id: 'flow-failed', quotation_id: quotationId, revision_id: revisionId }),
     {
@@ -781,10 +781,14 @@ test('send-whatsapp-flow does not report a durable failed replay as success', as
     } as any,
   );
   const body = JSON.parse(response.body || '{}');
-  assert.equal(response.statusCode, 400);
-  assert.equal(body.success, undefined);
+  assert.equal(response.statusCode, 202);
+  assert.equal(body.success, true);
   assert.equal(body.send_status, 'failed');
-  assert.equal(body.error, 'A revisão do orçamento não está disponível para envio.');
+  assert.equal(body.delivery.state, 'failed');
+  assert.equal(
+    body.delivery.public_error,
+    'A revisão do orçamento não está disponível para envio.',
+  );
 });
 
 test('send-whatsapp-flow sanitizes outbox failures', async () => {

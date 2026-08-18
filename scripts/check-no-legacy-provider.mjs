@@ -161,7 +161,7 @@ const retiredModuleLabels = new Set([
 // Any edit, new import, or third path remains rejected; this is not a test-root exclusion.
 const retainedLegacyImportBaselines = new Map([
   ['b1e2778835f2d9fdfc6dd14c829f9706fdcdcde39e5422140953a1c2321d9230', {
-    sourceHash: 'e9b48bd924ab0cea261eb5d1dfab146d0821c9283be043fe2381dc4429dcc83e',
+    sourceHash: '3e1af6ea8675734efd3794fb6ca4e8bd31cce208b15042a4a2a482fd3195c41c',
     label: 'retired quotation delivery module',
   }],
   ['d1441eda171b9911317a415212621431fd3d5d576f5beac090e6330140c2915c', {

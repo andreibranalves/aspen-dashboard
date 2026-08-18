@@ -70,6 +70,7 @@ export interface DeliveryView {
   progress: { delivered: number; total: number };
   steps: DeliveryStepView[];
   nextAttemptAt: string | null;
+  actionDeadline: string | null;
   reconciliationDeadline: string | null;
   deliveredAt: string | null;
   updatedAt: string;
@@ -78,6 +79,7 @@ export interface DeliveryView {
 export interface DeliveryProjection {
   label: string;
   requiresAction: boolean;
+  delayed: boolean;
 }
 
 export class QuotationDeliveryApiError extends Error {
@@ -279,6 +281,8 @@ function parseDelivery(
     progress: { delivered, total },
     steps,
     nextAttemptAt: nullableTimestamp(value.next_attempt_at),
+    actionDeadline:
+      value.action_deadline === undefined ? null : nullableTimestamp(value.action_deadline),
     reconciliationDeadline: nullableTimestamp(value.reconciliation_deadline),
     deliveredAt: nullableTimestamp(value.delivered_at),
     updatedAt: timestamp(value.updated_at),
@@ -360,13 +364,19 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
     delivered: 'Entregue',
     failed: 'Falhou',
   };
+  const updatedAt = Date.parse(delivery.updatedAt);
+  const derivedActionDeadline = Number.isFinite(updatedAt)
+    ? new Date(updatedAt + 86_400_000).toISOString()
+    : null;
+  const actionDeadline = delivery.actionDeadline || derivedActionDeadline;
   const delayed =
     delivery.state === 'provider_accepted' &&
-    delivery.reconciliationDeadline !== null &&
-    Date.parse(delivery.reconciliationDeadline) <= Date.now();
+    actionDeadline !== null &&
+    Date.parse(actionDeadline) <= Date.now();
   return {
     label: labels[delivery.state],
     requiresAction: delivery.state === 'needs_review' || delayed,
+    delayed,
   };
 }
 
