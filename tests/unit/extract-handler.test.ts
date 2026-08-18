@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createExtractHandler, handler } from '../../api/_functions/extract.js';
+import { createExtractHandler, handler } from '../../api/modules/extract.js';
 import {
   OrderTemplateConflictError,
   OrderTemplateNotFoundError,

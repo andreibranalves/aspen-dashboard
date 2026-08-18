@@ -26,7 +26,7 @@ import {
   QuotationDeliveryPdfError,
   QuotationDeliveryRepositoryError,
 } from '../../api/_db/quotation-delivery-repository.js';
-import type { QuotationSectionsSnapshot } from '../../api/_db/quotation-content.js';
+import type { QuotationSectionsSnapshot } from '../../api/modules/quotation-content.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');

@@ -16,13 +16,13 @@ import {
   normalizePostgresMediaUrl,
 } from '../../api/_functions/lib/postgres-media.js';
 import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
   type DeliverQuotationInput,
-} from '../../api/_functions/lib/quotation-delivery.js';
+} from '../../api/modules/quotation-delivery.js';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';

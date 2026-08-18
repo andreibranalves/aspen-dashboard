@@ -12,14 +12,14 @@ import {
   renderQuotationTemplate,
   resolveQuotationTemplate,
   type QuotationTemplate,
-} from './lib/quotation-templates.js';
+} from './quotation-template-catalog.js';
 import {
   buildDraftQuotationSnapshot,
   DraftPreviewInputError,
   type DraftSnapshotDependencies,
-} from './lib/quotation-draft-snapshot.js';
-import { renderQuotationPdf } from './lib/quotation-pdf-renderer.js';
-import { isValidPdfBuffer } from './lib/quotation-document-storage.js';
+} from './quotation-draft-snapshot.js';
+import { renderQuotationPdf } from './quotation-pdf-renderer.js';
+import { isValidPdfBuffer } from './quotation-document-storage.js';
 
 export interface QuotationPreviewDependencies {
   repository?: {

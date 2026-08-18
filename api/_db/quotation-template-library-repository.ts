@@ -12,7 +12,7 @@ import {
   validateQuotationHtmlSource,
   validateQuotationTemplateSource,
   QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
-} from '../_functions/lib/quotation-templates.js';
+} from '../modules/quotation-template-catalog.js';
 import { type QuoteDatabase } from './quote-draft-management-repository.js';
 
 export interface QuotationTemplateListItem {

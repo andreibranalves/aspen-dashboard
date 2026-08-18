@@ -15,19 +15,19 @@ import {
   validateQuotationTemplateSource,
   QuotationTemplateResolutionError,
   resolveQuotationTemplate,
-} from '../../api/_functions/lib/quotation-templates.js';
+} from '../../api/modules/quotation-template-catalog.js';
 import {
   createQuotationTemplateRepository,
   quotationSnapshotViewModel,
   QuotationTemplateSnapshotRepositoryError,
   readQuotationTemplateSnapshot,
 } from '../../api/_db/quotation-template-repository.js';
-import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
+import { createQuotationPreviewHandler } from '../../api/modules/quotation-preview.js';
 import {
   createQuotationSectionsSnapshot,
   normalizeQuotationSections,
   validateQuotationSections,
-} from '../../api/_db/quotation-content.js';
+} from '../../api/modules/quotation-content.js';
 import {
   quoteRevisionItems,
   quoteRevisions,

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createQuotationIssuesHandler } from '../../api/_functions/quotation-issues.js';
+import { createQuotationIssuesHandler } from '../../api/modules/quotation-issues.js';
 
 const event = (httpMethod: string, headers: Record<string, string> = {}, body = '{}', queryStringParameters: Record<string, string> = {}) => ({
   httpMethod,

@@ -15,8 +15,8 @@ import {
   formatQuotationPhone,
   formatQuotationQuantity,
   type QuotationTemplateViewModel,
-} from '../_functions/lib/quotation-templates.js';
-import { toSafeMultilineHtml } from './quotation-content.js';
+} from '../modules/quotation-template-catalog.js';
+import { toSafeMultilineHtml } from '../modules/quotation-content.js';
 import { canonicalQuotationStatus } from '../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;

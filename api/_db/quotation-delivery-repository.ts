@@ -19,9 +19,9 @@ import {
   renderQuotationTemplate,
   type QuotationTemplate,
   type QuotationTemplateViewModel,
-} from '../_functions/lib/quotation-templates.js';
-import { renderQuotationPdf } from '../_functions/lib/quotation-pdf-renderer.js';
-import { isValidPdfBuffer, quotationPdfChecksum } from '../_functions/lib/quotation-document-storage.js';
+} from '../modules/quotation-template-catalog.js';
+import { renderQuotationPdf } from '../modules/quotation-pdf-renderer.js';
+import { isValidPdfBuffer, quotationPdfChecksum } from '../modules/quotation-document-storage.js';
 import { normalizeWhatsappPhone } from '../_functions/lib/whatsapp-conversations-store.js';
 import { revisionSectionsSnapshot } from './quotation-revision-invariants.js';
 

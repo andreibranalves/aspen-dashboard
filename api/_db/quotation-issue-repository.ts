@@ -4,12 +4,12 @@ import { getDatabase, type AppDatabase } from './client.js';
 import { appSettings, clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quoteSequences, quotations, quotationIssueRequests, quotationTemplates, quotationTemplateVersions } from './schema.js';
 import { acquireQuotationWriteLock } from './quotation-write-lock.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
-import { buildDraftQuotationSnapshot, DraftPreviewInputError, type DraftQuotationSnapshot } from '../_functions/lib/quotation-draft-snapshot.js';
-import { getQuotationTemplate, renderQuotationTemplate } from '../_functions/lib/quotation-templates.js';
-import { renderQuotationPdf } from '../_functions/lib/quotation-pdf-renderer.js';
-import { isValidPdfBuffer } from '../_functions/lib/quotation-document-storage.js';
+import { buildDraftQuotationSnapshot, DraftPreviewInputError, type DraftQuotationSnapshot } from '../modules/quotation-draft-snapshot.js';
+import { getQuotationTemplate, renderQuotationTemplate } from '../modules/quotation-template-catalog.js';
+import { renderQuotationPdf } from '../modules/quotation-pdf-renderer.js';
+import { isValidPdfBuffer } from '../modules/quotation-document-storage.js';
 import { normalizeProductPricing, resolveProductPrice, formatMoneyCents, parseMoneyCents, parseScaledInteger, PricingUnavailableError, PricingValidationError } from '../modules/pricing-core.js';
-import { normalizeQuotationSections, type QuotationSectionsSnapshot } from './quotation-content.js';
+import { normalizeQuotationSections, type QuotationSectionsSnapshot } from '../modules/quotation-content.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 import { convertQuoteLeadInTransaction } from './quote-leads-repository.js';
 

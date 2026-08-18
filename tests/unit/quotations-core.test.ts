@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { createHandler as createBoundary } from '../../api/_functions/quotations.js';
-import { createCoreHandler } from '../../api/_functions/quotations-core.js';
+import { createHandler as createBoundary } from '../../api/modules/quotations.js';
+import { createCoreHandler } from '../../api/modules/quotations-core.js';
 import { createPostgresQuotationLifecycleRepository } from '../../api/_db/quotation-lifecycle-repository.ts';
 import {
   QuoteManagementConflictError,

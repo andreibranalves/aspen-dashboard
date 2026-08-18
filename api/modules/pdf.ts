@@ -1,6 +1,6 @@
 // GET /api/pdf?q=ORC-XXXX — returns quotation PDF (binary).
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
-import { generateQuotationPdf } from './lib/quotation-pdf.js';
+import { generateQuotationPdf } from './quotation-pdf.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const quotationId = event.queryStringParameters?.q;

@@ -1,10 +1,10 @@
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../_db/quotation-template-repository.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
 import {
   formatQuotationClientName,
   quotationTemplateFromVersion,
   renderQuotationTemplate,
   resolveQuotationTemplate,
-} from './quotation-templates.js';
+} from './quotation-template-catalog.js';
 
 export interface RenderQuotationHtmlOptions {
   includePrintButton?: boolean;

@@ -12,7 +12,7 @@ import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './lib/time-greeting.js';
 import { KV_KEY_FLOWS } from '../modules/media-schema.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
-import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
+import { isRevisionBoundPublicQuotationUrl } from '../modules/public-quotation.js';
 import {
   readCommunicationMediaRecords,
   verifyOwnedBlobRecord,

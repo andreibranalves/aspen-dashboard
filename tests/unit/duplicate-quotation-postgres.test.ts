@@ -25,7 +25,7 @@ import {
   quotations,
 } from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
-import { createHandler } from '../../api/_functions/duplicate-quotation.js';
+import { createHandler } from '../../api/modules/duplicate-quotation.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DUPLICATE_DATABASE_URL;
 const migrationsFolder = path.resolve(

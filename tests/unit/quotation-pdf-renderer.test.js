@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import { renderQuotationPdf } from '../../api/_functions/lib/quotation-pdf-renderer.js';
+import { renderQuotationPdf } from '../../api/modules/quotation-pdf-renderer.js';
 
 const codiconFont = readFileSync(
   resolve('node_modules/playwright-core/lib/vite/dashboard/assets/codicon-DCmgc-ay.ttf')

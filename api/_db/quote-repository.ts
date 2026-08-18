@@ -43,9 +43,9 @@ import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
 import {
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
-} from './quotation-content.js';
+} from '../modules/quotation-content.js';
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
-import { getQuotationTemplate } from '../_functions/lib/quotation-templates.js';
+import { getQuotationTemplate } from '../modules/quotation-template-catalog.js';
 import { resolveQuotationRevisionMetadata } from './quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;

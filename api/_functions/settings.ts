@@ -10,7 +10,7 @@ import {
   normalizeQuotationSections,
   validateQuotationSections,
   type QuotationSectionsSettings,
-} from '../_db/quotation-content.js';
+} from '../modules/quotation-content.js';
 
 const MAX_PAYMENT_LENGTH = 500;
 const MAX_DELIVERY_LENGTH = 500;

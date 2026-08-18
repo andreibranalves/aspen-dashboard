@@ -5,14 +5,14 @@ import {
   formatQuotationPhone,
   type QuotationTemplate,
   type QuotationTemplateViewModel,
-} from './quotation-templates.js';
+} from './quotation-template-catalog.js';
 import {
   formatMoneyCents,
   parseScaledInteger,
   QUANTITY_SCALE,
   URGENT_DENOMINATOR,
   URGENT_NUMERATOR,
-} from '../../modules/pricing-core.js';
+} from './pricing-core.js';
 
 export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (

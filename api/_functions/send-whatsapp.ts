@@ -14,7 +14,7 @@ import {
   isRevisionBoundPublicQuotationUrl,
   renderPublicQuotationPdf,
   type PublicQuotationDependencies,
-} from './public-quotation.js';
+} from '../modules/public-quotation.js';
 import {
   LIVE_DEPS,
   sanitizeWhatsappMediaUrl,

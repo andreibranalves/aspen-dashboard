@@ -6,7 +6,7 @@ import {
   DEFAULT_QUOTATION_SECTIONS,
   normalizeQuotationSections,
   type QuotationSectionsSettings,
-} from './quotation-content.js';
+} from '../modules/quotation-content.js';
 
 export interface Settings {
   validade_dias: number;

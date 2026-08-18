@@ -20,7 +20,7 @@ import {
   DEFAULT_QUOTATION_SECTIONS,
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
-} from './quotation-content.js';
+} from '../modules/quotation-content.js';
 import type { QuotationStatus } from '../modules/quotation-status.js';
 
 /**

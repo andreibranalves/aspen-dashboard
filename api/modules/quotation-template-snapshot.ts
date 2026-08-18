@@ -8,7 +8,7 @@ import {
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
-import { QUOTATION_TEMPLATES } from '../_functions/lib/quotation-templates.js';
+import { QUOTATION_TEMPLATES } from './quotation-template-catalog.js';
 
 export interface LegacyRevision {
   pagamento?: unknown;

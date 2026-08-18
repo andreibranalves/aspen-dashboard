@@ -10,7 +10,7 @@ import {
   type OrderTemplateRecord,
   type OrderTemplateRepository,
 } from '../../api/_db/order-template-repository.js';
-import { createOrderTemplatesHandler } from '../../api/_functions/order-templates.js';
+import { createOrderTemplatesHandler } from '../../api/modules/order-templates.js';
 
 interface MemoryProduct {
   sku: string;

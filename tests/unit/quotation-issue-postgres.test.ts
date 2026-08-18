@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import * as schema from '../../api/_db/schema.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
 import { createQuotationIssueRepository, QuotationIssueInputError, quotationIssueFailureOwnershipMatches, quotationIssueFingerprint, quotationIssueLeaseDecision, type QuotationIssueInput } from '../../api/_db/quotation-issue-repository.js';
 import { createPostgresQuoteDraftManagementRepository } from '../../api/_db/quote-draft-management-repository.js';
 import { createPostgresQuoteDraftRepository } from '../../api/_db/quote-repository.js';

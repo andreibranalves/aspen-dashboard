@@ -4,7 +4,7 @@ import test from 'node:test';
 import { handler as sendWhatsapp } from '../../api/_functions/send-whatsapp.js';
 import { resolveServerIssuedPublicLink } from '../../api/_functions/send-whatsapp-flow.js';
 import { renderTemplate } from '../../api/_functions/communication-flow-preview.js';
-import { isRevisionBoundPublicQuotationUrl } from '../../api/_functions/public-quotation.js';
+import { isRevisionBoundPublicQuotationUrl } from '../../api/modules/public-quotation.js';
 
 const token = 'A'.repeat(32);
 const relativePublicUrl = `/api/public-quotation?token=${token}`;

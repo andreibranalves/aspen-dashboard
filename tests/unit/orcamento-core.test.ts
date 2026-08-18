@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createHandler } from '../../api/_functions/orcamento.js';
-import { createCoreHandler } from '../../api/_functions/orcamento-core.js';
+import { createHandler } from '../../api/modules/orcamento.js';
+import { createCoreHandler } from '../../api/modules/orcamento-core.js';
 import {
   QuoteDraftInputError,
   readSelectedTemplate,

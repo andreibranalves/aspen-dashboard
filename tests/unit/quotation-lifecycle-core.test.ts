@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createCoreHandler } from '../../api/_functions/quotations-core.js';
+import { createCoreHandler } from '../../api/modules/quotations-core.js';
 import { QuoteManagementConflictError } from '../../api/_db/quote-draft-management-repository.js';
 
 function event(method: string, id: string, body: Record<string, unknown>) {

@@ -22,7 +22,7 @@ import {
 } from '../_db/quotation-delivery-repository.js';
 import {
   isRevisionBoundPublicQuotationUrl,
-} from './public-quotation.js';
+} from '../modules/public-quotation.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
 import {
   allowedMediaMimeTypes,

@@ -19,7 +19,7 @@ import {
   getQuotationTemplate,
   getQuotationTemplateManifest,
   renderQuotationTemplate,
-} from '../../api/_functions/lib/quotation-templates.js';
+} from '../../api/modules/quotation-template-catalog.js';
 import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
 import * as schema from '../../api/_db/schema.js';
 

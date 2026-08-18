@@ -1,6 +1,6 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
-import { renderQuotationHtml } from './lib/quotation-html.js';
-import { resolvePrintFormat } from './lib/print-format.js';
+import { renderQuotationHtml } from './quotation-html.js';
+import { resolvePrintFormat } from './print-format.js';
 
 export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const quotationId = event.queryStringParameters?.q;

@@ -29,8 +29,8 @@ import {
   combineLegacyConditions,
   normalizeQuotationSections,
   type QuotationSectionsSnapshot,
-} from './quotation-content.js';
-import { snapshotFromLegacyRevision } from './quotation-template-snapshot.js';
+} from '../modules/quotation-content.js';
+import { snapshotFromLegacyRevision } from '../modules/quotation-template-snapshot.js';
 import { canonicalQuotationStatus, type QuotationStatus } from '../modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
