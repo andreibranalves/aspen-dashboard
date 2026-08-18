@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft for user review.
+Approved.
 
 ## Contexto
 
@@ -75,10 +75,10 @@ Módulos novos não podem importar diretamente `drizzle-orm`, `postgres`, o sche
 
 As exceções abaixo permanecem aceitas nesta fase e devem ser tratadas como dívida explícita:
 
-| Arquivo | Imports diretos aceitos | Motivo |
-| --- | --- | --- |
-| `api/modules/operational-status.ts` | `getDatabase`, `appSettings`, `sql` | Readiness do banco e leitura mínima de configurações obrigatórias. |
-| `api/modules/quotation-preview.ts` | `getDatabase` | Resolução de versão de template no fluxo de preview existente. |
+| Arquivo                             | Imports diretos aceitos                                                                                                                                     | Motivo                                                                                      |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `api/modules/operational-status.ts` | `getDatabase`, `appSettings`, `sql`                                                                                                                         | Readiness do banco e leitura mínima de configurações obrigatórias.                          |
+| `api/modules/quotation-preview.ts`  | `getDatabase`                                                                                                                                               | Resolução de versão de template no fluxo de preview existente.                              |
 | `api/modules/whatsapp-crm-match.ts` | `and`, `asc`, `desc`, `eq`, `inArray`, `ne`, `or`, `sql`, `getDatabase`, `AppDatabase`, `clients`, `crmDeals`, `quoteLeads`, `quoteRevisions`, `quotations` | Consulta composta de correlação CRM que ainda não foi extraída para um repository dedicado. |
 
 A allowlist deve ser baseada no caminho normalizado do arquivo, no módulo importado e nos bindings importados.

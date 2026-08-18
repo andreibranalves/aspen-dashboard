@@ -50,8 +50,8 @@ function normalizeRepositoryPath(value) {
 }
 
 function canonicalTarget(specifier, importerPath) {
-  if (/^drizzle-orm(?:\/|$)/.test(specifier)) return 'drizzle-orm';
-  if (/^postgres(?:\/|$)/.test(specifier)) return 'postgres';
+  if (/^drizzle-orm(?:\/|$)/.test(specifier)) return specifier;
+  if (/^postgres(?:\/|$)/.test(specifier)) return specifier;
   if (!specifier.startsWith('.')) return null;
 
   const importerDirectory = dirname(resolve(PROJECT_ROOT, importerPath));

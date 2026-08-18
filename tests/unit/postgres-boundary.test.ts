@@ -17,6 +17,18 @@ test('rejects direct Drizzle imports in a new module with path and line', () => 
   ]);
 });
 
+test('rejects Drizzle subpaths even inside allowlisted modules', () => {
+  const violations = findPostgresBoundaryViolations([
+    source('api/modules/new-feature.ts', "import { eq } from 'drizzle-orm/pg-core';\n"),
+    source('api/modules/whatsapp-crm-match.ts', "import { sql } from 'drizzle-orm/pg-core';\n"),
+  ]);
+
+  assert.deepEqual(violations, [
+    { path: 'api/modules/new-feature.ts', line: 1, target: 'drizzle-orm/pg-core' },
+    { path: 'api/modules/whatsapp-crm-match.ts', line: 1, target: 'drizzle-orm/pg-core' },
+  ]);
+});
+
 test('reports the import token line after leading blank lines', () => {
   const violations = findPostgresBoundaryViolations([
     source('api/modules/new-feature.ts', "\n\nimport { eq } from 'drizzle-orm';\n"),
