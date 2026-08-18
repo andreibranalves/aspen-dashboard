@@ -9,9 +9,7 @@ import { extname, join, normalize } from 'node:path';
 
 // Load local config before API handlers are evaluated.
 import './load-env-side-effect.mjs';
-import { isAuthenticated } from '../api/_lib/auth.js';
-import { checkRateLimitAsync } from '../api/_lib/rate-limit.js';
-import { routes } from '../api/_app/routes.js';
+import { createNodeHandler } from '../api/_http/node-adapter.js';
 
 const PORT = Number(process.env.PORT || 8888);
 const PUBLIC_DIR = 'public';
@@ -30,28 +28,6 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
   '.woff': 'font/woff',
 };
-
-function parseBody(req) {
-  return new Promise((resolve) => {
-    let body = '';
-    req.on('data', (chunk) => (body += chunk));
-    req.on('end', () => {
-      const mediaType = String(req.headers['content-type'] || '')
-        .split(';', 1)[0]
-        .trim()
-        .toLowerCase();
-      if (mediaType === 'application/x-www-form-urlencoded') {
-        resolve(body);
-        return;
-      }
-      try {
-        resolve(JSON.parse(body));
-      } catch {
-        resolve({});
-      }
-    });
-  });
-}
 
 function serveStatic(urlPath, res) {
   const relativePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
@@ -79,102 +55,14 @@ function serveStatic(urlPath, res) {
   return true;
 }
 
-function normalizeQueryParams(url) {
-  const params = new URL(url, 'http://localhost').searchParams;
-  const result = {};
-  for (const [key, value] of params) {
-    // Vercel dev proxy may encode '+' as '%2B'; URLSearchParams decodes it back
-    // to a literal '+'. In query strings '+' represents a space, so normalize it.
-    result[key] = value.replace(/\+/g, ' ');
-  }
-  return result;
-}
+const handleApiRequest = createNodeHandler();
 
 const server = createServer(async (req, res) => {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
   const urlPath = req.url.split('?')[0];
 
-  // API routes
+  // API routes: pipeline compartilhado (auth, rate limit, dispatch, erro normalizado).
   if (urlPath.startsWith('/api/')) {
-    const routeName = urlPath.replace(/^\/api\/?/, '').split('/')[0];
-    const handler = routes[routeName];
-
-    // This is the self-hosted production API boundary. Authentication and
-    // rate limiting stay in shared guards, matching the Vercel catch-all route.
-    if (!isAuthenticated(req)) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Não autorizado. Faça login em /api/login.' }));
-      return;
-    }
-
-    if (!(await checkRateLimitAsync(req))) {
-      res.writeHead(429, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Muitas requisições. Aguarde um minuto.' }));
-      return;
-    }
-
-    if (!handler) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Endpoint não encontrado.' }));
-      return;
-    }
-
-    try {
-      const body = req.method !== 'GET' ? await parseBody(req) : {};
-      let requestBody;
-      if (req.method !== 'GET') {
-        requestBody = typeof body === 'string' ? body : JSON.stringify(body);
-      }
-      const event = {
-        httpMethod: req.method,
-        body: requestBody,
-        queryStringParameters: normalizeQueryParams(req.url),
-        url: req.url,
-        headers: {
-          ...req.headers,
-          host: req.headers.host || 'localhost',
-          'x-forwarded-proto': 'https',
-        },
-      };
-
-      const result = await handler(event);
-      const responseHeaders = { ...(result.headers || {}) };
-      if (!Object.keys(responseHeaders).some((name) => name.toLowerCase() === 'content-type')) {
-        responseHeaders['Content-Type'] = 'application/json';
-      }
-      res.writeHead(result.statusCode || 200, responseHeaders);
-      res.end(
-        result.isBase64Encoded && typeof result.body === 'string'
-          ? Buffer.from(result.body, 'base64')
-          : result.body || ''
-      );
-    } catch (err) {
-      const isPublicQuotation = routeName === 'public-quotation';
-      const code = isPublicQuotation
-        ? 503
-        : Number.isInteger(err?.statusCode)
-          ? err.statusCode
-          : 500;
-      console.error(`[api/${routeName}]`, err instanceof Error ? err.name : typeof err);
-      res.writeHead(code, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          error: isPublicQuotation
-            ? 'Não foi possível consultar o orçamento. Tente novamente.'
-            : 'Erro interno. Tente novamente.',
-        })
-      );
-    }
+    await handleApiRequest(req, res);
     return;
   }
 
@@ -186,6 +74,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`App server on http://0.0.0.0:${PORT}`);
-  console.log(`Frontend: public/  |  API: ${Object.keys(routes).length} handlers`);
+  console.log(`App server on http://0.0.0.0:${PORT} (frontend: public/, API: pipeline compartilhado)`);
 });
