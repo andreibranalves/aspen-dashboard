@@ -477,7 +477,13 @@ Manter o canário Production somente leitura e todas as proibições já existen
 
 - [ ] **Step 4: Validar formatação e conteúdo documental**
 
-Run: `npx prettier --check .env.example docs/operational-cutoff-procedure.md`
+Run: `npx prettier --check docs/operational-cutoff-procedure.md`
+Expected: PASS.
+
+Run: `awk '!/^[[:space:]]*(#|$)/ { print }' .env.example | bash -n`
+Expected: PASS, validando a sintaxe shell de cada linha não vazia e não comentada.
+
+Run: `git diff --check -- .env.example docs/operational-cutoff-procedure.md`
 Expected: PASS.
 
 Run: `git diff --unified=0 -- .env.example docs/operational-cutoff-procedure.md | grep -E '^\+[^+].*(sk-|token=[^<[:space:]]+|postgres(ql)?://[^<[:space:]]+)' || true`
