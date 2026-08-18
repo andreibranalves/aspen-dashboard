@@ -13,10 +13,10 @@ import {
   type QuoteLead,
   type QuoteLeadAttribution,
   type QuoteLeadStatus,
-} from '../_functions/lib/quote-leads-pure.js';
+} from '../modules/quote-leads-pure.js';
 
-export { quoteLeadIdentityKey } from '../_functions/lib/quote-leads-pure.js';
-export type { QuoteLeadStatus } from '../_functions/lib/quote-leads-pure.js';
+export { quoteLeadIdentityKey } from '../modules/quote-leads-pure.js';
+export type { QuoteLeadStatus } from '../modules/quote-leads-pure.js';
 
 const DEFAULT_LIST_LIMIT = 20;
 const MAX_LIST_LIMIT = 100;

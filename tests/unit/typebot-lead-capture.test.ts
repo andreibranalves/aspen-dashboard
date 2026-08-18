@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHandler } from '../../api/_functions/typebot-lead-capture.js';
+import { createHandler } from '../../api/modules/typebot-lead-capture.js';
 import { sendMetaLeadEvent } from '../../api/_functions/lib/meta-capi.js';
 
 type HandlerResult = { statusCode: number; body: string };

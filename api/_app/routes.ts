@@ -7,8 +7,8 @@ import { handler as crmPruneCandidates } from '../_functions/crm-prune-candidate
 import { handler as duplicateQuotation } from '../_functions/duplicate-quotation.js';
 import { handler as editDraft } from '../_functions/edit-draft.js';
 import { handler as extract } from '../_functions/extract.js';
-import { handler as clientDetail } from '../_functions/client-detail.js';
-import { handler as leadsClients } from '../_functions/leads-clients.js';
+import { handler as clientDetail } from '../modules/client-detail.js';
+import { handler as leadsClients } from '../modules/leads-clients.js';
 import { handler as login } from '../_functions/login.js';
 import { handler as logout } from '../_functions/logout.js';
 import { handler as orcamento } from '../_functions/orcamento.js';
@@ -19,7 +19,7 @@ import { handler as productPricingUpdate } from '../modules/product-pricing-upda
 import { handler as productActivity } from '../modules/product-activity.js';
 import { handler as productPricing } from '../modules/product-pricing.js';
 import { handler as products } from '../modules/products.js';
-import { handler as quoteLeads } from '../_functions/quote-leads.js';
+import { handler as quoteLeads } from '../modules/quote-leads.js';
 import { handler as quotations } from '../_functions/quotations.js';
 import { handler as quotationTemplates } from '../_functions/quotation-templates.js';
 import { handler as orderTemplates } from '../_functions/order-templates.js';
@@ -33,7 +33,7 @@ import { handler as sendWhatsapp } from '../_functions/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../_functions/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../_functions/whatsapp-send-status.js';
 import { handler as settings } from '../_functions/settings.js';
-import { handler as typebotLeadCapture } from '../_functions/typebot-lead-capture.js';
+import { handler as typebotLeadCapture } from '../modules/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../_functions/whatsapp-conversations.js';
 import { handler as whatsappFlows } from '../_functions/whatsapp-flows.js';
 import { handler as whatsappLeads } from '../_functions/whatsapp-leads.js';

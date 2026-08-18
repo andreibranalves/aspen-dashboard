@@ -22,13 +22,13 @@ import {
   type ClientPatchInput,
   type ClientRecord,
   type ClientWriteInput,
-} from '../_functions/client-schema.js';
-import type { ClientRepository } from '../_functions/client-repository.js';
+} from '../modules/client-schema.js';
+import type { ClientRepository } from '../modules/client-repository.js';
 
 export type {
   ClientRepository,
   MemoryClientRepositoryOptions,
-} from '../_functions/client-repository.js';
+} from '../modules/client-repository.js';
 export type {
   ClientAddress,
   ClientCreateInput,
@@ -39,7 +39,7 @@ export type {
   ClientStatus,
   ClientUpdateInput,
   ClientWriteInput,
-} from '../_functions/client-schema.js';
+} from '../modules/client-schema.js';
 
 type DatabaseProvider = () => AppDatabase;
 

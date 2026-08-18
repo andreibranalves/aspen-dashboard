@@ -27,7 +27,7 @@ import {
   normalizeClientNotes,
   normalizeClientPhone,
   type ClientAddress,
-} from '../_functions/client-schema.js';
+} from '../modules/client-schema.js';
 import {
   PricingUnavailableError,
   PricingValidationError,

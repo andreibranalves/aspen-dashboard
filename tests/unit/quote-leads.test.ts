@@ -1,13 +1,13 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHandler } from '../../api/_functions/quote-leads.js';
+import { createHandler } from '../../api/modules/quote-leads.js';
 import {
   formatQuoteLeadText,
   mergeQuoteLead,
   normalizeQuoteLeadInput,
   type QuoteLead,
-} from '../../api/_functions/lib/quote-leads-store.js';
+} from '../../api/modules/quote-leads-store.js';
 import {
   quoteLeadIdentityKey,
   type QuoteLeadRecord,

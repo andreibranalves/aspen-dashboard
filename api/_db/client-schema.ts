@@ -22,7 +22,7 @@ export {
   normalizeClientName,
   normalizeClientNotes,
   normalizeClientPhone,
-} from '../_functions/client-schema.js';
+} from '../modules/client-schema.js';
 
 export type ClientRow = typeof clients.$inferSelect;
 export type ClientInsert = typeof clients.$inferInsert;

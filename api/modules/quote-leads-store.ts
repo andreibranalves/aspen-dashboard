@@ -1,5 +1,5 @@
 import { kv } from '@vercel/kv';
-import { createHttpError } from '../../_shared/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   formatQuoteLeadText,
   mergeQuoteLead,

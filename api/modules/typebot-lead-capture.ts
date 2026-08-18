@@ -11,7 +11,7 @@ import {
   type QuoteLeadRecord,
   type QuoteLeadRepository,
 } from '../_db/quote-leads-repository.js';
-import { sendMetaLeadEvent } from './lib/meta-capi.js';
+import { sendMetaLeadEvent } from '../_functions/lib/meta-capi.js';
 
 const LIVE_REPOSITORY = createPostgresQuoteLeadRepository();
 

@@ -15,7 +15,7 @@ import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRecord,
 } from '../../api/_db/quote-leads-repository.js';
-import { createHandler as createTypebotHandler } from '../../api/_functions/typebot-lead-capture.js';
+import { createHandler as createTypebotHandler } from '../../api/modules/typebot-lead-capture.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -42,7 +42,7 @@ test('active lead paths depend on KV-free pure logic only', () => {
       path.dirname(fileURLToPath(import.meta.url)),
       '..',
       '..',
-      'api/_functions/lib/quote-leads-pure.ts'
+      'api/modules/quote-leads-pure.ts'
     ),
     'utf8'
   );
