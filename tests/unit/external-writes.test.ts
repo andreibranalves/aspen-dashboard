@@ -39,6 +39,8 @@ describe('external writes guard', () => {
     for (const candidate of [
       env(),
       env({ APP_ENV: undefined, EXTERNAL_WRITES_ENABLED: '1' }),
+      env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: undefined }),
+      env({ APP_ENV: 'development', EXTERNAL_WRITES_ENABLED: '1' }),
       env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '0' }),
       env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: 'true' }),
     ]) {
