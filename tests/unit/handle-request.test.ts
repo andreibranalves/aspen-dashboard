@@ -53,6 +53,24 @@ test('normalizeHandlerError: HttpError preserva statusCode e mensagem pública',
   assert.deepEqual(result, { statusCode: 422, message: 'Dados inválidos.' });
 });
 
+test('normalizeHandlerError: statusCode 503 sem marcador não vaza mensagem interna', () => {
+  const err = Object.assign(new Error('WhatsApp lead worker failed.'), { statusCode: 503 });
+  const result = normalizeHandlerError('whatsapp-leads', err);
+  assert.deepEqual(result, { statusCode: 503, message: 'Erro interno. Tente novamente.' });
+});
+
+test('normalizeHandlerError: expose=false cai na mensagem genérica', () => {
+  const err = Object.assign(new Error('detalhe interno do storage'), { statusCode: 503, expose: false });
+  const result = normalizeHandlerError('quotations', err);
+  assert.deepEqual(result, { statusCode: 503, message: 'Erro interno. Tente novamente.' });
+});
+
+test('normalizeHandlerError: expose=true preserva mensagem pública', () => {
+  const err = Object.assign(new Error('Produto não encontrado.'), { statusCode: 404, expose: true });
+  const result = normalizeHandlerError('products', err);
+  assert.deepEqual(result, { statusCode: 404, message: 'Produto não encontrado.' });
+});
+
 test('normalizeHandlerError: erro genérico vira 500 sem vazar detalhes', () => {
   const result = normalizeHandlerError('quotations', new Error('secret SQL detail'));
   assert.deepEqual(result, { statusCode: 500, message: 'Erro interno. Tente novamente.' });
