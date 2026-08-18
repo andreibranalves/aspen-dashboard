@@ -861,6 +861,13 @@ export async function handler(
     if (postgresPath && quotationPdfSteps !== 1) {
       throw createHttpError(400, 'O fluxo deve conter exatamente um PDF do orçamento.');
     }
+    if (!dryRun && postgresPath) {
+      const config = evolutionConfig();
+      const appEnv = String(process.env.APP_ENV || '').trim().toLowerCase();
+      if (appEnv === 'preview' || (config.baseUrl && config.apiKey && config.instance)) {
+        assertExternalWritesAllowed('evolution');
+      }
+    }
     const needPdf = quotationPdfSteps === 1;
     const resolved = postgresPath
       ? await loadPostgresSendContext({
@@ -983,7 +990,7 @@ export async function handler(
         transportClaimed = true;
       }
       if (!dryRun) {
-        assertEvolutionConfig();
+        if (!postgresPath) assertEvolutionConfig();
         for (let i = 0; i < steps.length; i++) {
           if (i > 0) await wait(randomDelay(delayMinMs, delayMaxMs));
           const step = steps[i];

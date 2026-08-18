@@ -558,6 +558,61 @@ function withEvolutionEnv(
   };
 }
 
+test('PostgreSQL sequence blocks before token or delivery state when external writes are disabled', async () => {
+  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
+  const tokenStore = store();
+  const deliveryCalls: string[] = [];
+  let tokenCalls = 0;
+  try {
+    const response = await sendWhatsapp(
+      event({
+        quotation_id: businessNumber,
+        revision_id: revisionId,
+        sequence: {
+          steps: [
+            { type: 'text', template: 'Olá' },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        },
+      }),
+      {
+        repository: repositoryFor(),
+        store: tokenStore,
+        token: () => {
+          tokenCalls += 1;
+          return publicToken;
+        },
+        deliveryRepository: {
+          getByRevision: async () => {
+            deliveryCalls.push('getByRevision');
+            return null;
+          },
+          prepareDelivery: async () => {
+            deliveryCalls.push('prepareDelivery');
+            return undefined;
+          },
+          claimTransport: async () => {
+            deliveryCalls.push('claimTransport');
+            return true;
+          },
+          recordState: async () => {
+            deliveryCalls.push('recordState');
+          },
+        } as any,
+      },
+    );
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Integrações externas desativadas neste ambiente.',
+    });
+    assert.deepEqual(deliveryCalls, []);
+    assert.equal(tokenCalls, 0);
+    assert.equal(tokenStore.values.size, 0);
+  } finally {
+    restoreEnv();
+  }
+});
+
 test('PostgreSQL endpoint rejects recipient ownership before provider setup', async () => {
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
