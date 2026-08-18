@@ -3,6 +3,7 @@ import test, { afterEach } from 'node:test';
 import type { VercelResponseLike } from '../../api/_lib/types.js';
 import { createHttpError } from '../../api/_lib/http-error.js';
 import { handleApiRequest, normalizeHandlerError } from '../../api/_app/handle-request.js';
+import { routes } from '../../api/_app/routes.js';
 
 function fakeResponse() {
   let statusCode = 200;
@@ -15,7 +16,9 @@ function fakeResponse() {
     json(data: unknown) {
       bodies.push(data);
     },
-    send(_data: unknown) {},
+    send(data: unknown) {
+      bodies.push(data);
+    },
     setHeader(_key: string, _value: string | number | string[]) {},
   } satisfies VercelResponseLike;
   return { res, lastStatus: () => statusCode, lastBody: () => bodies[bodies.length - 1] };
@@ -71,4 +74,52 @@ test('handleApiRequest: rota inexistente responde 404 via pipeline completo', as
   await handleApiRequest(req, res);
   assert.equal(lastStatus(), 404);
   assert.deepEqual(lastBody(), { error: 'Endpoint não encontrado.' });
+});
+
+test('handleApiRequest: rate limit nega 429 na 11a chamada do login', async () => {
+  withEnv({ NODE_ENV: 'test' });
+  const ip = `198.51.100.${Date.now() % 250}`;
+  const { res, lastStatus, lastBody } = fakeResponse();
+  for (let i = 0; i < 11; i++) {
+    const req = { method: 'POST', url: '/api/login', headers: { 'x-real-ip': ip } } as unknown as import('node:http').IncomingMessage;
+    await handleApiRequest(req, res);
+  }
+  assert.equal(lastStatus(), 429);
+  assert.deepEqual(lastBody(), { error: 'Muitas requisições. Aguarde um minuto.' });
+});
+
+test('handleApiRequest: dispatch com sucesso passa pelo wrapFunctionHandler', async () => {
+  withEnv({ NODE_ENV: 'test', APP_AUTH_BYPASS: 'true' });
+  const routeName = 'task3-success-dispatch';
+  routes[routeName] = async () => ({ statusCode: 201, body: JSON.stringify({ ok: true }) });
+  try {
+    const req = { method: 'GET', url: `/api/${routeName}`, headers: {} } as unknown as import('node:http').IncomingMessage;
+    const { res, lastStatus, lastBody } = fakeResponse();
+    await handleApiRequest(req, res);
+    assert.equal(lastStatus(), 201);
+    assert.equal(lastBody(), JSON.stringify({ ok: true }));
+  } finally {
+    delete routes[routeName];
+  }
+});
+
+test('handleApiRequest: erro do handler vira 500 sem vazar detalhes', async () => {
+  withEnv({ NODE_ENV: 'test', APP_AUTH_BYPASS: 'true' });
+  const routeName = 'task3-throwing-handler';
+  routes[routeName] = async () => {
+    throw new Error('secret SQL detail');
+  };
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const req = { method: 'GET', url: `/api/${routeName}`, headers: {} } as unknown as import('node:http').IncomingMessage;
+    const { res, lastStatus, lastBody } = fakeResponse();
+    await handleApiRequest(req, res);
+    assert.equal(lastStatus(), 500);
+    assert.deepEqual(lastBody(), { error: 'Erro interno. Tente novamente.' });
+    assert.ok(!JSON.stringify(lastBody()).includes('secret SQL detail'));
+  } finally {
+    console.error = originalConsoleError;
+    delete routes[routeName];
+  }
 });
