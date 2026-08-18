@@ -28,7 +28,7 @@
 | Add API endpoint | `api/modules/*` + `api/_app/routes.ts` |
 | Add frontend page | `src/pages/*.tsx` + `src/App.tsx` |
 | Shared UI component | `src/components/ui/*.tsx` |
-| Business logic / handlers | `api/modules/<dominio>/` |
+| Business logic / handlers | `api/modules/*.ts` |
 | Shared auth/errors/rate-limit | `api/_shared/` |
 | HTTP pipeline e adapters | `api/_app/`, `api/_http/` |
 | Database schema | `api/infrastructure/db/schema.ts` |
