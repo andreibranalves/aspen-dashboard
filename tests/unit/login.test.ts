@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { afterEach, before, describe, it } from 'node:test';
 
-import { handler } from '../../api/_functions/login.js';
+import { handler } from '../../api/modules/login.js';
 import { createPasswordHash } from '../../api/_shared/password.js';
 import { SESSION_LIFETIME_SECONDS, verifySessionToken } from '../../api/_shared/session.js';
 

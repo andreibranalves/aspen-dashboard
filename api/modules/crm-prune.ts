@@ -1,4 +1,4 @@
-import { createHttpError } from '../../_shared/http-error.js';
+import { createHttpError } from '../_shared/http-error.js';
 import {
   CRM_PRUNE_LOST_REASON,
   CRM_PRUNE_LOST_STATUS,
@@ -10,7 +10,7 @@ import {
   type CrmDealRepository,
   type CrmPruneCandidate,
   type CrmPruneResult,
-} from '../../_db/crm-deals-repository.js';
+} from '../_db/crm-deals-repository.js';
 
 export const PRUNE_TARGET_STATUS = CRM_PRUNE_TARGET_STATUS;
 export const PRUNE_LOST_STATUS = CRM_PRUNE_LOST_STATUS;

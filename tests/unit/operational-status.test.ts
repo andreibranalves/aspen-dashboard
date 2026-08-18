@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { handler } from '../../api/_functions/operational-status.js';
+import { handler } from '../../api/modules/operational-status.js';
 
 test('reports PostgreSQL and local settings readiness without deployment metadata', async () => {
   const response = await handler({ httpMethod: 'GET' } as any);

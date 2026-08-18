@@ -15,7 +15,7 @@ import {
 } from '../../api/_db/products-repository.js';
 import { createPostgresClientRepository } from '../../api/_db/client-repository.js';
 import * as schema from '../../api/_db/schema.js';
-import { createHandler } from '../../api/_functions/settings.js';
+import { createHandler } from '../../api/modules/settings.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

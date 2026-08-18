@@ -15,7 +15,7 @@ import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
 } from '../../api/_db/sales-orders-repository.js';
-import { createSalesDashboardHandler } from '../../api/_functions/sales-dashboard.js';
+import { createSalesDashboardHandler } from '../../api/modules/sales-dashboard.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -421,7 +421,7 @@ test('sales dashboard handler does not call external fetch', async () => {
 });
 
 test('sales dashboard runtime has no network or rollout dependency', () => {
-  const source = readFileSync(path.resolve('api/_functions/sales-dashboard.ts'), 'utf8');
+  const source = readFileSync(path.resolve('api/modules/sales-dashboard.ts'), 'utf8');
   assert.doesNotMatch(source, /fetch\(|process\.env\./);
 });
 

@@ -18,8 +18,8 @@ import {
   type SalesOrderListOptions,
   type SalesOrdersRepository,
 } from '../../api/_db/sales-orders-repository.js';
-import { createSalesOrderFromQuotationHandler } from '../../api/_functions/sales-order-from-quotation.js';
-import { createSalesOrdersHandler } from '../../api/_functions/sales-orders.js';
+import { createSalesOrderFromQuotationHandler } from '../../api/modules/sales-order-from-quotation.js';
+import { createSalesOrdersHandler } from '../../api/modules/sales-orders.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -213,8 +213,8 @@ test('sales handlers keep Portuguese validation and not-found contracts', async 
 test('sales order runtime contains no network or rollout dependency', () => {
   for (const relative of [
     'api/_db/sales-orders-repository.ts',
-    'api/_functions/sales-orders.ts',
-    'api/_functions/sales-order-from-quotation.ts',
+    'api/modules/sales-orders.ts',
+    'api/modules/sales-order-from-quotation.ts',
   ]) {
     const source = readFileSync(path.resolve(relative), 'utf8');
     assert.doesNotMatch(source, /fetch\(|process\.env\./);

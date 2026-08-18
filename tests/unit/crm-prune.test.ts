@@ -6,7 +6,7 @@ import {
   parseDealIds,
   pruneDeals,
   PRUNE_NEXT_STEP,
-} from '../../api/_functions/lib/crm-prune.js';
+} from '../../api/modules/crm-prune.js';
 import type {
   CrmDealRecord,
   CrmDealRepository,

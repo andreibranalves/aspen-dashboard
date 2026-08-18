@@ -1,16 +1,16 @@
 // Única definição de rotas da API. Novos endpoints são registrados aqui, uma única vez.
 import type { LegacyHandler } from '../_http/types.js';
 
-import { handler as crmDeals } from '../_functions/crm-deals.js';
-import { handler as crmUpdateDeal } from '../_functions/crm-update-deal.js';
-import { handler as crmPruneCandidates } from '../_functions/crm-prune-candidates.js';
+import { handler as crmDeals } from '../modules/crm-deals.js';
+import { handler as crmUpdateDeal } from '../modules/crm-update-deal.js';
+import { handler as crmPruneCandidates } from '../modules/crm-prune-candidates.js';
 import { handler as duplicateQuotation } from '../modules/duplicate-quotation.js';
 import { handler as editDraft } from '../modules/edit-draft.js';
 import { handler as extract } from '../modules/extract.js';
 import { handler as clientDetail } from '../modules/client-detail.js';
 import { handler as leadsClients } from '../modules/leads-clients.js';
-import { handler as login } from '../_functions/login.js';
-import { handler as logout } from '../_functions/logout.js';
+import { handler as login } from '../modules/login.js';
+import { handler as logout } from '../modules/logout.js';
 import { handler as orcamento } from '../modules/orcamento.js';
 import { handler as pricingLookup } from '../modules/pricing-lookup.js';
 import { handler as productDetail } from '../modules/product-detail.js';
@@ -26,13 +26,13 @@ import { handler as orderTemplates } from '../modules/order-templates.js';
 import { handler as quotationPreview } from '../modules/quotation-preview.js';
 import { handler as quotationIssues } from '../modules/quotation-issues.js';
 import { handler as publicQuotation } from '../modules/public-quotation.js';
-import { handler as salesDashboard } from '../_functions/sales-dashboard.js';
-import { handler as salesOrderFromQuotation } from '../_functions/sales-order-from-quotation.js';
-import { handler as salesOrders } from '../_functions/sales-orders.js';
+import { handler as salesDashboard } from '../modules/sales-dashboard.js';
+import { handler as salesOrderFromQuotation } from '../modules/sales-order-from-quotation.js';
+import { handler as salesOrders } from '../modules/sales-orders.js';
 import { handler as sendWhatsapp } from '../modules/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../modules/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../modules/whatsapp-send-status.js';
-import { handler as settings } from '../_functions/settings.js';
+import { handler as settings } from '../modules/settings.js';
 import { handler as typebotLeadCapture } from '../modules/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../modules/whatsapp-conversations.js';
 import { handler as whatsappFlows } from '../modules/whatsapp-flows.js';
@@ -44,7 +44,7 @@ import { handler as communicationMedia } from '../modules/communication-media.js
 import { handler as communicationMediaUpload } from '../modules/communication-media-upload.js';
 import { handler as pdf } from '../modules/pdf.js';
 import { handler as view } from '../modules/view.js';
-import { handler as operationalStatus } from '../_functions/operational-status.js';
+import { handler as operationalStatus } from '../modules/operational-status.js';
 
 export const routes: Record<string, LegacyHandler> = {
   'operational-status': operationalStatus,

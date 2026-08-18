@@ -10,7 +10,7 @@ import {
   pruneDeals,
   PRUNE_PROTECT_RECENT_DAYS,
   PRUNE_THRESHOLD_DAYS,
-} from './lib/crm-prune.js';
+} from './crm-prune.js';
 
 export interface CrmPruneCandidatesHandlerDependencies {
   repository?: CrmDealRepository;
