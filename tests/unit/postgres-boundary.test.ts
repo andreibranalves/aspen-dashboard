@@ -17,6 +17,30 @@ test('rejects direct Drizzle imports in a new module with path and line', () => 
   ]);
 });
 
+test('reports the import token line after leading blank lines', () => {
+  const violations = findPostgresBoundaryViolations([
+    source('api/modules/new-feature.ts', "\n\nimport { eq } from 'drizzle-orm';\n"),
+  ]);
+
+  assert.deepEqual(violations, [
+    { path: 'api/modules/new-feature.ts', line: 3, target: 'drizzle-orm' },
+  ]);
+});
+
+test('rejects comment-spaced static and dynamic imports', () => {
+  const violations = findPostgresBoundaryViolations([
+    source('api/modules/static-between.ts', "import postgres from /* comment */ 'postgres';\n"),
+    source('api/modules/static-before.ts', "/* comment */ import postgres from 'postgres';\n"),
+    source('api/modules/dynamic.ts', "import(/* comment */ 'postgres');\n"),
+  ]);
+
+  assert.deepEqual(violations, [
+    { path: 'api/modules/dynamic.ts', line: 1, target: 'postgres' },
+    { path: 'api/modules/static-before.ts', line: 1, target: 'postgres' },
+    { path: 'api/modules/static-between.ts', line: 1, target: 'postgres' },
+  ]);
+});
+
 test('rejects direct postgres imports and dynamic database imports', () => {
   const violations = findPostgresBoundaryViolations([
     source('api/modules/new-feature.ts', "import postgres from 'postgres';\n"),

@@ -27,8 +27,16 @@ const ALLOWED_IMPORTS = {
   },
 };
 
-const STATIC_IMPORT_PATTERN = /^\s*import\s+(?:(?:([\s\S]*?)\s+from\s+))?(['"])([^'"]+)\2\s*;?/gm;
-const DYNAMIC_IMPORT_PATTERN = /\bimport\s*\(\s*(['"])([^'"]+)\1\s*\)/g;
+const IMPORT_GAP = String.raw`(?:[\t\r\n ]|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;
+const LEADING_IMPORT_GAP = String.raw`(?:[\t ]|/\*[\s\S]*?\*/|//[^\r\n]*(?:\r?\n|$))*`;
+const STATIC_IMPORT_PATTERN = new RegExp(
+  String.raw`^${LEADING_IMPORT_GAP}(import)${IMPORT_GAP}(?:(?:([\s\S]*?)${IMPORT_GAP}from${IMPORT_GAP}))?(['"])([^'"]+)\3${IMPORT_GAP};?`,
+  'gmd'
+);
+const DYNAMIC_IMPORT_PATTERN = new RegExp(
+  String.raw`\bimport${IMPORT_GAP}\(${IMPORT_GAP}(['"])([^'"]+)\1${IMPORT_GAP}\)`,
+  'gd'
+);
 
 /** @typedef {{ path: string, content: string }} BoundarySourceFile */
 /** @typedef {{ path: string, line: number, target: string }} BoundaryViolation */
@@ -92,9 +100,9 @@ function importsIn(content) {
   const imports = [];
   for (const match of content.matchAll(STATIC_IMPORT_PATTERN)) {
     imports.push({
-      index: match.index ?? 0,
-      specifier: match[3],
-      bindings: importedBindings(match[1]),
+      index: match.indices?.[1]?.[0] ?? match.index ?? 0,
+      specifier: match[4],
+      bindings: importedBindings(match[2]),
     });
   }
   for (const match of content.matchAll(DYNAMIC_IMPORT_PATTERN)) {
