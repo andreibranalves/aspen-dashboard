@@ -160,33 +160,44 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
 });
 
-test('browser absent while cron completes delivery leaves one durable delivered row', async ({ page }) => {
-  let state = 'processing';
-  let workerRuns = 0;
+test('browser absent while cron completes delivery leaves one durable delivered row', async ({ page, context }) => {
+  let durableState = 'processing';
+  let workerCalls = 0;
   let transportCalls = 0;
   let sendCalls = 0;
   await page.route('**/api/send-whatsapp-flow', (route) => {
     sendCalls += 1;
     return json(route, { success: false, error: 'browser send must not run' }, 500);
   });
+  await context.route('**/api/quotation-delivery-worker', (route) => {
+    workerCalls += 1;
+    transportCalls += 1;
+    durableState = 'delivered';
+    return json(route, { processed: 1, remaining: false });
+  });
   await page.route('**/api/quotation-deliveries**', (route) =>
-    json(route, listResponse([delivery(state, { number: 'ORC-CRON-COMPLETE' })]))
+    json(route, listResponse([delivery(durableState, { number: 'ORC-CRON-COMPLETE' })]))
   );
 
-  const runCronWithoutBrowser = () => {
-    workerRuns += 1;
-    transportCalls += 1;
-    state = 'delivered';
-  };
-  runCronWithoutBrowser();
-
   await page.goto('/#/whatsapp-deliveries');
-  await expect(page.getByText('ORC-CRON-COMPLETE')).toBeVisible();
+  await expect(page.getByText('ORC-CRON-COMPLETE', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('Enviando', { exact: true })).toBeVisible();
+
+  const cronPage = await context.newPage();
+  const workerResponse = await cronPage.goto('/api/quotation-delivery-worker');
+  expect(workerResponse?.status()).toBe(200);
+  await expect(workerResponse).toBeTruthy();
+  expect(await workerResponse.json()).toEqual({ processed: 1, remaining: false });
+  await cronPage.close();
+
+  await page.reload();
+  await expect(page.getByText('ORC-CRON-COMPLETE', { exact: true })).toHaveCount(1);
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  expect(workerRuns).toBe(1);
+  await expect(page.getByText('Enviando', { exact: true })).toHaveCount(0);
+  expect(workerCalls).toBe(1);
   expect(transportCalls).toBe(1);
   expect(sendCalls).toBe(0);
-  expect(state).toBe('delivered');
+  expect(durableState).toBe('delivered');
 });
 
 test('filters expose Portuguese controls and query state, search, and period', async ({ page }) => {

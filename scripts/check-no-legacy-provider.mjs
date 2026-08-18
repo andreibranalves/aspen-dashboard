@@ -156,17 +156,16 @@ const retiredModuleLabels = new Set([
   'retired reservation module',
   'retired quotation delivery module',
 ]);
-const historicalRetiredSources = new Map([
+// Temporary pre-staging compatibility: exact source baselines keep two retained
+// test imports visible until controlled staging validation rewrites those tests.
+// Any edit, new import, or third path remains rejected; this is not a test-root exclusion.
+const retainedLegacyImportBaselines = new Map([
   ['b1e2778835f2d9fdfc6dd14c829f9706fdcdcde39e5422140953a1c2321d9230', {
     sourceHash: 'e9b48bd924ab0cea261eb5d1dfab146d0821c9283be043fe2381dc4429dcc83e',
     label: 'retired quotation delivery module',
   }],
   ['d1441eda171b9911317a415212621431fd3d5d576f5beac090e6330140c2915c', {
     sourceHash: '0ed224e818cf05ca32d04b4d372afce21f42ec28459cbe0bdb516dbed8d2cb29',
-    label: 'retired reservation module',
-  }],
-  ['abb9515383169bbf3ee8fd3c184b157d484e60aaebf0ccd0f052274cde16b17b', {
-    sourceHash: '5ef50b1bcfb2c33cdb5d3fd2128b189269934f52122adddc0df2142c93d3ebed',
     label: 'retired reservation module',
   }],
 ]);
@@ -190,7 +189,7 @@ function ignoredRetiredModuleLabels(path, bytes, activeLabels) {
     const label = providerTokenHashes.get(hash(stem));
     if (retiredModuleLabels.has(label) && activeLabels.has(label)) ignored.add(label);
   }
-  const historical = historicalRetiredSources.get(hash(path));
+  const historical = retainedLegacyImportBaselines.get(hash(path));
   if (
     historical &&
     activeLabels.has(historical.label) &&
