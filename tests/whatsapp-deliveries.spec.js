@@ -137,6 +137,16 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(page.getByText(needsReviewDelivery.business_number)).toBeVisible();
   await expect(page.getByText(processingDelivery.business_number)).toBeVisible();
   await expect(page.getByText(deliveredDelivery.business_number)).toHaveCount(0);
+  const needsReviewDetails = page.getByRole('button', {
+    name: 'Ocultar detalhes de ORC-NEEDS, linha 1',
+  });
+  await expect(needsReviewDetails).toHaveAttribute('aria-controls', 'whatsapp-delivery-details-0');
+  await expect(page.locator('#whatsapp-delivery-details-0')).toBeVisible();
+  const processingDetails = page.getByRole('button', {
+    name: 'Detalhes de ORC-PROCESSING, linha 2',
+  });
+  await expect(processingDetails).toHaveAttribute('aria-controls', 'whatsapp-delivery-details-1');
+  await expect(page.locator('#whatsapp-delivery-details-1')).toBeHidden();
   await expect(page.getByText('(11) 99999-0000').first()).toBeVisible();
   await expect(page.getByText('provider-message-raw-must-not-render')).toHaveCount(0);
   expect(firstQuery.get('requires_action')).toBe('true');
@@ -202,7 +212,8 @@ test('filters expose Portuguese controls and query state, search, and period', a
   await expect
     .poll(() =>
       queries.some(
-        (query) => query.get('from') === '2026-08-01' && query.get('to') === '2026-08-31'
+        (query) =>
+          query.get('from') === '2026-08-01' && query.get('to') === '2026-08-31T23:59:59.999Z'
       )
     )
     .toBe(true);

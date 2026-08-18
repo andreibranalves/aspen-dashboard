@@ -78,6 +78,11 @@ function stateTone(state: DeliveryState): string {
   return 'tone-primary-soft';
 }
 
+function inclusiveUtcEndOfDay(value: string): string {
+  const endOfDay = new Date(`${value}T23:59:59.999Z`);
+  return Number.isNaN(endOfDay.getTime()) ? value : endOfDay.toISOString();
+}
+
 function updateSummary(
   summary: DeliveryPage['summary'],
   before: DeliveryView,
@@ -183,7 +188,7 @@ export default function WhatsAppDeliveriesPage() {
       ...(filters.states.length > 0 ? { states: filters.states } : {}),
       ...(filters.search.trim() ? { search: filters.search.trim() } : {}),
       ...(filters.from ? { from: filters.from } : {}),
-      ...(filters.to ? { to: filters.to } : {}),
+      ...(filters.to ? { to: inclusiveUtcEndOfDay(filters.to) } : {}),
       requiresAction: filters.requiresAction,
       includeActive: filters.includeActive,
       ...(filters.delayed ? { delayed: true } : {}),
@@ -460,9 +465,11 @@ export default function WhatsAppDeliveriesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {result.data.map((delivery) => {
+              {result.data.map((delivery, index) => {
                 const expanded = expandedId === delivery.id;
                 const projection = projectDelivery(delivery);
+                const detailId = `whatsapp-delivery-details-${index}`;
+                const detailsActionLabel = `${expanded ? 'Ocultar detalhes de' : 'Detalhes de'} ${delivery.businessNumber}, linha ${index + 1}`;
                 return (
                   <Fragment key={delivery.id}>
                     <TableRow>
@@ -498,6 +505,8 @@ export default function WhatsAppDeliveriesPage() {
                           type="button"
                           variant="outline"
                           size="sm"
+                          aria-label={detailsActionLabel}
+                          aria-controls={detailId}
                           aria-expanded={expanded}
                           onClick={() => setExpandedId(expanded ? null : delivery.id)}
                         >
@@ -505,17 +514,17 @@ export default function WhatsAppDeliveriesPage() {
                         </Button>
                       </TableCell>
                     </TableRow>
-                    {expanded && (
-                      <TableRow key={`${delivery.id}-details`}>
-                        <TableCell colSpan={8} className="bg-surface-muted/40">
+                    <TableRow id={detailId} key={`${delivery.id}-details`} hidden={!expanded}>
+                      <TableCell colSpan={8} className="bg-surface-muted/40">
+                        {expanded && (
                           <DeliveryDetails
                             delivery={delivery}
                             pending={resolvingId === delivery.id}
                             onResolve={(decision, note) => resolve(delivery, decision, note)}
                           />
-                        </TableCell>
-                      </TableRow>
-                    )}
+                        )}
+                      </TableCell>
+                    </TableRow>
                   </Fragment>
                 );
               })}
