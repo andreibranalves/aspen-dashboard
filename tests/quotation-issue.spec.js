@@ -16,7 +16,7 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
   const requests = [];
   let releasePost;
   const postReleased = new Promise((resolve) => { releasePost = resolve; });
-  await page.route('**/api/**', async (route) => {
+  await page.route('/api/**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
     if (url.pathname.endsWith('/quotation-issues')) {
