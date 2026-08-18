@@ -94,6 +94,7 @@ test.describe('Comunicação - e-mail de orçamento', () => {
 
     const message = page.getByLabel('Mensagem principal');
     await message.fill('Início  fim');
+    await expect(page.getByText('Alterações não salvas.', { exact: true })).toBeVisible();
     await message.evaluate((element) => {
       const input = /** @type {HTMLTextAreaElement} */ (element);
       input.setSelectionRange(7, 7);

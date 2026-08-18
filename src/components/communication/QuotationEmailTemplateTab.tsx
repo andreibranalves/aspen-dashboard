@@ -198,6 +198,11 @@ export default function QuotationEmailTemplateTab({
           <p className="mt-1 text-sm text-fg-muted">
             Configure o conteúdo usado nos próximos envios de orçamento.
           </p>
+          {dirty && (
+            <p className="mt-2 text-sm font-medium text-warning" role="status">
+              Alterações não salvas.
+            </p>
+          )}
         </div>
 
         {loading && (
