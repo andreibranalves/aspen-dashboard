@@ -22,7 +22,7 @@ globalThis.fetch = async (url, options = {}) => {
   });
 };
 
-const { handler } = await import('../api/_functions/send-whatsapp.js?test=' + Date.now());
+const { handler } = await import('../api/modules/send-whatsapp.js?test=' + Date.now());
 
 const basePayload = {
   dry_run: true,

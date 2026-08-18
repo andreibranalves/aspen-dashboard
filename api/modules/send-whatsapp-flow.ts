@@ -13,7 +13,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 import type { HttpError } from '../_shared/http-error.js';
 import { kv } from '@vercel/kv';
 import { createHttpError } from '../_shared/http-error.js';
-import { getTimeBasedGreeting } from './lib/time-greeting.js';
+import { getTimeBasedGreeting } from './time-greeting.js';
 import { createQuotationTemplateRepository } from '../_db/quotation-template-repository.js';
 import {
   createPostgresQuotationDeliveryRepository,
@@ -22,7 +22,7 @@ import {
 } from '../_db/quotation-delivery-repository.js';
 import {
   isRevisionBoundPublicQuotationUrl,
-} from '../modules/public-quotation.js';
+} from './public-quotation.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
 import {
   allowedMediaMimeTypes,
@@ -35,12 +35,12 @@ import {
   isMediaTombstone,
   type BlobHead,
   type PostgresMediaRecord,
-} from './lib/postgres-media.js';
-import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
+} from './postgres-media.js';
+import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from '../_functions/lib/evolution-delivery.js';
 import {
   KV_KEY_FLOWS,
   KV_KEY_SEND_EVENTS_PREFIX,
-} from '../modules/media-schema.js';
+} from './media-schema.js';
 import {
   canonicalWhatsappSendIdempotencyKey,
   defaultWhatsappSendReservationStore,
@@ -52,7 +52,7 @@ import {
   type WhatsappSendReservationRecord,
   type WhatsappSendReservationStore,
   WhatsappSendReservationStorageError,
-} from './lib/whatsapp-send-reservation-store.js';
+} from './whatsapp-send-reservation-store.js';
 
 function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
   return {

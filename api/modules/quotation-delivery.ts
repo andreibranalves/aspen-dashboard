@@ -1,4 +1,4 @@
-import { normalizeWhatsappPhone } from '../_functions/lib/whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
 import type {
   PreparedQuotationDelivery,
   QuotationDeliveryState,

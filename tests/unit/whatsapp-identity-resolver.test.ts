@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveWhatsappIdentity } from '../../api/_functions/lib/whatsapp-identity-resolver.js';
+import { resolveWhatsappIdentity } from '../../api/modules/whatsapp-identity-resolver.js';
 
 describe('whatsapp-identity-resolver', () => {
   it('derives canonicalPhone from chat.phone with high confidence', () => {

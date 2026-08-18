@@ -17,7 +17,7 @@ import {
   WHATSAPP_SEND_RESERVATION_RETRY_TTL_SECONDS,
   WHATSAPP_SEND_RESERVATION_TAKEOVER_SCRIPT,
   WhatsappSendReservationStorageError,
-} from '../../api/_functions/lib/whatsapp-send-reservation-store.js';
+} from '../../api/modules/whatsapp-send-reservation-store.js';
 
 function fakeKv() {
   const values = new Map<string, any>();

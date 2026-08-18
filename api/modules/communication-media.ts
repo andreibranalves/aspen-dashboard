@@ -29,13 +29,13 @@ import {
   BlobMetadataReadError,
   type BlobHead,
   type PostgresMediaRecord,
-} from './lib/postgres-media.js';
+} from './postgres-media.js';
 import {
   KV_KEY_MEDIA_PREFIX,
   PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
   createMediaAsset,
-} from '../modules/media-schema.js';
+} from './media-schema.js';
 
 // ---------------------------------------------------------------------------
 // Path extraction

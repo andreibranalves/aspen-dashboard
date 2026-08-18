@@ -13,7 +13,7 @@ import {
   KV_KEY_FLOWS_SELECTED,
   createFlow,
   STEP_TYPES,
-} from '../modules/media-schema.js';
+} from './media-schema.js';
 
 type FlowRecord = Record<string, unknown>;
 

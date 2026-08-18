@@ -11,9 +11,9 @@ import postgres from 'postgres';
 
 import * as schema from '../../api/_db/schema.js';
 import { createPostgresQuoteLeadRepository } from '../../api/_db/quote-leads-repository.js';
-import { createHandler as createWhatsappHandler } from '../../api/_functions/whatsapp-conversations.js';
-import { createPostgresWhatsappCrmRepository, resolveWhatsappCrmMatch } from '../../api/_functions/lib/whatsapp-crm-match.js';
-import type { WhatsappConversation } from '../../api/_functions/lib/whatsapp-conversations-store.js';
+import { createHandler as createWhatsappHandler } from '../../api/modules/whatsapp-conversations.js';
+import { createPostgresWhatsappCrmRepository, resolveWhatsappCrmMatch } from '../../api/modules/whatsapp-crm-match.js';
+import type { WhatsappConversation } from '../../api/modules/whatsapp-conversations-store.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

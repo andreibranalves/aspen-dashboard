@@ -9,10 +9,10 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 
 import { kv } from '@vercel/kv';
 import { createHttpError } from '../_shared/http-error.js';
-import { getTimeBasedGreeting } from './lib/time-greeting.js';
-import { KV_KEY_FLOWS } from '../modules/media-schema.js';
+import { getTimeBasedGreeting } from './time-greeting.js';
+import { KV_KEY_FLOWS } from './media-schema.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_db/quotation-template-repository.js';
-import { isRevisionBoundPublicQuotationUrl } from '../modules/public-quotation.js';
+import { isRevisionBoundPublicQuotationUrl } from './public-quotation.js';
 import {
   readCommunicationMediaRecords,
   verifyOwnedBlobRecord,
@@ -20,7 +20,7 @@ import {
   MediaStoreReadError,
   type BlobHead,
   type PostgresMediaRecord,
-} from './lib/postgres-media.js';
+} from './postgres-media.js';
 
 type CommunicationFlowContext = Record<string, unknown> & {
   Saudacao?: string;

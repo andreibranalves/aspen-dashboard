@@ -19,7 +19,7 @@ import {
   ALLOWED_MIME_TYPES,
   MAX_SIZE_IMAGE,
   MAX_SIZE_VIDEO,
-} from '../modules/media-schema.js';
+} from './media-schema.js';
 
 // ── JSON response helper ───────────────────────────────────────────────────
 

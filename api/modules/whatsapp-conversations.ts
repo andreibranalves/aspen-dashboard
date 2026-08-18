@@ -6,7 +6,7 @@ import type {
   LegacyHandler,
 } from '../_http/types.js';
 import { createHttpError } from '../_shared/http-error.js';
-import { handler as extractHandler } from '../modules/extract.js';
+import { handler as extractHandler } from './extract.js';
 import { sendText } from './send-whatsapp.js';
 import { createPostgresQuoteLeadRepository } from '../_db/quote-leads-repository.js';
 import {
@@ -23,18 +23,18 @@ import {
   type WhatsappConversation,
   type WhatsappConversationStatus,
   type WhatsappPublicMessage,
-} from './lib/whatsapp-conversations-store.js';
-import type { LocalQuoteLeadRecord } from './lib/whatsapp-crm-match.js';
+} from './whatsapp-conversations-store.js';
+import type { LocalQuoteLeadRecord } from './whatsapp-crm-match.js';
 import {
   resolveWhatsappCrmMatch,
   validateWhatsappConversationLinks,
   type ResolveCrmMatchDeps,
-} from './lib/whatsapp-crm-match.js';
+} from './whatsapp-crm-match.js';
 import {
   syncMessagesForConversation,
   syncWhatsappConversations,
   type EvolutionSyncDeps,
-} from './lib/whatsapp-conversations-sync.js';
+} from './whatsapp-conversations-sync.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

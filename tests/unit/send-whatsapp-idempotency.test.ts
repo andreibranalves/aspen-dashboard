@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
+import { handler as sendWhatsappFlow } from '../../api/modules/send-whatsapp-flow.js';
 import { QuotationDeliveryConflictError, QuotationDeliveryPdfError } from '../../api/_db/quotation-delivery-repository.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';

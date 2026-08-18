@@ -3,7 +3,7 @@
 
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { createHttpError } from '../_shared/http-error.js';
-import { getTimeBasedGreeting } from './lib/time-greeting.js';
+import { getTimeBasedGreeting } from './time-greeting.js';
 import {
   createQuotationTemplateRepository,
   quotationSnapshotViewModel,
@@ -14,13 +14,13 @@ import {
   isRevisionBoundPublicQuotationUrl,
   renderPublicQuotationPdf,
   type PublicQuotationDependencies,
-} from '../modules/public-quotation.js';
+} from './public-quotation.js';
 import {
   LIVE_DEPS,
   sanitizeWhatsappMediaUrl,
   upsertWhatsappMessages,
   WhatsappAttachment,
-} from './lib/whatsapp-conversations-store.js';
+} from './whatsapp-conversations-store.js';
 import {
   allowedMediaMimeTypes,
   downloadApprovedMedia,
@@ -32,8 +32,8 @@ import {
   stripMediaInternals,
   type BlobHead,
   type PostgresMediaRecord,
-} from './lib/postgres-media.js';
-import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from './lib/evolution-delivery.js';
+} from './postgres-media.js';
+import { normalizeEvolutionDelivery, type EvolutionDeliveryResult } from '../_functions/lib/evolution-delivery.js';
 import { createPostgresCrmDealRepository, type CrmDealRecord } from '../_db/crm-deals-repository.js';
 import {
   createPostgresQuotationDeliveryRepository,

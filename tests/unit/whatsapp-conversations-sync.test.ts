@@ -9,11 +9,11 @@ import {
   syncWhatsappConversations,
   unwrapEvolutionCollection,
   type EvolutionSyncDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-sync.js';
+} from '../../api/modules/whatsapp-conversations-sync.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-store.js';
+} from '../../api/modules/whatsapp-conversations-store.js';
 
 function makeStoreDeps(): WhatsappConversationStoreDeps {
   let conversations: WhatsappConversation[] = [];

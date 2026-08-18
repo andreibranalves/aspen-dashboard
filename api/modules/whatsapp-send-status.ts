@@ -7,8 +7,8 @@ import {
   type WhatsappSendReservationRecord,
   type WhatsappSendReservationStore,
   WhatsappSendReservationStorageError,
-} from './lib/whatsapp-send-reservation-store.js';
-import { defaultWhatsappSendReservationStore } from './lib/whatsapp-send-reservation-store.js';
+} from './whatsapp-send-reservation-store.js';
+import { defaultWhatsappSendReservationStore } from './whatsapp-send-reservation-store.js';
 import {
   createPostgresQuotationDeliveryRepository,
   type QuotationDelivery,

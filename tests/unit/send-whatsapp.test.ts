@@ -4,17 +4,17 @@ import test from 'node:test';
 import {
   handler as sendWhatsapp,
   loadPostgresSendContext,
-} from '../../api/_functions/send-whatsapp.js';
+} from '../../api/modules/send-whatsapp.js';
 import {
   canonicalFlowQuotationId,
   flowProductSummary,
   handler as sendWhatsappFlow,
-} from '../../api/_functions/send-whatsapp-flow.js';
-import { handler as communicationFlowPreview } from '../../api/_functions/communication-flow-preview.js';
+} from '../../api/modules/send-whatsapp-flow.js';
+import { handler as communicationFlowPreview } from '../../api/modules/communication-flow-preview.js';
 import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
-} from '../../api/_functions/lib/postgres-media.js';
+} from '../../api/modules/postgres-media.js';
 import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';

@@ -22,7 +22,7 @@ import {
 } from '../modules/quotation-template-catalog.js';
 import { renderQuotationPdf } from '../modules/quotation-pdf-renderer.js';
 import { isValidPdfBuffer, quotationPdfChecksum } from '../modules/quotation-document-storage.js';
-import { normalizeWhatsappPhone } from '../_functions/lib/whatsapp-conversations-store.js';
+import { normalizeWhatsappPhone } from '../modules/whatsapp-conversations-store.js';
 import { revisionSectionsSnapshot } from './quotation-revision-invariants.js';
 
 type DatabaseProvider = () => AppDatabase;

@@ -6,12 +6,12 @@ import {
   LIVE_DEPS,
   type WhatsappConversation,
   type WhatsappConversationStoreDeps,
-} from './lib/whatsapp-conversations-store.js';
+} from './whatsapp-conversations-store.js';
 import {
   syncWhatsappConversations,
   type EvolutionSyncDeps,
   type WhatsappSyncOptions,
-} from './lib/whatsapp-conversations-sync.js';
+} from './whatsapp-conversations-sync.js';
 import {
   createPostgresWhatsappCrmRepository,
   resolveWhatsappCrmCandidateFromSnapshot,
@@ -21,7 +21,7 @@ import {
   type LocalQuoteLeadRecord,
   type LocalQuotationRecord,
   type LocalWhatsappCrmRepository,
-} from './lib/whatsapp-crm-match.js';
+} from './whatsapp-crm-match.js';
 
 // Keep the read-side scan small: one request can still trigger one extraction/CRM read per chat.
 const MAX_CHATS_TO_SCAN = 20;

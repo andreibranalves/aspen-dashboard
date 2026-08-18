@@ -1,7 +1,7 @@
 import { head as defaultBlobHead, type HeadBlobResult } from '@vercel/blob';
 import { kv } from '@vercel/kv';
-import { KV_KEY_MEDIA_PREFIX, ALLOWED_MIME_TYPES } from '../../modules/media-schema.js';
-import { createHttpError } from '../../_shared/http-error.js';
+import { KV_KEY_MEDIA_PREFIX, ALLOWED_MIME_TYPES } from './media-schema.js';
+import { createHttpError } from '../_shared/http-error.js';
 
 const PUBLIC_BLOB_HOST = /^(?:[a-z0-9-]+\.)?public\.blob\.vercel-storage\.com$/i;
 export const MEDIA_INTERNAL_VERSION_FIELD = '_recordVersion';
