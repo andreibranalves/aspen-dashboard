@@ -145,11 +145,15 @@ for (const f of files) {
       const { pathname, query } = splitQuery(spec);
       const suffix = pathname.endsWith('.mjs')
         ? '.mjs'
-        : pathname.endsWith('.ts')
-          ? '.ts'
-          : pathname.endsWith('.js')
-            ? '.js'
-            : '';
+        : pathname.endsWith('.tsx')
+          ? '.tsx'
+          : pathname.endsWith('.jsx')
+            ? '.jsx'
+            : pathname.endsWith('.ts')
+              ? '.ts'
+              : pathname.endsWith('.js')
+                ? '.js'
+                : '';
       const replaced = pre + q + rel + suffix + query + q;
       if (replaced !== m) {
         rewrites++;
