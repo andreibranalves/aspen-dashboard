@@ -1,6 +1,6 @@
-// Rewrites relative import specifiers and path strings after moving source files.
+// Rewrites relative and alias import specifiers and path strings after moving source files.
 // Usage: node scripts/rewrite-imports.mjs <mapping.json>
-// mapping.json: { "api/modules/x.ts": "api/infrastructure/db/repositories/x.ts", ... } (repo-root relative)
+// mapping.json: { "api/_functions/x.ts": "api/modules/x.ts", ... } (repo-root relative)
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
@@ -27,18 +27,24 @@ function splitQuery(spec) {
   return { pathname: m[1], query: m[2] ?? '' };
 }
 
-// Resolve a relative specifier from the OLD importer dir to an existing source file.
+// Resolve a specifier (relative or '@/...' alias) from the OLD importer dir to an existing source file.
 function resolveOld(baseDirOld, spec) {
   const { pathname } = splitQuery(spec);
-  const p = resolve(baseDirOld, pathname);
+  const isAlias = pathname.startsWith('@/');
+  const base = isAlias ? resolve(ROOT, 'src') : baseDirOld;
+  const p = isAlias ? resolve(base, pathname.slice(2)) : resolve(baseDirOld, pathname);
   const candidates = [
     p,
     p.replace(/\.js$/, '.ts'),
     p.replace(/\.ts$/, '.js'),
     p + '.ts',
+    p + '.tsx',
     p + '.js',
+    p + '.jsx',
     p + '/index.ts',
+    p + '/index.tsx',
     p + '/index.js',
+    p + '/index.jsx',
   ];
   for (const cand of candidates) {
     const rel = relative(ROOT, cand);
@@ -56,17 +62,25 @@ for (const f of files) {
   let text = readFileSync(f, 'utf8');
   const original = text;
 
-  // 1) relative import/export specifiers (static, side-effect and dynamic)
+  // 1) relative (./ ../) and alias (@/) import/export specifiers (static, side-effect and dynamic)
   text = text.replace(
-    /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+(?:type\s+)?)(['"])(\.[^'"]*?)\2/g,
+    /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+(?:type\s+)?)(['"])((?:\.|@\/)[^'"]*?)\2/g,
     (m, pre, q, spec) => {
       const targetOld = resolveOld(baseDirOld, spec);
       if (!targetOld) return m;
       const targetNew = MAP[targetOld] ?? targetOld;
-      // Relative path WITHOUT extension; the specifier's own suffix is re-appended.
-      const extless = targetNew.replace(/\.(?:ts|js|mjs)$/, '');
-      const rel = relative(baseDirNew, resolve(ROOT, extless)).replace(/\\/g, '/');
-      const norm = rel.startsWith('.') ? rel : './' + rel;
+      // Specifier WITHOUT extension; the specifier's own suffix is re-appended.
+      // (targetNew always resolves to a file WITH an extension such as .ts/.tsx.)
+      const extless = targetNew.replace(/\.(?:ts|tsx|js|jsx|mjs)$/, '');
+      let rel;
+      if (spec.startsWith('@/')) {
+        rel = '@/';
+        const fromSrc = relative(resolve(ROOT, 'src'), resolve(ROOT, extless)).replace(/\\/g, '/');
+        rel += fromSrc;
+      } else {
+        rel = relative(baseDirNew, resolve(ROOT, extless)).replace(/\\/g, '/');
+        rel = rel.startsWith('.') ? rel : './' + rel;
+      }
       // Suffix and query come from the pathname, not the full specifier (query may trail).
       const { pathname, query } = splitQuery(spec);
       const suffix = pathname.endsWith('.mjs')
@@ -76,7 +90,7 @@ for (const f of files) {
           : pathname.endsWith('.js')
             ? '.js'
             : '';
-      const replaced = pre + q + norm + suffix + query + q;
+      const replaced = pre + q + rel + suffix + query + q;
       if (replaced !== m) {
         rewrites++;
         return replaced;
