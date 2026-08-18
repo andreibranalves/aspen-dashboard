@@ -632,6 +632,7 @@ function assertEvolutionConfig(): void {
 }
 
 async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
+  assertEvolutionConfig();
   const { baseUrl, apiKey } = evolutionConfig();
   assertExternalWritesAllowed('evolution');
   const url = `${baseUrl}${path}`;
