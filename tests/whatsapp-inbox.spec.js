@@ -35,18 +35,46 @@ test.describe('WhatsApp Inbox Page', () => {
   test('sync button is clickable and API responds (200 or 500 with Portuguese error)', async ({
     page,
   }) => {
+    // Mock the Evolution-backed sync endpoint so the test is deterministic
+    // regardless of whether the real provider is configured/available.
+    let syncRequests = 0;
+    await page.route('**/api/whatsapp-conversations**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'POST') {
+        const body = req.postDataJSON();
+        if (body.action === 'sync') {
+          syncRequests += 1;
+          await route.fulfill({
+            json: {
+              success: true,
+              data: { conversations: [], syncedMessages: 0 },
+            },
+          });
+          return;
+        }
+      }
+      if (req.method() === 'GET' && !req.url().includes('?id=') && !req.url().includes('messages=')) {
+        await route.fulfill({ json: { success: true, data: [] } });
+        return;
+      }
+      await route.continue();
+    });
+
     await page.goto('/#/whatsapp-inbox');
     await page.waitForSelector('button:has-text("Sincronizar")', { timeout: 10000 });
 
-    // Click Sincronizar and wait for network to settle
+    // Click Sincronizar and wait for the sync request to complete
     const syncBtn = page.getByRole('button', { name: 'Sincronizar' });
+    const syncResponse = page.waitForResponse(
+      (res) => res.request().method() === 'POST' && res.url().includes('/api/whatsapp-conversations')
+    );
     await syncBtn.click();
 
-    // Wait for either: updated conversation list OR error message
-    // The result depends on whether Evolution API is configured
-    await page.waitForTimeout(5000);
+    const response = await syncResponse;
+    expect(response.status()).toBe(200);
+    expect(syncRequests).toBe(1);
 
-    // Page should still be functional — no crash, no blank screen
+    // Page should still be functional - no crash, no blank screen, no login redirect
     await expect(page.getByText('WhatsApp').first()).toBeVisible();
   });
 
