@@ -638,7 +638,7 @@ export const routes: AppRoute[] = [
     path: '/products/:sku',
     match: prefix('/products/'),
     suspense: true,
-    render: ({ navigate, params }) => <ProductDetailPage key={params.sku} sku={params.sku} navigate={navigate} />,
+    render: ({ navigate, params }) => <ProductDetailPage key={params.id} sku={params.id} navigate={navigate} />,
   },
   {
     path: '/leads/:tipo/:id',
