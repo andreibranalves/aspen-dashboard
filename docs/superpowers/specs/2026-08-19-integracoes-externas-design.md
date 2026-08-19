@@ -128,12 +128,11 @@ A migração cobre, no mínimo:
 
 ### 7.1 Configuração
 
-`blob/config.ts` centraliza credenciais e perfis usados atualmente, incluindo:
+`blob/config.ts` centraliza `BLOB_READ_WRITE_TOKEN` e `BLOB_STORE_ID` usados pelo runtime atual.
 
-- `BLOB_READ_WRITE_TOKEN` e `BLOB_STORE_ID`;
-- `QUOTATION_BLOB_READ_WRITE_TOKEN` e `QUOTATION_BLOB_STORE_ID`.
+`quotationBlobAuth()` será removida: está marcada como deprecated, não possui callers e referencia armazenamento de PDF já removido. Nenhum perfil Blob de quotation será criado somente para preservar código morto.
 
-A configuração não cria aliases nem fallback novo. A precedência atual de credenciais deve ser caracterizada por teste antes da migração e preservada.
+A configuração não cria aliases nem fallback novo.
 
 ### 7.2 Client
 
@@ -147,8 +146,9 @@ A migração cobre usos ativos, incluindo:
 
 - `api/_modules/communication-media.ts`;
 - `api/_modules/communication-media-upload.ts`;
-- `api/_modules/postgres-media.ts`;
-- `api/_modules/quotation-document-storage.ts` e seus consumidores.
+- `api/_modules/postgres-media.ts`.
+
+`api/_modules/quotation-document-storage.ts` será alterado somente para excluir `quotationBlobAuth()`; as funções puras restantes não pertencem à integração Blob.
 
 ## 8. Vercel KV
 
@@ -212,7 +212,7 @@ Antes de alterar cada provider, cobrir o comportamento relevante ainda não prot
 - `fetch` ou SDK injetado;
 - timeout e erro de transporte quando hoje pertencem ao consumidor;
 - guarda de escrita Evolution;
-- precedência dos perfis Blob;
+- normalização da configuração Blob ativa;
 - estado configurado ou não configurado do KV.
 
 ### 12.2 Adapters
