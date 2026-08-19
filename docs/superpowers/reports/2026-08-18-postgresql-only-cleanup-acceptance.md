@@ -7,7 +7,8 @@
 - A busca literal de referências retorna somente quatro asserções de regressão aprovadas em testes, documentadas abaixo, e não encontra referências ativas em runtime ou configuração.
 - Commit de baseline da Task 5: `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
 - Commits anteriores aceitos: `cf97089fd0880c8aa35245a961bc261e9ed8a22a`, `1481ff47af66dc3e9083e3872f44540bdae323c1`, `3d5dfc3331a09185376b8410e8c88603bc328324` e `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
-- Último commit de código: `9d6bd23` (`9d6bd23790a0e72101b91d6591c8fdb0a33a9343`).
+- Último commit de código da limpeza inicial: `9d6bd23` (`9d6bd23790a0e72101b91d6591c8fdb0a33a9343`).
+- Follow-up de verificação PostgreSQL: `4b53bde` (`4b53bdec39923417a005d4eff61f96e4bef99d09`).
 - Commit ativo de correção dos documentos operacionais: `df7b5a0018a49e84f0caedf9e8c652e933eb6326` (`docs: align operational cutoff procedure`); é docs-only, e `docs/operational-cutoff-procedure.md` é o documento operacional ativo e atualizado.
 - Este relatório é o artefato final de aceite, committed after validation; o SHA exato do commit do relatório está registrado no handoff da Task 5 (`.superpowers/sdd/2026-08-18-postgresql-only-cleanup/task-5-report.md`).
 - O worktree pós-commit foi verificado limpo e sem arquivos staged.
