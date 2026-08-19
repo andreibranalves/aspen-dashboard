@@ -54,8 +54,9 @@ Use para migrations, autenticação, envio WhatsApp, integrações externas, per
 Consulte o [runbook Migrations PostgreSQL](./database-migrations.md).
 
 ```text
-CI (somente checks estáticos)
+CI (checks estáticos + PostgreSQL descartável)
 -> todos unit
+-> repositories contra banco efêmero
 -> build
 -> check:db-migrations
 
@@ -80,7 +81,8 @@ TEST_DATABASE_URL="$STAGING_DATABASE_URL" DATABASE_URL= npm run db:migrate
 npm run test:e2e:staging
 ```
 
-A CI executa somente os checks estáticos; não executa migration nem E2E staging.
+A CI executa checks estáticos e um apply somente no PostgreSQL descartável do job;
+não executa migration em staging/produção nem E2E staging.
 
 O fluxo de staging, incluindo preflight, apply e E2E staging, é controlado e opt-in, fora do CI padrão.
 
@@ -102,13 +104,15 @@ Nunca execute `npm run db:migrate` usando somente `DATABASE_URL` ou apontando pa
 
 Execute os comandos operacionais somente com o ambiente aprovado e sem imprimir credenciais, dados de produção ou PII.
 
-Migrations não executam no startup, no CI padrão ou implicitamente durante o build.
+Migrations não executam no startup ou implicitamente durante o build. O único apply
+no CI é a exceção explícita do banco descartável do job `postgres`; alvos operacionais
+continuam fora do CI padrão.
 
 Mudanças destrutivas seguem expand, deploy compatível, migração de dados e contract.
 
 ## Regras comuns
 
-- CI padrão executa lint, tipos, unitários e build.
+- CI padrão executa lint, tipos, unitários, repositories contra banco descartável e build.
 - E2E de staging não executa no CI padrão.
 - Writes externos, WhatsApp, auth, migrations e mudanças destrutivas nunca são LOW.
 - Preview não substitui aprovação da lane HIGH.

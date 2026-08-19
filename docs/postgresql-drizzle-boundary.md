@@ -33,7 +33,11 @@ Módulos novos não devem importar diretamente `drizzle-orm`, `postgres`, o sche
 
 `drizzle.config.ts`, a pasta `drizzle/` e `npm run db:migrate` pertencem ao fluxo controlado de migration.
 
-Migrations não executam no startup, no build ou no CI padrão.
+Migrations não executam no startup, no build ou no CI padrão de validação estática.
+
+Exceção explícita: o job `postgres` do CI de pull request aplica a cadeia versionada
+somente em um PostgreSQL service container descartável, antes dos testes de repositories.
+Esse job não usa staging, produção ou credenciais operacionais.
 
 ## Exceções atuais
 

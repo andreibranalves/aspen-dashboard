@@ -61,8 +61,40 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:tailwind
       - run: npm run check:db-boundary
+      - run: npm run check:integration-boundary
       - run: npm run check:vercel-functions
+
+  postgres:
+    runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/aspen_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aspen_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aspen_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run test:postgres
 
   migrations:
     runs-on: ubuntu-latest
@@ -80,7 +112,7 @@ jobs:
           MIGRATION_BASE_REF: ${{ github.event.pull_request.base.sha }}
 
   build:
-    needs: [lint, types, unit, boundary, migrations]
+    needs: [lint, types, unit, boundary, migrations, postgres]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -92,3 +124,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+
+  smoke:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:smoke
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure()
+        with:
+          name: playwright-smoke-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

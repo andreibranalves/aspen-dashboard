@@ -4,6 +4,9 @@
 
 Migrations são mudanças HIGH e nunca executam implicitamente no startup, build ou CI padrão.
 
+Exceção explícita: o job `postgres` do CI de pull request invoca `npm run db:migrate`
+contra um PostgreSQL service container descartável, nunca contra staging ou produção.
+
 `npm run db:migrate` continua sendo o único apply e deve ser invocado explicitamente.
 
 ## Classificação
