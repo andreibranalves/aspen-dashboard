@@ -1,5 +1,7 @@
-import { head as defaultBlobHead, type HeadBlobResult } from '@vercel/blob';
+import type { HeadBlobResult } from '@vercel/blob';
 import { kv } from '@vercel/kv';
+import { getBlobClient, type BlobClient } from '../_infrastructure/integrations/blob/client.js';
+import { getBlobConfig } from '../_infrastructure/integrations/blob/config.js';
 import { KV_KEY_MEDIA_PREFIX, ALLOWED_MIME_TYPES } from './media-schema.js';
 import { createHttpError } from '../_shared/http-error.js';
 
@@ -27,7 +29,7 @@ export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const MEDIA_DOWNLOAD_TIMEOUT_MS = 10_000;
 export const MEDIA_BLOB_HEAD_TIMEOUT_MS = 5_000;
 
-export type BlobHead = typeof defaultBlobHead;
+export type BlobHead = BlobClient['head'];
 export type BlobHeadResult = HeadBlobResult;
 
 const STEP_MIME_TYPES: Record<string, readonly string[]> = {
@@ -398,10 +400,11 @@ export interface VerifiedOwnedBlobRecord {
 }
 
 function configuredMediaStoreHost(token?: string, storeId?: string): string {
+  const config = getBlobConfig();
   const configuredStore = String(
-    storeId || process.env.BLOB_STORE_ID || '',
+    storeId ?? config.storeId ?? '',
   ).trim().replace(/^store_/i, '');
-  const tokenStore = String(token || process.env.BLOB_READ_WRITE_TOKEN || '')
+  const tokenStore = String(token ?? config.token ?? '')
     .trim()
     .split('_')[3] || '';
   const store = (configuredStore || tokenStore).trim().replace(/^store_/i, '');
@@ -412,8 +415,9 @@ function blobHeadOptions(
   signal: AbortSignal,
   options: BlobVerificationOptions,
 ): { abortSignal: AbortSignal; token?: string; storeId?: string; oidcToken?: string } {
-  const token = String(options.token ?? process.env.BLOB_READ_WRITE_TOKEN ?? '').trim();
-  const storeId = String(options.storeId ?? process.env.BLOB_STORE_ID ?? '').trim();
+  const config = getBlobConfig();
+  const token = String(options.token ?? config.token ?? '').trim();
+  const storeId = String(options.storeId ?? config.storeId ?? '').trim();
   const oidcToken = String(process.env.VERCEL_OIDC_TOKEN || '').trim();
   return {
     abortSignal: signal,
@@ -448,7 +452,7 @@ async function authenticatedBlobHead(
   (timer as ReturnType<typeof setTimeout> & { unref?: () => void }).unref?.();
   try {
     return await Promise.race([
-      (options.headFn || defaultBlobHead)(url, blobHeadOptions(controller.signal, options)),
+      (options.headFn || getBlobClient().head)(url, blobHeadOptions(controller.signal, options)),
       timeout,
     ]);
   } catch (error) {

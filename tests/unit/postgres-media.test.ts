@@ -295,6 +295,54 @@ test('owned record HEAD is authenticated, store-scoped, and exact', async () => 
   );
 });
 
+test('Blob config is used unless explicit verification options override it', async () => {
+  const previousToken = process.env.BLOB_READ_WRITE_TOKEN;
+  const previousStoreId = process.env.BLOB_STORE_ID;
+  process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_store_token';
+  process.env.BLOB_STORE_ID = 'store';
+  try {
+    let configuredOptions: Record<string, unknown> | undefined;
+    await verifyOwnedBlobRecord(
+      { ...records[0], product_group: 'canga' },
+      origin,
+      {
+        headFn: async (_url, headOptions) => {
+          configuredOptions = headOptions as Record<string, unknown>;
+          return headResult();
+        },
+      },
+    );
+    assert.equal(configuredOptions?.token, 'vercel_blob_rw_store_token');
+    assert.equal(configuredOptions?.storeId, 'store');
+
+    const explicitUrl = 'https://explicit.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
+    const explicitOptions = {
+      token: 'vercel_blob_rw_explicit_token',
+      storeId: 'explicit',
+      headFn: async (_url: string, headOptions: unknown) => {
+        configuredOptions = headOptions as Record<string, unknown>;
+        return {
+          ...headResult(),
+          url: explicitUrl,
+          pathname,
+        };
+      },
+    };
+    await verifyOwnedBlobRecord(
+      { ...records[0], blob_url: explicitUrl, product_group: 'canga' },
+      origin,
+      explicitOptions,
+    );
+    assert.equal(configuredOptions?.token, 'vercel_blob_rw_explicit_token');
+    assert.equal(configuredOptions?.storeId, 'explicit');
+  } finally {
+    if (previousToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = previousToken;
+    if (previousStoreId === undefined) delete process.env.BLOB_STORE_ID;
+    else process.env.BLOB_STORE_ID = previousStoreId;
+  }
+});
+
 test('foreign-store media records fail authenticated ownership validation', async () => {
   await assert.rejects(
     verifyOwnedBlobRecord(

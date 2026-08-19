@@ -12,7 +12,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 //
 // Requires BLOB_READ_WRITE_TOKEN env var (set by Vercel when Blob store is linked).
 
-import { handleUpload } from '@vercel/blob/client';
+import { getBlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
   PRODUCT_GROUPS,
@@ -53,7 +53,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const requestUrl = `${proto}://${host}/api/communication-media-upload`;
 
   try {
-    const result = await handleUpload({
+    const result = await getBlobClient().handleUpload({
       body,
       request: { url: requestUrl } as unknown as Request,
       onBeforeGenerateToken: async (pathname /* , clientPayload */) => {

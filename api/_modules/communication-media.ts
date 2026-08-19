@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 // Binary files: Vercel Blob (public store, URLs stored in KV metadata)
 
 import { kv } from '@vercel/kv';
-import { del as blobDelete, head as blobHead } from '@vercel/blob';
+import { getBlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
   MAX_IMAGE_BYTES,
@@ -432,7 +432,7 @@ export async function verifyBlobMetadata(
   payload: Record<string, unknown>,
   productGroup: string,
   origin: string,
-  headFn: BlobHead = blobHead,
+  headFn: BlobHead = getBlobClient().head,
   blobOptions: {
     blobToken?: string;
     blobStoreId?: string;
@@ -790,7 +790,7 @@ export async function handler(
           throw error;
         }
         try {
-          await (dependencies.blobDelete || blobDelete)(blobUrl);
+          await (dependencies.blobDelete || getBlobClient().del)(blobUrl);
         } catch (error) {
           console.warn(
             `[communication-media] Blob delete failed for ${id}:`,

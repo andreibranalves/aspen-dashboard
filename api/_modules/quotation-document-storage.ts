@@ -25,16 +25,6 @@ export function isValidPdfBuffer(buffer: Buffer): boolean {
 }
 
 /** @deprecated Blob storage removed (#no-pdf-html-only). Kept for migration reference. */
-export function quotationBlobAuth(): { token?: string; storeId?: string } {
-  const token = process.env.QUOTATION_BLOB_READ_WRITE_TOKEN?.trim();
-  const storeId = process.env.QUOTATION_BLOB_STORE_ID?.trim();
-  return {
-    ...(token ? { token } : {}),
-    ...(storeId ? { storeId } : {}),
-  };
-}
-
-/** @deprecated Blob storage removed (#no-pdf-html-only). Kept for migration reference. */
 export function quotationPdfPathname(
   businessNumber: string,
   version: number,
