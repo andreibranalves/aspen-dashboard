@@ -117,7 +117,6 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
     default_key: 'padrao',
   }));
   await page.route('**/api/quotations**', (route) => json(route, { data: [] }));
-  await page.route('**/api/quote-leads**', (route) => json(route, { data: [] }));
   await page.route('**/api/communication-flows**', (route) => json(route, {
     success: true,
     flows: [{

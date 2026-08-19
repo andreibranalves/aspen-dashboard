@@ -206,20 +206,6 @@ async function setupApiMocks(page) {
     });
   });
 
-  await page.route('**/api/quote-leads**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        success: true,
-        data: MOCK_WHATSAPP_LEADS.data.map((lead) => ({
-          ...lead,
-          pedidoTexto: lead.resumo,
-        })),
-      }),
-    });
-  });
-
   await page.route('**/api/whatsapp-leads**', async (route) => {
     await route.fulfill({
       status: 200,

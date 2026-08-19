@@ -33,7 +33,6 @@ async function setupAuto(page) {
     default_key: 'padrao',
   }));
   await page.route('**/api/quotations**', (route) => json(route, { data: [] }));
-  await page.route('**/api/quote-leads**', (route) => json(route, { data: [] }));
   await page.route('**/api/extract**', (route) => json(route, {
     orders: [{ nome: 'Cliente teste', email: 'cliente@example.test', telefone: '11999990000', items: [{ item_code: 'CNG-001', qty: 1 }] }],
   }));
