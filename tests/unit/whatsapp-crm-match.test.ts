@@ -11,11 +11,11 @@ import {
   type LocalQuoteLeadRecord,
   type LocalQuotationRecord,
   type LocalWhatsappCrmRepository,
-} from '../../api/modules/whatsapp-crm-match.js';
+} from '../../api/_modules/whatsapp-crm-match.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
-} from '../../api/modules/whatsapp-conversations-store.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
 
 const IDS = {
   lead: '11111111-1111-4111-8111-111111111111',

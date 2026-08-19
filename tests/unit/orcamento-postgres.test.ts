@@ -12,7 +12,7 @@ import {
   createPostgresQuoteDraftRepository,
   QuoteDraftInputError,
   QuoteDraftRepositoryError,
-} from '../../api/infrastructure/db/repositories/quote-repository.js';
+} from '../../api/_infrastructure/db/repositories/quote-repository.js';
 import {
   appSettings,
   clients,
@@ -22,8 +22,8 @@ import {
   quoteRevisions,
   quoteSequences,
   quotations,
-} from '../../api/infrastructure/db/schema.js';
-import * as schema from '../../api/infrastructure/db/schema.js';
+} from '../../api/_infrastructure/db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

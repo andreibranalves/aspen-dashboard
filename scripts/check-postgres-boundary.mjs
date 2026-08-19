@@ -3,21 +3,21 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL('../', import.meta.url)));
-const MODULE_ROOT = resolve(PROJECT_ROOT, 'api/modules');
+const MODULE_ROOT = resolve(PROJECT_ROOT, 'api/_modules');
 
 const ALLOWED_IMPORTS = {
-  'api/modules/operational-status.ts': {
-    'api/infrastructure/db/client.ts': new Set(['getDatabase']),
-    'api/infrastructure/db/schema.ts': new Set(['appSettings']),
+  'api/_modules/operational-status.ts': {
+    'api/_infrastructure/db/client.ts': new Set(['getDatabase']),
+    'api/_infrastructure/db/schema.ts': new Set(['appSettings']),
     'drizzle-orm': new Set(['sql']),
   },
-  'api/modules/quotation-preview.ts': {
-    'api/infrastructure/db/client.ts': new Set(['getDatabase']),
+  'api/_modules/quotation-preview.ts': {
+    'api/_infrastructure/db/client.ts': new Set(['getDatabase']),
   },
-  'api/modules/whatsapp-crm-match.ts': {
+  'api/_modules/whatsapp-crm-match.ts': {
     'drizzle-orm': new Set(['and', 'asc', 'desc', 'eq', 'inArray', 'ne', 'or', 'sql']),
-    'api/infrastructure/db/client.ts': new Set(['getDatabase', 'AppDatabase']),
-    'api/infrastructure/db/schema.ts': new Set([
+    'api/_infrastructure/db/client.ts': new Set(['getDatabase', 'AppDatabase']),
+    'api/_infrastructure/db/schema.ts': new Set([
       'clients',
       'crmDeals',
       'quoteLeads',
@@ -57,11 +57,11 @@ function canonicalTarget(specifier, importerPath) {
   const importerDirectory = dirname(resolve(PROJECT_ROOT, importerPath));
   const resolved = normalizeRepositoryPath(resolve(importerDirectory, specifier));
   const withoutExtension = resolved.replace(/\.(?:js|ts)$/, '');
-  if (withoutExtension === 'api/infrastructure/db/client') {
-    return 'api/infrastructure/db/client.ts';
+  if (withoutExtension === 'api/_infrastructure/db/client') {
+    return 'api/_infrastructure/db/client.ts';
   }
-  if (withoutExtension === 'api/infrastructure/db/schema') {
-    return 'api/infrastructure/db/schema.ts';
+  if (withoutExtension === 'api/_infrastructure/db/schema') {
+    return 'api/_infrastructure/db/schema.ts';
   }
   return null;
 }

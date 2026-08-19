@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { backfillWhatsappIdentities } from '../../api/modules/whatsapp-identity-backfill.js';
+import { backfillWhatsappIdentities } from '../../api/_modules/whatsapp-identity-backfill.js';
 
 describe('whatsapp-identity-backfill', () => {
   it('reprocesses conversations and upgrades legacy phone into verified identity', async () => {

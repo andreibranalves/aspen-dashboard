@@ -8,7 +8,7 @@ import {
   updateQuoteLead,
   upsertQuoteLead,
   type QuoteLead,
-} from '../../api/modules/quote-leads-store.js';
+} from '../../api/_modules/quote-leads-store.js';
 import { createQuoteLeadMemoryDeps, makeQuoteLead } from './pre-quote-fixtures.ts';
 
 function createMemoryDeps(seed: QuoteLead[] = []) {

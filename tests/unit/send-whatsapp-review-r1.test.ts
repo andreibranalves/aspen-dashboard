@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler as sendWhatsapp, loadPostgresSendContext, MAX_QUOTATION_PDF_BYTES } from '../../api/modules/send-whatsapp.js';
-import { handler as sendWhatsappFlow } from '../../api/modules/send-whatsapp-flow.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
+import { handler as sendWhatsapp, loadPostgresSendContext, MAX_QUOTATION_PDF_BYTES } from '../../api/_modules/send-whatsapp.js';
+import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';

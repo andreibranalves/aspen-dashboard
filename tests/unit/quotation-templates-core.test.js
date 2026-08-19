@@ -15,25 +15,25 @@ import {
   validateQuotationTemplateSource,
   QuotationTemplateResolutionError,
   resolveQuotationTemplate,
-} from '../../api/modules/quotation-template-catalog.js';
+} from '../../api/_modules/quotation-template-catalog.js';
 import {
   createQuotationTemplateRepository,
   quotationSnapshotViewModel,
   QuotationTemplateSnapshotRepositoryError,
   readQuotationTemplateSnapshot,
-} from '../../api/infrastructure/db/repositories/quotation-template-repository.js';
-import { createQuotationPreviewHandler } from '../../api/modules/quotation-preview.js';
+} from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';
+import { createQuotationPreviewHandler } from '../../api/_modules/quotation-preview.js';
 import {
   createQuotationSectionsSnapshot,
   normalizeQuotationSections,
   validateQuotationSections,
-} from '../../api/modules/quotation-content.js';
+} from '../../api/_modules/quotation-content.js';
 import {
   quoteRevisionItems,
   quoteRevisions,
   quotationTemplateVersions,
   quotations,
-} from '../../api/infrastructure/db/schema.js';
+} from '../../api/_infrastructure/db/schema.js';
 
 const snapshot = {
   quotation: {

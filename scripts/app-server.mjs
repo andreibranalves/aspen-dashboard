@@ -1,5 +1,5 @@
 // Combined app server for aspen-dashboard
-// Serves frontend from public/ + API handlers from api/modules/
+// Serves frontend from public/ + API handlers from api/_modules/
 // Binds to PORT env var or 8888 (dashboard.srv1633500.hstgr.cloud via Traefik)
 // Start: PORT=8888 node scripts/app-server.mjs
 

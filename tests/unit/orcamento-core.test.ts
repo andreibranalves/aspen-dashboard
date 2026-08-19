@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createHandler } from '../../api/modules/orcamento.js';
-import { createCoreHandler } from '../../api/modules/orcamento-core.js';
+import { createHandler } from '../../api/_modules/orcamento.js';
+import { createCoreHandler } from '../../api/_modules/orcamento-core.js';
 import {
   QuoteDraftInputError,
   readSelectedTemplate,
   type TemplateSelectionLookup,
-} from '../../api/infrastructure/db/repositories/quote-repository.js';
+} from '../../api/_infrastructure/db/repositories/quote-repository.js';
 
 function event(body: unknown) {
   return {

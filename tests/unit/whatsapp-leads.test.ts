@@ -16,12 +16,12 @@ import {
   requestOpenRouter,
   resolveWhatsappDisplayName,
   shouldIncludeWhatsappLead,
-} from '../../api/modules/whatsapp-leads.js';
+} from '../../api/_modules/whatsapp-leads.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
-} from '../../api/modules/whatsapp-conversations-store.js';
-import type { LocalWhatsappCrmRepository } from '../../api/modules/whatsapp-crm-match.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
+import type { LocalWhatsappCrmRepository } from '../../api/_modules/whatsapp-crm-match.js';
 
 describe('whatsapp-leads helpers', () => {
   it('normaliza telefone brasileiro sem confundir DDD 55 com o país', () => {
@@ -544,7 +544,7 @@ function localQuotationRepository(
 
 describe('whatsapp-leads snapshot handler', () => {
   it('has no external lead dependencies and never exposes transport data', async () => {
-    const source = await readFile(new URL('../../api/modules/whatsapp-leads.ts', import.meta.url), 'utf8');
+    const source = await readFile(new URL('../../api/_modules/whatsapp-leads.ts', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /external|operational-mode|findContacts/i);
 
     const saved = conversation();

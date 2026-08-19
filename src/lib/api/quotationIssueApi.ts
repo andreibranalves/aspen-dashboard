@@ -1,5 +1,5 @@
 import type { Draft, QuotationIssueProjection } from '@/types/domain';
-import type { QuotationSectionsSnapshot } from '../../../api/modules/quotation-content';
+import type { QuotationSectionsSnapshot } from '../../../api/_modules/quotation-content';
 
 type BuiltQuotationDraft = ReturnType<typeof buildQuotePayload>;
 type BuiltQuotationExtracted = BuiltQuotationDraft['extracted'];

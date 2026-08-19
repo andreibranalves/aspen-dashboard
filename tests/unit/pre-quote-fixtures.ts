@@ -1,4 +1,4 @@
-import type { QuoteLead } from '../../api/modules/quote-leads-store.js';
+import type { QuoteLead } from '../../api/_modules/quote-leads-store.js';
 
 export function makeQuoteLead(overrides: Partial<QuoteLead> = {}): QuoteLead {
   return {

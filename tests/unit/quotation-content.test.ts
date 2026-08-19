@@ -8,7 +8,7 @@ import {
   normalizeQuotationSections,
   toSafeMultilineHtml,
   validateQuotationSections,
-} from '../../api/modules/quotation-content.js';
+} from '../../api/_modules/quotation-content.js';
 
 const legacy = {
   pagamento: '50% na aprovação',

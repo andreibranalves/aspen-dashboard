@@ -14,7 +14,7 @@ import {
   upsertWhatsappMessages,
   type WhatsappConversation,
   type WhatsappConversationStoreDeps,
-} from '../../api/modules/whatsapp-conversations-store.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
 
 function makeDeps(): WhatsappConversationStoreDeps {
   let conversations: WhatsappConversation[] = [];

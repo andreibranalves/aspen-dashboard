@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createQuotationIssuesHandler } from '../../api/modules/quotation-issues.js';
+import { createQuotationIssuesHandler } from '../../api/_modules/quotation-issues.js';
 
 const event = (httpMethod: string, headers: Record<string, string> = {}, body = '{}', queryStringParameters: Record<string, string> = {}) => ({
   httpMethod,
@@ -30,7 +30,7 @@ test('GET is read-only and returns injected status without issue calls', async (
 
 test('POST maps fingerprint or price conflict to 409', async () => {
   const response = await createQuotationIssuesHandler({
-    issue: async () => { throw new (await import('../../api/infrastructure/db/repositories/quotation-issue-repository.js')).QuotationIssueConflictError('conteúdo diferente'); },
+    issue: async () => { throw new (await import('../../api/_infrastructure/db/repositories/quotation-issue-repository.js')).QuotationIssueConflictError('conteúdo diferente'); },
   })(event('POST', { 'Idempotency-Key': '00000000-0000-4000-8000-000000000001' }, JSON.stringify({ draft: {} })));
   assert.equal(response.statusCode, 409);
   assert.match(JSON.parse(response.body || '{}').error, /conteúdo diferente/i);
@@ -38,7 +38,7 @@ test('POST maps fingerprint or price conflict to 409', async () => {
 
 test('POST maps PDF failure to safe Portuguese 503', async () => {
   const response = await createQuotationIssuesHandler({
-    issue: async () => { throw new (await import('../../api/infrastructure/db/repositories/quotation-issue-repository.js')).QuotationIssueRepositoryError('Não foi possível gerar o PDF do orçamento. Tente novamente.'); },
+    issue: async () => { throw new (await import('../../api/_infrastructure/db/repositories/quotation-issue-repository.js')).QuotationIssueRepositoryError('Não foi possível gerar o PDF do orçamento. Tente novamente.'); },
   })(event('POST', { 'Idempotency-Key': '00000000-0000-4000-8000-000000000001' }, JSON.stringify({ draft: {} })));
   assert.equal(response.statusCode, 503);
   assert.match(JSON.parse(response.body || '{}').error, /PDF/i);

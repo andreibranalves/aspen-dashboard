@@ -4,7 +4,7 @@ import {
   assertQuotationTransition,
   canonicalQuotationStatus,
   isIssuedQuotationStatus,
-} from '../../api/modules/quotation-status.js';
+} from '../../api/_modules/quotation-status.js';
 
 test('enviado is a read alias for emitido', () => {
   assert.equal(canonicalQuotationStatus('enviado'), 'emitido');

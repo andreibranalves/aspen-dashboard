@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createExtractHandler, handler } from '../../api/modules/extract.js';
+import { createExtractHandler, handler } from '../../api/_modules/extract.js';
 import {
   OrderTemplateConflictError,
   OrderTemplateNotFoundError,
-} from '../../api/infrastructure/db/repositories/order-template-repository.js';
+} from '../../api/_infrastructure/db/repositories/order-template-repository.js';
 
 function event(method: string, body: unknown) {
   return {

@@ -9,7 +9,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/infrastructure/db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   appSettings,
   clients,
@@ -18,11 +18,11 @@ import {
   quoteRevisionItems,
   quoteRevisions,
   productActivityEvents,
-} from '../../api/infrastructure/db/schema.js';
-import { createPostgresQuoteDraftRepository } from '../../api/infrastructure/db/repositories/quote-repository.js';
-import { createPostgresQuoteDraftManagementRepository } from '../../api/infrastructure/db/repositories/quote-draft-management-repository.js';
-import { createPostgresQuotationLifecycleRepository } from '../../api/infrastructure/db/repositories/quotation-lifecycle-repository.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
+} from '../../api/_infrastructure/db/schema.js';
+import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
+import { createPostgresQuoteDraftManagementRepository } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
+import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

@@ -9,8 +9,8 @@ import {
   OrderTemplateRepositoryError,
   type OrderTemplateRecord,
   type OrderTemplateRepository,
-} from '../../api/infrastructure/db/repositories/order-template-repository.js';
-import { createOrderTemplatesHandler } from '../../api/modules/order-templates.js';
+} from '../../api/_infrastructure/db/repositories/order-template-repository.js';
+import { createOrderTemplatesHandler } from '../../api/_modules/order-templates.js';
 
 interface MemoryProduct {
   sku: string;

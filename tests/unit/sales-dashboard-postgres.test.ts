@@ -10,12 +10,12 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/infrastructure/db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
-} from '../../api/infrastructure/db/repositories/sales-orders-repository.js';
-import { createSalesDashboardHandler } from '../../api/modules/sales-dashboard.js';
+} from '../../api/_infrastructure/db/repositories/sales-orders-repository.js';
+import { createSalesDashboardHandler } from '../../api/_modules/sales-dashboard.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -421,7 +421,7 @@ test('sales dashboard handler does not call external fetch', async () => {
 });
 
 test('sales dashboard runtime has no network or rollout dependency', () => {
-  const source = readFileSync(path.resolve('api/modules/sales-dashboard.ts'), 'utf8');
+  const source = readFileSync(path.resolve('api/_modules/sales-dashboard.ts'), 'utf8');
   assert.doesNotMatch(source, /fetch\(|process\.env\./);
 });
 

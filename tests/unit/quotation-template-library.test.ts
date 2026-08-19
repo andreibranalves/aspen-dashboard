@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createQuotationTemplatesHandler } from '../../api/modules/quotation-templates.js';
+import { createQuotationTemplatesHandler } from '../../api/_modules/quotation-templates.js';
 import {
   QuotationTemplateLibraryConflictError,
   QuotationTemplateLibraryInputError,
-} from '../../api/infrastructure/db/repositories/quotation-template-library-repository.js';
+} from '../../api/_infrastructure/db/repositories/quotation-template-library-repository.js';
 
 const repository = {
   list: async (active?: boolean) => ({

@@ -9,17 +9,17 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/infrastructure/db/schema.js';
-import { createPostgresCrmDealRepository } from '../../api/infrastructure/db/repositories/crm-deals-repository.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
+import { createPostgresCrmDealRepository } from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 import type { FunctionEvent } from '../../api/_http/types.js';
-import { createCrmDealsHandler } from '../../api/modules/crm-deals.js';
-import { createCrmUpdateDealHandler } from '../../api/modules/crm-update-deal.js';
-import { createCrmPruneCandidatesHandler } from '../../api/modules/crm-prune-candidates.js';
+import { createCrmDealsHandler } from '../../api/_modules/crm-deals.js';
+import { createCrmUpdateDealHandler } from '../../api/_modules/crm-update-deal.js';
+import { createCrmPruneCandidatesHandler } from '../../api/_modules/crm-prune-candidates.js';
 import {
   CRM_PIPELINE,
   type CrmDealRecord,
   type CrmDealRepository,
-} from '../../api/infrastructure/db/repositories/crm-deals-repository.js';
+} from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;

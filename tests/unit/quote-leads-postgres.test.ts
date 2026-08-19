@@ -10,12 +10,12 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/infrastructure/db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRecord,
-} from '../../api/infrastructure/db/repositories/quote-leads-repository.js';
-import { createHandler as createTypebotHandler } from '../../api/modules/typebot-lead-capture.js';
+} from '../../api/_infrastructure/db/repositories/quote-leads-repository.js';
+import { createHandler as createTypebotHandler } from '../../api/_modules/typebot-lead-capture.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -33,7 +33,7 @@ test('active lead paths depend on KV-free pure logic only', () => {
       path.dirname(fileURLToPath(import.meta.url)),
       '..',
       '..',
-      'api/infrastructure/db/repositories/quote-leads-repository.ts'
+      'api/_infrastructure/db/repositories/quote-leads-repository.ts'
     ),
     'utf8'
   );
@@ -42,7 +42,7 @@ test('active lead paths depend on KV-free pure logic only', () => {
       path.dirname(fileURLToPath(import.meta.url)),
       '..',
       '..',
-      'api/modules/quote-leads-pure.ts'
+      'api/_modules/quote-leads-pure.ts'
     ),
     'utf8'
   );

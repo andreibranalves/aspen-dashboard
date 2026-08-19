@@ -5,8 +5,8 @@ import {
   createPublicQuotationHandler,
   isRevisionBoundPublicQuotationUrl,
   issuePublicQuotationToken,
-} from '../../api/modules/public-quotation.js';
-import { getQuotationTemplate } from '../../api/modules/quotation-template-catalog.js';
+} from '../../api/_modules/public-quotation.js';
+import { getQuotationTemplate } from '../../api/_modules/quotation-template-catalog.js';
 
 const template = getQuotationTemplate('padrao')!;
 const versionedTemplate = getQuotationTemplate('minimalista')!;

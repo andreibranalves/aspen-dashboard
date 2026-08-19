@@ -6,13 +6,13 @@ import {
   parseDealIds,
   pruneDeals,
   PRUNE_NEXT_STEP,
-} from '../../api/modules/crm-prune.js';
+} from '../../api/_modules/crm-prune.js';
 import type {
   CrmDealRecord,
   CrmDealRepository,
   CrmPruneCandidate,
   CrmPruneResult,
-} from '../../api/infrastructure/db/repositories/crm-deals-repository.js';
+} from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 

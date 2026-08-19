@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createHandler as createProductsBoundary } from '../../api/modules/products.js';
-import { createHandler as createDetailBoundary } from '../../api/modules/product-detail.js';
-import { createHandler as createUpdateBoundary } from '../../api/modules/product-update.js';
-import { createCoreHandler as createProductsCore } from '../../api/modules/products-core.js';
-import { createCoreHandler as createDetailCore } from '../../api/modules/product-detail-core.js';
-import { createCoreHandler as createUpdateCore } from '../../api/modules/product-update-core.js';
+import { createHandler as createProductsBoundary } from '../../api/_modules/products.js';
+import { createHandler as createDetailBoundary } from '../../api/_modules/product-detail.js';
+import { createHandler as createUpdateBoundary } from '../../api/_modules/product-update.js';
+import { createCoreHandler as createProductsCore } from '../../api/_modules/products-core.js';
+import { createCoreHandler as createDetailCore } from '../../api/_modules/product-detail-core.js';
+import { createCoreHandler as createUpdateCore } from '../../api/_modules/product-update-core.js';
 import type {
   ProductCreateInput,
   ProductListOptions,
@@ -14,8 +14,8 @@ import type {
   ProductUpdateInput,
   ProductStatus,
   ProductsRepository,
-} from '../../api/infrastructure/db/repositories/products-repository.js';
-import { isDuplicateProductError } from '../../api/infrastructure/db/repositories/products-repository.js';
+} from '../../api/_infrastructure/db/repositories/products-repository.js';
+import { isDuplicateProductError } from '../../api/_infrastructure/db/repositories/products-repository.js';
 
 function event(method: string, body?: unknown, query: Record<string, string> = {}) {
   return {

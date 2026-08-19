@@ -11,7 +11,7 @@ import {
   readCommunicationMediaRecords,
   stripMediaInternals,
   verifyOwnedBlobRecord,
-} from '../../api/modules/postgres-media.js';
+} from '../../api/_modules/postgres-media.js';
 import {
   compareAndSetMedia,
   deleteMediaIfCurrent,
@@ -22,7 +22,7 @@ import {
   MEDIA_CAS_WRITE_SCRIPT,
   MEDIA_CREATE_SCRIPT,
   verifyBlobMetadata,
-} from '../../api/modules/communication-media.js';
+} from '../../api/_modules/communication-media.js';
 
 const origin = 'https://app.test';
 const blobUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';

@@ -1,6 +1,6 @@
 // Rewrites relative and alias import specifiers and path strings after moving source files.
 // Usage: node scripts/rewrite-imports.mjs <mapping.json>
-// mapping.json: { "api/_functions/x.ts": "api/modules/x.ts", ... } (repo-root relative)
+// mapping.json: { "api/old-dir/x.ts": "api/_new-dir/x.ts", ... } (repo-root relative)
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { execSync } from 'node:child_process';

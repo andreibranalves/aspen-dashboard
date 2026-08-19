@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler } from '../../api/modules/whatsapp-send-status.js';
+import { handler } from '../../api/_modules/whatsapp-send-status.js';
 import {
   canonicalWhatsappSendIdempotencyKey,
   WHATSAPP_SEND_RESOLUTION_CONFIRMATION,
-} from '../../api/modules/whatsapp-send-reservation-store.js';
-import type { QuotationDelivery } from '../../api/infrastructure/db/repositories/quotation-delivery-repository.js';
+} from '../../api/_modules/whatsapp-send-reservation-store.js';
+import type { QuotationDelivery } from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
 
 const quotationId = 'quote-status';
 const revisionId = 'revision-status';

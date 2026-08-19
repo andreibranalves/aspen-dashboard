@@ -8,7 +8,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { eq } from 'drizzle-orm';
 
-import * as schema from '../../api/infrastructure/db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   clients,
   products,
@@ -18,15 +18,15 @@ import {
   quotationDeliveries,
   quotationTemplateVersions,
   quotationTemplates,
-} from '../../api/infrastructure/db/schema.js';
+} from '../../api/_infrastructure/db/schema.js';
 import {
   canRecordQuotationDeliveryState,
   createPostgresQuotationDeliveryRepository,
   QuotationDeliveryConflictError,
   QuotationDeliveryPdfError,
   QuotationDeliveryRepositoryError,
-} from '../../api/infrastructure/db/repositories/quotation-delivery-repository.js';
-import type { QuotationSectionsSnapshot } from '../../api/modules/quotation-content.js';
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
+import type { QuotationSectionsSnapshot } from '../../api/_modules/quotation-content.js';
 
 const DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');

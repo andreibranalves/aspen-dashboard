@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler as sendWhatsapp } from '../../api/modules/send-whatsapp.js';
-import { resolveServerIssuedPublicLink } from '../../api/modules/send-whatsapp-flow.js';
-import { renderTemplate } from '../../api/modules/communication-flow-preview.js';
-import { isRevisionBoundPublicQuotationUrl } from '../../api/modules/public-quotation.js';
+import { handler as sendWhatsapp } from '../../api/_modules/send-whatsapp.js';
+import { resolveServerIssuedPublicLink } from '../../api/_modules/send-whatsapp-flow.js';
+import { renderTemplate } from '../../api/_modules/communication-flow-preview.js';
+import { isRevisionBoundPublicQuotationUrl } from '../../api/_modules/public-quotation.js';
 
 const token = 'A'.repeat(32);
 const relativePublicUrl = `/api/public-quotation?token=${token}`;

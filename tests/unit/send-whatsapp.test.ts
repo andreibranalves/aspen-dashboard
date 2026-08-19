@@ -4,25 +4,25 @@ import test from 'node:test';
 import {
   handler as sendWhatsapp,
   loadPostgresSendContext,
-} from '../../api/modules/send-whatsapp.js';
+} from '../../api/_modules/send-whatsapp.js';
 import {
   canonicalFlowQuotationId,
   flowProductSummary,
   handler as sendWhatsappFlow,
-} from '../../api/modules/send-whatsapp-flow.js';
-import { handler as communicationFlowPreview } from '../../api/modules/communication-flow-preview.js';
+} from '../../api/_modules/send-whatsapp-flow.js';
+import { handler as communicationFlowPreview } from '../../api/_modules/communication-flow-preview.js';
 import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
-} from '../../api/modules/postgres-media.js';
-import { normalizeEvolutionDelivery } from '../../api/infrastructure/integrations/evolution/evolution-delivery.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/modules/quotation-template-catalog.js';
+} from '../../api/_modules/postgres-media.js';
+import { normalizeEvolutionDelivery } from '../../api/_infrastructure/integrations/evolution/evolution-delivery.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
   type DeliverQuotationInput,
-} from '../../api/modules/quotation-delivery.js';
+} from '../../api/_modules/quotation-delivery.js';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';
