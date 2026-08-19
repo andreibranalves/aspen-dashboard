@@ -7,9 +7,9 @@
 - A busca literal de referências retorna somente quatro asserções de regressão aprovadas em testes, documentadas abaixo, e não encontra referências ativas em runtime ou configuração.
 - Commit de baseline da Task 5: `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
 - Commits anteriores aceitos: `cf97089fd0880c8aa35245a961bc261e9ed8a22a`, `1481ff47af66dc3e9083e3872f44540bdae323c1`, `3d5dfc3331a09185376b8410e8c88603bc328324` e `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
-- Commit final do código: `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
-- O único commit novo desta task contém este relatório; o SHA exato do commit do relatório está registrado no `task-5-report.md` após o commit.
-- Worktree final esperado: `clean`.
+- Último commit de código antes do aceite: `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
+- This report is the final acceptance artifact and is committed; o SHA exato do commit do relatório está registrado no handoff da Task 5 (`.superpowers/sdd/2026-08-18-postgresql-only-cleanup/task-5-report.md`).
+- O worktree pós-commit foi verificado limpo e sem arquivos staged.
 
 ## Gate operacional
 
@@ -64,7 +64,8 @@
 | verificação direcionada de artefatos gerados                                                                                                                                                                                            | passed, exit 0                                 | oito caminhos de JavaScript/source map dos módulos deletados ausentes; saídas de `quote-leads-pure` e `quote-leads-repository` preservadas                                                                                       |
 | `npx prettier --check docs/superpowers/reports/2026-08-18-postgresql-only-cleanup-acceptance.md`                                                                                                                                        | passed, exit 0                                 | relatório formatado                                                                                                                                                                                                              |
 | diagnósticos de repositório via `npm run lint` e `npm run typecheck`                                                                                                                                                                    | passed, exit 0                                 | incluídos em `verify:fast` e `verify:full`                                                                                                                                                                                       |
-| LSP primary e lens diagnostics                                                                                                                                                                                                          | not available                                  | não existe comando LSP/lens no conjunto de scripts do repositório; lint, typecheck e Prettier foram executados                                                                                                                   |
+| `lsp_diagnostics` nos dois arquivos de relatório                                                                                                                                                                                        | passed, 0 diagnostics                          | `.superpowers/sdd/2026-08-18-postgresql-only-cleanup/task-5-report.md` e `docs/superpowers/reports/2026-08-18-postgresql-only-cleanup-acceptance.md` retornaram 0 diagnostics                                                    |
+| `lens_diagnostics full` no relatório de aceite                                                                                                                                                                                          | passed, 0 primary findings                     | no issues / 0 primary findings                                                                                                                                                                                                   |
 
 A busca literal não foi corrigida porque as quatro ocorrências são asserções aprovadas que comprovam a ausência das superfícies aposentadas.
 Nenhum arquivo de teste foi alterado na Task 5.
@@ -93,7 +94,6 @@ Nenhum arquivo de teste foi alterado na Task 5.
 - O retorno sem linhas do Vercel MCP não disponibiliza histórico de logs e não substitui observabilidade independente.
 - A ausência de consumidores externos e o desligamento do webhook dependem da confirmação operacional redigida do responsável.
 - Quatro asserções de teste mantêm nomes aposentados por finalidade de regressão e fazem a busca literal da brief retornar código 1.
-- LSP e lens diagnostics não têm comando disponível no repositório; os diagnósticos automatizados de lint, TypeScript e Prettier passaram.
 
 ## Conclusão
 
