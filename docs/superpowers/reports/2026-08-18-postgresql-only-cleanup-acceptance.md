@@ -7,8 +7,9 @@
 - A busca literal de referências retorna somente quatro asserções de regressão aprovadas em testes, documentadas abaixo, e não encontra referências ativas em runtime ou configuração.
 - Commit de baseline da Task 5: `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
 - Commits anteriores aceitos: `cf97089fd0880c8aa35245a961bc261e9ed8a22a`, `1481ff47af66dc3e9083e3872f44540bdae323c1`, `3d5dfc3331a09185376b8410e8c88603bc328324` e `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
-- Último commit de código antes do aceite: `9d6bd23790a0e72101b91d6591c8fdb0a33a9343`.
-- This report is the final acceptance artifact and is committed; o SHA exato do commit do relatório está registrado no handoff da Task 5 (`.superpowers/sdd/2026-08-18-postgresql-only-cleanup/task-5-report.md`).
+- Último commit de código: `9d6bd23` (`9d6bd23790a0e72101b91d6591c8fdb0a33a9343`).
+- Commit ativo de correção dos documentos operacionais: `df7b5a0018a49e84f0caedf9e8c652e933eb6326` (`docs: align operational cutoff procedure`); é docs-only, e `docs/operational-cutoff-procedure.md` é o documento operacional ativo e atualizado.
+- Este relatório é o artefato final de aceite, committed after validation; o SHA exato do commit do relatório está registrado no handoff da Task 5 (`.superpowers/sdd/2026-08-18-postgresql-only-cleanup/task-5-report.md`).
 - O worktree pós-commit foi verificado limpo e sem arquivos staged.
 
 ## Gate operacional
@@ -24,17 +25,18 @@
 
 ## Matriz de classificação
 
-| Candidato                      | Classificação       | Evidência estática                                                                            | Evidência operacional | Ação/verificação                               |
-| ------------------------------ | ------------------- | --------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------- |
-| Rotas Typebot e `quote-leads`  | remover             | `api/_app/routes.ts` não registra as rotas                                                    | gate aprovado         | regressões autenticadas retornam 404           |
-| Handlers HTTP aposentados      | remover             | fontes removidas e sem importadores vivos                                                     | gate aprovado         | arquivos removidos nas Tasks 2 e 3             |
-| Adapter KV                     | remover             | sem importadores vivos                                                                        | não aplicável         | arquivo removido na Task 3                     |
-| Meta CAPI                      | remover             | sem referências ativas a `meta-capi` ou `sendMetaLeadEvent`                                   | não aplicável         | módulo removido na Task 3                      |
-| `quote-leads-pure.ts`          | preservar vivo      | repository e cobertura pura importam a lógica                                                 | não aplicável         | 7 testes focados passaram                      |
-| `quote-leads-repository.ts`    | preservar vivo      | WhatsApp e conversão de cotação usam o repository PostgreSQL; CRM mantém cobertura PostgreSQL | não aplicável         | testes focados e regressões completas passaram |
-| `drizzle/`                     | preservar histórico | migration `0018_postgres_only_domains.sql` mantém tabela, vínculos e restrições               | não aplicável         | diff vazio                                     |
-| `docs/superpowers/`            | preservar histórico | decisões, briefs e relatórios anteriores permanecem intactos                                  | não aplicável         | nenhum arquivo histórico alterado              |
-| `docs/pre-orcamentos-inbox.md` | atualizar vigente   | descreve a remoção das superfícies e a preservação PostgreSQL                                 | não aplicável         | atualizado na Task 4                           |
+| Candidato                              | Classificação       | Evidência estática                                                                            | Evidência operacional | Ação/verificação                               |
+| -------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------- |
+| Rotas Typebot e `quote-leads`          | remover             | `api/_app/routes.ts` não registra as rotas                                                    | gate aprovado         | regressões autenticadas retornam 404           |
+| Handlers HTTP aposentados              | remover             | fontes removidas e sem importadores vivos                                                     | gate aprovado         | arquivos removidos nas Tasks 2 e 3             |
+| Adapter KV                             | remover             | sem importadores vivos                                                                        | não aplicável         | arquivo removido na Task 3                     |
+| Meta CAPI                              | remover             | sem referências ativas a `meta-capi` ou `sendMetaLeadEvent`                                   | não aplicável         | módulo removido na Task 3                      |
+| `quote-leads-pure.ts`                  | preservar vivo      | repository e cobertura pura importam a lógica                                                 | não aplicável         | 7 testes focados passaram                      |
+| `quote-leads-repository.ts`            | preservar vivo      | WhatsApp e conversão de cotação usam o repository PostgreSQL; CRM mantém cobertura PostgreSQL | não aplicável         | testes focados e regressões completas passaram |
+| `drizzle/`                             | preservar histórico | migration `0018_postgres_only_domains.sql` mantém tabela, vínculos e restrições               | não aplicável         | diff vazio                                     |
+| `docs/superpowers/`                    | preservar histórico | decisões, briefs e relatórios anteriores permanecem intactos                                  | não aplicável         | nenhum arquivo histórico alterado              |
+| `docs/pre-orcamentos-inbox.md`         | atualizar vigente   | descreve a remoção das superfícies e a preservação PostgreSQL                                 | não aplicável         | atualizado na Task 4                           |
+| `docs/operational-cutoff-procedure.md` | atualizar vigente   | documento operacional ativo                                                                   | `df7b5a0` docs-only   | atualizado e corrente                          |
 
 ## Invariantes `quote_leads` preservadas
 
@@ -64,8 +66,16 @@
 | verificação direcionada de artefatos gerados                                                                                                                                                                                            | passed, exit 0                                 | oito caminhos de JavaScript/source map dos módulos deletados ausentes; saídas de `quote-leads-pure` e `quote-leads-repository` preservadas                                                                                       |
 | `npx prettier --check docs/superpowers/reports/2026-08-18-postgresql-only-cleanup-acceptance.md`                                                                                                                                        | passed, exit 0                                 | relatório formatado                                                                                                                                                                                                              |
 | diagnósticos de repositório via `npm run lint` e `npm run typecheck`                                                                                                                                                                    | passed, exit 0                                 | incluídos em `verify:fast` e `verify:full`                                                                                                                                                                                       |
-| `lsp_diagnostics` nos dois arquivos de relatório                                                                                                                                                                                        | passed, 0 diagnostics                          | `.superpowers/sdd/2026-08-18-postgresql-only-cleanup/task-5-report.md` e `docs/superpowers/reports/2026-08-18-postgresql-only-cleanup-acceptance.md` retornaram 0 diagnostics                                                    |
-| `lens_diagnostics full` no relatório de aceite                                                                                                                                                                                          | passed, 0 primary findings                     | no issues / 0 primary findings                                                                                                                                                                                                   |
+| `lsp_diagnostics` nos 28 caminhos alterados                                                                                                                                                                                             | passed, 19 existentes limpos                   | 8 caminhos deletados ausentes; `.env.example` sem servidor LSP                                                                                                                                                                   |
+| `lens_diagnostics full` nos 28 caminhos alterados                                                                                                                                                                                       | passed, 0 bloqueantes                          | 20 existentes diagnosticados; 8 deletados ignorados; somente três avisos não bloqueantes em `scripts/postgres-only-canary.mjs`                                                                                                   |
+
+A especificação exige zero erros bloqueantes. O `lsp_diagnostics` recebeu estes 28 caminhos nomeados:
+
+- 19 arquivos existentes e limpos: `api/_app/routes.ts`, `api/_shared/auth.ts`, `api/_shared/external-writes.ts`, `api/_shared/rate-limit.ts`, `docs/operational-cutoff-procedure.md`, `docs/pre-orcamentos-inbox.md`, `docs/superpowers/reports/2026-08-18-postgresql-only-cleanup-acceptance.md`, `scripts/postgres-only-canary.mjs`, `tests/orcamento.spec.js`, `tests/task-8-fix-r1.spec.js`, `tests/task-8-fix-r4.spec.js`, `tests/unit/auth.test.ts`, `tests/unit/external-writes.test.ts`, `tests/unit/handle-request.test.ts`, `tests/unit/postgres-only-canary.test.js`, `tests/unit/pre-quote-fixtures.ts`, `tests/unit/quote-leads-postgres.test.ts`, `tests/unit/quote-leads-pure.test.ts` e `tests/unit/routes.test.ts`.
+- 8 caminhos de fonte/teste deletados e ausentes: `api/_infrastructure/integrations/meta-capi/meta-capi.ts`, `api/_modules/quote-leads-store.ts`, `api/_modules/quote-leads.ts`, `api/_modules/typebot-lead-capture.ts`, `tests/unit/meta-capi.test.ts`, `tests/unit/quote-leads-store.test.ts`, `tests/unit/quote-leads.test.ts` e `tests/unit/typebot-lead-capture.test.ts`.
+- `.env.example`: unsupported, porque não há servidor LSP disponível para este tipo de arquivo.
+
+O `lens_diagnostics full` diagnosticou os 20 caminhos existentes, pulou os 8 caminhos deletados e encontrou zero achados bloqueantes. Reportou somente três avisos não bloqueantes em `scripts/postgres-only-canary.mjs`: a lista de marcadores exportada não usada e duas advertências das regras existentes para `console.log`. Esses avisos são divulgados com precisão e não violam o gate da especificação, que exige zero erros bloqueantes.
 
 A busca literal não foi corrigida porque as quatro ocorrências são asserções aprovadas que comprovam a ausência das superfícies aposentadas.
 Nenhum arquivo de teste foi alterado na Task 5.
@@ -94,6 +104,8 @@ Nenhum arquivo de teste foi alterado na Task 5.
 - O retorno sem linhas do Vercel MCP não disponibiliza histórico de logs e não substitui observabilidade independente.
 - A ausência de consumidores externos e o desligamento do webhook dependem da confirmação operacional redigida do responsável.
 - Quatro asserções de teste mantêm nomes aposentados por finalidade de regressão e fazem a busca literal da brief retornar código 1.
+- `lens_diagnostics full` mantém três avisos não bloqueantes em `scripts/postgres-only-canary.mjs`: lista de marcadores exportada não usada e duas advertências existentes de `console.log`; não há erros bloqueantes.
+- `.env.example` não possui servidor LSP disponível e, por isso, foi reportado como unsupported pelo `lsp_diagnostics`.
 
 ## Conclusão
 
