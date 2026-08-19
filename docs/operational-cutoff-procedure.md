@@ -23,7 +23,7 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 ## Fluxo local
 
 1. Execute as verificações automatizadas em uma cópia local.
-2. Confirme que os três mapas de rotas são iguais.
+2. Confirme que `src/app/routes.tsx` é a tabela única de rotas e que `src/app/App.tsx` despacha as rotas por hash.
 3. Confirme que produtos, clientes, orçamentos, CRM, pedidos, atividade e telas de comunicação usam contratos locais.
 4. Valide o envio WhatsApp somente com mocks da Evolution em testes.
 5. Registre resultados e riscos no relatório de auditoria apropriado.
@@ -41,8 +41,6 @@ Preview é o staging padrão para branches e releases candidatos.
 | Banco                     | PostgreSQL staging   | PostgreSQL production    |
 | KV/Blob                   | recursos staging     | recursos production      |
 | Evolution                 | credenciais ausentes | credenciais configuradas |
-| Meta CAPI                 | token ausente        | token configurado        |
-| Typebot                   | token ausente        | token configurado        |
 
 A ausência de credenciais é intencional e complementa o guard de aplicação e o egress bloqueado.
 Valores reais permanecem no ambiente operacional fora deste checkout.
@@ -52,7 +50,7 @@ Valores reais permanecem no ambiente operacional fora deste checkout.
 - `APP_ENV=preview` configurado no ambiente Preview.
 - `EXTERNAL_WRITES_ENABLED=0` configurado no ambiente Preview.
 - Banco, KV e Blob apontam para recursos de staging.
-- Credenciais Evolution, Meta CAPI e Typebot não estão presentes em Preview.
+- Credenciais Evolution não estão presentes em Preview.
 - `STAGING_EXTERNAL_PROVIDERS_DISABLED=1` configurado no executor staging.
 - `STAGING_EGRESS_BLOCKED=1` configurado no executor staging.
 - `STAGING_FIXTURE_RESET=1` configurado antes da suíte mutável.
@@ -98,7 +96,7 @@ STAGING_FIXTURE_RESET=1 \
 npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js
 ```
 
-O canário Production é somente leitura e não envia WhatsApp nem cria leads Typebot.
+O canário Production é somente leitura, não envia WhatsApp e não captura leads.
 A cobertura de fluxos mutáveis pertence exclusivamente à suíte de staging.
 
 Execute o canário depois de configurar os identificadores PostgreSQL existentes:
