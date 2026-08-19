@@ -51,10 +51,18 @@ Valores reais permanecem no ambiente operacional fora deste checkout.
 - `EXTERNAL_WRITES_ENABLED=0` configurado no ambiente Preview.
 - Banco, KV e Blob apontam para recursos de staging.
 - Credenciais Evolution não estão presentes em Preview.
-- `STAGING_EXTERNAL_PROVIDERS_DISABLED=1` configurado no executor staging.
 - `STAGING_EGRESS_BLOCKED=1` configurado no executor staging.
 - `STAGING_FIXTURE_RESET=1` configurado antes da suíte mutável.
 - Suítes locais e staging executadas somente com fixtures descartáveis.
+
+### Lifecycle das flags staging restantes
+
+| Flag                     | Owner          | Propósito                                                      | Condição de remoção                                                                     |
+| ------------------------ | -------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `STAGING_EGRESS_BLOCKED` | operação/infra | atestar bloqueio de egress durante E2E mutável                 | substituir por prova automática equivalente no executor                                 |
+| `STAGING_FIXTURE_RESET`  | QA/operação    | autorizar limpeza das fixtures staging declaradas descartáveis | suíte deixar de mutar staging ou isolamento automático tornar a atestação desnecessária |
+
+Essas flags não duplicam `APP_ENV` nem `EXTERNAL_WRITES_ENABLED`; elas atestam controles operacionais independentes.
 
 ## Transição VPS -> Preview
 
@@ -82,7 +90,8 @@ npm run build
 Execute as suítes de staging somente com PostgreSQL, egress bloqueado e fixtures descartáveis:
 
 ```bash
-STAGING_E2E=1 \
+APP_ENV=preview \
+EXTERNAL_WRITES_ENABLED=0 \
 BASE_URL="$STAGING_BASE_URL" \
 STAGING_BASE_URL="$STAGING_BASE_URL" \
 E2E_USERNAME="$E2E_USERNAME" \
@@ -90,7 +99,6 @@ E2E_PASSWORD="$E2E_PASSWORD" \
 STAGING_E2E_USERNAME="$E2E_USERNAME" \
 KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
 KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
-STAGING_EXTERNAL_PROVIDERS_DISABLED=1 \
 STAGING_EGRESS_BLOCKED=1 \
 STAGING_FIXTURE_RESET=1 \
 npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js
