@@ -6,7 +6,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 //
 // Storage: Vercel KV. Keys: aspen:communication:flows, aspen:communication:flows:selected
 
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
   KV_KEY_FLOWS,
@@ -14,6 +14,8 @@ import {
   createFlow,
   STEP_TYPES,
 } from './media-schema.js';
+
+const kv = getKvClient();
 
 type FlowRecord = Record<string, unknown>;
 

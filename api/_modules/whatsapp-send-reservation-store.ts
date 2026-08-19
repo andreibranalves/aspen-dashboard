@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
+
+const kv = getKvClient();
 
 export const WHATSAPP_SEND_RESERVATION_SCHEMA = 3 as const;
 export const WHATSAPP_SEND_RESERVATION_PREFIX = 'aspen:whatsapp-send-reservation:';

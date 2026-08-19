@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from './quotation-status.js';
 import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../_infrastructure/db/repositories/quotation-template-repository.js';
@@ -10,6 +10,9 @@ import {
 } from './quotation-template-catalog.js';
 import { renderQuotationPdfHtml } from './quotation-pdf-renderer.js';
 import { isValidPdfBuffer, quotationPdfChecksum } from './quotation-document-storage.js';
+
+const kv = getKvClient();
+
 const TOKEN_PREFIX = 'aspen:public-quotation:';
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_TTL_SECONDS = 30 * 24 * 60 * 60;

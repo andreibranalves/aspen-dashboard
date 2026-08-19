@@ -13,7 +13,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 import type { HttpError } from '../_shared/http-error.js';
 import { getEvolutionClient } from '../_infrastructure/integrations/evolution/client.js';
 import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
@@ -56,6 +56,8 @@ import {
   type WhatsappSendReservationStore,
   WhatsappSendReservationStorageError,
 } from './whatsapp-send-reservation-store.js';
+
+const kv = getKvClient();
 
 const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
   CNG: 'canga',

@@ -7,7 +7,7 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 //
 // Used by flow editor preview and pre-send confirmation dialog.
 
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
 import { KV_KEY_FLOWS } from './media-schema.js';
@@ -21,6 +21,8 @@ import {
   type BlobHead,
   type PostgresMediaRecord,
 } from './postgres-media.js';
+
+const kv = getKvClient();
 
 type CommunicationFlowContext = Record<string, unknown> & {
   Saudacao?: string;

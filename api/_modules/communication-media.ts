@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 // Storage: Vercel KV per-id keys: aspen:communication:media-assets:{id}
 // Binary files: Vercel Blob (public store, URLs stored in KV metadata)
 
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { getBlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
@@ -36,6 +36,8 @@ import {
   ALLOWED_MIME_TYPES,
   createMediaAsset,
 } from './media-schema.js';
+
+const kv = getKvClient();
 
 // ---------------------------------------------------------------------------
 // Path extraction

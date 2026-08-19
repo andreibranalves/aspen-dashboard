@@ -1,9 +1,11 @@
 import type { HeadBlobResult } from '@vercel/blob';
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { getBlobClient, type BlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { getBlobConfig } from '../_infrastructure/integrations/blob/config.js';
 import { KV_KEY_MEDIA_PREFIX, ALLOWED_MIME_TYPES } from './media-schema.js';
 import { createHttpError } from '../_shared/http-error.js';
+
+const kv = getKvClient();
 
 const PUBLIC_BLOB_HOST = /^(?:[a-z0-9-]+\.)?public\.blob\.vercel-storage\.com$/i;
 export const MEDIA_INTERNAL_VERSION_FIELD = '_recordVersion';

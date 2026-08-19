@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
+import { isKvConfigured } from '../_infrastructure/integrations/kv/config.js';
 import type { VercelRequestLike } from '../_http/types.js';
 import { getRouteName } from './auth.js';
+
+const kv = getKvClient();
 
 const WINDOW_MS = 60_000;
 const WINDOW_SECONDS = 60;
@@ -79,7 +82,7 @@ function publicRateLimitKey(req: VercelRequestLike): string {
 export async function checkRateLimitAsync(req: VercelRequestLike): Promise<boolean> {
   const routeName = getRouteName(req);
   if (routeName !== 'public-quotation') return localRateLimit(req);
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return false;
+  if (!isKvConfigured()) return false;
   const max = ROUTE_LIMITS[routeName];
   try {
     const key = `aspen:rate-limit:${routeName}:${publicRateLimitKey(req)}`;

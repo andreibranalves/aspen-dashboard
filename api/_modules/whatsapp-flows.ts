@@ -6,8 +6,10 @@ import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 // Uses @vercel/kv which connects via KV_REST_API_URL / KV_REST_API_TOKEN env vars.
 // Works on both Vercel (auto-injected) and VPS (when env vars are set in .env).
 
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { createHttpError } from '../_shared/http-error.js';
+
+const kv = getKvClient();
 
 // ── Default flows (same as frontend DEFAULT_WA_FLOWS) ───────────────────────
 

@@ -7,8 +7,10 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 // Storage: Vercel KV keys aspen:communication:send-events:{id}
 // TTL: 7 days (set by send-whatsapp-flow.js on write)
 
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { KV_KEY_SEND_EVENTS_PREFIX } from './media-schema.js';
+
+const kv = getKvClient();
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

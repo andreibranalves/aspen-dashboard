@@ -1,6 +1,9 @@
-import { kv } from '@vercel/kv';
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
+import { isKvConfigured } from '../_infrastructure/integrations/kv/config.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
+
+const kv = getKvClient();
 
 export type WhatsappConversationStatus =
   | 'new'
@@ -156,7 +159,7 @@ function storeFailure(message: string, error: unknown): never {
 }
 
 function kvConfigured(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+  return isKvConfigured();
 }
 
 interface KvState<T> {
