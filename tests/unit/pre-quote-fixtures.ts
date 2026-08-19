@@ -15,4 +15,3 @@ export function makeQuoteLead(overrides: Partial<QuoteLead> = {}): QuoteLead {
     ...overrides,
   } as QuoteLead;
 }
-

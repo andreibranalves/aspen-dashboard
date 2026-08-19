@@ -5,7 +5,7 @@ function combineParts(parts) {
   return parts.slice(0, 2).join('');
 }
 
-const FORBIDDEN_METADATA = [
+export const FORBIDDEN_METADATA = [
   combineParts(['fra', 'ppe']),
   combineParts(['erp', 'next']),
   combineParts(['CRM', '_CORE_']),

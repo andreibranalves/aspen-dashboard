@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readCanaryConfig, runCanary } from '../../scripts/postgres-only-canary.mjs';
+import {
+  FORBIDDEN_METADATA,
+  readCanaryConfig,
+  runCanary,
+} from '../../scripts/postgres-only-canary.mjs';
 
 test('requires a same-origin read-only Production canary configuration', () => {
   assert.throws(() => readCanaryConfig({}), /CANARY_BASE_URL/);
@@ -93,15 +97,15 @@ test('allows historical provider words in non-metadata values', async () => {
       'GET /api/quotations?id=ORC-1': globalThis.Response.json({
         id: 'ORC-1',
         revision_id: 'revision-1',
-        template_key: ['fra', 'ppe'].slice(0, 2).join(''),
-        revision_history: [{ template_key: ['fra', 'ppe'].slice(0, 2).join('') }],
+        template_key: FORBIDDEN_METADATA[0],
+        revision_history: [{ template_key: FORBIDDEN_METADATA[0] }],
       }),
     }),
   });
 });
 
 test('fails on nested and camel-case provider metadata', async () => {
-  const marker = ['fra', 'ppe'].slice(0, 2).join('');
+  const marker = FORBIDDEN_METADATA[0];
   for (const payload of [
     { provider: { name: marker } },
     { providerName: marker },
@@ -120,13 +124,7 @@ test('fails on nested and camel-case provider metadata', async () => {
 });
 
 test('fails on every forbidden provider marker', async () => {
-  const markers = [
-    ['fra', 'ppe'],
-    ['erp', 'next'],
-    ['CRM', '_CORE_'],
-    ['CRM', '_OPERATIONAL_MODE'],
-    ['CRM', '_QUOTES_ROLLOUT_STATE'],
-  ].map((parts) => parts.slice(0, 2).join(''));
+  const markers = FORBIDDEN_METADATA;
   for (const marker of markers) {
     await assert.rejects(
       runCanary({
@@ -143,7 +141,7 @@ test('fails on every forbidden provider marker', async () => {
 test('fails on provider metadata, wrong revision, invalid PDF and non-2xx responses', async () => {
   const cases = [
     [
-      { 'GET /api/products?limit=1': globalThis.Response.json({ provider: ['fra', 'ppe'].slice(0, 2).join('') }) },
+      { 'GET /api/products?limit=1': globalThis.Response.json({ provider: FORBIDDEN_METADATA[0] }) },
       /forbidden provider metadata/,
     ],
     [
