@@ -289,7 +289,7 @@ test(
       const repository = createPostgresQuotationDeliveryRepository(() => db, {
         now: () => now,
         renderPdf: async (html) => {
-          assert.match(html, /Cliente entrega/);
+          assert.match(html, /Cliente Entrega/);
           assert.match(html, /Produto snapshot/);
           assert.match(html, /FROZEN-PAGAMENTO/);
           assert.match(html, /FROZEN-CONDICOES/);

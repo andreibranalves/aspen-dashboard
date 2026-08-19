@@ -216,7 +216,7 @@ test(
         id: quotationId,
         clientId,
         businessNumber,
-        status: 'enviado',
+        status: 'emitido',
         createdAt: NOW,
         updatedAt: NOW,
       });
@@ -318,7 +318,7 @@ test(
         id: quotationId,
         businessNumber,
         clientId,
-        status: 'enviado',
+        status: 'emitido',
         createdAt: old,
         updatedAt: old,
       });
@@ -326,7 +326,7 @@ test(
         id: revisionId,
         quotationId,
         version: 1,
-        status: 'enviado',
+        status: 'emitido',
         validadeDias: 15,
         clienteNome: 'Ana PostgreSQL',
         subtotal: '100.00',
@@ -348,7 +348,7 @@ test(
         id: boundaryQuotationId,
         businessNumber: boundaryBusinessNumber,
         clientId,
-        status: 'enviado',
+        status: 'emitido',
         createdAt: underThirtyElapsedDays,
         updatedAt: underThirtyElapsedDays,
       });

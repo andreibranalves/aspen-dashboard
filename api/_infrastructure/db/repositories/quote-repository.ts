@@ -740,7 +740,6 @@ interface SelectedTemplate {
 export interface TemplateSelectionLookup {
   byVersion(id: string): Promise<SelectedTemplate | null>;
   current(selection: string | { id: string }): Promise<SelectedTemplate | null>;
-  hasModel(): Promise<boolean>;
   seedLegacy(template: { key: string; name: string; source: string; hash: string }): Promise<SelectedTemplate | null>;
 }
 
@@ -773,9 +772,6 @@ export async function readSelectedTemplate(
       };
     },
     current: (selection: string | { id: string }) => readCurrentQuotationTemplateVersion(tx, selection),
-    hasModel: async () => Boolean(
-      (await tx.select({ id: quotationTemplates.id }).from(quotationTemplates).limit(1))[0]
-    ),
     seedLegacy: async (legacy: { key: string; name: string; source: string; hash: string }) => {
       const modelId = randomUUID();
       const versionId = randomUUID();
@@ -807,11 +803,10 @@ export async function readSelectedTemplate(
 
   const selected = await lookup.current(key || settings.template_padrao);
   if (selected && !selected.model.archived) return selected;
-  // Static templates remain a compatibility fallback only while the library
-  // is empty during the migration window. Seed the selected static template so
-  // the revision FK and historical resolver still have persisted identity.
+  // Seed a missing static template so the revision FK and historical resolver
+  // have persisted identity, even when another static template already exists.
   const legacy = getQuotationTemplate(key || settings.template_padrao);
-  if (await lookup.hasModel() || !legacy) return null;
+  if (!legacy) return null;
   return lookup.seedLegacy(legacy);
 }
 

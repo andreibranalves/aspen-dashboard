@@ -17,6 +17,7 @@ import {
   clients,
   crmDeals,
   products,
+  productActivityEvents,
   quoteRevisionItems,
   quoteRevisions,
   quoteSequences,
@@ -27,7 +28,7 @@ import {
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { createHandler } from '../../api/_modules/duplicate-quotation.js';
 
-const TEST_DATABASE_URL = process.env.TEST_DUPLICATE_DATABASE_URL;
+const TEST_DATABASE_URL = process.env.TEST_DUPLICATE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -310,6 +311,7 @@ test(
         await db.delete(quotations).where(inArray(quotations.id, quotationIds));
       }
       await db.delete(clients).where(eq(clients.id, fixtureClientId));
+      await db.delete(productActivityEvents).where(eq(productActivityEvents.productSku, fixtureSku));
       await db.delete(products).where(eq(products.sku, fixtureSku));
       if (seededTemplateVersionId) {
         await db

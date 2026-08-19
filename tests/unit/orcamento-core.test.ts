@@ -139,7 +139,6 @@ function selectionLookup(overrides: Partial<TemplateSelectionLookup> = {}) {
   return {
     byVersion: async (id: string) => versions.get(id) || null,
     current: async (selection: string | { id: string }) => typeof selection === 'string' ? templates.get(selection) || null : [...templates.values()].find((value) => value.model.id === selection.id) || null,
-    hasModel: async () => true,
     seedLegacy: async () => null,
     ...overrides,
   } satisfies TemplateSelectionLookup;
@@ -154,11 +153,10 @@ test('repository template selection rejects inconsistent, archived and missing c
   assert.equal((await readSelectedTemplate({} as never, settings, {}, lookup))?.model.key, 'padrao');
 });
 
-test('repository template selection seeds a valid static template fallback', async () => {
+test('repository template selection seeds a missing static template', async () => {
   let seeded: string | undefined;
   const lookup = selectionLookup({
     current: async () => null,
-    hasModel: async () => false,
     seedLegacy: async (legacy) => {
       seeded = legacy.key;
       return { model: { id: 'seed-model', key: legacy.key, name: legacy.name, archived: false }, version: { id: 'seed-version', version: 1, source: legacy.source, sourceHash: legacy.hash } };

@@ -89,7 +89,7 @@ Nenhum arquivo de teste foi alterado na Task 5.
 
 ## Operações não executadas
 
-- migrations;
+- migrations contra bancos reais ou externos;
 - preflight contra banco real;
 - E2E staging;
 - deploy;
@@ -98,9 +98,32 @@ Nenhum arquivo de teste foi alterado na Task 5.
 - mensagens reais de provider;
 - mutações externas.
 
+Os testes PostgreSQL aplicaram as migrations versionadas somente dentro do container local descartável para criar o schema de teste.
+
+## Verificação suplementar do banco de testes
+
+Após a aceitação inicial, foi provisionado um PostgreSQL local descartável em container Docker, exposto somente em loopback, com dados em `tmpfs` e sem volume persistente.
+
+A conexão foi fornecida somente por `TEST_DATABASE_URL` e nunca foi gravada no repositório, no relatório ou no chat.
+
+O teste de duplicação foi executado usando somente `TEST_DATABASE_URL`, sem depender de `TEST_DUPLICATE_DATABASE_URL`.
+
+`npm run verify:fast` passou com 741 testes, 741 pass, 0 skipped, 0 falhas e 48 suites.
+
+`npm run verify:full` passou com os mesmos 741 testes, build web verde e 89 E2E pass.
+
+O runner unitário passou a usar `--test-concurrency=1`, evitando interferência entre fixtures PostgreSQL que compartilham a base de teste.
+
+O follow-up corrigiu fixtures que ainda persistiam o status legado `enviado` após a migration canônica para `emitido`, o fallback de templates estáticos quando outro template já existe, a limpeza de atividades de produto no teste de duplicação, a capitalização esperada no teste de PDF e um seletor E2E ambíguo.
+
+O container e os logs temporários foram removidos ao final da verificação.
+
+`lsp_diagnostics` de follow-up cobriu os 8 arquivos de código/teste alterados e retornou zero diagnostics.
+
+`lens_diagnostics` de follow-up cobriu esses 8 arquivos, `package.json` e este relatório, retornando zero achados bloqueantes e mantendo apenas warnings não bloqueantes já existentes.
+
 ## Riscos residuais
 
-- 28 testes de `verify:fast` e `verify:full` permanecem skipped porque `TEST_DATABASE_URL` não está configurada neste workspace.
 - O retorno sem linhas do Vercel MCP não disponibiliza histórico de logs e não substitui observabilidade independente.
 - A ausência de consumidores externos e o desligamento do webhook dependem da confirmação operacional redigida do responsável.
 - Quatro asserções de teste mantêm nomes aposentados por finalidade de regressão e fazem a busca literal da brief retornar código 1.

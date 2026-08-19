@@ -622,7 +622,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     await expect(page.getByText('Sem atividade recente para este produto.', { exact: true })).toHaveCount(0);
     releaseRetryActivity();
     await expect(page.getByText('Preço atualizado', { exact: true })).toBeVisible();
-    await expect(page.getByText(/01\/01\/2026/)).toBeVisible();
+    await expect(page.getByText(/01\/01\/2026/).first()).toBeVisible();
     await expect(page.getByText('2026-01-01T15:04:05.000Z', { exact: true })).toHaveCount(0);
     await expect.poll(() => activityRequests).toBe(2);
   });
