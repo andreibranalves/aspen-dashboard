@@ -1,6 +1,8 @@
 import { del as blobDelete, head as blobHead } from '@vercel/blob';
 import { handleUpload as blobHandleUpload } from '@vercel/blob/client';
 
+export type { HeadBlobResult } from '@vercel/blob';
+
 export interface BlobClient {
   head: typeof blobHead;
   del: typeof blobDelete;

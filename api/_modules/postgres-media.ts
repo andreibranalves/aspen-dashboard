@@ -1,4 +1,4 @@
-import type { HeadBlobResult } from '@vercel/blob';
+import type { HeadBlobResult } from '../_infrastructure/integrations/blob/client.js';
 import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { getBlobClient, type BlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { getBlobConfig } from '../_infrastructure/integrations/blob/config.js';
