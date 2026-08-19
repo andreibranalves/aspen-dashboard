@@ -1,5 +1,7 @@
 // POST /api/edit-draft — interpret a natural-language edit prompt against
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { getOpenRouterClient } from '../_infrastructure/integrations/openrouter/client.js';
+import { getOpenRouterConfig } from '../_infrastructure/integrations/openrouter/config.js';
 // a current draft and return proposed changes.
 
 const EDIT_SYSTEM_PROMPT = `Você é um assistente de edição de cotação da Aspen Estamparia.
@@ -89,10 +91,9 @@ function validateDraft(draft: Record<string, unknown>): void {
 }
 
 async function editDraftWithOpenRouter(prompt: string, currentDraft: unknown): Promise<Record<string, unknown>> {
-  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
-  const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
+  const config = getOpenRouterConfig();
 
-  if (!OPENROUTER_API_KEY) {
+  if (!config.apiKey) {
     throw createHttpError(500, 'Serviço de edição indisponível.', 'OPENROUTER_API_KEY não configurada');
   }
 
@@ -100,21 +101,12 @@ async function editDraftWithOpenRouter(prompt: string, currentDraft: unknown): P
     throw createHttpError(400, 'Informe um comando de edição.');
   }
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-    'Content-Type': 'application/json',
-    'X-OpenRouter-Title': 'Aspen Orcamento App',
-  };
-
-  const referer = process.env.OPENROUTER_SITE_URL?.trim() || process.env.URL?.trim() || process.env.DEPLOY_PRIME_URL?.trim();
-  if (referer) headers['HTTP-Referer'] = referer;
-
   const userContent = [
     { type: 'text', text: `Rascunho atual:\n${JSON.stringify(currentDraft, null, 2)}\n\nComando do operador:\n${prompt}` },
   ];
 
   const body = {
-    model: OPENROUTER_MODEL,
+    model: config.model,
     messages: [
       { role: 'system', content: EDIT_SYSTEM_PROMPT },
       { role: 'user', content: userContent },
@@ -122,10 +114,8 @@ async function editDraftWithOpenRouter(prompt: string, currentDraft: unknown): P
     temperature: 0.1,
   };
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+  const res = await getOpenRouterClient().request(body, {
+    title: 'Aspen Orcamento App',
   });
 
   const responseText = await res.text();

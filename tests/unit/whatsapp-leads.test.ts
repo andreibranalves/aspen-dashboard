@@ -402,14 +402,20 @@ describe('OpenRouter response limits', () => {
 
   it('does not cancel a successful streamed JSON response', async () => {
     const previousKey = process.env.OPENROUTER_API_KEY;
+    const previousSiteUrl = process.env.OPENROUTER_SITE_URL;
     process.env.OPENROUTER_API_KEY = 'test-key';
+    process.env.OPENROUTER_SITE_URL = 'https://app.example';
     let cancelled = 0;
     let aborted = false;
+    let requestUrl = '';
+    let requestInit: RequestInit | undefined;
     const chunks = [new TextEncoder().encode('{"ok":'), new TextEncoder().encode('true}')];
     try {
       const result = await requestOpenRouter({}, {
         timeoutMs: 100,
-        fetchImpl: async (_url, init) => {
+        fetchImpl: async (url, init) => {
+          requestUrl = String(url);
+          requestInit = init;
           init?.signal?.addEventListener('abort', () => { aborted = true; });
           return {
             ok: true,
@@ -427,9 +433,17 @@ describe('OpenRouter response limits', () => {
     } finally {
       if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
       else process.env.OPENROUTER_API_KEY = previousKey;
+      if (previousSiteUrl === undefined) delete process.env.OPENROUTER_SITE_URL;
+      else process.env.OPENROUTER_SITE_URL = previousSiteUrl;
     }
     assert.equal(cancelled, 0);
     assert.equal(aborted, false);
+    assert.equal(requestUrl, 'https://openrouter.ai/api/v1/chat/completions');
+    assert.equal(
+      new Headers(requestInit?.headers).get('X-OpenRouter-Title'),
+      'Aspen Orcamento WhatsApp Leads',
+    );
+    assert.equal(new Headers(requestInit?.headers).get('HTTP-Referer'), 'https://app.example');
   });
 
   it('cancels malformed JSON bodies', async () => {

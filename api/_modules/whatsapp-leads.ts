@@ -1,6 +1,8 @@
 // GET /api/whatsapp-leads - recent verified WhatsApp conversation snapshots.
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
+import { getOpenRouterClient } from '../_infrastructure/integrations/openrouter/client.js';
+import { getOpenRouterConfig } from '../_infrastructure/integrations/openrouter/config.js';
 import {
   getWhatsappMessages,
   listWhatsappConversations,
@@ -40,8 +42,6 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const ORC_BUSINESS_NUMBER_PATTERN = /^ORC-[0-9]{8}$/;
 const EMAIL_PATTERN = /[A-Z0-9!#$%&'*+/?^_`{|}~-]+(?:\.[A-Z0-9!#$%&'*+/?^_`{|}~-]+)*@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)*\.[A-Z]{2,63}/gi;
 const SNAPSHOT_PHONE_FORMAT = /^(?:\+?[0-9]|\([0-9]{2}\))[0-9 .()-]*$/;
-
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
 
 const jsonResponse: JsonResponseFn = (statusCode, body) => ({
   statusCode,
@@ -339,10 +339,10 @@ export async function requestOpenRouter(
   payload: Record<string, unknown>,
   options: OpenRouterRequestOptions = {},
 ): Promise<unknown> {
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim() || '';
+  const apiKey = getOpenRouterConfig().apiKey;
   if (!apiKey) return null;
   const controller = new AbortController();
-  const fetchImpl = options.fetchImpl || fetch;
+  const client = getOpenRouterClient({ fetchImpl: options.fetchImpl });
   const configuredTimeout = Number(options.timeoutMs ?? OPENROUTER_TIMEOUT_MS);
   const timeoutMs = Number.isFinite(configuredTimeout) ? Math.max(1, configuredTimeout) : OPENROUTER_TIMEOUT_MS;
   let timedOut = false;
@@ -357,14 +357,8 @@ export async function requestOpenRouter(
     rejectTimeout?.(new Error('OpenRouter timeout'));
   }, timeoutMs);
   try {
-    const fetchPromise = Promise.resolve().then(() => fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'X-OpenRouter-Title': 'Aspen Orcamento WhatsApp Leads',
-      },
-      body: JSON.stringify(payload),
+    const fetchPromise = Promise.resolve().then(() => client.request(payload, {
+      title: 'Aspen Orcamento WhatsApp Leads',
       signal: controller.signal,
     }));
     void fetchPromise.then(
@@ -398,7 +392,7 @@ async function extractLeadWithOpenRouter(
   if (!conversationText.trim()) return fallback;
   try {
     const data = await requestOpenRouter({
-      model: OPENROUTER_MODEL,
+      model: getOpenRouterConfig().model,
       messages: [{
         role: 'user',
         content: [

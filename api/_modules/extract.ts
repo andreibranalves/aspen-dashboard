@@ -1,4 +1,6 @@
 import type { FunctionResult, LegacyHandler } from '../_http/types.js';
+import { getOpenRouterClient } from '../_infrastructure/integrations/openrouter/client.js';
+import { getOpenRouterConfig } from '../_infrastructure/integrations/openrouter/config.js';
 import {
   createOrderTemplateRepository,
   type OrderTemplateRecord,
@@ -343,10 +345,9 @@ async function extractWithOpenRouter(
   existingItems?: Array<{ item_code: string; qty: number }> | null,
   orderTemplate?: ExtractionOrderTemplate | null
 ): Promise<Order[]> {
-  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim() || '';
-  const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL?.trim() || 'google/gemini-2.5-flash';
+  const config = getOpenRouterConfig();
 
-  if (!OPENROUTER_API_KEY) {
+  if (!config.apiKey) {
     throw createHttpError(
       500,
       'Serviço de extração indisponível.',
@@ -356,22 +357,8 @@ async function extractWithOpenRouter(
 
   validateInput(text, imageBase64, imageMimeType);
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-    'Content-Type': 'application/json',
-    'X-OpenRouter-Title': 'Aspen Orcamento App',
-  };
-
-  const referer =
-    process.env.OPENROUTER_SITE_URL?.trim() ||
-    process.env.URL?.trim() ||
-    process.env.DEPLOY_PRIME_URL?.trim();
-  if (referer) {
-    headers['HTTP-Referer'] = referer;
-  }
-
   const body = {
-    model: OPENROUTER_MODEL,
+    model: config.model,
     messages: [
       {
         role: 'system',
@@ -382,10 +369,8 @@ async function extractWithOpenRouter(
     temperature: 0.1,
   };
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+  const res = await getOpenRouterClient().request(body, {
+    title: 'Aspen Orcamento App',
   });
 
   const responseText = await res.text();
