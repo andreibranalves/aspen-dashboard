@@ -1,3 +1,5 @@
+import { getEvolutionClient } from '../_infrastructure/integrations/evolution/client.js';
+import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { resolveWhatsappIdentity } from './whatsapp-identity-resolver.js';
 import {
@@ -9,9 +11,6 @@ import {
   type WhatsappConversationStoreDeps,
 } from './whatsapp-conversations-store.js';
 
-const EVOLUTION_BASE_URL = (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, '');
-const EVOLUTION_API_KEY = (process.env.EVOLUTION_API_KEY || '').trim();
-const EVOLUTION_INSTANCE = (process.env.EVOLUTION_INSTANCE || '').trim();
 const EVOLUTION_TIMEOUT_MS = 15_000;
 const MAX_PROVIDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 const MAX_PROVIDER_CHATS = 1_000;
@@ -231,16 +230,22 @@ export async function evolutionRequest(
   body?: Record<string, unknown>,
   options: EvolutionRequestOptions = {},
 ): Promise<unknown> {
-  const baseUrl = options.baseUrl ?? EVOLUTION_BASE_URL;
-  const apiKey = options.apiKey ?? EVOLUTION_API_KEY;
-  const instance = options.instance ?? EVOLUTION_INSTANCE;
-  if (!baseUrl || !apiKey || !instance) {
+  const configured = getEvolutionConfig();
+  const mergedConfig = {
+    baseUrl: options.baseUrl ?? configured.baseUrl,
+    apiKey: options.apiKey ?? configured.apiKey,
+    instance: options.instance ?? configured.instance,
+  };
+  if (!mergedConfig.baseUrl || !mergedConfig.apiKey || !mergedConfig.instance) {
     throw createHttpError(503, 'Integração WhatsApp não configurada.');
   }
 
   const controller = new AbortController();
   const timeoutMs = Math.max(1, Number(options.timeoutMs ?? EVOLUTION_TIMEOUT_MS));
-  const fetchImpl = options.fetchImpl || fetch;
+  const client = getEvolutionClient({
+    getConfig: () => mergedConfig,
+    fetchImpl: options.fetchImpl,
+  });
   let timedOut = false;
   let rejectTimeout: ((reason?: unknown) => void) | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -253,10 +258,8 @@ export async function evolutionRequest(
   }, timeoutMs);
   try {
     const response = await Promise.race([
-      fetchImpl(`${baseUrl}${path}`, {
-        method: body ? 'POST' : 'GET',
-        headers: { 'Content-Type': 'application/json', apikey: apiKey },
-        body: body ? JSON.stringify(body) : undefined,
+      client.request(path, body, {
+        externalWrite: false,
         signal: controller.signal,
       }),
       timeout,
@@ -291,7 +294,7 @@ export async function evolutionRequest(
 }
 
 async function liveFetchChats(limit: number): Promise<Array<Record<string, unknown>>> {
-  const data = await evolutionRequest(`/chat/findChats/${EVOLUTION_INSTANCE}`, { limit });
+  const data = await evolutionRequest(`/chat/findChats/${getEvolutionConfig().instance}`, { limit });
   return unwrapEvolutionCollection(data);
 }
 
@@ -299,7 +302,7 @@ async function liveFetchMessages(
   remoteJid: string,
   limit: number
 ): Promise<Array<Record<string, unknown>>> {
-  const data = await evolutionRequest(`/chat/findMessages/${EVOLUTION_INSTANCE}`, {
+  const data = await evolutionRequest(`/chat/findMessages/${getEvolutionConfig().instance}`, {
     where: { key: { remoteJid } },
     limit,
   });
