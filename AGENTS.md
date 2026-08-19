@@ -13,10 +13,10 @@
 - `src/app/App.tsx` faz o dispatch das rotas por hash via `useHashRoute`.
 - Páginas ficam em `src/features/<dominio>/pages/`.
 - Primitivos de UI ficam em `src/components/ui/`; componentes compartilhados ficam em `src/components/shared/`.
-- `api/_app/routes.ts` é o único mapa de endpoints, compartilhado pelo catch-all da Vercel e pelo servidor local.
-- Handlers e regras de negócio ficam em `api/modules/`.
-- Repositórios PostgreSQL ficam em `api/infrastructure/db/repositories/` e controlam estado durável e transações.
-- Integrações externas ficam em `api/infrastructure/integrations/`.
+- `api/[...path].ts` é a única Function implantável; helpers ficam sob diretórios privados iniciados por `_`.
+- Handlers e regras de negócio ficam em `api/_modules/`.
+- Repositórios PostgreSQL ficam em `api/_infrastructure/db/repositories/` e controlam estado durável e transações.
+- Integrações externas ficam em `api/_infrastructure/integrations/`.
 
 ## Convenções
 
