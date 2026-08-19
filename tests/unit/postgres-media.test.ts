@@ -298,8 +298,10 @@ test('owned record HEAD is authenticated, store-scoped, and exact', async () => 
 test('Blob config is used unless explicit verification options override it', async () => {
   const previousToken = process.env.BLOB_READ_WRITE_TOKEN;
   const previousStoreId = process.env.BLOB_STORE_ID;
+  const previousOidcToken = process.env.VERCEL_OIDC_TOKEN;
   process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_store_token';
   process.env.BLOB_STORE_ID = 'store';
+  process.env.VERCEL_OIDC_TOKEN = 'vercel-oidc-token';
   try {
     let configuredOptions: Record<string, unknown> | undefined;
     await verifyOwnedBlobRecord(
@@ -314,6 +316,7 @@ test('Blob config is used unless explicit verification options override it', asy
     );
     assert.equal(configuredOptions?.token, 'vercel_blob_rw_store_token');
     assert.equal(configuredOptions?.storeId, 'store');
+    assert.equal(configuredOptions?.oidcToken, 'vercel-oidc-token');
 
     const explicitUrl = 'https://explicit.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
     const explicitOptions = {
@@ -340,6 +343,8 @@ test('Blob config is used unless explicit verification options override it', asy
     else process.env.BLOB_READ_WRITE_TOKEN = previousToken;
     if (previousStoreId === undefined) delete process.env.BLOB_STORE_ID;
     else process.env.BLOB_STORE_ID = previousStoreId;
+    if (previousOidcToken === undefined) delete process.env.VERCEL_OIDC_TOKEN;
+    else process.env.VERCEL_OIDC_TOKEN = previousOidcToken;
   }
 });
 

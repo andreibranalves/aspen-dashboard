@@ -7,7 +7,7 @@ const RUNTIME_ROOTS = [resolve(PROJECT_ROOT, 'api/_modules'), resolve(PROJECT_RO
 
 const FORBIDDEN_IMPORTS = /^@vercel\/(?:blob(?:\/client)?|kv)$/;
 const PROVIDER_ENV_NAME =
-  /^(?:EVOLUTION_[A-Z0-9_]+|OPENROUTER_[A-Z0-9_]+|(?:QUOTATION_)?BLOB_[A-Z0-9_]+|KV_REST_API_(?:URL|TOKEN))$/;
+  /^(?:EVOLUTION_[A-Z0-9_]+|OPENROUTER_[A-Z0-9_]+|(?:QUOTATION_)?BLOB_[A-Z0-9_]+|KV_REST_API_(?:URL|TOKEN)|VERCEL_OIDC_TOKEN)$/;
 const PROCESS_ENV_ACCESS =
   /\bprocess\s*\.\s*env\s*(?:\.\s*([A-Z][A-Z0-9_]*)|\[\s*['"]([A-Z][A-Z0-9_]*)['"]\s*\])/g;
 const FORBIDDEN_ENDPOINTS = [

@@ -5,6 +5,7 @@ export type { OpenRouterConfig } from './config.js';
 export interface OpenRouterRequestOptions {
   title: string;
   signal?: AbortSignal;
+  includeReferer?: boolean;
 }
 
 export interface OpenRouterClient {
@@ -30,7 +31,9 @@ export function getOpenRouterClient(options: OpenRouterClientOptions = {}): Open
         'Content-Type': 'application/json',
         'X-OpenRouter-Title': requestOptions.title,
       };
-      if (config.siteUrl) headers['HTTP-Referer'] = config.siteUrl;
+      if (requestOptions.includeReferer !== false && config.siteUrl) {
+        headers['HTTP-Referer'] = config.siteUrl;
+      }
 
       return fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',

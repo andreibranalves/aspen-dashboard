@@ -420,7 +420,7 @@ function blobHeadOptions(
   const config = getBlobConfig();
   const token = String(options.token ?? config.token ?? '').trim();
   const storeId = String(options.storeId ?? config.storeId ?? '').trim();
-  const oidcToken = String(process.env.VERCEL_OIDC_TOKEN || '').trim();
+  const oidcToken = String(config.oidcToken ?? '').trim();
   return {
     abortSignal: signal,
     ...(token ? { token } : {}),

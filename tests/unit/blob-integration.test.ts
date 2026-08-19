@@ -7,8 +7,13 @@ test('normalizes active Blob credentials on every call', () => {
   const env: NodeJS.ProcessEnv = {
     BLOB_READ_WRITE_TOKEN: ' default-token ',
     BLOB_STORE_ID: ' default-store ',
+    VERCEL_OIDC_TOKEN: ' oidc-token ',
   };
-  assert.deepEqual(getBlobConfig(env), { token: 'default-token', storeId: 'default-store' });
+  assert.deepEqual(getBlobConfig(env), {
+    token: 'default-token',
+    storeId: 'default-store',
+    oidcToken: 'oidc-token',
+  });
   env.BLOB_STORE_ID = ' second-store ';
   assert.equal(getBlobConfig(env).storeId, 'second-store');
 });

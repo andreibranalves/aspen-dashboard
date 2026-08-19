@@ -57,6 +57,7 @@ test('rejects provider environment reads through properties and literal keys', (
           'process.env.OPENROUTER_MODEL;',
           'process.env.BLOB_READ_WRITE_TOKEN;',
           'process.env.QUOTATION_BLOB_READ_WRITE_TOKEN;',
+          'process.env.VERCEL_OIDC_TOKEN;',
           "process.env['KV_REST_API_URL'];",
           'process.env["KV_REST_API_TOKEN"];',
         ].join('\n') + '\n'
@@ -67,8 +68,9 @@ test('rejects provider environment reads through properties and literal keys', (
       { path: 'api/_modules/env.ts', line: 2, target: 'OPENROUTER_MODEL' },
       { path: 'api/_modules/env.ts', line: 3, target: 'BLOB_READ_WRITE_TOKEN' },
       { path: 'api/_modules/env.ts', line: 4, target: 'QUOTATION_BLOB_READ_WRITE_TOKEN' },
-      { path: 'api/_modules/env.ts', line: 5, target: 'KV_REST_API_URL' },
-      { path: 'api/_modules/env.ts', line: 6, target: 'KV_REST_API_TOKEN' },
+      { path: 'api/_modules/env.ts', line: 5, target: 'VERCEL_OIDC_TOKEN' },
+      { path: 'api/_modules/env.ts', line: 6, target: 'KV_REST_API_URL' },
+      { path: 'api/_modules/env.ts', line: 7, target: 'KV_REST_API_TOKEN' },
     ]
   );
 });

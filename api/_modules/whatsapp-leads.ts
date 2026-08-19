@@ -360,6 +360,7 @@ export async function requestOpenRouter(
     const fetchPromise = Promise.resolve().then(() => client.request(payload, {
       title: 'Aspen Orcamento WhatsApp Leads',
       signal: controller.signal,
+      includeReferer: false,
     }));
     void fetchPromise.then(
       (response) => timedOut ? cancelResponseBody(response) : undefined,
