@@ -7,9 +7,6 @@ const REQUIRED_STAGING_VARS = [
   'STAGING_E2E_USERNAME',
   'KNOWN_POSTGRES_QUOTATION_ID',
   'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
-  'STAGING_EXTERNAL_PROVIDERS_DISABLED',
-  'STAGING_EGRESS_BLOCKED',
-  'STAGING_FIXTURE_RESET',
 ];
 
 function safeStagingOrigin(value) {
@@ -27,15 +24,17 @@ function safeStagingOrigin(value) {
 
 export function getStagingConfig(env = process.env) {
   const missing = REQUIRED_STAGING_VARS.filter((name) => !String(env[name] || '').trim());
-  if (env.STAGING_E2E !== '1') missing.unshift('STAGING_E2E=1');
   if (missing.length) {
     throw new Error(`Staging E2E precondition missing: ${missing.join(', ')}`);
   }
+  if (String(env.APP_ENV || '').trim().toLowerCase() !== 'preview') {
+    throw new Error('APP_ENV=preview is required');
+  }
+  if (String(env.EXTERNAL_WRITES_ENABLED || '').trim() !== '0') {
+    throw new Error('EXTERNAL_WRITES_ENABLED=0 is required');
+  }
   if (String(env.STAGING_E2E_USERNAME).trim() !== String(env.E2E_USERNAME).trim()) {
     throw new Error('Staging E2E username attestation does not match E2E_USERNAME');
-  }
-  if (env.STAGING_EXTERNAL_PROVIDERS_DISABLED !== '1') {
-    throw new Error('STAGING_EXTERNAL_PROVIDERS_DISABLED=1 is required');
   }
   if (env.STAGING_EGRESS_BLOCKED !== '1') {
     throw new Error('STAGING_EGRESS_BLOCKED=1 is required');
@@ -57,7 +56,7 @@ export function assertStagingConfig(env = process.env) {
 }
 
 function effectiveStagingOrigin(env = process.env) {
-  if (env.STAGING_E2E !== '1') return null;
+  if (String(env.APP_ENV || '').trim().toLowerCase() !== 'preview') return null;
   const stagingOrigin = safeStagingOrigin(env.STAGING_BASE_URL);
   const configuredBaseOrigin = safeStagingOrigin(env.BASE_URL || stagingOrigin);
   if (configuredBaseOrigin !== stagingOrigin) {
