@@ -19,7 +19,6 @@ import { handler as productPricingUpdate } from '../_modules/product-pricing-upd
 import { handler as productActivity } from '../_modules/product-activity.js';
 import { handler as productPricing } from '../_modules/product-pricing.js';
 import { handler as products } from '../_modules/products.js';
-import { handler as quoteLeads } from '../_modules/quote-leads.js';
 import { handler as quotations } from '../_modules/quotations.js';
 import { handler as quotationTemplates } from '../_modules/quotation-templates.js';
 import { handler as orderTemplates } from '../_modules/order-templates.js';
@@ -33,7 +32,6 @@ import { handler as sendWhatsapp } from '../_modules/send-whatsapp.js';
 import { handler as sendWhatsappFlow } from '../_modules/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../_modules/whatsapp-send-status.js';
 import { handler as settings } from '../_modules/settings.js';
-import { handler as typebotLeadCapture } from '../_modules/typebot-lead-capture.js';
 import { handler as whatsappConversations } from '../_modules/whatsapp-conversations.js';
 import { handler as whatsappFlows } from '../_modules/whatsapp-flows.js';
 import { handler as whatsappLeads } from '../_modules/whatsapp-leads.js';
@@ -65,7 +63,6 @@ export const routes: Record<string, LegacyHandler> = {
   'product-activity': productActivity,
   'product-pricing': productPricing,
   products,
-  'quote-leads': quoteLeads,
   quotations,
   'quotation-templates': quotationTemplates,
   'order-templates': orderTemplates,
@@ -79,7 +76,6 @@ export const routes: Record<string, LegacyHandler> = {
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   settings,
-  'typebot-lead-capture': typebotLeadCapture,
   'whatsapp-conversations': whatsappConversations,
   'whatsapp-flows': whatsappFlows,
   'whatsapp-leads': whatsappLeads,

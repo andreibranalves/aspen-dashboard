@@ -3,11 +3,28 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { routes } from '../../api/_app/routes.js';
 
-test('routes: 44 nomes únicos e bem formados', () => {
+test('routes: 42 nomes únicos e bem formados', () => {
   const names = Object.keys(routes);
-  assert.equal(names.length, 44);
+  assert.equal(names.length, 42);
   assert.equal(new Set(names).size, names.length, 'nomes duplicados');
   for (const name of names) assert.match(name, /^[a-z][a-z0-9-]*$/, name);
+});
+
+test('routes: não registra endpoints aposentados', () => {
+  assert.equal(Object.prototype.hasOwnProperty.call(routes, 'quote-leads'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(routes, 'typebot-lead-capture'), false);
+});
+
+test('rotas e configuração ativas não contêm variáveis Typebot', () => {
+  for (const relativePath of [
+    '../../api/_app/routes.ts',
+    '../../api/_shared/auth.ts',
+    '../../api/_shared/rate-limit.ts',
+    '../../.env.example',
+  ]) {
+    const source = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /TYPEBOT_/, relativePath);
+  }
 });
 
 test('routes: todos os handlers são funções', () => {

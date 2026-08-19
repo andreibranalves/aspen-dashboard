@@ -24,7 +24,6 @@ describe('auth guard', () => {
     assert.equal(isAuthenticated({ url: '/api/view/quote-1' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'GET' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'POST' }, {}), false);
-    assert.equal(isAuthenticated({ url: '/api/typebot-lead-capture' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/login' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/logout' }, {}), true);
     assert.equal(isAuthenticated(protectedRequest(), {}), false);

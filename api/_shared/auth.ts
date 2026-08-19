@@ -2,7 +2,6 @@ import type { VercelRequestLike } from '../_http/types.js';
 import { isValidPasswordHash } from './password.js';
 import { isValidSessionSecret, SESSION_COOKIE_NAME, verifySessionToken } from './session.js';
 
-const PUBLIC_ROUTES = new Set(['typebot-lead-capture']);
 const AUTH_ROUTES = new Set(['login', 'logout']);
 const MAX_COOKIE_HEADER_LENGTH = 8192;
 
@@ -80,7 +79,7 @@ export function isAuthenticated(
   const routeName = getRouteName(req);
   const method = String(req.method || '').toUpperCase();
   if (routeName === 'public-quotation' && method === 'GET') return true;
-  if (PUBLIC_ROUTES.has(routeName) || AUTH_ROUTES.has(routeName)) return true;
+  if (AUTH_ROUTES.has(routeName)) return true;
 
   if (isDevelopmentAuthBypassEnabled(environment)) return true;
 

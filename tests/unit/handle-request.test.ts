@@ -94,6 +94,21 @@ test('handleApiRequest: rota inexistente responde 404 via pipeline completo', as
   assert.deepEqual(lastBody(), { error: 'Endpoint não encontrado.' });
 });
 
+test('handleApiRequest: endpoints aposentados respondem 404 com bypass autenticado', async () => {
+  withEnv({ NODE_ENV: 'test', APP_AUTH_BYPASS: 'true' });
+  for (const routeName of ['quote-leads', 'typebot-lead-capture']) {
+    const req = {
+      method: 'GET',
+      url: `/api/${routeName}`,
+      headers: {},
+    } as unknown as import('node:http').IncomingMessage;
+    const { res, lastStatus, lastBody } = fakeResponse();
+    await handleApiRequest(req, res);
+    assert.equal(lastStatus(), 404, routeName);
+    assert.deepEqual(lastBody(), { error: 'Endpoint não encontrado.' });
+  }
+});
+
 test('handleApiRequest: rate limit nega 429 na 11a chamada do login', async () => {
   withEnv({ NODE_ENV: 'test' });
   const ip = `198.51.100.${Date.now() % 250}`;
