@@ -5,7 +5,10 @@ import { loadLocalEnv } from './scripts/load-env.mjs';
 loadLocalEnv();
 
 const PORT = 5173;
-const IS_STAGING = process.env.STAGING_E2E === '1';
+const IS_STAGING =
+  String(process.env.APP_ENV || '')
+    .trim()
+    .toLowerCase() === 'preview';
 const STAGING_SPEC_FILES = [
   '**/postgres-only-cutover.spec.js',
   '**/quotation-cutover-staging.spec.js',
