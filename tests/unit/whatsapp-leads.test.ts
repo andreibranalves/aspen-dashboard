@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 import {
   createHandler,
+  handler as whatsappLeadsHandler,
   findConvertedQuotation,
   formatLeadText,
   getWhatsappLeadQuality,
@@ -586,6 +587,33 @@ describe('whatsapp-leads snapshot handler', () => {
     assert.equal(result.statusCode, 200);
     assert.deepEqual(events, ['sync:5:50', 'response']);
     assert.equal(parseBody(result).data[0].id, saved.id);
+  });
+
+  it('checks configured Evolution sync on request after module import', async () => {
+    const previous = {
+      baseUrl: process.env.EVOLUTION_BASE_URL,
+      apiKey: process.env.EVOLUTION_API_KEY,
+      instance: process.env.EVOLUTION_INSTANCE,
+    };
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    process.env.EVOLUTION_BASE_URL = 'https://evolution.example';
+    process.env.EVOLUTION_API_KEY = 'test-key';
+    process.env.EVOLUTION_INSTANCE = 'aspen';
+    globalThis.fetch = (async (input) => {
+      calls.push(String(input));
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      await whatsappLeadsHandler({ httpMethod: 'GET', queryStringParameters: {}, headers: {} } as any);
+      assert.equal(calls[0], 'https://evolution.example/chat/findChats/aspen');
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('caps snapshots at twenty and limits extraction/CRM concurrency to four', async () => {

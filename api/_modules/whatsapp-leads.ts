@@ -1,5 +1,6 @@
 // GET /api/whatsapp-leads - recent verified WhatsApp conversation snapshots.
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
+import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import {
   getWhatsappMessages,
   listWhatsappConversations,
@@ -864,6 +865,9 @@ export function createHandler(deps: WhatsappLeadsDeps = {}): (event: FunctionEve
 }
 
 export const handler = createHandler({
-  sync: process.env.EVOLUTION_BASE_URL ? syncWhatsappConversations : undefined,
+  sync: async (options, deps) => {
+    if (!getEvolutionConfig().baseUrl) return undefined;
+    return syncWhatsappConversations(options, deps);
+  },
   usePostgresCrm: Boolean(process.env.DATABASE_URL),
 });

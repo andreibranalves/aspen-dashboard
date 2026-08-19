@@ -2,6 +2,8 @@
 // Keeps commercial context in the app and uses Evolution API only as the WhatsApp transport.
 
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { getEvolutionClient } from '../_infrastructure/integrations/evolution/client.js';
+import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
@@ -41,14 +43,6 @@ import {
   type QuotationDeliveryRepository,
 } from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
 
-// ponytail: .trim() guards against CRLF .env files (\r glued to the instance name corrupts the URL)
-function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
-  return {
-    baseUrl: (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, ''),
-    apiKey: (process.env.EVOLUTION_API_KEY || '').trim(),
-    instance: (process.env.EVOLUTION_INSTANCE || '').trim(),
-  };
-}
 const DEFAULT_TEMPLATE =
   '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
 export const MAX_QUOTATION_PDF_BYTES = MAX_DOCUMENT_BYTES;
@@ -616,7 +610,7 @@ export async function loadPostgresSendContext(input: {
 // ── Evolution API ───────────────────────────────────────────────────────────
 
 function assertEvolutionConfig(): void {
-  const { baseUrl, apiKey, instance } = evolutionConfig();
+  const { baseUrl, apiKey, instance } = getEvolutionConfig();
   const missing: string[] = [];
   if (!baseUrl) missing.push('EVOLUTION_BASE_URL');
   if (!apiKey) missing.push('EVOLUTION_API_KEY');
@@ -633,20 +627,11 @@ function assertEvolutionConfig(): void {
 
 async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
   assertEvolutionConfig();
-  const { baseUrl, apiKey } = evolutionConfig();
-  assertExternalWritesAllowed('evolution');
-  const url = `${baseUrl}${path}`;
+  const client = getEvolutionClient();
   let res: Response;
   let responseBody: unknown;
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: apiKey,
-      },
-      body: JSON.stringify(body),
-    });
+    res = await client.request(path, body);
     responseBody = await res.json().catch(() => null);
   } catch (err) {
     throw createHttpError(
@@ -672,7 +657,7 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
 }
 
 export async function sendText(number: string, text: string): Promise<EvolutionDeliveryResult> {
-  const { instance } = evolutionConfig();
+  const { instance } = getEvolutionConfig();
   return evolutionPost(`/message/sendText/${encodeURIComponent(instance)}`, {
     number,
     text,
@@ -745,7 +730,7 @@ async function sendMedia(
     throw createHttpError(400, 'Dados de mídia não autorizados.');
   }
 
-  const { instance } = evolutionConfig();
+  const { instance } = getEvolutionConfig();
   const mimeType = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
   const mediaType = step.type === 'document'
     ? 'document'

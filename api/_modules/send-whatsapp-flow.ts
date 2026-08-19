@@ -11,6 +11,8 @@
 
 import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
 import type { HttpError } from '../_shared/http-error.js';
+import { getEvolutionClient } from '../_infrastructure/integrations/evolution/client.js';
+import { getEvolutionConfig } from '../_infrastructure/integrations/evolution/config.js';
 import { kv } from '@vercel/kv';
 import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { createHttpError } from '../_shared/http-error.js';
@@ -54,14 +56,6 @@ import {
   type WhatsappSendReservationStore,
   WhatsappSendReservationStorageError,
 } from './whatsapp-send-reservation-store.js';
-
-function evolutionConfig(): { baseUrl: string; apiKey: string; instance: string } {
-  return {
-    baseUrl: (process.env.EVOLUTION_BASE_URL || '').trim().replace(/\/+$/, ''),
-    apiKey: (process.env.EVOLUTION_API_KEY || '').trim(),
-    instance: (process.env.EVOLUTION_INSTANCE || '').trim(),
-  };
-}
 
 const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
   CNG: 'canga',
@@ -274,7 +268,7 @@ export function flowProductSummary(
 // ── Evolution API ──────────────────────────────────────────────────────────
 
 function assertEvolutionConfig() {
-  const { baseUrl, apiKey, instance } = evolutionConfig();
+  const { baseUrl, apiKey, instance } = getEvolutionConfig();
   const missing = [];
   if (!baseUrl) missing.push('EVOLUTION_BASE_URL');
   if (!apiKey) missing.push('EVOLUTION_API_KEY');
@@ -306,16 +300,11 @@ function transportError(
 
 async function evolutionPost(path: string, body: Record<string, unknown>): Promise<EvolutionDeliveryResult> {
   assertEvolutionConfig();
-  const { baseUrl, apiKey } = evolutionConfig();
-  assertExternalWritesAllowed('evolution');
-  const url = `${baseUrl}${path}`;
-  let res, responseBody;
+  const client = getEvolutionClient();
+  let res: Response;
+  let responseBody: unknown;
   try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: apiKey },
-      body: JSON.stringify(body),
-    });
+    res = await client.request(path, body);
     responseBody = await res.json().catch(() => null);
     } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -343,7 +332,7 @@ async function evolutionPost(path: string, body: Record<string, unknown>): Promi
 }
 
 async function sendText(number: string, text: string): Promise<EvolutionDeliveryResult> {
-  const { instance } = evolutionConfig();
+  const { instance } = getEvolutionConfig();
   return evolutionPost(`/message/sendText/${encodeURIComponent(instance)}`, {
     number,
     text,
@@ -416,7 +405,7 @@ async function sendMedia(
     throw createHttpError(400, 'Dados de mídia não autorizados.');
   }
 
-  const { instance } = evolutionConfig();
+  const { instance } = getEvolutionConfig();
   const mimeType = String(step.mimetype || '').split(';', 1)[0].trim().toLowerCase();
   const mediaType = step.type === 'document'
     ? 'document'

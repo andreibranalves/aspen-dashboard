@@ -1008,15 +1008,59 @@ test('flow endpoint blocks Evolution when external writes are disabled', async (
   }
 });
 
-test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
+test('non-dry legacy endpoint routes authenticated Evolution text through the client', async () => {
   const restoreEnv = withEvolutionEnv();
+  process.env.EVOLUTION_BASE_URL = 'https://evolution.example';
+  process.env.EVOLUTION_INSTANCE = 'aspen';
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })) as typeof fetch;
+  let capturedUrl = '';
+  let capturedInit: RequestInit | undefined;
+  globalThis.fetch = (async (input, init) => {
+    capturedUrl = String(input);
+    capturedInit = init;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 });
+  }) as typeof fetch;
   try {
-    const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
+    const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
     assert.equal(response.statusCode, 200);
     assert.equal(JSON.parse(response.body || '{}').evolution.providerMessageId, 'provider-1');
+    assert.equal(capturedUrl, 'https://evolution.example/message/sendText/aspen');
+    assert.equal(new Headers(capturedInit?.headers).get('apikey'), 'test-key');
+    assert.equal(JSON.parse(String(capturedInit?.body)).number, '5511999999999');
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('Evolution transport failures preserve public status and message', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => { throw new Error('network failure'); }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
+    assert.equal(response.statusCode, 502);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Falha ao conectar com o WhatsApp. Tente novamente.',
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('non-2xx Evolution responses preserve public status mapping', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [status, expectedStatus] of [[401, 502], [422, 400]]) {
+      globalThis.fetch = (async () => new Response('{}', { status })) as typeof fetch;
+      const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
+      assert.equal(response.statusCode, expectedStatus);
+      assert.deepEqual(JSON.parse(response.body || '{}'), {
+        error: 'Não foi possível enviar a mensagem pelo WhatsApp. Verifique se a instância está conectada.',
+      });
+    }
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
