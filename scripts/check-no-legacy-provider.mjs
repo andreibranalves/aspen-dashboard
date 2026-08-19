@@ -154,7 +154,7 @@ function scopedPaths() {
   const output = execFileSync(
     'git',
     ['ls-files', '--cached', '--others', '--ignored', '--exclude-standard', '-z'],
-    { cwd: root },
+    { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString('utf8');
   const paths = new Set([...output.split('\0').filter(Boolean), guardPath, guardTestPath]);
   const walk = (directory, relativeDirectory = '') => {
