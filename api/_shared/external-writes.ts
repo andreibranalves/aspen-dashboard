@@ -1,6 +1,6 @@
 import { createHttpError } from './http-error.js';
 
-export type ExternalWriteProvider = 'evolution' | 'meta-capi';
+export type ExternalWriteProvider = 'evolution';
 
 type Environment = typeof process.env;
 

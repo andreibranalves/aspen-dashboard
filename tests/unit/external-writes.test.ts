@@ -18,7 +18,6 @@ describe('external writes guard', () => {
   it('permite somente production com flag explícita', () => {
     assert.equal(isExternalWritesAllowed(env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1' })), true);
     assert.doesNotThrow(() => assertExternalWritesAllowed('evolution', env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1' })));
-    assert.doesNotThrow(() => assertExternalWritesAllowed('meta-capi', env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: '1' })));
   });
 
   it('bloqueia Preview mesmo se a flag estiver ligada', () => {
@@ -45,7 +44,7 @@ describe('external writes guard', () => {
       env({ APP_ENV: 'production', EXTERNAL_WRITES_ENABLED: 'true' }),
     ]) {
       assert.equal(isExternalWritesAllowed(candidate), false);
-      assert.throws(() => assertExternalWritesAllowed('meta-capi', candidate), { statusCode: 503 });
+      assert.throws(() => assertExternalWritesAllowed('evolution', candidate), { statusCode: 503 });
     }
   });
 });

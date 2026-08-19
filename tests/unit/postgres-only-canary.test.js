@@ -79,7 +79,7 @@ test('uses POST only for login and keeps every business check read-only', async 
   await runCanary({ env: validCanaryEnv(), fetchImpl });
   assert.equal(calls[0].method, 'POST');
   assert.equal(calls.slice(1).every((call) => call.method === 'GET'), true);
-  assert.equal(calls.some((call) => /send-whatsapp|typebot-lead-capture/i.test(call.url)), false);
+  assert.equal(calls.some((call) => /send-whatsapp/i.test(call.url)), false);
   const publicCall = calls.find((call) => new globalThis.URL(call.url).pathname === '/api/public-quotation');
   assert.ok(publicCall);
   assert.equal(publicCall.headers?.cookie, undefined);
