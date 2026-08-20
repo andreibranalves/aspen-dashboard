@@ -148,6 +148,13 @@ Se houver apenas um pedido, retorne igualmente um array com um único elemento.`
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const MAX_TEXT_LENGTH = 12000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_CUSTOM_RULES_LENGTH = 4000;
+const MAX_EXISTING_ITEMS = 100;
+const MAX_EXTRACTION_ORDERS = 20;
+const MAX_ITEMS_PER_ORDER = 100;
+const MAX_ITEM_CODE_LENGTH = 120;
+const MAX_TEXT_FIELD_LENGTH = 4000;
+const EXTRACTION_TIMEOUT_MS = 20_000;
 
 interface HttpError extends Error {
   statusCode: number;
@@ -173,6 +180,10 @@ function estimateBase64Bytes(base64: string): number {
   return Math.max(0, Math.floor((normalized.length * 3) / 4) - padding);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function parseJsonSafely(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -187,29 +198,60 @@ function unwrapJsonText(raw: string): string {
   return fenced ? fenced[1].trim() : trimmed;
 }
 
-function validateInput(text?: string, imageBase64?: string, imageMimeType?: string): void {
-  if (!text && !imageBase64) {
+interface ValidatedExtractionInput {
+  text?: string;
+  imageBase64?: string;
+  imageMimeType: string;
+}
+
+function validateInput(
+  text?: string,
+  imageBase64?: string,
+  imageMimeType?: string
+): ValidatedExtractionInput {
+  if (text !== undefined && text !== null && typeof text !== 'string') {
+    throw createHttpError(400, 'Texto de extração inválido.');
+  }
+  if (imageBase64 !== undefined && imageBase64 !== null && typeof imageBase64 !== 'string') {
+    throw createHttpError(400, 'Imagem de extração inválida.');
+  }
+  if (imageMimeType !== undefined && imageMimeType !== null && typeof imageMimeType !== 'string') {
+    throw createHttpError(400, 'Formato de imagem inválido.');
+  }
+
+  const normalizedText = text?.trim() || undefined;
+  const normalizedImage = imageBase64?.replace(/\s+/g, '') || undefined;
+  const normalizedMime = imageMimeType?.trim().toLowerCase() || 'image/png';
+
+  if (!normalizedText && !normalizedImage) {
     throw createHttpError(400, 'Envie texto ou imagem para extrair o pedido.');
   }
 
-  if (text && text.length > MAX_TEXT_LENGTH) {
+  if (normalizedText && normalizedText.length > MAX_TEXT_LENGTH) {
     throw createHttpError(400, 'Texto muito longo para extração.');
   }
 
-  if (!imageBase64) return;
+  if (!normalizedImage) {
+    return { text: normalizedText, imageMimeType: normalizedMime };
+  }
 
-  if (!ALLOWED_IMAGE_MIME_TYPES.has(imageMimeType || 'image/png')) {
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(normalizedMime)) {
     throw createHttpError(400, 'Formato de imagem não suportado.');
   }
 
-  const normalized = imageBase64.replace(/\s+/g, '');
-  if (!/^[A-Za-z0-9+/]+=*$/.test(normalized)) {
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(normalizedImage)) {
     throw createHttpError(400, 'Imagem em base64 inválida.');
   }
 
-  if (estimateBase64Bytes(normalized) > MAX_IMAGE_BYTES) {
+  if (estimateBase64Bytes(normalizedImage) > MAX_IMAGE_BYTES) {
     throw createHttpError(400, 'Imagem muito grande para extração.');
   }
+
+  return {
+    text: normalizedText,
+    imageBase64: normalizedImage,
+    imageMimeType: normalizedMime,
+  };
 }
 
 interface OrderItem {
@@ -228,6 +270,8 @@ interface Order {
   items: OrderItem[];
 }
 
+type ExtractedOrder = Partial<Omit<Order, 'items'>> & { items: OrderItem[] };
+
 function parseTemplateQuantity(value: unknown): number | null {
   const quantity =
     typeof value === 'number'
@@ -239,9 +283,9 @@ function parseTemplateQuantity(value: unknown): number | null {
 }
 
 export function applyOrderTemplate(
-  orders: Order[],
+  orders: ExtractedOrder[],
   template: Pick<OrderTemplateRecord, 'items'>
-): Order[] {
+): ExtractedOrder[] {
   const orderedItems = template.items.slice().sort((a, b) => a.position - b.position);
 
   if (orderedItems.length === 0) {
@@ -271,35 +315,105 @@ export function applyOrderTemplate(
   });
 }
 
-function normalizeOrdersPayload(parsed: unknown): Order[] {
+function providerResponseError(detail: string): never {
+  throw createHttpError(502, 'Resposta inválida do provedor de IA.', detail);
+}
+
+function normalizeProviderString(
+  value: unknown,
+  field: string,
+  maxLength = MAX_TEXT_FIELD_LENGTH
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string') providerResponseError(`${field} deve ser texto`);
+  const normalized = value.trim();
+  if (normalized.length > maxLength) providerResponseError(`${field} excede o limite`);
+  return normalized;
+}
+
+function normalizeProviderBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  providerResponseError(`${field} deve ser booleano`);
+}
+
+function normalizeProviderAddress(value: unknown): Record<string, string | null> | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return {};
+  if (!isRecord(value)) providerResponseError('endereco deve ser objeto');
+
+  const address: Record<string, string | null> = {};
+  const fields = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
+  for (const field of fields) {
+    if (!(field in value)) continue;
+    const normalized = normalizeProviderString(value[field], `endereco.${field}`);
+    address[field] = normalized ?? null;
+  }
+  return address;
+}
+
+function normalizeProviderOrderItem(value: unknown, orderIndex: number, itemIndex: number): OrderItem {
+  if (!isRecord(value)) providerResponseError(`Item ${orderIndex + 1}.${itemIndex + 1} inválido`);
+  const itemCode = normalizeProviderString(
+    value.item_code,
+    `item_code ${orderIndex + 1}.${itemIndex + 1}`,
+    MAX_ITEM_CODE_LENGTH
+  );
+  if (!itemCode) providerResponseError(`item_code ${orderIndex + 1}.${itemIndex + 1} obrigatório`);
+
+  const quantity = parseTemplateQuantity(value.qty);
+  if (quantity === null) providerResponseError(`qty ${orderIndex + 1}.${itemIndex + 1} inválido`);
+
+  return { item_code: itemCode, qty: quantity < 30 ? 30 : quantity };
+}
+
+function normalizeProviderOrder(value: unknown, orderIndex: number): ExtractedOrder {
+  if (!isRecord(value)) providerResponseError(`Pedido ${orderIndex + 1} inválido`);
+  if (!Array.isArray(value.items)) providerResponseError(`Pedido ${orderIndex + 1} sem items`);
+  if (value.items.length > MAX_ITEMS_PER_ORDER) {
+    providerResponseError(`Pedido ${orderIndex + 1} excede o limite de itens`);
+  }
+
+  const order: ExtractedOrder = {
+    items: value.items.map((item, itemIndex) => normalizeProviderOrderItem(item, orderIndex, itemIndex)),
+  };
+  const nome = normalizeProviderString(value.nome, 'nome', 255);
+  const email = normalizeProviderString(value.email, 'email', 320);
+  const telefone = normalizeProviderString(value.telefone, 'telefone', 64);
+  const origem = normalizeProviderString(value.origem, 'origem', 120);
+  const cnpj = normalizeProviderString(value.cnpj, 'cnpj', 32);
+  const urgente = normalizeProviderBoolean(value.urgente, 'urgente');
+  const endereco = normalizeProviderAddress(value.endereco);
+
+  if (nome !== undefined && nome !== null) order.nome = nome;
+  if (email !== undefined) order.email = email;
+  if (telefone !== undefined) order.telefone = telefone;
+  if (origem !== undefined) order.origem = origem;
+  if (cnpj !== undefined) order.cnpj = cnpj;
+  if (urgente !== undefined) order.urgente = urgente;
+  if (endereco !== undefined) order.endereco = endereco;
+  return order;
+}
+
+function normalizeOrdersPayload(parsed: unknown): ExtractedOrder[] {
   const orders = Array.isArray(parsed)
     ? parsed
-    : Array.isArray((parsed as Record<string, unknown>)?.orders)
-      ? ((parsed as Record<string, unknown>).orders as Order[])
+    : isRecord(parsed) && Array.isArray(parsed.orders)
+      ? parsed.orders
       : null;
 
-  if (!orders) {
-    throw createHttpError(
-      502,
-      'Resposta inválida do provedor de IA.',
-      'Payload sem array de pedidos'
-    );
+  if (!orders) providerResponseError('Payload sem array de pedidos');
+  if (orders.length > MAX_EXTRACTION_ORDERS) {
+    providerResponseError('Quantidade de pedidos excede o limite');
   }
 
-  const isValid = orders.every(
-    (order) =>
-      order && typeof order === 'object' && !Array.isArray(order) && Array.isArray(order.items)
-  );
-
-  if (!isValid) {
-    throw createHttpError(
-      502,
-      'Resposta inválida do provedor de IA.',
-      'Pedidos sem formato esperado'
-    );
-  }
-
-  return orders;
+  return orders.map((order, orderIndex) => normalizeProviderOrder(order, orderIndex));
 }
 
 function buildUserContent(
@@ -344,8 +458,9 @@ async function extractWithOpenRouter(
   customRules?: string,
   existingItems?: Array<{ item_code: string; qty: number }> | null,
   orderTemplate?: ExtractionOrderTemplate | null
-): Promise<Order[]> {
+): Promise<ExtractedOrder[]> {
   const config = getOpenRouterConfig();
+  const input = validateInput(text, imageBase64, imageMimeType);
 
   if (!config.apiKey) {
     throw createHttpError(
@@ -355,8 +470,6 @@ async function extractWithOpenRouter(
     );
   }
 
-  validateInput(text, imageBase64, imageMimeType);
-
   const body = {
     model: config.model,
     messages: [
@@ -364,49 +477,70 @@ async function extractWithOpenRouter(
         role: 'system',
         content: buildSystemPrompt(customRules, existingItems, orderTemplate),
       },
-      { role: 'user', content: buildUserContent(text, imageBase64, imageMimeType) },
+      {
+        role: 'user',
+        content: buildUserContent(input.text, input.imageBase64, input.imageMimeType),
+      },
     ],
     temperature: 0.1,
   };
 
-  const res = await getOpenRouterClient().request(body, {
-    title: 'Aspen Orcamento App',
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
 
-  const responseText = await res.text();
-  const data = parseJsonSafely(responseText) as Record<string, unknown>;
+  try {
+    const res = await getOpenRouterClient().request(body, {
+      title: 'Aspen Orcamento App',
+      signal: controller.signal,
+    });
+    const responseText = await res.text();
+    const data = parseJsonSafely(responseText) as Record<string, unknown>;
 
-  if (!res.ok) {
-    const upstreamMessage =
-      ((data?.error as Record<string, unknown> | undefined)?.message as string) ||
-      responseText ||
-      `OpenRouter retornou HTTP ${res.status}`;
+    if (!res.ok) {
+      throw createHttpError(
+        502,
+        'Falha ao extrair pedido no provedor de IA.',
+        `OpenRouter HTTP ${res.status}`
+      );
+    }
+
+    const raw = extractAssistantText(data);
+    if (!raw) {
+      throw createHttpError(
+        502,
+        'Resposta inválida do provedor de IA.',
+        'Resposta sem conteúdo textual'
+      );
+    }
+
+    const parsed = parseJsonSafely(unwrapJsonText(raw));
+    if (parsed == null) {
+      throw createHttpError(
+        502,
+        'Resposta inválida do provedor de IA.',
+        'JSON inválido retornado pelo provedor'
+      );
+    }
+
+    return normalizeOrdersPayload(parsed);
+  } catch (error) {
+    if (isRecord(error) && Number.isInteger(error.statusCode)) throw error;
+    if (controller.signal.aborted) {
+      throw createHttpError(
+        504,
+        'O serviço de extração demorou demais. Tente novamente.',
+        'OpenRouter timeout'
+      );
+    }
+    const kind = error instanceof Error ? error.name : typeof error;
     throw createHttpError(
       502,
-      'Falha ao extrair pedido no provedor de IA.',
-      `OpenRouter HTTP ${res.status}: ${upstreamMessage}`
+      'Falha ao conectar ao provedor de IA. Tente novamente.',
+      `OpenRouter request failed: ${kind}`
     );
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const raw = extractAssistantText(data as Record<string, unknown>);
-  if (!raw) {
-    throw createHttpError(
-      502,
-      'Resposta inválida do provedor de IA.',
-      'Resposta sem conteúdo textual'
-    );
-  }
-
-  const parsed = parseJsonSafely(unwrapJsonText(raw));
-  if (parsed == null) {
-    throw createHttpError(
-      502,
-      'Resposta inválida do provedor de IA.',
-      'JSON inválido retornado pelo provedor'
-    );
-  }
-
-  return normalizeOrdersPayload(parsed);
 }
 
 function json(statusCode: number, payload: object): FunctionResult {
@@ -427,10 +561,83 @@ function extractionErrorResponse(error: unknown): FunctionResult {
   const isPublic =
     Number.isInteger(typed.statusCode) &&
     (typed.expose === true || typeof typed.logMessage === 'string');
-  console.error('[extract]', typed.logMessage || typed.message || error);
+  const logMessage = typeof typed.logMessage === 'string' ? typed.logMessage : typed.message;
+  console.error('[extract]', logMessage || 'unknown error');
   return json(isPublic ? typed.statusCode! : 500, {
     error: isPublic && typed.message ? typed.message : 'Erro interno na extração.',
   });
+}
+
+interface ExtractionPayload {
+  text?: string;
+  imageBase64?: string;
+  imageMimeType?: string;
+  customRules?: string;
+  existingItems?: Array<{ item_code: string; qty: number }>;
+  orderTemplateId?: string;
+}
+
+function normalizeExistingItems(value: unknown): Array<{ item_code: string; qty: number }> | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) throw createHttpError(400, 'existingItems deve ser um array.');
+  if (value.length > MAX_EXISTING_ITEMS) {
+    throw createHttpError(400, 'Quantidade de itens existentes excede o limite.');
+  }
+
+  return value.map((item, index) => {
+    if (!isRecord(item)) throw createHttpError(400, `Item existente ${index + 1} inválido.`);
+    const itemCode = item.item_code;
+    if (typeof itemCode !== 'string' || !itemCode.trim() || itemCode.trim().length > MAX_ITEM_CODE_LENGTH) {
+      throw createHttpError(400, `SKU do item existente ${index + 1} inválido.`);
+    }
+    const quantity = parseTemplateQuantity(item.qty);
+    if (quantity === null) throw createHttpError(400, `Quantidade do item existente ${index + 1} inválida.`);
+    return { item_code: itemCode.trim(), qty: quantity };
+  });
+}
+
+function normalizeExtractionPayload(value: unknown): ExtractionPayload {
+  if (!isRecord(value)) throw createHttpError(400, 'Envie um payload válido.');
+
+  const text = value.text === undefined || value.text === null
+    ? undefined
+    : typeof value.text === 'string'
+      ? value.text.trim() || undefined
+      : (() => { throw createHttpError(400, 'Texto de extração inválido.'); })();
+  const imageBase64 = value.imageBase64 === undefined || value.imageBase64 === null
+    ? undefined
+    : typeof value.imageBase64 === 'string'
+      ? value.imageBase64
+      : (() => { throw createHttpError(400, 'Imagem de extração inválida.'); })();
+  const imageMimeType = value.imageMimeType === undefined || value.imageMimeType === null
+    ? undefined
+    : typeof value.imageMimeType === 'string'
+      ? value.imageMimeType.trim().toLowerCase() || undefined
+      : (() => { throw createHttpError(400, 'Formato de imagem inválido.'); })();
+  const customRules = value.rules === undefined || value.rules === null
+    ? undefined
+    : typeof value.rules === 'string'
+      ? value.rules.trim() || undefined
+      : (() => { throw createHttpError(400, 'Regras de extração inválidas.'); })();
+
+  if (customRules && customRules.length > MAX_CUSTOM_RULES_LENGTH) {
+    throw createHttpError(400, 'Regras de extração muito longas.');
+  }
+
+  const orderTemplateId = value.orderTemplateId === undefined || value.orderTemplateId === null
+    ? undefined
+    : typeof value.orderTemplateId === 'string'
+      ? value.orderTemplateId.trim() || undefined
+      : (() => { throw createHttpError(400, 'Template de pedido inválido.'); })();
+
+  return {
+    text,
+    imageBase64,
+    imageMimeType,
+    customRules,
+    existingItems: normalizeExistingItems(value.existingItems),
+    orderTemplateId,
+  };
 }
 
 export interface ExtractHandlerDependencies {
@@ -449,25 +656,24 @@ export function createExtractHandler(
       return json(405, { error: 'Método não permitido.' });
     }
 
-    let payload: Record<string, unknown>;
+    let rawPayload: unknown;
     try {
-      payload = JSON.parse(event.body) as Record<string, unknown>;
+      rawPayload = JSON.parse(event.body || '');
     } catch {
       return { statusCode: 400, body: JSON.stringify({ error: 'JSON inválido' }) };
     }
 
     try {
-      const templateId =
-        typeof payload.orderTemplateId === 'string' ? payload.orderTemplateId.trim() : '';
-      const template = templateId
-        ? await dependencies.orderTemplates.getForExtraction(templateId)
+      const payload = normalizeExtractionPayload(rawPayload);
+      const template = payload.orderTemplateId
+        ? await dependencies.orderTemplates.getForExtraction(payload.orderTemplateId)
         : undefined;
       const args = [
-        payload.text as string | undefined,
-        payload.imageBase64 as string | undefined,
-        payload.imageMimeType as string | undefined,
-        payload.rules as string | undefined,
-        payload.existingItems as Array<{ item_code: string; qty: number }> | undefined,
+        payload.text,
+        payload.imageBase64,
+        payload.imageMimeType,
+        payload.customRules,
+        payload.existingItems,
       ] as const;
       const orders = template
         ? await dependencies.extractOrders(...args, template)

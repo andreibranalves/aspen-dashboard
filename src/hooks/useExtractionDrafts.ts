@@ -324,7 +324,7 @@ export function useExtractionDrafts(initialDrafts: Draft[] = []) {
           email: String(order.email || ''),
           telefone: String(order.telefone || ''),
           urgente: Boolean(order.urgente || false),
-          origem: normalizeLeadSource(order.origem) || 'Google Ads',
+          origem: normalizeLeadSource(order.origem) || '',
           cnpj: normalizeCnpj(order.cnpj || ''),
           endereco: normalizeAddress(order.endereco),
           items: (Array.isArray(order.items) ? order.items : []).map((it: unknown) => ({

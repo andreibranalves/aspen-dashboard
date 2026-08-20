@@ -165,6 +165,79 @@ test('extract without a template skips repository lookup and keeps the extractor
   ]);
 });
 
+test('extract normalizes provider fields and applies the minimum quantity', async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const previousModel = process.env.OPENROUTER_MODEL;
+  const previousFetch = globalThis.fetch;
+
+  process.env.OPENROUTER_API_KEY = 'unit-test-key';
+  process.env.OPENROUTER_MODEL = 'unit-test/model';
+  globalThis.fetch = (async () => new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content: '[{"nome":"Cliente","urgente":"false","items":[{"item_code":" SKU-1 ","qty":"10"}]}]',
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  )) as typeof fetch;
+
+  try {
+    const result = await handler(event('POST', { text: 'Cliente precisa de 10 unidades.' }));
+
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(JSON.parse(result.body || ''), {
+      orders: [{ nome: 'Cliente', urgente: false, items: [{ item_code: 'SKU-1', qty: 30 }] }],
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.OPENROUTER_MODEL;
+    else process.env.OPENROUTER_MODEL = previousModel;
+  }
+});
+
+test('extract rejects malformed provider items instead of forwarding them', async () => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  const previousModel = process.env.OPENROUTER_MODEL;
+  const previousFetch = globalThis.fetch;
+
+  process.env.OPENROUTER_API_KEY = 'unit-test-key';
+  process.env.OPENROUTER_MODEL = 'unit-test/model';
+  globalThis.fetch = (async () => new Response(
+    JSON.stringify({
+      choices: [
+        { message: { content: '[{"nome":"Cliente","items":[{"item_code":"SKU-1","qty":true}]}]' } },
+      ],
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  )) as typeof fetch;
+
+  try {
+    const result = await handler(event('POST', { text: 'Pedido inválido.' }));
+
+    assert.equal(result.statusCode, 502);
+    assert.equal(JSON.parse(result.body || '').error, 'Resposta inválida do provedor de IA.');
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = previousKey;
+    if (previousModel === undefined) delete process.env.OPENROUTER_MODEL;
+    else process.env.OPENROUTER_MODEL = previousModel;
+  }
+});
+
+test('extract rejects non-object request payloads with a client error', async () => {
+  const result = await handler(event('POST', null));
+
+  assert.equal(result.statusCode, 400);
+  assert.equal(JSON.parse(result.body || '').error, 'Envie um payload válido.');
+});
+
 test('extract validates the OpenRouter request and normalizes its JSON response', async () => {
   const previousKey = process.env.OPENROUTER_API_KEY;
   const previousModel = process.env.OPENROUTER_MODEL;
