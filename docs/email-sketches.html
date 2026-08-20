@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sketches — Email de orçamento Aspen</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --navy: #1e3159;
+        --accent: #3f4652;
+        --ink: #182235;
+        --muted: #667085;
+        --canvas: #eef2f7;
+        --line: #dce3ee;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 48px 24px 72px;
+        color: var(--ink);
+        background: var(--canvas);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .board {
+        width: min(1280px, 100%);
+        margin: 0 auto;
+      }
+
+      .board-header { margin-bottom: 32px; }
+      .board-kicker {
+        margin: 0 0 8px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+      .board h1 {
+        margin: 0;
+        color: var(--navy);
+        font-size: clamp(28px, 4vw, 44px);
+        letter-spacing: -.04em;
+      }
+      .board-intro {
+        max-width: 700px;
+        margin: 12px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.6;
+      }
+
+      .sketch-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 20px;
+        align-items: start;
+      }
+
+      .sketch-label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 10px;
+        color: var(--navy);
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .sketch-number {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border-radius: 50%;
+        color: #fff;
+        background: var(--navy);
+        font-size: 12px;
+      }
+      .sketch-description {
+        min-height: 44px;
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .email-shell {
+        overflow: hidden;
+        min-height: 650px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 18px 44px rgba(30, 49, 89, .10);
+      }
+      .email-body {
+        width: 100%;
+        min-height: 650px;
+        padding: 28px;
+        background: #f6f8fb;
+      }
+      .email-card {
+        overflow: hidden;
+        border-radius: 12px;
+        background: #fff;
+      }
+      .email-content { padding: 32px 28px 28px; }
+      .logo { display: block; width: 138px; height: auto; }
+      .logo-small { width: 122px; }
+      .eyebrow {
+        margin: 28px 0 10px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+      }
+      .email-title {
+        margin: 0;
+        color: var(--navy);
+        font-size: 29px;
+        line-height: 1.1;
+        letter-spacing: -.035em;
+      }
+      .email-number {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .email-copy {
+        margin: 28px 0 0;
+        color: #3f4a5c;
+        font-size: 15px;
+        line-height: 1.65;
+      }
+      .email-copy + .email-copy { margin-top: 7px; }
+      .cta {
+        display: inline-block;
+        margin-top: 26px;
+        padding: 14px 20px;
+        border-radius: 7px;
+        color: #fff;
+        background: var(--navy);
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+      .attachment {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-top: 28px;
+        padding: 12px;
+        border: 1px solid #e5eaf2;
+        border-radius: 8px;
+        color: #596579;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .attachment-icon {
+        display: grid;
+        flex: 0 0 28px;
+        width: 28px;
+        height: 28px;
+        place-items: center;
+        border-radius: 6px;
+        color: var(--accent);
+        background: #eef0f3;
+        font-size: 14px;
+      }
+      .signature {
+        margin: 28px 0 0;
+        color: #3f4a5c;
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      .signature strong { color: var(--navy); }
+      .email-footer {
+        padding: 18px 28px;
+        border-top: 1px solid #edf0f5;
+        color: #8993a3;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      /* Sketch 1 — institutional */
+      .institutional .email-body { background: #f1f4f8; }
+      .institutional .email-card { border-top: 5px solid var(--accent); }
+      .institutional .email-title { max-width: 280px; }
+      .institutional .cta { background: var(--navy); }
+
+      /* Sketch 2 — premium */
+      .premium .email-body { padding: 0; background: #e8edf5; }
+      .premium .email-card { border-radius: 0; }
+      .premium .email-hero {
+        padding: 30px 28px 34px;
+        background: var(--navy);
+      }
+      .premium .email-hero .logo { width: 126px; }
+      .premium .email-hero .eyebrow { margin-top: 38px; color: #c8ced8; }
+      .premium .email-hero .email-title { color: #fff; }
+      .premium .email-hero .email-number { color: #c5d2e8; }
+      .premium .email-content { padding-top: 28px; }
+      .premium .email-content .email-copy { margin-top: 0; }
+      .premium .cta { width: 100%; text-align: center; background: var(--navy); }
+
+      /* Sketch 3 — clean */
+      .clean .email-body { padding: 16px; background: #fff; }
+      .clean .email-card { border: 1px solid #e3e8f0; box-shadow: none; }
+      .clean .email-content { padding: 34px 28px 32px; }
+      .clean .email-topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid #e7ebf1;
+      }
+      .clean .email-topline .email-number {
+        margin: 0;
+        color: var(--accent);
+        font-size: 11px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .clean .eyebrow { margin-top: 34px; }
+      .clean .email-title { font-size: 27px; }
+      .clean .cta { background: var(--navy); }
+      .clean .attachment { border: 0; padding: 0; }
+      .clean .email-footer { background: #fbfcfe; }
+
+      @media (max-width: 980px) {
+        .sketch-grid { grid-template-columns: 1fr; max-width: 640px; }
+        .sketch-description { min-height: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="board">
+      <header class="board-header">
+        <p class="board-kicker">Aspen Estamparia · Email de orçamento</p>
+        <h1>3 direções para deixar o email mais profissional</h1>
+        <p class="board-intro">
+          Sketches visuais antes da implementação. Conteúdo preservado; logo Aspen aplicada;
+          botão azul em <strong>#1e3159</strong>. Escolha uma direção para virar o único template React Email.
+        </p>
+      </header>
+
+      <section class="sketch-grid" aria-label="Sketches de email">
+        <article class="sketch institutional">
+          <h2 class="sketch-label"><span class="sketch-number">1</span> Institucional</h2>
+          <p class="sketch-description">Mais sóbrio e confiável. Cabeçalho limpo, hierarquia clara e cartão de anexo.</p>
+          <div class="email-shell">
+            <div class="email-body">
+              <div class="email-card">
+                <div class="email-content">
+                  <img class="logo" src="email-logo-light.svg" alt="Aspen Estamparia" />
+                  <p class="eyebrow">Seu orçamento está pronto</p>
+                  <h3 class="email-title">Orçamento para sua avaliação</h3>
+                  <p class="email-number">ORC-20261892</p>
+                  <p class="email-copy">Olá, Andrei.</p>
+                  <p class="email-copy">Segue o orçamento para sua avaliação.</p>
+                  <a class="cta" href="#">Ver orçamento</a>
+                  <div class="attachment"><span class="attachment-icon">↗</span><span>O PDF do orçamento está anexado a este e-mail.</span></div>
+                  <p class="signature">Atenciosamente,<br /><strong>Aspen Estamparia</strong></p>
+                </div>
+                <div class="email-footer">Este email foi enviado pela Aspen Estamparia.</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="sketch premium">
+          <h2 class="sketch-label"><span class="sketch-number">2</span> Premium</h2>
+          <p class="sketch-description">Mais marcante. Faixa azul-marinho cria presença sem perder objetividade.</p>
+          <div class="email-shell">
+            <div class="email-body">
+              <div class="email-card">
+                <div class="email-hero">
+                  <img class="logo" src="email-logo-dark.svg" alt="Aspen Estamparia" />
+                  <p class="eyebrow">Orçamento</p>
+                  <h3 class="email-title">Uma proposta feita para você</h3>
+                  <p class="email-number">ORC-20261892</p>
+                </div>
+                <div class="email-content">
+                  <p class="email-copy">Olá, Andrei.</p>
+                  <p class="email-copy">Segue o orçamento para sua avaliação.</p>
+                  <a class="cta" href="#">Ver orçamento</a>
+                  <div class="attachment"><span class="attachment-icon">↗</span><span>O PDF do orçamento está anexado a este e-mail.</span></div>
+                  <p class="signature">Atenciosamente,<br /><strong>Aspen Estamparia</strong></p>
+                </div>
+                <div class="email-footer">Este email foi enviado pela Aspen Estamparia.</div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="sketch clean">
+          <h2 class="sketch-label"><span class="sketch-number">3</span> Clean</h2>
+          <p class="sketch-description">Mais leve e direto. Menos elementos, mais espaço e foco no botão.</p>
+          <div class="email-shell">
+            <div class="email-body">
+              <div class="email-card">
+                <div class="email-content">
+                  <div class="email-topline">
+                    <img class="logo logo-small" src="email-logo-light.svg" alt="Aspen Estamparia" />
+                    <p class="email-number">ORC-20261892</p>
+                  </div>
+                  <p class="eyebrow">Olá, Andrei</p>
+                  <h3 class="email-title">Seu orçamento está pronto</h3>
+                  <p class="email-copy">Segue o orçamento para sua avaliação.</p>
+                  <a class="cta" href="#">Ver orçamento</a>
+                  <div class="attachment"><span class="attachment-icon">↗</span><span>O PDF do orçamento está anexado a este e-mail.</span></div>
+                  <p class="signature">Atenciosamente,<br /><strong>Aspen Estamparia</strong></p>
+                </div>
+                <div class="email-footer">Este email foi enviado pela Aspen Estamparia.</div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
