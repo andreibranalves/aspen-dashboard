@@ -374,7 +374,10 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
     actionDeadline !== null &&
     Date.parse(actionDeadline) <= Date.now();
   return {
-    label: labels[delivery.state],
+    label:
+      delivery.state === 'failed' && delivery.completionSource === 'operator'
+        ? 'Cancelada pelo operador'
+        : labels[delivery.state],
     requiresAction: delivery.state === 'needs_review' || delayed,
     delayed,
   };
@@ -419,6 +422,25 @@ export async function fetchDelivery(
     return requestError(statusResponse, 'Não foi possível consultar a entrega.');
   const status = parseStatusResponse(await responseBody(statusResponse), identity);
   return fetchDelivery({ id: status.deliveryId });
+}
+
+export async function cancelPendingDeliveries(): Promise<number> {
+  const response = await fetch('/api/quotation-deliveries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'cancel_pending' }),
+  });
+  if (!response.ok) return requestError(response, 'Não foi possível limpar a fila.');
+  const body = await responseBody(response);
+  if (
+    !isRecord(body) ||
+    typeof body.cancelled !== 'number' ||
+    !Number.isSafeInteger(body.cancelled) ||
+    body.cancelled < 0
+  ) {
+    invalidResponse();
+  }
+  return body.cancelled;
 }
 
 export async function listDeliveries(filters: DeliveryListFilters): Promise<DeliveryPage> {

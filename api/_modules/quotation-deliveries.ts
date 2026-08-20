@@ -289,11 +289,17 @@ function resolutionBody(body: Record<string, unknown>): {
   return { decision, note };
 }
 
+function ensureCancelPendingBody(body: Record<string, unknown>): void {
+  if (Object.keys(body).length !== 1 || body.action !== 'cancel_pending') {
+    throw new HandlerInputError('Ação de fila inválida.');
+  }
+}
+
 export async function handler(
   event: FunctionEvent,
   dependencies: QuotationDeliveriesDependencies = {},
 ): Promise<FunctionResult> {
-  if (event.httpMethod !== 'GET' && event.httpMethod !== 'PATCH') {
+  if (event.httpMethod !== 'GET' && event.httpMethod !== 'PATCH' && event.httpMethod !== 'POST') {
     return json(405, { error: 'Método não permitido.' });
   }
   const deliveryModule = dependencies.deliveryModule || createQuotationDeliveryModule();
@@ -330,6 +336,10 @@ export async function handler(
     }
 
     const body = payloadObject(event);
+    if (event.httpMethod === 'POST') {
+      ensureCancelPendingBody(body);
+      return json(200, { cancelled: await deliveryModule.cancelPending() });
+    }
     ensureResolutionBody(body);
     const location = resolutionInput(event, body);
     const resolution = resolutionBody(body);

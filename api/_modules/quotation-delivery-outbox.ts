@@ -126,6 +126,7 @@ export interface QuotationDeliveryModule {
     timeBudgetMs?: number
   ): Promise<{ processed: number; remaining: boolean }>;
   applyEvolutionEvent(event: EvolutionMessageEvent): Promise<DeliveryAggregate | null>;
+  cancelPending(): Promise<number>;
   get(input: {
     deliveryId?: string;
     identity?: DeliveryIdentity;
@@ -620,6 +621,10 @@ export function createQuotationDeliveryModule(
     });
   }
 
+  async function cancelPending(): Promise<number> {
+    return repository.cancelPending();
+  }
+
   async function get(input: {
     deliveryId?: string;
     identity?: DeliveryIdentity;
@@ -640,6 +645,7 @@ export function createQuotationDeliveryModule(
     process,
     processDue,
     applyEvolutionEvent,
+    cancelPending,
     get,
     list: (filters) => repository.list(filters),
     resolve: (input) => repository.resolve(input),

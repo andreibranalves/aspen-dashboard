@@ -380,6 +380,30 @@ class FakeRepository {
     return count;
   }
 
+  async cancelPending(): Promise<number> {
+    const now = this.clock();
+    let count = 0;
+    for (const row of this.rows.values()) {
+      if (row.aggregate.state !== 'queued' && row.aggregate.state !== 'retry_scheduled') continue;
+      if (row.leaseToken) continue;
+      for (const step of row.aggregate.steps) {
+        if (step.state === 'queued' || step.state === 'retry_scheduled') {
+          step.state = 'failed';
+          step.nextAttemptAt = null;
+          step.publicError = 'Cancelada pelo operador.';
+          step.updatedAt = now;
+        }
+      }
+      row.aggregate.state = 'failed';
+      row.aggregate.completionSource = 'operator';
+      row.aggregate.publicError = 'Cancelada pelo operador.';
+      row.aggregate.nextAttemptAt = null;
+      row.aggregate.updatedAt = now;
+      count += 1;
+    }
+    return count;
+  }
+
   async resolve(_input: ResolveDeliveryInput): Promise<DeliveryAggregate> {
     throw new Error('not used');
   }
@@ -582,6 +606,19 @@ test('enqueue processes short inter-step delays without waiting for the schedule
     delayed.transport.calls.map((call) => call.step.position),
     [0, 1, 2]
   );
+});
+
+test('cancelPending stops queued retries but leaves a processing lease untouched', async () => {
+  const { module, repository, clock, transport } = dependencies({ steps: [textStep(0)] });
+  const pending = await repository.enqueue({ ...plan([textStep(0)]), flowId: 'cancel-pending' });
+  const processing = await repository.enqueue({ ...plan([textStep(0)]), flowId: 'cancel-processing' });
+  assert.ok(await repository.claim({ deliveryId: processing.id }));
+
+  assert.equal(await module.cancelPending(), 1);
+  assert.equal((await module.get({ deliveryId: pending.id }))?.state, 'failed');
+  assert.equal((await module.get({ deliveryId: processing.id }))?.state, 'processing');
+  assert.equal(transport.calls.length, 0);
+  assert.equal(clock.value.getTime(), start.getTime());
 });
 
 test('worker crash after claim but before transport reconciles without a provider call', async () => {

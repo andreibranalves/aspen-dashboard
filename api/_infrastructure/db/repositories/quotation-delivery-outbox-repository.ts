@@ -259,6 +259,7 @@ export interface QuotationDeliveryOutboxRepository {
   markFailure(input: MarkFailureInput): Promise<DeliveryAggregate>;
   applyReceipt(input: ApplyReceiptInput): Promise<DeliveryAggregate | null>;
   expireReconciliations(limit: number): Promise<number>;
+  cancelPending(): Promise<number>;
   resolve(input: ResolveDeliveryInput): Promise<DeliveryAggregate>;
 }
 
@@ -1377,6 +1378,63 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     }
   }
 
+  async function cancelPending(): Promise<number> {
+    const now = nowFrom(clock);
+    try {
+      const db = getDb();
+      return await db.transaction(async (tx) => {
+        const rows = (await tx.execute(sql`
+          SELECT d.id
+          FROM quotation_deliveries d
+          WHERE d.state IN ('queued', 'retry_scheduled')
+            AND NOT EXISTS (
+              SELECT 1
+              FROM quotation_delivery_steps s
+              WHERE s.delivery_id = d.id
+                AND s.state = 'sending'
+            )
+          FOR UPDATE OF d SKIP LOCKED
+        `)) as Array<{ id: string }>;
+        for (const row of rows) {
+          await tx
+            .update(quotationDeliverySteps)
+            .set({
+              state: 'failed',
+              nextAttemptAt: null,
+              reconciliationDeadline: null,
+              publicError: 'Cancelada pelo operador.',
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(quotationDeliverySteps.deliveryId, row.id),
+                inArray(quotationDeliverySteps.state, ['queued', 'retry_scheduled'])
+              )
+            );
+          await tx
+            .update(quotationDeliveries)
+            .set({
+              state: 'failed',
+              nextAttemptAt: null,
+              leaseToken: null,
+              leaseUntil: null,
+              reconciliationDeadline: null,
+              completionSource: 'operator',
+              resolvedBy: 'authenticated-operator',
+              resolvedAt: now,
+              resolutionNote: 'Fila limpa pelo operador.',
+              publicError: 'Cancelada pelo operador.',
+              updatedAt: now,
+            })
+            .where(eq(quotationDeliveries.id, row.id));
+        }
+        return rows.length;
+      });
+    } catch (error) {
+      return rethrowRepositoryError(error);
+    }
+  }
+
   async function resolve(input: ResolveDeliveryInput): Promise<DeliveryAggregate> {
     if (
       !isRecord(input) ||
@@ -1509,6 +1567,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     markFailure,
     applyReceipt,
     expireReconciliations,
+    cancelPending,
     resolve,
   };
 }

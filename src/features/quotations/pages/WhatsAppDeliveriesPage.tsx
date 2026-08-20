@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
+  cancelPendingDeliveries,
   listDeliveries,
   projectDelivery,
   resolveDelivery,
@@ -215,6 +216,8 @@ export default function WhatsAppDeliveriesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clearing, setClearing] = useState(false);
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const requestFilters = useMemo<DeliveryListFilters>(
@@ -265,6 +268,26 @@ export default function WhatsAppDeliveriesPage() {
   const updateFilters = (update: (current: DeliveryFilters) => DeliveryFilters) => {
     setPage(1);
     setFilters(update);
+  };
+
+  const clearPending = async () => {
+    if (!window.confirm('Cancelar somente as entregas ainda não enviadas? Mensagens já aceitas não serão alteradas.')) return;
+    setClearing(true);
+    setClearMessage(null);
+    setError(null);
+    try {
+      const cancelled = await cancelPendingDeliveries();
+      setClearMessage(
+        cancelled === 0
+          ? 'Nenhuma tentativa pendente para cancelar.'
+          : `${cancelled} ${cancelled === 1 ? 'tentativa pendente cancelada.' : 'tentativas pendentes canceladas.'}`
+      );
+      setReloadVersion((value) => value + 1);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.');
+    } finally {
+      setClearing(false);
+    }
   };
 
   const toggleState = (state: DeliveryState) => {
@@ -321,16 +344,28 @@ export default function WhatsAppDeliveriesPage() {
           <h2 id="delivery-filters-title" className="text-sm font-semibold text-fg">
             Filtros
           </h2>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setReloadVersion((value) => value + 1)}
-            disabled={loading}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-            Atualizar
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => void clearPending()}
+              disabled={loading || clearing}
+            >
+              <Trash2 size={14} />
+              {clearing ? 'Limpando…' : 'Limpar fila'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setReloadVersion((value) => value + 1)}
+              disabled={loading || clearing}
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
+              Atualizar
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -430,6 +465,12 @@ export default function WhatsAppDeliveriesPage() {
           </fieldset>
         </div>
       </section>
+
+      {clearMessage && (
+        <div role="status" className="rounded-xl border border-line bg-surface p-3 text-sm text-fg-muted">
+          {clearMessage}
+        </div>
+      )}
 
       {result && (
         <section className="grid grid-cols-2 gap-3 md:grid-cols-5" aria-label="Resumo das entregas">

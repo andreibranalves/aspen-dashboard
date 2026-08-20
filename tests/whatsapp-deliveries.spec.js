@@ -166,6 +166,30 @@ test('outbox defaults to actionable work and resolves one delivery', async ({ pa
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
 });
 
+test('limpar fila cancela somente tentativas pendentes e mantém histórico', async ({ page }) => {
+  const pendingDelivery = delivery('retry_scheduled', { number: 'ORC-CLEAR' });
+  let cleared = false;
+  await page.route('**/api/quotation-deliveries**', (route) => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ action: 'cancel_pending' });
+      cleared = true;
+      return json(route, { cancelled: 1 });
+    }
+    return json(route, listResponse(cleared ? [] : [pendingDelivery]));
+  });
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toMatch(/ainda não enviadas/i);
+    await dialog.accept();
+  });
+
+  await page.goto('/#/whatsapp-deliveries');
+  await expect(page.getByText('ORC-CLEAR', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Limpar fila' }).click();
+  await expect(page.getByText('1 tentativa pendente cancelada.', { exact: true })).toBeVisible();
+  await expect(page.getByText('ORC-CLEAR', { exact: true })).toHaveCount(0);
+});
+
 test('browser absent while cron completes delivery leaves one durable delivered row', async ({ page, context }) => {
   let durableState = 'processing';
   let workerCalls = 0;

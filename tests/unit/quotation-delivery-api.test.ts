@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  cancelPendingDeliveries,
   deliveryPollDelay,
   enqueueDelivery,
   fetchDelivery,
@@ -102,6 +103,14 @@ test('projector distinguishes provider acceptance from device delivery', () => {
     'Entregue'
   );
   assert.equal(
+    projectDelivery({
+      ...fixture({ state: 'failed', completionSource: 'operator' }),
+      state: 'failed',
+      completionSource: 'operator',
+    } as unknown as DeliveryView).label,
+    'Cancelada pelo operador'
+  );
+  assert.equal(
     projectDelivery({ ...fixture({ state: 'needs_review' }) } as unknown as DeliveryView)
       .requiresAction,
     true
@@ -116,6 +125,22 @@ test('polling stops only for terminal states', () => {
   assert.equal(deliveryPollDelay('delivered'), null);
   assert.equal(deliveryPollDelay('failed'), null);
   assert.equal(deliveryPollDelay('needs_review'), null);
+});
+
+test('cancelPendingDeliveries posts the explicit queue action and parses its count', async () => {
+  const originalFetch = globalThis.fetch;
+  let request: Request | undefined;
+  globalThis.fetch = (async (input, init) => {
+    request = new Request(`https://app.test${String(input)}`, init);
+    return response({ cancelled: 2 });
+  }) as typeof fetch;
+  try {
+    assert.equal(await cancelPendingDeliveries(), 2);
+    assert.equal(request?.method, 'POST');
+    assert.deepEqual(await request?.json(), { action: 'cancel_pending' });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('fetchDelivery resolves identity through the compatibility status endpoint', async () => {

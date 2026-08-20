@@ -99,6 +99,10 @@ function moduleFixture(state = 'provider_accepted') {
       calls.push({ method: 'resolve', input });
       return { ...current, state: 'delivered' };
     },
+    async cancelPending() {
+      calls.push({ method: 'cancelPending', input: undefined });
+      return 3;
+    },
   } as any;
   return { deliveryModule, calls };
 }
@@ -216,6 +220,23 @@ test('GET rejects invalid filters and missing detail', async () => {
     (await quotationDeliveries(event('GET', {}, { id: 'missing' }), { deliveryModule: missing })).statusCode,
     404,
   );
+});
+
+test('POST cancel_pending cancels the safe queue through the durable module', async () => {
+  const { deliveryModule, calls } = moduleFixture();
+  const result = await quotationDeliveries(
+    event('POST', { action: 'cancel_pending' }),
+    { deliveryModule },
+  );
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '{}'), { cancelled: 3 });
+  assert.deepEqual(calls.find((call) => call.method === 'cancelPending')?.input, undefined);
+
+  const invalid = await quotationDeliveries(
+    event('POST', { action: 'delete_everything' }),
+    { deliveryModule },
+  );
+  assert.equal(invalid.statusCode, 400);
 });
 
 test('PATCH resolution injects fixed operator identity and validates note/decision', async () => {

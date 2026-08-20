@@ -653,6 +653,36 @@ databaseTest('markFailure schedules safe retries and expires ambiguous reconcili
   assert.equal((await repository.get(ambiguousDelivery.id))?.state, 'needs_review');
 });
 
+databaseTest('cancelPending cancels only queued retries and preserves sent work', async () => {
+  const pending = await repository.enqueue(
+    input({ flowId: 'cancel-pending-postgres', steps: [textStep()] })
+  );
+  const processing = await repository.enqueue(
+    input({ flowId: 'cancel-processing-postgres', steps: [textStep()] })
+  );
+  assert.ok(await repository.claim({ deliveryId: processing.id }));
+
+  const accepted = await repository.enqueue(
+    input({ flowId: 'cancel-accepted-postgres', steps: [textStep()] })
+  );
+  const acceptedClaim = await repository.claim({ deliveryId: accepted.id });
+  assert.ok(acceptedClaim);
+  await repository.markAccepted({
+    deliveryId: accepted.id,
+    stepId: acceptedClaim.step.id,
+    leaseToken: acceptedClaim.leaseToken,
+    providerMessageId: 'provider-cancel-accepted',
+  });
+
+  assert.ok((await repository.cancelPending()) >= 1);
+  const cancelled = await repository.get(pending.id);
+  assert.equal(cancelled?.state, 'failed');
+  assert.equal(cancelled?.completionSource, 'operator');
+  assert.equal(cancelled?.publicError, 'Cancelada pelo operador.');
+  assert.equal((await repository.get(processing.id))?.state, 'processing');
+  assert.equal((await repository.get(accepted.id))?.state, 'provider_accepted');
+});
+
 databaseTest('confirmed_received records operator completion', async () => {
   const delivery = await repository.enqueue(
     input({
