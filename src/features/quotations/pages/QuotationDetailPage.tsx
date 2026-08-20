@@ -414,9 +414,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     [searchItemProducts, updateItem]
   );
 
+  const lookupProductPrice = useCallback(async (sku: string, qty: string) => {
+    const response = await apiPost<{ items?: Array<{ rate?: string | number }> }>('/pricing-lookup', {
+      items: [{ item_code: sku, qty }],
+      urgent: false,
+    });
+    const rawRate = response.items?.[0]?.rate;
+    const rate = Number(rawRate);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error('Preço indisponível para este produto.');
+    }
+    return String(rawRate);
+  }, []);
+
   const selectProduct = useCallback(
-    (key: string, product: Product) => {
+    async (key: string, product: Product) => {
       const sku = String(product.sku || product.item_code || '');
+      const qty = items.find((item) => item._key === key)?.qty || '1.000';
       updateItem(key, {
         sku,
         item_code: sku,
@@ -430,8 +444,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       });
       setProductTerms((previous) => ({ ...previous, [key]: sku }));
       setProductResults((previous) => ({ ...previous, [key]: [] }));
+      try {
+        const rate = await lookupProductPrice(sku, qty);
+        updateItem(key, {
+          suggested_unit_price: rate,
+          applied_unit_price: rate,
+          price_difference: '0.00',
+          line_total: String(Number(qty) * Number(rate)),
+        });
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Não foi possível consultar o preço.');
+      }
     },
-    [updateItem]
+    [items, lookupProductPrice, updateItem]
   );
 
   const addItem = useCallback(() => {

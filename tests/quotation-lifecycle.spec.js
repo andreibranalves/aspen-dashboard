@@ -865,6 +865,61 @@ test('core lifecycle marks sent quotations and creates a revision from issued hi
   });
 });
 
+test('new revision prices a product selected from an added item row @quotations @critical', async ({ page }) => {
+  let authoritative = detail();
+  const pricingBodies = [];
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/products?*', (route) => fulfillJson(route, {
+    data: [{ sku: 'SKU-NEW', nome: 'Produto novo', pricing_available: true }],
+  }));
+  await page.route('**/api/pricing-lookup', async (route) => {
+    pricingBodies.push(route.request().postDataJSON());
+    await fulfillJson(route, {
+      success: true,
+      items: [{ item_code: 'SKU-NEW', item_name: 'Produto novo', qty: '1.000', rate: '12.34' }],
+    });
+  });
+  await page.route('**/api/quotations**', async (route) => {
+    const request = route.request();
+    const url = new globalThis.URL(request.url());
+    if (request.method() === 'GET' && url.searchParams.get('id')) {
+      await fulfillJson(route, authoritative);
+      return;
+    }
+    if (request.method() === 'POST') {
+      const payload = request.postDataJSON();
+      if (payload.action === 'create_revision') {
+        authoritative = detail({
+          status: 'Rascunho',
+          status_canonical: 'rascunho',
+          revision: 2,
+          revision_number: 2,
+          revision_id: '66666666-6666-4666-8666-666666666666',
+        });
+      }
+      await fulfillJson(route, authoritative);
+      return;
+    }
+    await fulfillJson(route, { data: [] });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Nova revisão' }).click();
+  await expect(page.getByText('Nova revisão criada em rascunho.')).toBeVisible();
+  await page.getByRole('button', { name: 'Editar' }).click();
+  await page.getByRole('button', { name: 'Item', exact: true }).click();
+
+  const row = page.locator('table').first().locator('tbody tr').last();
+  await row.getByRole('textbox').first().fill('SKU-NEW');
+  await page.getByRole('button', { name: /SKU-NEW/ }).click();
+
+  await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('12.34');
+  expect(pricingBodies).toEqual([
+    { items: [{ item_code: 'SKU-NEW', qty: '1.000' }], urgent: false },
+  ]);
+});
+
 function fulfillJson(route, body, status = 200) {
   return route.fulfill({
     status,
