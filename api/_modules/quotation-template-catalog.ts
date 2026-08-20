@@ -155,11 +155,11 @@ const BRANDED_SOURCE = `<!doctype html>
     .conditions { padding: 0; background: none; margin-bottom: 32px; border-left: none; margin-top: 0; }
     .conditions p { font-size: 12px; color: var(--muted); margin-bottom: 6px; line-height: 1.65; }
     .conditions p:last-child { margin-bottom: 0; }
-    .footer { margin-top: 0; padding: 14px 48px; background: #002b5f; }
+    .footer { margin-top: 0; padding: 14px 48px; background: #1e3159; }
     .footer-contacts { display: flex; flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
     .contact-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #ffffff; }
     .contact-icon { width: 18px; height: 18px; background: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .contact-icon svg { width: 10px; height: 10px; fill: #002b5f; }
+    .contact-icon svg { width: 10px; height: 10px; fill: #1e3159; }
   </style>
 </head>
 <body>
@@ -170,7 +170,7 @@ const BRANDED_SOURCE = `<!doctype html>
     </div>
     <svg style="position:absolute;right:0;top:0;width:62%;height:130px;" viewBox="0 0 349.14 87.82" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
       <path style="fill:#d0cac2" d="M295.67,0v87.82h-129.21c-22.22,0-43.54-7-59.25-19.46L44.18,18.38C32.06,8.77,16.62,2.4,0,0h295.67Z" />
-      <path style="fill:#002b5f" d="M349.14,0v87.82h-134.08c-22.22,0-43.54-7-59.25-19.46l-63.03-49.98C80.67,8.77,65.22,2.4,48.6,0h300.54Z" />
+      <path style="fill:#1e3159" d="M349.14,0v87.82h-134.08c-22.22,0-43.54-7-59.25-19.46l-63.03-49.98C80.67,8.77,65.22,2.4,48.6,0h300.54Z" />
     </svg>
     <div style="position:absolute;right:48px;top:44px;z-index:4;">
       <svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" id="Camada_2" data-name="Camada 2" viewBox="0 0 181.61 45.75" width="191" height="53">
@@ -460,7 +460,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
     right: 0;
     height: var(--footer-h);
     padding: 0 48px;
-    background: #002b5f;
+    background: #1e3159;
     z-index: 100;
     display: flex;
     align-items: center;
@@ -495,7 +495,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
   .contact-icon svg {
     width: 10px;
     height: 10px;
-    fill: #002b5f;
+    fill: #1e3159;
   }
 
   /* ═══════════════════════════════════════════
@@ -685,7 +685,7 @@ const COMPARATIVE_SOURCE = String.raw`<!doctype html>
       preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
       <path style="fill:#d0cac2"
         d="M295.67,0v87.82h-129.21c-22.22,0-43.54-7-59.25-19.46L44.18,18.38C32.06,8.77,16.62,2.4,0,0h295.67Z" />
-      <path style="fill:#002b5f"
+      <path style="fill:#1e3159"
         d="M349.14,0v87.82h-134.08c-22.22,0-43.54-7-59.25-19.46l-63.03-49.98C80.67,8.77,65.22,2.4,48.6,0h300.54Z" />
     </svg>
 
@@ -1231,7 +1231,7 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
   .footer {
     margin-top: 0;
     padding: 14px 48px;
-    background: #002b5f;
+    background: #1e3159;
   }
 
   .footer-contacts {
@@ -1264,7 +1264,7 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
   .contact-icon svg {
     width: 10px;
     height: 10px;
-    fill: #002b5f;
+    fill: #1e3159;
   }
 </style>
 
@@ -1282,7 +1282,7 @@ const SIMPLE_SOURCE = String.raw`<!doctype html>
       preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
       <path style="fill:#d0cac2"
         d="M295.67,0v87.82h-129.21c-22.22,0-43.54-7-59.25-19.46L44.18,18.38C32.06,8.77,16.62,2.4,0,0h295.67Z" />
-      <path style="fill:#002b5f"
+      <path style="fill:#1e3159"
         d="M349.14,0v87.82h-134.08c-22.22,0-43.54-7-59.25-19.46l-63.03-49.98C80.67,8.77,65.22,2.4,48.6,0h300.54Z" />
     </svg>
 
