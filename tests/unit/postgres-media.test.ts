@@ -13,6 +13,7 @@ import {
   verifyOwnedBlobRecord,
 } from '../../api/_modules/postgres-media.js';
 import { handler as communicationMediaUpload } from '../../api/_modules/communication-media-upload.js';
+import { mediaGroupPathSegment } from '../../api/_modules/media-schema.js';
 import {
   compareAndSetMedia,
   deleteMediaIfCurrent,
@@ -265,6 +266,32 @@ test('metadata requires canonical owned pathname and matching Blob HEAD metadata
     verifyBlobMetadata({ ...payload, content_type: 'image/png' }, 'canga', origin, async () => headResult()),
     /metadados do Blob/i,
   );
+});
+
+test('metadata accepts the hashed path used by the media uploader', async () => {
+  const group = 'toalhas';
+  const hash = mediaGroupPathSegment(group);
+  const hashedUrl = `https://store.public.blob.vercel-storage.com/aspen-media/${hash}/bath.jpg`;
+  const hashedPath = `aspen-media/${hash}/bath.jpg`;
+  const verified = await verifyBlobMetadata(
+    {
+      title: 'Toalha de banho',
+      product_group: group,
+      blob_url: hashedUrl,
+      pathname: hashedPath,
+      content_type: 'image/jpeg',
+      size_bytes: 11,
+    },
+    group,
+    origin,
+    async () => ({
+      url: hashedUrl,
+      pathname: hashedPath,
+      contentType: 'image/jpeg',
+      size: 11,
+    }) as any,
+  );
+  assert.equal(verified.pathname, hashedPath);
 });
 
 test('owned record HEAD is authenticated, store-scoped, and exact', async () => {

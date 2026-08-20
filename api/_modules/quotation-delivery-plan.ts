@@ -18,20 +18,15 @@ import {
 } from './postgres-media.js';
 import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
 import { getTimeBasedGreeting } from './time-greeting.js';
+import {
+  detectProductCategories,
+  normalizeProductCategory as normalizeCategory,
+} from './product-category.js';
 
 const MAX_STEPS = 64;
 const MAX_FLOW_DURATION_MS = 45_000;
 const DEFAULT_ORIGIN = 'https://project-xr5jg.vercel.app';
 
-const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
-  CNG: 'canga',
-  LNC: 'lenço',
-  BNE: 'boné',
-  TWL: 'toalha',
-  CHP: 'chapéu',
-  ECO: 'ecobag',
-  CHC: 'cachecol',
-};
 const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
   canga: 'cangas',
   lenço: 'lenços',
@@ -50,27 +45,6 @@ const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   ecobag: 'f',
   cachecol: 'm',
 };
-const CATEGORY_ALIASES: Record<string, string> = {
-  canga: 'canga',
-  cangas: 'canga',
-  lenco: 'lenço',
-  lenço: 'lenço',
-  lenços: 'lenço',
-  bone: 'boné',
-  boné: 'boné',
-  bonés: 'boné',
-  chapeu: 'chapéu',
-  chapéu: 'chapéu',
-  chapéus: 'chapéu',
-  toalha: 'toalha',
-  toalhas: 'toalha',
-  ecobag: 'ecobag',
-  ecobags: 'ecobag',
-  cachecol: 'cachecol',
-  cachecóis: 'cachecol',
-  cachecois: 'cachecol',
-};
-
 type LoadedContext = Awaited<ReturnType<typeof loadPostgresSendContext>>;
 type ContextInput = Partial<LoadedContext> & Record<string, unknown>;
 
@@ -139,25 +113,8 @@ function firstNonEmpty(...values: unknown[]): string {
   return typeof found === 'string' ? found.trim() : '';
 }
 
-function normalizeCategory(value: unknown): string {
-  const key = String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  return CATEGORY_ALIASES[key] || key;
-}
-
 export function detectCategories(items: Array<Record<string, unknown>> = []): string[] {
-  const categories: string[] = [];
-  for (const item of items) {
-    const sku = String(item.sku || item.item_code || item.itemCode || '')
-      .trim()
-      .toUpperCase();
-    const category = PRODUCT_CATEGORY_BY_PREFIX[sku.split('-')[0] || ''];
-    if (category && !categories.includes(category)) categories.push(category);
-  }
-  return categories;
+  return detectProductCategories(items);
 }
 
 function pluralizeProductCategory(category: string): string {

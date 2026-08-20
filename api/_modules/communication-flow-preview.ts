@@ -21,6 +21,10 @@ import {
   type BlobHead,
   type PostgresMediaRecord,
 } from './postgres-media.js';
+import {
+  detectProductCategories,
+  normalizeProductCategory as normalizeCategory,
+} from './product-category.js';
 
 const kv = getKvClient();
 
@@ -131,15 +135,6 @@ export function renderTemplate(
 
 // ── Product category detection ─────────────────────────────────────────────
 
-const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
-  CNG: 'canga',
-  LNC: 'lenço',
-  BNE: 'boné',
-  TWL: 'toalha',
-  CHP: 'chapéu',
-  ECO: 'ecobag',
-  CHC: 'cachecol',
-};
 const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
   canga: 'cangas',
   lenço: 'lenços',
@@ -160,16 +155,7 @@ const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
 };
 
 function detectCategories(items: Record<string, unknown>[] = []): string[] {
-  const categories: string[] = [];
-  for (const item of items || []) {
-    const sku = String(item?.sku || item?.item_code || item?.itemCode || '')
-      .trim()
-      .toUpperCase();
-    const prefix = sku.split('-')[0];
-    const category = (PRODUCT_CATEGORY_BY_PREFIX as Record<string, string>)[prefix];
-    if (category && !categories.includes(category)) categories.push(category);
-  }
-  return categories;
+  return detectProductCategories(items);
 }
 
 function productSummaryFromCategories(categories: string[] = []): string {
@@ -243,14 +229,15 @@ async function resolveMediaUrls(
   const media = mediaRecords.filter((item) => item.active === true && !isMediaTombstone(item)) as Array<Record<string, unknown>>;
   const byGroup: Record<string, Record<string, unknown>[]> = {};
   for (const asset of media) {
-    const group = String(asset.product_group || '');
+    const group = normalizeCategory(asset.product_group);
     if (!group || !asset.blob_url) continue;
     (byGroup[group] = byGroup[group] || []).push(asset);
   }
 
   const resolved: Record<string, unknown>[] = [];
   for (const cat of categories) {
-    const assets = (byGroup[cat] || []).slice(0, 5);
+    const category = normalizeCategory(cat);
+    const assets = (byGroup[category] || []).slice(0, 5);
     for (const asset of assets) {
       let verified;
       try {
@@ -258,7 +245,7 @@ async function resolveMediaUrls(
           headFn: verification.headFn,
           token: verification.blobToken,
           storeId: verification.blobStoreId,
-          expectedProductGroup: cat,
+          expectedProductGroup: category,
         });
       } catch (error) {
         if (error && typeof error === 'object' && 'statusCode' in error) throw error;

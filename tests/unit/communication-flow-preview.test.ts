@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { handler } from '../../api/_modules/communication-flow-preview.js';
 import type { PostgresMediaRecord } from '../../api/_modules/postgres-media.js';
+import { mediaGroupPathSegment } from '../../api/_modules/media-schema.js';
 
 const blobUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
 const pathname = 'aspen-media/canga/reference.jpg';
@@ -155,6 +156,36 @@ test('preview emits an authenticated video step with video behavior', async () =
   const body = JSON.parse(response.body || '{}');
   assert.equal(body.steps[0].type, 'video');
   assert.equal(body.steps[0].url, videoUrl);
+});
+
+test('preview resolves plural catalog groups and hashed Blob paths', async () => {
+  const group = 'toalhas';
+  const hash = mediaGroupPathSegment(group);
+  const url = `https://store.public.blob.vercel-storage.com/aspen-media/${hash}/bath.jpg`;
+  const pathname = `aspen-media/${hash}/bath.jpg`;
+  const response = await handler(event(basePayload), {
+    ...dependencies([record({
+      product_group: group,
+      blob_url: url,
+      pathname,
+    })], async () => ({
+      url,
+      pathname,
+      contentType: 'image/jpeg',
+      size: 11,
+    })),
+    resolvePostgresContext: async () => ({
+      nome: 'Cliente Preview',
+      quotationId: 'ORC-20260001',
+      link: '',
+      vendorName: 'Juliana',
+      empresa: 'Aspen Estamparia',
+      productSummary: 'toalhas',
+      categories: ['toalha'],
+    }),
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body || '{}').steps[0].url, url);
 });
 
 test('preview fails closed on media catalog and Blob HEAD errors', async () => {

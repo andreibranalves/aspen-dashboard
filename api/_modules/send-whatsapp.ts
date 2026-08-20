@@ -42,6 +42,10 @@ import {
   createPostgresQuotationDeliveryRepository,
   type QuotationDeliveryRepository,
 } from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
+import {
+  detectProductCategories,
+  normalizeProductCategory as normalizeCategory,
+} from './product-category.js';
 
 const DEFAULT_TEMPLATE =
   '(Saudacao), (primeiro_nome)! Tudo bem?\n\nSegue o orçamento (numero_pedido):\n(link_orcamento)\n\nQualquer dúvida estamos à disposição.\nAspen Estamparia';
@@ -62,15 +66,6 @@ const DEFAULT_SEQUENCE_STEPS: SequenceStep[] = [
   },
   { type: 'product_images' },
 ];
-const PRODUCT_CATEGORY_BY_PREFIX: Record<string, string> = {
-  CNG: 'canga',
-  LNC: 'lenço',
-  BNE: 'boné',
-  TWL: 'toalha',
-  CHP: 'chapéu',
-  ECO: 'ecobag',
-  CHC: 'cachecol',
-};
 const PRODUCT_SUMMARY_PLURALS: Record<string, string> = {
   canga: 'cangas',
   lenço: 'lenços',
@@ -89,27 +84,6 @@ const PRODUCT_CATEGORY_GENDERS: Record<string, string> = {
   ecobag: 'f',
   cachecol: 'm',
 };
-const CATEGORY_ALIASES: Record<string, string> = {
-  canga: 'canga',
-  cangas: 'canga',
-  lenco: 'lenço',
-  lenço: 'lenço',
-  lenços: 'lenço',
-  bone: 'boné',
-  boné: 'boné',
-  bonés: 'boné',
-  chapeu: 'chapéu',
-  chapéu: 'chapéu',
-  chapéus: 'chapéu',
-  toalha: 'toalha',
-  toalhas: 'toalha',
-  ecobag: 'ecobag',
-  ecobags: 'ecobag',
-  cachecol: 'cachecol',
-  cachecóis: 'cachecol',
-  cachecois: 'cachecol',
-};
-
 // ── Basic helpers ───────────────────────────────────────────────────────────
 
 function jsonResponse(statusCode: number, body: unknown): FunctionResult {
@@ -229,26 +203,8 @@ function renderTemplate(template: string, context: TemplateContext): string {
     .replace(/\(produto_adjetivo_personalizado\)/g, productPersonalizationAdjective);
 }
 
-function normalizeCategory(value: unknown): string {
-  const key = String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  return CATEGORY_ALIASES[key] || String(value);
-}
-
 function detectCategories(items: Array<Record<string, unknown>> = []): string[] {
-  const categories: string[] = [];
-  for (const item of items || []) {
-    const sku = String(item?.sku || item?.item_code || item?.itemCode || '')
-      .trim()
-      .toUpperCase();
-    const prefix = sku.split('-')[0];
-    const category = PRODUCT_CATEGORY_BY_PREFIX[prefix];
-    if (category && !categories.includes(category)) categories.push(category);
-  }
-  return categories;
+  return detectProductCategories(items);
 }
 
 function productSummaryFromCategories(categories: string[] = []): string {

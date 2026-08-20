@@ -3,8 +3,10 @@ import test from 'node:test';
 
 import {
   createDeliveryPlan,
+  detectCategories,
   type DeliveryPlanInput,
 } from '../../api/_modules/quotation-delivery-plan.js';
+import { mediaGroupPathSegment } from '../../api/_modules/media-schema.js';
 
 const revisionId = '22222222-2222-4222-8222-222222222222';
 
@@ -60,6 +62,57 @@ test('plan freezes rendered text, approved media and exactly one quotation PDF',
   assert.deepEqual(plan.steps.map((step) => step.position), [0, 1, 2]);
   assert.deepEqual(plan.steps.map((step) => step.delayMs), [0, 1000, 1000]);
   assert.equal(JSON.stringify(plan.steps).includes('base64'), false);
+});
+
+test('detects banho by category and TBH SKU', () => {
+  assert.deepEqual(
+    detectCategories([
+      { sku: 'TBH-LEM', categoria: 'toalhas' },
+      { sku: 'TBH-URC', categoria: 'toalhas' },
+      { sku: 'TBH-IPA', categoria: 'toalhas' },
+    ]),
+    ['toalha'],
+  );
+  assert.deepEqual(detectCategories([{ sku: 'TBH-LEM' }]), ['toalha']);
+});
+
+test('plan resolves uploaded hashed media for banho towels', async () => {
+  const group = 'toalhas';
+  const hash = mediaGroupPathSegment(group);
+  const url = `https://store.public.blob.vercel-storage.com/aspen-media/${hash}/bath.jpg`;
+  const pathname = `aspen-media/${hash}/bath.jpg`;
+  const plan = await createDeliveryPlan(fixtureInput({
+    context: {
+      businessNumber: 'ORC-20260001',
+      nome: 'Cliente',
+      phone: '5511999990000',
+      items: [
+        { sku: 'TBH-LEM', categoria: group },
+        { sku: 'TBH-URC', categoria: group },
+        { sku: 'TBH-IPA', categoria: group },
+      ],
+    },
+    resolveMedia: undefined,
+    mediaRecords: [{
+      id: 'bath-media',
+      product_group: group,
+      blob_url: url,
+      pathname,
+      active: true,
+      content_type: 'image/jpeg',
+      size_bytes: 11,
+      kind: 'image',
+    }],
+    blobStoreId: 'store',
+    headBlob: async () => ({
+      url,
+      pathname,
+      contentType: 'image/jpeg',
+      size: 11,
+    }),
+  }));
+
+  assert.deepEqual(plan.steps.map((step) => step.type), ['text', 'media', 'quotation_pdf']);
 });
 
 test('plan rejects disabled flows, excessive expanded steps and delay budget', async () => {

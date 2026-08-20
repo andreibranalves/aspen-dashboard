@@ -8,6 +8,7 @@ import {
   mediaGroupPathSegment,
 } from './media-schema.js';
 import { createHttpError } from '../_shared/http-error.js';
+import { normalizeProductCategory } from './product-category.js';
 
 const kv = getKvClient();
 
@@ -490,8 +491,9 @@ export async function verifyOwnedBlobRecord(
     origin,
     options.requireActive !== false,
   );
-  const expectedProductGroup = String(options.expectedProductGroup || '').trim().toLowerCase();
-  if (expectedProductGroup && pathname.split('/')[1] !== expectedProductGroup) {
+  const expectedProductGroup = normalizeProductCategory(options.expectedProductGroup);
+  const actualProductGroup = normalizeProductCategory(recordProductGroup(record));
+  if (expectedProductGroup && actualProductGroup !== expectedProductGroup) {
     throw createHttpError(400, 'Caminho do Blob não corresponde ao grupo do registro.');
   }
   const contentType = recordContentType(record);
