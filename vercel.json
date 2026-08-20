@@ -8,12 +8,6 @@
       "maxDuration": 60
     }
   },
-  "crons": [
-    {
-      "path": "/api/quotation-delivery-worker",
-      "schedule": "* * * * *"
-    }
-  ],
   "rewrites": [
     {
       "source": "/((?!api/.*).*)",

@@ -44,7 +44,9 @@ Configure o webhook `MESSAGES_UPDATE` da Evolution com um cabeçalho `Authorizat
 
 Confirme que `/api/evolution-webhook` rejeita requisições sem bearer e com bearer incorreto.
 
-Confirme que o cron da Vercel invoca `/api/quotation-delivery-worker` a cada minuto.
+Confirme que o schedule QStash `aspen-whatsapp-delivery-worker` invoca `POST /api/quotation-delivery-worker` a cada dois minutos, com zero retries e `Authorization: Bearer <CRON_SECRET>` encaminhado por `Upstash-Forward-Authorization`.
+
+O schedule fica fora do `vercel.json` porque o plano Hobby da Vercel aceita somente execuções diárias. Configure `Upstash-Redact-Fields: header[Authorization]` e nunca registre o token QStash ou `CRON_SECRET`.
 
 Inspecione **Envios WhatsApp** para localizar linhas ativas e acionáveis.
 
