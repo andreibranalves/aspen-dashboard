@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   loadAutoQuoteDrafts,
   saveAutoQuoteDrafts,
-} from '../../src/lib/autoQuoteDraftStorage.ts';
+} from '../../src/lib/storage/autoQuoteDraftStorage.ts';
 import type { StoredAutoQuoteDraft } from '../../src/types/domain.ts';
 
 function createStorage() {

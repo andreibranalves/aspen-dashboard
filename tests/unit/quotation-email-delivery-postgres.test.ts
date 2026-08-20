@@ -10,13 +10,13 @@ import postgres from 'postgres';
 
 import {
   DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-} from '../../api/_lib/quotation-email-template.js';
-import * as schema from '../../api/_db/schema.js';
-import type { AppDatabase } from '../../api/_db/client.js';
+} from '../../api/_shared/quotation-email-template.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
+import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
   createPostgresQuotationEmailDeliveryRepository,
   QuotationEmailDeliveryRepositoryError,
-} from '../../api/_db/quotation-email-delivery-repository.js';
+} from '../../api/_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

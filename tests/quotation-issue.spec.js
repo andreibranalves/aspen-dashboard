@@ -16,7 +16,7 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
   const requests = [];
   let releasePost;
   const postReleased = new Promise((resolve) => { releasePost = resolve; });
-  await page.route('**/api/**', async (route) => {
+  await page.route('/api/**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
     if (url.pathname.endsWith('/quotation-issues')) {
@@ -45,7 +45,7 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
   return { requests, releasePost: () => releasePost?.() };
 }
 
-test('preview and emission use explicit UI clicks with one stable idempotent POST', async ({ page }) => {
+test('preview and emission use explicit UI clicks with one stable idempotent POST @quotations @critical', async ({ page }) => {
   const { requests, releasePost } = await setup(page, null, {
     quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1,
     status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
@@ -86,7 +86,29 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   expect(requests.some((request) => request.url().includes('send-whatsapp'))).toBe(false);
 });
 
-test('GET recovery is read-only after a lost POST response', async ({ page }) => {
+test('active emission does not show a recovery error while POST is pending @quotations @critical', async ({ page }) => {
+  const { releasePost } = await setup(page, null, {
+    quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1,
+    status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
+  }, { deferPost: true });
+  await page.addInitScript(() => {
+    const value = JSON.parse(globalThis.localStorage.getItem('aspen_drafts'));
+    value.drafts[0].issueIdempotencyKey = undefined;
+    globalThis.localStorage.setItem('aspen_drafts', JSON.stringify(value));
+  });
+  await page.goto('/#/auto');
+  const postRequest = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
+  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await postRequest;
+  try {
+    await expect(page.getByText('Não foi possível consultar a emissão. Tente novamente.', { exact: true })).toHaveCount(0);
+  } finally {
+    releasePost();
+  }
+  await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
+});
+
+test('GET recovery is read-only after a lost POST response @quotations @critical', async ({ page }) => {
   const { requests } = await setup(page, { state: 'completed', quotation_id: 'q-1', business_number: 'ORC-20260001', revision_id: 'r-1', revision_number: 1, status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf' });
   await page.goto('/#/auto');
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();

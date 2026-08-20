@@ -2,20 +2,20 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-} from '../../api/_lib/quotation-email-template.js';
-import type { FunctionEvent, FunctionResult } from '../../api/_lib/types.js';
+} from '../../api/_shared/quotation-email-template.js';
+import type { FunctionEvent, FunctionResult } from '../../api/_http/types.js';
 import type {
   QuotationEmailDelivery,
   QuotationEmailDeliveryRepository,
-} from '../../api/_db/quotation-email-delivery-repository.js';
+} from '../../api/_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 import {
   handler,
   type SendQuotationEmailDependencies,
-} from '../../api/_functions/send-quotation-email.js';
+} from '../../api/_modules/send-quotation-email.js';
 import {
   ResendTransportError,
   sendQuotationEmailViaResend,
-} from '../../api/_functions/lib/quotation-email.js';
+} from '../../api/_modules/quotation-email.js';
 
 const quotationId = '11111111-1111-4111-8111-111111111111';
 const revisionId = '22222222-2222-4222-8222-222222222222';

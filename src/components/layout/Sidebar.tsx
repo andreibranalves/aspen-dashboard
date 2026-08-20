@@ -1,59 +1,6 @@
 import { cn } from '@/lib/utils';
-import {
-  BarChart3,
-  ShoppingCart,
-  FileText,
-  Sparkles,
-  Columns3,
-  Package,
-  Users,
-  Settings,
-  MessageCircle,
-  Menu,
-  X,
-  Moon,
-  Sun,
-  type LucideIcon,
-} from 'lucide-react';
-
-interface NavItem {
-  hash: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-const NAV_SECTIONS: NavSection[] = [
-  {
-    title: 'Operacional',
-    items: [
-      { hash: '/auto', label: 'Auto', icon: Sparkles },
-      { hash: '/whatsapp-inbox', label: 'WhatsApp', icon: MessageCircle },
-      { hash: '/dashboard', label: 'Dashboard', icon: BarChart3 },
-      { hash: '/sales-orders', label: 'Pedidos', icon: ShoppingCart },
-      { hash: '/crm', label: 'CRM', icon: Columns3 },
-    ],
-  },
-  {
-    title: 'Cadastros',
-    items: [
-      { hash: '/quotations', label: 'Orçamentos', icon: FileText },
-      { hash: '/products', label: 'Produtos', icon: Package },
-      { hash: '/leads', label: 'Clientes', icon: Users },
-    ],
-  },
-  {
-    title: 'Outros',
-    items: [
-      { hash: '/comunicacao', label: 'Comunicação', icon: MessageCircle },
-      { hash: '/settings', label: 'Configurações', icon: Settings },
-    ],
-  },
-];
+import { Menu, X, Moon, Sun } from 'lucide-react';
+import { NAV_SECTIONS } from '@/app/navigation';
 
 export interface SidebarProps {
   collapsed: boolean;

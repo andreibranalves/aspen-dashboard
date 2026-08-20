@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler } from '../../api/_functions/communication-flow-preview.js';
-import type { PostgresMediaRecord } from '../../api/_functions/lib/postgres-media.js';
+import { handler } from '../../api/_modules/communication-flow-preview.js';
+import type { PostgresMediaRecord } from '../../api/_modules/postgres-media.js';
 
 const blobUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
 const pathname = 'aspen-media/canga/reference.jpg';

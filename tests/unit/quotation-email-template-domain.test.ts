@@ -4,7 +4,7 @@ import {
   DEFAULT_QUOTATION_EMAIL_TEMPLATE,
   renderQuotationEmailTemplate,
   validateQuotationEmailTemplate,
-} from '../../api/_lib/quotation-email-template.js';
+} from '../../api/_shared/quotation-email-template.js';
 
 const renderInput = {
   customerName: '<Maria & Filhos>',

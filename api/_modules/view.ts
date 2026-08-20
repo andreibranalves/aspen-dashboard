@@ -1,0 +1,27 @@
+import type { FunctionEvent, FunctionResult } from '../_http/types.js';
+import { renderQuotationHtml } from './quotation-html.js';
+import { resolvePrintFormat } from './print-format.js';
+
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  const quotationId = event.queryStringParameters?.q;
+  if (!quotationId) {
+    return { statusCode: 400, headers: { 'Content-Type': 'text/plain' }, body: 'Parâmetro ?q= obrigatório' };
+  }
+
+  try {
+    const printFormat = await resolvePrintFormat(quotationId, event.queryStringParameters?.format);
+    const { html } = await renderQuotationHtml(quotationId, { printFormat });
+    return {
+      statusCode: 200,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      body: html,
+    };
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    if (details.statusCode === 404) {
+      return { statusCode: 404, headers: { 'Content-Type': 'text/plain' }, body: 'Orçamento não encontrado' };
+    }
+    console.error('[view]', details.message || err);
+    return { statusCode: 502, headers: { 'Content-Type': 'text/plain' }, body: 'Erro ao buscar orçamento' };
+  }
+}

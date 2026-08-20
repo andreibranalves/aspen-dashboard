@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { createHandler as createBoundary } from '../../api/_functions/quotations.js';
-import { createCoreHandler } from '../../api/_functions/quotations-core.js';
-import { createPostgresQuotationLifecycleRepository } from '../../api/_db/quotation-lifecycle-repository.ts';
+import { createHandler as createBoundary } from '../../api/_modules/quotations.js';
+import { createCoreHandler } from '../../api/_modules/quotations-core.js';
+import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.ts';
 import {
   QuoteManagementConflictError,
   QuoteManagementInputError,
-} from '../../api/_db/quote-draft-management-repository.js';
+} from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
 import {
   projectQuotationDetail,
   projectQuotationListRow,
@@ -300,7 +300,7 @@ test('quotations core forwards complete update input and maps stale/non-editable
 });
 
 test('actual lifecycle repository status transition returns no issuance artifacts', async () => {
-  const lifecycleSource = await readFile(new URL('../../api/_db/quotation-lifecycle-repository.ts', import.meta.url), 'utf8');
+  const lifecycleSource = await readFile(new URL('../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(lifecycleSource, new RegExp('quotation-pdf|quotation-document-storage|@vercel/blob|issued_documents'));
   const quotation = {
     id: detail.quotation_uuid,

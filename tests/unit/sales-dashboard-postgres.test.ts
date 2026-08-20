@@ -10,13 +10,13 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresSalesOrdersRepository,
   type SalesOrdersRepository,
-} from '../../api/_db/sales-orders-repository.js';
-import { createSalesDashboardHandler } from '../../api/_functions/sales-dashboard.js';
-import type { FunctionEvent } from '../../api/_lib/types.js';
+} from '../../api/_infrastructure/db/repositories/sales-orders-repository.js';
+import { createSalesDashboardHandler } from '../../api/_modules/sales-dashboard.js';
+import type { FunctionEvent } from '../../api/_http/types.js';
 
 const TEST_DATABASE_URL = process.env.TEST_SALES_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -158,7 +158,7 @@ test(
           id: quotationIds[0]!,
           businessNumber: 'ORC-20980001',
           clientId: clientIds[0]!,
-          status: 'enviado',
+          status: 'emitido',
           createdAt: new Date('2098-08-01T12:00:00.000Z'),
           updatedAt: NOW,
         },
@@ -166,7 +166,7 @@ test(
           id: quotationIds[1]!,
           businessNumber: 'ORC-20980002',
           clientId: clientIds[1]!,
-          status: 'enviado',
+          status: 'emitido',
           createdAt: new Date('2098-08-05T12:00:00.000Z'),
           updatedAt: NOW,
         },
@@ -174,7 +174,7 @@ test(
           id: quotationIds[2]!,
           businessNumber: 'ORC-20980003',
           clientId: clientIds[1]!,
-          status: 'enviado',
+          status: 'emitido',
           createdAt: new Date('2098-08-01T12:00:00.000Z'),
           updatedAt: NOW,
         },
@@ -184,7 +184,7 @@ test(
           id: revisionIds[0]!,
           quotationId: quotationIds[0]!,
           version: 1,
-          status: 'enviado',
+          status: 'emitido',
           validadeDias: 30,
           clienteNome: 'Cliente Dashboard A',
           subtotal: '100.00',
@@ -195,7 +195,7 @@ test(
           id: revisionIds[1]!,
           quotationId: quotationIds[1]!,
           version: 1,
-          status: 'enviado',
+          status: 'emitido',
           validadeDias: 30,
           clienteNome: 'Cliente Dashboard B',
           subtotal: '50.00',
@@ -206,7 +206,7 @@ test(
           id: revisionIds[2]!,
           quotationId: quotationIds[2]!,
           version: 1,
-          status: 'enviado',
+          status: 'emitido',
           validadeDias: 30,
           clienteNome: 'Cliente Dashboard B',
           subtotal: '75.00',
@@ -351,14 +351,14 @@ test(
           customer: 'Cliente Dashboard B',
           age: 9,
           value: 75,
-          status: 'enviado',
+          status: 'emitido',
         },
         {
           id: 'ORC-20980002',
           customer: 'Cliente Dashboard B',
           age: 5,
           value: 50,
-          status: 'enviado',
+          status: 'emitido',
         },
       ]);
     } finally {
@@ -421,7 +421,7 @@ test('sales dashboard handler does not call external fetch', async () => {
 });
 
 test('sales dashboard runtime has no network or rollout dependency', () => {
-  const source = readFileSync(path.resolve('api/_functions/sales-dashboard.ts'), 'utf8');
+  const source = readFileSync(path.resolve('api/_modules/sales-dashboard.ts'), 'utf8');
   assert.doesNotMatch(source, /fetch\(|process\.env\./);
 });
 

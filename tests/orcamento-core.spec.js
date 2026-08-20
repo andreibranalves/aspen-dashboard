@@ -29,7 +29,7 @@ const PRODUCT = {
   preco_minimo: '9.00',
 };
 
-test.describe('Orçamento manual — rascunho core', () => {
+test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/quotation-templates**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TEMPLATE_MANIFEST) });

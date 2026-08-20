@@ -23,12 +23,57 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 ## Fluxo local
 
 1. Execute as verificações automatizadas em uma cópia local.
-2. Confirme que os três mapas de rotas são iguais.
+2. Confirme que `src/app/routes.tsx` é a tabela única de rotas e que `src/app/App.tsx` despacha as rotas por hash.
 3. Confirme que produtos, clientes, orçamentos, CRM, pedidos, atividade e telas de comunicação usam contratos locais.
 4. Valide o envio WhatsApp somente com mocks da Evolution em testes.
 5. Registre resultados e riscos no relatório de auditoria apropriado.
 
 Nenhuma etapa deste documento executa deploy, alteração de ambiente, migração ou acesso a serviço remoto.
+
+## Preview como staging
+
+Preview é o staging padrão para branches e releases candidatos.
+
+| Controle                  | Preview              | Production               |
+| ------------------------- | -------------------- | ------------------------ |
+| `APP_ENV`                 | `preview`            | `production`             |
+| `EXTERNAL_WRITES_ENABLED` | `0`                  | `1`                      |
+| Banco                     | PostgreSQL staging   | PostgreSQL production    |
+| KV/Blob                   | recursos staging     | recursos production      |
+| Evolution                 | credenciais ausentes | credenciais configuradas |
+
+A ausência de credenciais é intencional e complementa o guard de aplicação e o egress bloqueado.
+Valores reais permanecem no ambiente operacional fora deste checkout.
+
+### Checklist Preview
+
+- `APP_ENV=preview` configurado no ambiente Preview.
+- `EXTERNAL_WRITES_ENABLED=0` configurado no ambiente Preview.
+- Banco, KV e Blob apontam para recursos de staging.
+- Credenciais Evolution não estão presentes em Preview.
+- `STAGING_EGRESS_BLOCKED=1` configurado no executor staging.
+- `STAGING_FIXTURE_RESET=1` configurado antes da suíte mutável.
+- Suítes locais e staging executadas somente com fixtures descartáveis.
+
+### Lifecycle das flags staging restantes
+
+| Flag                     | Owner          | Propósito                                                      | Condição de remoção                                                                     |
+| ------------------------ | -------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `STAGING_EGRESS_BLOCKED` | operação/infra | atestar bloqueio de egress durante E2E mutável                 | substituir por prova automática equivalente no executor                                 |
+| `STAGING_FIXTURE_RESET`  | QA/operação    | autorizar limpeza das fixtures staging declaradas descartáveis | suíte deixar de mutar staging ou isolamento automático tornar a atestação desnecessária |
+
+Essas flags não duplicam `APP_ENV` nem `EXTERNAL_WRITES_ENABLED`; elas atestam controles operacionais independentes.
+
+## Transição VPS -> Preview
+
+1. Criar Preview a partir da branch candidata.
+2. Executar a suíte staging com egress bloqueado e fixtures descartáveis.
+3. Registrar resultado, falhas e riscos operacionais.
+4. Repetir o ciclo por releases suficientes para obter confiança.
+5. Manter a VPS como fallback durante a observação.
+6. Remover runtime e infraestrutura VPS somente após decisão operacional explícita.
+
+Nenhuma etapa deste documento altera o Vercel Dashboard, faz deploy, migra banco ou remove Docker, Traefik, nftables e scripts.
 
 ## Comandos de verificação e corte
 
@@ -45,7 +90,8 @@ npm run build
 Execute as suítes de staging somente com PostgreSQL, egress bloqueado e fixtures descartáveis:
 
 ```bash
-STAGING_E2E=1 \
+APP_ENV=preview \
+EXTERNAL_WRITES_ENABLED=0 \
 BASE_URL="$STAGING_BASE_URL" \
 STAGING_BASE_URL="$STAGING_BASE_URL" \
 E2E_USERNAME="$E2E_USERNAME" \
@@ -53,13 +99,12 @@ E2E_PASSWORD="$E2E_PASSWORD" \
 STAGING_E2E_USERNAME="$E2E_USERNAME" \
 KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
 KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
-STAGING_EXTERNAL_PROVIDERS_DISABLED=1 \
 STAGING_EGRESS_BLOCKED=1 \
 STAGING_FIXTURE_RESET=1 \
 npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js
 ```
 
-O canário Production é somente leitura e não envia WhatsApp nem cria leads Typebot.
+O canário Production é somente leitura, não envia WhatsApp e não captura leads.
 A cobertura de fluxos mutáveis pertence exclusivamente à suíte de staging.
 
 Execute o canário depois de configurar os identificadores PostgreSQL existentes:

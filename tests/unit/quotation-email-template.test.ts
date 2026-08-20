@@ -3,8 +3,8 @@ import test from 'node:test';
 import {
   DEFAULT_QUOTATION_EMAIL_TEMPLATE,
   type QuotationEmailTemplate,
-} from '../../api/_lib/quotation-email-template.js';
-import { createHandler } from '../../api/_functions/quotation-email-template.js';
+} from '../../api/_shared/quotation-email-template.js';
+import { createHandler } from '../../api/_modules/quotation-email-template.js';
 
 function event(method: string, body?: unknown) {
   return {

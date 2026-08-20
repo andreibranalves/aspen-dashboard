@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { normalizePublicQuotationUrl } from '../../src/lib/printFormats.ts';
+import { normalizePublicQuotationUrl } from '../../src/lib/formatting/printFormats.ts';
 import {
   DEFAULT_QUOTATION_SECTIONS,
   combineLegacyConditions,
@@ -8,7 +8,7 @@ import {
   normalizeQuotationSections,
   toSafeMultilineHtml,
   validateQuotationSections,
-} from '../../api/_db/quotation-content.js';
+} from '../../api/_modules/quotation-content.js';
 
 const legacy = {
   pagamento: '50% na aprovação',

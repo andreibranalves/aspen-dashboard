@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHandler } from '../../api/_functions/whatsapp-conversations.js';
+import { createHandler } from '../../api/_modules/whatsapp-conversations.js';
 import {
   resolveWhatsappCrmMatch,
   validateWhatsappConversationLinks,
@@ -10,15 +10,15 @@ import {
   type LocalQuoteLeadRecord,
   type LocalQuotationRecord,
   type LocalWhatsappCrmRepository,
-} from '../../api/_functions/lib/whatsapp-crm-match.js';
+} from '../../api/_modules/whatsapp-crm-match.js';
 import {
   normalizeWhatsappMessageInput,
   upsertWhatsappConversation,
   upsertWhatsappMessages,
   type WhatsappConversation,
   type WhatsappConversationStoreDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-store.js';
-import { syncWhatsappConversations } from '../../api/_functions/lib/whatsapp-conversations-sync.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
+import { syncWhatsappConversations } from '../../api/_modules/whatsapp-conversations-sync.js';
 
 const IDS = {
   leadA: '11111111-1111-4111-8111-111111111111',

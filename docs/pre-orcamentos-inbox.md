@@ -1,11 +1,11 @@
-# Pré-orçamentos legados
+# Dados históricos de pré-orçamentos
 
-A tela de Pré-orçamentos foi removida do dashboard.
+A tela de Pré-orçamentos e os endpoints de ingestão e fila foram removidos do dashboard.
 
-Os dados `quote_leads` e os endpoints relacionados permanecem temporariamente para preservar histórico, vínculos do CRM e orçamentos já emitidos.
+A tabela `quote_leads` permanece para preservar histórico, vínculos de CRM, conversas WhatsApp e conversão de orçamentos já existentes.
 
-A rota `#/pre-orcamentos` não faz mais parte da navegação e abre o Auto.
+A Inbox do WhatsApp pode criar e reencontrar vínculos locais por meio do repository PostgreSQL.
 
-A Inbox do WhatsApp não cria novos pré-orçamentos e o Auto não oferece seleção de `quote_leads`.
+A captura Typebot não faz parte do runtime atual e não existe webhook ativo neste aplicativo.
 
-A captura Typebot está desativada no ambiente atual.
+Não há migração destrutiva nem remoção de dados nesta fase.

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createQuotationPreviewHandler } from '../../api/_functions/quotation-preview.js';
-import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
-import { toFunctionEvent } from '../../api/_lib/function-adapter.js';
+import { createQuotationPreviewHandler } from '../../api/_modules/quotation-preview.js';
+import { getQuotationTemplate } from '../../api/_modules/quotation-template-catalog.js';
+import { toFunctionEvent } from '../../api/_http/function-adapter.js';
 
 const template = getQuotationTemplate('padrao')!;
 const extracted = {

@@ -5,7 +5,10 @@ import { loadLocalEnv } from './scripts/load-env.mjs';
 loadLocalEnv();
 
 const PORT = 5173;
-const IS_STAGING = process.env.STAGING_E2E === '1';
+const IS_STAGING =
+  String(process.env.APP_ENV || '')
+    .trim()
+    .toLowerCase() === 'preview';
 const STAGING_SPEC_FILES = [
   '**/postgres-only-cutover.spec.js',
   '**/quotation-cutover-staging.spec.js',
@@ -66,11 +69,18 @@ export default defineConfig({
     : {
         testIgnore: STAGING_SPEC_FILES,
         webServer: {
-          command: 'npx vite --port 5173',
+          command: 'node scripts/vite-dev.mjs',
           url: BASE_URL,
-          reuseExistingServer: !process.env.CI,
+          // Own isolated stack: never reuse another worktree's Vite/API ports.
+          reuseExistingServer: false,
           timeout: 20_000,
           cwd: '.',
+          env: {
+            NODE_ENV: 'test',
+            APP_AUTH_BYPASS: 'true',
+            API_PORT: '0',
+            PORT: String(PORT),
+          },
         },
       }),
 });

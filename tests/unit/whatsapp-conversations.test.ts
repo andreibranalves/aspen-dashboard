@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createHandler } from '../../api/_functions/whatsapp-conversations.js';
+import { createHandler } from '../../api/_modules/whatsapp-conversations.js';
 import {
   validateWhatsappConversationLinks,
   type LocalClientRecord,
@@ -9,11 +9,11 @@ import {
   type LocalQuoteLeadRecord,
   type LocalQuotationRecord,
   type LocalWhatsappCrmRepository,
-} from '../../api/_functions/lib/whatsapp-crm-match.js';
+} from '../../api/_modules/whatsapp-crm-match.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-store.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
 
 const IDS = {
   lead: '11111111-1111-4111-8111-111111111111',
@@ -128,6 +128,53 @@ const deal = (overrides: Partial<LocalDealRecord> = {}): LocalDealRecord => ({
 });
 
 describe('whatsapp-conversations handler', () => {
+  it('blocks the default send-message caller before network when Evolution config is incomplete', async () => {
+    const previous = {
+      baseUrl: process.env.EVOLUTION_BASE_URL,
+      apiKey: process.env.EVOLUTION_API_KEY,
+      instance: process.env.EVOLUTION_INSTANCE,
+      appEnv: process.env.APP_ENV,
+      writes: process.env.EXTERNAL_WRITES_ENABLED,
+    };
+    const originalFetch = globalThis.fetch;
+    let providerCalls = 0;
+    process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
+    delete process.env.EVOLUTION_API_KEY;
+    process.env.EVOLUTION_INSTANCE = 'test-instance';
+    process.env.APP_ENV = 'production';
+    process.env.EXTERNAL_WRITES_ENABLED = '1';
+    globalThis.fetch = (async () => {
+      providerCalls += 1;
+      throw new Error('fetch must not run');
+    }) as typeof globalThis.fetch;
+
+    try {
+      const store = makeStore();
+      await store.seed(conversation());
+      const result = await createHandler(store.deps)({
+        httpMethod: 'POST',
+        body: JSON.stringify({ action: 'send-message', id: 'wa-local-1', text: 'Olá' }),
+        queryStringParameters: {},
+        headers: {},
+      } as any);
+      assert.equal(result.statusCode, 500);
+      assert.match(parse(result).error, /integração do whatsapp não configurada/i);
+      assert.equal(providerCalls, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries({
+        EVOLUTION_BASE_URL: previous.baseUrl,
+        EVOLUTION_API_KEY: previous.apiKey,
+        EVOLUTION_INSTANCE: previous.instance,
+        APP_ENV: previous.appEnv,
+        EXTERNAL_WRITES_ENABLED: previous.writes,
+      })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it('projects every conversation and message response without provider internals', async () => {
     const store = makeStore();
     const saved = conversation();

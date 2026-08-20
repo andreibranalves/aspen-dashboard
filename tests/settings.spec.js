@@ -16,13 +16,13 @@ const INITIAL_SETTINGS = {
   },
 };
 
-test.describe('Configurações de orçamento', () => {
+test.describe('Configurações de orçamento @quotations', () => {
   test('carrega, edita e salva todos os valores padrão', async ({ page }) => {
     let settings = { ...INITIAL_SETTINGS };
     let receivedPayload;
     let savedResponse;
 
-    await page.route('**/api/settings**', async (route) => {
+    await page.route('/api/settings**', async (route) => {
       if (route.request().method() === 'GET') {
         const response = route.request().url().includes('scope=operational')
           ? {}
@@ -99,7 +99,7 @@ test.describe('Configurações de orçamento', () => {
     let settingsPayload;
     /** @type {{ template_padrao?: string } | undefined} */
     let savedSettings;
-    await page.route('**/api/settings?scope=operational**', async (route) => {
+    await page.route('/api/settings?scope=operational**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) });
     });
     await page.route('**/api/settings', async (route) => {
@@ -172,7 +172,7 @@ test.describe('Configurações de orçamento', () => {
     let listCalls = 0;
     let detailCalls = 0;
     let created = false;
-    await page.route('**/api/settings**', async (route) => {
+    await page.route('/api/settings**', async (route) => {
       const response = route.request().method() === 'GET' ? INITIAL_SETTINGS : INITIAL_SETTINGS;
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
     });
@@ -221,14 +221,14 @@ test.describe('Configurações de orçamento', () => {
 
   test('exibe erro de carregamento e permite tentar novamente', async ({ page }) => {
     let settingsCalls = 0;
-    await page.route('**/api/settings?scope=operational**', async (route) => {
+    await page.route('/api/settings?scope=operational**', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({}),
       });
     });
-    await page.route('**/api/settings**', async (route) => {
+    await page.route('/api/settings**', async (route) => {
       if (route.request().url().includes('scope=operational')) {
         await route.fulfill({
           status: 200,

@@ -9,17 +9,17 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
-import { createPostgresCrmDealRepository } from '../../api/_db/crm-deals-repository.js';
-import type { FunctionEvent } from '../../api/_lib/types.js';
-import { createCrmDealsHandler } from '../../api/_functions/crm-deals.js';
-import { createCrmUpdateDealHandler } from '../../api/_functions/crm-update-deal.js';
-import { createCrmPruneCandidatesHandler } from '../../api/_functions/crm-prune-candidates.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
+import { createPostgresCrmDealRepository } from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
+import type { FunctionEvent } from '../../api/_http/types.js';
+import { createCrmDealsHandler } from '../../api/_modules/crm-deals.js';
+import { createCrmUpdateDealHandler } from '../../api/_modules/crm-update-deal.js';
+import { createCrmPruneCandidatesHandler } from '../../api/_modules/crm-prune-candidates.js';
 import {
   CRM_PIPELINE,
   type CrmDealRecord,
   type CrmDealRepository,
-} from '../../api/_db/crm-deals-repository.js';
+} from '../../api/_infrastructure/db/repositories/crm-deals-repository.js';
 
 const NOW = new Date('2026-08-10T12:00:00.000Z');
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -216,7 +216,7 @@ test(
         id: quotationId,
         clientId,
         businessNumber,
-        status: 'enviado',
+        status: 'emitido',
         createdAt: NOW,
         updatedAt: NOW,
       });
@@ -318,7 +318,7 @@ test(
         id: quotationId,
         businessNumber,
         clientId,
-        status: 'enviado',
+        status: 'emitido',
         createdAt: old,
         updatedAt: old,
       });
@@ -326,7 +326,7 @@ test(
         id: revisionId,
         quotationId,
         version: 1,
-        status: 'enviado',
+        status: 'emitido',
         validadeDias: 15,
         clienteNome: 'Ana PostgreSQL',
         subtotal: '100.00',
@@ -348,7 +348,7 @@ test(
         id: boundaryQuotationId,
         businessNumber: boundaryBusinessNumber,
         clientId,
-        status: 'enviado',
+        status: 'emitido',
         createdAt: underThirtyElapsedDays,
         updatedAt: underThirtyElapsedDays,
       });

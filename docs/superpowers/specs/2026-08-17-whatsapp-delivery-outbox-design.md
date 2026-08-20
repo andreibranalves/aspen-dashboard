@@ -143,6 +143,7 @@ Campos principais:
 - `id uuid primary key`
 - `revision_id uuid not null`
 - `flow_id text not null`
+- `flow_name text not null`
 - `phone text not null`
 - `state text not null`
 - `attempt_count integer not null default 0`
@@ -162,6 +163,8 @@ Campos principais:
 A restrição única passa de `revision_id` para `(revision_id, flow_id)`.
 
 `completion_source` aceita `provider_receipt`, `operator` ou `legacy_provider_ack`.
+
+Como a autenticação atual usa senha compartilhada, `resolved_by` recebe `authenticated-operator` e não representa identidade individual.
 
 Estados da entrega:
 
@@ -403,9 +406,11 @@ A segunda cria uma nova tentativa explícita somente para passos não entregues.
 
 A segunda ação mostra aviso de que uma confirmação humana incorreta pode gerar duplicidade.
 
-Toda resolução exige confirmação, usuário autenticado e justificativa curta.
+Toda resolução exige confirmação, sessão autenticada e justificativa curta.
 
-O backend grava decisão, usuário e horário.
+O backend grava decisão, `resolved_by = authenticated-operator` e horário.
+
+Identidade individual exigiria um projeto separado de contas e autorização.
 
 Não existe ação genérica de retry em estado ambíguo.
 
@@ -563,6 +568,8 @@ reconciling -> needs_review
 A migração nunca agenda transporte de um registro antigo automaticamente.
 
 Registros `completed` antigos recebem `completion_source = legacy_provider_ack`.
+
+Registros antigos recebem `flow_name = flow_id` porque o nome histórico não foi persistido.
 
 Eles não ganham recibo de entrega inventado.
 

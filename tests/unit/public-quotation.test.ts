@@ -5,9 +5,9 @@ import {
   createPublicQuotationHandler,
   isRevisionBoundPublicQuotationUrl,
   issuePublicQuotationToken,
-} from '../../api/_functions/public-quotation.js';
-import { getQuotationTemplate } from '../../api/_functions/lib/quotation-templates.js';
-import { MAX_QUOTATION_PDF_BYTES } from '../../api/_functions/lib/quotation-document-storage.js';
+} from '../../api/_modules/public-quotation.js';
+import { getQuotationTemplate } from '../../api/_modules/quotation-template-catalog.js';
+import { MAX_QUOTATION_PDF_BYTES } from '../../api/_modules/quotation-document-storage.js';
 
 const template = getQuotationTemplate('padrao')!;
 const versionedTemplate = getQuotationTemplate('minimalista')!;

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/whatsappFlows.ts';
+import { DEFAULT_WA_FLOWS, flowToSequencePayload } from '../src/lib/api/whatsappFlows.ts';
 
 process.env.EVOLUTION_BASE_URL = 'https://evolution.example.test';
 process.env.EVOLUTION_API_KEY = 'test-key';
@@ -22,7 +22,7 @@ globalThis.fetch = async (url, options = {}) => {
   });
 };
 
-const { handler } = await import('../api/_functions/send-whatsapp.js?test=' + Date.now());
+const { handler } = await import('../api/_modules/send-whatsapp.js?test=' + Date.now());
 
 const basePayload = {
   dry_run: true,

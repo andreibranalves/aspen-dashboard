@@ -59,7 +59,7 @@ const manifest = {
   ],
 };
 
-test('core UI selects/previews a repository template and saves template_key', async ({ page }) => {
+test('core UI selects/previews a repository template and saves template_key @quotations', async ({ page }) => {
   let authoritative = coreDetail();
   let lastPayload;
   const posts = [];
@@ -143,7 +143,7 @@ test('core UI selects/previews a repository template and saves template_key', as
   await refreshedPopup.close();
 });
 
-test('draft retains an archived current template when saving unchanged', async ({ page }) => {
+test('draft retains an archived current template when saving unchanged @quotations', async ({ page }) => {
   const archivedVersionId = '88888888-8888-4888-8888-888888888888';
   let payload;
   const archivedDetail = coreDetail({
@@ -178,7 +178,7 @@ test('draft retains an archived current template when saving unchanged', async (
   expect(payload.template_version_id).toBe(archivedVersionId);
 });
 
-test('mismatched status label cannot enable draft editing', async ({ page }) => {
+test('mismatched status label cannot enable draft editing @quotations', async ({ page }) => {
   await page.route('**/api/quotations**', async (route) => {
     const request = route.request();
     const url = new globalThis.URL(request.url());
@@ -196,7 +196,7 @@ test('mismatched status label cannot enable draft editing', async ({ page }) => 
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
 });
 
-test('metadata-free quotation response renders core revision UI', async ({ page }) => {
+test('metadata-free quotation response renders core revision UI @quotations', async ({ page }) => {
   const metadataFreeDetail = coreDetail({ revision: 2, revision_number: 2 });
 
   await page.route('**/api/quotations**', async (route) => {

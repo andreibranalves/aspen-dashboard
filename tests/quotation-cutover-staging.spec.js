@@ -14,7 +14,7 @@ const CONFIG = assertStagingConfig();
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('quotation cutover staging', () => {
+test.describe('quotation cutover staging @quotations @database @critical', () => {
   test.beforeEach(async ({ page }) => {
     const requests = [];
     /** @type {any} */

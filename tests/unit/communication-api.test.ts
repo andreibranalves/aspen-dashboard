@@ -3,12 +3,15 @@ import test from 'node:test';
 
 import {
   CommunicationSendError,
+  createMedia,
   executeFlow,
   fetchDeliveryStatus,
+  fetchProductCategories,
+  mediaGroupPathSegment,
   projectDeliveryFailure,
   projectDeliveryState,
-} from '../../src/lib/communicationApi.ts';
-import { getQuotationIssue, issueQuotation, isPriceAuthoritativeConflict, QuotationIssueApiError } from '../../src/lib/quotationIssueApi.ts';
+} from '../../src/lib/api/communicationApi.ts';
+import { getQuotationIssue, issueQuotation, isPriceAuthoritativeConflict, QuotationIssueApiError } from '../../src/lib/api/quotationIssueApi.ts';
 
 const payload = {
   quotation_id: 'ORC-20260001',
@@ -38,6 +41,51 @@ const validResponse = {
   steps: [],
   send_event_id: 'event-1',
 };
+
+test('fetchProductCategories loads categories used by active products', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input) => {
+    assert.equal(String(input), '/api/products?view=categories');
+    return new Response(JSON.stringify({ categories: ['Boné', 'Canga personalizada'] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await fetchProductCategories(), ['Boné', 'Canga personalizada']);
+    assert.equal(await mediaGroupPathSegment('Necessaire'), 'a0d87da082ceacbbf006dd4a1a5866ad');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('createMedia preserves the uploaded Blob metadata write path', async () => {
+  const originalFetch = globalThis.fetch;
+  const payload = {
+    title: 'Referência',
+    product_group: 'canga' as const,
+    kind: 'image' as const,
+    blob_url: 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg',
+    pathname: 'aspen-media/canga/reference.jpg',
+    content_type: 'image/jpeg',
+    size_bytes: 11,
+  };
+  let request: { url: string; method: string; body?: string } | undefined;
+  globalThis.fetch = (async (input, init) => {
+    request = {
+      url: String(input),
+      method: init?.method || 'GET',
+      body: init?.body as string | undefined,
+    };
+    return new Response(JSON.stringify({ success: true, item: payload }), { status: 201 });
+  }) as typeof fetch;
+  try {
+    const response = await createMedia(payload);
+    assert.equal(request?.url, '/api/communication-media');
+    assert.equal(request?.method, 'POST');
+    assert.deepEqual(JSON.parse(request?.body || '{}'), payload);
+    assert.deepEqual(response.item, payload);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('issueQuotation sends the idempotency header and documented draft payload', async () => {
   const originalFetch = globalThis.fetch;

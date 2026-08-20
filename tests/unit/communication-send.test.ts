@@ -6,7 +6,7 @@ import {
   isSendableQuotationStatus,
   sendContextKey,
   sendIdempotencyKey,
-} from '../../src/lib/communicationSend.ts';
+} from '../../src/lib/api/communicationSend.ts';
 
 const context = { quotationId: 'ORC-1', revisionId: 'REV-1', flowId: 'FLOW-1' };
 const otherFlow = { ...context, flowId: 'FLOW-2' };

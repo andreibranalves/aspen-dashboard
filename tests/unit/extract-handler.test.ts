@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createExtractHandler, handler } from '../../api/_functions/extract.js';
+import { createExtractHandler, handler } from '../../api/_modules/extract.js';
 import {
   OrderTemplateConflictError,
   OrderTemplateNotFoundError,
-} from '../../api/_db/order-template-repository.js';
+} from '../../api/_infrastructure/db/repositories/order-template-repository.js';
 
 function event(method: string, body: unknown) {
   return {
@@ -168,12 +168,14 @@ test('extract without a template skips repository lookup and keeps the extractor
 test('extract validates the OpenRouter request and normalizes its JSON response', async () => {
   const previousKey = process.env.OPENROUTER_API_KEY;
   const previousModel = process.env.OPENROUTER_MODEL;
+  const previousSiteUrl = process.env.OPENROUTER_SITE_URL;
   const previousFetch = globalThis.fetch;
   let requestUrl = '';
   let requestInit: RequestInit | undefined;
 
   process.env.OPENROUTER_API_KEY = 'unit-test-key';
   process.env.OPENROUTER_MODEL = 'unit-test/model';
+  process.env.OPENROUTER_SITE_URL = 'https://app.example';
   globalThis.fetch = (async (input, init) => {
     requestUrl = String(input);
     requestInit = init;
@@ -202,6 +204,14 @@ test('extract validates the OpenRouter request and normalizes its JSON response'
       (requestInit?.headers as Record<string, string>).Authorization,
       'Bearer unit-test-key'
     );
+    assert.equal(
+      (requestInit?.headers as Record<string, string>)['X-OpenRouter-Title'],
+      'Aspen Orcamento App'
+    );
+    assert.equal(
+      (requestInit?.headers as Record<string, string>)['HTTP-Referer'],
+      'https://app.example'
+    );
     assert.equal(requestBody.model, 'unit-test/model');
     assert.equal(requestBody.messages[0].role, 'system');
     assert.equal(requestBody.messages[1].content, 'Cliente precisa de 30 unidades do SKU-1.');
@@ -211,5 +221,7 @@ test('extract validates the OpenRouter request and normalizes its JSON response'
     else process.env.OPENROUTER_API_KEY = previousKey;
     if (previousModel === undefined) delete process.env.OPENROUTER_MODEL;
     else process.env.OPENROUTER_MODEL = previousModel;
+    if (previousSiteUrl === undefined) delete process.env.OPENROUTER_SITE_URL;
+    else process.env.OPENROUTER_SITE_URL = previousSiteUrl;
   }
 });

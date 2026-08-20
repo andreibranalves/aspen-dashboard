@@ -20,7 +20,7 @@ import {
   saveSelectedFlowId,
   type Flow,
   type Step,
-} from '../../src/lib/whatsappFlows.ts';
+} from '../../src/lib/api/whatsappFlows.ts';
 
 // ── DEFAULT_WA_FLOWS ─────────────────────────────────────────────────────────
 

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createHandler as createProductsBoundary } from '../../api/_functions/products.js';
-import { createHandler as createDetailBoundary } from '../../api/_functions/product-detail.js';
-import { createHandler as createUpdateBoundary } from '../../api/_functions/product-update.js';
-import { createCoreHandler as createProductsCore } from '../../api/_functions/products-core.js';
-import { createCoreHandler as createDetailCore } from '../../api/_functions/product-detail-core.js';
-import { createCoreHandler as createUpdateCore } from '../../api/_functions/product-update-core.js';
+import { createHandler as createProductsBoundary } from '../../api/_modules/products.js';
+import { createHandler as createDetailBoundary } from '../../api/_modules/product-detail.js';
+import { createHandler as createUpdateBoundary } from '../../api/_modules/product-update.js';
+import { createCoreHandler as createProductsCore } from '../../api/_modules/products-core.js';
+import { createCoreHandler as createDetailCore } from '../../api/_modules/product-detail-core.js';
+import { createCoreHandler as createUpdateCore } from '../../api/_modules/product-update-core.js';
 import type {
   ProductCreateInput,
   ProductListOptions,
@@ -14,8 +14,8 @@ import type {
   ProductUpdateInput,
   ProductStatus,
   ProductsRepository,
-} from '../../api/_db/products-repository.js';
-import { isDuplicateProductError } from '../../api/_db/products-repository.js';
+} from '../../api/_infrastructure/db/repositories/products-repository.js';
+import { isDuplicateProductError } from '../../api/_infrastructure/db/repositories/products-repository.js';
 
 function event(method: string, body?: unknown, query: Record<string, string> = {}) {
   return {
@@ -160,6 +160,19 @@ describe('products repository duplicate classification', () => {
 });
 
 describe('products core handlers', () => {
+  it('lists product categories for media selection', async () => {
+    const repository = new MemoryProductsRepository();
+    const products = createProductsCore({
+      repository,
+      listCategories: async () => ['Boné', 'Canga personalizada'],
+    } as any);
+
+    const result = await products(event('GET', undefined, { view: 'categories' }));
+
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(parse(result).categories, ['Boné', 'Canga personalizada']);
+  });
+
   it('creates, searches, paginates, archives/restores, and protects pricing/deletes', async () => {
     const repository = new MemoryProductsRepository();
     const products = createProductsCore({ repository });

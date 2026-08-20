@@ -1,0 +1,80 @@
+// GET /api/communication-send-events
+import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/types.js';
+//
+// Lists WhatsApp flow send events from KV.
+// Query params: quotation_id, phone, flow_id, status, limit (default 50)
+//
+// Storage: Vercel KV keys aspen:communication:send-events:{id}
+// TTL: 7 days (set by send-whatsapp-flow.js on write)
+
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
+import { KV_KEY_SEND_EVENTS_PREFIX } from './media-schema.js';
+
+const kv = getKvClient();
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+const jsonResponse: JsonResponseFn = (statusCode, body) => ({
+  statusCode,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+// ── Handler ─────────────────────────────────────────────────────────────────
+
+export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+  if (event.httpMethod !== 'GET') return jsonResponse(405, { error: 'Método não permitido.' });
+
+  try {
+    const q = event.queryStringParameters || {};
+
+    // Scan all send-event keys
+    let keys = [];
+    try {
+      const result = await kv.scan(0, { match: `${KV_KEY_SEND_EVENTS_PREFIX}*`, count: 200 });
+      keys = result[1] || [];
+    } catch {
+      return jsonResponse(200, { success: true, items: [], source: 'kv-empty' });
+    }
+
+    if (keys.length === 0) {
+      return jsonResponse(200, { success: true, items: [], source: 'kv' });
+    }
+
+    // Fetch all events
+    const entries = await Promise.all(keys.map((k) => kv.get(k)));
+    let items: Record<string, unknown>[] = entries.filter(Boolean) as Record<string, unknown>[];
+
+    // Filters
+    const quotationId = String(q.quotation_id || '').trim();
+    const phone = String(q.phone || '').trim();
+    const flowId = String(q.flow_id || '').trim();
+    const status = String(q.status || '').trim();
+
+    if (quotationId) items = items.filter((e) => e.quotation_id === quotationId);
+    if (phone) items = items.filter((e) => e.phone === phone);
+    if (flowId) items = items.filter((e) => e.flow_id === flowId);
+    if (status && ['pending', 'sent', 'failed', 'skipped'].includes(status)) {
+      items = items.filter((e) => e.status === status);
+    }
+
+    // Sort by created_at descending (most recent first)
+    items.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+
+    // Limit
+    const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 200);
+    items = items.slice(0, limit);
+
+    return jsonResponse(200, {
+      success: true,
+      items,
+      total: items.length,
+      source: 'kv',
+    });
+  } catch (err: unknown) {
+    const details = err && typeof err === 'object' ? err as Record<string, unknown> : {};
+    const message = typeof details.message === 'string' ? details.message : 'Erro ao listar histórico.';
+    console.error('[comm-send-events]', details.logMessage || details.message || err);
+    return jsonResponse(500, { error: message });
+  }
+}

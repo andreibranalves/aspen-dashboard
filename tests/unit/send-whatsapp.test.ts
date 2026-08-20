@@ -4,25 +4,25 @@ import test from 'node:test';
 import {
   handler as sendWhatsapp,
   loadPostgresSendContext,
-} from '../../api/_functions/send-whatsapp.js';
+} from '../../api/_modules/send-whatsapp.js';
 import {
   canonicalFlowQuotationId,
   flowProductSummary,
   handler as sendWhatsappFlow,
-} from '../../api/_functions/send-whatsapp-flow.js';
-import { handler as communicationFlowPreview } from '../../api/_functions/communication-flow-preview.js';
+} from '../../api/_modules/send-whatsapp-flow.js';
+import { handler as communicationFlowPreview } from '../../api/_modules/communication-flow-preview.js';
 import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
-} from '../../api/_functions/lib/postgres-media.js';
-import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
+} from '../../api/_modules/postgres-media.js';
+import { normalizeEvolutionDelivery } from '../../api/_infrastructure/integrations/evolution/evolution-delivery.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
   type DeliverQuotationInput,
-} from '../../api/_functions/lib/quotation-delivery.js';
+} from '../../api/_modules/quotation-delivery.js';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';
@@ -529,20 +529,28 @@ test('Evolution response requires explicit provider acceptance', () => {
   assert.equal(normalizeEvolutionDelivery({}), null);
 });
 
-function withEvolutionEnv() {
+function withEvolutionEnv(
+  overrides: { appEnv?: string; writes?: string } = {},
+) {
   const previous = {
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
+    appEnv: process.env.APP_ENV,
+    writes: process.env.EXTERNAL_WRITES_ENABLED,
   };
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
+  process.env.APP_ENV = overrides.appEnv || 'production';
+  process.env.EXTERNAL_WRITES_ENABLED = overrides.writes || '1';
   return () => {
     for (const [key, value] of Object.entries({
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
+      APP_ENV: previous.appEnv,
+      EXTERNAL_WRITES_ENABLED: previous.writes,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -550,7 +558,125 @@ function withEvolutionEnv() {
   };
 }
 
+test('PostgreSQL sequence blocks before token or delivery state when external writes are disabled', async () => {
+  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
+  const tokenStore = store();
+  const deliveryCalls: string[] = [];
+  let tokenCalls = 0;
+  try {
+    const response = await sendWhatsapp(
+      event({
+        quotation_id: businessNumber,
+        revision_id: revisionId,
+        sequence: {
+          steps: [
+            { type: 'text', template: 'Olá' },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        },
+      }),
+      {
+        repository: repositoryFor(),
+        store: tokenStore,
+        token: () => {
+          tokenCalls += 1;
+          return publicToken;
+        },
+        deliveryRepository: {
+          getByRevision: async () => {
+            deliveryCalls.push('getByRevision');
+            return null;
+          },
+          prepareDelivery: async () => {
+            deliveryCalls.push('prepareDelivery');
+            return undefined;
+          },
+          claimTransport: async () => {
+            deliveryCalls.push('claimTransport');
+            return true;
+          },
+          recordState: async () => {
+            deliveryCalls.push('recordState');
+          },
+        } as any,
+      },
+    );
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Integrações externas desativadas neste ambiente.',
+    });
+    assert.deepEqual(deliveryCalls, []);
+    assert.equal(tokenCalls, 0);
+    assert.equal(tokenStore.values.size, 0);
+  } finally {
+    restoreEnv();
+  }
+});
+
+test('PostgreSQL sequence blocks before token or delivery state when Evolution config is missing', async () => {
+  const restoreEnv = withEvolutionEnv();
+  delete process.env.EVOLUTION_API_KEY;
+  const tokenStore = store();
+  const deliveryCalls: string[] = [];
+  let tokenCalls = 0;
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    throw new Error('fetch must not run');
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(
+      event({
+        quotation_id: businessNumber,
+        revision_id: revisionId,
+        sequence: {
+          steps: [
+            { type: 'text', template: 'Olá' },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        },
+      }),
+      {
+        repository: repositoryFor(),
+        store: tokenStore,
+        token: () => {
+          tokenCalls += 1;
+          return publicToken;
+        },
+        deliveryRepository: {
+          getByRevision: async () => {
+            deliveryCalls.push('getByRevision');
+            return null;
+          },
+          prepareDelivery: async () => {
+            deliveryCalls.push('prepareDelivery');
+            return undefined;
+          },
+          claimTransport: async () => {
+            deliveryCalls.push('claimTransport');
+            return true;
+          },
+          recordState: async () => {
+            deliveryCalls.push('recordState');
+          },
+        } as any,
+      },
+    );
+    assert.equal(response.statusCode, 500);
+    assert.match(response.body || '', /Integração do WhatsApp não configurada/i);
+    assert.equal(providerCalls, 0);
+    assert.deepEqual(deliveryCalls, []);
+    assert.equal(tokenCalls, 0);
+    assert.equal(tokenStore.values.size, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
 test('PostgreSQL endpoint rejects recipient ownership before provider setup', async () => {
+  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -572,6 +698,7 @@ test('PostgreSQL endpoint rejects recipient ownership before provider setup', as
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
@@ -605,6 +732,7 @@ test('PostgreSQL endpoint completes local send after Evolution acceptance', asyn
 });
 
 test('PostgreSQL endpoint rejects PDF preparation before provider setup', async () => {
+  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -634,10 +762,12 @@ test('PostgreSQL endpoint rejects PDF preparation before provider setup', async 
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
 test('PostgreSQL endpoint rejects arbitrary media before provider setup', async () => {
+  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -660,6 +790,7 @@ test('PostgreSQL endpoint rejects arbitrary media before provider setup', async 
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+    restoreEnv();
   }
 });
 
@@ -814,15 +945,122 @@ test('PostgreSQL preview rejects external media before rendering output', async 
   assert.match(response.body || '', /Mídia externa proibida/);
 });
 
-test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
-  const restoreEnv = withEvolutionEnv();
+test('non-dry legacy endpoint blocks Evolution when external writes are disabled', async () => {
+  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })) as typeof fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    throw new Error('fetch must not run');
+  }) as typeof fetch;
   try {
     const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Integrações externas desativadas neste ambiente.',
+    });
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('flow endpoint blocks Evolution when external writes are disabled', async () => {
+  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    throw new Error('fetch must not run');
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ flow_id: 'flow-disabled', quotation_id: businessNumber, revision_id: revisionId }),
+      {
+        resolveFlow: async () => ({
+          id: 'flow-disabled',
+          name: 'Fluxo bloqueado',
+          delay_min_seconds: 0,
+          delay_max_seconds: 0,
+          steps: [
+            { type: 'text', template: 'Olá' },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        }),
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+        renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
+        resolveDeal: async () => null,
+        recordSendEvent: async () => 'event-disabled',
+        reservationStore: reservationStore(),
+      } as any,
+    );
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Integrações externas desativadas neste ambiente.',
+    });
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('non-dry legacy endpoint routes authenticated Evolution text through the client', async () => {
+  const restoreEnv = withEvolutionEnv();
+  process.env.EVOLUTION_BASE_URL = 'https://evolution.example';
+  process.env.EVOLUTION_INSTANCE = 'aspen';
+  const originalFetch = globalThis.fetch;
+  let capturedUrl = '';
+  let capturedInit: RequestInit | undefined;
+  globalThis.fetch = (async (input, init) => {
+    capturedUrl = String(input);
+    capturedInit = init;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
     assert.equal(response.statusCode, 200);
     assert.equal(JSON.parse(response.body || '{}').evolution.providerMessageId, 'provider-1');
+    assert.equal(capturedUrl, 'https://evolution.example/message/sendText/aspen');
+    assert.equal(new Headers(capturedInit?.headers).get('apikey'), 'test-key');
+    assert.equal(JSON.parse(String(capturedInit?.body)).number, '5511999999999');
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('Evolution transport failures preserve public status and message', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => { throw new Error('network failure'); }) as typeof fetch;
+  try {
+    const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
+    assert.equal(response.statusCode, 502);
+    assert.deepEqual(JSON.parse(response.body || '{}'), {
+      error: 'Falha ao conectar com o WhatsApp. Tente novamente.',
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  }
+});
+
+test('non-2xx Evolution responses preserve public status mapping', async () => {
+  const restoreEnv = withEvolutionEnv();
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const [status, expectedStatus] of [[401, 502], [422, 400]]) {
+      globalThis.fetch = (async () => new Response('{}', { status })) as typeof fetch;
+      const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
+      assert.equal(response.statusCode, expectedStatus);
+      assert.deepEqual(JSON.parse(response.body || '{}'), {
+        error: 'Não foi possível enviar a mensagem pelo WhatsApp. Verifique se a instância está conectada.',
+      });
+    }
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();

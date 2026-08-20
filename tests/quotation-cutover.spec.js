@@ -97,7 +97,7 @@ function coreDetail(overrides = {}) {
   };
 }
 
-test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizado', async ({ page }) => {
+test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizado @quotations @database @critical', async ({ page }) => {
   const requests = [];
   let authoritative = coreDetail();
   const tokens = new Set();

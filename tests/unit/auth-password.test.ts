@@ -10,7 +10,7 @@ import {
   createPasswordHash,
   parsePasswordHash,
   verifyPassword,
-} from '../../api/_lib/password.js';
+} from '../../api/_shared/password.js';
 import { main as hashAppPassword } from '../../scripts/hash-app-password.mjs';
 
 function randomPassword(): string {

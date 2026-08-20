@@ -10,7 +10,7 @@ import {
   createSessionToken,
   isValidSessionSecret,
   verifySessionToken,
-} from '../../api/_lib/session.js';
+} from '../../api/_shared/session.js';
 
 function sessionSecret(): string {
   return randomBytes(32).toString('base64url');
