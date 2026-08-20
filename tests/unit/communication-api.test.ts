@@ -6,6 +6,8 @@ import {
   createMedia,
   executeFlow,
   fetchDeliveryStatus,
+  fetchProductCategories,
+  mediaGroupPathSegment,
   projectDeliveryFailure,
   projectDeliveryState,
 } from '../../src/lib/api/communicationApi.ts';
@@ -39,6 +41,20 @@ const validResponse = {
   steps: [],
   send_event_id: 'event-1',
 };
+
+test('fetchProductCategories loads categories used by active products', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input) => {
+    assert.equal(String(input), '/api/products?view=categories');
+    return new Response(JSON.stringify({ categories: ['Boné', 'Canga personalizada'] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await fetchProductCategories(), ['Boné', 'Canga personalizada']);
+    assert.equal(await mediaGroupPathSegment('Necessaire'), 'a0d87da082ceacbbf006dd4a1a5866ad');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test('createMedia preserves the uploaded Blob metadata write path', async () => {
   const originalFetch = globalThis.fetch;

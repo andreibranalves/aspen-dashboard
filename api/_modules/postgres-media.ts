@@ -2,7 +2,11 @@ import type { HeadBlobResult } from '../_infrastructure/integrations/blob/client
 import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { getBlobClient, type BlobClient } from '../_infrastructure/integrations/blob/client.js';
 import { getBlobConfig } from '../_infrastructure/integrations/blob/config.js';
-import { KV_KEY_MEDIA_PREFIX, ALLOWED_MIME_TYPES } from './media-schema.js';
+import {
+  KV_KEY_MEDIA_PREFIX,
+  ALLOWED_MIME_TYPES,
+  mediaGroupPathSegment,
+} from './media-schema.js';
 import { createHttpError } from '../_shared/http-error.js';
 
 const kv = getKvClient();
@@ -367,7 +371,12 @@ function assertCanonicalActiveRecord(
   const declaredPath = canonicalBlobPathname(record.pathname);
   if (declaredPath !== pathname) throw new Error('Caminho do Blob não corresponde ao registro.');
   const productGroup = recordProductGroup(record);
-  if (productGroup && pathname.split('/')[1] !== productGroup) {
+  const pathGroup = pathname.split('/')[1];
+  if (
+    productGroup &&
+    pathGroup !== productGroup &&
+    pathGroup !== mediaGroupPathSegment(productGroup)
+  ) {
     throw new Error('Caminho do Blob não corresponde ao grupo do registro.');
   }
   return { url, pathname };

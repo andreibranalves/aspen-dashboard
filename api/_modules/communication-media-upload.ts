@@ -13,12 +13,13 @@ import type { FunctionEvent, FunctionResult, JsonResponseFn } from '../_http/typ
 // Requires BLOB_READ_WRITE_TOKEN env var (set by Vercel when Blob store is linked).
 
 import { getBlobClient } from '../_infrastructure/integrations/blob/client.js';
+import { listActiveProductCategories } from '../_infrastructure/db/repositories/products-repository.js';
 import { createHttpError } from '../_shared/http-error.js';
 import {
-  PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
   MAX_SIZE_IMAGE,
   MAX_SIZE_VIDEO,
+  mediaGroupPathSegment,
 } from './media-schema.js';
 
 // ── JSON response helper ───────────────────────────────────────────────────
@@ -35,7 +36,19 @@ function errorDetails(value: unknown): Record<string, unknown> {
 
 // ── Handler ─────────────────────────────────────────────────────────────────
 
-export async function handler(event: FunctionEvent): Promise<FunctionResult> {
+export interface CommunicationMediaUploadDependencies {
+  blobClient?: ReturnType<typeof getBlobClient>;
+  listCategories?: () => Promise<string[]>;
+}
+
+function normalizeCategory(value: string): string {
+  return value.trim().toLocaleLowerCase('pt-BR');
+}
+
+export async function handler(
+  event: FunctionEvent,
+  dependencies: CommunicationMediaUploadDependencies = {}
+): Promise<FunctionResult> {
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, { error: 'Método não permitido.' });
   }
@@ -53,7 +66,7 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
   const requestUrl = `${proto}://${host}/api/communication-media-upload`;
 
   try {
-    const result = await getBlobClient().handleUpload({
+    const result = await (dependencies.blobClient || getBlobClient()).handleUpload({
       body,
       request: { url: requestUrl } as unknown as Request,
       onBeforeGenerateToken: async (pathname /* , clientPayload */) => {
@@ -66,19 +79,22 @@ export async function handler(event: FunctionEvent): Promise<FunctionResult> {
         } catch {
           throw createHttpError(400, 'Caminho de upload inválido.');
         }
-        const productGroup = parts[1]?.toLowerCase(); // aspen-media/{product_group}/...
+        const pathGroup = parts[1]?.toLowerCase(); // aspen-media/{group key}/...
 
+        const categories = await (dependencies.listCategories || listActiveProductCategories)();
+        const productGroup = categories
+          .map(normalizeCategory)
+          .find((category) => pathGroup === category || pathGroup === mediaGroupPathSegment(category));
         if (
           parts[0] !== 'aspen-media' ||
           parts.length < 3 ||
           parts.some((part) => !part || part === '.' || part === '..') ||
-          !productGroup ||
-          !PRODUCT_GROUPS.includes(productGroup)
+          !productGroup
         ) {
           throw createHttpError(
             400,
-            `Grupo de produto inválido no caminho. Use: ${PRODUCT_GROUPS.join(', ')}.`,
-            `[comm-media-upload] invalid product group in pathname: ${productGroup}`
+            'Grupo de produto inválido no caminho.',
+            '[comm-media-upload] product group not found in active catalog'
           );
         }
 

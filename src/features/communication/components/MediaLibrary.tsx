@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Filter } from 'lucide-react';
-import { fetchMedia, deleteMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/api/communicationApi';
+import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
 import MediaGridItem from '@/features/communication/components/MediaGridItem';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -50,6 +50,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
   };
 
   const filtered = filterGroup ? items.filter((m) => m.product_group === filterGroup) : items;
+  const groups = [...new Set(items.map((item) => item.product_group))].sort();
 
   return (
     <div className="space-y-4">
@@ -67,24 +68,20 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
         >
           Todos ({items.length})
         </button>
-        {PRODUCT_GROUPS.map((g) => {
-          const count = items.filter((m) => m.product_group === g).length;
-          if (count === 0) return null;
-          return (
-            <button
-              key={g}
-              onClick={() => setFilterGroup(g)}
-              className={[
-                'text-xs px-2.5 py-1 rounded-full transition-colors',
-                filterGroup === g
-                  ? 'bg-primary text-white'
-                  : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
-              ].join(' ')}
-            >
-              {GROUP_LABELS[g]} ({count})
-            </button>
-          );
-        })}
+        {groups.map((group) => (
+          <button
+            key={group}
+            onClick={() => setFilterGroup(group)}
+            className={[
+              'text-xs px-2.5 py-1 rounded-full transition-colors',
+              filterGroup === group
+                ? 'bg-primary text-white'
+                : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
+            ].join(' ')}
+          >
+            {formatProductGroup(group)} ({items.filter((item) => item.product_group === group).length})
+          </button>
+        ))}
       </div>
 
       {/* Loading */}
@@ -100,7 +97,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
         <div className="text-center py-12 text-fg-muted">
           <p className="text-sm">
             {filterGroup
-              ? `Nenhuma mídia cadastrada para ${GROUP_LABELS[filterGroup]}.`
+              ? `Nenhuma mídia cadastrada para ${formatProductGroup(filterGroup)}.`
               : 'Nenhuma mídia cadastrada. Faça upload de imagens ou vídeos.'}
           </p>
         </div>

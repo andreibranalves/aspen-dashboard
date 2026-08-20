@@ -1,6 +1,7 @@
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import {
   createPostgresProductsRepository,
+  listActiveProductCategories,
   ProductRepositoryError,
   type ProductCreateInput,
   type ProductListOptions,
@@ -24,6 +25,7 @@ export interface ProductsCoreDependencies {
   repository: ProductsRepository;
   pricingRepository?: PricingRepository;
   catalogRepository?: ProductCatalogRepository;
+  listCategories?: () => Promise<string[]>;
 }
 
 function json(statusCode: number, payload: Record<string, unknown>): FunctionResult {
@@ -75,6 +77,14 @@ export function createCoreHandler(
   return async function productsCoreHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod === 'GET') {
       const params = event.queryStringParameters || {};
+      if (params.view === 'categories') {
+        try {
+          const categories = await (dependencies.listCategories || listActiveProductCategories)();
+          return json(200, { categories });
+        } catch (error) {
+          return errorResponse('list categories', error);
+        }
+      }
       const status = mapStatus(params.status);
       if (!status) return json(400, { error: 'Status deve ser active, archived ou all.' });
 

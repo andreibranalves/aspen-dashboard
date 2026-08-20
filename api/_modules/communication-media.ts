@@ -32,9 +32,9 @@ import {
 } from './postgres-media.js';
 import {
   KV_KEY_MEDIA_PREFIX,
-  PRODUCT_GROUPS,
   ALLOWED_MIME_TYPES,
   createMediaAsset,
+  mediaGroupPathSegment,
 } from './media-schema.js';
 
 const kv = getKvClient();
@@ -371,7 +371,8 @@ function validateBlobUrl(value: unknown, productGroup: string, origin: string): 
   try {
     const canonical = normalizeOwnedBlobUrl(value, origin);
     const pathname = ownedBlobPathname(canonical, origin);
-    if (pathname.split('/')[1] !== productGroup) {
+    const pathGroup = pathname.split('/')[1];
+    if (pathGroup !== productGroup && pathGroup !== mediaGroupPathSegment(productGroup)) {
       throw createHttpError(400, 'URL do blob não pertence ao grupo de produto informado.');
     }
     return canonical;
@@ -615,11 +616,9 @@ export async function handler(
 
     const errors: string[] = [];
     if (!payload.title || !String(payload.title).trim()) errors.push('Título é obrigatório.');
-    if (
-      !payload.product_group ||
-      !PRODUCT_GROUPS.includes(String(payload.product_group).trim().toLowerCase())
-    ) {
-      errors.push(`Grupo de produto inválido. Use: ${PRODUCT_GROUPS.join(', ')}.`);
+    const requestedProductGroup = String(payload.product_group || '').trim();
+    if (!requestedProductGroup || requestedProductGroup.length > 255) {
+      errors.push('Grupo de produto inválido.');
     }
     if (!payload.blob_url && !payload.blobUrl && !payload.url)
       errors.push('URL do blob é obrigatória.');

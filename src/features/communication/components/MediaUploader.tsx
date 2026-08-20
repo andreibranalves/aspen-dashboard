@@ -2,10 +2,15 @@
 // Uses @vercel/blob/client upload() to send directly to Blob,
 // then saves metadata via POST /api/communication-media.
 
-import { useState, useRef, useCallback, type DragEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, type DragEvent } from 'react';
 import { Upload, Loader2, AlertCircle } from 'lucide-react';
 import { upload } from '@vercel/blob/client';
-import { createMedia, PRODUCT_GROUPS, GROUP_LABELS } from '@/lib/api/communicationApi';
+import {
+  createMedia,
+  fetchProductCategories,
+  mediaGroupPathSegment,
+  normalizeProductGroup,
+} from '@/lib/api/communicationApi';
 import type { ProductGroup } from '@/lib/api/communicationApi';
 
 export interface MediaUploaderProps {
@@ -16,12 +21,32 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState<ProductGroup>(PRODUCT_GROUPS[0]);
+  const [groups, setGroups] = useState<Array<{ value: ProductGroup; label: string }>>([]);
+  const [selectedGroup, setSelectedGroup] = useState<ProductGroup>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchProductCategories()
+      .then((categories) => {
+        if (!active) return;
+        const seen = new Set<string>();
+        const options = categories.flatMap((label) => {
+          const value = normalizeProductGroup(label);
+          if (!value || seen.has(value)) return [];
+          seen.add(value);
+          return [{ value, label }];
+        });
+        setGroups(options);
+        setSelectedGroup((current) => current || options[0]?.value || '');
+      })
+      .catch((err: Error) => active && setError(err.message));
+    return () => { active = false; };
+  }, []);
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
-      if (!files || files.length === 0) return;
+      if (!files || files.length === 0 || !selectedGroup) return;
       const file = files[0]; // Upload one at a time
 
       const isVideo = file.type.startsWith('video/');
@@ -35,7 +60,8 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
       setUploading(true);
 
       try {
-        const pathname = `aspen-media/${selectedGroup}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const groupPath = await mediaGroupPathSegment(selectedGroup);
+        const pathname = `aspen-media/${groupPath}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
         const result = await upload(pathname, file, {
           access: 'public',
@@ -97,11 +123,12 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
           value={selectedGroup}
           onChange={(e) => setSelectedGroup(e.target.value as ProductGroup)}
           className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
-          disabled={uploading}
+          disabled={uploading || groups.length === 0}
         >
-          {PRODUCT_GROUPS.map((g) => (
-            <option key={g} value={g}>
-              {GROUP_LABELS[g]}
+          {groups.length === 0 && <option value="">Nenhuma categoria cadastrada</option>}
+          {groups.map((group) => (
+            <option key={group.value} value={group.value}>
+              {group.label}
             </option>
           ))}
         </select>

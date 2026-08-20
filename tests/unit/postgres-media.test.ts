@@ -12,6 +12,7 @@ import {
   stripMediaInternals,
   verifyOwnedBlobRecord,
 } from '../../api/_modules/postgres-media.js';
+import { handler as communicationMediaUpload } from '../../api/_modules/communication-media-upload.js';
 import {
   compareAndSetMedia,
   deleteMediaIfCurrent,
@@ -368,6 +369,21 @@ test('foreign-store media records fail authenticated ownership validation', asyn
     ),
     /validar a mídia Blob/i,
   );
+});
+
+test('media upload accepts groups from active product categories', async () => {
+  const blobClient = {
+    handleUpload: async ({ onBeforeGenerateToken }: any) => onBeforeGenerateToken(
+      'aspen-media/a0d87da082ceacbbf006dd4a1a5866ad/reference.jpg'
+    ),
+  } as any;
+  const result = await communicationMediaUpload(responseEvent({}, 'POST'), {
+    blobClient,
+    listCategories: async () => ['Necessaire'],
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(JSON.parse(result.body || '{}').tokenPayload.includes('necessaire'), true);
 });
 
 test('metadata creation preserves upload callback path and rejects nonexistent Blob', async () => {

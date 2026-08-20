@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Trash2, Image, Video } from 'lucide-react';
-import { GROUP_LABELS } from '@/lib/api/communicationApi';
+import { formatProductGroup } from '@/lib/api/communicationApi';
 import type { MediaItem } from '@/lib/api/communicationApi';
 
 function formatBytes(bytes: number): string {
@@ -65,7 +65,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
         </p>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-            {GROUP_LABELS[item.product_group] || item.product_group}
+            {formatProductGroup(item.product_group)}
           </span>
           {item.caption && (
             <span

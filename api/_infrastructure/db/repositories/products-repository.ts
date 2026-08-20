@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, isNotNull, or, type SQL } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
 import { products } from '../schema.js';
@@ -79,6 +79,19 @@ export interface ProductsRepository {
 export type ProductRepository = ProductsRepository;
 
 type DatabaseProvider = () => AppDatabase;
+
+export async function listActiveProductCategories(
+  getDb: DatabaseProvider = getDatabase
+): Promise<string[]> {
+  const rows = await getDb()
+    .selectDistinct({ categoria: products.categoria })
+    .from(products)
+    .where(and(eq(products.ativo, true), isNotNull(products.categoria)))
+    .orderBy(asc(products.categoria));
+  return rows
+    .map((row) => row.categoria?.trim())
+    .filter((categoria): categoria is string => Boolean(categoria));
+}
 
 function asIso(value: Date | string | null | undefined): string {
   if (value instanceof Date) return value.toISOString();

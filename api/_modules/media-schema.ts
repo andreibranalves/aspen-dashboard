@@ -1,33 +1,22 @@
+import { createHash } from 'node:crypto';
+
 export const KV_PREFIX = 'aspen:communication';
 export const KV_KEY_FLOWS: string = `${KV_PREFIX}:flows`;
 export const KV_KEY_FLOWS_SELECTED: string = `${KV_PREFIX}:flows:selected`;
 export const KV_KEY_MEDIA_PREFIX: string = `${KV_PREFIX}:media-assets:`;
 export const KV_KEY_SEND_EVENTS_PREFIX: string = `${KV_PREFIX}:send-events:`;
 
-export const PRODUCT_GROUPS: string[] = [
-  'canga',
-  'lenço',
-  'boné',
-  'toalha',
-  'chapéu',
-  'ecobag',
-  'cachecol',
-];
-
-export const GROUP_LABELS: Record<string, string> = {
-  canga: 'Canga',
-  lenço: 'Lenço',
-  boné: 'Boné',
-  toalha: 'Toalha',
-  chapéu: 'Chapéu',
-  ecobag: 'Ecobag',
-  cachecol: 'Cachecol',
-};
-
 export const ALLOWED_MIME_TYPES: string[] = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4'];
 
 export const MAX_SIZE_IMAGE = 5 * 1024 * 1024;
 export const MAX_SIZE_VIDEO = 16 * 1024 * 1024;
+
+export function mediaGroupPathSegment(value: string): string {
+  return createHash('sha256')
+    .update(value.trim().toLocaleLowerCase('pt-BR'))
+    .digest('hex')
+    .slice(0, 32);
+}
 
 export const FLOW_CONTEXTS: string[] = [
   'already_talking',

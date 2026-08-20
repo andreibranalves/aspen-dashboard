@@ -7,34 +7,42 @@
  * All functions return { success, ...data } or throw with Portuguese error messages.
  */
 
-export type ProductGroup =
-  | 'canga'
-  | 'lenço'
-  | 'boné'
-  | 'toalha'
-  | 'chapéu'
-  | 'ecobag'
-  | 'cachecol';
+export type ProductGroup = string;
 
-export const PRODUCT_GROUPS: ProductGroup[] = [
-  'canga',
-  'lenço',
-  'boné',
-  'toalha',
-  'chapéu',
-  'ecobag',
-  'cachecol',
-];
+export function normalizeProductGroup(value: string): ProductGroup {
+  return value.trim().toLocaleLowerCase('pt-BR');
+}
 
-export const GROUP_LABELS: Record<ProductGroup, string> = {
-  canga: 'Canga',
-  lenço: 'Lenço',
-  boné: 'Boné',
-  toalha: 'Toalha',
-  chapéu: 'Chapéu',
-  ecobag: 'Ecobag',
-  cachecol: 'Cachecol',
-};
+export async function mediaGroupPathSegment(value: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(normalizeProductGroup(value))
+  );
+  return Array.from(new Uint8Array(digest).slice(0, 16), (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+}
+
+export function formatProductGroup(value: string): string {
+  return value.replace(/(^|[\s-])\p{L}/gu, (letter) => letter.toLocaleUpperCase('pt-BR'));
+}
+
+export async function fetchProductCategories(): Promise<string[]> {
+  const res = await fetch('/api/products?view=categories');
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = data && typeof data === 'object' && 'error' in data
+      ? String((data as { error?: unknown }).error || '')
+      : '';
+    throw new Error(error || 'Erro ao carregar categorias de produtos.');
+  }
+  if (!data || typeof data !== 'object' || !Array.isArray((data as { categories?: unknown }).categories)) {
+    throw new Error('Resposta inválida ao carregar categorias de produtos.');
+  }
+  return (data as { categories: unknown[] }).categories
+    .filter((category): category is string => typeof category === 'string' && Boolean(category.trim()))
+    .map((category) => category.trim());
+}
 
 export interface MediaFilters {
   product_group?: string;

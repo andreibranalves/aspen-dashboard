@@ -160,6 +160,19 @@ describe('products repository duplicate classification', () => {
 });
 
 describe('products core handlers', () => {
+  it('lists product categories for media selection', async () => {
+    const repository = new MemoryProductsRepository();
+    const products = createProductsCore({
+      repository,
+      listCategories: async () => ['Boné', 'Canga personalizada'],
+    } as any);
+
+    const result = await products(event('GET', undefined, { view: 'categories' }));
+
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(parse(result).categories, ['Boné', 'Canga personalizada']);
+  });
+
   it('creates, searches, paginates, archives/restores, and protects pricing/deletes', async () => {
     const repository = new MemoryProductsRepository();
     const products = createProductsCore({ repository });
