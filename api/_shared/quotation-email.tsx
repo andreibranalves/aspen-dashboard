@@ -4,9 +4,9 @@ import {
   Column,
   Container,
   Head,
-  Heading,
   Html,
   Img,
+  Link,
   Preview,
   Row,
   Section,
@@ -28,7 +28,6 @@ export interface RenderedQuotationEmail {
 
 const EMAIL_SUBJECT_PREFIX = 'Orçamento';
 const EMAIL_SUBJECT_BRAND = 'Aspen';
-const BRAND = 'Aspen Estamparia';
 const EMAIL_LOGO_PATH = '/email-logo-light.svg';
 
 function emailLogoUrl(publicUrl: string): string {
@@ -43,7 +42,7 @@ function QuotationEmail({ customerName, businessNumber, publicUrl }: QuotationEm
   return (
     <Html lang="pt-BR">
       <Head />
-      <Preview>Orçamento {businessNumber} - {EMAIL_SUBJECT_BRAND}</Preview>
+      <Preview>Recebemos seu pedido de orçamento para nossos personalizados.</Preview>
       <Body style={{ backgroundColor: '#f6f8fb', margin: 0, padding: '16px 0' }}>
         <Container
           style={{
@@ -83,41 +82,22 @@ function QuotationEmail({ customerName, businessNumber, publicUrl }: QuotationEm
             </Row>
           </Section>
           <Section style={{ padding: '32px 28px 30px' }}>
-            <Text
-              style={{
-                color: '#3f4652',
-                fontSize: '11px',
-                fontWeight: '700',
-                letterSpacing: '0.12em',
-                lineHeight: '16px',
-                margin: '0 0 14px',
-                textTransform: 'uppercase',
-              }}
-            >
-              Olá, {customerName}
+            <Text style={{ color: '#3f4a5c', fontSize: '16px', lineHeight: '25px', margin: '0 0 20px' }}>
+              Olá, {customerName}, tudo bem?
             </Text>
-            <Heading
-              as="h1"
-              style={{
-                color: '#1e3159',
-                fontSize: '28px',
-                fontWeight: '700',
-                letterSpacing: '-0.03em',
-                lineHeight: '32px',
-                margin: 0,
-              }}
-            >
-              Seu orçamento está pronto
-            </Heading>
-            <Text style={{ color: '#3f4a5c', fontSize: '15px', lineHeight: '24px', margin: '28px 0 0' }}>
-              Segue o orçamento {businessNumber} para sua avaliação.
+            <Text style={{ color: '#3f4a5c', fontSize: '15px', lineHeight: '24px', margin: '0 0 20px' }}>
+              Recebemos seu pedido de orçamento para nossos personalizados e estamos retornando com sua proposta de orçamento em anexo.
             </Text>
-            <Section data-skip-in-text="true" style={{ margin: '26px 0 0' }}>
+            <Text style={{ color: '#3f4a5c', fontSize: '15px', lineHeight: '24px', margin: 0 }}>
+              Caso não possua a arte para o personalizado escolhido, contamos com uma equipe de design de ponta para criar uma arte exclusiva para seu projeto sem custos adicionais, se decidir formalizar seu pedido conosco.
+            </Text>
+            <Section data-skip-in-text="true" style={{ margin: '28px 0 0' }}>
               <Button
                 href={publicUrl}
                 style={{
                   backgroundColor: '#1e3159',
                   borderRadius: '7px',
+                  boxSizing: 'border-box',
                   color: '#ffffff',
                   display: 'inline-block',
                   fontSize: '14px',
@@ -129,19 +109,15 @@ function QuotationEmail({ customerName, businessNumber, publicUrl }: QuotationEm
                 Ver orçamento
               </Button>
             </Section>
-            <Section style={{ backgroundColor: '#f7f8fa', borderRadius: '8px', margin: '28px 0 0', padding: '12px 14px' }}>
-              <Text style={{ color: '#596579', fontSize: '12px', lineHeight: '18px', margin: 0 }}>
-                O PDF do orçamento está anexado a este e-mail.
-              </Text>
-            </Section>
             <Text style={{ color: '#3f4a5c', fontSize: '14px', lineHeight: '22px', margin: '28px 0 0' }}>
-              Atenciosamente,<br />
-              <strong style={{ color: '#1e3159' }}>{BRAND}</strong>
-            </Text>
-          </Section>
-          <Section style={{ backgroundColor: '#fbfcfe', borderTop: '1px solid #e7ebf1', padding: '18px 28px' }}>
-            <Text style={{ color: '#8993a3', fontSize: '11px', lineHeight: '16px', margin: 0 }}>
-              Este e-mail foi enviado pela {BRAND}.
+              Qualquer dúvida, estamos à disposição através dos nossos canais de atendimento:<br />
+              <Link href="https://wa.me/5521969241265" style={{ color: '#1e3159', textDecoration: 'none' }}>
+                WhatsApp: (21) 96924-1265
+              </Link>{' '}
+              |{' '}
+              <Link href="mailto:contato@aspenestamparia.com" style={{ color: '#1e3159', textDecoration: 'none' }}>
+                E-mail: contato@aspenestamparia.com
+              </Link>
             </Text>
           </Section>
         </Container>
