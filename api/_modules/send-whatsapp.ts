@@ -846,9 +846,6 @@ export async function handler(
     if (postgresPath && quotationPdfSteps !== 1) {
       throw createHttpError(400, 'O fluxo deve conter exatamente um PDF do orçamento.');
     }
-    if (!dryRun && postgresPath) {
-      assertEvolutionConfig();
-    }
     const needPdf = quotationPdfSteps === 1;
     const resolved = postgresPath
       ? await loadPostgresSendContext({

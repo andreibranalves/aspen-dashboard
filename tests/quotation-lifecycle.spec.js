@@ -99,6 +99,43 @@ function detail(overrides = {}) {
   };
 }
 
+function deliveryView(state, publicError = null) {
+  const stepState = {
+    provider_accepted: 'server_ack',
+    reconciling: 'reconciling',
+    delivered: 'delivered',
+    failed: 'failed',
+  }[state] || 'queued';
+  const delivered = state === 'delivered' ? 1 : 0;
+  return {
+    id: 'delivery-lifecycle',
+    revision_id: detail().revision_id,
+    business_number: id,
+    client_name: 'Cliente lifecycle',
+    phone: '5511999990000',
+    flow_id: 'already-talking',
+    flow_name: 'Já conversando',
+    state,
+    completion_source: state === 'delivered' ? 'provider_receipt' : null,
+    public_error: publicError,
+    progress: { delivered, total: 1 },
+    steps: [{
+      id: 'step-lifecycle',
+      position: 0,
+      type: 'quotation_pdf',
+      state: stepState,
+      attempt_count: 1,
+      public_error: publicError,
+      updated_at: token,
+    }],
+    next_attempt_at: null,
+    action_deadline: null,
+    reconciliation_deadline: state === 'reconciling' ? token : null,
+    delivered_at: state === 'delivered' ? token : null,
+    updated_at: token,
+  };
+}
+
 async function routeTemplates(page) {
   await page.route('**/api/settings**', async (route) => {
     await route.fulfill({
@@ -603,12 +640,12 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
   });
 });
 
-test('detail reload restores durable accepted, reconciling, completed and read-only delivery states @quotations @critical', async ({ page }) => {
+test('detail reload restores durable accepted, reconciling, delivered and failed delivery states @quotations @critical', async ({ page }) => {
   const phases = [
-    ['accepted_partial', 'Envio aceito'],
-    ['reconciling', 'Reconciliação necessária'],
-    ['completed', 'Enviado pelo WhatsApp'],
-    ['retryable', 'Somente leitura'],
+    ['provider_accepted', 'Aceito pela Evolution'],
+    ['reconciling', 'Reconciliação em andamento'],
+    ['delivered', 'Entregue'],
+    ['failed', 'Falhou'],
   ];
   let phaseIndex = 0;
   await page.route('**/api/quotations**', async (route) => fulfillJson(route, detail()));
@@ -619,12 +656,24 @@ test('detail reload restores durable accepted, reconciling, completed and read-o
   }));
   await page.route('**/api/whatsapp-send-status**', async (route) => {
     const [phase] = phases[phaseIndex];
-    await fulfillJson(route, { phase, read_only: phaseIndex === 3, revision_id: detail().revision_id, flow_id: 'already-talking' });
+    await fulfillJson(route, {
+      delivery_id: 'delivery-lifecycle',
+      phase,
+      error: null,
+      updated_at: token,
+      revision_id: detail().revision_id,
+      flow_id: 'already-talking',
+    });
+  });
+  await page.route('**/api/quotation-deliveries**', async (route) => {
+    const [phase] = phases[phaseIndex];
+    await fulfillJson(route, deliveryView(phase));
   });
   await routeTemplates(page);
   for (phaseIndex = 0; phaseIndex < phases.length; phaseIndex += 1) {
     await page.goto(`/#/quotations/${id}`);
-    await expect(page.getByRole('button', { name: phases[phaseIndex][1] })).toBeDisabled();
+    await expect(page.getByText(phases[phaseIndex][1], { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeDisabled();
     if (phaseIndex < phases.length - 1) await page.reload();
   }
 });
@@ -638,15 +687,21 @@ test('detail retryable status distinguishes verified PDF from generic failure @q
     flows: [{ id: 'already-talking', name: 'Já conversando', context: 'already_talking', channel: 'whatsapp', vendor_name: 'Evolution', enabled: true, delay_min_seconds: 0, delay_max_seconds: 0, max_media_per_product_group: 1, steps: [{ id: 'pdf', type: 'document', source: 'quotation_pdf' }] }],
   }));
   await page.route('**/api/whatsapp-send-status**', async (route) => fulfillJson(route, {
-    phase: 'retryable',
+    delivery_id: 'delivery-lifecycle',
+    phase: 'failed',
     error: pdfFailure ? 'PDF indisponível. Tentar novamente.' : 'Falha de transporte.',
+    updated_at: token,
     revision_id: detail().revision_id,
     flow_id: 'already-talking',
   }));
+  await page.route('**/api/quotation-deliveries**', async (route) => fulfillJson(route, deliveryView(
+    'failed',
+    pdfFailure ? 'PDF indisponível. Tentar novamente.' : 'Falha antes do transporte. Tentar novamente.',
+  )));
   await routeTemplates(page);
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('PDF indisponível. Tentar novamente')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeDisabled();
   pdfFailure = false;
   await page.reload();
   await expect(page.getByText('Falha antes do transporte. Tentar novamente.')).toBeVisible();

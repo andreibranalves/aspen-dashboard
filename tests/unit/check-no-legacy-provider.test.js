@@ -32,6 +32,12 @@ const providerIdentityPrefix = `${text([101, 114, 112])}:`;
 const legacyModule = `${text([112, 114, 111, 100, 117, 99, 116, 115])}-${text([108, 101, 103, 97, 99, 121])}`;
 const modeModule = `${text([111, 112, 101, 114, 97, 116, 105, 111, 110, 97, 108])}-${text([109, 111, 100, 101])}`;
 const migrationModule = `${providerName}-${text([109, 105, 103, 114, 97, 116, 105, 111, 110])}`;
+const retainedQuotationModule = ['quotation', 'delivery'].join('-');
+const retainedReservationModule = ['whatsapp', 'send', 'reservation', 'store'].join('-');
+const retainedQuotationTestPath = 'tests/unit/send-whatsapp.test.ts';
+const retainedReservationTestPath = `tests/unit/${retainedReservationModule}.test.ts`;
+const retainedQuotationTestSourcePath = fileURLToPath(new URL('./send-whatsapp.test.ts', import.meta.url));
+const retainedReservationTestSourcePath = fileURLToPath(new URL(`./${retainedReservationModule}.test.ts`, import.meta.url));
 const outboxVariable = text([79, 85, 84, 66, 79, 88, 95, 78, 56, 78, 95, 85, 82, 76]);
 const operationalMode = text([79, 80, 69, 82, 65, 84, 73, 79, 78, 65, 76, 95, 77, 79, 68, 69]);
 const coreMode = text([67, 79, 82, 69, 95, 77, 79, 68, 69]);
@@ -197,6 +203,35 @@ test('reports deterministic labels without matched content or PII', () => {
     assert.equal(first.stderr, second.stderr);
     assert.equal(first.stderr, 'src/leak.ts:1:provider name\n');
     assert.doesNotMatch(first.stderr, new RegExp(secret));
+  });
+});
+
+test('allows only exact retained legacy import baselines before staging', () => {
+  withFixture((root) => {
+    writeFixture(root, `api/_functions/lib/${retainedQuotationModule}.ts`, 'export const retained = true;\n');
+    writeFixture(root, `api/_functions/lib/${retainedReservationModule}.ts`, 'export const retained = true;\n');
+    writeFixture(root, retainedQuotationTestPath, readFileSync(retainedQuotationTestSourcePath));
+    writeFixture(root, retainedReservationTestPath, readFileSync(retainedReservationTestSourcePath));
+    commitFixture(root);
+
+    const baseline = runGuard(root);
+    assert.equal(baseline.status, 0, baseline.stderr);
+
+    writeFixture(
+      root,
+      'tests/unit/new-active-import.test.ts',
+      `import '${`../../api/_functions/lib/${retainedQuotationModule}.js`}';\nimport '${`../../api/_functions/lib/${retainedReservationModule}.js`}';\n`,
+    );
+    const newImport = runGuard(root);
+    assert.equal(newImport.status, 1);
+    assert.match(newImport.stderr, new RegExp(`tests/unit/new-active-import\\.test\\.ts:.*:retired quotation delivery module`));
+    assert.match(newImport.stderr, new RegExp(`tests/unit/new-active-import\\.test\\.ts:.*:retired reservation module`));
+
+    rmSync(join(root, 'tests/unit/new-active-import.test.ts'));
+    appendFixture(root, 'tests/unit/send-whatsapp.test.ts', '\nexport const unrelated = true;\n');
+    const changedBaseline = runGuard(root);
+    assert.equal(changedBaseline.status, 1);
+    assert.match(changedBaseline.stderr, /tests\/unit\/send-whatsapp\.test\.ts:.*:retired quotation delivery module/);
   });
 });
 

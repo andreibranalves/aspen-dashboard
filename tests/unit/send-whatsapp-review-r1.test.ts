@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { handler as sendWhatsapp, loadPostgresSendContext, MAX_QUOTATION_PDF_BYTES } from '../../api/_modules/send-whatsapp.js';
+import { sendFrozenStep } from '../../api/_modules/evolution-transport.js';
+import { createDeliveryPlan, type DeliveryFlow } from '../../api/_modules/quotation-delivery-plan.js';
 import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
-const revisionId = 'revision-0000-0000-4000-8000-000000000001';
+const revisionId = '00000000-0000-4000-8000-000000000001';
 const businessNumber = 'ORC-20260001';
 const publicToken = 'A'.repeat(32);
 
@@ -171,6 +173,88 @@ function validPdf(size = 16): Buffer {
   pdf.write('%PDF-', 0, 'ascii');
   pdf.write('%%EOF', Math.max(5, size - 5), 'ascii');
   return pdf;
+}
+
+function durableDeliveryModule(options: {
+  resolveFlow: (flowId: string) => Promise<DeliveryFlow | null>;
+  repository: any;
+  store: any;
+  token: () => string;
+  mediaRecords?: Array<Record<string, unknown>>;
+  headBlob?: any;
+  resolveMedia?: any;
+}) {
+  return {
+    async enqueue(input: { revisionId: string; flowId: string }) {
+      const plan = await createDeliveryPlan({
+        quotationId: businessNumber,
+        businessNumber,
+        revisionId: input.revisionId,
+        flowId: input.flowId,
+        baseUrl: 'https://app.test',
+        resolveFlow: options.resolveFlow,
+        repository: options.repository,
+        store: options.store,
+        token: options.token,
+        mediaRecords: options.mediaRecords,
+        headBlob: options.headBlob,
+        resolveMedia: options.resolveMedia,
+      });
+      const now = new Date('2026-08-20T12:00:00.000Z');
+      const steps = [];
+      for (const [position, step] of plan.steps.entries()) {
+        const document = step.type === 'quotation_pdf'
+          ? {
+              pdf: validPdf(),
+              pdfSize: validPdf().length,
+              pdfSignature: 'test-signature',
+              validUntil: new Date(now.getTime() + 86_400_000),
+            }
+          : undefined;
+        await sendFrozenStep(
+          { phone: plan.phone, step, document },
+          {
+            baseUrl: 'https://evolution.test',
+            apiKey: 'test-key',
+            instance: 'test-instance',
+            fetch: globalThis.fetch,
+          },
+        );
+        steps.push({
+          id: `step-${position}`,
+          position,
+          type: step.type,
+          state: 'delivered',
+          attemptCount: 1,
+          publicError: null,
+          nextAttemptAt: null,
+          acceptedAt: now,
+          deliveredAt: now,
+          readAt: null,
+          updatedAt: now,
+        });
+      }
+      return {
+        id: 'delivery-test',
+        revisionId: plan.revisionId,
+        businessNumber: plan.businessNumber,
+        clientName: plan.clientName,
+        phone: plan.phone,
+        flowId: plan.flowId,
+        flowName: plan.flowName,
+        state: 'delivered',
+        completionSource: 'provider_receipt',
+        publicError: null,
+        nextAttemptAt: null,
+        actionDeadline: null,
+        reconciliationDeadline: null,
+        deliveredAt: now,
+        createdAt: now,
+        updatedAt: now,
+        steps,
+      };
+    },
+  } as any;
 }
 
 test('snapshot path ignores obsolete caller/deal/name/items metadata', async () => {
@@ -342,6 +426,21 @@ test('unresolved requested flow media fails before any text transport', async ()
       token: () => publicToken,
       reservationStore: reservationStore(),
       mediaRecords: [],
+      deliveryModule: durableDeliveryModule({
+        resolveFlow: async () => ({
+          id: 'flow-media',
+          name: 'Mídia',
+          steps: [
+            { type: 'text', template: 'Texto não deve ser enviado' },
+            { type: 'product_media', max_items: 1 },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        }),
+        repository: repository(),
+        store: store(),
+        token: () => publicToken,
+        mediaRecords: [],
+      }),
     });
     assert.equal(response.statusCode, 400);
     assert.equal(providerCalls, 0);
@@ -406,6 +505,39 @@ test('flow sends an active uploaded MP4 as Evolution video with a safe filename'
         size: 11,
       }) as any,
       recordSendEvent: async () => 'video-event',
+      deliveryModule: durableDeliveryModule({
+        resolveFlow: async () => ({
+          id: 'flow-video',
+          name: 'Fluxo vídeo',
+          delay_min_seconds: 0,
+          delay_max_seconds: 0,
+          max_media_per_product_group: 1,
+          steps: [
+            { type: 'text', template: 'Antes do vídeo' },
+            { type: 'product_media', max_items: 1 },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        }),
+        repository: repository(),
+        store: store(),
+        token: () => publicToken,
+        mediaRecords: [{
+          id: 'video-1',
+          product_group: 'canga',
+          blob_url: videoUrl,
+          pathname: videoPath,
+          active: true,
+          content_type: 'video/mp4',
+          size_bytes: 11,
+          kind: 'video',
+        }],
+        headBlob: async () => ({
+          url: videoUrl,
+          pathname: videoPath,
+          contentType: 'video/mp4',
+          size: 11,
+        }) as any,
+      }),
     });
     assert.equal(response.statusCode, 200);
     assert.equal(providerBodies.length, 3);
@@ -522,6 +654,36 @@ test('flow rejects unsupported active media before sending preceding text', asyn
         contentType: 'text/plain',
         size: 11,
       }) as any,
+      deliveryModule: durableDeliveryModule({
+        resolveFlow: async () => ({
+          id: 'flow-invalid-media',
+          name: 'Fluxo inválido',
+          steps: [
+            { type: 'text', template: 'Não enviar' },
+            { type: 'product_media', max_items: 1 },
+            { type: 'document', source: 'quotation_pdf' },
+          ],
+        }),
+        repository: repository(),
+        store: store(),
+        token: () => publicToken,
+        mediaRecords: [{
+          id: 'invalid-1',
+          product_group: 'canga',
+          blob_url: 'https://store.public.blob.vercel-storage.com/aspen-media/canga/file.txt',
+          pathname: 'aspen-media/canga/file.txt',
+          active: true,
+          content_type: 'text/plain',
+          size_bytes: 11,
+          kind: 'image',
+        }],
+        headBlob: async () => ({
+          url: 'https://store.public.blob.vercel-storage.com/aspen-media/canga/file.txt',
+          pathname: 'aspen-media/canga/file.txt',
+          contentType: 'text/plain',
+          size: 11,
+        }) as any,
+      }),
     });
     assert.equal(response.statusCode, 400);
     assert.match(response.body || '', /Falha antes do transporte|MIME|mídia/i);

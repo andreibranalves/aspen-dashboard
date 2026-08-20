@@ -23,57 +23,59 @@ A aplicação fica pronta quando o banco responde e `app_settings` contém valid
 ## Fluxo local
 
 1. Execute as verificações automatizadas em uma cópia local.
-2. Confirme que `src/app/routes.tsx` é a tabela única de rotas e que `src/app/App.tsx` despacha as rotas por hash.
+2. Confirme que os três mapas de rotas são iguais.
 3. Confirme que produtos, clientes, orçamentos, CRM, pedidos, atividade e telas de comunicação usam contratos locais.
 4. Valide o envio WhatsApp somente com mocks da Evolution em testes.
 5. Registre resultados e riscos no relatório de auditoria apropriado.
 
 Nenhuma etapa deste documento executa deploy, alteração de ambiente, migração ou acesso a serviço remoto.
 
-## Preview como staging
+## Configuração operacional de corte
 
-Preview é o staging padrão para branches e releases candidatos.
+Os nomes de configuração necessários são:
 
-| Controle                  | Preview              | Production               |
-| ------------------------- | -------------------- | ------------------------ |
-| `APP_ENV`                 | `preview`            | `production`             |
-| `EXTERNAL_WRITES_ENABLED` | `0`                  | `1`                      |
-| Banco                     | PostgreSQL staging   | PostgreSQL production    |
-| KV/Blob                   | recursos staging     | recursos production      |
-| Evolution                 | credenciais ausentes | credenciais configuradas |
+```text
+EVOLUTION_WEBHOOK_SECRET
+CRON_SECRET
+EVOLUTION_INSTANCE
+```
 
-A ausência de credenciais é intencional e complementa o guard de aplicação e o egress bloqueado.
-Valores reais permanecem no ambiente operacional fora deste checkout.
+Configure o webhook `MESSAGES_UPDATE` da Evolution com um cabeçalho `Authorization` personalizado.
 
-### Checklist Preview
+Confirme que `/api/evolution-webhook` rejeita requisições sem bearer e com bearer incorreto.
 
-- `APP_ENV=preview` configurado no ambiente Preview.
-- `EXTERNAL_WRITES_ENABLED=0` configurado no ambiente Preview.
-- Banco, KV e Blob apontam para recursos de staging.
-- Credenciais Evolution não estão presentes em Preview.
-- `STAGING_EGRESS_BLOCKED=1` configurado no executor staging.
-- `STAGING_FIXTURE_RESET=1` configurado antes da suíte mutável.
-- Suítes locais e staging executadas somente com fixtures descartáveis.
+Confirme que o cron da Vercel invoca `/api/quotation-delivery-worker` a cada minuto.
 
-### Lifecycle das flags staging restantes
+Inspecione **Envios WhatsApp** para localizar linhas ativas e acionáveis.
 
-| Flag                     | Owner          | Propósito                                                      | Condição de remoção                                                                     |
-| ------------------------ | -------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `STAGING_EGRESS_BLOCKED` | operação/infra | atestar bloqueio de egress durante E2E mutável                 | substituir por prova automática equivalente no executor                                 |
-| `STAGING_FIXTURE_RESET`  | QA/operação    | autorizar limpeza das fixtures staging declaradas descartáveis | suíte deixar de mutar staging ou isolamento automático tornar a atestação desnecessária |
+Execute uma entrega real controlada usando um orçamento aprovado existente e um destinatário designado.
 
-Essas flags não duplicam `APP_ENV` nem `EXTERNAL_WRITES_ENABLED`; elas atestam controles operacionais independentes.
+Verifique que cada identificador de mensagem do provedor alcança `DELIVERY_ACK`.
 
-## Transição VPS -> Preview
+Verifique que logs não exibem segredos nem números de telefone.
 
-1. Criar Preview a partir da branch candidata.
-2. Executar a suíte staging com egress bloqueado e fixtures descartáveis.
-3. Registrar resultado, falhas e riscos operacionais.
-4. Repetir o ciclo por releases suficientes para obter confiança.
-5. Manter a VPS como fallback durante a observação.
-6. Remover runtime e infraestrutura VPS somente após decisão operacional explícita.
+Em rollback de código, não faça rollback da migração, porque ela é aditiva e linhas legadas continuam legíveis.
 
-Nenhuma etapa deste documento altera o Vercel Dashboard, faz deploy, migra banco ou remove Docker, Traefik, nftables e scripts.
+Não registre valores dessas variáveis neste repositório, em comandos ou em relatórios.
+
+## Gate controlado de staging
+
+A execução local termina antes do passo controlado de staging.
+
+No gate, execute primeiro:
+
+```bash
+node scripts/cutover-env-status.mjs
+npm run test:e2e:staging -- --list
+```
+
+Depois, use somente o orçamento controlado identificado pelo ambiente do operador.
+
+Não crie uma cotação ou fixture para essa validação.
+
+Confirme recebimento do webhook, execução do worker, entrega no dispositivo, estado da página e ausência de mensagem duplicada.
+
+Se não houver `DELIVERY_ACK`, interrompa o corte e mantenha os módulos de reserva Redis até corrigir a configuração do provedor.
 
 ## Comandos de verificação e corte
 
@@ -90,8 +92,7 @@ npm run build
 Execute as suítes de staging somente com PostgreSQL, egress bloqueado e fixtures descartáveis:
 
 ```bash
-APP_ENV=preview \
-EXTERNAL_WRITES_ENABLED=0 \
+STAGING_E2E=1 \
 BASE_URL="$STAGING_BASE_URL" \
 STAGING_BASE_URL="$STAGING_BASE_URL" \
 E2E_USERNAME="$E2E_USERNAME" \
@@ -99,12 +100,13 @@ E2E_PASSWORD="$E2E_PASSWORD" \
 STAGING_E2E_USERNAME="$E2E_USERNAME" \
 KNOWN_POSTGRES_QUOTATION_ID="$KNOWN_POSTGRES_QUOTATION_ID" \
 KNOWN_POSTGRES_SCRATCH_QUOTATION_ID="$KNOWN_POSTGRES_SCRATCH_QUOTATION_ID" \
+STAGING_EXTERNAL_PROVIDERS_DISABLED=1 \
 STAGING_EGRESS_BLOCKED=1 \
 STAGING_FIXTURE_RESET=1 \
 npx playwright test tests/postgres-only-cutover.spec.js tests/quotation-cutover-staging.spec.js
 ```
 
-O canário Production é somente leitura, não envia WhatsApp e não captura leads.
+O canário Production é somente leitura e não envia WhatsApp nem cria leads Typebot.
 A cobertura de fluxos mutáveis pertence exclusivamente à suíte de staging.
 
 Execute o canário depois de configurar os identificadores PostgreSQL existentes:

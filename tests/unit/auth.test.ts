@@ -6,6 +6,7 @@ import {
   getAuthConfiguration,
   isAuthenticated,
   isDevelopmentAuthBypassEnabled,
+  isMachineRoute,
   isProductionEnvironment,
 } from '../../api/_shared/auth.js';
 import { createPasswordHash } from '../../api/_shared/password.js';
@@ -31,6 +32,14 @@ describe('auth guard', () => {
     assert.equal(isAuthenticated({ url: '/api/quotation-preview?id=ORC-20260001' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/quotation-issue' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/quotation-document?id=documento' }, {}), false);
+  });
+
+  it('lets explicit machine routes reach their own bearer guards only', () => {
+    assert.equal(isMachineRoute('evolution-webhook'), true);
+    assert.equal(isMachineRoute('quotation-delivery-worker'), true);
+    assert.equal(isMachineRoute('quotation-deliveries'), false);
+    assert.equal(isAuthenticated({ url: '/api/evolution-webhook' }, {}), true);
+    assert.equal(isAuthenticated({ url: '/api/quotation-delivery-worker' }, {}), true);
   });
 
   it('requires a valid signed cookie and never accepts the removed header fallback', async () => {

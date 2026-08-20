@@ -161,7 +161,7 @@ test(
 
         await assert.rejects(
           repository.markFailed({ attemptId: ids.firstAttempt, publicError: 'Falha conhecida.' }),
-          /já aceita/i
+          /já (?:foi )?aceita/i
         );
 
         const second = await repository.reserve({

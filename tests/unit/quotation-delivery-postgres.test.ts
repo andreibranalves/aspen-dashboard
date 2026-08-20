@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
@@ -302,10 +302,13 @@ test(
       assert.equal(first.flowId, 'already-talking');
       const retry = await repository.reserve({ revisionId: ids.revision, phone: '55 21 99541 9741', flowId: 'already-talking' });
       assert.equal(retry.id, first.id);
-      await assert.rejects(
-        repository.reserve({ revisionId: ids.revision, phone: '5511999999999', flowId: 'email-first-contact' }),
-        (error: unknown) => error instanceof QuotationDeliveryConflictError && /nova revisão/i.test(error.message),
-      );
+      const otherFlow = await repository.reserve({
+        revisionId: ids.revision,
+        phone: '5511999999999',
+        flowId: 'email-first-contact',
+      });
+      assert.notEqual(otherFlow.id, first.id);
+      assert.equal(otherFlow.flowId, 'email-first-contact');
 
       const prepared = await repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId });
       assert.equal(prepared.pdfSize, pdfWithEof().length);
@@ -320,41 +323,41 @@ test(
       const badSignature = createPostgresQuotationDeliveryRepository(() => db, { now: () => now, renderPdf: async () => Buffer.from('not a pdf') });
       await assert.rejects(badSignature.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId }), /PDF da revisão é inválido/i);
 
-      const completed = await repository.recordState({ revisionId: ids.revision, state: 'completed', providerAcceptanceId: 'accepted-1', publicError: 'temporary diagnostic' });
+      const completed = await repository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'completed', providerAcceptanceId: 'accepted-1', publicError: 'temporary diagnostic' });
       assert.equal(completed.state, 'completed');
       assert.equal(completed.providerAcceptanceId, 'accepted-1');
-      await assert.rejects(repository.recordState({ revisionId: ids.revision, state: 'transporting' }), /estado.*entrega|reconciliação|concluída/i);
+      await assert.rejects(repository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'transporting' }), /estado.*entrega|reconciliação|concluída/i);
       await assert.rejects(repository.prepareDelivery({ revisionId: ids.revision, phone: first.phone, flowId: first.flowId }), /concluída|reconciliação|nova revisão/i);
-      await db.update(quotationDeliveries).set({ state: 'retryable', providerAcceptanceId: null, publicError: null, updatedAt: now }).where(eq(quotationDeliveries.revisionId, ids.revision));
+      await db.update(quotationDeliveries).set({ state: 'retry_scheduled', providerAcceptanceId: null, publicError: null, updatedAt: now }).where(and(eq(quotationDeliveries.revisionId, ids.revision), eq(quotationDeliveries.flowId, first.flowId)));
       const casRepository = createPostgresQuotationDeliveryRepository(() => db, {
         now: () => now,
         beforeStateUpdate: async () => {
-          await db.update(quotationDeliveries).set({ state: 'retryable', updatedAt: new Date(now.getTime() + 1) })
-            .where(eq(quotationDeliveries.revisionId, ids.revision));
+          await db.update(quotationDeliveries).set({ state: 'retry_scheduled', updatedAt: new Date(now.getTime() + 1) })
+            .where(and(eq(quotationDeliveries.revisionId, ids.revision), eq(quotationDeliveries.flowId, first.flowId)));
         },
       });
       await assert.rejects(
-        casRepository.recordState({ revisionId: ids.revision, state: 'accepted_partial' }),
+        casRepository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'accepted_partial' }),
         (error: unknown) => error instanceof QuotationDeliveryConflictError && /outra tentativa/i.test(error.message),
       );
-      const read = await repository.readDeliveryByRevision(ids.revision);
+      const read = await repository.readDeliveryByRevision(ids.revision, first.flowId);
       assert.equal(read?.state, 'retryable');
       assert.equal(read?.publicError, null);
-      const reclaimed = await repository.claimTransport(ids.revision);
+      const reclaimed = await repository.claimTransport(ids.revision, first.flowId);
       assert.equal(reclaimed?.state, 'transporting');
-      assert.equal(await repository.claimTransport(ids.revision), null);
+      assert.equal(await repository.claimTransport(ids.revision, first.flowId), null);
 
-      await repository.recordState({ revisionId: ids.revision, state: 'transporting', publicError: 'diagnostic retained' });
+      await repository.recordState({ revisionId: ids.revision, flowId: first.flowId, state: 'transporting', publicError: 'diagnostic retained' });
       const lateRepository = createPostgresQuotationDeliveryRepository(() => db, {
         now: () => new Date(now.getTime() + 31 * 86400000),
       });
-      const late = await lateRepository.readDeliveryByRevision(ids.revision);
+      const late = await lateRepository.readDeliveryByRevision(ids.revision, first.flowId);
       assert.equal(late?.readOnly, true);
       assert.equal(late?.publicError, 'diagnostic retained');
       const redactedRepository = createPostgresQuotationDeliveryRepository(() => db, {
         now: () => new Date(now.getTime() + 91 * 86400000),
       });
-      const redacted = await redactedRepository.readDeliveryByRevision(ids.revision);
+      const redacted = await redactedRepository.readDeliveryByRevision(ids.revision, first.flowId);
       assert.equal(redacted?.readOnly, true);
       assert.equal(redacted?.publicError, null);
       assert.equal(redacted?.phone, '5521995419741');

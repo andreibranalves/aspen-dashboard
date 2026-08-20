@@ -7,6 +7,7 @@ import {
   MessageCircle,
   Package,
   Settings,
+  Send,
   ShoppingCart,
   Sparkles,
   Users,
@@ -30,6 +31,7 @@ const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage')
 const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
 const WhatsAppInboxPage = lazy(() => import('@/features/whatsapp/pages/WhatsAppInboxPage'));
+const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
 
 export interface RouteContext {
   navigate: (hash: string) => void;
@@ -91,6 +93,12 @@ export const routes: AppRoute[] = [
     suspense: true,
     render: ({ navigate }) => <WhatsAppInboxPage navigate={navigate} />,
     nav: { label: 'WhatsApp', icon: MessageCircle, section: 'Operacional' },
+  },
+  {
+    path: '/whatsapp-deliveries',
+    suspense: true,
+    render: () => <WhatsAppDeliveriesPage />,
+    nav: { label: 'Envios WhatsApp', icon: Send, section: 'Operacional' },
   },
   {
     path: '/dashboard',

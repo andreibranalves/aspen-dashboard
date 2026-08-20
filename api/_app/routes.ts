@@ -31,6 +31,9 @@ import { handler as salesOrders } from '../_modules/sales-orders.js';
 import { handler as sendWhatsapp } from '../_modules/send-whatsapp.js';
 import { handler as sendQuotationEmail } from '../_modules/send-quotation-email.js';
 import { handler as quotationEmailTemplate } from '../_modules/quotation-email-template.js';
+import { handler as quotationDeliveries } from '../_modules/quotation-deliveries.js';
+import { handler as evolutionWebhook } from '../_modules/evolution-webhook.js';
+import { handler as quotationDeliveryWorker } from '../_modules/quotation-delivery-worker.js';
 import { handler as sendWhatsappFlow } from '../_modules/send-whatsapp-flow.js';
 import { handler as whatsappSendStatus } from '../_modules/whatsapp-send-status.js';
 import { handler as settings } from '../_modules/settings.js';
@@ -77,6 +80,9 @@ export const routes: Record<string, LegacyHandler> = {
   'send-whatsapp': sendWhatsapp,
   'send-quotation-email': sendQuotationEmail,
   'quotation-email-template': quotationEmailTemplate,
+  'quotation-deliveries': quotationDeliveries,
+  'evolution-webhook': evolutionWebhook,
+  'quotation-delivery-worker': quotationDeliveryWorker,
   'send-whatsapp-flow': sendWhatsappFlow,
   'whatsapp-send-status': whatsappSendStatus,
   settings,

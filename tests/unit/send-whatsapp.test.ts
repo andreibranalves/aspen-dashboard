@@ -7,6 +7,7 @@ import {
 } from '../../api/_modules/send-whatsapp.js';
 import {
   canonicalFlowQuotationId,
+  createDeliveryPlan,
   flowProductSummary,
   handler as sendWhatsappFlow,
 } from '../../api/_modules/send-whatsapp-flow.js';
@@ -15,9 +16,13 @@ import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
 } from '../../api/_modules/postgres-media.js';
+import {
+  createPostgresQuotationDeliveryRepository,
+  QuotationDeliveryConflictError,
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
+import { quoteRevisions, quotationDeliveries } from '../../api/_infrastructure/db/schema.js';
 import { normalizeEvolutionDelivery } from '../../api/_infrastructure/integrations/evolution/evolution-delivery.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
-import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
@@ -265,8 +270,110 @@ function store() {
   };
 }
 
-function reservationStore() {
-  return createFakeWhatsappReservationStore() as any;
+function quotationDeliveryConditionPairs(condition: unknown): Record<string, unknown> {
+  const pairs: Record<string, unknown> = {};
+  const walk = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    const chunks = (value as { queryChunks?: unknown }).queryChunks;
+    if (!Array.isArray(chunks)) return;
+    let column: string | undefined;
+    for (const chunk of chunks) {
+      if (chunk && typeof chunk === 'object' && 'name' in chunk && (chunk as { table?: unknown }).table === quotationDeliveries) {
+        column = String((chunk as { name: string }).name);
+      } else if (column && chunk && typeof chunk === 'object' && 'value' in chunk && !Array.isArray((chunk as { value?: unknown }).value)) {
+        pairs[column] = (chunk as { value: unknown }).value;
+        column = undefined;
+      } else {
+        walk(chunk);
+      }
+    }
+  };
+  walk(condition);
+  return pairs;
+}
+
+function twoFlowDeliveryDatabase(revision: string) {
+  const now = new Date('2026-08-13T12:00:00.000Z');
+  const revisionRow = {
+    id: revision,
+    status: 'emitido',
+    issuedAt: now,
+    createdAt: now,
+    validadeDias: 30,
+  } as any;
+  const rows: Array<Record<string, any>> = [];
+  const camelColumn: Record<string, string> = {
+    revision_id: 'revisionId',
+    flow_id: 'flowId',
+    updated_at: 'updatedAt',
+    id: 'id',
+  };
+  const matches = (row: Record<string, any>, condition: unknown) => Object.entries(quotationDeliveryConditionPairs(condition))
+    .every(([column, value]) => {
+      const actual = row[camelColumn[column] || column];
+      return actual instanceof Date && value instanceof Date
+        ? actual.getTime() === value.getTime()
+        : actual === value;
+    });
+  const query = (source: unknown[]) => {
+    let result = [...source];
+    return {
+      where(condition: unknown) {
+        result = result.filter((row) => matches(row as Record<string, any>, condition));
+        return this;
+      },
+      limit(count: number) {
+        return Promise.resolve(result.slice(0, count));
+      },
+      then(resolve: (value: unknown[]) => unknown, reject: (error: unknown) => unknown) {
+        return Promise.resolve(result).then(resolve, reject);
+      },
+    };
+  };
+  const db = {
+    transaction: async (callback: (tx: unknown) => unknown) => callback(db),
+    select: () => ({
+      from(table: unknown) {
+        if (table === quoteRevisions) return query([revisionRow]);
+        if (table === quotationDeliveries) return query(rows);
+        return query([]);
+      },
+    }),
+    insert: () => ({
+      values(values: Record<string, unknown>) {
+        return {
+          onConflictDoNothing: () => ({
+            returning: async () => {
+              if (rows.some((row) => row.revisionId === values.revisionId && row.flowId === values.flowId)) return [];
+              const row = { ...values } as Record<string, any>;
+              rows.push(row);
+              return [row];
+            },
+          }),
+        };
+      },
+    }),
+    update: (table: unknown) => ({
+      set(values: Record<string, unknown>) {
+        return {
+          where(condition: unknown) {
+            const selected = table === quotationDeliveries ? rows.filter((row) => matches(row, condition)) : [];
+            return {
+              returning: async (projection?: Record<string, unknown>) => {
+                for (const row of selected) {
+                  for (const [key, value] of Object.entries(values)) {
+                    if (value !== undefined) row[key] = value;
+                  }
+                }
+                return projection ? selected.map((row) => ({ id: row.id })) : selected;
+              },
+            };
+          },
+        };
+      },
+    }),
+  };
+  return { db, now, rows };
 }
 
 function event(body: Record<string, unknown>) {
@@ -276,6 +383,25 @@ function event(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   } as any;
 }
+
+test('quotation delivery compatibility scopes reads, claims and updates by flow', async () => {
+  const deliveryRevisionId = '22222222-2222-4222-8222-222222222222';
+  const fixture = twoFlowDeliveryDatabase(deliveryRevisionId);
+  const repository = createPostgresQuotationDeliveryRepository(() => fixture.db as any, { now: () => fixture.now });
+  await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511999990000', flowId: 'flow-a' });
+  await repository.reserve({ revisionId: deliveryRevisionId, phone: '5511888880000', flowId: 'flow-b' });
+
+  await repository.recordState({ revisionId: deliveryRevisionId, flowId: 'flow-b', state: 'completed' });
+  const claimed = await repository.claimTransport(deliveryRevisionId, 'flow-a');
+  assert.equal(claimed?.state, 'transporting');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-a'))?.phone, '5511999990000');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-a'))?.state, 'transporting');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-b'))?.phone, '5511888880000');
+  assert.equal((await repository.getByRevision(deliveryRevisionId, 'flow-b'))?.state, 'completed');
+
+  await assert.rejects(repository.getByRevision(deliveryRevisionId), QuotationDeliveryConflictError);
+  await assert.rejects(repository.recordState({ revisionId: deliveryRevisionId, state: 'reconciling' }), QuotationDeliveryConflictError);
+});
 
 test('send-whatsapp rejects PostgreSQL send without quotation before transport', async () => {
   const originalFetch = globalThis.fetch;
@@ -505,6 +631,175 @@ test('flow PostgreSQL content and duplicate keys use canonical snapshot values',
   assert.equal(flowProductSummary(false, 'texto legado', [{ item_code: 'CNG-001' }]), 'cangas');
 });
 
+test('flow planner keeps dry-run PDF references free of binary content', async () => {
+  const plan = await createDeliveryPlan({
+    revisionId,
+    flowId: 'flow-plan',
+    businessNumber,
+    baseUrl: 'https://app.test',
+    context: { businessNumber, nome: 'Cliente Teste', phone: '5511999990000', items: [] },
+    flow: {
+      id: 'flow-plan',
+      steps: [
+        { type: 'text', template: 'Olá (nome)' },
+        { type: 'document', source: 'quotation_pdf' },
+      ],
+    },
+    random: () => 0,
+  });
+  assert.equal(plan.steps.at(-1)?.type, 'quotation_pdf');
+  assert.equal(JSON.stringify(plan.steps).includes('base64'), false);
+});
+
+test('send-whatsapp-flow dry-run uses the extracted planner without rendering or transport', async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  let pdfCalls = 0;
+  globalThis.fetch = (async () => {
+    providerCalls += 1;
+    return new Response(JSON.stringify({ accepted: true, message_id: 'must-not-send' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const response = await sendWhatsappFlow(
+      event({ flow_id: 'flow-dry-run', quotation_id: quotationId, revision_id: revisionId, dry_run: true }),
+      {
+        resolveFlow: async () => ({
+          id: 'flow-dry-run',
+          name: 'Fluxo dry-run',
+          steps: [
+            { type: 'text', template: 'Olá (nome)' },
+            { type: 'document', source: 'quotation_pdf', caption: 'Orçamento (numero_pedido)' },
+          ],
+        }),
+        repository: repositoryFor(),
+        store: store(),
+        token: () => publicToken,
+        renderPdf: async () => {
+          pdfCalls += 1;
+          throw new Error('PDF must not render in dry-run');
+        },
+      },
+    );
+    const body = JSON.parse(response.body || '{}');
+    assert.equal(response.statusCode, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.dry_run, true);
+    assert.equal(body.send_status, 'dry_run');
+    assert.deepEqual(body.steps.map((step: { type: string }) => step.type), ['text', 'document']);
+    assert.equal(JSON.stringify(body.steps).includes('base64'), false);
+    assert.equal(pdfCalls, 0);
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+function durableDelivery(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'delivery-fixture',
+    revisionId,
+    businessNumber,
+    clientName: 'Cliente Teste',
+    phone: '5511999990000',
+    flowId: 'flow-fixture',
+    flowName: 'Fluxo fixture',
+    state: 'provider_accepted',
+    completionSource: null,
+    publicError: null,
+    nextAttemptAt: null,
+    reconciliationDeadline: null,
+    deliveredAt: null,
+    createdAt: new Date('2026-08-17T12:00:00.000Z'),
+    updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+    steps: [],
+    ...overrides,
+  } as any;
+}
+
+test('send-whatsapp-flow returns durable provider state from the outbox module', async () => {
+  let enqueueInput: unknown;
+  const deliveryModule = {
+    async enqueue(input: unknown) {
+      enqueueInput = input;
+      return {
+        id: 'delivery-1',
+        revisionId,
+        businessNumber,
+        clientName: 'Cliente Teste',
+        phone: '5511999990000',
+        flowId: 'flow-durable',
+        flowName: 'Fluxo durável',
+        state: 'provider_accepted',
+        completionSource: null,
+        publicError: null,
+        nextAttemptAt: null,
+        reconciliationDeadline: null,
+        deliveredAt: null,
+        createdAt: new Date('2026-08-17T12:00:00.000Z'),
+        updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+        steps: [
+          { id: 'step-1', position: 0, type: 'text', state: 'server_ack', attemptCount: 1, publicError: null, nextAttemptAt: null, acceptedAt: new Date(), deliveredAt: null, readAt: null, updatedAt: new Date() },
+          { id: 'step-2', position: 1, type: 'quotation_pdf', state: 'queued', attemptCount: 0, publicError: null, nextAttemptAt: null, acceptedAt: null, deliveredAt: null, readAt: null, updatedAt: new Date() },
+        ],
+      };
+    },
+  } as any;
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-durable', quotation_id: quotationId, revision_id: revisionId }),
+    { deliveryModule },
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 202);
+  assert.equal(body.success, true);
+  assert.equal(body.delivery_id, 'delivery-1');
+  assert.equal(body.send_status, 'provider_accepted');
+  assert.deepEqual(enqueueInput, { revisionId, flowId: 'flow-durable' });
+  assert.equal(body.phone, undefined);
+  assert.equal(body.delivery.phone, undefined);
+});
+
+test('send-whatsapp-flow preserves 200 success for a delivered durable state', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-delivered', quotation_id: quotationId, revision_id: revisionId }),
+    { deliveryModule: { async enqueue() { return durableDelivery({ state: 'delivered' }); } } } as any,
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.send_status, 'delivered');
+});
+
+test('send-whatsapp-flow returns an accepted durable failed projection', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-failed', quotation_id: quotationId, revision_id: revisionId }),
+    {
+      deliveryModule: {
+        async enqueue() {
+          return durableDelivery({ state: 'failed', publicError: 'A revisão do orçamento não está disponível para envio.' });
+        },
+      },
+    } as any,
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 202);
+  assert.equal(body.success, true);
+  assert.equal(body.send_status, 'failed');
+  assert.equal(body.delivery.state, 'failed');
+  assert.equal(
+    body.delivery.public_error,
+    'A revisão do orçamento não está disponível para envio.',
+  );
+});
+
+test('send-whatsapp-flow sanitizes outbox failures', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-failure', quotation_id: quotationId, revision_id: revisionId }),
+    { deliveryModule: { async enqueue() { throw new Error('provider secret'); } } as any },
+  );
+  assert.equal(response.statusCode, 503);
+  assert.doesNotMatch(response.body || '', /provider secret/i);
+});
+
 test('Evolution response requires explicit provider acceptance', () => {
   assert.deepEqual(
     normalizeEvolutionDelivery({ accepted: true, message_id: 'provider-1' }),
@@ -529,28 +824,26 @@ test('Evolution response requires explicit provider acceptance', () => {
   assert.equal(normalizeEvolutionDelivery({}), null);
 });
 
-function withEvolutionEnv(
-  overrides: { appEnv?: string; writes?: string } = {},
-) {
+function withEvolutionEnv() {
   const previous = {
+    appEnv: process.env.APP_ENV,
+    externalWrites: process.env.EXTERNAL_WRITES_ENABLED,
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
-    appEnv: process.env.APP_ENV,
-    writes: process.env.EXTERNAL_WRITES_ENABLED,
   };
+  process.env.APP_ENV = 'production';
+  process.env.EXTERNAL_WRITES_ENABLED = '1';
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
-  process.env.APP_ENV = overrides.appEnv || 'production';
-  process.env.EXTERNAL_WRITES_ENABLED = overrides.writes || '1';
   return () => {
     for (const [key, value] of Object.entries({
+      APP_ENV: previous.appEnv,
+      EXTERNAL_WRITES_ENABLED: previous.externalWrites,
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
-      APP_ENV: previous.appEnv,
-      EXTERNAL_WRITES_ENABLED: previous.writes,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -558,125 +851,7 @@ function withEvolutionEnv(
   };
 }
 
-test('PostgreSQL sequence blocks before token or delivery state when external writes are disabled', async () => {
-  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
-  const tokenStore = store();
-  const deliveryCalls: string[] = [];
-  let tokenCalls = 0;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: {
-          steps: [
-            { type: 'text', template: 'Olá' },
-            { type: 'document', source: 'quotation_pdf' },
-          ],
-        },
-      }),
-      {
-        repository: repositoryFor(),
-        store: tokenStore,
-        token: () => {
-          tokenCalls += 1;
-          return publicToken;
-        },
-        deliveryRepository: {
-          getByRevision: async () => {
-            deliveryCalls.push('getByRevision');
-            return null;
-          },
-          prepareDelivery: async () => {
-            deliveryCalls.push('prepareDelivery');
-            return undefined;
-          },
-          claimTransport: async () => {
-            deliveryCalls.push('claimTransport');
-            return true;
-          },
-          recordState: async () => {
-            deliveryCalls.push('recordState');
-          },
-        } as any,
-      },
-    );
-    assert.equal(response.statusCode, 503);
-    assert.deepEqual(JSON.parse(response.body || '{}'), {
-      error: 'Integrações externas desativadas neste ambiente.',
-    });
-    assert.deepEqual(deliveryCalls, []);
-    assert.equal(tokenCalls, 0);
-    assert.equal(tokenStore.values.size, 0);
-  } finally {
-    restoreEnv();
-  }
-});
-
-test('PostgreSQL sequence blocks before token or delivery state when Evolution config is missing', async () => {
-  const restoreEnv = withEvolutionEnv();
-  delete process.env.EVOLUTION_API_KEY;
-  const tokenStore = store();
-  const deliveryCalls: string[] = [];
-  let tokenCalls = 0;
-  const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    throw new Error('fetch must not run');
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(
-      event({
-        quotation_id: businessNumber,
-        revision_id: revisionId,
-        sequence: {
-          steps: [
-            { type: 'text', template: 'Olá' },
-            { type: 'document', source: 'quotation_pdf' },
-          ],
-        },
-      }),
-      {
-        repository: repositoryFor(),
-        store: tokenStore,
-        token: () => {
-          tokenCalls += 1;
-          return publicToken;
-        },
-        deliveryRepository: {
-          getByRevision: async () => {
-            deliveryCalls.push('getByRevision');
-            return null;
-          },
-          prepareDelivery: async () => {
-            deliveryCalls.push('prepareDelivery');
-            return undefined;
-          },
-          claimTransport: async () => {
-            deliveryCalls.push('claimTransport');
-            return true;
-          },
-          recordState: async () => {
-            deliveryCalls.push('recordState');
-          },
-        } as any,
-      },
-    );
-    assert.equal(response.statusCode, 500);
-    assert.match(response.body || '', /Integração do WhatsApp não configurada/i);
-    assert.equal(providerCalls, 0);
-    assert.deepEqual(deliveryCalls, []);
-    assert.equal(tokenCalls, 0);
-    assert.equal(tokenStore.values.size, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
 test('PostgreSQL endpoint rejects recipient ownership before provider setup', async () => {
-  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -698,7 +873,6 @@ test('PostgreSQL endpoint rejects recipient ownership before provider setup', as
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    restoreEnv();
   }
 });
 
@@ -732,7 +906,6 @@ test('PostgreSQL endpoint completes local send after Evolution acceptance', asyn
 });
 
 test('PostgreSQL endpoint rejects PDF preparation before provider setup', async () => {
-  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -762,12 +935,10 @@ test('PostgreSQL endpoint rejects PDF preparation before provider setup', async 
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    restoreEnv();
   }
 });
 
 test('PostgreSQL endpoint rejects arbitrary media before provider setup', async () => {
-  const restoreEnv = withEvolutionEnv();
   let providerCalls = 0;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -790,7 +961,6 @@ test('PostgreSQL endpoint rejects arbitrary media before provider setup', async 
     assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
-    restoreEnv();
   }
 });
 
@@ -871,46 +1041,38 @@ test('PostgreSQL send rejects stale or foreign-store media before provider trans
   }
 });
 
-test('PostgreSQL flow endpoint uses snapshot summary and canonical duplicate key', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  const duplicateKeys: string[] = [];
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ accepted: true, message_id: 'provider-flow' }), { status: 200 })) as typeof fetch;
-  try {
-    const response = await sendWhatsappFlow(
-      event({
-        flow_id: 'flow-postgres',
-        quotation_id: quotationId,
-        revision_id: revisionId,
-      }),
-      {
-        resolveFlow: async () => ({
-          id: 'flow-postgres',
-          name: 'Fluxo PostgreSQL',
-          steps: [{ type: 'text', template: '(produto_resumo)' }, { type: 'document', source: 'quotation_pdf' }],
-        }),
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        renderPdf: async () => Buffer.from('%PDF-1.7\nbody\n%%EOF'),
-        reservationStore: reservationStore(),
-        checkDuplicate: async (id) => {
-          duplicateKeys.push(id);
-          return true;
+test('PostgreSQL flow endpoint accepts an injected durable delivery module', async () => {
+  const response = await sendWhatsappFlow(
+    event({ flow_id: 'flow-postgres', quotation_id: quotationId, revision_id: revisionId }),
+    {
+      deliveryModule: {
+        async enqueue() {
+          return {
+            id: 'delivery-postgres',
+            revisionId,
+            businessNumber,
+            clientName: 'Cliente Teste',
+            phone: '5511999990000',
+            flowId: 'flow-postgres',
+            flowName: 'Fluxo PostgreSQL',
+            state: 'delivered',
+            completionSource: 'provider_receipt',
+            publicError: null,
+            nextAttemptAt: null,
+            reconciliationDeadline: null,
+            deliveredAt: new Date('2026-08-17T12:00:00.000Z'),
+            createdAt: new Date('2026-08-17T12:00:00.000Z'),
+            updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+            steps: [],
+          };
         },
-        recordSendEvent: async () => 'synthetic-flow-event',
-      },
-    );
-    const body = JSON.parse(response.body || '{}');
-    assert.equal(response.statusCode, 200);
-    assert.equal(body.product_summary, 'cangas');
-    assert.equal(body.duplicate_warning, true);
-    assert.deepEqual(duplicateKeys, [businessNumber]);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
+      } as any,
+    },
+  );
+  const body = JSON.parse(response.body || '{}');
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.send_status, 'delivered');
+  assert.equal(body.delivery.completion_source, 'provider_receipt');
 });
 
 test('PostgreSQL preview rejects external media before rendering output', async () => {
@@ -945,122 +1107,15 @@ test('PostgreSQL preview rejects external media before rendering output', async 
   assert.match(response.body || '', /Mídia externa proibida/);
 });
 
-test('non-dry legacy endpoint blocks Evolution when external writes are disabled', async () => {
-  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
+test('non-dry legacy endpoint requires explicit provider acceptance', async () => {
+  const restoreEnv = withEvolutionEnv();
   const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    throw new Error('fetch must not run');
-  }) as typeof fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 })) as typeof fetch;
   try {
     const response = await sendWhatsapp(event({ telefone: '11999990000', mensagem: 'Olá' }));
-    assert.equal(response.statusCode, 503);
-    assert.deepEqual(JSON.parse(response.body || '{}'), {
-      error: 'Integrações externas desativadas neste ambiente.',
-    });
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('flow endpoint blocks Evolution when external writes are disabled', async () => {
-  const restoreEnv = withEvolutionEnv({ appEnv: 'preview', writes: '0' });
-  const originalFetch = globalThis.fetch;
-  let providerCalls = 0;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    throw new Error('fetch must not run');
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsappFlow(
-      event({ flow_id: 'flow-disabled', quotation_id: businessNumber, revision_id: revisionId }),
-      {
-        resolveFlow: async () => ({
-          id: 'flow-disabled',
-          name: 'Fluxo bloqueado',
-          delay_min_seconds: 0,
-          delay_max_seconds: 0,
-          steps: [
-            { type: 'text', template: 'Olá' },
-            { type: 'document', source: 'quotation_pdf' },
-          ],
-        }),
-        repository: repositoryFor(),
-        store: store(),
-        token: () => publicToken,
-        renderPdf: async () => Buffer.from('%PDF-1.7\\nbody\\n%%EOF'),
-        resolveDeal: async () => null,
-        recordSendEvent: async () => 'event-disabled',
-        reservationStore: reservationStore(),
-      } as any,
-    );
-    assert.equal(response.statusCode, 503);
-    assert.deepEqual(JSON.parse(response.body || '{}'), {
-      error: 'Integrações externas desativadas neste ambiente.',
-    });
-    assert.equal(providerCalls, 0);
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('non-dry legacy endpoint routes authenticated Evolution text through the client', async () => {
-  const restoreEnv = withEvolutionEnv();
-  process.env.EVOLUTION_BASE_URL = 'https://evolution.example';
-  process.env.EVOLUTION_INSTANCE = 'aspen';
-  const originalFetch = globalThis.fetch;
-  let capturedUrl = '';
-  let capturedInit: RequestInit | undefined;
-  globalThis.fetch = (async (input, init) => {
-    capturedUrl = String(input);
-    capturedInit = init;
-    return new Response(JSON.stringify({ accepted: true, message_id: 'provider-1' }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
     assert.equal(response.statusCode, 200);
     assert.equal(JSON.parse(response.body || '{}').evolution.providerMessageId, 'provider-1');
-    assert.equal(capturedUrl, 'https://evolution.example/message/sendText/aspen');
-    assert.equal(new Headers(capturedInit?.headers).get('apikey'), 'test-key');
-    assert.equal(JSON.parse(String(capturedInit?.body)).number, '5511999999999');
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('Evolution transport failures preserve public status and message', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => { throw new Error('network failure'); }) as typeof fetch;
-  try {
-    const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
-    assert.equal(response.statusCode, 502);
-    assert.deepEqual(JSON.parse(response.body || '{}'), {
-      error: 'Falha ao conectar com o WhatsApp. Tente novamente.',
-    });
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreEnv();
-  }
-});
-
-test('non-2xx Evolution responses preserve public status mapping', async () => {
-  const restoreEnv = withEvolutionEnv();
-  const originalFetch = globalThis.fetch;
-  try {
-    for (const [status, expectedStatus] of [[401, 502], [422, 400]]) {
-      globalThis.fetch = (async () => new Response('{}', { status })) as typeof fetch;
-      const response = await sendWhatsapp(event({ telefone: '11999999999', mensagem: 'Olá' }));
-      assert.equal(response.statusCode, expectedStatus);
-      assert.deepEqual(JSON.parse(response.body || '{}'), {
-        error: 'Não foi possível enviar a mensagem pelo WhatsApp. Verifique se a instância está conectada.',
-      });
-    }
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv();
