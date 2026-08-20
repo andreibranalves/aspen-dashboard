@@ -226,6 +226,7 @@ export async function handler(
 
   let attemptId = '';
   let revisionId = '';
+  let attemptReserved = false;
   try {
     const input = parseBody(event);
     attemptId = uuid(input.attempt_id, 'Identificador da tentativa inválido.');
@@ -309,6 +310,7 @@ export async function handler(
         retry_same_attempt: false,
       });
     }
+    attemptReserved = true;
 
     const token = await issueToken({
       revisionId,
@@ -346,7 +348,7 @@ export async function handler(
   } catch (error) {
     const response = repositoryErrorResponse(error);
     if (response) return response;
-    logFailure(attemptId, revisionId, 'persistence');
-    return internalErrorResponse();
+    logFailure(attemptId, revisionId, attemptReserved ? 'postReservation' : 'persistence');
+    return attemptReserved ? ambiguousResponse() : internalErrorResponse();
   }
 }

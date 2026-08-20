@@ -49,9 +49,13 @@ export async function runQuotationEmailCutoverPreflight({
       WHERE state = 'pending'
         AND NOT (
           jsonb_typeof(template_snapshot) = 'object'
-          AND template_snapshot ? 'subject'
-          AND template_snapshot ? 'html'
-          AND template_snapshot ? 'text'
+          AND jsonb_object_length(template_snapshot) = 3
+          AND jsonb_typeof(template_snapshot -> 'subject') = 'string'
+          AND jsonb_typeof(template_snapshot -> 'html') = 'string'
+          AND jsonb_typeof(template_snapshot -> 'text') = 'string'
+          AND char_length(btrim(template_snapshot ->> 'subject')) > 0
+          AND char_length(btrim(template_snapshot ->> 'html')) > 0
+          AND char_length(btrim(template_snapshot ->> 'text')) > 0
         )
     `;
     return {

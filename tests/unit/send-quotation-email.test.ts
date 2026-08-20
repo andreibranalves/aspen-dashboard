@@ -591,6 +591,23 @@ test('uses the stable token when another reservation wins the insert race', asyn
   assert.equal(issuedToken, 'racing-stable-token');
 });
 
+test('token issuance failure after reservation keeps the attempt retryable', async () => {
+  const calls: string[] = [];
+  const result = await handler(event('POST', payload()), {
+    deliveries: fakeDeliveries(calls),
+    snapshots: snapshots(snapshot()),
+    issueToken: async () => { throw new Error('token secret'); },
+  });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(parse(result), {
+    error: 'O resultado do envio não pôde ser confirmado. Tente novamente.',
+    retry_same_attempt: true,
+  });
+  assert.deepEqual(calls, ['reserve']);
+  assert.doesNotMatch(result.body || '', /token secret|stack trace|Error/);
+});
+
 test('uses safe internal 500 responses for unrelated pre-provider failures', async () => {
   const cases: Array<[string, SendQuotationEmailDependencies]> = [
     [
@@ -609,14 +626,6 @@ test('uses safe internal 500 responses for unrelated pre-provider failures', asy
       {
         deliveries: fakeDeliveries([]),
         snapshots: { get: async () => { throw new Error('snapshot secret'); } } as any,
-      },
-    ],
-    [
-      'token secret',
-      {
-        deliveries: fakeDeliveries([]),
-        snapshots: snapshots(snapshot()),
-        issueToken: async () => { throw new Error('token secret'); },
       },
     ],
     [

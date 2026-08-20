@@ -13,6 +13,7 @@ test('routes: 46 nomes únicos e bem formados', () => {
 test('routes: não registra endpoints aposentados', () => {
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'quote-leads'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(routes, 'typebot-lead-capture'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(routes, 'quotation-email-template'), false);
 });
 
 test('rotas e configuração ativas não contêm variáveis Typebot', () => {
