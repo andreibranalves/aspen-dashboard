@@ -49,7 +49,11 @@ export async function runQuotationEmailCutoverPreflight({
       WHERE state = 'pending'
         AND NOT (
           jsonb_typeof(template_snapshot) = 'object'
-          AND jsonb_object_length(template_snapshot) = 3
+          AND CASE
+            WHEN jsonb_typeof(template_snapshot) = 'object'
+            THEN (SELECT count(*) FROM jsonb_object_keys(template_snapshot)) = 3
+            ELSE false
+          END
           AND jsonb_typeof(template_snapshot -> 'subject') = 'string'
           AND jsonb_typeof(template_snapshot -> 'html') = 'string'
           AND jsonb_typeof(template_snapshot -> 'text') = 'string'
