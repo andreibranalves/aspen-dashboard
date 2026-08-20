@@ -413,6 +413,7 @@ function dependencies(
     transportSend?: (
       input: { phone: string; step: FrozenDeliveryStep; document?: unknown }
     ) => Promise<{ accepted: true; providerMessageId: string }>;
+    sleep?: (delayMs: number) => Promise<void>;
   } = {}
 ) {
   const clock = options.clock || { value: new Date(start) };
@@ -438,6 +439,7 @@ function dependencies(
     now: () => new Date(clock.value),
     instance: 'test-instance',
     logger: options.logger || (() => {}),
+    sleep: options.sleep,
   });
   return { module, repository, transport, clock };
 }
@@ -560,29 +562,26 @@ test('transient failure schedules a bounded retry and permanent failure does not
   assert.equal(permanentTransport.calls.length, 1);
 });
 
-test('zero-delay steps process in order and delayed steps never sleep in process', async () => {
-  const immediate = dependencies({ steps: [textStep(0), textStep(1), textStep(2)] });
-  const completed = await immediate.module.enqueue(identity);
-  assert.equal(completed.state, 'provider_accepted');
-  assert.deepEqual(
-    immediate.transport.calls.map((call) => call.step.position),
-    [0, 1, 2]
-  );
-
+test('enqueue processes short inter-step delays without waiting for the scheduler', async () => {
   const clock = { value: new Date(start) };
+  const sleeps: number[] = [];
   const delayed = dependencies({
     clock,
-    steps: [textStep(0), textStep(1, 1_000)],
+    steps: [textStep(0), textStep(1, 1_000), textStep(2, 2_000)],
+    sleep: async (delayMs) => {
+      sleeps.push(delayMs);
+      clock.value = new Date(clock.value.getTime() + delayMs);
+    },
   });
-  const first = await delayed.module.enqueue({ ...identity, flowId: 'delayed' });
-  assert.equal(first.state, 'queued');
-  assert.equal(delayed.transport.calls.length, 1);
-  clock.value = new Date(start.getTime() + 999);
-  assert.equal((await delayed.module.process(first.id))?.state, 'queued');
-  assert.equal(delayed.transport.calls.length, 1);
-  clock.value = new Date(start.getTime() + 1_000);
-  assert.equal((await delayed.module.process(first.id))?.state, 'provider_accepted');
-  assert.equal(delayed.transport.calls.length, 2);
+
+  const completed = await delayed.module.enqueue(identity);
+
+  assert.equal(completed.state, 'provider_accepted');
+  assert.deepEqual(sleeps, [1_000, 2_000]);
+  assert.deepEqual(
+    delayed.transport.calls.map((call) => call.step.position),
+    [0, 1, 2]
+  );
 });
 
 test('worker crash after claim but before transport reconciles without a provider call', async () => {
@@ -794,7 +793,7 @@ test('PDF is prepared only for the due PDF step and failures are classified befo
   const clock = { value: new Date(start) };
   const prepared = dependencies({
     clock,
-    steps: [textStep(0), pdfStep(1, 1_000)],
+    steps: [textStep(0), pdfStep(1, 60_000)],
     preparePdf: async () => {
       prepares += 1;
       return {
@@ -807,7 +806,7 @@ test('PDF is prepared only for the due PDF step and failures are classified befo
   });
   const queued = await prepared.module.enqueue({ ...identity, flowId: 'pdf' });
   assert.equal(prepares, 0);
-  clock.value = new Date(start.getTime() + 1_000);
+  clock.value = new Date(start.getTime() + 60_000);
   await prepared.module.process(queued.id);
   assert.equal(prepares, 1);
   assert.ok(prepared.transport.calls[1]?.document);

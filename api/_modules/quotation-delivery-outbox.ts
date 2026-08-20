@@ -108,6 +108,7 @@ export interface QuotationDeliveryModuleDependencies {
   now?: () => Date;
   instance?: string;
   logger?: DeliveryLogger;
+  sleep?: (delayMs: number) => Promise<void>;
 }
 
 export interface EvolutionMessageEvent {
@@ -404,6 +405,9 @@ export function createQuotationDeliveryModule(
   const transportDependencies =
     dependencies.transportDependencies || dependencies.evolutionTransport;
   const logger = dependencies.logger;
+  const sleep =
+    dependencies.sleep ||
+    ((delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
   let fallbackDocumentPreparer: DeliveryDocumentPreparer | undefined;
   const documentPreparer =
     dependencies.prepareDeliveryDocument ||
@@ -462,11 +466,22 @@ export function createQuotationDeliveryModule(
     deliveryId: string | undefined,
     maxClaims = Number.POSITIVE_INFINITY
   ): Promise<ProcessResult> {
+    const deadline = Date.now() + PROCESS_DUE_TIME_BUDGET_MS;
     let latest: DeliveryAggregate | null = null;
     let claims = 0;
     while (claims < maxClaims) {
       const claimed = await repository.claim(deliveryId ? { deliveryId } : {});
-      if (!claimed) break;
+      if (!claimed) {
+        const delayMs =
+          deliveryId && claims > 0 && latest?.nextAttemptAt
+            ? latest.nextAttemptAt.getTime() - now().getTime()
+            : 0;
+        if (delayMs > 0 && Date.now() + delayMs <= deadline) {
+          await sleep(delayMs);
+          continue;
+        }
+        break;
+      }
       claims += 1;
       const startedAt = Date.now();
       let accepted: EvolutionAccepted;
