@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-} from '../../api/_shared/quotation-email-template.js';
+import type { RenderedQuotationEmail } from '../../api/_shared/quotation-email.js';
 import type { FunctionEvent, FunctionResult } from '../../api/_http/types.js';
 import type {
   QuotationEmailDelivery,
@@ -22,6 +20,16 @@ const revisionId = '22222222-2222-4222-8222-222222222222';
 const otherRevisionId = '55555555-5555-4555-8555-555555555555';
 const attemptId = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-08-17T12:00:00.000Z');
+const RESERVED_EMAIL: RenderedQuotationEmail = {
+  subject: 'Modelo reservado ORC-42',
+  html: '<!doctype html><html><body>Modelo reservado ORC-42</body></html>',
+  text: 'Modelo reservado ORC-42',
+};
+const DEFAULT_RENDERED_EMAIL: RenderedQuotationEmail = {
+  subject: 'Orçamento ORC-42 - Aspen',
+  html: '<!doctype html><html><body>Orçamento ORC-42 - Aspen</body></html>',
+  text: 'Orçamento ORC-42 - Aspen',
+};
 
 function event(
   method: string,
@@ -65,7 +73,7 @@ function delivery(
     updatedAt: NOW,
     ...rest,
     templateSnapshot: templateSnapshot === undefined
-      ? (state === 'pending' ? { ...DEFAULT_QUOTATION_EMAIL_TEMPLATE } : null)
+      ? (state === 'pending' ? DEFAULT_RENDERED_EMAIL : null)
       : templateSnapshot,
   };
 }
@@ -128,10 +136,6 @@ function snapshots(value: unknown) {
   return { get: async () => value } as SendQuotationEmailDependencies['snapshots'];
 }
 
-function defaultTemplates() {
-  return { get: async () => ({ ...DEFAULT_QUOTATION_EMAIL_TEMPLATE }) } as SendQuotationEmailDependencies['templates'];
-}
-
 function parse(result: FunctionResult): Record<string, any> {
   return JSON.parse(result.body || '{}');
 }
@@ -140,9 +144,10 @@ function acceptedToken() {
   return async (
     input?: NonNullable<Parameters<NonNullable<SendQuotationEmailDependencies['issueToken']>>[0]>,
   ) => {
-    assert.equal(input?.token?.(), 'stable-public-token');
+    const stableToken = input?.token?.() || '';
+    assert.equal(stableToken, 'stable-public-token');
     return {
-      token: 'public-token',
+      token: stableToken,
       expiresAt: Date.now() + 60_000,
       revisionId,
       quotationId,
@@ -156,13 +161,12 @@ test('accepted Resend response marks attempt and returns safe projection', async
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async (input) => {
       calls.push('transport');
       assert.equal(input.recipient, 'cliente@example.com');
-      assert.match(input.html, /public-quotation\?token=public-token/);
-      assert.match(input.attachmentUrl, /public-quotation\?token=public-token&format=pdf$/);
+      assert.match(input.html, /public-quotation\?token=stable-public-token/);
+      assert.match(input.attachmentUrl, /public-quotation\?token=stable-public-token&format=pdf$/);
       return { id: 'resend-email-1' };
     },
     token: () => 'stable-public-token',
@@ -181,18 +185,13 @@ test('accepted Resend response marks attempt and returns safe projection', async
   assert.deepEqual(calls, ['reserve', 'transport', 'markAccepted']);
 });
 
-test('new attempt reserves and renders the active global template', async () => {
+test('new attempt reserves and sends the code-defined rendered payload', async () => {
   const calls: string[] = [];
   let transportInput: Record<string, unknown> | undefined;
-  const activeTemplate = {
-    ...DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-    subject: 'Proposta {{numero_orcamento}}',
-  };
 
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: { get: async () => activeTemplate },
     issueToken: acceptedToken(),
     transport: async input => {
       calls.push('transport');
@@ -204,47 +203,39 @@ test('new attempt reserves and renders the active global template', async () => 
   });
 
   assert.equal(result.statusCode, 200);
-  assert.equal(transportInput?.subject, 'Proposta ORC-42');
+  assert.equal(transportInput?.subject, 'Orçamento ORC-42 - Aspen');
+  assert.match(String(transportInput?.html), /Cliente Teste/);
+  assert.match(String(transportInput?.text), /https:\/\/localhost:5173\/api\/public-quotation/);
   assert.deepEqual(calls, ['reserve', 'transport', 'markAccepted']);
 });
 
-test('pending retry reuses reserved template after the global template changes', async () => {
-  const reservedTemplate = {
-    ...DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-    subject: 'Modelo reservado {{numero_orcamento}}',
-  };
-  let templateReads = 0;
-  let subject = '';
+test('pending retry reuses the exact reserved rendered payload', async () => {
+  let transportInput: Record<string, unknown> | undefined;
 
   const result = await handler(event('POST', payload()), {
-    deliveries: fakeDeliveries([], { initial: delivery({ templateSnapshot: reservedTemplate }) }),
+    deliveries: fakeDeliveries([], { initial: delivery({ templateSnapshot: RESERVED_EMAIL }) }),
     snapshots: snapshots(snapshot()),
-    templates: {
-      get: async () => {
-        templateReads += 1;
-        return { ...DEFAULT_QUOTATION_EMAIL_TEMPLATE, subject: 'Modelo novo' };
-      },
-    },
     issueToken: acceptedToken(),
     transport: async input => {
-      subject = input.subject;
+      transportInput = input as unknown as Record<string, unknown>;
       return { id: 'email_123' };
     },
     now: () => NOW,
   });
 
   assert.equal(result.statusCode, 200);
-  assert.equal(templateReads, 0);
-  assert.equal(subject, 'Modelo reservado ORC-42');
+  assert.equal(transportInput?.subject, RESERVED_EMAIL.subject);
+  assert.equal(transportInput?.html, RESERVED_EMAIL.html);
+  assert.equal(transportInput?.text, RESERVED_EMAIL.text);
 });
 
-test('template read failures stop before reservation and provider calls', async () => {
+test('render failures stop before reservation and provider calls', async () => {
   const calls: string[] = [];
   let providerCalled = false;
   const result = await handler(event('POST', payload(), { host: 'app.example.com' }), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: { get: async () => { throw new Error('template database secret'); } },
+    renderEmail: async () => { throw new Error('renderer secret'); },
     transport: async () => {
       providerCalled = true;
       return { id: 'email_123' };
@@ -267,7 +258,6 @@ test('normalizes recipient and never accepts a body-provided base URL', async ()
   }), {
     deliveries: fakeDeliveries([]),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async (input) => {
       sentHtml = input.html;
@@ -293,7 +283,6 @@ test('uses the trusted deployment origin instead of request host or body origin'
   }), {
     deliveries: fakeDeliveries([]),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async (input) => {
       sentHtml = input.html;
@@ -339,7 +328,6 @@ test('classifies a provider HTTP 5xx as uncertain and keeps the attempt pending'
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async (input, transportDependencies) => sendQuotationEmailViaResend(input, {
       env: transportDependencies?.env,
@@ -455,7 +443,6 @@ test('rejects an accepted reservation with mismatched ownership before side effe
       }),
     }),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: async () => { throw new Error('token must not be issued'); },
     transport: async () => { throw new Error('transport must not run'); },
   });
@@ -488,7 +475,6 @@ test('marks configuration failures and returns a safe 503', async () => {
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async () => {
       throw new ResendTransportError('provider secret', 'configuration');
@@ -507,7 +493,6 @@ test('marks rejected Resend responses failed and forbids same-attempt retry', as
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async () => {
       throw new ResendTransportError('provider secret', 'rejected');
@@ -528,7 +513,6 @@ test('preserves ambiguous retry when failed persistence is not confirmed', async
       markFailedError: new Error('database secret'),
     }),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async () => {
       throw new ResendTransportError('provider secret', 'configuration');
@@ -550,7 +534,6 @@ test('keeps uncertain provider results pending for same-attempt retry', async ()
   const result = await handler(event('POST', payload()), {
     deliveries: fakeDeliveries(calls),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async () => {
       throw new ResendTransportError('provider secret', 'uncertain');
@@ -572,7 +555,6 @@ test('keeps pending after markAccepted failure and allows same-attempt retry', a
   const result = await handler(event('POST', payload()), {
     deliveries,
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: acceptedToken(),
     transport: async () => ({ id: 'resend-email-1' }),
     token: () => 'stable-public-token',
@@ -591,11 +573,10 @@ test('uses the stable token when another reservation wins the insert race', asyn
       reserved: delivery({ publicToken: 'racing-stable-token' }),
     }),
     snapshots: snapshots(snapshot()),
-    templates: defaultTemplates(),
     issueToken: async (input) => {
       issuedToken = input?.token?.() || '';
       return {
-        token: 'public-token',
+        token: 'racing-stable-token',
         expiresAt: Date.now() + 60_000,
         revisionId,
         quotationId,

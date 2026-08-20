@@ -139,7 +139,7 @@ export const routes: AppRoute[] = [
   {
     path: '/comunicacao',
     suspense: true,
-    render: ({ setNavigationGuard }) => <ComunicacaoPage setNavigationGuard={setNavigationGuard} />,
+    render: () => <ComunicacaoPage />,
     nav: { label: 'Comunicação', icon: MessageCircle, section: 'Outros' },
   },
   {

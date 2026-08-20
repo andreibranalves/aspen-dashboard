@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
 
 import {
-  renderQuotationEmailTemplate,
-} from '../_shared/quotation-email-template.js';
+  isRenderedQuotationEmail,
+  renderQuotationEmail,
+  type RenderedQuotationEmail,
+} from '../_shared/quotation-email.js';
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { isIssuedQuotationStatus } from './quotation-status.js';
 import {
@@ -14,10 +16,6 @@ import {
   type QuotationEmailDeliveryRepository,
 } from '../_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
-import {
-  createPostgresQuotationEmailTemplateRepository,
-  type QuotationEmailTemplateRepository,
-} from '../_infrastructure/db/repositories/quotation-email-template-repository.js';
 import { normalizeClientEmail } from './client-schema.js';
 import { issuePublicQuotationToken } from './public-quotation.js';
 import {
@@ -33,14 +31,12 @@ const INTERNAL_ERROR = 'Erro interno. Tente novamente.';
 
 type QuotationSnapshotRepository = ReturnType<typeof createQuotationTemplateRepository>;
 
-type PublicQuotationToken = Awaited<ReturnType<typeof issuePublicQuotationToken>>;
-
 export interface SendQuotationEmailDependencies {
   deliveries?: QuotationEmailDeliveryRepository;
   snapshots?: QuotationSnapshotRepository;
-  templates?: Pick<QuotationEmailTemplateRepository, 'get'>;
   issueToken?: typeof issuePublicQuotationToken;
   transport?: typeof sendQuotationEmailViaResend;
+  renderEmail?: typeof renderQuotationEmail;
   token?: () => string;
   now?: () => Date;
   env?: typeof process.env;
@@ -238,9 +234,9 @@ export async function handler(
     const now = dependencies.now || (() => new Date());
     const deliveries = dependencies.deliveries || createPostgresQuotationEmailDeliveryRepository(undefined, { now });
     const snapshots = dependencies.snapshots || createQuotationTemplateRepository();
-    const templates = dependencies.templates || createPostgresQuotationEmailTemplateRepository();
     const issueToken = dependencies.issueToken || issuePublicQuotationToken;
     const transport = dependencies.transport || sendQuotationEmailViaResend;
+    const renderEmail = dependencies.renderEmail || renderQuotationEmail;
 
     const existing = await deliveries.get(attemptId);
     if (existing && (existing.revisionId !== revisionId || existing.recipient !== normalizedRecipient)) {
@@ -263,16 +259,30 @@ export async function handler(
       return json(409, { error: 'Emita o orçamento antes de enviar por e-mail.' });
     }
     const baseUrl = publicBaseUrl(event, dependencies.env || process.env);
-    const templateForReservation = existing?.templateSnapshot || await templates.get();
     const createPublicToken = dependencies.token || (() => randomBytes(32).toString('base64url'));
     const publicTokenForReservation = existing?.publicToken || createPublicToken();
+    const customerName = snapshot.revision.clienteNome || 'Cliente';
+    const businessNumber = snapshot.quotation.businessNumber;
+    let candidateRendered: RenderedQuotationEmail | null = null;
+
+    if (!existing?.templateSnapshot) {
+      const candidatePublicUrl = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(publicTokenForReservation)}`;
+      candidateRendered = await renderEmail({
+        customerName,
+        businessNumber,
+        publicUrl: candidatePublicUrl,
+      });
+    }
+
+    const snapshotForReservation = candidateRendered || existing?.templateSnapshot;
+    if (!snapshotForReservation) return internalErrorResponse();
 
     const reservation = await deliveries.reserve({
       attemptId,
       revisionId,
       recipient: normalizedRecipient,
       publicToken: publicTokenForReservation,
-      templateSnapshot: templateForReservation,
+      templateSnapshot: snapshotForReservation,
     });
     if (
       reservation.delivery.revisionId !== revisionId ||
@@ -290,8 +300,8 @@ export async function handler(
         retry_same_attempt: false,
       });
     }
-    const template = reservation.delivery.templateSnapshot;
-    if (!template) return internalErrorResponse();
+    const rendered = reservation.delivery.templateSnapshot;
+    if (!isRenderedQuotationEmail(rendered)) return internalErrorResponse();
     const publicToken = reservation.delivery.publicToken;
     if (!publicToken) {
       return json(409, {
@@ -300,21 +310,15 @@ export async function handler(
       });
     }
 
-    const tokenInput: Parameters<typeof issuePublicQuotationToken>[0] = {
+    const token = await issueToken({
       revisionId,
       repository: snapshots,
       token: () => publicToken,
       now: () => now().getTime(),
-    };
-    const token: PublicQuotationToken = await issueToken(tokenInput);
+    });
+    if (token.token !== publicToken) throw new Error('Token público inconsistente.');
     const publicUrl = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
     const attachmentUrl = `${publicUrl}&format=pdf`;
-
-    const rendered = renderQuotationEmailTemplate(template, {
-      customerName: snapshot.revision.clienteNome || 'Cliente',
-      businessNumber: snapshot.quotation.businessNumber,
-      publicUrl,
-    });
 
     let sent: { id: string };
     try {

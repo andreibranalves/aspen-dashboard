@@ -10,7 +10,6 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
-import { DEFAULT_QUOTATION_EMAIL_TEMPLATE } from '../../api/_shared/quotation-email-template.js';
 import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
 import {
   createPostgresQuoteDraftManagementRepository,
@@ -373,7 +372,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
         state: 'pending',
         providerEmailId: null,
         publicError: null,
-        templateSnapshot: DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+        templateSnapshot: {
+          subject: 'Orçamento ORC-42 - Aspen',
+          html: '<!doctype html><html><body>Orçamento ORC-42 - Aspen</body></html>',
+          text: 'Orçamento ORC-42 - Aspen',
+        },
         acceptedAt: new Date('2026-08-17T12:10:00.000Z'),
         createdAt: new Date('2026-08-17T11:57:00.000Z'),
         updatedAt: new Date('2026-08-17T11:58:00.000Z'),

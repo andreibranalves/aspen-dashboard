@@ -8,9 +8,6 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import {
-  DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-} from '../../api/_shared/quotation-email-template.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import type { AppDatabase } from '../../api/_infrastructure/db/client.js';
 import {
@@ -26,6 +23,11 @@ const migrationsFolder = path.resolve(
   'drizzle'
 );
 const NOW = new Date('2026-08-17T12:00:00.000Z');
+const RENDERED_EMAIL = {
+  subject: 'Orçamento ORC-42 - Aspen',
+  html: '<!doctype html><html><body>Orçamento ORC-42 - Aspen</body></html>',
+  text: 'Orçamento ORC-42 - Aspen',
+};
 
 async function withDatabase<T>(callback: (db: AppDatabase) => Promise<T>): Promise<T> {
   const client = postgres(TEST_DATABASE_URL!, {
@@ -106,8 +108,8 @@ test(
           now: () => new Date(NOW),
         });
         const templateSnapshot = {
-          ...DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-          subject: 'Proposta {{numero_orcamento}}',
+          ...RENDERED_EMAIL,
+          subject: 'Proposta ORC-42',
         };
         const first = await repository.reserve({
           attemptId: ids.firstAttempt,
@@ -126,7 +128,7 @@ test(
           revisionId: ids.firstRevision,
           recipient: 'cliente@example.com',
           publicToken: 'discarded-racing-token',
-          templateSnapshot: DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+          templateSnapshot: RENDERED_EMAIL,
         });
         assert.equal(duplicate.kind, 'existing');
         assert.equal(duplicate.delivery.id, ids.firstAttempt);

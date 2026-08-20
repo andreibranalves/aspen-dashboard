@@ -21,11 +21,17 @@ import {
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from '../../_modules/quotation-content.js';
-import {
-  DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-  type QuotationEmailTemplate,
-} from '../../_shared/quotation-email-template.js';
+import type { RenderedQuotationEmail } from '../../_shared/quotation-email.js';
 import type { QuotationStatus } from '../../_modules/quotation-status.js';
+
+// Database default retained for the legacy column until its approved cleanup migration.
+const LEGACY_QUOTATION_EMAIL_TEMPLATE_DEFAULT = {
+  subject: 'Orçamento {{numero_orcamento}} - Aspen',
+  greeting: 'Olá, {{nome_cliente}}.',
+  message: 'Segue o orçamento {{numero_orcamento}} em anexo.',
+  button_label: 'Ver orçamento',
+  signature: 'Atenciosamente,\nAspen',
+};
 
 /**
  * Global dashboard settings live in one deliberate singleton row. Keeping the
@@ -43,10 +49,11 @@ export const appSettings = pgTable(
       .$type<QuotationSectionsSettings>()
       .notNull()
       .default(DEFAULT_QUOTATION_SECTIONS),
+    // Legacy column retained until an explicitly approved cleanup migration.
     quotationEmailTemplate: jsonb('quotation_email_template')
-      .$type<QuotationEmailTemplate>()
+      .$type<Record<string, unknown>>()
       .notNull()
-      .default(DEFAULT_QUOTATION_EMAIL_TEMPLATE),
+      .default(LEGACY_QUOTATION_EMAIL_TEMPLATE_DEFAULT),
     // Keep currency exact all the way through PostgreSQL. Drizzle's default
     // numeric mode maps this column to a string instead of a JavaScript float.
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
@@ -497,7 +504,7 @@ export const quotationEmailDeliveries = pgTable(
     state: text('state').notNull(),
     providerEmailId: text('provider_email_id').unique(),
     publicError: text('public_error'),
-    templateSnapshot: jsonb('template_snapshot').$type<QuotationEmailTemplate>(),
+    templateSnapshot: jsonb('template_snapshot').$type<RenderedQuotationEmail>(),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),

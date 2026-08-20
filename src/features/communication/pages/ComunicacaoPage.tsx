@@ -1,19 +1,16 @@
-// ComunicacaoPage — 5-tab container for WhatsApp Communication management.
-// Tabs: Fluxos WhatsApp, Biblioteca de Mídias, Histórico, Canais and quotation email.
+// ComunicacaoPage — 4-tab container for WhatsApp Communication management.
+// Tabs: Fluxos WhatsApp, Biblioteca de Mídias, Histórico and Canais.
 // Route: #/comunicacao
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { MessageSquare, Image, Clock, Settings2, Mail } from 'lucide-react';
+import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
-import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import FlowEditorTab from '@/features/communication/components/FlowEditorTab';
 import MediaUploader from '@/features/communication/components/MediaUploader';
 import MediaLibrary from '@/features/communication/components/MediaLibrary';
 import SendHistoryTab from '@/features/communication/components/SendHistoryTab';
 import ChannelsTab from '@/features/communication/components/ChannelsTab';
-import QuotationEmailTemplateTab from '@/features/communication/components/QuotationEmailTemplateTab';
-import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
 interface TabItem {
@@ -27,49 +24,20 @@ const TABS: TabItem[] = [
   { id: 'media', label: 'Biblioteca de mídias', icon: Image },
   { id: 'history', label: 'Histórico de envios', icon: Clock },
   { id: 'channels', label: 'Canais', icon: Settings2 },
-  { id: 'email-template', label: 'E-mail de orçamento', icon: Mail },
 ];
 const parseCommunicationTab = parseHashOption<string>(TABS.map((tab) => tab.id));
 
-interface ComunicacaoPageProps {
-  setNavigationGuard?: SetHashRouteGuard;
-}
-
-export default function ComunicacaoPage({ setNavigationGuard }: ComunicacaoPageProps) {
+export default function ComunicacaoPage() {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'flows', parseCommunicationTab);
   const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
-  const [emailTemplateDirty, setEmailTemplateDirty] = useState(false);
-  const [pendingTabId, setPendingTabId] = useState<string | null>(null);
-  const [tabDiscardOpen, setTabDiscardOpen] = useState(false);
 
   const handleUploadComplete = useCallback(() => {
     setMediaRefreshKey((k) => k + 1);
   }, []);
 
   const handleTabChange = useCallback((nextTabId: string) => {
-    if (nextTabId === activeTab) return;
-    if (emailTemplateDirty) {
-      setPendingTabId(nextTabId);
-      setTabDiscardOpen(true);
-      return;
-    }
-    setActiveTab(nextTabId);
-  }, [activeTab, emailTemplateDirty]);
-
-  useEffect(() => {
-    if (!setNavigationGuard) return undefined;
-    setNavigationGuard(emailTemplateDirty
-      ? () => window.confirm('Existem alterações não salvas. Descartar alterações?')
-      : null);
-    return () => setNavigationGuard(null);
-  }, [emailTemplateDirty, setNavigationGuard]);
-
-  const discardTabChanges = useCallback(() => {
-    if (pendingTabId) setActiveTab(pendingTabId);
-    setEmailTemplateDirty(false);
-    setPendingTabId(null);
-    setTabDiscardOpen(false);
-  }, [pendingTabId]);
+    if (nextTabId !== activeTab) setActiveTab(nextTabId);
+  }, [activeTab, setActiveTab]);
 
   return (
     <>
@@ -114,26 +82,8 @@ export default function ComunicacaoPage({ setNavigationGuard }: ComunicacaoPageP
           {activeTab === 'history' && <SendHistoryTab />}
 
           {activeTab === 'channels' && <ChannelsTab />}
-
-          {activeTab === 'email-template' && (
-            <QuotationEmailTemplateTab onDirtyChange={setEmailTemplateDirty} />
-          )}
         </div>
       </div>
-
-      <ConfirmDialog
-        open={tabDiscardOpen}
-        title="Descartar alterações?"
-        message="Existem alterações não salvas no modelo de e-mail."
-        confirmLabel="Descartar alterações"
-        cancelLabel="Continuar editando"
-        variant="default"
-        onConfirm={discardTabChanges}
-        onCancel={() => {
-          setPendingTabId(null);
-          setTabDiscardOpen(false);
-        }}
-      />
     </>
   );
 }

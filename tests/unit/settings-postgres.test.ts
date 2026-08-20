@@ -9,13 +9,11 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import { createPostgresSettingsRepository } from '../../api/_infrastructure/db/repositories/settings-repository.js';
-import { createPostgresQuotationEmailTemplateRepository } from '../../api/_infrastructure/db/repositories/quotation-email-template-repository.js';
 import {
   createPostgresProductsRepository,
   ProductRepositoryError,
 } from '../../api/_infrastructure/db/repositories/products-repository.js';
 import { createPostgresClientRepository } from '../../api/_infrastructure/db/repositories/client-repository.js';
-import { DEFAULT_QUOTATION_EMAIL_TEMPLATE } from '../../api/_shared/quotation-email-template.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 import { createHandler } from '../../api/_modules/settings.js';
 
@@ -65,15 +63,6 @@ test(
       await client.unsafe('DROP SCHEMA IF EXISTS public CASCADE');
       await client.unsafe('CREATE SCHEMA public');
       await migrate(db, { migrationsFolder });
-
-      const templateRepository = createPostgresQuotationEmailTemplateRepository(() => db);
-      assert.deepEqual(await templateRepository.get(), DEFAULT_QUOTATION_EMAIL_TEMPLATE);
-      const customized = await templateRepository.save({
-        ...DEFAULT_QUOTATION_EMAIL_TEMPLATE,
-        subject: 'Proposta {{numero_orcamento}}',
-      });
-      assert.equal(customized.subject, 'Proposta {{numero_orcamento}}');
-      assert.deepEqual(await templateRepository.get(), customized);
 
       const [moneyColumn] = await client`
         SELECT data_type, numeric_precision, numeric_scale

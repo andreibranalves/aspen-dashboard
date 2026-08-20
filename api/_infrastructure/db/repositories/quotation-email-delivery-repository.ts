@@ -1,9 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 
 import {
-  validateQuotationEmailTemplate,
-  type QuotationEmailTemplate,
-} from '../../../_shared/quotation-email-template.js';
+  isRenderedQuotationEmail,
+  type RenderedQuotationEmail,
+} from '../../../_shared/quotation-email.js';
 import { getDatabase, type AppDatabase } from '../client.js';
 import { quotationEmailDeliveries } from '../schema.js';
 
@@ -16,7 +16,7 @@ type ReserveInput = {
   revisionId: string;
   recipient: string;
   publicToken: string;
-  templateSnapshot: QuotationEmailTemplate;
+  templateSnapshot: RenderedQuotationEmail;
 };
 type AcceptedInput = { attemptId: string; providerEmailId: string };
 type FailedInput = { attemptId: string; publicError: string };
@@ -31,7 +31,7 @@ export interface QuotationEmailDelivery {
   state: QuotationEmailDeliveryState;
   providerEmailId: string | null;
   publicError: string | null;
-  templateSnapshot: QuotationEmailTemplate | null;
+  templateSnapshot: RenderedQuotationEmail | null;
   acceptedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -112,11 +112,20 @@ function validateReserveInput(input: ReserveInput): ReserveInput {
   if (!publicToken || stripControlCharacters(publicToken) !== publicToken) {
     throw new QuotationEmailDeliveryInputError('Token público inválido.');
   }
-  const template = validateQuotationEmailTemplate(candidate.templateSnapshot);
-  if (!template.ok) {
-    throw new QuotationEmailDeliveryInputError('Modelo de e-mail inválido.');
+  if (!isRenderedQuotationEmail(candidate?.templateSnapshot)) {
+    throw new QuotationEmailDeliveryInputError('Conteúdo de e-mail inválido.');
   }
-  return { attemptId, revisionId, recipient, publicToken, templateSnapshot: template.value };
+  return {
+    attemptId,
+    revisionId,
+    recipient,
+    publicToken,
+    templateSnapshot: {
+      subject: candidate.templateSnapshot.subject,
+      html: candidate.templateSnapshot.html,
+      text: candidate.templateSnapshot.text,
+    },
+  };
 }
 
 function validateAcceptedInput(input: AcceptedInput): AcceptedInput {
@@ -160,7 +169,9 @@ function toDelivery(row: QuotationEmailDeliveryRow): QuotationEmailDelivery {
     state: row.state as QuotationEmailDeliveryState,
     providerEmailId: row.providerEmailId ?? null,
     publicError: row.publicError ?? null,
-    templateSnapshot: row.templateSnapshot ?? null,
+    templateSnapshot: row.templateSnapshot && isRenderedQuotationEmail(row.templateSnapshot)
+      ? row.templateSnapshot
+      : null,
     acceptedAt: row.acceptedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
