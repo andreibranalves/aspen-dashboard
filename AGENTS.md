@@ -58,3 +58,17 @@ npm run verify:full
 
 - Use `verify:fast` durante o desenvolvimento.
 - Use `verify:full` antes de considerar uma alteração concluída.
+
+## Agent skills
+
+### Issue tracker
+
+Issues são rastreados no GitHub. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Usamos os cinco labels canônicos de triagem. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Usamos layout single-context. See `docs/agents/domain.md`.
