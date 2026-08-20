@@ -1,0 +1,154 @@
+import { lazy, type ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  BarChart3,
+  Columns3,
+  FileText,
+  MessageCircle,
+  Package,
+  Settings,
+  Send,
+  ShoppingCart,
+  Sparkles,
+  Users,
+} from 'lucide-react';
+import { matchSegments, prefix } from '@/app/match-route';
+import LoginPage from '@/app/LoginPage';
+import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
+
+const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage'));
+const QuotationsPage = lazy(() => import('@/features/quotations/pages/QuotationsPage'));
+const QuotationDetailPage = lazy(() => import('@/features/quotations/pages/QuotationDetailPage'));
+const SalesOrdersPage = lazy(() => import('@/features/sales-orders/pages/SalesOrdersPage'));
+const SalesOrderDetailPage = lazy(() => import('@/features/sales-orders/pages/SalesOrderDetailPage'));
+const CrmKanbanPage = lazy(() => import('@/features/crm/pages/CrmKanbanPage'));
+const ProductsPage = lazy(() => import('@/features/products/pages/ProductsPage'));
+const ProductDetailPage = lazy(() => import('@/features/products/pages/ProductDetailPage'));
+const LeadsPage = lazy(() => import('@/features/customers/pages/LeadsPage'));
+const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailPage'));
+const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
+const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
+const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
+const WhatsAppInboxPage = lazy(() => import('@/features/whatsapp/pages/WhatsAppInboxPage'));
+const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
+
+export interface RouteContext {
+  navigate: (hash: string) => void;
+  params: Record<string, string>;
+}
+
+export interface AppRoute {
+  path: string;
+  match?: (route: string) => Record<string, string> | null;
+  render: (ctx: RouteContext) => ReactNode;
+  /** Envolve o conteúdo em Suspense/PageLoader (default: false). */
+  suspense?: boolean;
+  /** Renderiza dentro do Layout shell (default: true). */
+  layout?: boolean;
+  nav?: { label: string; icon: LucideIcon; section: string };
+}
+
+export const routes: AppRoute[] = [
+  {
+    path: '/login',
+    layout: false,
+    render: ({ navigate }) => <LoginPage navigate={navigate} />,
+  },
+  {
+    path: '/quotations/:id',
+    match: prefix('/quotations/'),
+    suspense: true,
+    render: ({ navigate, params }) => <QuotationDetailPage id={params.id} navigate={navigate} />,
+  },
+  {
+    path: '/sales-orders/:id',
+    match: prefix('/sales-orders/'),
+    suspense: true,
+    render: ({ navigate, params }) => <SalesOrderDetailPage id={params.id} navigate={navigate} />,
+  },
+  {
+    path: '/products/:sku',
+    match: prefix('/products/'),
+    suspense: true,
+    render: ({ navigate, params }) => <ProductDetailPage key={params.id} sku={params.id} navigate={navigate} />,
+  },
+  {
+    path: '/leads/:tipo/:id',
+    match: (route) => {
+      const params = matchSegments('/leads/:tipo/:id*', route);
+      return params && params.tipo && params.id ? params : null;
+    },
+    suspense: true,
+    render: ({ navigate, params }) => <LeadDetailPage tipo={params.tipo} id={params.id} navigate={navigate} />,
+  },
+  {
+    path: '/auto',
+    render: () => <AutoQuotePage />,
+    nav: { label: 'Auto', icon: Sparkles, section: 'Operacional' },
+  },
+  {
+    path: '/whatsapp-inbox',
+    suspense: true,
+    render: ({ navigate }) => <WhatsAppInboxPage navigate={navigate} />,
+    nav: { label: 'WhatsApp', icon: MessageCircle, section: 'Operacional' },
+  },
+  {
+    path: '/whatsapp-deliveries',
+    suspense: true,
+    render: () => <WhatsAppDeliveriesPage />,
+    nav: { label: 'Envios WhatsApp', icon: Send, section: 'Operacional' },
+  },
+  {
+    path: '/dashboard',
+    suspense: true,
+    render: ({ navigate }) => <DashboardPage navigate={navigate} />,
+    nav: { label: 'Dashboard', icon: BarChart3, section: 'Operacional' },
+  },
+  {
+    path: '/sales-orders',
+    suspense: true,
+    render: ({ navigate }) => <SalesOrdersPage navigate={navigate} />,
+    nav: { label: 'Pedidos', icon: ShoppingCart, section: 'Operacional' },
+  },
+  {
+    path: '/crm',
+    suspense: true,
+    render: () => <CrmKanbanPage />,
+    nav: { label: 'CRM', icon: Columns3, section: 'Operacional' },
+  },
+  {
+    path: '/quotations',
+    suspense: true,
+    render: ({ navigate }) => <QuotationsPage navigate={navigate} />,
+    nav: { label: 'Orçamentos', icon: FileText, section: 'Cadastros' },
+  },
+  {
+    path: '/products',
+    suspense: true,
+    render: () => <ProductsPage />,
+    nav: { label: 'Produtos', icon: Package, section: 'Cadastros' },
+  },
+  {
+    path: '/leads',
+    suspense: true,
+    render: ({ navigate }) => <LeadsPage navigate={navigate} />,
+    nav: { label: 'Clientes', icon: Users, section: 'Cadastros' },
+  },
+  {
+    path: '/comunicacao',
+    suspense: true,
+    render: () => <ComunicacaoPage />,
+    nav: { label: 'Comunicação', icon: MessageCircle, section: 'Outros' },
+  },
+  {
+    path: '/settings',
+    suspense: true,
+    render: () => <SettingsPage />,
+    nav: { label: 'Configurações', icon: Settings, section: 'Outros' },
+  },
+  {
+    path: '/manual',
+    suspense: true,
+    render: () => <ManualOrcamentoPage />,
+  },
+];

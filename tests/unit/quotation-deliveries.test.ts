@@ -4,9 +4,9 @@ import test from 'node:test';
 import {
   handler as quotationDeliveries,
   toPublicDeliveryView,
-} from '../../api/_functions/quotation-deliveries.js';
-import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
-import { handler as whatsappSendStatus } from '../../api/_functions/whatsapp-send-status.js';
+} from '../../api/_modules/quotation-deliveries.js';
+import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
+import { handler as whatsappSendStatus } from '../../api/_modules/whatsapp-send-status.js';
 
 const now = new Date('2026-08-17T12:00:00.000Z');
 

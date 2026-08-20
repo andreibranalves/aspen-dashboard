@@ -10,12 +10,11 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresQuoteLeadRepository,
   type QuoteLeadRecord,
-} from '../../api/_db/quote-leads-repository.js';
-import { createHandler as createTypebotHandler } from '../../api/_functions/typebot-lead-capture.js';
+} from '../../api/_infrastructure/db/repositories/quote-leads-repository.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(
@@ -33,7 +32,7 @@ test('active lead paths depend on KV-free pure logic only', () => {
       path.dirname(fileURLToPath(import.meta.url)),
       '..',
       '..',
-      'api/_db/quote-leads-repository.ts'
+      'api/_infrastructure/db/repositories/quote-leads-repository.ts'
     ),
     'utf8'
   );
@@ -42,7 +41,7 @@ test('active lead paths depend on KV-free pure logic only', () => {
       path.dirname(fileURLToPath(import.meta.url)),
       '..',
       '..',
-      'api/_functions/lib/quote-leads-pure.ts'
+      'api/_modules/quote-leads-pure.ts'
     ),
     'utf8'
   );
@@ -122,73 +121,6 @@ test(
       assert.equal(deals[0]?.id, first.crmDealId);
     } finally {
       await cleanup(db);
-      await client.end({ timeout: 5 });
-    }
-  }
-);
-
-test(
-  'persiste captura Typebot pelo handler real com lead e deal locais',
-  { skip: !TEST_DATABASE_URL },
-  async () => {
-    const client = postgres(TEST_DATABASE_URL!, {
-      max: 1,
-      prepare: false,
-      connect_timeout: 10,
-      idle_timeout: 20,
-      onnotice: () => undefined,
-    });
-    const db = drizzle(client, { schema });
-    const previous = {
-      TYPEBOT_LEAD_WEBHOOK_TOKEN: process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN,
-      TYPEBOT_LEAD_CAPTURE_ENABLED: process.env.TYPEBOT_LEAD_CAPTURE_ENABLED,
-    };
-    try {
-      await migrate(db, { migrationsFolder });
-      await cleanup(db, 'external:typebot:typebot-real-1');
-      process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = 'task3-test-token';
-      process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = 'true';
-      const repository = createPostgresQuoteLeadRepository(() => db, {
-        now: () => NOW,
-        idFactory: randomUUID,
-      });
-      const handler = createTypebotHandler({
-        repository,
-        sendMetaLeadEvent: async () => ({ sent: false, reason: 'missing_token' }),
-      });
-      const response = await handler({
-        httpMethod: 'POST',
-        headers: { authorization: 'Bearer task3-test-token' },
-        queryStringParameters: {},
-        body: JSON.stringify({
-          nome: 'Ana Handler',
-          quantidade: '100',
-          result_id: 'typebot-real-1',
-        }),
-      });
-      const body = JSON.parse(response.body || '{}');
-      assert.equal(response.statusCode, 200);
-      assert.equal(body.activation_required, false);
-      assert.ok(body.quote_lead?.id);
-      const leads = await db
-        .select()
-        .from(schema.quoteLeads)
-        .where(eq(schema.quoteLeads.identityKey, 'external:typebot:typebot-real-1'));
-      const deals = await db
-        .select()
-        .from(schema.crmDeals)
-        .where(eq(schema.crmDeals.quoteLeadId, body.quote_lead.id));
-      assert.equal(leads.length, 1);
-      assert.equal(deals.length, 1);
-      assert.equal(leads[0]?.externalId, 'typebot-real-1');
-    } finally {
-      if (previous.TYPEBOT_LEAD_WEBHOOK_TOKEN === undefined)
-        delete process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN;
-      else process.env.TYPEBOT_LEAD_WEBHOOK_TOKEN = previous.TYPEBOT_LEAD_WEBHOOK_TOKEN;
-      if (previous.TYPEBOT_LEAD_CAPTURE_ENABLED === undefined)
-        delete process.env.TYPEBOT_LEAD_CAPTURE_ENABLED;
-      else process.env.TYPEBOT_LEAD_CAPTURE_ENABLED = previous.TYPEBOT_LEAD_CAPTURE_ENABLED;
-      await cleanup(db, 'external:typebot:typebot-real-1');
       await client.end({ timeout: 5 });
     }
   }

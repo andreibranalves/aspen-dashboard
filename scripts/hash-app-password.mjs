@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 
 // This is intentionally self-contained so first-time credential setup does not
 // require generated API JavaScript. These are the fixed `scrypt:v1` parameters
-// accepted by api/_lib/password.ts; the unit test verifies cross-module output.
+// accepted by api/_shared/password.ts; the unit test verifies cross-module output.
 const MAX_PASSWORD_BYTES = 1024;
 const PASSWORD_SALT_BYTES = 16;
 const PASSWORD_DERIVED_KEY_BYTES = 64;

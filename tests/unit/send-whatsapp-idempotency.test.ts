@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
+import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
 
 const quotationId = 'ORC-20260001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';

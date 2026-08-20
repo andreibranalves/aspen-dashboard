@@ -11,7 +11,8 @@ import {
   readCommunicationMediaRecords,
   stripMediaInternals,
   verifyOwnedBlobRecord,
-} from '../../api/_functions/lib/postgres-media.js';
+} from '../../api/_modules/postgres-media.js';
+import { handler as communicationMediaUpload } from '../../api/_modules/communication-media-upload.js';
 import {
   compareAndSetMedia,
   deleteMediaIfCurrent,
@@ -22,7 +23,7 @@ import {
   MEDIA_CAS_WRITE_SCRIPT,
   MEDIA_CREATE_SCRIPT,
   verifyBlobMetadata,
-} from '../../api/_functions/communication-media.js';
+} from '../../api/_modules/communication-media.js';
 
 const origin = 'https://app.test';
 const blobUrl = 'https://store.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
@@ -295,6 +296,59 @@ test('owned record HEAD is authenticated, store-scoped, and exact', async () => 
   );
 });
 
+test('Blob config is used unless explicit verification options override it', async () => {
+  const previousToken = process.env.BLOB_READ_WRITE_TOKEN;
+  const previousStoreId = process.env.BLOB_STORE_ID;
+  const previousOidcToken = process.env.VERCEL_OIDC_TOKEN;
+  process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_store_token';
+  process.env.BLOB_STORE_ID = 'store';
+  process.env.VERCEL_OIDC_TOKEN = 'vercel-oidc-token';
+  try {
+    let configuredOptions: Record<string, unknown> | undefined;
+    await verifyOwnedBlobRecord(
+      { ...records[0], product_group: 'canga' },
+      origin,
+      {
+        headFn: async (_url, headOptions) => {
+          configuredOptions = headOptions as Record<string, unknown>;
+          return headResult();
+        },
+      },
+    );
+    assert.equal(configuredOptions?.token, 'vercel_blob_rw_store_token');
+    assert.equal(configuredOptions?.storeId, 'store');
+    assert.equal(configuredOptions?.oidcToken, 'vercel-oidc-token');
+
+    const explicitUrl = 'https://explicit.public.blob.vercel-storage.com/aspen-media/canga/reference.jpg';
+    const explicitOptions = {
+      token: 'vercel_blob_rw_explicit_token',
+      storeId: 'explicit',
+      headFn: async (_url: string, headOptions: unknown) => {
+        configuredOptions = headOptions as Record<string, unknown>;
+        return {
+          ...headResult(),
+          url: explicitUrl,
+          pathname,
+        };
+      },
+    };
+    await verifyOwnedBlobRecord(
+      { ...records[0], blob_url: explicitUrl, product_group: 'canga' },
+      origin,
+      explicitOptions,
+    );
+    assert.equal(configuredOptions?.token, 'vercel_blob_rw_explicit_token');
+    assert.equal(configuredOptions?.storeId, 'explicit');
+  } finally {
+    if (previousToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = previousToken;
+    if (previousStoreId === undefined) delete process.env.BLOB_STORE_ID;
+    else process.env.BLOB_STORE_ID = previousStoreId;
+    if (previousOidcToken === undefined) delete process.env.VERCEL_OIDC_TOKEN;
+    else process.env.VERCEL_OIDC_TOKEN = previousOidcToken;
+  }
+});
+
 test('foreign-store media records fail authenticated ownership validation', async () => {
   await assert.rejects(
     verifyOwnedBlobRecord(
@@ -315,6 +369,21 @@ test('foreign-store media records fail authenticated ownership validation', asyn
     ),
     /validar a mídia Blob/i,
   );
+});
+
+test('media upload accepts groups from active product categories', async () => {
+  const blobClient = {
+    handleUpload: async ({ onBeforeGenerateToken }: any) => onBeforeGenerateToken(
+      'aspen-media/a0d87da082ceacbbf006dd4a1a5866ad/reference.jpg'
+    ),
+  } as any;
+  const result = await communicationMediaUpload(responseEvent({}, 'POST'), {
+    blobClient,
+    listCategories: async () => ['Necessaire'],
+  });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(JSON.parse(result.body || '{}').tokenPayload.includes('necessaire'), true);
 });
 
 test('metadata creation preserves upload callback path and rejects nonexistent Blob', async () => {

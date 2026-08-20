@@ -9,11 +9,11 @@ import {
   syncWhatsappConversations,
   unwrapEvolutionCollection,
   type EvolutionSyncDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-sync.js';
+} from '../../api/_modules/whatsapp-conversations-sync.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-store.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
 
 function makeStoreDeps(): WhatsappConversationStoreDeps {
   let conversations: WhatsappConversation[] = [];
@@ -391,5 +391,42 @@ describe('whatsapp-conversations-sync', () => {
 
     assert.equal(updated.canonicalPhone, '');
     assert.equal(updated.identityStatus, 'unresolved');
+  });
+
+  it('reads the Evolution instance at sync time after environment changes', async () => {
+    const previous = {
+      baseUrl: process.env.EVOLUTION_BASE_URL,
+      apiKey: process.env.EVOLUTION_API_KEY,
+      instance: process.env.EVOLUTION_INSTANCE,
+    };
+    const originalFetch = globalThis.fetch;
+    const urls: string[] = [];
+    const fakeFetch: typeof fetch = async (input) => {
+      urls.push(String(input));
+      return new Response('[]', { status: 200 });
+    };
+    process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
+    process.env.EVOLUTION_API_KEY = 'test-key';
+    process.env.EVOLUTION_INSTANCE = 'first-instance';
+
+    try {
+      await evolutionRequest('/chat/findChats/first-instance', undefined, { fetchImpl: fakeFetch });
+      process.env.EVOLUTION_INSTANCE = 'second-instance';
+      globalThis.fetch = fakeFetch;
+      await syncWhatsappConversations({ chatLimit: 1 }, makeStoreDeps());
+
+      assert.equal(urls[0], 'https://evolution.test/chat/findChats/first-instance');
+      assert.equal(urls[1], 'https://evolution.test/chat/findChats/second-instance');
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries({
+        EVOLUTION_BASE_URL: previous.baseUrl,
+        EVOLUTION_API_KEY: previous.apiKey,
+        EVOLUTION_INSTANCE: previous.instance,
+      })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });

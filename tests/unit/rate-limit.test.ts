@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
-import { checkRateLimitAsync, rateLimitKv } from '../../api/_lib/rate-limit.js';
+import { checkRateLimitAsync, rateLimitKv } from '../../api/_shared/rate-limit.js';
 
 const KV_URL = 'https://kv.test';
 const KV_TOKEN = 'test-token';

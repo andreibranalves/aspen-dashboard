@@ -4,16 +4,16 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const requiredCutoverKeys = Object.freeze([
+  'APP_ENV',
+  'EXTERNAL_WRITES_ENABLED',
   'STAGING_BASE_URL',
   'STAGING_DATABASE_URL',
   'STAGING_PG_SERVICE',
-  'STAGING_E2E',
   'E2E_USERNAME',
   'E2E_PASSWORD',
   'STAGING_E2E_USERNAME',
   'KNOWN_POSTGRES_QUOTATION_ID',
   'KNOWN_POSTGRES_SCRATCH_QUOTATION_ID',
-  'STAGING_EXTERNAL_PROVIDERS_DISABLED',
   'STAGING_EGRESS_BLOCKED',
   'STAGING_FIXTURE_RESET',
   'CANARY_BASE_URL',

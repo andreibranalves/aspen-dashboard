@@ -8,9 +8,9 @@ import {
   isDevelopmentAuthBypassEnabled,
   isMachineRoute,
   isProductionEnvironment,
-} from '../../api/_lib/auth.js';
-import { createPasswordHash } from '../../api/_lib/password.js';
-import { createSessionToken } from '../../api/_lib/session.js';
+} from '../../api/_shared/auth.js';
+import { createPasswordHash } from '../../api/_shared/password.js';
+import { createSessionToken } from '../../api/_shared/session.js';
 
 function randomSecret(): string {
   return randomBytes(32).toString('base64url');
@@ -25,7 +25,6 @@ describe('auth guard', () => {
     assert.equal(isAuthenticated({ url: '/api/view/quote-1' }, {}), false);
     assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'GET' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/public-quotation?token=valid', method: 'POST' }, {}), false);
-    assert.equal(isAuthenticated({ url: '/api/typebot-lead-capture' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/login' }, {}), true);
     assert.equal(isAuthenticated({ url: '/api/logout' }, {}), true);
     assert.equal(isAuthenticated(protectedRequest(), {}), false);

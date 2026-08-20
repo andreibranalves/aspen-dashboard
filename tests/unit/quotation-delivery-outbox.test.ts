@@ -4,16 +4,16 @@ import test from 'node:test';
 import {
   EvolutionTransportError,
   sendFrozenStep,
-} from '../../api/_functions/lib/evolution-transport.js';
+} from '../../api/_modules/evolution-transport.js';
 import {
   aggregateDeliveryState,
   applyReceipt,
   retryDelayMs,
-} from '../../api/_functions/lib/quotation-delivery-state.js';
+} from '../../api/_modules/quotation-delivery-state.js';
 import {
   createQuotationDeliveryModule,
   type DeliveryLogEvent,
-} from '../../api/_functions/lib/quotation-delivery-outbox.js';
+} from '../../api/_modules/quotation-delivery-outbox.js';
 import type {
   ClaimedDeliveryStep,
   DeliveryAggregate,
@@ -24,7 +24,7 @@ import type {
   EnqueueDeliveryRecord,
   FrozenDeliveryStep,
   ResolveDeliveryInput,
-} from '../../api/_db/quotation-delivery-outbox-repository.js';
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 
 type FakeStep = DeliveryStepView & { reconciliationDeadline: Date | null };
 type FakeAggregate = Omit<DeliveryAggregate, 'steps'> & { steps: FakeStep[] };

@@ -8,20 +8,20 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import { createPostgresQuoteDraftRepository } from '../../api/_db/quote-repository.js';
+import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
 import {
   createPostgresQuoteDraftManagementRepository,
   QuoteManagementConflictError,
   QuoteManagementInputError,
-} from '../../api/_db/quote-draft-management-repository.js';
-import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../api/_db/quotation-template-repository.js';
+} from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
+import { createQuotationTemplateRepository, quotationSnapshotViewModel } from '../../api/_infrastructure/db/repositories/quotation-template-repository.js';
 import {
   getQuotationTemplate,
   getQuotationTemplateManifest,
   renderQuotationTemplate,
-} from '../../api/_functions/lib/quotation-templates.js';
-import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_db/schema.js';
-import * as schema from '../../api/_db/schema.js';
+} from '../../api/_modules/quotation-template-catalog.js';
+import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_infrastructure/db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'drizzle');

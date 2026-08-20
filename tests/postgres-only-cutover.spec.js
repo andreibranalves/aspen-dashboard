@@ -30,7 +30,7 @@ const requestsByPage = new WeakMap();
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('PostgreSQL-only cutover staging smoke', () => {
+test.describe('PostgreSQL-only cutover staging smoke @database @critical', () => {
   test.beforeEach(async ({ page }) => {
     const requests = [];
     requestsByPage.set(page, requests);

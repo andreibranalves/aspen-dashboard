@@ -1,74 +1,60 @@
 # AGENTS.md - Aspen Orçamento
 
-**Stack:** React 19 + Vite 6 frontend; Node.js ESM Vercel serverless API; PostgreSQL via Drizzle; Evolution API for WhatsApp; OpenRouter for extraction.
+## Stack
 
-## STRUCTURE
+- Frontend: React 19 e Vite 6.
+- Backend: Node.js ESM em funções serverless da Vercel.
+- Dados: PostgreSQL via Drizzle.
+- Integrações principais: Evolution API para WhatsApp e OpenRouter para extração.
 
-```
-./
-├── src/              # React SPA (built into public/)
-├── api/              # Vercel API catch-all + handlers
-│   ├── [...path].js  # single dispatch router
-│   ├── _lib/         # auth, rate-limit, function-adapter
-│   └── _functions/   # handlers + shared libraries
-├── scripts/          # dev servers + local test harnesses
-├── public/           # Vite build output + static assets
-└── docs/             # product and operational documentation
-```
+## Arquitetura
 
-## WHERE TO LOOK
+- `src/app/routes.tsx` é a única tabela de rotas do frontend.
+- `src/app/App.tsx` faz o dispatch das rotas por hash via `useHashRoute`.
+- Páginas ficam em `src/features/<dominio>/pages/`.
+- Primitivos de UI ficam em `src/components/ui/`; componentes compartilhados ficam em `src/components/shared/`.
+- `api/[...path].ts` é a única Function implantável; helpers ficam sob diretórios privados iniciados por `_`.
+- Handlers e regras de negócio ficam em `api/_modules/`.
+- Repositórios PostgreSQL ficam em `api/_infrastructure/db/repositories/` e controlam estado durável e transações.
+- Integrações externas ficam em `api/_infrastructure/integrations/`.
 
-| Task | Location |
-| --- | --- |
-| Add API endpoint | `api/_functions/*.ts` + `api/[...path].ts` |
-| Add frontend page | `src/pages/*.tsx` + `src/App.tsx` |
-| Shared UI component | `src/components/ui/*.tsx` |
-| Database schema | `api/_db/schema.ts` |
-| PostgreSQL repository | `api/_db/*.ts` |
-| PDF generation | `api/_functions/pdf.ts` + `api/_functions/lib/quotation-pdf.ts` |
-| Tests | `tests/unit/*.test.*`, `tests/*.spec.js` |
+## Convenções
 
-## CONVENTIONS
+- Use apenas ESM; imports do backend para arquivos locais incluem a extensão `.js`.
+- Handlers recebem eventos no formato Lambda e retornam `{ statusCode, headers?, body }`.
+- Registre cada endpoint uma única vez em `api/_app/routes.ts`.
+- Mensagens HTTP destinadas ao usuário são escritas em português brasileiro.
+- O frontend usa rotas por hash; não adicione React Router.
+- Prefira estado local ou contexto; não adicione biblioteca de estado global sem aprovação.
+- PostgreSQL é a fonte de verdade para produtos, clientes, orçamentos, CRM, pedidos e atividades.
+- Evolution API é o único transporte de WhatsApp.
+- Não edite arquivos gerados pelo Vite em `public/`.
 
-- **ESM only** - `.js` imports require explicit extension in backend source.
-- **Vite builds into `public/`** with `emptyOutDir: false`.
-- **Hash-based routing** uses `useHashRoute` and manual dispatch in `App.tsx`.
-- **Backend handlers** receive Lambda-shaped events and return `{ statusCode, body }`.
-- **Local API development** uses `scripts/dev-api-server.mjs` on port 8888.
-- **Errors** returned to users are written in Brazilian Portuguese.
-- **PostgreSQL** is the source of truth for products, clients, quotations, CRM, orders and activity.
-- **Evolution API** is the only WhatsApp transport.
+## Segurança e dados
 
-## ANTI-PATTERNS
+- Não exponha erros de banco, erros brutos de integrações, stack traces, segredos ou dados pessoais em respostas e logs.
+- Autenticação e rate limiting passam pelo pipeline compartilhado em ambiente local e implantado.
+- Não adicione novos fallbacks de provedor, transporte ou persistência, nem branches de rollout.
+- Fallbacks existentes de leitura ou cache no frontend não autorizam novos caminhos de persistência durável.
+- Não altere migrations históricas em `drizzle/` nem execute migrations sem autorização explícita.
+- Pare e peça uma decisão antes de criar migrations ou alterar a estratégia de migrations.
+- Não adicione dependências sem aprovação explícita.
+- Nunca registre ou versione `.env`, credenciais ou dados de produção.
 
-- Do not add provider fallbacks or rollout branches.
-- Do not expose database errors, stack traces, secrets or personal data in HTTP responses.
-- Do not modify historical files under `drizzle/`.
-- Do not edit generated Vite output under `public/` during source changes.
-- Do not add dependencies without explicit approval.
-- Do not commit `.env`, credentials or production data.
+## Ambiente operacional
 
-## COMMANDS
+- Valores reais ficam fora do checkout em `$HOME/.config/aspen-dashboard/.env.local` ou `.env`.
+- O diretório de configuração usa modo `0700`; os arquivos usam modo `0600`.
+- Antes de cutover, execute `node scripts/cutover-env-status.mjs`.
+- O preflight deve mostrar apenas nomes e estados `present` ou `missing`, nunca valores.
+
+## Comandos
 
 ```bash
-npm run build:api
-npm run test:unit
-npm run lint
-npm run build
-node scripts/check-no-legacy-provider.mjs
+npm run dev
+npm run verify:fast
+npm run verify:full
 ```
 
-## NOTES
-
-- `ROUTES` maps are duplicated across `api/[...path].ts`, `scripts/dev-api-server.mjs` and `scripts/app-server.mjs`.
-- Keep all three route maps synchronized when adding or removing endpoints.
-- Authentication and rate limiting run at the deployed API boundary.
-- Local development servers intentionally omit deployed authentication middleware.
-
-## OPERATOR ENVIRONMENT
-
-- Real cutover values stay outside the checkout at `$HOME/.config/aspen-dashboard/.env.local` or `.env`.
-- Keep the config directory mode `0700` and files mode `0600`.
-- Run `node scripts/cutover-env-status.mjs` before cutover work.
-- The preflight reports names and `present`/`missing` status only; never print or commit values.
-- Do not copy operator environment files into the repository.
+- Use `verify:fast` durante o desenvolvimento.
+- Use `verify:full` antes de considerar uma alteração concluída.

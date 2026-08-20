@@ -12,7 +12,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import test from 'node:test';
 import { safeReadCandidate } from '../../scripts/check-no-legacy-provider.mjs';
@@ -232,6 +232,29 @@ test('allows only exact retained legacy import baselines before staging', () => 
     const changedBaseline = runGuard(root);
     assert.equal(changedBaseline.status, 1);
     assert.match(changedBaseline.stderr, /tests\/unit\/send-whatsapp\.test\.ts:.*:retired quotation delivery module/);
+  });
+});
+
+test('handles git path output larger than the child process default buffer', () => {
+  withFixture((root) => {
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'git'),
+      `#!/usr/bin/env node
+const entry = 'src/safe.ts' + String.fromCharCode(0);
+process.stdout.write(entry.repeat(Math.ceil((1024 * 1024 + 1) / Buffer.byteLength(entry))));
+`,
+      { mode: 0o755 },
+    );
+
+    const result = spawnSync(process.execPath, [guardPath], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH || ''}` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
   });
 });
 

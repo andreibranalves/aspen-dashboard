@@ -9,7 +9,7 @@ import {
   applyOrderTemplate,
   DEFAULT_RULES,
   buildSystemPrompt,
-} from '../../api/_functions/extract.js';
+} from '../../api/_modules/extract.js';
 
 // ── DEFAULT_RULES — regras por tipo de produto ──────────────────────────────
 

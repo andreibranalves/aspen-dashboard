@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   createDeliveryPlan,
   type DeliveryPlanInput,
-} from '../../api/_functions/lib/quotation-delivery-plan.js';
+} from '../../api/_modules/quotation-delivery-plan.js';
 
 const revisionId = '22222222-2222-4222-8222-222222222222';
 

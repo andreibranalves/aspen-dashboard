@@ -112,7 +112,7 @@ async function routeTemplates(page) {
   });
 }
 
-test('core quotation detail accepts JSON-string section snapshots from PostgreSQL', async ({ page }) => {
+test('core quotation detail accepts JSON-string section snapshots from PostgreSQL @quotations @critical', async ({ page }) => {
   await page.route('**/api/settings**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -148,7 +148,7 @@ test('core quotation detail accepts JSON-string section snapshots from PostgreSQ
   await expect(page.getByLabel('Título - Pagamento')).toBeDisabled();
 });
 
-test('core lifecycle emission uses the current reviewed commercial fields and template', async ({ page }) => {
+test('core lifecycle emission uses the current reviewed commercial fields and template @quotations @critical', async ({ page }) => {
   let authoritative = detail({ status: 'Rascunho', status_canonical: 'rascunho' });
   let issuePayload;
   let issueKey;
@@ -252,7 +252,7 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
   });
 });
 
-test('detail reload restores durable accepted, reconciling, completed and read-only delivery states', async ({ page }) => {
+test('detail reload restores durable accepted, reconciling, completed and read-only delivery states @quotations @critical', async ({ page }) => {
   const phases = [
     ['accepted_partial', 'Envio aceito'],
     ['reconciling', 'Reconciliação necessária'],
@@ -278,7 +278,7 @@ test('detail reload restores durable accepted, reconciling, completed and read-o
   }
 });
 
-test('detail retryable status distinguishes verified PDF from generic failure', async ({ page }) => {
+test('detail retryable status distinguishes verified PDF from generic failure @quotations @critical', async ({ page }) => {
   let pdfFailure = true;
   await page.route('**/api/quotations**', async (route) => fulfillJson(route, detail()));
   await page.route('**/api/communication-flows**', async (route) => fulfillJson(route, {
@@ -302,7 +302,7 @@ test('detail retryable status distinguishes verified PDF from generic failure', 
   await expect(page.getByText('PDF indisponível. Tentar novamente')).toHaveCount(0);
 });
 
-test('expired detail blocks send, loss requires reason and emitted deletion remains hidden', async ({ page }) => {
+test('expired detail blocks send, loss requires reason and emitted deletion remains hidden @quotations @critical', async ({ page }) => {
   let authoritative = detail({ derived_expired: true });
   const posts = [];
   await page.route('**/api/quotations**', async (route) => {
@@ -331,7 +331,7 @@ test('expired detail blocks send, loss requires reason and emitted deletion rema
   expect(posts[0]).toMatchObject({ action: 'set_status', status: 'perdido', loss_reason: 'Preço', concurrency_token: token });
 });
 
-test('core lifecycle marks sent quotations and creates a revision from issued history', async ({
+test('core lifecycle marks sent quotations and creates a revision from issued history @quotations @critical', async ({
   page,
 }) => {
   let authoritative = detail();
@@ -467,7 +467,7 @@ function fulfillJson(route, body, status = 200) {
   });
 }
 
-test('frontend source guard rejects removed external files, tokens, and app URLs', () => {
+test('frontend source guard rejects removed external files, tokens, and app URLs @quotations @critical', () => {
   const srcRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
   const forbidden = /external-crm|external-erp|internal_mode|external_url/i;
   const externalAppUrl = /https?:\/\/[^\s"']+\/(?:app|desk)\//i;
@@ -489,7 +489,7 @@ test('frontend source guard rejects removed external files, tokens, and app URLs
   expect(violations).toEqual([]);
 });
 
-test('local sales order detail has no external app link and keeps local quotation navigation', async ({ page }) => {
+test('local sales order detail has no external app link and keeps local quotation navigation @quotations @critical', async ({ page }) => {
   await page.route('**/api/sales-orders**', async (route) => {
     const url = new globalThis.URL(route.request().url());
     const id = url.searchParams.get('id');
@@ -513,7 +513,7 @@ test('local sales order detail has no external app link and keeps local quotatio
   await expect(page.getByRole('link', { name: /ERP|extern/i })).toHaveCount(0);
 });
 
-test('empty local dashboard renders zero metrics', async ({ page }) => {
+test('empty local dashboard renders zero metrics @quotations @critical', async ({ page }) => {
   await page.route('**/api/sales-dashboard**', async (route) => fulfillJson(route, {
     success: true,
     period: { label: 'Últimos 30 dias', from: '2026-06-01', to: '2026-07-01' },
@@ -540,7 +540,7 @@ test('empty local dashboard renders zero metrics', async ({ page }) => {
   await expect(page.getByText('Nenhuma venda no período.', { exact: true })).toBeVisible();
 });
 
-test('products page uses local controls without response mode metadata', async ({ page }) => {
+test('products page uses local controls without response mode metadata @quotations @critical', async ({ page }) => {
   await page.route('**/api/products**', async (route) => fulfillJson(route, {
     data: [{ sku: 'SKU-LOCAL', nome: 'Produto local', descricao: '', unidade: 'Und', ativo: true }],
     pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
@@ -551,7 +551,7 @@ test('products page uses local controls without response mode metadata', async (
   await expect(page.getByRole('button', { name: 'Arquivados' })).toBeVisible();
 });
 
-test('manual quotation accepts metadata-free local responses', async ({ page }) => {
+test('manual quotation accepts metadata-free local responses @quotations @critical', async ({ page }) => {
   await page.route('**/api/quotation-templates**', async (route) => fulfillJson(route, {
     templates: [{ key: 'padrao', name: 'Padrão', is_default: true }],
     default_key: 'padrao',
@@ -589,7 +589,7 @@ test('manual quotation accepts metadata-free local responses', async ({ page }) 
   await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
 });
 
-test('empty local CRM and leads retain loading/error/retry states', async ({ page }) => {
+test('empty local CRM and leads retain loading/error/retry states @quotations @critical', async ({ page }) => {
   await page.route('**/api/crm-deals**', async (route) => fulfillJson(route, { columns: [] }));
   await page.route('**/api/crm-prune-candidates**', async (route) => fulfillJson(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } }));
   await page.goto('/#/crm');
@@ -607,7 +607,7 @@ test('empty local CRM and leads retain loading/error/retry states', async ({ pag
   await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
 });
 
-test('communication screen consumes local conversation and message IDs only', async ({ page }) => {
+test('communication screen consumes local conversation and message IDs only @quotations @critical', async ({ page }) => {
   const conversation = {
     id: 'conversation-local-1', canonicalPhone: '5511999990000', phone: '5511999990000',
     displayLabel: 'Cliente local', displayName: 'Cliente local', identityStatus: 'verified',

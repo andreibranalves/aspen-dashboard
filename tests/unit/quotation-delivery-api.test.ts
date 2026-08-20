@@ -9,7 +9,7 @@ import {
   projectDelivery,
   resolveDelivery,
   type DeliveryView,
-} from '../../src/lib/quotationDeliveryApi.ts';
+} from '../../src/lib/api/quotationDeliveryApi.ts';
 
 const updatedAt = '2026-08-17T12:00:00.000Z';
 

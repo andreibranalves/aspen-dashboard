@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditWhatsappIdentities } from '../../api/_functions/lib/whatsapp-identity-audit.js';
+import { auditWhatsappIdentities } from '../../api/_modules/whatsapp-identity-audit.js';
 
 describe('whatsapp-identity-audit', () => {
   it('classifies provider numeric jid as trusted', async () => {

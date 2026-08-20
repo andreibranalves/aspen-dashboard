@@ -161,11 +161,11 @@ const retiredModuleLabels = new Set([
 // Any edit, new import, or third path remains rejected; this is not a test-root exclusion.
 const retainedLegacyImportBaselines = new Map([
   ['b1e2778835f2d9fdfc6dd14c829f9706fdcdcde39e5422140953a1c2321d9230', {
-    sourceHash: '3e1af6ea8675734efd3794fb6ca4e8bd31cce208b15042a4a2a482fd3195c41c',
+    sourceHash: '494fdf0a28e0d7281a29f709dbdb4371d10be816c6b44cdcb8ea33179bc791c5',
     label: 'retired quotation delivery module',
   }],
   ['d1441eda171b9911317a415212621431fd3d5d576f5beac090e6330140c2915c', {
-    sourceHash: '0ed224e818cf05ca32d04b4d372afce21f42ec28459cbe0bdb516dbed8d2cb29',
+    sourceHash: 'a24e402802822fcd2c2cc5fb31676a04b363b8eebab71d3bcc0f4d0353f38909',
     label: 'retired reservation module',
   }],
 ]);
@@ -205,7 +205,7 @@ function scopedPaths() {
   const output = execFileSync(
     'git',
     ['ls-files', '--cached', '--others', '--ignored', '--exclude-standard', '-z'],
-    { cwd: root },
+    { cwd: root, maxBuffer: 16 * 1024 * 1024 },
   ).toString('utf8');
   const paths = new Set([...output.split('\0').filter(Boolean), guardPath, guardTestPath]);
   const walk = (directory, relativeDirectory = '') => {

@@ -6,7 +6,7 @@ import {
   applyReceipt,
   failureTargetState,
   retryDelayMs,
-} from '../../api/_functions/lib/quotation-delivery-state.js';
+} from '../../api/_modules/quotation-delivery-state.js';
 
 test('receipts advance monotonically and all steps must be delivered', () => {
   assert.equal(applyReceipt('queued', 'PENDING'), 'queued');

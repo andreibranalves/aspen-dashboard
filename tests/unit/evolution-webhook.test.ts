@@ -6,7 +6,7 @@ import apiHandler from '../../api/[...path].js';
 import {
   handler as webhook,
   MAX_EVOLUTION_WEBHOOK_BODY_BYTES,
-} from '../../api/_functions/evolution-webhook.js';
+} from '../../api/_modules/evolution-webhook.js';
 
 const webhookSecret = 'w'.repeat(32);
 const instance = 'instance-test';

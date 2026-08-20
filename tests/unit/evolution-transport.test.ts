@@ -4,8 +4,8 @@ import test from 'node:test';
 import {
   EvolutionTransportError,
   sendFrozenStep,
-} from '../../api/_functions/lib/evolution-transport.js';
-import type { FrozenDeliveryStep } from '../../api/_db/quotation-delivery-outbox-repository.js';
+} from '../../api/_modules/evolution-transport.js';
+import type { FrozenDeliveryStep } from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 
 const config = {
   baseUrl: 'https://evolution.test',

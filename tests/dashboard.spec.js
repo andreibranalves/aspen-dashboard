@@ -10,7 +10,7 @@ const conversionScenarios = [
 ];
 
 for (const scenario of conversionScenarios) {
-  test(`renders ${scenario.ratio} conversion ratio as ${scenario.expected}`, async ({ page }) => {
+  test(`renders ${scenario.ratio} conversion ratio as ${scenario.expected} @smoke`, async ({ page }) => {
     await page.route('**/api/settings**', async (route) => {
       await route.fulfill({
         status: 200,

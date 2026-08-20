@@ -8,14 +8,14 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
-import { createPostgresSettingsRepository } from '../../api/_db/settings-repository.js';
+import { createPostgresSettingsRepository } from '../../api/_infrastructure/db/repositories/settings-repository.js';
 import {
   createPostgresProductsRepository,
   ProductRepositoryError,
-} from '../../api/_db/products-repository.js';
-import { createPostgresClientRepository } from '../../api/_db/client-repository.js';
-import * as schema from '../../api/_db/schema.js';
-import { createHandler } from '../../api/_functions/settings.js';
+} from '../../api/_infrastructure/db/repositories/products-repository.js';
+import { createPostgresClientRepository } from '../../api/_infrastructure/db/repositories/client-repository.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
+import { createHandler } from '../../api/_modules/settings.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

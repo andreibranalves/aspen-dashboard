@@ -8,14 +8,14 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 
-import { createPostgresPricingRepository } from '../../api/_db/pricing-repository.js';
-import { createPostgresProductCatalogRepository } from '../../api/_db/product-catalog-repository.js';
-import { createPostgresProductsRepository } from '../../api/_db/products-repository.js';
-import { productActivityEvents, productPricingTiers, products } from '../../api/_db/schema.js';
-import { resolveProductPrice } from '../../api/_functions/pricing-core.js';
-import * as schema from '../../api/_db/schema.js';
-import { createCoreHandler as createProductsCoreHandler } from '../../api/_functions/products-core.js';
-import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/_functions/product-update-core.js';
+import { createPostgresPricingRepository } from '../../api/_infrastructure/db/repositories/pricing-repository.js';
+import { createPostgresProductCatalogRepository } from '../../api/_infrastructure/db/repositories/product-catalog-repository.js';
+import { createPostgresProductsRepository } from '../../api/_infrastructure/db/repositories/products-repository.js';
+import { productActivityEvents, productPricingTiers, products } from '../../api/_infrastructure/db/schema.js';
+import { resolveProductPrice } from '../../api/_modules/pricing-core.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
+import { createCoreHandler as createProductsCoreHandler } from '../../api/_modules/products-core.js';
+import { createCoreHandler as createProductUpdateCoreHandler } from '../../api/_modules/product-update-core.js';
 
 const TEST_DATABASE_URL = process.env.TEST_PRICING_DATABASE_URL || process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

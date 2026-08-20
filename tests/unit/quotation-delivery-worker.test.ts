@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   handler as worker,
   QUOTATION_DELIVERY_WORKER_BATCH_SIZE,
-} from '../../api/_functions/quotation-delivery-worker.js';
+} from '../../api/_modules/quotation-delivery-worker.js';
 
 const cronSecret = 'c'.repeat(32);
 

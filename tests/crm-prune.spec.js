@@ -62,7 +62,7 @@ const PRUNE_CANDIDATES_EMPTY = {
   meta: { threshold_days: 30, protect_recent_days: 7, count: 0 },
 };
 
-test('reviews and marks stale Kanban deals as Perdido', async ({ page }) => {
+test('reviews and marks stale Kanban deals as Perdido @crm', async ({ page }) => {
   let pruned = false;
   let postedBody = null;
 

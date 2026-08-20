@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler as sendWhatsapp, loadPostgresSendContext, MAX_QUOTATION_PDF_BYTES } from '../../api/_functions/send-whatsapp.js';
-import { handler as sendWhatsappFlow } from '../../api/_functions/send-whatsapp-flow.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
+import { handler as sendWhatsapp, loadPostgresSendContext, MAX_QUOTATION_PDF_BYTES } from '../../api/_modules/send-whatsapp.js';
+import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
@@ -137,20 +137,28 @@ function event(body: Record<string, unknown>) {
   } as any;
 }
 
-function evolutionEnv() {
+function evolutionEnv(
+  overrides: { appEnv?: string; writes?: string } = {},
+) {
   const previous = {
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
+    appEnv: process.env.APP_ENV,
+    writes: process.env.EXTERNAL_WRITES_ENABLED,
   };
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
+  process.env.APP_ENV = overrides.appEnv || 'production';
+  process.env.EXTERNAL_WRITES_ENABLED = overrides.writes || '1';
   return () => {
     for (const [key, value] of Object.entries({
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,
+      APP_ENV: previous.appEnv,
+      EXTERNAL_WRITES_ENABLED: previous.writes,
     })) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

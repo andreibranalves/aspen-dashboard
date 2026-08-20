@@ -9,21 +9,21 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 
-import * as schema from '../../api/_db/schema.js';
+import * as schema from '../../api/_infrastructure/db/schema.js';
 import {
   clients,
   quoteRevisions,
   quotations,
   quotationDeliveries,
   quotationDeliverySteps,
-} from '../../api/_db/schema.js';
+} from '../../api/_infrastructure/db/schema.js';
 import {
   createPostgresQuotationDeliveryOutboxRepository,
   type EnqueueDeliveryRecord,
   type FrozenDeliveryStep,
-} from '../../api/_db/quotation-delivery-outbox-repository.js';
-import { EvolutionTransportError } from '../../api/_functions/lib/evolution-transport.js';
-import { createQuotationDeliveryModule } from '../../api/_functions/lib/quotation-delivery-outbox.js';
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
+import { EvolutionTransportError } from '../../api/_modules/evolution-transport.js';
+import { createQuotationDeliveryModule } from '../../api/_modules/quotation-delivery-outbox.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationsFolder = path.resolve(

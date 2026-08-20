@@ -4,30 +4,30 @@ import test from 'node:test';
 import {
   handler as sendWhatsapp,
   loadPostgresSendContext,
-} from '../../api/_functions/send-whatsapp.js';
+} from '../../api/_modules/send-whatsapp.js';
 import {
   canonicalFlowQuotationId,
   createDeliveryPlan,
   flowProductSummary,
   handler as sendWhatsappFlow,
-} from '../../api/_functions/send-whatsapp-flow.js';
-import { handler as communicationFlowPreview } from '../../api/_functions/communication-flow-preview.js';
+} from '../../api/_modules/send-whatsapp-flow.js';
+import { handler as communicationFlowPreview } from '../../api/_modules/communication-flow-preview.js';
 import {
   normalizeOwnedBlobUrl,
   normalizePostgresMediaUrl,
-} from '../../api/_functions/lib/postgres-media.js';
+} from '../../api/_modules/postgres-media.js';
 import {
   createPostgresQuotationDeliveryRepository,
   QuotationDeliveryConflictError,
-} from '../../api/_db/quotation-delivery-repository.js';
-import { quoteRevisions, quotationDeliveries } from '../../api/_db/schema.js';
-import { normalizeEvolutionDelivery } from '../../api/_functions/lib/evolution-delivery.js';
-import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_functions/lib/quotation-templates.js';
+} from '../../api/_infrastructure/db/repositories/quotation-delivery-repository.js';
+import { quoteRevisions, quotationDeliveries } from '../../api/_infrastructure/db/schema.js';
+import { normalizeEvolutionDelivery } from '../../api/_infrastructure/integrations/evolution/evolution-delivery.js';
+import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import {
   createDeliverQuotation,
   type DeliverQuotationDependencies,
   type DeliverQuotationInput,
-} from '../../api/_functions/lib/quotation-delivery.js';
+} from '../../api/_modules/quotation-delivery.js';
 
 const quotationId = 'quote-00000000-0000-4000-8000-000000000001';
 const revisionId = 'revision-0000-0000-4000-8000-000000000001';
@@ -826,15 +826,21 @@ test('Evolution response requires explicit provider acceptance', () => {
 
 function withEvolutionEnv() {
   const previous = {
+    appEnv: process.env.APP_ENV,
+    externalWrites: process.env.EXTERNAL_WRITES_ENABLED,
     baseUrl: process.env.EVOLUTION_BASE_URL,
     apiKey: process.env.EVOLUTION_API_KEY,
     instance: process.env.EVOLUTION_INSTANCE,
   };
+  process.env.APP_ENV = 'production';
+  process.env.EXTERNAL_WRITES_ENABLED = '1';
   process.env.EVOLUTION_BASE_URL = 'https://evolution.test';
   process.env.EVOLUTION_API_KEY = 'test-key';
   process.env.EVOLUTION_INSTANCE = 'test-instance';
   return () => {
     for (const [key, value] of Object.entries({
+      APP_ENV: previous.appEnv,
+      EXTERNAL_WRITES_ENABLED: previous.externalWrites,
       EVOLUTION_BASE_URL: previous.baseUrl,
       EVOLUTION_API_KEY: previous.apiKey,
       EVOLUTION_INSTANCE: previous.instance,

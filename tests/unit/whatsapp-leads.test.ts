@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 import {
   createHandler,
+  handler as whatsappLeadsHandler,
   findConvertedQuotation,
   formatLeadText,
   getWhatsappLeadQuality,
@@ -16,12 +17,12 @@ import {
   requestOpenRouter,
   resolveWhatsappDisplayName,
   shouldIncludeWhatsappLead,
-} from '../../api/_functions/whatsapp-leads.js';
+} from '../../api/_modules/whatsapp-leads.js';
 import type {
   WhatsappConversation,
   WhatsappConversationStoreDeps,
-} from '../../api/_functions/lib/whatsapp-conversations-store.js';
-import type { LocalWhatsappCrmRepository } from '../../api/_functions/lib/whatsapp-crm-match.js';
+} from '../../api/_modules/whatsapp-conversations-store.js';
+import type { LocalWhatsappCrmRepository } from '../../api/_modules/whatsapp-crm-match.js';
 
 describe('whatsapp-leads helpers', () => {
   it('normaliza telefone brasileiro sem confundir DDD 55 com o país', () => {
@@ -401,14 +402,20 @@ describe('OpenRouter response limits', () => {
 
   it('does not cancel a successful streamed JSON response', async () => {
     const previousKey = process.env.OPENROUTER_API_KEY;
+    const previousSiteUrl = process.env.OPENROUTER_SITE_URL;
     process.env.OPENROUTER_API_KEY = 'test-key';
+    process.env.OPENROUTER_SITE_URL = 'https://app.example';
     let cancelled = 0;
     let aborted = false;
+    let requestUrl = '';
+    let requestInit: RequestInit | undefined;
     const chunks = [new TextEncoder().encode('{"ok":'), new TextEncoder().encode('true}')];
     try {
       const result = await requestOpenRouter({}, {
         timeoutMs: 100,
-        fetchImpl: async (_url, init) => {
+        fetchImpl: async (url, init) => {
+          requestUrl = String(url);
+          requestInit = init;
           init?.signal?.addEventListener('abort', () => { aborted = true; });
           return {
             ok: true,
@@ -426,9 +433,17 @@ describe('OpenRouter response limits', () => {
     } finally {
       if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
       else process.env.OPENROUTER_API_KEY = previousKey;
+      if (previousSiteUrl === undefined) delete process.env.OPENROUTER_SITE_URL;
+      else process.env.OPENROUTER_SITE_URL = previousSiteUrl;
     }
     assert.equal(cancelled, 0);
     assert.equal(aborted, false);
+    assert.equal(requestUrl, 'https://openrouter.ai/api/v1/chat/completions');
+    assert.equal(
+      new Headers(requestInit?.headers).get('X-OpenRouter-Title'),
+      'Aspen Orcamento WhatsApp Leads',
+    );
+    assert.equal(new Headers(requestInit?.headers).get('HTTP-Referer'), null);
   });
 
   it('cancels malformed JSON bodies', async () => {
@@ -544,7 +559,7 @@ function localQuotationRepository(
 
 describe('whatsapp-leads snapshot handler', () => {
   it('has no external lead dependencies and never exposes transport data', async () => {
-    const source = await readFile(new URL('../../api/_functions/whatsapp-leads.ts', import.meta.url), 'utf8');
+    const source = await readFile(new URL('../../api/_modules/whatsapp-leads.ts', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /external|operational-mode|findContacts/i);
 
     const saved = conversation();
@@ -586,6 +601,37 @@ describe('whatsapp-leads snapshot handler', () => {
     assert.equal(result.statusCode, 200);
     assert.deepEqual(events, ['sync:5:50', 'response']);
     assert.equal(parseBody(result).data[0].id, saved.id);
+  });
+
+  it('checks configured Evolution sync on request after module import', async () => {
+    const previous = {
+      EVOLUTION_BASE_URL: process.env.EVOLUTION_BASE_URL,
+      EVOLUTION_API_KEY: process.env.EVOLUTION_API_KEY,
+      EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE,
+      KV_REST_API_URL: process.env.KV_REST_API_URL,
+      KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
+    };
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    process.env.EVOLUTION_BASE_URL = 'https://evolution.example';
+    process.env.EVOLUTION_API_KEY = 'test-key';
+    process.env.EVOLUTION_INSTANCE = 'aspen';
+    delete process.env.KV_REST_API_URL;
+    delete process.env.KV_REST_API_TOKEN;
+    globalThis.fetch = (async (input) => {
+      calls.push(String(input));
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      await whatsappLeadsHandler({ httpMethod: 'GET', queryStringParameters: {}, headers: {} } as any);
+      assert.equal(calls[0], 'https://evolution.example/chat/findChats/aspen');
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 
   it('caps snapshots at twenty and limits extraction/CRM concurrency to four', async () => {

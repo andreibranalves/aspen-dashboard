@@ -7,7 +7,7 @@ import {
   type DeliveryIdentity,
   type DeliveryResolution,
   type DeliveryView,
-} from '@/lib/quotationDeliveryApi';
+} from '@/lib/api/quotationDeliveryApi';
 
 export type DeliveriesByKey = Record<string, DeliveryView>;
 export type DeliveryErrorsByKey = Record<string, string>;

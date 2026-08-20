@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handler } from '../../api/_functions/whatsapp-send-status.js';
+import { handler } from '../../api/_modules/whatsapp-send-status.js';
 
 const revisionId = 'revision-status';
 const flowId = 'flow-status';

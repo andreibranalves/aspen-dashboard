@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { afterEach, before, describe, it } from 'node:test';
 
-import { handler } from '../../api/_functions/login.js';
-import { createPasswordHash } from '../../api/_lib/password.js';
-import { SESSION_LIFETIME_SECONDS, verifySessionToken } from '../../api/_lib/session.js';
+import { handler } from '../../api/_modules/login.js';
+import { createPasswordHash } from '../../api/_shared/password.js';
+import { SESSION_LIFETIME_SECONDS, verifySessionToken } from '../../api/_shared/session.js';
 
 const AUTH_ENV_KEYS = ['APP_PASSWORD_HASH', 'APP_SESSION_SECRET', 'APP_AUTH_BYPASS'] as const;
 const originalEnvironment = Object.fromEntries(

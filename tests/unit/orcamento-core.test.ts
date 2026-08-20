@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { createHandler } from '../../api/_functions/orcamento.js';
-import { createCoreHandler } from '../../api/_functions/orcamento-core.js';
+import { createHandler } from '../../api/_modules/orcamento.js';
+import { createCoreHandler } from '../../api/_modules/orcamento-core.js';
 import {
   QuoteDraftInputError,
   readSelectedTemplate,
   type TemplateSelectionLookup,
-} from '../../api/_db/quote-repository.js';
+} from '../../api/_infrastructure/db/repositories/quote-repository.js';
 
 function event(body: unknown) {
   return {
@@ -139,7 +139,6 @@ function selectionLookup(overrides: Partial<TemplateSelectionLookup> = {}) {
   return {
     byVersion: async (id: string) => versions.get(id) || null,
     current: async (selection: string | { id: string }) => typeof selection === 'string' ? templates.get(selection) || null : [...templates.values()].find((value) => value.model.id === selection.id) || null,
-    hasModel: async () => true,
     seedLegacy: async () => null,
     ...overrides,
   } satisfies TemplateSelectionLookup;
@@ -154,11 +153,10 @@ test('repository template selection rejects inconsistent, archived and missing c
   assert.equal((await readSelectedTemplate({} as never, settings, {}, lookup))?.model.key, 'padrao');
 });
 
-test('repository template selection seeds a valid static template fallback', async () => {
+test('repository template selection seeds a missing static template', async () => {
   let seeded: string | undefined;
   const lookup = selectionLookup({
     current: async () => null,
-    hasModel: async () => false,
     seedLegacy: async (legacy) => {
       seeded = legacy.key;
       return { model: { id: 'seed-model', key: legacy.key, name: legacy.name, archived: false }, version: { id: 'seed-version', version: 1, source: legacy.source, sourceHash: legacy.hash } };
