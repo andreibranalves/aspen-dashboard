@@ -33,3 +33,8 @@ test('prefix captura o resto apos o prefixo', () => {
 test('prefix rejeita rota sem o prefixo (sem barra final)', () => {
   assert.equal(prefix('/quotations/')('/quotations'), null);
 });
+
+test('matchers ignoram query da rota', () => {
+  assert.deepEqual(matchSegments('/products', '/products?search=abc&page=2'), {});
+  assert.deepEqual(prefix('/products/')('/products/SKU-1?search=abc'), { id: 'SKU-1' });
+});

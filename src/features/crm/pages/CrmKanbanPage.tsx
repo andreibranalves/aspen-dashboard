@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
+import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 
 interface Deal {
   id: string;
@@ -84,7 +85,7 @@ export default function CrmKanbanPage() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState<string>('');
+  const [search, setSearch] = useHashQueryState('search', '', parseHashString);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [pruneCandidates, setPruneCandidates] = useState<PruneCandidate[]>([]);
   const [pruneLoading, setPruneLoading] = useState<boolean>(false);

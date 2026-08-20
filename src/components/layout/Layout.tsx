@@ -12,6 +12,8 @@ import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import { cn } from '@/lib/utils';
 import { useDarkMode } from '@/hooks/useDarkMode';
+import { getHashHistoryPreviousRoute } from '@/hooks/useHashRoute';
+import { routePath } from '@/app/match-route';
 
 export type SetTopBarActions = Dispatch<SetStateAction<ReactNode | null>>;
 
@@ -40,45 +42,51 @@ const PAGE_LABELS: Record<string, string> = {
   '/whatsapp-deliveries': 'Envios WhatsApp',
 };
 
-function getBreadcrumb(route: string): BreadcrumbItem[] {
-  if (route === '/dashboard') return [{ label: 'Início', hash: null }];
+function getParentRoute(fallback: string): string {
+  const previousRoute = getHashHistoryPreviousRoute();
+  return previousRoute && routePath(previousRoute) === fallback ? previousRoute : fallback;
+}
 
-  if (route.startsWith('/quotations/')) {
-    const id = route.split('/quotations/')[1];
+function getBreadcrumb(route: string): BreadcrumbItem[] {
+  const path = routePath(route);
+  if (path === '/dashboard') return [{ label: 'Início', hash: null }];
+
+  if (path.startsWith('/quotations/')) {
+    const id = path.split('/quotations/')[1];
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Orçamentos', hash: '/quotations' },
+      { label: 'Orçamentos', hash: getParentRoute('/quotations') },
       { label: id, hash: null },
     ];
   }
-  if (route.startsWith('/sales-orders/')) {
-    const id = route.split('/sales-orders/')[1];
+  if (path.startsWith('/sales-orders/')) {
+    const id = path.split('/sales-orders/')[1];
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Pedidos', hash: '/sales-orders' },
+      { label: 'Pedidos', hash: getParentRoute('/sales-orders') },
       { label: id, hash: null },
     ];
   }
-  if (route.startsWith('/products/')) {
-    const sku = route.split('/products/')[1];
+  if (path.startsWith('/products/')) {
+    const sku = path.split('/products/')[1];
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Catálogo de Produtos', hash: '/products' },
+      { label: 'Catálogo de Produtos', hash: getParentRoute('/products') },
       { label: sku, hash: null },
     ];
   }
-  if (route.startsWith('/leads/')) {
-    const id = route.split('/').slice(3).join('/');
+  if (path.startsWith('/leads/')) {
+    const id = path.split('/').slice(3).join('/');
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Clientes', hash: '/leads' },
+      { label: 'Clientes', hash: getParentRoute('/leads') },
       { label: id, hash: null },
     ];
   }
 
-  const label = PAGE_LABELS[route];
+  const label = PAGE_LABELS[path];
   if (label) return [{ label: 'Início', hash: '/dashboard' }, { label, hash: null }];
-  return [{ label: 'Início', hash: '/dashboard' }, { label: route, hash: null }];
+  return [{ label: 'Início', hash: '/dashboard' }, { label: path, hash: null }];
 }
 
 export interface LayoutProps {

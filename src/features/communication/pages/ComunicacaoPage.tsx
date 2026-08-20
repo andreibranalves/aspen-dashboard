@@ -14,6 +14,7 @@ import SendHistoryTab from '@/features/communication/components/SendHistoryTab';
 import ChannelsTab from '@/features/communication/components/ChannelsTab';
 import QuotationEmailTemplateTab from '@/features/communication/components/QuotationEmailTemplateTab';
 import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
+import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
 interface TabItem {
   id: string;
@@ -28,13 +29,14 @@ const TABS: TabItem[] = [
   { id: 'channels', label: 'Canais', icon: Settings2 },
   { id: 'email-template', label: 'E-mail de orçamento', icon: Mail },
 ];
+const parseCommunicationTab = parseHashOption<string>(TABS.map((tab) => tab.id));
 
 interface ComunicacaoPageProps {
   setNavigationGuard?: SetHashRouteGuard;
 }
 
 export default function ComunicacaoPage({ setNavigationGuard }: ComunicacaoPageProps) {
-  const [activeTab, setActiveTab] = useState<string>('flows');
+  const [activeTab, setActiveTab] = useHashQueryState('tab', 'flows', parseCommunicationTab);
   const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
   const [emailTemplateDirty, setEmailTemplateDirty] = useState(false);
   const [pendingTabId, setPendingTabId] = useState<string | null>(null);

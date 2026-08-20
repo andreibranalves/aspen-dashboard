@@ -3,11 +3,13 @@ import { useHashRoute } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 import { routes, type AppRoute } from '@/app/routes';
+import { routePath } from '@/app/match-route';
 import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
 
 function findRoute(route: string): { entry: AppRoute; params: Record<string, string> } | null {
+  const path = routePath(route);
   for (const entry of routes) {
-    const params = entry.match ? entry.match(route) : route === entry.path ? {} : null;
+    const params = entry.match ? entry.match(path) : path === entry.path ? {} : null;
     if (params) return { entry, params };
   }
   return null;

@@ -18,6 +18,10 @@ import {
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import {
+  parseHashPositiveInteger,
+  useHashQueryState,
+} from '@/hooks/useHashQueryState';
+import {
   Table,
   TableBody,
   TableCell,
@@ -53,6 +57,31 @@ const STATE_FILTERS: Array<{ key: DeliveryState; label: string }> = [
   { key: 'delivered', label: 'Entregues' },
   { key: 'failed', label: 'Falhos' },
 ];
+
+function parseDeliveryFilters(raw: string | null, fallback: DeliveryFilters): DeliveryFilters {
+  if (!raw) return fallback;
+  try {
+    const candidate = JSON.parse(raw) as Partial<DeliveryFilters>;
+    const states = Array.isArray(candidate.states)
+      ? candidate.states.filter((state) => STATE_FILTERS.some((filter) => filter.key === state))
+      : fallback.states;
+    return {
+      requiresAction: typeof candidate.requiresAction === 'boolean' ? candidate.requiresAction : fallback.requiresAction,
+      includeActive: typeof candidate.includeActive === 'boolean' ? candidate.includeActive : fallback.includeActive,
+      states,
+      delayed: typeof candidate.delayed === 'boolean' ? candidate.delayed : fallback.delayed,
+      search: typeof candidate.search === 'string' ? candidate.search : fallback.search,
+      from: typeof candidate.from === 'string' ? candidate.from : fallback.from,
+      to: typeof candidate.to === 'string' ? candidate.to : fallback.to,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function serializeDeliveryFilters(value: DeliveryFilters, fallback: DeliveryFilters): string | null {
+  return JSON.stringify(value) === JSON.stringify(fallback) ? null : JSON.stringify(value);
+}
 
 const ACTIVE_STATES: DeliveryState[] = [
   'queued',
@@ -174,8 +203,13 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
 }
 
 export default function WhatsAppDeliveriesPage() {
-  const [filters, setFilters] = useState<DeliveryFilters>(DEFAULT_FILTERS);
-  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useHashQueryState(
+    'filters',
+    DEFAULT_FILTERS,
+    parseDeliveryFilters,
+    serializeDeliveryFilters,
+  );
+  const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [result, setResult] = useState<DeliveryPage | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);

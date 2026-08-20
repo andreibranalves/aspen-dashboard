@@ -14,6 +14,7 @@ import { WhatsAppAttachmentCard } from '@/features/whatsapp/components/whatsapp-
 import { Input } from '@/components/ui/input';
 import { fmtPhone, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
+import { parseHashOption, parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import {
   extractWhatsappQuote,
   fetchWhatsappConversations,
@@ -37,6 +38,9 @@ const STATUS_FILTERS: Array<{ value: WhatsappConversationStatus | 'all'; label: 
   { value: 'waiting_customer', label: 'Aguardando cliente' },
   { value: 'closed', label: 'Encerradas' },
 ];
+const parseWhatsappStatus = parseHashOption<WhatsappConversationStatus | 'all'>(
+  STATUS_FILTERS.map((filter) => filter.value),
+);
 
 function statusLabel(status: WhatsappConversationStatus): string {
   if (status === 'needs_quote') return 'Pedido detectado';
@@ -71,8 +75,12 @@ interface WhatsAppInboxPageProps {
 }
 
 export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) {
-  const [status, setStatus] = useState<WhatsappConversationStatus | 'all'>('all');
-  const [query, setQuery] = useState('');
+  const [status, setStatus] = useHashQueryState<WhatsappConversationStatus | 'all'>(
+    'status',
+    'all',
+    parseWhatsappStatus,
+  );
+  const [query, setQuery] = useHashQueryState('query', '', parseHashString);
   const [conversations, setConversations] = useState<WhatsappConversation[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [messages, setMessages] = useState<WhatsappMessage[]>([]);

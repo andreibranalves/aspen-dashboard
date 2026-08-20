@@ -27,6 +27,13 @@ import { StatusBadge } from '@/components/ui/badge';
 import PageHeader from '@/components/shared/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
+  parseHashAllowedInteger,
+  parseHashOption,
+  parseHashPositiveInteger,
+  parseHashString,
+  useHashQueryState,
+} from '@/hooks/useHashQueryState';
+import {
   Table,
   TableHeader,
   TableBody,
@@ -53,6 +60,8 @@ const STATUS_OPTIONS = [
   { value: 'perdido', label: 'Perdido', summaryKey: 'Perdido' },
 ] as const;
 const PAGE_SIZES = [10, 25, 50];
+const parseQuotationStatus = parseHashOption<string>(STATUS_OPTIONS.map((option) => option.value));
+const parseQuotationLimit = parseHashAllowedInteger(PAGE_SIZES);
 
 type QuotationRow = ProjectedQuotationListRow;
 
@@ -86,10 +95,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [data, setData] = useState<QuotationRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState<string>('');
-  const [status, setStatus] = useState<string>('');
-  const [page, setPage] = useState<number>(1);
-  const [limit, setLimit] = useState<number>(10);
+  const [search, setSearch] = useHashQueryState('search', '', parseHashString);
+  const [status, setStatus] = useHashQueryState('status', '', parseQuotationStatus);
+  const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
+  const [limit, setLimit] = useHashQueryState('limit', 10, parseQuotationLimit);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
@@ -206,7 +215,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   // Initial load
   useEffect(() => {
-    fetchData('', '', 1, limit);
+    fetchData(search, status, page, limit);
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {

@@ -8,6 +8,13 @@ import {
   ArchiveRestore,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
+import {
+  parseHashAllowedInteger,
+  parseHashOption,
+  parseHashPositiveInteger,
+  parseHashString,
+  useHashQueryState,
+} from '@/hooks/useHashQueryState';
 import { apiGet, apiDelete, apiPatch } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { clearProductCache } from '@/lib/api/productCache';
@@ -37,18 +44,23 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'item_code asc', label: 'código (sku)' },
 ];
 
+type ProductStatus = 'active' | 'archived' | 'all';
+const parseProductStatus = parseHashOption<ProductStatus>(['active', 'archived', 'all']);
+const parseProductSort = parseHashOption(SORT_OPTIONS.map((option) => option.value));
+const parseProductLimit = parseHashAllowedInteger(PAGE_SIZES);
+
 export default function ProductsPage() {
   const [data, setData] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState<string>('');
-  const [page, setPage] = useState<number>(1);
-  const [limit, setLimit] = useState<number>(10);
+  const [search, setSearch] = useHashQueryState('search', '', parseHashString);
+  const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
+  const [limit, setLimit] = useHashQueryState('limit', 10, parseProductLimit);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [sort, setSort] = useState<string>('modified desc');
-  const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
+  const [sort, setSort] = useHashQueryState('sort', 'modified desc', parseProductSort);
+  const [status, setStatus] = useHashQueryState<ProductStatus>('status', 'active', parseProductStatus);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearPendingSearch = useCallback(() => {
     if (searchTimer.current) {

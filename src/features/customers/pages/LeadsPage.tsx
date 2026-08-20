@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/shared/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
+import {
+  parseHashAllowedInteger,
+  parseHashOption,
+  parseHashPositiveInteger,
+  parseHashString,
+  useHashQueryState,
+} from '@/hooks/useHashQueryState';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { DetailDrawer } from '@/features/customers/components/DetailDrawer';
@@ -47,6 +54,8 @@ interface LeadsPageProps {
 }
 
 const PAGE_SIZES = [10, 25, 50];
+const parseLeadStatus = parseHashOption<'active' | 'archived' | 'all'>(['active', 'archived', 'all']);
+const parseLeadLimit = parseHashAllowedInteger(PAGE_SIZES);
 const EMPTY_FIELDS: EditFields = { nome: '', email: '', telefone: '', documento: '', observacoes: '', endereco: {} };
 
 function isValidEmail(value: string): boolean {
@@ -112,10 +121,10 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [data, setData] = useState<DataRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<'active' | 'archived' | 'all'>('active');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [search, setSearch] = useHashQueryState('search', '', parseHashString);
+  const [status, setStatus] = useHashQueryState<'active' | 'archived' | 'all'>('status', 'active', parseLeadStatus);
+  const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
+  const [limit, setLimit] = useHashQueryState('limit', 10, parseLeadLimit);
   const [totalPages, setTotalPages] = useState(0);
   const [totalRecords, setTotalRecords] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

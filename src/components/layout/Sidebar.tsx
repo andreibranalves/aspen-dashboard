@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import { Menu, X, Moon, Sun } from 'lucide-react';
 import { NAV_SECTIONS } from '@/app/navigation';
+import { routePath } from '@/app/match-route';
 
 export interface SidebarProps {
   collapsed: boolean;
@@ -19,6 +20,8 @@ export default function Sidebar({
   darkMode,
   toggleDarkMode,
 }: SidebarProps) {
+  const currentPath = routePath(currentRoute);
+
   return (
     <>
       {!collapsed && (
@@ -70,11 +73,11 @@ export default function Sidebar({
                     'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                     collapsed && 'justify-center gap-0 px-0',
                     'hover:bg-primary/5',
-                    currentRoute === hash ? 'bg-primary/10 text-primary font-medium' : 'text-fg-muted',
+                    currentPath === hash ? 'bg-primary/10 text-primary font-medium' : 'text-fg-muted',
                   )}
                   title={collapsed ? label : undefined}
                 >
-                  <Icon size={20} className={cn('shrink-0', currentRoute === hash ? 'text-primary' : 'text-fg-muted')} />
+                  <Icon size={20} className={cn('shrink-0', currentPath === hash ? 'text-primary' : 'text-fg-muted')} />
                   {!collapsed && <span className="truncate">{label}</span>}
                 </button>
               ))}

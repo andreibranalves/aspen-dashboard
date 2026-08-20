@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
+import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
 interface PeriodOption {
   key: string;
@@ -31,6 +32,7 @@ const PERIODS: PeriodOption[] = [
   { key: 'month', label: 'Este mês' },
   { key: 'last_month', label: 'Mês passado' },
 ];
+const parseDashboardPeriod = parseHashOption<string>(PERIODS.map((period) => period.key));
 
 interface DashboardPageProps {
   navigate: (path: string) => void;
@@ -44,7 +46,7 @@ interface SummaryCard {
 }
 
 export default function DashboardPage({ navigate }: DashboardPageProps) {
-  const [period, setPeriod] = useState<string>('30d');
+  const [period, setPeriod] = useHashQueryState('period', '30d', parseDashboardPeriod);
   const [data, setData] = useState<ProjectedDashboardData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);

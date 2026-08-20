@@ -14,6 +14,13 @@ import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
+import {
+  parseHashAllowedInteger,
+  parseHashOption,
+  parseHashPositiveInteger,
+  parseHashString,
+  useHashQueryState,
+} from '@/hooks/useHashQueryState';
 import { Input } from '@/components/ui/input';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -44,6 +51,9 @@ const PERIODS: PeriodOption[] = [
 
 const STATUSES = ['', 'Draft', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
 const STATUS_DISPLAY = ['Todos', 'Rascunho', 'A entregar e faturar', 'A faturar', 'A entregar', 'Concluído', 'Cancelado', 'Fechado'];
+const parseSalesOrderPeriod = parseHashOption<string>(PERIODS.map((option) => option.value));
+const parseSalesOrderStatus = parseHashOption<string>(STATUSES);
+const parseSalesOrderLimit = parseHashAllowedInteger([10, 25, 50, 100]);
 
 interface SalesOrdersPageProps {
   navigate: (path: string) => void;
@@ -110,12 +120,12 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const [items, setItems] = useState<SalesOrderItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<number>(1);
-  const [limit, setLimit] = useState<number>(10);
-  const [period, setPeriod] = useState<string>('30d');
-  const [status, setStatus] = useState<string>('');
-  const [search, setSearch] = useState<string>('');
-  const [searchDraft, setSearchDraft] = useState<string>('');
+  const [page, setPage] = useHashQueryState('page', 1, parseHashPositiveInteger);
+  const [limit, setLimit] = useHashQueryState('limit', 10, parseSalesOrderLimit);
+  const [period, setPeriod] = useHashQueryState('period', '30d', parseSalesOrderPeriod);
+  const [status, setStatus] = useHashQueryState('status', '', parseSalesOrderStatus);
+  const [search, setSearch] = useHashQueryState('search', '', parseHashString);
+  const [searchDraft, setSearchDraft] = useHashQueryState('searchDraft', search, parseHashString);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState<number>(1);
