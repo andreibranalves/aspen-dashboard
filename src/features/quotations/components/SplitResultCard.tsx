@@ -651,7 +651,7 @@ export default function SplitResultCard({
                 onClick={() => onSendWhatsApp?.(draft.index)}
               >
                 <Phone size={13} />
-                Enviar via WhatsApp
+                Enviar WhatsApp
               </Button>
             ) : (
               <span className="text-xs text-fg-muted">Emita o orçamento para enviar WhatsApp</span>

@@ -107,7 +107,7 @@ export default function WhatsAppSendPanel({
                           ? 'Somente leitura'
                           : status?.state === 'sending'
                             ? 'Enviando…'
-                            : 'Enviar via WhatsApp'}
+                            : 'Enviar WhatsApp'}
               </Button>
               {(status?.message || delivery?.publicError) && (
                 <p

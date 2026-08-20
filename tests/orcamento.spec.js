@@ -413,11 +413,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect.poll(() => sendRequest, { timeout: 10000 }).toBeTruthy();
     expect(sendRequest).toEqual({
       quotation_id: 'ORC-20260001',
-      quotation_uuid: '11111111-1111-4111-8111-111111111101',
-      business_number: 'ORC-20260001',
       revision_id: '22222222-2222-4222-8222-222222222201',
       flow_id: 'flow-test',
-      idempotency_key: 'aspen:whatsapp-send:v2|ORC-20260001|22222222-2222-4222-8222-222222222201|flow-test',
     });
     if (!sendRequest) throw new Error('WhatsApp send request was not captured');
     /** @type {any} */

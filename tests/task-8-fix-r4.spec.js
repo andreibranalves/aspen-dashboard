@@ -175,7 +175,7 @@ async function installDurableRoutes(page, stateForFlow = () => 'delivered') {
 test('accepted provider state stays accepted and blocks automatic replay', async ({ page }) => {
   await setupAuto(page);
   const { requests } = await installDurableRoutes(page, () => 'provider_accepted');
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Aceito pela Evolution', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
@@ -186,7 +186,7 @@ test('accepted provider state stays accepted and blocks automatic replay', async
 test('reconciling state blocks duplicate send', async ({ page }) => {
   await setupAuto(page);
   const { requests } = await installDurableRoutes(page, () => 'reconciling');
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Reconciliação em andamento', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
@@ -211,7 +211,7 @@ test('delivered replay without phone remains a durable completed UI status', asy
     if (!active.has('flow-1')) return json(route, { error: 'not found' }, 404);
     return json(route, delivery(active.get('flow-1')));
   });
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
@@ -222,7 +222,7 @@ test('delivered replay without phone remains a durable completed UI status', asy
 test('flow switch keeps an independent exact revision and flow identity', async ({ page }) => {
   await setupAuto(page);
   const { requests } = await installDurableRoutes(page, (selectedFlowId) => selectedFlowId === 'flow-1' ? 'delivered' : 'queued');
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
   await page.getByText('Fluxo de WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
@@ -250,7 +250,7 @@ test('same component double click sends one backend request and failure cleanup 
   });
   await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
   await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.evaluate((button) => {
     button.click();
     button.click();
@@ -278,7 +278,7 @@ test('malformed 2xx cannot render sent and leaves no local success authority', a
     'aspen.whatsapp-send-locks-v1',
     JSON.stringify({ accepted: true }),
   ));
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Resposta inválida da entrega WhatsApp.', { exact: true })).toBeVisible();
   await expect(page.getByText('Entregue', { exact: true })).toHaveCount(0);

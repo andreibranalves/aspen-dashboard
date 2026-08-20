@@ -391,7 +391,13 @@ export default function AutoQuotePage() {
     recoveryTimers.current.clear();
   }, []);
   const recoverQuotationIssue = useCallback(async (draft: StoredAutoQuoteDraft) => {
-    if (!draft.issueIdempotencyKey || draft.issue || recoveredDrafts.current.has(draft.index) || recoveryTimers.current.has(draft.index)) return;
+    if (
+      !draft.issueIdempotencyKey ||
+      draft.issue ||
+      draft.status === 'processing' ||
+      recoveredDrafts.current.has(draft.index) ||
+      recoveryTimers.current.has(draft.index)
+    ) return;
     try {
       const state = await getQuotationIssue(draft.issueIdempotencyKey);
       if (state.state === 'processing') {

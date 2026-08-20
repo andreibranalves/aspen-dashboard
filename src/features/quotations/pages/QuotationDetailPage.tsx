@@ -1200,7 +1200,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 disabled={deliveryPending || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
                 onClick={sendIssuedQuotation}
               >
-                <Phone size={14} /> Enviar via WhatsApp
+                <Phone size={14} /> Enviar WhatsApp
               </Button>
               {(data.expirada || data.is_expired || data.derived_expired) && (
                 <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>

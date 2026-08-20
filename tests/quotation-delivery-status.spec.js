@@ -259,11 +259,11 @@ test('single click persists status across reload and never offers blind retry', 
   await routeCommonAuto(page);
   const lifecycle = await mockDeliveryLifecycle(page, ['queued', 'processing', 'provider_accepted', 'delivered']);
   await issueAutoQuote(page);
-  await page.getByRole('button', { name: /enviar via whatsapp/i }).click();
+  await page.getByRole('button', { name: /enviar whatsapp/i }).click();
   await expect(page.getByText('Aceito pela Evolution')).toBeVisible({ timeout: 15000 });
   await page.reload();
   await expect(page.getByText('Aceito pela Evolution')).toBeVisible();
-  await expect(page.getByRole('button', { name: /enviar via whatsapp/i })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
   await expect(page.getByText('Entregue')).toBeVisible({ timeout: 10000 });
   expect(lifecycle.getSendCount()).toBe(1);
 });
@@ -272,7 +272,7 @@ test('quotation detail loads the same durable delivery without clicking send', a
   await mockDetail(page);
   await page.goto(`/#/quotations/${quotationId}`);
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /enviar via whatsapp/i })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
 });
 
 test('browser reload during processing keeps the durable processing state', async ({ page }) => {
@@ -293,7 +293,7 @@ test('failed delivery stays blocked until a new revision', async ({ page }) => {
   await routeCommonAuto(page);
   const lifecycle = await mockDeliveryLifecycle(page, ['failed']);
   await issueAutoQuote(page);
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
   await expect(page.getByText('Falhou', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
@@ -313,7 +313,7 @@ test('initial identity lookup disables send before its first response', async ({
     return json(route, statusResponse('delivered'));
   });
   await page.goto(`/#/quotations/${quotationId}`);
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await expect(send).toBeVisible();
   await expect.poll(() => lookupStarted).toBe(true);
   await expect(send).toBeDisabled();
@@ -326,7 +326,7 @@ test('initial identity lookup failure keeps warning and blocks blind send', asyn
   await page.route('**/api/whatsapp-send-status**', (route) =>
     json(route, { error: 'status unavailable' }, 503));
   await page.goto(`/#/quotations/${quotationId}`);
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await expect(page.getByText('status unavailable', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
 });
@@ -374,9 +374,9 @@ test('flow switching uses a distinct revision and flow status', async ({ page })
     return json(route, delivery(state, selectedFlowId));
   });
   await issueAutoQuote(page);
-  await page.getByRole('button', { name: /enviar via whatsapp/i }).click();
+  await page.getByRole('button', { name: /enviar whatsapp/i }).click();
   await expect(page.getByText('Entregue', { exact: true })).toBeVisible();
-  const send = page.getByRole('button', { name: /enviar via whatsapp/i });
+  const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await page.getByText('Fluxo de WhatsApp', { exact: true }).locator('..').getByRole('combobox').selectOption('flow-2');
   await expect.poll(() => flow2LookupStarted).toBe(true);
   await expect(send).toBeDisabled();
@@ -395,7 +395,7 @@ test('needs_review exposes only the two explicit manual decisions', async ({ pag
   await expect(page.getByText('Revisão necessária', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Cliente confirmou recebimento' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Confirmado que não recebeu, reenviar' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /enviar via whatsapp/i })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
   await expect(page.getByRole('button', { name: /cliente confirmou recebimento|confirmado que não recebeu, reenviar/i })).toHaveCount(2);
 });
 

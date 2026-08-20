@@ -143,12 +143,38 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
   await page.route('**/api/send-whatsapp-flow**', (route) => {
     sendCount += 1;
     return json(route, {
-      error: 'O transporte foi aceito e aguarda reconciliação.',
-      send_status: 'accepted_partial',
-      accepted_partial: true,
-      provider_accepted: true,
-      partial_send: true,
-    }, 503);
+      success: true,
+      delivery_id: 'delivery-task-8',
+      send_status: 'provider_accepted',
+      revision_id: revisionId,
+      flow_id: 'flow-test',
+      delivery: {
+        id: 'delivery-task-8',
+        revision_id: revisionId,
+        business_number: quotationId,
+        client_name: 'Cliente envio',
+        flow_id: 'flow-test',
+        flow_name: 'Fluxo de teste',
+        state: 'provider_accepted',
+        completion_source: null,
+        public_error: 'O transporte foi aceito e aguarda reconciliação.',
+        progress: { delivered: 0, total: 1 },
+        steps: [{
+          id: 'step-task-8',
+          position: 0,
+          type: 'text',
+          state: 'server_ack',
+          attempt_count: 1,
+          public_error: null,
+          updated_at: '2026-08-13T12:00:00.000Z',
+        }],
+        next_attempt_at: null,
+        action_deadline: null,
+        reconciliation_deadline: null,
+        delivered_at: null,
+        updated_at: '2026-08-13T12:00:00.000Z',
+      },
+    }, 202);
   });
 
   await page.goto('/#/auto');
@@ -160,8 +186,8 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });
   await send.click();
-  await expect(page.getByText('Envio aceito', { exact: true }).first()).toBeVisible({ timeout: 10000 });
-  const acceptedButton = page.getByRole('button', { name: 'Envio aceito' });
+  await expect(page.getByText('Aceito pela Evolution', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+  const acceptedButton = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(acceptedButton).toBeVisible();
   await expect(acceptedButton).toBeDisabled();
   expect(sendCount).toBe(1);
