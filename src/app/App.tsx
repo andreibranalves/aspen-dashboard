@@ -14,12 +14,16 @@ function findRoute(route: string): { entry: AppRoute; params: Record<string, str
 }
 
 export default function App() {
-  const [route, navigate] = useHashRoute();
+  const [route, navigate, setNavigationGuard] = useHashRoute();
   const matched = findRoute(route);
 
   let content: ReactNode;
   if (matched) {
-    content = matched.entry.render({ navigate, params: matched.params });
+    content = matched.entry.render({
+      navigate,
+      params: matched.params,
+      setNavigationGuard,
+    });
     if (matched.entry.suspense) {
       content = <Suspense fallback={<PageLoader />}>{content}</Suspense>;
     }

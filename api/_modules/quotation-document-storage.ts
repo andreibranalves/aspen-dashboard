@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export const QUOTATION_PDF_MIME_TYPE = 'application/pdf' as const;
+export const MAX_QUOTATION_PDF_BYTES = 10 * 1024 * 1024;
 
 export class QuotationDocumentStorageError extends Error {
   readonly statusCode = 503;

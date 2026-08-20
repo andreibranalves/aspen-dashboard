@@ -7,6 +7,7 @@ import {
   issuePublicQuotationToken,
 } from '../../api/_modules/public-quotation.js';
 import { getQuotationTemplate } from '../../api/_modules/quotation-template-catalog.js';
+import { MAX_QUOTATION_PDF_BYTES } from '../../api/_modules/quotation-document-storage.js';
 
 const template = getQuotationTemplate('padrao')!;
 const versionedTemplate = getQuotationTemplate('minimalista')!;
@@ -273,6 +274,25 @@ test('keeps an issued revision PDF and checksum immutable after a source change'
   assert.match(oldBody.toString(), /10,00/);
   assert.equal(oldPdf.headers?.['X-Document-Checksum'], createHash('sha256').update(oldBody).digest('hex'));
   assert.doesNotMatch(oldBody.toString(), /20,00/);
+});
+
+test('rejects a public PDF above the shared quotation size limit', async () => {
+  const fakeStore = store();
+  const oversizedPdf = Buffer.alloc(MAX_QUOTATION_PDF_BYTES + 1, 0x20);
+  oversizedPdf.write('%PDF-1.7\\n');
+  oversizedPdf.write('%%EOF', oversizedPdf.length - 5);
+  const token = 'S'.repeat(32);
+  const handler = createPublicQuotationHandler({
+    repository: { get: async () => snapshot() } as any,
+    store: fakeStore,
+    token: () => token,
+    now: () => now,
+    renderPdf: async () => oversizedPdf,
+  });
+  const issued = await handler(event('POST', {}, JSON.stringify({ quotationId: 'q' })));
+  const response = await handler(event('GET', { token: JSON.parse(issued.body!).token, format: 'pdf' }));
+  assert.equal(response.statusCode, 503);
+  assert.equal(response.body, JSON.stringify({ error: 'Não foi possível gerar o PDF do orçamento.' }));
 });
 
 test('returns PDF signature, checksum, size and deterministic revision/template metadata', async () => {

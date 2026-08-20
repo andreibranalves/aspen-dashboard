@@ -77,6 +77,8 @@ export interface ProjectedQuotationListRow {
   status: string;
   status_canonical: 'rascunho' | 'emitido' | 'aprovado' | 'perdido';
   revision_id: string;
+  email_sent: boolean;
+  email_sent_at: string | null;
 }
 
 export interface ProjectedSalesOrderListRow {
@@ -156,6 +158,8 @@ export interface ProjectedQuotationData {
   cliente?: string;
   email?: string;
   telefone?: string;
+  email_sent: boolean;
+  email_sent_at: string | null;
   data?: string;
   validade?: string;
   validity_date?: string;
@@ -674,6 +678,11 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
   const quotationId = readIdentifier(source.quotation_id);
   const quotationUuid = readIdentifier(source.quotation_uuid);
   const clientId = readIdentifier(source.client_id);
+  const clientSnapshot = projectClientRow(source.cliente_snapshot);
+  const emailSent = readBoolean(source.email_sent) ?? false;
+  const emailSentAt = source.email_sent_at === null || source.email_sent_at === undefined
+    ? null
+    : readDate(source.email_sent_at) || null;
   const sectionsValue = Object.prototype.hasOwnProperty.call(source, 'secoes')
     ? source.secoes
     : source.sections_snapshot;
@@ -709,7 +718,7 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
     !statusCanonical || !QUOTATION_STATUSES.has(statusCanonical) ||
     !cliente || !dataDate || !validade || validityDays === undefined ||
     revision === undefined || revisionNumber === undefined || revision !== revisionNumber ||
-    !revisionId || !clientId || !sections || !items || items.some((item) => item === null) ||
+    !revisionId || !clientId || !clientSnapshot || !sections || !items || items.some((item) => item === null) ||
     !revisionHistory || templateKey === undefined ||
     !templateHash || !/^[0-9a-f]{64}$/i.test(templateHash) ||
     (source.template_version_id !== null && templateVersionId === undefined) ||
@@ -726,6 +735,10 @@ export function projectQuotationDetail(value: unknown): ProjectedQuotationDetail
     ...(quotationUuid ? { quotation_uuid: quotationUuid } : {}),
     status,
     cliente,
+    email: clientSnapshot.email || undefined,
+    telefone: clientSnapshot.telefone || undefined,
+    email_sent: emailSent,
+    email_sent_at: emailSentAt,
     data: dataDate,
     validade,
     validity_date: validade,
@@ -771,12 +784,26 @@ export function projectQuotationListRow(value: unknown): ProjectedQuotationListR
   const rawStatusCanonical = readString(source.status_canonical);
   const statusCanonical = rawStatusCanonical === 'enviado' ? 'emitido' : rawStatusCanonical;
   const revisionId = readIdentifier(source.revision_id);
+  const emailSent = readBoolean(source.email_sent) ?? false;
+  const emailSentAt = source.email_sent_at === null || source.email_sent_at === undefined
+    ? null
+    : readDate(source.email_sent_at) || null;
   if (
     !id || !data || !cliente || valor === undefined ||
     !status || !QUOTATION_STATUS_LABELS.has(status) ||
     !statusCanonical || !QUOTATION_STATUSES.has(statusCanonical) || !revisionId
   ) return null;
-  return { id, data, cliente, valor, status, status_canonical: statusCanonical as ProjectedQuotationListRow['status_canonical'], revision_id: revisionId };
+  return {
+    id,
+    data,
+    cliente,
+    valor,
+    status,
+    status_canonical: statusCanonical as ProjectedQuotationListRow['status_canonical'],
+    revision_id: revisionId,
+    email_sent: emailSent,
+    email_sent_at: emailSentAt,
+  };
 }
 
 export function projectSalesOrderListRow(value: unknown): ProjectedSalesOrderListRow | null {

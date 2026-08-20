@@ -25,7 +25,7 @@ const history = {
 function detail() {
   return {
     id: 'ORC-20260001', status: 'Enviado', status_canonical: 'enviado', cliente: 'Cliente', data: '2026-08-10', validade: '2026-08-25', validade_dias: 15,
-    revision: 1, revision_number: 1, revision_id: 'rev-1', client_id: 'client-1', pagamento: '', entrega: '', observacoes: '', prazo_producao: '',
+    revision: 1, revision_number: 1, revision_id: 'rev-1', client_id: 'client-1', cliente_snapshot: { id: 'client-1', nome: 'Cliente', email: 'cliente@example.com', telefone: '5511999999999' }, pagamento: '', entrega: '', observacoes: '', prazo_producao: '',
     frete_padrao: '0.00', frete: '0.00', subtotal: '9.00', total: '9.00', valor: '9.00', template_key: 'padrao', template_hash: 'a'.repeat(64), template_version_id: null, template_version: null,
     secoes: sections, items: [{ item_code: 'SKU-1', item_name: 'Produto', qty: '1.000', rate: '9.00', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '9.00', manual_rate: false }],
     revision_history: [history], derived_expired: false, expiration_derived: false, is_expired: false, expirada: false, concurrency_token: '2026-08-10T00:00:00.000Z',

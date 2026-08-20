@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,8 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import { createPostgresQuoteDraftRepository } from '../../api/_infrastructure/db/repositories/quote-repository.js';
+import { DEFAULT_QUOTATION_EMAIL_TEMPLATE } from '../../api/_shared/quotation-email-template.js';
+import { createPostgresQuotationLifecycleRepository } from '../../api/_infrastructure/db/repositories/quotation-lifecycle-repository.js';
 import {
   createPostgresQuoteDraftManagementRepository,
   QuoteManagementConflictError,
@@ -20,7 +23,7 @@ import {
   getQuotationTemplateManifest,
   renderQuotationTemplate,
 } from '../../api/_modules/quotation-template-catalog.js';
-import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_infrastructure/db/schema.js';
+import { appSettings, clients, productActivityEvents, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quotationEmailDeliveries, quotations, quotationTemplateVersions, quotationTemplates } from '../../api/_infrastructure/db/schema.js';
 import * as schema from '../../api/_infrastructure/db/schema.js';
 
 const TEST_DATABASE_URL = process.env.TEST_QUOTE_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -358,6 +361,97 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.ok(statusSummary.Enviado >= 1);
     assert.ok(statusSummary.Aprovado >= 1);
     assert.ok(statusSummary.Perdido >= 1);
+
+    const pendingEmailAttemptId = randomUUID();
+    const failedEmailAttemptId = randomUUID();
+    await db.insert(quotationEmailDeliveries).values([
+      {
+        id: pendingEmailAttemptId,
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: 'pending-token',
+        state: 'pending',
+        providerEmailId: null,
+        publicError: null,
+        templateSnapshot: DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+        acceptedAt: new Date('2026-08-17T12:10:00.000Z'),
+        createdAt: new Date('2026-08-17T11:57:00.000Z'),
+        updatedAt: new Date('2026-08-17T11:58:00.000Z'),
+      },
+      {
+        id: failedEmailAttemptId,
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: null,
+        state: 'failed',
+        providerEmailId: null,
+        publicError: 'Falha conhecida.',
+        acceptedAt: new Date('2026-08-17T12:15:00.000Z'),
+        createdAt: new Date('2026-08-17T11:58:00.000Z'),
+        updatedAt: new Date('2026-08-17T11:59:00.000Z'),
+      },
+    ]);
+    const noAcceptedList = await managementList({ page: 1, limit: 50 });
+    const noAcceptedRow = noAcceptedList.rows.find((row) => row.revision_id === updated.revision_id);
+    assert.equal(noAcceptedRow?.email_sent, false);
+    assert.equal(noAcceptedRow?.email_sent_at, null);
+    const noAcceptedDetail = await managementGet(updated.quotation_name);
+    assert.ok(noAcceptedDetail);
+    assert.equal(noAcceptedDetail.email_sent, false);
+    assert.equal(noAcceptedDetail.email_sent_at, null);
+
+    await db.insert(quotationEmailDeliveries).values([
+      {
+        id: randomUUID(),
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: null,
+        state: 'accepted',
+        providerEmailId: 'resend-email-1',
+        publicError: null,
+        acceptedAt: new Date('2026-08-17T12:00:00.000Z'),
+        createdAt: new Date('2026-08-17T11:59:00.000Z'),
+        updatedAt: new Date('2026-08-17T12:00:00.000Z'),
+      },
+      {
+        id: randomUUID(),
+        revisionId: updated.revision_id,
+        recipient: 'cliente@example.com',
+        publicToken: null,
+        state: 'accepted',
+        providerEmailId: 'resend-email-2',
+        publicError: null,
+        acceptedAt: new Date('2026-08-17T12:05:00.000Z'),
+        createdAt: new Date('2026-08-17T12:04:00.000Z'),
+        updatedAt: new Date('2026-08-17T12:05:00.000Z'),
+      },
+    ]);
+    const sentList = await managementList({ page: 1, limit: 50 });
+    const sentRow = sentList.rows.find((row) => row.revision_id === updated.revision_id);
+    assert.equal(sentRow?.email_sent, true);
+    assert.equal(sentRow?.email_sent_at, '2026-08-17T12:05:00.000Z');
+    const sentDetail = await managementGet(updated.quotation_name);
+    assert.ok(sentDetail);
+    assert.equal(sentDetail.email_sent, true);
+    assert.equal(sentDetail.email_sent_at, '2026-08-17T12:05:00.000Z');
+
+    const lifecycle = createPostgresQuotationLifecycleRepository(() => db, {
+      now: () => new Date('2026-08-17T12:01:00.000Z'),
+    });
+    const nextRevision = await lifecycle.createRevision(updated.quotation_name, {
+      source_revision_id: updated.revision_id,
+      concurrency_token: sentDetail.concurrency_token,
+    });
+    const currentList = await managementList({ page: 1, limit: 50 });
+    const currentRow = currentList.rows.find((row) => row.id === updated.quotation_name);
+    assert.equal(currentRow?.revision_id, nextRevision.revision_id);
+    assert.equal(currentRow?.email_sent, false);
+    assert.equal(currentRow?.email_sent_at, null);
+    const currentDetail = await managementGet(updated.quotation_name);
+    assert.equal(currentDetail?.revision_id, nextRevision.revision_id);
+    assert.equal(currentDetail?.email_sent, false);
+    assert.equal(currentDetail?.email_sent_at, null);
+
     const [product] = await db.select().from(products).where(eq(products.sku, sku));
     const [tier] = await db.select().from(productPricingTiers).where(eq(productPricingTiers.productSku, sku));
     const [settingsAfter] = await db.select().from(appSettings).where(eq(appSettings.singletonId, 1));

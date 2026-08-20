@@ -1,0 +1,6 @@
+ALTER TABLE "app_settings" ADD COLUMN "quotation_email_template" jsonb DEFAULT '{"subject":"Orçamento {{numero_orcamento}} - Aspen","greeting":"Olá, {{nome_cliente}}.","message":"Segue o orçamento {{numero_orcamento}} em anexo.","button_label":"Ver orçamento","signature":"Atenciosamente,\nAspen"}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "quotation_email_deliveries" ADD COLUMN "template_snapshot" jsonb;--> statement-breakpoint
+UPDATE "quotation_email_deliveries"
+SET "template_snapshot" = '{"subject":"Orçamento {{numero_orcamento}} - Aspen","greeting":"Olá, {{nome_cliente}}.","message":"Segue o orçamento {{numero_orcamento}} em anexo.","button_label":"Ver orçamento","signature":"Atenciosamente,\nAspen"}'::jsonb
+WHERE "state" = 'pending' AND "template_snapshot" IS NULL;--> statement-breakpoint
+ALTER TABLE "quotation_email_deliveries" ADD CONSTRAINT "quotation_email_deliveries_template_snapshot_check" CHECK (("quotation_email_deliveries"."state" = 'pending' AND "quotation_email_deliveries"."template_snapshot" IS NOT NULL) OR ("quotation_email_deliveries"."state" IN ('accepted', 'failed') AND "quotation_email_deliveries"."template_snapshot" IS NULL));

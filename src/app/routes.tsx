@@ -14,6 +14,7 @@ import {
 import { matchSegments, prefix } from '@/app/match-route';
 import LoginPage from '@/app/LoginPage';
 import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
+import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
 
 const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage'));
 const QuotationsPage = lazy(() => import('@/features/quotations/pages/QuotationsPage'));
@@ -33,6 +34,7 @@ const WhatsAppInboxPage = lazy(() => import('@/features/whatsapp/pages/WhatsAppI
 export interface RouteContext {
   navigate: (hash: string) => void;
   params: Record<string, string>;
+  setNavigationGuard: SetHashRouteGuard;
 }
 
 export interface AppRoute {
@@ -129,7 +131,7 @@ export const routes: AppRoute[] = [
   {
     path: '/comunicacao',
     suspense: true,
-    render: () => <ComunicacaoPage />,
+    render: ({ setNavigationGuard }) => <ComunicacaoPage setNavigationGuard={setNavigationGuard} />,
     nav: { label: 'Comunicação', icon: MessageCircle, section: 'Outros' },
   },
   {

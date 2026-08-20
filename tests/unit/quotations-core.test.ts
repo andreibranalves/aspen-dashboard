@@ -9,6 +9,10 @@ import {
   QuoteManagementConflictError,
   QuoteManagementInputError,
 } from '../../api/_infrastructure/db/repositories/quote-draft-management-repository.js';
+import {
+  projectQuotationDetail,
+  projectQuotationListRow,
+} from '../../src/lib/localProjections.ts';
 
 function event(method: string, query: Record<string, string> = {}, body = '') {
   return {
@@ -47,6 +51,88 @@ const detail = {
   concurrency_token: '2026-07-01T12:00:00.000Z',
   updated_at: '2026-07-01T12:00:00.000Z',
 };
+
+const projectionSections = {
+  schema_version: 1,
+  prazo_producao: { base: { enabled: true, title: 'Prazo' }, current: { enabled: true, title: 'Prazo' } },
+  pagamento: { base: { enabled: true, title: 'Pagamento', body: '' }, current: { enabled: true, title: 'Pagamento', body: '' } },
+  condicoes_gerais: { base: { enabled: true, title: 'Condições', body: '' }, current: { enabled: true, title: 'Condições', body: '' } },
+};
+
+const quotationProjectionPayload = {
+  id: 'ORC-20260001',
+  quotation_id: 'ORC-20260001',
+  quotation_uuid: '11111111-1111-4111-8111-111111111111',
+  revision_id: '22222222-2222-4222-8222-222222222222',
+  revision: 1,
+  revision_number: 1,
+  status: 'Enviado',
+  status_canonical: 'enviado',
+  cliente: 'Cliente Teste',
+  client_id: 'client-1',
+  cliente_snapshot: {
+    id: 'client-1',
+    nome: 'Cliente Teste',
+    email: 'cliente@example.com',
+    telefone: '5511999999999',
+  },
+  data: '2026-08-17',
+  validade: '2026-09-01',
+  validade_dias: 15,
+  pagamento: '',
+  entrega: '',
+  frete_padrao: '0.00',
+  frete: '0.00',
+  observacoes: '',
+  prazo_producao: '',
+  template_key: 'padrao',
+  template_hash: 'a'.repeat(64),
+  template_version_id: null,
+  template_version: null,
+  secoes: projectionSections,
+  subtotal: '9.00',
+  total: '9.00',
+  valor: '9.00',
+  items: [{ item_code: 'SKU-1', item_name: 'Produto', qty: '1.000', rate: '9.00', suggested_unit_price: '9.00', applied_unit_price: '9.00', price_difference: '0.00', line_total: '9.00', manual_rate: false }],
+  revision_history: [],
+  derived_expired: false,
+  expiration_derived: false,
+  is_expired: false,
+  expirada: false,
+  concurrency_token: '2026-08-17T12:00:00.000Z',
+};
+
+test('quotation projections preserve accepted email markers and client snapshot contact', () => {
+  const source = {
+    ...quotationProjectionPayload,
+    email_sent: true,
+    email_sent_at: '2026-08-17T12:00:00.000Z',
+  };
+  const list = projectQuotationListRow(source);
+  assert.equal(list?.email_sent, true);
+  assert.equal(list?.email_sent_at, '2026-08-17T12:00:00.000Z');
+  const projected = projectQuotationDetail(source);
+  assert.equal(projected?.data.email, 'cliente@example.com');
+  assert.equal(projected?.data.telefone, '5511999999999');
+  assert.equal(projected?.data.email_sent, true);
+  assert.equal(projected?.data.email_sent_at, '2026-08-17T12:00:00.000Z');
+});
+
+test('quotation projections fall back for responses without email markers', () => {
+  const list = projectQuotationListRow(quotationProjectionPayload);
+  assert.equal(list?.email_sent, false);
+  assert.equal(list?.email_sent_at, null);
+  const projected = projectQuotationDetail(quotationProjectionPayload);
+  assert.equal(projected?.data.email_sent, false);
+  assert.equal(projected?.data.email_sent_at, null);
+  const invalidDate = projectQuotationDetail({
+    ...quotationProjectionPayload,
+    email_sent: true,
+    email_sent_at: 'invalid-date',
+  });
+  assert.equal(invalidDate?.data.email_sent, true);
+  assert.equal(invalidDate?.data.email_sent_at, null);
+});
 
 test('quotations core lists and opens persisted local drafts', async () => {
   const calls: string[] = [];

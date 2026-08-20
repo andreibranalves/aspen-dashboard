@@ -20,6 +20,7 @@ function coreDetail(overrides = {}) {
     status_canonical: 'enviado',
     cliente: 'Cliente PostgreSQL Cutover',
     client_id: '33333333-3333-4333-8333-333333333342',
+    cliente_snapshot: { id: '33333333-3333-4333-8333-333333333342', nome: 'Cliente PostgreSQL Cutover' },
     validade_dias: 15,
     validade: '2026-08-23',
     data: '2026-08-08',

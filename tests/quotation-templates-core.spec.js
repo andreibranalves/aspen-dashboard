@@ -15,6 +15,7 @@ function coreDetail(overrides = {}) {
     status_canonical: 'rascunho',
     cliente: 'Cliente core',
     client_id: '33333333-3333-4333-8333-333333333333',
+    cliente_snapshot: { id: '33333333-3333-4333-8333-333333333333', nome: 'Cliente core' },
     validade_dias: 15,
     validade: '2026-07-16',
     data: '2026-07-01',

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 
 import { getDatabase, type AppDatabase } from '../client.js';
@@ -10,6 +10,7 @@ import {
   productPricingTiers,
   quoteRevisionItems,
   quoteRevisions,
+  quotationEmailDeliveries,
   quotations,
   quotationTemplateVersions,
   quotationTemplates,
@@ -136,6 +137,8 @@ export interface QuoteDraftManagementListRow {
   frete: string;
   status: string;
   status_canonical: string;
+  email_sent: boolean;
+  email_sent_at: string | null;
   updated_at: string;
   updatedAt: string;
   concurrency_token: string;
@@ -194,6 +197,8 @@ export interface QuoteDraftManagementDetail {
   client_id: string;
   cliente_id: string;
   cliente_snapshot: Record<string, unknown>;
+  email_sent: boolean;
+  email_sent_at: string | null;
   data: string;
   validade: string;
   validity_date: string;
@@ -752,6 +757,19 @@ export async function readPostgresQuotationDetail(
   if (!quotation) return null;
   const revision = await readRevision(tx, quotation.id);
   if (!revision) return null;
+  const [acceptedEmail] = await tx
+    .select({ acceptedAt: quotationEmailDeliveries.acceptedAt })
+    .from(quotationEmailDeliveries)
+    .where(
+      and(
+        eq(quotationEmailDeliveries.revisionId, revision.id),
+        eq(quotationEmailDeliveries.state, 'accepted'),
+        isNotNull(quotationEmailDeliveries.acceptedAt),
+      ),
+    )
+    .orderBy(desc(quotationEmailDeliveries.acceptedAt))
+    .limit(1);
+  const emailSentAt = acceptedEmail?.acceptedAt ? asDate(acceptedEmail.acceptedAt) : null;
   const [client] = await tx
     .select()
     .from(clients)
@@ -803,6 +821,8 @@ export async function readPostgresQuotationDetail(
     client_id: quotation.clientId,
     cliente_id: quotation.clientId,
     cliente_snapshot: snapshot,
+    email_sent: emailSentAt !== null,
+    email_sent_at: emailSentAt?.toISOString() || null,
     data: asIso(quotation.createdAt).slice(0, 10),
     validade: currentValidityDate,
     validity_date: currentValidityDate,
@@ -1026,12 +1046,31 @@ async function listRows(
     );
   });
   const total = candidates.length;
-  const rows = candidates
-    .slice((page - 1) * limit, page * limit)
-    .map(({ quotation, revision, client, name }) => {
+  const pageCandidates = candidates.slice((page - 1) * limit, page * limit);
+  const currentRevisionIds = pageCandidates.map(({ revision }) => revision.id);
+  const acceptedEmailRows = currentRevisionIds.length
+    ? await tx
+        .select()
+        .from(quotationEmailDeliveries)
+        .where(
+          and(
+            inArray(quotationEmailDeliveries.revisionId, currentRevisionIds),
+            eq(quotationEmailDeliveries.state, 'accepted'),
+          ),
+        )
+    : [];
+  const latestEmailByRevision = new Map<string, Date>();
+  for (const delivery of acceptedEmailRows) {
+    if (!delivery.acceptedAt) continue;
+    const acceptedAt = asDate(delivery.acceptedAt);
+    const current = latestEmailByRevision.get(delivery.revisionId);
+    if (!current || acceptedAt > current) latestEmailByRevision.set(delivery.revisionId, acceptedAt);
+  }
+  const rows = pageCandidates.map(({ quotation, revision, client, name }) => {
       const updatedAt = asIso(quotation.updatedAt);
       const rawStatus = quotation.status === 'rascunho' ? revision.status : quotation.status;
       const canonicalStatus = canonicalQuotationStatus(rawStatus);
+      const emailSentAt = latestEmailByRevision.get(revision.id) || null;
       return {
         id: quotation.businessNumber,
         quotation_id: quotation.businessNumber,
@@ -1052,6 +1091,8 @@ async function listRows(
         status: statusUi(canonicalStatus),
         status_legacy: canonicalStatus === 'emitido' ? 'enviado' : canonicalStatus,
         status_canonical: canonicalStatus,
+        email_sent: emailSentAt !== null,
+        email_sent_at: emailSentAt?.toISOString() || null,
         updated_at: updatedAt,
         updatedAt,
         concurrency_token: tokenFor(quotation.updatedAt),

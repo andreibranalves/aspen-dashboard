@@ -19,6 +19,13 @@ function detail(overrides = {}) {
     status_canonical: 'emitido',
     cliente: 'Cliente lifecycle',
     client_id: '33333333-3333-4333-8333-333333333333',
+    cliente_snapshot: {
+      id: '33333333-3333-4333-8333-333333333333',
+      nome: 'Cliente lifecycle',
+      email: 'original@example.com',
+    },
+    email_sent: false,
+    email_sent_at: null,
     validade_dias: 15,
     validade: '2026-07-16',
     data: '2026-07-01',
@@ -111,6 +118,350 @@ async function routeTemplates(page) {
     });
   });
 }
+
+test('operator confirms editable email and sends the current issued revision', async ({ page }) => {
+  const sentBodies = [];
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    status: 'Enviado',
+    status_canonical: 'emitido',
+    email: 'original@example.com',
+    email_sent: false,
+    email_sent_at: null,
+  })));
+  await page.route('**/api/send-quotation-email', async (route) => {
+    sentBodies.push(route.request().postDataJSON());
+    await fulfillJson(route, {
+      success: true,
+      delivery: {
+        state: 'accepted',
+        recipient: 'corrigido@example.com',
+        accepted_at: '2026-08-17T12:00:00.000Z',
+      },
+    });
+  });
+
+  await page.goto('/#/quotations/ORC-42');
+  await page.getByRole('button', { name: 'Enviar por e-mail' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  await expect(dialog.getByLabel('E-mail do destinatário')).toHaveValue('original@example.com');
+  await dialog.getByLabel('E-mail do destinatário').fill('corrigido@example.com');
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+
+  await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
+  expect(sentBodies).toHaveLength(1);
+  expect(sentBodies[0]).toMatchObject({
+    revision_id: detail().revision_id,
+    recipient: 'corrigido@example.com',
+  });
+  expect(sentBodies[0].attempt_id).toMatch(/^[0-9a-f-]{36}$/i);
+});
+
+test('operator retries an ambiguous quotation email with the same attempt', async ({ page }) => {
+  const sentBodies = [];
+  let sendCount = 0;
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    email_sent: false,
+    email_sent_at: null,
+  })));
+  await page.route('**/api/send-quotation-email', async (route) => {
+    sentBodies.push(route.request().postDataJSON());
+    sendCount += 1;
+    if (sendCount === 1) {
+      await fulfillJson(route, {
+        error: 'O resultado do envio não pôde ser confirmado. Tente novamente.',
+        retry_same_attempt: true,
+      }, 503);
+      return;
+    }
+    await fulfillJson(route, {
+      success: true,
+      delivery: {
+        state: 'accepted',
+        recipient: 'corrigido@example.com',
+        accepted_at: '2026-08-17T12:00:00.000Z',
+      },
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Enviar por e-mail' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  await dialog.getByLabel('E-mail do destinatário').fill('corrigido@example.com');
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('O resultado do envio não pôde ser confirmado. Tente novamente.');
+  const firstAttemptId = sentBodies[0].attempt_id;
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
+  expect(sentBodies).toHaveLength(2);
+  expect(firstAttemptId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(sentBodies[1].attempt_id).toBe(firstAttemptId);
+  expect(sentBodies[0].recipient).toBe('corrigido@example.com');
+  expect(sentBodies[1].recipient).toBe('corrigido@example.com');
+});
+
+test('operator starts a new quotation email attempt after a confirmed failure', async ({ page }) => {
+  const sentBodies = [];
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    email_sent: false,
+    email_sent_at: null,
+  })));
+  await page.route('**/api/send-quotation-email', async (route) => {
+    sentBodies.push(route.request().postDataJSON());
+    await fulfillJson(route, {
+      error: 'A Resend não aceitou o e-mail.',
+      retry_same_attempt: false,
+    }, 502);
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Enviar por e-mail' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Não foi possível enviar o e-mail. Tente novamente.');
+  const firstAttemptId = sentBodies[0].attempt_id;
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Não foi possível enviar o e-mail. Tente novamente.');
+  expect(sentBodies).toHaveLength(2);
+  expect(firstAttemptId).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(sentBodies[1].attempt_id).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(sentBodies[1].attempt_id).not.toBe(firstAttemptId);
+});
+
+test('quotation email dialog traps focus, validates, cancels, and locks while sending', async ({ page }) => {
+  const sentBodies = [];
+  let releaseSend = () => {};
+  const sendStarted = new Promise((resolve) => {
+    releaseSend = resolve;
+  });
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    email_sent: false,
+    email_sent_at: null,
+  })));
+  await page.route('**/api/send-quotation-email', async (route) => {
+    sentBodies.push(route.request().postDataJSON());
+    await sendStarted;
+    await fulfillJson(route, {
+      success: true,
+      delivery: {
+        state: 'accepted',
+        recipient: 'valid@example.com',
+        accepted_at: '2026-08-17T12:00:00.000Z',
+      },
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  const opener = page.getByRole('button', { name: 'Enviar por e-mail' });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  const input = dialog.getByLabel('E-mail do destinatário');
+  const submit = dialog.getByRole('button', { name: 'Enviar e-mail' });
+  await expect(input).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(submit).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(input).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' })
+    .getByRole('button', { name: 'Cancelar' }).click();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page.getByRole('button', { name: 'Fechar envio por e-mail' }).click({ position: { x: 5, y: 5 } });
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await input.fill('');
+  await submit.click();
+  await expect.poll(() => input.evaluate((element) => element.matches(':invalid'))).toBe(true);
+  expect(sentBodies).toHaveLength(0);
+
+  await input.fill('valid@example.com');
+  await submit.click();
+  await expect.poll(() => sentBodies.length).toBe(1);
+  await expect(input).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Cancelar' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Enviando...' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Fechar envio por e-mail' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+
+  releaseSend();
+  await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test('quotation email preserves ambiguous recipient and rotates attempt when changed', async ({ page }) => {
+  const sentBodies = [];
+  let sendCount = 0;
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    email_sent: false,
+    email_sent_at: null,
+  })));
+  await page.route('**/api/send-quotation-email', async (route) => {
+    sentBodies.push(route.request().postDataJSON());
+    sendCount += 1;
+    if (sendCount === 1) {
+      await fulfillJson(route, {
+        error: 'O resultado do envio não pôde ser confirmado. Tente novamente.',
+        retry_same_attempt: true,
+      }, 503);
+      return;
+    }
+    await fulfillJson(route, {
+      success: true,
+      delivery: {
+        state: 'accepted',
+        recipient: 'second@example.com',
+        accepted_at: '2026-08-17T12:00:00.000Z',
+      },
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  const opener = page.getByRole('button', { name: 'Enviar por e-mail' });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  const input = dialog.getByLabel('E-mail do destinatário');
+  await input.fill('first@example.com');
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('O resultado do envio não pôde ser confirmado. Tente novamente.');
+  await dialog.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  const reopenedDialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  const reopenedInput = reopenedDialog.getByLabel('E-mail do destinatário');
+  await expect(reopenedInput).toHaveValue('first@example.com');
+  await reopenedInput.fill('second@example.com');
+  await reopenedDialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
+  expect(sentBodies).toHaveLength(2);
+  expect(sentBodies[0].recipient).toBe('first@example.com');
+  expect(sentBodies[1].recipient).toBe('second@example.com');
+  expect(sentBodies[1].attempt_id).toMatch(/^[0-9a-f-]{36}$/i);
+  expect(sentBodies[1].attempt_id).not.toBe(sentBodies[0].attempt_id);
+});
+
+test('accepted quotation email feedback survives a failed authoritative reload', async ({ page }) => {
+  let quotationGets = 0;
+  let reloadFailed = false;
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', async (route) => {
+    quotationGets += 1;
+    if (reloadFailed) {
+      await fulfillJson(route, { error: 'upstream reload failure' }, 503);
+      return;
+    }
+    await fulfillJson(route, detail({ email_sent: false, email_sent_at: null }));
+  });
+  await page.route('**/api/send-quotation-email', (route) => {
+    reloadFailed = true;
+    return fulfillJson(route, {
+      success: true,
+      delivery: {
+        state: 'accepted',
+        recipient: 'original@example.com',
+        accepted_at: '2026-08-17T12:00:00.000Z',
+      },
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Enviar por e-mail' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect.poll(() => quotationGets).toBeGreaterThan(1);
+  await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
+  await expect(page.getByText('Erro ao carregar orçamento')).toHaveCount(0);
+  await expect(page.getByText('Não foi possível atualizar o orçamento. Exibindo os dados anteriores.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reenviar por e-mail' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enviar por e-mail', exact: true })).toHaveCount(0);
+});
+
+test('quotation email network failures show only a safe Portuguese message', async ({ page }) => {
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    email_sent: false,
+    email_sent_at: null,
+  })));
+  await page.route('**/api/send-quotation-email', (route) => route.abort('failed'));
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Enviar por e-mail' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' });
+  await dialog.getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Não foi possível enviar o e-mail. Tente novamente.');
+  await expect(dialog.getByText(/Failed to fetch|NetworkError|ERR_FAILED|fetch failed/i)).toHaveCount(0);
+});
+
+test('authoritative quotation email reload changes the action to resend', async ({ page }) => {
+  let authoritative = detail({ email_sent: false, email_sent_at: null });
+  let quotationGets = 0;
+  let sent = false;
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', async (route) => {
+    quotationGets += 1;
+    await fulfillJson(route, authoritative);
+  });
+  await page.route('**/api/send-quotation-email', async (route) => {
+    sent = true;
+    authoritative = detail({ email_sent: true, email_sent_at: '2026-08-17T12:00:00.000Z' });
+    await fulfillJson(route, {
+      success: true,
+      delivery: {
+        state: 'accepted',
+        recipient: 'original@example.com',
+        accepted_at: '2026-08-17T12:00:00.000Z',
+      },
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await page.getByRole('button', { name: 'Enviar por e-mail' }).click();
+  await page.getByRole('dialog', { name: 'Enviar orçamento por e-mail' })
+    .getByRole('button', { name: 'Enviar e-mail' }).click();
+  await expect.poll(() => sent).toBe(true);
+  await expect.poll(() => quotationGets).toBeGreaterThan(1);
+  await expect(page.getByText('E-mail aceito para envio.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reenviar por e-mail' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Enviar por e-mail', exact: true })).toHaveCount(0);
+});
+
+test('draft quotations do not expose the email action', async ({ page }) => {
+  await routeTemplates(page);
+  await page.route('**/api/communication-flows**', (route) => fulfillJson(route, { flows: [] }));
+  await page.route('**/api/quotations?id=*', (route) => fulfillJson(route, detail({
+    status: 'Rascunho',
+    status_canonical: 'rascunho',
+    email_sent: false,
+    email_sent_at: null,
+  })));
+
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByRole('button', { name: 'Enviar por e-mail', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reenviar por e-mail', exact: true })).toHaveCount(0);
+});
 
 test('core quotation detail accepts JSON-string section snapshots from PostgreSQL @quotations @critical', async ({ page }) => {
   await page.route('**/api/settings**', async (route) => {

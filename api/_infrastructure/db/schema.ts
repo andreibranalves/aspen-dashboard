@@ -21,6 +21,10 @@ import {
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from '../../_modules/quotation-content.js';
+import {
+  DEFAULT_QUOTATION_EMAIL_TEMPLATE,
+  type QuotationEmailTemplate,
+} from '../../_shared/quotation-email-template.js';
 import type { QuotationStatus } from '../../_modules/quotation-status.js';
 
 /**
@@ -39,6 +43,10 @@ export const appSettings = pgTable(
       .$type<QuotationSectionsSettings>()
       .notNull()
       .default(DEFAULT_QUOTATION_SECTIONS),
+    quotationEmailTemplate: jsonb('quotation_email_template')
+      .$type<QuotationEmailTemplate>()
+      .notNull()
+      .default(DEFAULT_QUOTATION_EMAIL_TEMPLATE),
     // Keep currency exact all the way through PostgreSQL. Drizzle's default
     // numeric mode maps this column to a string instead of a JavaScript float.
     fretePadrao: numeric('frete_padrao', { precision: 14, scale: 2 }).notNull().default('0.00'),
@@ -419,6 +427,44 @@ export const quotationDeliveries = pgTable(
     check(
       'quotation_deliveries_state_check',
       sql`${table.state} IN ('pending', 'transporting', 'accepted_partial', 'completed', 'retryable', 'reconciling')`
+    ),
+  ]
+);
+
+export const quotationEmailDeliveries = pgTable(
+  'quotation_email_deliveries',
+  {
+    id: uuid('id').primaryKey(),
+    revisionId: uuid('revision_id')
+      .notNull()
+      .references(() => quoteRevisions.id, { onDelete: 'cascade' }),
+    recipient: varchar('recipient', { length: 254 }).notNull(),
+    publicToken: text('public_token'),
+    state: text('state').notNull(),
+    providerEmailId: text('provider_email_id').unique(),
+    publicError: text('public_error'),
+    templateSnapshot: jsonb('template_snapshot').$type<QuotationEmailTemplate>(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'quotation_email_deliveries_state_check',
+      sql`${table.state} IN ('pending', 'accepted', 'failed')`
+    ),
+    check(
+      'quotation_email_deliveries_public_token_check',
+      sql`(${table.state} = 'pending' AND btrim(${table.publicToken}) <> '') OR (${table.state} IN ('accepted', 'failed') AND ${table.publicToken} IS NULL)`
+    ),
+    check(
+      'quotation_email_deliveries_template_snapshot_check',
+      sql`(${table.state} = 'pending' AND ${table.templateSnapshot} IS NOT NULL) OR (${table.state} IN ('accepted', 'failed') AND ${table.templateSnapshot} IS NULL)`,
+    ),
+    index('quotation_email_deliveries_revision_state_accepted_idx').on(
+      table.revisionId,
+      table.state,
+      table.acceptedAt
     ),
   ]
 );

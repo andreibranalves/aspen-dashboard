@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { routes } from '../../api/_app/routes.js';
 
-test('routes: 42 nomes únicos e bem formados', () => {
+test('routes: 44 nomes únicos e bem formados', () => {
   const names = Object.keys(routes);
-  assert.equal(names.length, 42);
+  assert.equal(names.length, 44);
   assert.equal(new Set(names).size, names.length, 'nomes duplicados');
   for (const name of names) assert.match(name, /^[a-z][a-z0-9-]*$/, name);
 });
