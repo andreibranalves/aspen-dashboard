@@ -6,7 +6,6 @@ import {
   Heading,
   Hr,
   Html,
-  Link,
   Preview,
   Section,
   Text,
@@ -48,18 +47,14 @@ function QuotationEmail({ customerName, businessNumber, publicUrl }: QuotationEm
             <Text style={{ color: '#1f2937', fontSize: '16px', lineHeight: '24px', margin: '0 0 24px' }}>
               Segue o orçamento {businessNumber} para sua avaliação.
             </Text>
-            <Button
-              href={publicUrl}
-              style={{ backgroundColor: '#166534', borderRadius: '6px', color: '#ffffff', display: 'inline-block', fontSize: '16px', fontWeight: '700', padding: '12px 18px', textDecoration: 'none' }}
-            >
-              Ver orçamento
-            </Button>
-            <Text style={{ color: '#4b5563', fontSize: '14px', lineHeight: '21px', margin: '24px 0 4px' }}>
-              Se o botão não funcionar, copie e cole este link no navegador:
-            </Text>
-            <Link href={publicUrl} style={{ color: '#166534', fontSize: '14px', lineHeight: '21px', wordBreak: 'break-all' }}>
-              {publicUrl}
-            </Link>
+            <Section data-skip-in-text="true">
+              <Button
+                href={publicUrl}
+                style={{ backgroundColor: '#166534', borderRadius: '6px', color: '#ffffff', display: 'inline-block', fontSize: '16px', fontWeight: '700', padding: '12px 18px', textDecoration: 'none' }}
+              >
+                Ver orçamento
+              </Button>
+            </Section>
             <Hr style={{ borderColor: '#e5e7eb', margin: '28px 0 20px' }} />
             <Text style={{ color: '#4b5563', fontSize: '14px', lineHeight: '21px', margin: '0 0 16px' }}>
               O PDF do orçamento está anexado a este e-mail.

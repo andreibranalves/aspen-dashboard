@@ -205,7 +205,7 @@ test('new attempt reserves and sends the code-defined rendered payload', async (
   assert.equal(result.statusCode, 200);
   assert.equal(transportInput?.subject, 'Orçamento ORC-42 - Aspen');
   assert.match(String(transportInput?.html), /Cliente Teste/);
-  assert.match(String(transportInput?.text), /https:\/\/localhost:5173\/api\/public-quotation/);
+  assert.doesNotMatch(String(transportInput?.text), /https:\/\/localhost:5173\/api\/public-quotation/);
   assert.deepEqual(calls, ['reserve', 'transport', 'markAccepted']);
 });
 

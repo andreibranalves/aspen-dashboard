@@ -16,8 +16,8 @@ test('renders a readable quotation email with HTML and plain text alternatives',
   assert.match(rendered.html, /&lt;Maria &amp; Filhos&gt;/);
   assert.match(rendered.html, /ORC-42/);
   assert.match(rendered.html, /href="https:\/\/app\.example\.com\/api\/public-quotation\?token=abc"/);
-  assert.match(rendered.html, /Se o botão não funcionar/);
+  assert.doesNotMatch(rendered.html, />https:\/\/app\.example\.com\/api\/public-quotation\?token=abc</);
   assert.match(rendered.text, /ORC-42/);
-  assert.match(rendered.text, /https:\/\/app\.example\.com\/api\/public-quotation\?token=abc/);
+  assert.doesNotMatch(rendered.text, /https:\/\/app\.example\.com\/api\/public-quotation\?token=abc/);
   assert.match(rendered.text, /PDF do orçamento está anexado/);
 });
