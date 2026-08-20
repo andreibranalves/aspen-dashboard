@@ -83,7 +83,7 @@ function QuotationEmail({ customerName, businessNumber, publicUrl }: QuotationEm
           </Section>
           <Section style={{ padding: '32px 28px 30px' }}>
             <Text style={{ color: '#3f4a5c', fontSize: '16px', lineHeight: '25px', margin: '0 0 20px' }}>
-              Olá, {customerName}, tudo bem?
+              <strong>Olá, {customerName}, tudo bem?</strong>
             </Text>
             <Text style={{ color: '#3f4a5c', fontSize: '15px', lineHeight: '24px', margin: '0 0 20px' }}>
               Recebemos seu pedido de orçamento para nossos personalizados e estamos retornando com sua proposta de orçamento em anexo.
@@ -118,6 +118,10 @@ function QuotationEmail({ customerName, businessNumber, publicUrl }: QuotationEm
               <Link href="mailto:contato@aspenestamparia.com" style={{ color: '#1e3159', textDecoration: 'none' }}>
                 E-mail: contato@aspenestamparia.com
               </Link>
+            </Text>
+            <Text style={{ color: '#3f4a5c', fontSize: '14px', lineHeight: '22px', margin: '28px 0 0' }}>
+              Atenciosamente,<br />
+              <strong style={{ color: '#1e3159' }}>Aspen Estamparia</strong>
             </Text>
           </Section>
         </Container>
