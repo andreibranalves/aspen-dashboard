@@ -21,6 +21,7 @@ import {
   type QuotationTemplateViewModel,
 } from '../../../_modules/quotation-template-catalog.js';
 import { renderQuotationPdf } from '../../../_modules/quotation-pdf-renderer.js';
+import { buildComparison } from './quotation-template-repository.js';
 import {
   isValidPdfBuffer,
   MAX_QUOTATION_PDF_BYTES,
@@ -337,6 +338,7 @@ function revisionViewModel(
     unidade: item.produtoUnidade,
     unit: item.produtoUnidade,
     qty: Number(item.quantidade),
+    tier_minimum: item.precoMinimoFaixa || '',
     quantidade: Number(item.quantidade),
     quantity: formatQuotationQuantity(item.quantidade),
     unit_price: money(item.precoAplicado),
@@ -386,6 +388,9 @@ function revisionViewModel(
     secoes: sections,
     sections_snapshot: sections,
     subtotal: revision.subtotal, freight: revision.frete, frete: revision.frete, total: revision.total,
+    comparison: buildComparison(
+      itemView.map((item) => ({ ...item, qty: String(item.qty) }))
+    ),
     display: { quote_date: formatQuotationDate(issuedAt), validity_date: formatQuotationDate(until), subtotal, freight, total },
   };
 }

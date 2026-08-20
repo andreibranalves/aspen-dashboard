@@ -38,8 +38,17 @@ function pdfWithEof(): Buffer {
 const SECTION_TEMPLATE = '<!doctype html><html><body>{{quote_number}} {{client.name}} Telefone: {{client.phone}} Data: {{display.quote_date}} Validade: {{display.validity_date}} {{#each items}}{{name}} Quantidade: {{quantity}}{{/each}} {{display.total}} {{secoes.pagamento.body_html}} {{secoes.condicoes_gerais.body_html}} {{secoes.prazo_producao.value}}</body></html>';
 const SECTION_TEMPLATE_HASH = createHash('sha256').update(SECTION_TEMPLATE).digest('hex');
 
-function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: unknown[]; total?: string } = {}) {
+function fakePreparationDatabase(options: {
+  failRevisionRead?: boolean;
+  items?: unknown[];
+  total?: string;
+  templateKey?: string;
+  templateSource?: string;
+} = {}) {
   const now = new Date('2026-08-13T12:00:00.000Z');
+  const templateKey = options.templateKey || 'test';
+  const templateSource = options.templateSource || SECTION_TEMPLATE;
+  const templateHash = createHash('sha256').update(templateSource).digest('hex');
   const revisionId = '00000000-0000-4000-8000-000000000001';
   const quotationId = '00000000-0000-4000-8000-000000000002';
   const templateVersionId = '00000000-0000-4000-8000-000000000003';
@@ -47,7 +56,7 @@ function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: 
   const revision = {
     id: revisionId, quotationId, version: 1, status: 'emitido', issuedAt: now, createdAt: now,
     validadeDias: 15, pagamento: 'Pix', entrega: '', fretePadrao: '0.00', frete: '0.00',
-    observacoes: '', prazoProducao: '', templatePadrao: 'test', templateHash: SECTION_TEMPLATE_HASH,
+    observacoes: '', prazoProducao: '', templatePadrao: templateKey, templateHash,
     templateVersionId, sectionsSnapshot: null, clienteNome: 'ANDREI ALVES', clienteTelefone: '21999999999',
     clienteEmail: null, clienteDocumento: null, clienteEndereco: null, clienteNumero: null,
     clienteBairro: null, clienteComplemento: null, clienteMunicipio: null, clienteUf: null,
@@ -78,7 +87,7 @@ function fakePreparationDatabase(options: { failRevisionRead?: boolean; items?: 
           revisionReads += 1;
           return new Query([revision], options.failRevisionRead && revisionReads > 1 ? new Error('database read failed') : undefined);
         }
-        if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: SECTION_TEMPLATE, sourceHash: SECTION_TEMPLATE_HASH }]);
+        if (table === quotationTemplateVersions) return new Query([{ id: templateVersionId, source: templateSource, sourceHash: templateHash }]);
         if (table === quoteRevisionItems) return new Query(options.items || []);
         if (table === quotations) return new Query([{ businessNumber: 'ORC-20260001' }]);
         return new Query([]);
@@ -125,6 +134,38 @@ test('delivery PDF formats issue and validity dates for display', async () => {
   assert.match(renderedHtml, /Telefone: \(21\) 99999-9999/);
   assert.match(renderedHtml, /Data: 13\/08\/2026/);
   assert.match(renderedHtml, /Validade: 28\/08\/2026/);
+});
+
+test('delivery PDF supplies comparison data to the comparative template', async () => {
+  const { db, now, revisionId } = fakePreparationDatabase({
+    templateKey: 'comparativo',
+    templateSource: '<!doctype html><html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}} {{#each comparison.brackets}}{{label}}{{/each}} {{#each comparison.products}}{{name}}{{/each}}</body></html>',
+    items: [{
+      id: '00000000-0000-4000-8000-000000000005',
+      position: 0,
+      produtoSku: 'SKU-30',
+      produtoNome: 'Produto comparativo',
+      produtoDescricao: '',
+      produtoUnidade: 'Und',
+      quantidade: '30.000',
+      precoMinimoFaixa: '30',
+      precoAplicado: '10.00',
+      totalLinha: '300.00',
+    }],
+  });
+  let renderedHtml = '';
+  const repository = createPostgresQuotationDeliveryRepository(() => db, {
+    now: () => now,
+    renderPdf: async (html) => {
+      renderedHtml = html;
+      return pdfWithEof();
+    },
+  });
+
+  await repository.prepareDelivery({ revisionId, phone: '5511999990000', flowId: 'flow' });
+
+  assert.match(renderedHtml, /30 - 99/);
+  assert.match(renderedHtml, /Produto comparativo/);
 });
 
 test('delivery PDF removes storage scale from integer quantities', async () => {

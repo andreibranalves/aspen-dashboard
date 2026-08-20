@@ -191,7 +191,7 @@ const COMPARISON_BRACKETS = [
   { minimum: 1000, label: '1000+' },
 ] as const;
 
-type ComparisonItem = {
+export type ComparisonItem = {
   item_code?: string | null;
   name: string;
   description: string;
@@ -222,7 +222,7 @@ function comparisonMinimum(tier: string, quantity: string): number {
   return 30;
 }
 
-function buildComparison(items: ComparisonItem[]) {
+export function buildComparison(items: ComparisonItem[]) {
   const groups = new Map<string, ComparisonGroup>();
   const visible = new Set<number>();
 
