@@ -64,6 +64,24 @@ test('plan freezes rendered text, approved media and exactly one quotation PDF',
   assert.equal(JSON.stringify(plan.steps).includes('base64'), false);
 });
 
+test('plan freezes a WebP quotation reference without binary content', async () => {
+  const plan = await createDeliveryPlan(fixtureInput({
+    flow: {
+      ...fixtureInput().flow!,
+      steps: [{ type: 'document', source: 'quotation_webp', caption: 'Orçamento' }],
+    },
+  }));
+  assert.equal(plan.steps.length, 1);
+  const step = plan.steps[0];
+  assert.equal(step?.type, 'quotation_webp');
+  if (step?.type === 'quotation_webp') {
+    assert.equal(step.payload.fileName, 'ORC-20260001.webp');
+    assert.equal(step.payload.page, 0);
+    assert.equal(step.payload.pageCount, 0);
+  }
+  assert.equal(JSON.stringify(plan.steps).includes('base64'), false);
+});
+
 test('detects banho by category and TBH SKU', () => {
   assert.deepEqual(
     detectCategories([

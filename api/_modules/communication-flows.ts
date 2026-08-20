@@ -12,6 +12,7 @@ import {
   KV_KEY_FLOWS,
   KV_KEY_FLOWS_SELECTED,
   createFlow,
+  QUOTATION_OUTPUTS,
   STEP_TYPES,
 } from './media-schema.js';
 
@@ -117,7 +118,10 @@ function migrateStep(value: unknown): FlowRecord | null {
     template: normalizeProductSummaryTemplate(step.template),
     id: step.id || `step_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
   };
-  if (normalized.type === STEP_TYPES.DOCUMENT && normalized.source !== 'quotation_pdf') {
+  if (
+    normalized.type === STEP_TYPES.DOCUMENT &&
+    !QUOTATION_OUTPUTS.includes(normalized.source as (typeof QUOTATION_OUTPUTS)[number])
+  ) {
     return null;
   }
   return normalized;

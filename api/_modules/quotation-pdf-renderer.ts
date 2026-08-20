@@ -185,4 +185,106 @@ export async function renderQuotationPdf(
   }
 }
 
+const WEBP_PAGE_WIDTH_CSS_PX = 794;
+const WEBP_PAGE_HEIGHT_CSS_PX = 1123;
+const WEBP_DEVICE_SCALE_FACTOR = 2;
+const WEBP_QUALITY = 90;
+const MAX_WEBP_PAGES = 100;
+
+type PuppeteerBrowser = import('puppeteer-core').Browser;
+
+async function captureWebpPages(browser: PuppeteerBrowser, html: string): Promise<Buffer[]> {
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({
+      width: WEBP_PAGE_WIDTH_CSS_PX,
+      height: WEBP_PAGE_HEIGHT_CSS_PX,
+      deviceScaleFactor: WEBP_DEVICE_SCALE_FACTOR,
+    });
+    await page.setContent(html, {
+      waitUntil: 'networkidle0' as unknown as 'load',
+      timeout: 60000,
+    });
+    await page.evaluate('document.fonts.ready');
+    await page.emulateMediaType('print');
+    const contentHeight = Number(
+      await page.evaluate(
+        'Math.max(document.body ? document.body.scrollHeight : 0, document.documentElement.scrollHeight || 0)',
+      ),
+    );
+    const pageCount = Math.max(1, Math.ceil(contentHeight / WEBP_PAGE_HEIGHT_CSS_PX));
+    if (pageCount > MAX_WEBP_PAGES) {
+      throw new Error('O orçamento excede o limite de páginas para imagem.');
+    }
+    const pages: Buffer[] = [];
+    for (let index = 0; index < pageCount; index += 1) {
+      const image = await page.screenshot({
+        type: 'webp',
+        quality: WEBP_QUALITY,
+        captureBeyondViewport: true,
+        clip: {
+          x: 0,
+          y: index * WEBP_PAGE_HEIGHT_CSS_PX,
+          width: WEBP_PAGE_WIDTH_CSS_PX,
+          height: WEBP_PAGE_HEIGHT_CSS_PX,
+        },
+      });
+      pages.push(Buffer.from(image));
+    }
+    return pages;
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+async function webpWithSystemBrowser(html: string): Promise<Buffer[]> {
+  const puppeteer = await import('puppeteer-core');
+  const browser = await puppeteer.launch({
+    args: ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-software-rasterizer'],
+    executablePath: findSystemBrowser()!,
+    timeout: 60000,
+  });
+  try {
+    return await captureWebpPages(browser, html);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+async function webpWithSparticuz(html: string): Promise<Buffer[]> {
+  const [chromiumMod, puppeteer] = await Promise.all([
+    import('@sparticuz/chromium'),
+    import('puppeteer-core'),
+  ]);
+  const chromium = chromiumMod.default;
+  const browser = await puppeteer.launch({
+    args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
+    executablePath: await chromium.executablePath(),
+    timeout: 60000,
+  });
+  try {
+    return await captureWebpPages(browser, html);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+/** Render immutable quotation HTML into one WebP image per A4 page. */
+export async function renderQuotationWebpHtml(html: string): Promise<Buffer[]> {
+  const systemBrowser = findSystemBrowser();
+  if (systemBrowser) {
+    console.log('[quotation-webp] using system browser:', systemBrowser);
+    return webpWithSystemBrowser(html);
+  }
+  console.log('[quotation-webp] system browser not found, using @sparticuz/chromium');
+  try {
+    return await webpWithSparticuz(html);
+  } catch (err) {
+    throw Object.assign(
+      new Error('Falha ao gerar WebP com @sparticuz/chromium: ' + ((err as Error).message || err)),
+      { statusCode: 500 },
+    );
+  }
+}
+
 export const renderQuotationPdfHtml = renderQuotationPdf;

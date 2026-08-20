@@ -185,9 +185,11 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
                   <span className="font-medium text-fg">
                     {step.type === 'quotation_pdf'
                       ? 'PDF do orçamento'
-                      : step.type === 'media'
-                        ? 'Mídia'
-                        : 'Mensagem'}
+                      : step.type === 'quotation_webp'
+                        ? 'Imagem WebP do orçamento'
+                        : step.type === 'media'
+                          ? 'Mídia'
+                          : 'Mensagem'}
                   </span>
                 </div>
                 <p className="mt-1 text-fg-muted">

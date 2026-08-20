@@ -36,6 +36,15 @@ type PreparedDocument = {
   validUntil: Date;
 };
 
+type PreparedImage = {
+  webp: Buffer;
+  webpSize: number;
+  webpSignature: string;
+  page: number;
+  pageCount: number;
+  validUntil: Date;
+};
+
 const identity: DeliveryIdentity = {
   revisionId: '22222222-2222-4222-8222-222222222222',
   flowId: 'flow-test',
@@ -59,6 +68,21 @@ function pdfStep(position: number, delayMs = 0): FrozenDeliveryStep {
       revisionId: identity.revisionId,
       fileName: 'ORC-1.pdf',
       caption: '',
+    },
+    delayMs,
+  };
+}
+
+function webpPlaceholderStep(position: number, delayMs = 0): FrozenDeliveryStep {
+  return {
+    position,
+    type: 'quotation_webp',
+    payload: {
+      revisionId: identity.revisionId,
+      fileName: 'ORC-1.webp',
+      caption: 'Orçamento',
+      page: 0,
+      pageCount: 0,
     },
     delayMs,
   };
@@ -404,20 +428,65 @@ class FakeRepository {
     return count;
   }
 
+  async expandQuotationWebpStep(input: {
+    deliveryId: string;
+    stepId: string;
+    leaseToken: string;
+    steps: Array<Extract<FrozenDeliveryStep, { type: 'quotation_webp' }>>;
+  }): Promise<void> {
+    const row = this.rows.get(input.deliveryId)!;
+    assert.equal(row.leaseToken, input.leaseToken);
+    const index = row.aggregate.steps.findIndex((step) => step.id === input.stepId);
+    assert.ok(index >= 0);
+    const current = row.aggregate.steps[index]!;
+    assert.equal(current.state, 'sending');
+    const now = this.clock();
+    row.snapshots = [
+      ...row.snapshots.slice(0, index),
+      ...input.steps,
+      ...row.snapshots.slice(index + 1),
+    ].map((snapshot, position) => ({ ...snapshot, position }));
+    row.aggregate.steps = [
+      ...row.aggregate.steps.slice(0, index),
+      ...input.steps.map((snapshot, pageIndex) => ({
+        ...current,
+        id: pageIndex === 0 ? current.id : `${current.id}-page-${pageIndex + 1}`,
+        position: index + pageIndex,
+        type: snapshot.type,
+        state: 'queued' as const,
+        attemptCount: 0,
+        publicError: null,
+        nextAttemptAt: pageIndex === 0 ? now : null,
+        reconciliationDeadline: null,
+        acceptedAt: null,
+        deliveredAt: null,
+        readAt: null,
+        updatedAt: now,
+      })),
+      ...row.aggregate.steps.slice(index + 1).map((step) => ({
+        ...step,
+        position: step.position + input.steps.length - 1,
+      })),
+    ];
+    row.leaseToken = undefined;
+    row.leaseUntil = undefined;
+    this.sync(row);
+  }
+
   async resolve(_input: ResolveDeliveryInput): Promise<DeliveryAggregate> {
     throw new Error('not used');
   }
 }
 
 class FakeTransport {
-  readonly calls: Array<{ phone: string; step: FrozenDeliveryStep; document?: unknown }> = [];
+  readonly calls: Array<{ phone: string; step: FrozenDeliveryStep; document?: unknown; image?: unknown }> = [];
   private failures = new Map<number, Error>();
 
   failAt(callNumber: number, error: Error): void {
     this.failures.set(callNumber, error);
   }
 
-  async send(input: { phone: string; step: FrozenDeliveryStep; document?: unknown }) {
+  async send(input: { phone: string; step: FrozenDeliveryStep; document?: unknown; image?: unknown }) {
     this.calls.push(input);
     const failure = this.failures.get(this.calls.length);
     if (failure) throw failure;
@@ -432,10 +501,11 @@ function dependencies(
     repository?: FakeRepository;
     transport?: FakeTransport;
     preparePdf?: (revisionId: string) => Promise<PreparedDocument>;
+    prepareImages?: (revisionId: string) => Promise<PreparedImage[]>;
     logger?: (event: DeliveryLogEvent) => void;
     failAfterAcceptedPersistence?: boolean;
     transportSend?: (
-      input: { phone: string; step: FrozenDeliveryStep; document?: unknown }
+      input: { phone: string; step: FrozenDeliveryStep; document?: unknown; image?: unknown }
     ) => Promise<{ accepted: true; providerMessageId: string }>;
     sleep?: (delayMs: number) => Promise<void>;
   } = {}
@@ -460,6 +530,7 @@ function dependencies(
         pdfSignature: 'test',
         validUntil: new Date(clock.value.getTime() + 86_400_000),
       })),
+    ...(options.prepareImages ? { prepareDeliveryImages: options.prepareImages } : {}),
     now: () => new Date(clock.value),
     instance: 'test-instance',
     logger: options.logger || (() => {}),
@@ -869,6 +940,40 @@ test('PDF is prepared only for the due PDF step and failures are classified befo
   const failed = await permanent.module.enqueue({ ...identity, flowId: 'pdf-permanent' });
   assert.equal(failed.state, 'failed');
   assert.equal(permanent.transport.calls.length, 0);
+});
+
+test('WebP quotation expands into durable page messages without replaying accepted pages', async () => {
+  let prepares = 0;
+  const page = (number: number): PreparedImage => ({
+    webp: Buffer.from(`RIFF-page-${number}-WEBP`),
+    webpSize: `RIFF-page-${number}-WEBP`.length,
+    webpSignature: `page-${number}`,
+    page: number,
+    pageCount: 2,
+    validUntil: new Date(start.getTime() + 86_400_000),
+  });
+  const prepared = dependencies({
+    steps: [webpPlaceholderStep(0)],
+    prepareImages: async () => {
+      prepares += 1;
+      return [page(1), page(2)];
+    },
+  });
+  const first = await prepared.module.enqueue({ ...identity, flowId: 'webp' });
+  assert.equal(first.state, 'provider_accepted');
+  assert.equal(first.steps.length, 2);
+  assert.deepEqual(first.steps.map((step) => [step.position, step.type]), [
+    [0, 'quotation_webp'],
+    [1, 'quotation_webp'],
+  ]);
+  assert.equal(prepares, 1);
+  assert.equal(prepared.transport.calls.length, 2);
+  assert.equal((prepared.transport.calls[0]?.image as PreparedImage).page, 1);
+  assert.equal((prepared.transport.calls[1]?.image as PreparedImage).page, 2);
+  const replay = await prepared.module.enqueue({ ...identity, flowId: 'webp' });
+  assert.equal(replay.id, first.id);
+  assert.equal(prepares, 1);
+  assert.equal(prepared.transport.calls.length, 2);
 });
 
 test('structured logs contain only internal IDs, state, error code and duration', async () => {

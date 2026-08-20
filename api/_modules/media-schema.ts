@@ -31,6 +31,9 @@ export const STEP_TYPES = {
   PRODUCT_MEDIA: 'product_media',
 } as const;
 
+export const QUOTATION_OUTPUTS = ['quotation_pdf', 'quotation_webp'] as const;
+export type QuotationOutput = (typeof QUOTATION_OUTPUTS)[number];
+
 export function createId(prefix = 'media'): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).substring(2, 6);

@@ -12,6 +12,7 @@ import {
 import {
   createPostgresQuotationDeliveryRepository,
   type PreparedDeliveryDocument,
+  type PreparedDeliveryImage,
 } from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import {
@@ -59,6 +60,10 @@ const PDF_PUBLIC_ERRORS: Record<'transient' | 'permanent', string> = {
   transient: 'PDF indisponível. Tentar novamente.',
   permanent: 'A revisão do orçamento não está disponível para envio.',
 };
+const WEBP_PUBLIC_ERRORS: Record<'transient' | 'permanent', string> = {
+  transient: 'Imagem do orçamento indisponível. Tentar novamente.',
+  permanent: 'A revisão do orçamento não está disponível para envio.',
+};
 
 type DeliveryEnqueueInput = DeliveryIdentity & {
   quotationId?: string;
@@ -66,6 +71,7 @@ type DeliveryEnqueueInput = DeliveryIdentity & {
 };
 type DeliveryPlanner = (input: DeliveryPlanInput) => Promise<DeliveryPlan>;
 type DeliveryDocumentPreparer = (revisionId: string) => Promise<PreparedDeliveryDocument>;
+type DeliveryImagePreparer = (revisionId: string) => Promise<PreparedDeliveryImage[]>;
 type QuotationIdentityResolver = (
   revisionId: string
 ) => Promise<{ quotationId: string; businessNumber?: string } | null>;
@@ -100,6 +106,8 @@ export interface QuotationDeliveryModuleDependencies {
   prepareDocument?: DeliveryDocumentPreparer;
   preparePdf?: DeliveryDocumentPreparer;
   pdfRenderer?: DeliveryDocumentPreparer;
+  prepareDeliveryImages?: DeliveryImagePreparer;
+  prepareImages?: DeliveryImagePreparer;
   transport?: DeliveryTransport;
   sendStep?: DeliveryTransport;
   transportDependencies?: EvolutionTransportDependencies;
@@ -241,6 +249,99 @@ function documentFailure(error: unknown): DeliveryStepFailure {
     'QUOTATION_PDF_RENDER',
     PDF_PUBLIC_ERRORS.transient
   );
+}
+
+function imageFailure(error: unknown): DeliveryStepFailure {
+  if (error instanceof DeliveryStepFailure) return error;
+  if (error instanceof EvolutionTransportError) {
+    return new DeliveryStepFailure(
+      error.kind,
+      safeCode(error.code, 'EVOLUTION_UNKNOWN'),
+      PUBLIC_ERRORS[error.kind],
+    );
+  }
+  if (isPermanentRevisionFailure(error)) {
+    return new DeliveryStepFailure(
+      'permanent_pre_transport',
+      'QUOTATION_REVISION_INVALID',
+      WEBP_PUBLIC_ERRORS.permanent,
+    );
+  }
+  return new DeliveryStepFailure(
+    'transient_pre_transport',
+    'QUOTATION_WEBP_RENDER',
+    WEBP_PUBLIC_ERRORS.transient,
+  );
+}
+
+function normalizedImage(
+  value: unknown,
+  now: () => Date,
+  fallbackPage: number,
+  fallbackPageCount: number,
+): PreparedDeliveryImage {
+  const candidate =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Partial<PreparedDeliveryImage>)
+      : null;
+  if (!candidate || !Buffer.isBuffer(candidate.webp) || candidate.webp.length === 0) {
+    throw new DeliveryStepFailure(
+      'transient_pre_transport',
+      'QUOTATION_WEBP_INVALID',
+      WEBP_PUBLIC_ERRORS.transient,
+    );
+  }
+  if (
+    candidate.webpSize !== undefined &&
+    (!Number.isSafeInteger(candidate.webpSize) || candidate.webpSize !== candidate.webp.length)
+  ) {
+    throw new DeliveryStepFailure(
+      'transient_pre_transport',
+      'QUOTATION_WEBP_INVALID',
+      WEBP_PUBLIC_ERRORS.transient,
+    );
+  }
+  if (candidate.validUntil !== undefined) {
+    if (!validDate(candidate.validUntil)) {
+      throw new DeliveryStepFailure(
+        'permanent_pre_transport',
+        'QUOTATION_REVISION_INVALID',
+        WEBP_PUBLIC_ERRORS.permanent,
+      );
+    }
+    if (now().getTime() >= candidate.validUntil.getTime()) {
+      throw new DeliveryStepFailure(
+        'permanent_pre_transport',
+        'QUOTATION_REVISION_EXPIRED',
+        WEBP_PUBLIC_ERRORS.permanent,
+      );
+    }
+  }
+  return {
+    webp: candidate.webp,
+    webpSize: candidate.webpSize === candidate.webp.length ? candidate.webpSize : candidate.webp.length,
+    webpSignature: typeof candidate.webpSignature === 'string' ? candidate.webpSignature : '',
+    page: Number.isSafeInteger(candidate.page) && (candidate.page as number) > 0
+      ? candidate.page as number
+      : fallbackPage,
+    pageCount: Number.isSafeInteger(candidate.pageCount) && (candidate.pageCount as number) > 0
+      ? candidate.pageCount as number
+      : fallbackPageCount,
+    validUntil: validDate(candidate.validUntil)
+      ? candidate.validUntil
+      : new Date(now().getTime() + 1),
+  };
+}
+
+function normalizedImages(value: unknown, now: () => Date): PreparedDeliveryImage[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
+    throw new DeliveryStepFailure(
+      'transient_pre_transport',
+      'QUOTATION_WEBP_INVALID',
+      WEBP_PUBLIC_ERRORS.transient,
+    );
+  }
+  return value.map((item, index) => normalizedImage(item, now, index + 1, value.length));
 }
 
 function normalizedDocument(value: unknown, now: () => Date): PreparedDeliveryDocument {
@@ -421,26 +522,92 @@ export function createQuotationDeliveryModule(
       }).prepareDeliveryDocument;
       return fallbackDocumentPreparer;
     })();
+  let fallbackImagePreparer: DeliveryImagePreparer | undefined;
+  const imagePreparer =
+    dependencies.prepareDeliveryImages ||
+    dependencies.prepareImages ||
+    (() => {
+      fallbackImagePreparer ||= createPostgresQuotationDeliveryRepository(undefined, {
+        now,
+      }).prepareDeliveryImages;
+      return fallbackImagePreparer;
+    })();
   const inFlight = new Map<string, Promise<DeliveryAggregate | null>>();
+  const webpCache = new Map<string, PreparedDeliveryImage[]>();
 
-  async function prepareDocument(
-    claimed: ClaimedDeliveryStep
-  ): Promise<PreparedDeliveryDocument | undefined> {
-    if (claimed.step.snapshot.type !== 'quotation_pdf') return undefined;
-    if (claimed.step.snapshot.payload.revisionId !== claimed.delivery.revisionId) {
+  interface PreparedStep {
+    document?: PreparedDeliveryDocument;
+    image?: PreparedDeliveryImage;
+    expanded?: boolean;
+  }
+
+  async function prepareStep(claimed: ClaimedDeliveryStep): Promise<PreparedStep> {
+    const snapshot = claimed.step.snapshot;
+    if (snapshot.type === 'quotation_pdf') {
+      if (snapshot.payload.revisionId !== claimed.delivery.revisionId) {
+        throw new DeliveryStepFailure(
+          'permanent_pre_transport',
+          'QUOTATION_REVISION_MISMATCH',
+          PDF_PUBLIC_ERRORS.permanent,
+        );
+      }
+      try {
+        return {
+          document: normalizedDocument(
+            await documentPreparer(snapshot.payload.revisionId),
+            now,
+          ),
+        };
+      } catch (error) {
+        throw documentFailure(error);
+      }
+    }
+    if (snapshot.type !== 'quotation_webp') return {};
+    if (snapshot.payload.revisionId !== claimed.delivery.revisionId) {
       throw new DeliveryStepFailure(
         'permanent_pre_transport',
         'QUOTATION_REVISION_MISMATCH',
-        PDF_PUBLIC_ERRORS.permanent
+        WEBP_PUBLIC_ERRORS.permanent,
       );
     }
     try {
-      return normalizedDocument(
-        await documentPreparer(claimed.step.snapshot.payload.revisionId),
-        now
-      );
+      let pages = webpCache.get(claimed.delivery.id);
+      if (!pages) {
+        pages = normalizedImages(await imagePreparer(snapshot.payload.revisionId), now);
+        webpCache.set(claimed.delivery.id, pages);
+      }
+      if (snapshot.payload.page === 0) {
+        const baseName = snapshot.payload.fileName.replace(/\\.webp$/i, '') || 'orcamento';
+        await repository.expandQuotationWebpStep({
+          deliveryId: claimed.delivery.id,
+          stepId: claimed.step.id,
+          leaseToken: claimed.leaseToken,
+          steps: pages.map((page, index) => ({
+            position: snapshot.position + index,
+            type: 'quotation_webp' as const,
+            payload: {
+              revisionId: snapshot.payload.revisionId,
+              fileName: `${baseName}.pagina-${index + 1}.webp`,
+              caption: index === 0 ? snapshot.payload.caption : '',
+              page: index + 1,
+              pageCount: pages!.length,
+            },
+            delayMs: snapshot.delayMs,
+          })),
+        });
+        return { expanded: true };
+      }
+      const page = pages[snapshot.payload.page - 1];
+      if (!page || page.pageCount !== snapshot.payload.pageCount) {
+        throw new DeliveryStepFailure(
+          'transient_pre_transport',
+          'QUOTATION_WEBP_PAGE_INVALID',
+          WEBP_PUBLIC_ERRORS.transient,
+        );
+      }
+      return { image: page };
     } catch (error) {
-      throw documentFailure(error);
+      throw imageFailure(error);
     }
   }
 
@@ -487,16 +654,23 @@ export function createQuotationDeliveryModule(
       const startedAt = Date.now();
       let accepted: EvolutionAccepted;
       try {
-        const document = await prepareDocument(claimed);
+        const prepared = await prepareStep(claimed);
+        if (prepared.expanded) continue;
         const result = transportDependencies
           ? await transport(
-              { phone: claimed.delivery.phone, step: claimed.step.snapshot, document },
-              transportDependencies
+              {
+                phone: claimed.delivery.phone,
+                step: claimed.step.snapshot,
+                document: prepared.document,
+                image: prepared.image,
+              },
+              transportDependencies,
             )
           : await transport({
               phone: claimed.delivery.phone,
               step: claimed.step.snapshot,
-              document,
+              document: prepared.document,
+              image: prepared.image,
             });
         if (
           !result ||
@@ -565,6 +739,8 @@ export function createQuotationDeliveryModule(
 
     if (deliveryId && latest === null) latest = await repository.get(deliveryId);
     else if (deliveryId) latest = (await repository.get(deliveryId)) || latest;
+    const cacheDeliveryId = deliveryId || latest?.id;
+    if (cacheDeliveryId) webpCache.delete(cacheDeliveryId);
     return { aggregate: latest, claims };
   }
 

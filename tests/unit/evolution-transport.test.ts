@@ -124,6 +124,53 @@ test('transport accepts Evolution key.id and requires a prepared quotation docum
   assert.equal(errorOf(error).kind, 'permanent_pre_transport');
 });
 
+test('transport sends a prepared quotation WebP as image media', async () => {
+  let request: { path: string; body: Record<string, unknown> } | undefined;
+  const webpStep: FrozenDeliveryStep = {
+    position: 0,
+    type: 'quotation_webp',
+    payload: {
+      revisionId: 'revision-1',
+      fileName: 'ORC-1.pagina-1.webp',
+      caption: 'Orçamento',
+      page: 1,
+      pageCount: 2,
+    },
+    delayMs: 0,
+  };
+  const image = Buffer.from('RIFF-test-WEBP');
+  const accepted = await sendFrozenStep(
+    {
+      phone: '5511999990000',
+      step: webpStep,
+      image: {
+        webp: image,
+        webpSize: image.length,
+        webpSignature: 'test',
+        page: 1,
+        pageCount: 2,
+        validUntil: new Date(Date.now() + 86_400_000),
+      },
+    },
+    {
+      ...config,
+      fetch: async (input, init) => {
+        request = {
+          path: String(input),
+          body: JSON.parse(String(init?.body || '{}')) as Record<string, unknown>,
+        };
+        return response(200, { key: { id: 'webp-provider-1' }, status: 'PENDING' });
+      },
+    },
+  );
+  assert.deepEqual(accepted, { accepted: true, providerMessageId: 'webp-provider-1' });
+  assert.equal(request?.path, 'https://evolution.test/message/sendMedia/test-instance');
+  assert.equal(request?.body.mediatype, 'image');
+  assert.equal(request?.body.mimetype, 'image/webp');
+  assert.equal(request?.body.fileName, 'ORC-1.pagina-1.webp');
+  assert.equal(request?.body.media, image.toString('base64'));
+});
+
 test('transport converts blocked external writes into a safe pre-transport failure', async () => {
   let calls = 0;
   const error = await rejected(

@@ -73,6 +73,16 @@ function publicFrozenStep(step: DeliveryPlan['steps'][number]): Record<string, u
       caption: step.payload.caption,
     };
   }
+  if (step.type === 'quotation_webp') {
+    return {
+      type: 'image',
+      media: 'quotation_webp',
+      media_ref: 'quotation_webp',
+      generatedMedia: 'quotation_webp',
+      fileName: step.payload.fileName,
+      caption: step.payload.caption,
+    };
+  }
   return {
     type: 'document',
     media: 'quotation_pdf',

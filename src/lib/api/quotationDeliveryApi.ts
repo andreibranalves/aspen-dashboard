@@ -26,7 +26,7 @@ export interface DeliveryListFilters {
 export interface DeliveryStepView {
   id: string;
   position: number;
-  type: 'text' | 'media' | 'quotation_pdf';
+  type: 'text' | 'media' | 'quotation_pdf' | 'quotation_webp';
   state:
     | 'queued'
     | 'sending'
@@ -235,7 +235,7 @@ function parseStep(value: unknown): DeliveryStepView {
   return {
     id: text(value.id, { maximum: 255 }),
     position: integer(value.position, { minimum: 0, maximum: MAX_STEPS - 1 }),
-    type: oneOf(value.type, ['text', 'media', 'quotation_pdf']),
+    type: oneOf(value.type, ['text', 'media', 'quotation_pdf', 'quotation_webp']),
     state: oneOf(value.state, DELIVERY_STEP_STATES),
     attemptCount: integer(value.attempt_count, { minimum: 0, maximum: MAX_ATTEMPTS }),
     publicError:

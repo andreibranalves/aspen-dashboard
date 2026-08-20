@@ -1,6 +1,10 @@
 import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { createHttpError } from '../_shared/http-error.js';
-import { KV_KEY_FLOWS } from './media-schema.js';
+import {
+  KV_KEY_FLOWS,
+  QUOTATION_OUTPUTS,
+  type QuotationOutput,
+} from './media-schema.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import { loadPostgresSendContext } from './send-whatsapp.js';
@@ -207,6 +211,10 @@ function flowEnabled(flow: DeliveryFlow): boolean {
   return flow.enabled !== false && flow.active !== false;
 }
 
+function isQuotationOutput(value: unknown): value is QuotationOutput {
+  return typeof value === 'string' && QUOTATION_OUTPUTS.includes(value as QuotationOutput);
+}
+
 async function defaultResolveFlow(flowId: string): Promise<DeliveryFlow | null> {
   try {
     const flows = await getKvClient().get(KV_KEY_FLOWS);
@@ -389,8 +397,12 @@ export async function createDeliveryPlan(input: DeliveryPlanInput): Promise<Deli
     throw createHttpError(404, 'Fluxo não encontrado.');
   }
   const rawFlowSteps = Array.isArray(flow.steps) ? flow.steps : [];
-  const pdfSteps = rawFlowSteps.filter((step) => step.type === 'document' && step.source === 'quotation_pdf');
-  if (pdfSteps.length !== 1) inputError('O fluxo deve conter exatamente um PDF do orçamento.');
+  const quotationSteps = rawFlowSteps.filter(
+    (step) => step.type === 'document' && isQuotationOutput(step.source),
+  );
+  if (quotationSteps.length !== 1) {
+    inputError('O fluxo deve conter exatamente um PDF ou WebP do orçamento.');
+  }
 
   const baseUrl = firstNonEmpty(input.baseUrl) || DEFAULT_ORIGIN;
   const context = await resolveContext(input, baseUrl);
@@ -431,17 +443,33 @@ export async function createDeliveryPlan(input: DeliveryPlanInput): Promise<Deli
     if (rawStep.type === 'text') {
       const text = renderTemplate(rawStep.template ?? rawStep.text, templateContext).trim();
       if (text) expanded = [{ position: 0, type: 'text', payload: { text }, delayMs: 0 }];
-    } else if (rawStep.type === 'document' && rawStep.source === 'quotation_pdf') {
-      expanded = [{
-        position: 0,
-        type: 'quotation_pdf',
-        payload: {
-          revisionId,
-          fileName: `${businessNumber}.pdf`,
-          caption: renderTemplate(rawStep.caption, templateContext).trim(),
-        },
-        delayMs: 0,
-      }];
+    } else if (rawStep.type === 'document' && isQuotationOutput(rawStep.source)) {
+      const caption = renderTemplate(rawStep.caption, templateContext).trim();
+      expanded = [
+        rawStep.source === 'quotation_webp'
+          ? {
+              position: 0,
+              type: 'quotation_webp',
+              payload: {
+                revisionId,
+                fileName: `${businessNumber}.webp`,
+                caption,
+                page: 0,
+                pageCount: 0,
+              },
+              delayMs: 0,
+            }
+          : {
+              position: 0,
+              type: 'quotation_pdf',
+              payload: {
+                revisionId,
+                fileName: `${businessNumber}.pdf`,
+                caption,
+              },
+              delayMs: 0,
+            },
+      ];
     } else if (rawStep.type === 'product_media') {
       const configuredMax = Number(rawStep.max_items ?? flow.max_media_per_product_group ?? 1);
       if (!Number.isFinite(configuredMax) || configuredMax < 0) inputError('Quantidade de mídia do fluxo inválida.');
@@ -459,8 +487,10 @@ export async function createDeliveryPlan(input: DeliveryPlanInput): Promise<Deli
   }
 
   if (steps.length === 0) inputError('Fluxo não gerou nenhuma etapa válida.');
-  if (steps.filter((step) => step.type === 'quotation_pdf').length !== 1) {
-    inputError('O fluxo deve conter exatamente um PDF do orçamento.');
+  if (
+    steps.filter((step) => step.type === 'quotation_pdf' || step.type === 'quotation_webp').length !== 1
+  ) {
+    inputError('O fluxo deve conter exatamente um PDF ou WebP do orçamento.');
   }
   const maximumDurationMs = Math.max(0, steps.length - 1) * maxDelayMs;
   const plannedDurationMs = steps.reduce((total, step) => total + step.delayMs, 0);

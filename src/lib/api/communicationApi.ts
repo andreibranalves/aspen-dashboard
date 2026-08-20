@@ -121,7 +121,7 @@ export interface TextFlowStep {
 export interface DocumentFlowStep {
   id: string;
   type: 'document';
-  source: 'quotation_pdf';
+  source: 'quotation_pdf' | 'quotation_webp';
   caption?: string;
 }
 

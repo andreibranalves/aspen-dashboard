@@ -376,20 +376,24 @@ export async function handler(
     // Build preview steps
     const warnings = [];
     const previewSteps = [];
-    let pdfAdded = false;
+    let quotationAdded = false;
 
     for (const step of flow.steps || []) {
       if (step.type === 'text') {
         const text = renderTemplate(step.template || '', context, applicationOrigin).trim();
         if (text) previewSteps.push({ type: 'text', text });
-      } else if (step.type === 'document' && step.source === 'quotation_pdf') {
-        if (!pdfAdded) {
+      } else if (
+        step.type === 'document' &&
+        (step.source === 'quotation_pdf' || step.source === 'quotation_webp')
+      ) {
+        if (!quotationAdded) {
+          const isWebp = step.source === 'quotation_webp';
           previewSteps.push({
-            type: 'document',
-            fileName: `${context.quotationId || 'ORC-EXEMPLO'}.pdf`,
+            type: isWebp ? 'image' : 'document',
+            fileName: `${context.quotationId || 'ORC-EXEMPLO'}.${isWebp ? 'webp' : 'pdf'}`,
             caption: step.caption ? renderTemplate(step.caption, context, applicationOrigin).trim() : '',
           });
-          pdfAdded = true;
+          quotationAdded = true;
         }
       } else if (step.type === 'product_media') {
         if (mediaUrls.length > 0) {

@@ -142,6 +142,18 @@ export type FrozenDeliveryStep =
       type: 'quotation_pdf';
       payload: { revisionId: string; fileName: string; caption: string };
       delayMs: number;
+    }
+  | {
+      position: number;
+      type: 'quotation_webp';
+      payload: {
+        revisionId: string;
+        fileName: string;
+        caption: string;
+        page: number;
+        pageCount: number;
+      };
+      delayMs: number;
     };
 
 export interface DeliveryStepView {
@@ -214,6 +226,13 @@ export interface ClaimedDeliveryStep {
   leaseToken: string;
 }
 
+export interface ExpandQuotationWebpStepInput {
+  deliveryId: string;
+  stepId: string;
+  leaseToken: string;
+  steps: Array<Extract<FrozenDeliveryStep, { type: 'quotation_webp' }>>;
+}
+
 export interface MarkAcceptedInput {
   deliveryId: string;
   stepId: string;
@@ -255,6 +274,7 @@ export interface QuotationDeliveryOutboxRepository {
   getByIdentity(identity: DeliveryIdentity): Promise<DeliveryAggregate | null>;
   list(filters: DeliveryListFilters): Promise<DeliveryListResult>;
   claim(input?: { deliveryId?: string }): Promise<ClaimedDeliveryStep | null>;
+  expandQuotationWebpStep(input: ExpandQuotationWebpStepInput): Promise<void>;
   markAccepted(input: MarkAcceptedInput): Promise<DeliveryAggregate>;
   markFailure(input: MarkFailureInput): Promise<DeliveryAggregate>;
   applyReceipt(input: ApplyReceiptInput): Promise<DeliveryAggregate | null>;
@@ -398,6 +418,35 @@ function normalizeSnapshot(value: unknown): FrozenDeliveryStep {
         revisionId: uuid(value.payload.revisionId, 'Identificador da revisão'),
         fileName: text(value.payload.fileName, 'Nome do arquivo', MAX_SNAPSHOT_FILE_NAME),
         caption: text(value.payload.caption, 'Legenda do passo', MAX_SNAPSHOT_TEXT, { min: 0 }),
+      },
+      delayMs: delayMs as number,
+    };
+  }
+  if (value.type === 'quotation_webp') {
+    if (
+      !isRecord(value.payload) ||
+      !exactKeys(value.payload, ['revisionId', 'fileName', 'caption', 'page', 'pageCount']) ||
+      !Number.isInteger(value.payload.page) ||
+      !Number.isInteger(value.payload.pageCount) ||
+      (value.payload.page as number) < 0 ||
+      (value.payload.pageCount as number) < 0 ||
+      (value.payload.page as number) > MAX_STEPS ||
+      (value.payload.pageCount as number) > MAX_STEPS ||
+      ((value.payload.pageCount as number) > 0 &&
+        ((value.payload.page as number) < 1 ||
+          (value.payload.page as number) > (value.payload.pageCount as number)))
+    ) {
+      throw new QuotationDeliveryOutboxInputError('Snapshot de entrega inválido.');
+    }
+    return {
+      position,
+      type: 'quotation_webp',
+      payload: {
+        revisionId: uuid(value.payload.revisionId, 'Identificador da revisão'),
+        fileName: text(value.payload.fileName, 'Nome do arquivo', MAX_SNAPSHOT_FILE_NAME),
+        caption: text(value.payload.caption, 'Legenda do passo', MAX_SNAPSHOT_TEXT, { min: 0 }),
+        page: value.payload.page as number,
+        pageCount: value.payload.pageCount as number,
       },
       delayMs: delayMs as number,
     };
@@ -898,6 +947,142 @@ export function createPostgresQuotationDeliveryOutboxRepository(
         const aggregate = await readAggregate(tx, delivery.id, now);
         if (!aggregate) throw new QuotationDeliveryOutboxRepositoryError();
         return aggregate;
+      });
+    } catch (error) {
+      return rethrowRepositoryError(error);
+    }
+  }
+
+  async function expandQuotationWebpStep(input: ExpandQuotationWebpStepInput): Promise<void> {
+    const deliveryId = uuid(input?.deliveryId, 'Identificador da entrega');
+    const stepId = uuid(input?.stepId, 'Identificador do passo');
+    const leaseToken = uuid(input?.leaseToken, 'Lease');
+    if (!Array.isArray(input?.steps) || input.steps.length < 1 || input.steps.length > MAX_STEPS) {
+      throw new QuotationDeliveryOutboxInputError('Páginas WebP inválidas.');
+    }
+    const now = nowFrom(clock);
+    try {
+      const db = getDb();
+      await db.transaction(async (tx) => {
+        const delivery = await lockDelivery(tx, deliveryId);
+        if (!delivery || delivery.leaseToken !== leaseToken) {
+          throw new QuotationDeliveryOutboxConflictError('O lease da etapa expirou ou é inválido.');
+        }
+        const [current] = await tx
+          .select()
+          .from(quotationDeliverySteps)
+          .where(
+            and(
+              eq(quotationDeliverySteps.id, stepId),
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+            ),
+          )
+          .limit(1);
+        if (!current || current.state !== 'sending' || current.type !== 'quotation_webp') {
+          throw new QuotationDeliveryOutboxConflictError('A etapa WebP não está disponível para expansão.');
+        }
+        const currentSnapshot = stepSnapshot(current);
+        if (currentSnapshot.type !== 'quotation_webp' || currentSnapshot.payload.page !== 0) {
+          throw new QuotationDeliveryOutboxConflictError('A etapa WebP já foi expandida.');
+        }
+        const rows = await tx
+          .select({ id: quotationDeliverySteps.id })
+          .from(quotationDeliverySteps)
+          .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
+        if (rows.length + input.steps.length - 1 > MAX_STEPS) {
+          throw new QuotationDeliveryOutboxInputError('O orçamento excede o limite de páginas WebP.');
+        }
+        const pages = input.steps.map((step, index) => {
+          if (
+            step.type !== 'quotation_webp' ||
+            step.payload.revisionId !== currentSnapshot.payload.revisionId ||
+            step.payload.page !== index + 1 ||
+            step.payload.pageCount !== input.steps.length
+          ) {
+            throw new QuotationDeliveryOutboxInputError('Páginas WebP inválidas.');
+          }
+          return normalizeSnapshot({
+            position: current.position + index,
+            type: step.type,
+            payload: step.payload,
+            delayMs: step.delayMs,
+          });
+        });
+        await tx
+          .update(quotationDeliverySteps)
+          .set({
+            position: sql`${quotationDeliverySteps.position} + ${MAX_STEPS}`,
+          })
+          .where(
+            and(
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+              gt(quotationDeliverySteps.position, current.position),
+            ),
+          );
+        const first = pages[0]!;
+        await tx
+          .update(quotationDeliverySteps)
+          .set({
+            position: first.position,
+            type: first.type,
+            payloadSnapshot: { ...first.payload, delayMs: first.delayMs },
+            state: 'queued',
+            attemptCount: 0,
+            nextAttemptAt: now,
+            reconciliationDeadline: null,
+            publicError: null,
+            acceptedAt: null,
+            deliveredAt: null,
+            readAt: null,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(quotationDeliverySteps.id, stepId),
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+            ),
+          );
+        if (pages.length > 1) {
+          await tx.insert(quotationDeliverySteps).values(
+            pages.slice(1).map((page) => ({
+              id: randomUUID(),
+              deliveryId,
+              position: page.position,
+              type: page.type,
+              payloadSnapshot: { ...page.payload, delayMs: page.delayMs },
+              state: 'queued' as const,
+              attemptCount: 0,
+              nextAttemptAt: null,
+              createdAt: now,
+              updatedAt: now,
+            })),
+          );
+        }
+        await tx
+          .update(quotationDeliverySteps)
+          .set({
+            position: sql`${quotationDeliverySteps.position} - ${MAX_STEPS} + ${pages.length - 1}`,
+          })
+          .where(
+            and(
+              eq(quotationDeliverySteps.deliveryId, deliveryId),
+              gt(quotationDeliverySteps.position, current.position + MAX_STEPS),
+            ),
+          );
+        await syncDeliveryState(tx, deliveryId, now);
+        const cleared = await tx
+          .update(quotationDeliveries)
+          .set({ leaseToken: null, leaseUntil: null, updatedAt: now })
+          .where(
+            and(
+              eq(quotationDeliveries.id, deliveryId),
+              eq(quotationDeliveries.leaseToken, leaseToken),
+            ),
+          )
+          .returning({ id: quotationDeliveries.id });
+        if (!cleared.length) {
+          throw new QuotationDeliveryOutboxConflictError('O lease da etapa expirou ou é inválido.');
+        }
       });
     } catch (error) {
       return rethrowRepositoryError(error);
@@ -1563,6 +1748,7 @@ export function createPostgresQuotationDeliveryOutboxRepository(
     getByIdentity,
     list,
     claim,
+    expandQuotationWebpStep,
     markAccepted,
     markFailure,
     applyReceipt,

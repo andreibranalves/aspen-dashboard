@@ -4,7 +4,10 @@ import {
   type EvolutionConfig,
 } from '../_infrastructure/integrations/evolution/client.js';
 import { normalizeEvolutionDelivery } from '../_infrastructure/integrations/evolution/evolution-delivery.js';
-import type { PreparedDeliveryDocument } from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
+import type {
+  PreparedDeliveryDocument,
+  PreparedDeliveryImage,
+} from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
 import type { TransportFailureKind } from './quotation-delivery-state.js';
 import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
@@ -158,11 +161,32 @@ function validateStep(step: FrozenDeliveryStep): void {
     text(step.payload.caption, 'Legenda do passo', false);
     return;
   }
+  if (step.type === 'quotation_webp') {
+    if (!step.payload || !text(step.payload.revisionId, 'Identificador da revisão')) {
+      permanentInput('Referência da imagem inválida.');
+    }
+    if (
+      !Number.isSafeInteger(step.payload.page) ||
+      !Number.isSafeInteger(step.payload.pageCount) ||
+      step.payload.page < 1 ||
+      step.payload.page > step.payload.pageCount
+    ) {
+      permanentInput('Página da imagem inválida.');
+    }
+    text(step.payload.fileName, 'Nome do arquivo');
+    text(step.payload.caption, 'Legenda do passo', false);
+    return;
+  }
   permanentInput('Tipo de passo inválido.');
 }
 
 function requestForStep(
-  input: { phone: string; step: FrozenDeliveryStep; document?: PreparedDeliveryDocument },
+  input: {
+    phone: string;
+    step: FrozenDeliveryStep;
+    document?: PreparedDeliveryDocument;
+    image?: PreparedDeliveryImage;
+  },
   instance: string,
 ): { path: string; body: Record<string, unknown> } {
   const number = normalizeWhatsappPhone(input.phone);
@@ -184,6 +208,26 @@ function requestForStep(
         mediatype: isVideo ? 'video' : step.payload.mediaType,
         ...(isVideo ? { mimetype: 'video/mp4' } : {}),
         media: step.payload.url,
+        fileName: step.payload.fileName,
+        caption: step.payload.caption,
+      },
+    };
+  }
+  if (step.type === 'quotation_webp') {
+    const image = input.image;
+    if (!image || !Buffer.isBuffer(image.webp) || image.webp.length === 0) {
+      permanentInput('Imagem do orçamento indisponível.');
+    }
+    if (!Number.isSafeInteger(image.webpSize) || image.webpSize !== image.webp.length) {
+      permanentInput('Imagem do orçamento inválida.');
+    }
+    return {
+      path: `/message/sendMedia/${encodeURIComponent(instance)}`,
+      body: {
+        number,
+        mediatype: 'image',
+        mimetype: 'image/webp',
+        media: image.webp.toString('base64'),
         fileName: step.payload.fileName,
         caption: step.payload.caption,
       },
@@ -215,7 +259,12 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export async function sendFrozenStep(
-  input: { phone: string; step: FrozenDeliveryStep; document?: PreparedDeliveryDocument },
+  input: {
+    phone: string;
+    step: FrozenDeliveryStep;
+    document?: PreparedDeliveryDocument;
+    image?: PreparedDeliveryImage;
+  },
   dependencies: EvolutionTransportDependencies = defaultDependencies,
 ): Promise<EvolutionAccepted> {
   const client = transportClient(dependencies);

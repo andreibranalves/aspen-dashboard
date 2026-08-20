@@ -377,7 +377,12 @@ export function getFlowSummary(flow: { steps?: Step[] } | null | undefined): str
   const textCount = flow.steps.filter(
     (s) => s.type === 'text' && s.template && s.template.trim()
   ).length;
-  const docCount = flow.steps.filter((s) => s.type === 'document' && s.source).length;
+  const pdfCount = flow.steps.filter(
+    (s) => s.type === 'document' && s.source === 'quotation_pdf'
+  ).length;
+  const webpCount = flow.steps.filter(
+    (s) => s.type === 'document' && s.source === 'quotation_webp'
+  ).length;
   const imageCount = flow.steps.filter((s) => s.type === 'image' && s.media).length;
   const hasProductImages = flow.steps.some(
     (s) => s.type === 'product_images' || s.type === 'product_media'
@@ -389,8 +394,12 @@ export function getFlowSummary(flow: { steps?: Step[] } | null | undefined): str
     parts.push(`${textCount} ${textCount === 1 ? 'mensagem' : 'mensagens'}`);
   }
 
-  if (docCount > 0) {
+  if (pdfCount > 0) {
     parts.push('PDF');
+  }
+
+  if (webpCount > 0) {
+    parts.push('WebP');
   }
 
   if (imageCount > 0) {

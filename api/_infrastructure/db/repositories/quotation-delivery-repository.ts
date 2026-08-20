@@ -20,12 +20,18 @@ import {
   type QuotationTemplate,
   type QuotationTemplateViewModel,
 } from '../../../_modules/quotation-template-catalog.js';
-import { renderQuotationPdf } from '../../../_modules/quotation-pdf-renderer.js';
+import {
+  renderQuotationPdf,
+  renderQuotationWebpHtml,
+} from '../../../_modules/quotation-pdf-renderer.js';
 import { buildComparison } from './quotation-template-repository.js';
 import {
   isValidPdfBuffer,
+  isValidWebpBuffer,
   MAX_QUOTATION_PDF_BYTES,
+  MAX_QUOTATION_WEBP_BYTES,
   quotationPdfChecksum,
+  quotationWebpChecksum,
 } from '../../../_modules/quotation-document-storage.js';
 import { normalizeWhatsappPhone } from '../../../_modules/whatsapp-conversations-store.js';
 import { revisionSectionsSnapshot } from '../quotation-revision-invariants.js';
@@ -97,6 +103,10 @@ export class QuotationDeliveryPdfError extends QuotationDeliveryRepositoryError 
   constructor(message = 'Não foi possível gerar o PDF da revisão. Tente novamente.') { super(message); this.name = 'QuotationDeliveryPdfError'; }
 }
 
+export class QuotationDeliveryImageError extends QuotationDeliveryRepositoryError {
+  constructor(message = 'Não foi possível gerar a imagem da revisão. Tente novamente.') { super(message); this.name = 'QuotationDeliveryImageError'; }
+}
+
 export interface QuotationDelivery {
   id: string;
   revisionId: string;
@@ -143,6 +153,7 @@ export interface QuotationDeliveryRepository {
   getByRevision(revisionId: string, flowId?: string): Promise<QuotationDelivery | null>;
   readDeliveryByRevision(revisionId: string, flowId?: string): Promise<QuotationDelivery | null>;
   prepareDeliveryDocument(revisionId: string): Promise<PreparedDeliveryDocument>;
+  prepareDeliveryImages(revisionId: string): Promise<PreparedDeliveryImage[]>;
   prepareDelivery(input: PrepareQuotationDeliveryInput): Promise<PreparedQuotationDelivery>;
   prepareQuotationDelivery(input: PrepareQuotationDeliveryInput): Promise<PreparedQuotationDelivery>;
 }
@@ -151,6 +162,15 @@ export interface PreparedDeliveryDocument {
   pdf: Buffer;
   pdfSize: number;
   pdfSignature: string;
+  validUntil: Date;
+}
+
+export interface PreparedDeliveryImage {
+  webp: Buffer;
+  webpSize: number;
+  webpSignature: string;
+  page: number;
+  pageCount: number;
   validUntil: Date;
 }
 
@@ -510,26 +530,21 @@ export function createPostgresQuotationDeliveryRepository(
     }
   }
 
-  async function prepareDeliveryDocumentWithLimit(
+  async function loadDeliveryQuotation(
     revisionId: string,
-    limit: number,
     current: Date,
-  ): Promise<PreparedDeliveryDocument> {
-    let revision: typeof quoteRevisions.$inferSelect;
-    let template: QuotationTemplate;
-    let viewModel: QuotationTemplateViewModel;
+  ): Promise<{ revision: typeof quoteRevisions.$inferSelect; html: string }> {
     try {
-      const [loadedRevision] = await getDb().select().from(quoteRevisions)
+      const [revision] = await getDb().select().from(quoteRevisions)
         .where(eq(quoteRevisions.id, revisionId)).limit(1);
-      if (!loadedRevision) throw new QuotationDeliveryNotFoundError();
+      if (!revision) throw new QuotationDeliveryNotFoundError();
       let status: ReturnType<typeof canonicalQuotationStatus>;
-      try { status = canonicalQuotationStatus(loadedRevision.status); }
+      try { status = canonicalQuotationStatus(revision.status); }
       catch { throw new QuotationDeliveryConflictError('A revisão do orçamento possui estado inválido.'); }
       if (!isIssuedQuotationStatus(status)) throw new QuotationDeliveryConflictError('Somente revisões emitidas podem ser entregues.');
-      if (current.getTime() >= validUntil(loadedRevision).getTime()) {
+      if (current.getTime() >= validUntil(revision).getTime()) {
         throw new QuotationDeliveryConflictError('A revisão do orçamento está vencida. Emita uma nova revisão.');
       }
-      revision = loadedRevision;
       const [version] = await getDb().select().from(quotationTemplateVersions)
         .where(eq(quotationTemplateVersions.id, revision.templateVersionId || '')).limit(1);
       if (!version || version.sourceHash !== revision.templateHash) {
@@ -537,25 +552,34 @@ export function createPostgresQuotationDeliveryRepository(
       }
       const items = await getDb().select().from(quoteRevisionItems)
         .where(eq(quoteRevisionItems.revisionId, revisionId));
-      template = {
+      const template: QuotationTemplate = {
         key: revision.templatePadrao,
         name: revision.templatePadrao,
         is_default: false,
         source: version.source,
         hash: version.sourceHash,
       };
-      viewModel = revisionViewModel(revision, items, current);
+      const viewModel: QuotationTemplateViewModel = revisionViewModel(revision, items, current);
       const [quotation] = await getDb().select({ businessNumber: quotations.businessNumber })
         .from(quotations).where(eq(quotations.id, revision.quotationId)).limit(1);
       if (!quotation) throw new QuotationDeliveryNotFoundError();
       viewModel.quote_number = quotation.businessNumber;
       viewModel.quotation_name = quotation.businessNumber;
+      return { revision, html: renderQuotationTemplate(template, viewModel) };
     } catch (error) {
       if (isKnownError(error)) throw error;
       throw new QuotationDeliveryRepositoryError();
     }
+  }
+
+  async function prepareDeliveryDocumentWithLimit(
+    revisionId: string,
+    limit: number,
+    current: Date,
+  ): Promise<PreparedDeliveryDocument> {
+    const prepared = await loadDeliveryQuotation(revisionId, current);
     try {
-      const pdf = await renderPdf(renderQuotationTemplate(template, viewModel));
+      const pdf = await renderPdf(prepared.html);
       if (!Buffer.isBuffer(pdf) || pdf.length > limit || !isValidPdfBuffer(pdf)) {
         throw new QuotationDeliveryPdfError('O PDF da revisão é inválido. Tente novamente.');
       }
@@ -563,7 +587,7 @@ export function createPostgresQuotationDeliveryRepository(
         pdf,
         pdfSize: pdf.length,
         pdfSignature: quotationPdfChecksum(pdf),
-        validUntil: validUntil(revision),
+        validUntil: validUntil(prepared.revision),
       };
     } catch (error) {
       if (error instanceof QuotationDeliveryPdfError) throw error;
@@ -580,6 +604,40 @@ export function createPostgresQuotationDeliveryRepository(
       if (isKnownError(error)) throw error;
       console.error(`[quotation-delivery] document failed (${error instanceof Error ? error.name : typeof error})`);
       throw new QuotationDeliveryRepositoryError();
+    }
+  }
+
+  async function prepareDeliveryImages(revisionIdInput: string): Promise<PreparedDeliveryImage[]> {
+    const revisionId = uuid(revisionIdInput, 'Identificador da revisão');
+    const current = asDate(now(), new Date());
+    const prepared = await loadDeliveryQuotation(revisionId, current);
+    try {
+      const images = await renderQuotationWebpHtml(prepared.html);
+      if (
+        !Array.isArray(images) ||
+        images.length === 0 ||
+        images.length > 100 ||
+        images.some(
+          (image) =>
+            !Buffer.isBuffer(image) ||
+            image.length === 0 ||
+            image.length > MAX_QUOTATION_WEBP_BYTES ||
+            !isValidWebpBuffer(image),
+        )
+      ) {
+        throw new QuotationDeliveryImageError('A imagem da revisão é inválida. Tente novamente.');
+      }
+      return images.map((webp, index) => ({
+        webp,
+        webpSize: webp.length,
+        webpSignature: quotationWebpChecksum(webp),
+        page: index + 1,
+        pageCount: images.length,
+        validUntil: validUntil(prepared.revision),
+      }));
+    } catch (error) {
+      if (error instanceof QuotationDeliveryImageError) throw error;
+      throw new QuotationDeliveryImageError();
     }
   }
 
@@ -604,6 +662,7 @@ export function createPostgresQuotationDeliveryRepository(
     getByRevision,
     readDeliveryByRevision: getByRevision,
     prepareDeliveryDocument,
+    prepareDeliveryImages,
     prepareDelivery,
     prepareQuotationDelivery: prepareDelivery,
   };

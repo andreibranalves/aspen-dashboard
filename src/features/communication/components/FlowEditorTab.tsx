@@ -1,6 +1,6 @@
 // FlowEditorTab — full flow editor for CommunicationFlows.
 // Adapted from SettingsPage WhatsApp section. Supports step types:
-//   text, document(source:quotation_pdf), product_media
+//   text, document(source:quotation_pdf|quotation_webp), product_media
 //
 // Uses communication-flows API (new KV namespace) for persistence.
 
@@ -42,7 +42,7 @@ const STEP_TYPE_ICONS: Record<StepType, typeof MessageSquare> = {
 
 const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
   { value: STEP_TYPES.TEXT, label: 'Texto' },
-  { value: STEP_TYPES.DOCUMENT, label: 'PDF do orçamento' },
+  { value: STEP_TYPES.DOCUMENT, label: 'Orçamento (PDF/WebP)' },
   { value: STEP_TYPES.PRODUCT_MEDIA, label: 'Mídia da biblioteca' },
 ];
 
@@ -67,7 +67,7 @@ interface TextStep {
 interface DocumentStep {
   id: string;
   type: 'document';
-  source: 'quotation_pdf';
+  source: 'quotation_pdf' | 'quotation_webp';
   caption?: string;
 }
 
@@ -505,18 +505,35 @@ export default function FlowEditorTab() {
                       )}
 
                       {step.type === STEP_TYPES.DOCUMENT && (
-                        <div>
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-fg-muted">
+                              Formato do orçamento
+                            </label>
+                            <select
+                              value={step.source}
+                              onChange={(e) =>
+                                updateStep(selectedFlow.id, step.id, 'source', e.target.value)
+                              }
+                              className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-0.5"
+                            >
+                              <option value="quotation_pdf">PDF (documento)</option>
+                              <option value="quotation_webp">WebP (imagem)</option>
+                            </select>
+                          </div>
                           <input
                             type="text"
                             value={step.caption || ''}
                             onChange={(e) =>
                               updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
                             }
-                            placeholder="Legenda do PDF (opcional)"
+                            placeholder="Legenda (opcional)"
                             className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
-                            Envia o PDF do orçamento como documento no WhatsApp.
+                            {step.source === 'quotation_webp'
+                              ? 'Envia uma imagem WebP por página do orçamento.'
+                              : 'Envia o PDF do orçamento como documento no WhatsApp.'}
                           </p>
                         </div>
                       )}
@@ -592,7 +609,11 @@ export default function FlowEditorTab() {
                       return (
                         <div key={step.id} className="flex gap-2 text-xs text-fg">
                           <span className="text-fg-muted shrink-0">{idx + 1}.</span>
-                          <span>📎 PDF do orçamento</span>
+                          <span>
+                            {step.source === 'quotation_webp'
+                              ? '🖼️ WebP do orçamento'
+                              : '📎 PDF do orçamento'}
+                          </span>
                         </div>
                       );
                     }
