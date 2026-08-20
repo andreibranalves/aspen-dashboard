@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sharedQuotationEmailTemplatePath = path.resolve(
   __dirname,
-  './api/_lib/quotation-email-template.ts',
+  './api/_shared/quotation-email-template.ts',
 );
 
 export default defineConfig({
@@ -43,7 +43,7 @@ export default defineConfig({
         target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8888',
         changeOrigin: true,
         bypass(request) {
-          if (request.url?.startsWith('/api/_lib/quotation-email-template.')) {
+          if (request.url?.startsWith('/api/_shared/quotation-email-template.')) {
             return `/@fs${sharedQuotationEmailTemplatePath}`;
           }
           return undefined;
