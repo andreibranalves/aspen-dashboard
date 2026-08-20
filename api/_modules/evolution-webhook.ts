@@ -120,7 +120,7 @@ export async function handler(
   if (!configuredInstance) return json(503, { error: 'Webhook da Evolution não configurado.' });
 
   const evolutionEvent = parseEvolutionEvent(payload, configuredInstance);
-  if (!evolutionEvent) return json(400, { error: 'Evento da Evolution inválido.' });
+  if (!evolutionEvent) return json(200, { received: true, ignored: true });
 
   try {
     const deliveryModule = dependencies.deliveryModule || createQuotationDeliveryModule();

@@ -1,3 +1,4 @@
+-- migration-risk: destructive
 CREATE TABLE "quotation_delivery_steps" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"delivery_id" uuid NOT NULL,
@@ -58,8 +59,7 @@ SET
   "flow_name" = "flow_id",
   "next_attempt_at" = NULL,
   "lease_token" = NULL,
-  "lease_until" = NULL,
-  "updated_at" = CURRENT_TIMESTAMP;
+  "lease_until" = NULL;
 --> statement-breakpoint
 ALTER TABLE "quotation_deliveries" ALTER COLUMN "flow_name" SET NOT NULL;
 --> statement-breakpoint

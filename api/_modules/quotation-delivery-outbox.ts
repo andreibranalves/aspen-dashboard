@@ -32,6 +32,7 @@ export const RECONCILIATION_WAIT_MS = 120_000;
 export const PROVIDER_DELAY_WARNING_MS = 86_400_000;
 export const DEFAULT_PROCESS_DUE_LIMIT = 20;
 export const MAX_PROCESS_DUE_LIMIT = 50;
+export const PROCESS_DUE_TIME_BUDGET_MS = 45_000;
 
 const RECEIPT_STATUSES: readonly EvolutionReceiptStatus[] = [
   'ERROR',
@@ -119,7 +120,10 @@ export interface EvolutionMessageEvent {
 export interface QuotationDeliveryModule {
   enqueue(input: DeliveryIdentity): Promise<DeliveryAggregate>;
   process(deliveryId?: string): Promise<DeliveryAggregate | null>;
-  processDue(limit: number): Promise<{ processed: number; remaining: boolean }>;
+  processDue(
+    limit: number,
+    timeBudgetMs?: number
+  ): Promise<{ processed: number; remaining: boolean }>;
   applyEvolutionEvent(event: EvolutionMessageEvent): Promise<DeliveryAggregate | null>;
   get(input: {
     deliveryId?: string;
@@ -562,18 +566,26 @@ export function createQuotationDeliveryModule(
   }
 
   async function enqueue(input: DeliveryEnqueueInput): Promise<DeliveryAggregate> {
+    const existing = await repository.getByIdentity(input);
+    if (existing) return (await process(existing.id)) || existing;
     const plan = await planner(input);
     const queued = await repository.enqueue(deliveryRecord(plan));
     return (await process(queued.id)) || queued;
   }
 
   async function processDue(
-    requestedLimit: number
+    requestedLimit: number,
+    timeBudgetMs = PROCESS_DUE_TIME_BUDGET_MS
   ): Promise<{ processed: number; remaining: boolean }> {
     const limit = validateBatchLimit(requestedLimit);
+    if (!Number.isSafeInteger(timeBudgetMs) || timeBudgetMs < 1) {
+      throw new QuotationDeliveryModuleInputError('Orçamento de tempo inválido.');
+    }
+    const deadline = Date.now() + timeBudgetMs;
     await repository.expireReconciliations(limit);
     let processed = 0;
     while (processed < limit) {
+      if (Date.now() >= deadline) return { processed, remaining: true };
       const result = await processInternal(undefined, 1);
       if (result.claims === 0) {
         return { processed, remaining: false };

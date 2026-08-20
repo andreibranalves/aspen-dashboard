@@ -669,7 +669,8 @@ async function syncDeliveryState(
   db: DeliveryDatabase,
   deliveryId: string,
   now: Date,
-  completionSourceOverride?: CompletionSource | null
+  completionSourceOverride?: CompletionSource | null,
+  stateOverride?: DeliveryState
 ): Promise<void> {
   const [delivery] = await db
     .select()
@@ -681,7 +682,11 @@ async function syncDeliveryState(
     .select()
     .from(quotationDeliverySteps)
     .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
-  const state = aggregateDeliveryState(steps.map((step) => step.state as DeliveryStepState));
+  const state =
+    stateOverride ||
+    (steps.length > 0
+      ? aggregateDeliveryState(steps.map((step) => step.state as DeliveryStepState))
+      : (delivery.state as DeliveryState));
   const nextAttemptAt =
     steps
       .filter(
@@ -873,11 +878,6 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               .limit(1)
           )[0];
         if (!delivery) throw new QuotationDeliveryOutboxRepositoryError();
-        if (delivery.phone !== normalized.phone || delivery.flowName !== normalized.flowName) {
-          throw new QuotationDeliveryOutboxConflictError(
-            'A entrega existente possui destinatário ou fluxo diferente.'
-          );
-        }
         if (inserted) {
           await tx.insert(quotationDeliverySteps).values(
             normalized.steps.map((step, index) => ({
@@ -893,18 +893,6 @@ export function createPostgresQuotationDeliveryOutboxRepository(
               updatedAt: now,
             }))
           );
-        } else {
-          const existingSteps = await tx
-            .select()
-            .from(quotationDeliverySteps)
-            .where(eq(quotationDeliverySteps.deliveryId, delivery.id))
-            .orderBy(asc(quotationDeliverySteps.position));
-          const existingSnapshots = existingSteps.map(stepSnapshot);
-          if (JSON.stringify(existingSnapshots) !== JSON.stringify(normalized.steps)) {
-            throw new QuotationDeliveryOutboxConflictError(
-              'A entrega existente possui passos congelados diferentes.'
-            );
-          }
         }
         const aggregate = await readAggregate(tx, delivery.id, now);
         if (!aggregate) throw new QuotationDeliveryOutboxRepositoryError();
@@ -1421,6 +1409,15 @@ export function createPostgresQuotationDeliveryOutboxRepository(
             'A entrega ainda não atingiu o prazo de resolução.'
           );
         }
+        const existingSteps = await tx
+          .select({ id: quotationDeliverySteps.id })
+          .from(quotationDeliverySteps)
+          .where(eq(quotationDeliverySteps.deliveryId, deliveryId));
+        if (existingSteps.length === 0 && input.decision === 'confirmed_not_received') {
+          throw new QuotationDeliveryOutboxConflictError(
+            'A entrega legada não possui etapas para reenvio.'
+          );
+        }
         await tx
           .update(quotationDeliverySteps)
           .set(
@@ -1488,7 +1485,10 @@ export function createPostgresQuotationDeliveryOutboxRepository(
           tx,
           deliveryId,
           now,
-          input.decision === 'confirmed_received' ? 'operator' : null
+          input.decision === 'confirmed_received' ? 'operator' : null,
+          existingSteps.length === 0 && input.decision === 'confirmed_received'
+            ? 'delivered'
+            : undefined
         );
         const aggregate = await readAggregate(tx, deliveryId, now);
         if (!aggregate) throw new QuotationDeliveryOutboxRepositoryError();

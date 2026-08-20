@@ -211,7 +211,21 @@ export function deliveryErrorResponse(error: unknown): FunctionResult {
   if (error instanceof QuotationDeliveryOutboxRepositoryError) {
     return json(503, { error: 'Não foi possível atualizar a entrega. Tente novamente.' });
   }
-  const statusCode = Number((error as { statusCode?: unknown })?.statusCode);
+  const candidate = error as { statusCode?: unknown; message?: unknown; logMessage?: unknown };
+  const statusCode = Number(candidate?.statusCode);
+  if (
+    statusCode === 400 &&
+    typeof candidate.message === 'string' &&
+    typeof candidate.logMessage === 'string' &&
+    candidate.message.length > 0 &&
+    candidate.message.length <= 500 &&
+    ![...candidate.message].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  ) {
+    return json(400, { error: candidate.message });
+  }
   if (statusCode === 400) return json(400, { error: 'Requisição inválida.' });
   if (statusCode === 404) return json(404, { error: 'Entrega não encontrada.' });
   if (statusCode === 409) return json(409, { error: 'A entrega não pode ser alterada.' });

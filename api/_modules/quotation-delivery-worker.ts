@@ -5,7 +5,8 @@ import {
   type QuotationDeliveryModule,
 } from './quotation-delivery-outbox.js';
 
-export const QUOTATION_DELIVERY_WORKER_BATCH_SIZE = 20;
+// Three 15-second transport timeouts leave room for function overhead within Vercel's 60-second limit.
+export const QUOTATION_DELIVERY_WORKER_BATCH_SIZE = 3;
 
 export interface QuotationDeliveryWorkerDependencies {
   deliveryModule?: Pick<QuotationDeliveryModule, 'processDue'>;

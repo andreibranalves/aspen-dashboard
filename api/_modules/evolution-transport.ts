@@ -1,3 +1,8 @@
+import {
+  getEvolutionClient,
+  type EvolutionClient,
+  type EvolutionConfig,
+} from '../_infrastructure/integrations/evolution/client.js';
 import { normalizeEvolutionDelivery } from '../_infrastructure/integrations/evolution/evolution-delivery.js';
 import type { PreparedDeliveryDocument } from '../_infrastructure/db/repositories/quotation-delivery-repository.js';
 import type { FrozenDeliveryStep } from '../_infrastructure/db/repositories/quotation-delivery-outbox-repository.js';
@@ -30,6 +35,7 @@ export interface EvolutionAccepted {
 }
 
 export interface EvolutionTransportDependencies {
+  client?: EvolutionClient;
   fetch?: typeof fetch;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
@@ -38,9 +44,7 @@ export interface EvolutionTransportDependencies {
   timeoutMs?: number;
 }
 
-export const defaultDependencies: EvolutionTransportDependencies = {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-};
+export const defaultDependencies: EvolutionTransportDependencies = {};
 
 function failure(
   message: string,
@@ -67,14 +71,10 @@ function text(value: unknown, label: string, required = true): string {
   return result;
 }
 
-function validConfiguration(dependencies: EvolutionTransportDependencies): {
-  baseUrl: string;
-  apiKey: string;
-  instance: string;
-} {
-  const baseUrl = (dependencies.baseUrl ?? process.env.EVOLUTION_BASE_URL ?? '').trim().replace(/\/+$/, '');
-  const apiKey = (dependencies.apiKey ?? process.env.EVOLUTION_API_KEY ?? '').trim();
-  const instance = (dependencies.instance ?? process.env.EVOLUTION_INSTANCE ?? '').trim();
+function validConfiguration(config: EvolutionConfig): EvolutionConfig {
+  const baseUrl = config.baseUrl.trim().replace(/\/+$/, '');
+  const apiKey = config.apiKey.trim();
+  const instance = config.instance.trim();
   if (!baseUrl || !apiKey || !instance || hasControlCharacters(baseUrl) || hasControlCharacters(apiKey) || hasControlCharacters(instance)) {
     throw failure('Integração do WhatsApp não configurada.', 'permanent_pre_transport', 'EVOLUTION_CONFIGURATION');
   }
@@ -85,6 +85,28 @@ function validConfiguration(dependencies: EvolutionTransportDependencies): {
     throw failure('Integração do WhatsApp não configurada.', 'permanent_pre_transport', 'EVOLUTION_CONFIGURATION');
   }
   return { baseUrl, apiKey, instance };
+}
+
+function transportClient(dependencies: EvolutionTransportDependencies): EvolutionClient {
+  if (dependencies.client) return dependencies.client;
+  const hasOverrides =
+    dependencies.baseUrl !== undefined ||
+    dependencies.apiKey !== undefined ||
+    dependencies.instance !== undefined ||
+    dependencies.fetch !== undefined ||
+    dependencies.fetchImpl !== undefined;
+  if (!hasOverrides) return getEvolutionClient();
+  const config: EvolutionConfig = {
+    baseUrl: String(dependencies.baseUrl || ''),
+    apiKey: String(dependencies.apiKey || ''),
+    instance: String(dependencies.instance || ''),
+  };
+  const hasInjectedFetch = dependencies.fetch !== undefined || dependencies.fetchImpl !== undefined;
+  return getEvolutionClient({
+    getConfig: () => config,
+    fetchImpl: dependencies.fetchImpl || dependencies.fetch || globalThis.fetch,
+    ...(hasInjectedFetch ? { assertWriteAllowed: () => {} } : {}),
+  });
 }
 
 function providerMessageId(body: unknown): string {
@@ -196,9 +218,9 @@ export async function sendFrozenStep(
   input: { phone: string; step: FrozenDeliveryStep; document?: PreparedDeliveryDocument },
   dependencies: EvolutionTransportDependencies = defaultDependencies,
 ): Promise<EvolutionAccepted> {
-  const config = validConfiguration(dependencies);
+  const client = transportClient(dependencies);
+  const config = validConfiguration(client.config());
   const request = requestForStep(input, config.instance);
-  const fetchImpl = dependencies.fetchImpl || dependencies.fetch || defaultDependencies.fetch!;
   const timeoutMs = dependencies.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : Number(dependencies.timeoutMs);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 120_000) {
     permanentInput('Tempo limite do transporte inválido.');
@@ -210,14 +232,20 @@ export async function sendFrozenStep(
   unrefTimer.unref?.();
   let response: Response;
   try {
-    response = await fetchImpl(`${config.baseUrl}${request.path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: config.apiKey },
-      body: JSON.stringify(request.body),
-      signal: controller.signal,
-    });
-  } catch {
+    response = await client.request(request.path, request.body, { signal: controller.signal });
+  } catch (error) {
     clearTimeout(timer);
+    if (
+      error &&
+      typeof error === 'object' &&
+      (error as { statusCode?: unknown }).statusCode === 503
+    ) {
+      throw failure(
+        'Integração do WhatsApp desativada neste ambiente.',
+        'permanent_pre_transport',
+        'EXTERNAL_WRITES_DISABLED',
+      );
+    }
     throw failure('Falha ao conectar com o WhatsApp.', 'ambiguous', 'EVOLUTION_NETWORK');
   }
   clearTimeout(timer);

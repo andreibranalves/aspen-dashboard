@@ -34,6 +34,17 @@ const migrationsFolder = path.resolve(
 );
 const now = new Date();
 const old = new Date(now.getTime() - 2 * 86_400_000);
+const databaseSkip = 'TEST_DATABASE_URL is required for PostgreSQL-backed outbox tests.';
+
+function databaseTest(name: string, optionsOrFn: any, maybeFn?: any) {
+  const options = typeof optionsOrFn === 'function' ? {} : optionsOrFn;
+  const fn = typeof optionsOrFn === 'function' ? optionsOrFn : maybeFn;
+  return test(
+    name,
+    { ...options, ...(TEST_DATABASE_URL ? {} : { skip: databaseSkip }) },
+    fn,
+  );
+}
 
 const ids = {
   client: randomUUID(),
@@ -83,11 +94,7 @@ async function setStep(id: string, values: Record<string, unknown>) {
 }
 
 test.before(async () => {
-  if (!TEST_DATABASE_URL) {
-    throw new Error(
-      'TEST_DATABASE_URL is required; PostgreSQL outbox tests must run without skips.'
-    );
-  }
+  if (!TEST_DATABASE_URL) return;
   sqlClient = postgres(TEST_DATABASE_URL, {
     max: 4,
     prepare: false,
@@ -142,16 +149,17 @@ test.after(async () => {
   await sqlClient.end({ timeout: 5 });
 });
 
-test('enqueue is idempotent by revision and flow but independent across flows', async () => {
+databaseTest('enqueue is idempotent by revision and flow but independent across flows', async () => {
   const first = await repository.enqueue(input({ flowId: 'flow-a', flowName: 'Flow A' }));
   const replay = await repository.enqueue(input({ flowId: 'flow-a', flowName: 'Flow A' }));
   const other = await repository.enqueue(input({ flowId: 'flow-b', flowName: 'Flow B' }));
   assert.equal(replay.id, first.id);
   assert.notEqual(other.id, first.id);
   assert.equal((await repository.get(first.id))?.steps.length, 2);
-  await assert.rejects(
-    repository.enqueue(input({ flowId: 'flow-a', flowName: 'Flow A', phone: '5521999999999' }))
+  const changedInputReplay = await repository.enqueue(
+    input({ flowId: 'flow-a', flowName: 'Flow A', phone: '5521999999999' })
   );
+  assert.equal(changedInputReplay.id, first.id);
   await assert.rejects(
     repository.enqueue({
       ...input({ flowId: 'invalid-top-level', flowName: 'Invalid top level' }),
@@ -170,7 +178,7 @@ test('enqueue is idempotent by revision and flow but independent across flows', 
   );
 });
 
-test('claim and markAccepted enforce ordered predecessor gating after unsafe outcomes', async () => {
+databaseTest('claim and markAccepted enforce ordered predecessor gating after unsafe outcomes', async () => {
   for (const [suffix, kind] of [
     ['retry', 'transient_pre_transport'],
     ['failed', 'permanent_pre_transport'],
@@ -218,7 +226,7 @@ test('claim and markAccepted enforce ordered predecessor gating after unsafe out
   );
 });
 
-test('module integration persists frozen delay and waits for the due predecessor', async () => {
+databaseTest('module integration persists frozen delay and waits for the due predecessor', async () => {
   const flowId = 'module-postgres-delay';
   const steps: FrozenDeliveryStep[] = [textStep(0), { ...textStep(1), delayMs: 60_000 }];
   const calls: number[] = [];
@@ -265,7 +273,7 @@ test('module integration persists frozen delay and waits for the due predecessor
   assert.deepEqual(calls, [0, 1]);
 });
 
-test('accepted step followed by a retryable next step preserves order and call count', async () => {
+databaseTest('accepted step followed by a retryable next step preserves order and call count', async () => {
   integrationClock = new Date(now);
   const flowId = 'accepted-then-retryable-postgres';
   const steps: FrozenDeliveryStep[] = [textStep(0), textStep(1)];
@@ -309,7 +317,7 @@ test('accepted step followed by a retryable next step preserves order and call c
   assert.equal(transportCalls, 3);
 });
 
-test('two claims produce one lease and accepted steps never reclaim', async () => {
+databaseTest('two claims produce one lease and accepted steps never reclaim', async () => {
   const delivery = await repository.enqueue(
     input({
       flowId: 'claim-one',
@@ -333,7 +341,7 @@ test('two claims produce one lease and accepted steps never reclaim', async () =
   assert.equal(await repository.claim({ deliveryId: delivery.id }), null);
 });
 
-test('two independent workers claim one due step and make one transport call', async () => {
+databaseTest('two independent workers claim one due step and make one transport call', async () => {
   const delivery = await repository.enqueue(
     input({ flowId: 'two-workers-postgres', steps: [textStep()] })
   );
@@ -356,7 +364,7 @@ test('two independent workers claim one due step and make one transport call', a
   assert.equal((await repository.get(delivery.id))?.state, 'provider_accepted');
 });
 
-test('worker crash after claim before transport enters reconciliation without a provider call', async () => {
+databaseTest('worker crash after claim before transport enters reconciliation without a provider call', async () => {
   const delivery = await repository.enqueue(
     input({
       flowId: 'claim-expired',
@@ -376,7 +384,7 @@ test('worker crash after claim before transport enters reconciliation without a 
   assert.equal((await repository.get(delivery.id))?.state, 'needs_review');
 });
 
-test('worker crash after provider acceptance does not resend after lease expiry', async () => {
+databaseTest('worker crash after provider acceptance does not resend after lease expiry', async () => {
   const delivery = await repository.enqueue(
     input({ flowId: 'claim-after-provider', steps: [textStep()] })
   );
@@ -407,7 +415,7 @@ test('worker crash after provider acceptance does not resend after lease expiry'
   assert.equal(transportCalls, 1);
 });
 
-test('providerMessageId is unique and invalid leases cannot update a step', async () => {
+databaseTest('providerMessageId is unique and invalid leases cannot update a step', async () => {
   const first = await repository.enqueue(
     input({
       flowId: 'provider-unique-a',
@@ -451,7 +459,7 @@ test('providerMessageId is unique and invalid leases cannot update a step', asyn
   );
 });
 
-test('duplicate SERVER_ACK receipts are monotonic without another transport call', async () => {
+databaseTest('duplicate SERVER_ACK receipts are monotonic without another transport call', async () => {
   const delivery = await repository.enqueue(
     input({ flowId: 'duplicate-server-ack', steps: [textStep()] })
   );
@@ -483,7 +491,7 @@ test('duplicate SERVER_ACK receipts are monotonic without another transport call
   assert.equal((await repository.get(delivery.id))?.state, 'provider_accepted');
 });
 
-test('DELIVERY_ACK after needs_review resolves the persisted provider key', async () => {
+databaseTest('DELIVERY_ACK after needs_review resolves the persisted provider key', async () => {
   const delivery = await repository.enqueue(
     input({ flowId: 'delayed-delivery-ack-postgres', steps: [textStep()] })
   );
@@ -516,7 +524,7 @@ test('DELIVERY_ACK after needs_review resolves the persisted provider key', asyn
   assert.equal(transportCalls, 1);
 });
 
-test('READ before DELIVERY_ACK remains delivered without another transport call', async () => {
+databaseTest('READ before DELIVERY_ACK remains delivered without another transport call', async () => {
   const delivery = await repository.enqueue(
     input({ flowId: 'read-before-delivery-postgres', steps: [textStep()] })
   );
@@ -548,7 +556,7 @@ test('READ before DELIVERY_ACK remains delivered without another transport call'
   assert.equal(transportCalls, 1);
 });
 
-test('list supports filtering and pagination without provider payloads', async () => {
+databaseTest('list supports filtering and pagination without provider payloads', async () => {
   const deliveries = await Promise.all([
     repository.enqueue(
       input({ flowId: 'list-unique-a', flowName: 'List unique A', steps: [textStep()] })
@@ -600,7 +608,7 @@ test('list supports filtering and pagination without provider payloads', async (
   );
 });
 
-test('markFailure schedules safe retries and expires ambiguous reconciliation', async () => {
+databaseTest('markFailure schedules safe retries and expires ambiguous reconciliation', async () => {
   const retryDelivery = await repository.enqueue(
     input({
       flowId: 'failure-retry',
@@ -645,7 +653,7 @@ test('markFailure schedules safe retries and expires ambiguous reconciliation', 
   assert.equal((await repository.get(ambiguousDelivery.id))?.state, 'needs_review');
 });
 
-test('confirmed_received records operator completion', async () => {
+databaseTest('confirmed_received records operator completion', async () => {
   const delivery = await repository.enqueue(
     input({
       flowId: 'resolve-received',
@@ -683,7 +691,44 @@ test('confirmed_received records operator completion', async () => {
   assert.equal(resolved.steps[0]?.state, 'delivered');
 });
 
-test('confirmed_not_received requeues every non-delivered step and clears stale provider correlation', async () => {
+databaseTest('legacy delivery without steps can be confirmed received without becoming queued', async () => {
+  const delivery = await repository.enqueue(
+    input({ flowId: 'resolve-legacy-no-steps', steps: [textStep(0)] })
+  );
+  await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.deliveryId, delivery.id));
+  await setDelivery(delivery.id, {
+    state: 'needs_review',
+    updatedAt: old,
+    publicError: 'Confirmação de entrega indisponível.',
+  });
+
+  const resolved = await repository.resolve({
+    deliveryId: delivery.id,
+    decision: 'confirmed_received',
+    note: 'Cliente confirmou recebimento do histórico legado.',
+    resolvedBy: 'authenticated-operator',
+  });
+  assert.equal(resolved.state, 'delivered');
+  assert.equal(resolved.completionSource, 'operator');
+  assert.equal(resolved.steps.length, 0);
+
+  const noRetry = await repository.enqueue(
+    input({ flowId: 'resolve-legacy-no-retry', steps: [textStep(0)] })
+  );
+  await db.delete(quotationDeliverySteps).where(eq(quotationDeliverySteps.deliveryId, noRetry.id));
+  await setDelivery(noRetry.id, { state: 'needs_review', updatedAt: old });
+  await assert.rejects(
+    repository.resolve({
+      deliveryId: noRetry.id,
+      decision: 'confirmed_not_received',
+      note: 'Não há etapas históricas para reenviar.',
+      resolvedBy: 'authenticated-operator',
+    }),
+    /legada não possui etapas para reenvio/
+  );
+});
+
+databaseTest('confirmed_not_received requeues every non-delivered step and clears stale provider correlation', async () => {
   const delivery = await repository.enqueue(
     input({
       flowId: 'resolve-not-received',

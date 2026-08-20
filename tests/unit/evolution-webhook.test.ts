@@ -114,7 +114,8 @@ test('webhook validates instance, event, fromMe, keyId, and status before module
   for (const [, overrides] of cases) {
     const deps = dependencies();
     const result = await webhook(event(authorization, payload(overrides)), deps);
-    assert.equal(result.statusCode, 400);
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(JSON.parse(result.body || '{}'), { received: true, ignored: true });
     assert.deepEqual(deps.calls, []);
   }
 });

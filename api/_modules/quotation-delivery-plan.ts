@@ -1,5 +1,4 @@
-import { kv } from '@vercel/kv';
-
+import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import { createHttpError } from '../_shared/http-error.js';
 import { KV_KEY_FLOWS } from './media-schema.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
@@ -253,7 +252,7 @@ function flowEnabled(flow: DeliveryFlow): boolean {
 
 async function defaultResolveFlow(flowId: string): Promise<DeliveryFlow | null> {
   try {
-    const flows = await kv.get(KV_KEY_FLOWS);
+    const flows = await getKvClient().get(KV_KEY_FLOWS);
     if (!Array.isArray(flows)) return null;
     const flow = flows.find((value) => (
       value && typeof value === 'object' && !Array.isArray(value) && (value as Record<string, unknown>).id === flowId

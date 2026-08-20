@@ -459,6 +459,29 @@ test('enqueue starts immediately and never resends an accepted step', async () =
   assert.equal(transport.calls.length, 2);
 });
 
+test('duplicate enqueue reuses the durable identity without replanning', async () => {
+  const repository = new FakeRepository(() => new Date(start));
+  const transport = new FakeTransport();
+  let plans = 0;
+  const module = createQuotationDeliveryModule({
+    repository,
+    planner: async () => {
+      plans += 1;
+      return plan([textStep(0)]);
+    },
+    transport: transport.send.bind(transport),
+    now: () => new Date(start),
+    logger: () => {},
+  });
+
+  const first = await module.enqueue(identity);
+  const replay = await module.enqueue(identity);
+
+  assert.equal(replay.id, first.id);
+  assert.equal(plans, 1);
+  assert.equal(transport.calls.length, 1);
+});
+
 test('ambiguous outcome stops later steps and requires reconciliation', async () => {
   const transport = new FakeTransport();
   transport.failAt(

@@ -124,6 +124,24 @@ test('transport accepts Evolution key.id and requires a prepared quotation docum
   assert.equal(errorOf(error).kind, 'permanent_pre_transport');
 });
 
+test('transport converts blocked external writes into a safe pre-transport failure', async () => {
+  let calls = 0;
+  const error = await rejected(
+    sendFrozenStep({ phone: '5511999990000', step: textStep }, {
+      client: {
+        config: () => config,
+        request: async () => {
+          calls += 1;
+          throw Object.assign(new Error('blocked'), { statusCode: 503 });
+        },
+      },
+    }),
+  );
+  assert.equal(errorOf(error).kind, 'permanent_pre_transport');
+  assert.equal(errorOf(error).code, 'EXTERNAL_WRITES_DISABLED');
+  assert.equal(calls, 1);
+});
+
 test('transport rejects missing configuration and never logs request or response data', async () => {
   const logs: unknown[][] = [];
   const original = console.error;

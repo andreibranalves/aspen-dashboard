@@ -79,7 +79,7 @@ test(
             const deliveryId = `10000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
             await tx.unsafe(`INSERT INTO "quote_revisions" ("id") VALUES ('${revisionId}')`);
             await tx.unsafe(
-              `INSERT INTO "quotation_deliveries" ("id", "revision_id", "phone", "flow_id", "state", "created_at", "updated_at") VALUES ('${deliveryId}', '${revisionId}', '5511999999999', 'flow-${index + 1}', '${state}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+              `INSERT INTO "quotation_deliveries" ("id", "revision_id", "phone", "flow_id", "state", "created_at", "updated_at") VALUES ('${deliveryId}', '${revisionId}', '5511999999999', 'flow-${index + 1}', '${state}', TIMESTAMPTZ '2026-08-17T12:34:56Z', TIMESTAMPTZ '2026-08-17T12:34:56Z')`
             );
           }
 
@@ -130,6 +130,11 @@ test(
           assert.ok(
             rows.every(({ state }) => !['queued', 'processing', 'retry_scheduled'].includes(state))
           );
+          const timestamps = await tx.unsafe<{ created_at: Date; updated_at: Date }[]>(
+            `SELECT "created_at", "updated_at" FROM "quotation_deliveries" WHERE "id" = '10000000-0000-4000-8000-000000000001'`
+          );
+          assert.equal(timestamps[0]?.created_at.toISOString(), '2026-08-17T12:34:56.000Z');
+          assert.equal(timestamps[0]?.updated_at.toISOString(), '2026-08-17T12:34:56.000Z');
 
           const stepRows = await tx.unsafe<{ count: string }[]>(
             'SELECT count(*)::text AS count FROM "quotation_delivery_steps"'
