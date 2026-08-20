@@ -280,6 +280,7 @@ export default function AutoQuotePage() {
   }, [text, imageData, orderTemplateId, templateKey, fetchPricing, buildDraftsFromOrders, loadHistory]);
 
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
+  const activeIssueDrafts = useRef(new Set<number>());
   const createSingleQuote = useCallback(
     async (draftIndex: number) => {
       const draft = drafts.find((candidate) => candidate.index === draftIndex) as StoredAutoQuoteDraft | undefined;
@@ -287,6 +288,7 @@ export default function AutoQuotePage() {
       const key = draft.issueIdempotencyKey || globalThis.crypto.randomUUID();
       const requestDraft = { ...draft, issueIdempotencyKey: key };
       const nextDraft = { ...requestDraft, status: 'processing' as const, result: undefined };
+      activeIssueDrafts.current.add(draftIndex);
       saveAutoQuoteDrafts(window.localStorage, drafts.map((candidate) => candidate.index === draftIndex ? nextDraft : candidate) as StoredAutoQuoteDraft[]);
       setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
         ? ({ ...requestDraft, status: 'processing' as const, result: undefined } as StoredAutoQuoteDraft)
@@ -367,6 +369,8 @@ export default function AutoQuotePage() {
               : candidate));
           }
         }
+      } finally {
+        activeIssueDrafts.current.delete(draftIndex);
       }
     },
     [drafts, loadHistory, refetchDraftPricing]
@@ -380,7 +384,7 @@ export default function AutoQuotePage() {
     recoveryTimers.current.clear();
   }, []);
   const recoverQuotationIssue = useCallback(async (draft: StoredAutoQuoteDraft) => {
-    if (!draft.issueIdempotencyKey || draft.issue || recoveredDrafts.current.has(draft.index) || recoveryTimers.current.has(draft.index)) return;
+    if (!draft.issueIdempotencyKey || draft.issue || activeIssueDrafts.current.has(draft.index) || recoveredDrafts.current.has(draft.index) || recoveryTimers.current.has(draft.index)) return;
     try {
       const state = await getQuotationIssue(draft.issueIdempotencyKey);
       if (state.state === 'processing') {
