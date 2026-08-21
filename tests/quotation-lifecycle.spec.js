@@ -874,10 +874,17 @@ test('new revision prices a product selected from an added item row @quotations 
     data: [{ sku: 'SKU-NEW', nome: 'Produto novo', pricing_available: true }],
   }));
   await page.route('**/api/pricing-lookup', async (route) => {
-    pricingBodies.push(route.request().postDataJSON());
+    const payload = route.request().postDataJSON();
+    pricingBodies.push(payload);
+    const qty = String(payload.items?.[0]?.qty || '');
     await fulfillJson(route, {
       success: true,
-      items: [{ item_code: 'SKU-NEW', item_name: 'Produto novo', qty: '1.000', rate: '12.34' }],
+      items: [{
+        item_code: 'SKU-NEW',
+        item_name: 'Produto novo',
+        qty,
+        rate: qty === '100' ? '8.50' : '12.34',
+      }],
     });
   });
   await page.route('**/api/quotations**', async (route) => {
@@ -915,8 +922,13 @@ test('new revision prices a product selected from an added item row @quotations 
   await page.getByRole('button', { name: /SKU-NEW/ }).click();
 
   await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('12.34');
+  const quantity = row.locator('input[type="number"]').first();
+  await quantity.fill('100');
+  await quantity.blur();
+  await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('8.50');
   expect(pricingBodies).toEqual([
     { items: [{ item_code: 'SKU-NEW', qty: '1.000' }], urgent: false },
+    { items: [{ item_code: 'SKU-NEW', qty: '100' }], urgent: false },
   ]);
 });
 
