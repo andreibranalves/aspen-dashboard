@@ -710,13 +710,13 @@ export default function ManualOrcamentoPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-fg-muted mb-1 block">Email</label>
+                      <label className="text-xs text-fg-muted mb-1 block">E-mail</label>
                       <Input
                         type="email"
                         placeholder="email@exemplo.com"
                         value={newClient.email}
                         onChange={e => setNewClient(prev => ({ ...prev, email: e.target.value }))}
-                        aria-label="Email do cliente"
+                        aria-label="E-mail do cliente"
                       />
                     </div>
                     <div>

@@ -293,7 +293,7 @@ export default function SplitResultCard({
                     aria-label="E-mail"
                     value={draft.edited.email || ''}
                     onChange={(e) => onUpdateField(draft.index, 'email', e.target.value)}
-                    placeholder="Email"
+                    placeholder="E-mail"
                     className="h-7 text-xs"
                   />
                 </label>
