@@ -4,11 +4,11 @@ import { formatBRL, fmtPhone, capitalize, formatDate } from '../../src/lib/forma
 
 describe('formatBRL', () => {
   it('formats integer with BRL', () => {
-    assert.equal(formatBRL(1455.3), 'R$ 1.455,30');
+    assert.equal(formatBRL(1455.3), 'R$\u00a01.455,30');
   });
 
   it('returns zero for invalid input', () => {
-    assert.equal(formatBRL('abc'), 'R$ 0,00');
+    assert.equal(formatBRL('abc'), 'R$\u00a00,00');
   });
 });
 
