@@ -632,16 +632,18 @@ export function createQuotationDeliveryModule(
 
   async function processInternal(
     deliveryId: string | undefined,
-    maxClaims = Number.POSITIVE_INFINITY
+    maxClaims = Number.POSITIVE_INFINITY,
+    deadline = Date.now() + PROCESS_DUE_TIME_BUDGET_MS,
+    waitForNextAttempt = Boolean(deliveryId)
   ): Promise<ProcessResult> {
-    const deadline = Date.now() + PROCESS_DUE_TIME_BUDGET_MS;
     let latest: DeliveryAggregate | null = null;
     let claims = 0;
     while (claims < maxClaims) {
+      if (Date.now() >= deadline) break;
       const claimed = await repository.claim(deliveryId ? { deliveryId } : {});
       if (!claimed) {
         const delayMs =
-          deliveryId && claims > 0 && latest?.nextAttemptAt
+          waitForNextAttempt && claims > 0 && latest?.nextAttemptAt
             ? latest.nextAttemptAt.getTime() - now().getTime()
             : 0;
         if (delayMs > 0 && Date.now() + delayMs <= deadline) {
@@ -775,16 +777,11 @@ export function createQuotationDeliveryModule(
     }
     const deadline = Date.now() + timeBudgetMs;
     await repository.expireReconciliations(limit);
-    let processed = 0;
-    while (processed < limit) {
-      if (Date.now() >= deadline) return { processed, remaining: true };
-      const result = await processInternal(undefined, 1);
-      if (result.claims === 0) {
-        return { processed, remaining: false };
-      }
-      processed += result.claims;
-    }
-    return { processed, remaining: true };
+    const result = await processInternal(undefined, limit, deadline, true);
+    return {
+      processed: result.claims,
+      remaining: result.claims >= limit || Date.now() >= deadline,
+    };
   }
 
   async function applyEvolutionEvent(

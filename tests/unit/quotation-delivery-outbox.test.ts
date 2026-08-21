@@ -1006,3 +1006,27 @@ test('processDue is bounded and rejects invalid limits', async () => {
   await assert.rejects(module.processDue(0), /Limite/i);
   await assert.rejects(module.processDue(51), /Limite/i);
 });
+
+test('processDue continues short inter-step delays within its time budget', async () => {
+  const clock = { value: new Date(start) };
+  const sleeps: number[] = [];
+  const steps = [textStep(0), textStep(1, 1_000), textStep(2, 2_000)];
+  const delayed = dependencies({
+    clock,
+    steps,
+    sleep: async (delayMs) => {
+      sleeps.push(delayMs);
+      clock.value = new Date(clock.value.getTime() + delayMs);
+    },
+  });
+  await delayed.repository.enqueue({ ...plan(steps), flowId: 'worker-delayed' });
+
+  const batch = await delayed.module.processDue(3);
+
+  assert.equal(batch.processed, 3);
+  assert.deepEqual(sleeps, [1_000, 2_000]);
+  assert.deepEqual(
+    delayed.transport.calls.map((call) => call.step.position),
+    [0, 1, 2]
+  );
+});
