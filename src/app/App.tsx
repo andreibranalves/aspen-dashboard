@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from 'react';
-import { useHashRoute } from '@/hooks/useHashRoute';
+import { useHashRoute, RouteGuardProvider } from '@/hooks/useHashRoute';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 import { routes, type AppRoute } from '@/app/routes';
@@ -33,10 +33,18 @@ export default function App() {
     content = <AutoQuotePage />;
   }
 
-  if (matched && matched.entry.layout === false) return content;
+  if (matched && matched.entry.layout === false) {
+    return (
+      <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
+        {content}
+      </RouteGuardProvider>
+    );
+  }
   return (
-    <Layout route={route} onNavigate={navigate}>
-      {content}
-    </Layout>
+    <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
+      <Layout route={route} onNavigate={navigate}>
+        {content}
+      </Layout>
+    </RouteGuardProvider>
   );
 }

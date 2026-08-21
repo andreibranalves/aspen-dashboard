@@ -29,11 +29,13 @@ import {
   isUnpricedProduct,
   searchProducts as cachedSearchProducts,
 } from '@/lib/api/productCache';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
 import type { OrcamentoResponse, Product } from '@/types/domain';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LEAD_SOURCES,
@@ -93,6 +95,64 @@ function makeItemKey(sku: string): string {
   return `${sku}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// ── Draft persistence (manual quotation) ──
+// Same philosophy as autoQuoteDraftStorage: losing a filled form to an
+// accidental navigation is unacceptable. Storage failures never block editing.
+const MANUAL_DRAFT_STORAGE_KEY = 'aspen_manual_draft';
+const MANUAL_DRAFT_STORAGE_VERSION = 1;
+
+interface ManualDraft {
+  version: number;
+  clientType: string;
+  clientSearch: string;
+  selectedClient: Client | null;
+  newClient: NewClient;
+  leadSource: string;
+  cnpj: string;
+  address: Address;
+  showAddress: boolean;
+  items: CartItem[];
+  prazo: string;
+  observacoes: string;
+  urgente: boolean;
+  templateKey: string;
+}
+
+function isManualDraft(value: unknown): value is ManualDraft {
+  if (typeof value !== 'object' || value === null) return false;
+  const draft = value as Record<string, unknown>;
+  return (
+    draft.version === MANUAL_DRAFT_STORAGE_VERSION &&
+    typeof draft.clientType === 'string' &&
+    Array.isArray(draft.items)
+  );
+}
+
+function loadManualDraft(): ManualDraft | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(MANUAL_DRAFT_STORAGE_KEY) || 'null');
+    return isManualDraft(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveManualDraft(draft: ManualDraft): void {
+  try {
+    window.localStorage.setItem(MANUAL_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  } catch {
+    // localStorage indisponível ou cheio; a edição continua.
+  }
+}
+
+function clearManualDraft(): void {
+  try {
+    window.localStorage.removeItem(MANUAL_DRAFT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export default function ManualOrcamentoPage() {
   // ── Client state ──
   const [clientType, setClientType] = useState<string>(CLIENT_TYPE.NEW);
@@ -130,6 +190,8 @@ export default function ManualOrcamentoPage() {
   const [templateKey, setTemplateKey] = useState<string>('');
   const [templateLoading, setTemplateLoading] = useState<boolean>(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  // ── Destructive-action confirmation ──
+  const [confirmClear, setConfirmClear] = useState<boolean>(false);
 
   const loadTemplates = useCallback(async () => {
     setTemplateLoading(true);
@@ -429,7 +491,71 @@ export default function ManualOrcamentoPage() {
     setProductResults([]);
     setAddingSku(null);
     setPricingRows(new Set());
+    clearManualDraft();
   }, []);
+
+  // ── Draft persistence ──
+  const draftRestoredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const draft = loadManualDraft();
+    if (!draft) return;
+    if (Array.isArray(draft.items)) setItems(draft.items);
+    if (draft.clientType) setClientType(draft.clientType);
+    setSelectedClient(draft.selectedClient ?? null);
+    setClientSearch(draft.clientSearch || '');
+    setNewClient(draft.newClient ?? { nome: '', email: '', telefone: '' });
+    if (draft.leadSource) setLeadSource(draft.leadSource);
+    if (draft.cnpj) setCnpj(draft.cnpj);
+    if (draft.address) setAddress(draft.address);
+    setShowAddress(Boolean(draft.showAddress));
+    if (draft.prazo) setPrazo(draft.prazo);
+    if (draft.observacoes) setObservacoes(draft.observacoes);
+    setUrgente(Boolean(draft.urgente));
+    if (draft.templateKey) setTemplateKey(draft.templateKey);
+  }, []);
+
+  const hasFormData = Boolean(
+    items.length > 0 ||
+    getClientInfo().nome ||
+    leadSource ||
+    cnpj ||
+    hasAnyAddressField(address) ||
+    prazo ||
+    observacoes.trim(),
+  );
+
+  useEffect(() => {
+    if (result) return;
+    if (!hasFormData) {
+      clearManualDraft();
+      return;
+    }
+    saveManualDraft({
+      version: MANUAL_DRAFT_STORAGE_VERSION,
+      clientType,
+      clientSearch,
+      selectedClient,
+      newClient,
+      leadSource,
+      cnpj,
+      address,
+      showAddress,
+      items,
+      prazo,
+      observacoes,
+      urgente,
+      templateKey,
+    });
+  }, [result, hasFormData, clientType, clientSearch, selectedClient, newClient, leadSource, cnpj, address, showAddress, items, prazo, observacoes, urgente, templateKey]);
+
+  // ── Navigation guard: filled form must never die silently ──
+  const { setNavigationGuard } = useRouteGuardContext();
+  useEffect(() => {
+    setNavigationGuard(hasFormData && !result ? () => false : null);
+    return () => setNavigationGuard(null);
+  }, [hasFormData, result, setNavigationGuard]);
 
   // ── Render ──
   return (
@@ -454,9 +580,21 @@ export default function ManualOrcamentoPage() {
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={resetForm}>
-            Novo orçamento
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={resetForm}>
+              Novo orçamento
+            </Button>
+            {(result.quotation_id || result.quotation_uuid) && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  window.location.hash = `/quotations/${result.quotation_uuid || result.quotation_id}`;
+                }}
+              >
+                Abrir orçamento
+              </Button>
+            )}
+          </div>
               </>
             );
           })()}
@@ -883,7 +1021,7 @@ export default function ManualOrcamentoPage() {
                                   <button
                                     type="button"
                                     onClick={() => removeItem(item._key)}
-                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/100/10 hover:text-destructive transition-colors"
+                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                                     aria-label={`Remover ${item.sku}`}
                                   >
                                     <Trash2 size={15} />
@@ -912,7 +1050,7 @@ export default function ManualOrcamentoPage() {
                               <button
                                 type="button"
                                 onClick={() => removeItem(item._key)}
-                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/100/10 hover:text-destructive transition-colors"
+                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                                 aria-label={`Remover ${item.sku}`}
                               >
                                 <Trash2 size={15} />
@@ -1121,7 +1259,7 @@ export default function ManualOrcamentoPage() {
                     'Criar orçamento'
                   )}
                 </Button>
-                <Button variant="outline" onClick={resetForm} disabled={submitting} className="w-full">
+                <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting} className="w-full">
                   Limpar tudo
                 </Button>
                 <p className="text-xs text-fg-muted text-center">
@@ -1132,6 +1270,20 @@ export default function ManualOrcamentoPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Limpar o formulário?"
+        message="Todos os dados preenchidos neste orçamento serão descartados. Um rascunho permanece salvo neste navegador até ser concluído ou descartado."
+        confirmLabel="Limpar tudo"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmClear(false);
+          resetForm();
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
 }

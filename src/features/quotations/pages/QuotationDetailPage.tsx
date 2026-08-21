@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   type ChangeEvent,
   type MutableRefObject,
@@ -29,6 +30,7 @@ import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -162,6 +164,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [data, setData] = useState<QuotationData>(initialData);
   const draftEditable = data.status_canonical === 'rascunho';
   const [editing, setEditing] = useState(false);
+  const [confirmDiscardEdits, setConfirmDiscardEdits] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -512,6 +515,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     },
     [data]
   );
+
+  // ── Dirty detection for the edit form ──
+  const isDirty = useMemo(() => {
+    if (!editing) return false;
+    if (JSON.stringify(items) !== JSON.stringify(asCoreItems(data.items))) return true;
+    if (validadeDias !== String(data.validade_dias ?? '')) return true;
+    if (pagamento !== (data.pagamento || '')) return true;
+    if (entrega !== (data.entrega || '')) return true;
+    if (frete !== String(data.frete)) return true;
+    if (observacoes !== (data.observacoes || '')) return true;
+    if (prazoProducao !== (data.prazo_producao || '')) return true;
+    if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
+    if (selectedTemplate !== (data.template_key || 'padrao')) return true;
+    return false;
+  }, [editing, items, data, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate]);
 
   const save = useCallback(async () => {
     const token = concurrencyTokenRef.current;
@@ -1260,7 +1278,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button variant="success" size="sm" disabled={saving} onClick={save}>
                 <Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}
               </Button>
-              <Button variant="outline" size="sm" disabled={saving} onClick={() => resetEditor()}>
+              <Button variant="outline" size="sm" disabled={saving} onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}>
                 Cancelar
               </Button>
             </>
@@ -1431,6 +1449,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         error={emailError}
         onCancel={cancelEmailDialog}
         onSubmit={sendQuotationEmail}
+      />
+      <ConfirmDialog
+        open={confirmDiscardEdits}
+        title="Descartar alterações?"
+        message="As edições deste orçamento (itens, condições e seções) que ainda não foram salvas serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmDiscardEdits(false);
+          resetEditor();
+        }}
+        onCancel={() => setConfirmDiscardEdits(false)}
       />
     </div>
   );

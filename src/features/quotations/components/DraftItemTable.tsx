@@ -190,7 +190,7 @@ export default function DraftItemTable({
                       <button
                         type="button"
                         onClick={() => removeDraftItem(draftIdx, ii)}
-                        className="rounded-full p-1 text-fg-muted transition-colors hover:bg-destructive/100/10 hover:text-destructive"
+                        className="rounded-full p-1 text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive"
                         aria-label="Remover item"
                       >
                         <X size={14} />

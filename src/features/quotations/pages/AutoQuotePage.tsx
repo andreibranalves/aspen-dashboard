@@ -15,6 +15,7 @@ import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplates
 import { capitalize, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
@@ -518,6 +519,10 @@ export default function AutoQuotePage() {
     }
   }, []);
 
+  // ── Destructive-action confirmations ──
+  const [confirmReset, setConfirmReset] = useState<boolean>(false);
+  const [confirmClearResults, setConfirmClearResults] = useState<boolean>(false);
+
   // ── Reset ──
   const handleReset = useCallback(() => {
     setText('');
@@ -852,7 +857,11 @@ export default function AutoQuotePage() {
               </Button>
 
               {(text || imageData) && (
-                <Button variant="ghost" size="sm" onClick={handleReset}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => (activeDrafts.length > 0 ? setConfirmReset(true) : handleReset())}
+                >
                   <RotateCcw size={14} />
                   Limpar
                 </Button>
@@ -945,7 +954,7 @@ export default function AutoQuotePage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={clearResults}
+                  onClick={() => setConfirmClearResults(true)}
                   disabled={activeDrafts.length === 0}
                   className="text-fg-muted"
                 >
@@ -1046,6 +1055,34 @@ export default function AutoQuotePage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmReset}
+        title="Descartar pedido e resultados?"
+        message="O texto e a imagem atuais serão apagados e todos os rascunhos extraídos (incluindo orçamentos ainda não emitidos) serão removidos deste navegador."
+        confirmLabel="Descartar tudo"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmReset(false);
+          handleReset();
+        }}
+        onCancel={() => setConfirmReset(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmClearResults}
+        title="Limpar a lista de resultados?"
+        message="Todos os rascunhos extraídos serão removidos deste navegador, incluindo os que ainda não foram emitidos."
+        confirmLabel="Limpar lista"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmClearResults(false);
+          clearResults();
+        }}
+        onCancel={() => setConfirmClearResults(false)}
+      />
     </div>
   );
 }

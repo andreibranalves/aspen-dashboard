@@ -346,7 +346,7 @@ export default function ProductsPage() {
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => handleDelete(sku, p.ativo === false)}
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
+                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
                           aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                           title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
                         >
@@ -405,7 +405,7 @@ export default function ProductsPage() {
                     </button>
                     <button
                       onClick={() => handleDelete(sku, p.ativo === false)}
-                      className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors shrink-0"
+                      className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
                       aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                       title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
                     >
