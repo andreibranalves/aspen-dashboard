@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { RenderedQuotationEmail } from '../../api/_shared/quotation-email.js';
+import type { RenderedQuotationEmail } from '../../api/_modules/quotation-email-renderer.js';
 import type { FunctionEvent, FunctionResult } from '../../api/_http/types.js';
 import type {
   QuotationEmailDelivery,
@@ -81,6 +81,7 @@ function delivery(
 type DeliveryOptions = {
   initial?: QuotationEmailDelivery | null;
   reserved?: QuotationEmailDelivery;
+  reserveSnapshots?: RenderedQuotationEmail[];
   markAcceptedError?: Error;
   markFailedError?: Error;
 };
@@ -93,6 +94,7 @@ function fakeDeliveries(calls: string[], options: DeliveryOptions = {}): Quotati
     },
     async reserve(input) {
       calls.push('reserve');
+      options.reserveSnapshots?.push(input.templateSnapshot);
       if (!current) {
         current = options.reserved || delivery({
           id: input.attemptId,
@@ -187,10 +189,11 @@ test('accepted Resend response marks attempt and returns safe projection', async
 
 test('new attempt reserves and sends the code-defined rendered payload', async () => {
   const calls: string[] = [];
+  const reserveSnapshots: RenderedQuotationEmail[] = [];
   let transportInput: Record<string, unknown> | undefined;
 
   const result = await handler(event('POST', payload()), {
-    deliveries: fakeDeliveries(calls),
+    deliveries: fakeDeliveries(calls, { reserveSnapshots }),
     snapshots: snapshots(snapshot()),
     issueToken: acceptedToken(),
     transport: async input => {
@@ -203,9 +206,17 @@ test('new attempt reserves and sends the code-defined rendered payload', async (
   });
 
   assert.equal(result.statusCode, 200);
+  assert.deepEqual(
+    {
+      subject: transportInput?.subject,
+      html: transportInput?.html,
+      text: transportInput?.text,
+    },
+    reserveSnapshots[0],
+  );
   assert.equal(transportInput?.subject, 'Orçamento ORC-42 - Aspen');
   assert.match(String(transportInput?.html), /Cliente Teste/);
-  assert.doesNotMatch(String(transportInput?.text), /https:\/\/localhost:5173\/api\/public-quotation/);
+  assert.match(String(transportInput?.text), /https:\/\/localhost:5173\/api\/public-quotation/);
   assert.deepEqual(calls, ['reserve', 'transport', 'markAccepted']);
 });
 
@@ -216,6 +227,7 @@ test('pending retry reuses the exact reserved rendered payload', async () => {
     deliveries: fakeDeliveries([], { initial: delivery({ templateSnapshot: RESERVED_EMAIL }) }),
     snapshots: snapshots(snapshot()),
     issueToken: acceptedToken(),
+    renderEmail: async () => { throw new Error('renderer must not run'); },
     transport: async input => {
       transportInput = input as unknown as Record<string, unknown>;
       return { id: 'email_123' };
@@ -227,6 +239,43 @@ test('pending retry reuses the exact reserved rendered payload', async () => {
   assert.equal(transportInput?.subject, RESERVED_EMAIL.subject);
   assert.equal(transportInput?.html, RESERVED_EMAIL.html);
   assert.equal(transportInput?.text, RESERVED_EMAIL.text);
+});
+
+test('pending retry keeps the original quotation URL for the PDF attachment', async () => {
+  let firstInput: Record<string, unknown> | undefined;
+  let secondInput: Record<string, unknown> | undefined;
+  const deliveries = fakeDeliveries([]);
+
+  const first = await handler(event('POST', payload()), {
+    deliveries,
+    snapshots: snapshots(snapshot()),
+    issueToken: acceptedToken(),
+    transport: async input => {
+      firstInput = input as unknown as Record<string, unknown>;
+      throw new ResendTransportError('provider result unknown', 'uncertain');
+    },
+    token: () => 'stable-public-token',
+    now: () => NOW,
+  });
+
+  const second = await handler(event('POST', payload()), {
+    deliveries,
+    snapshots: snapshots(snapshot()),
+    issueToken: acceptedToken(),
+    transport: async input => {
+      secondInput = input as unknown as Record<string, unknown>;
+      return { id: 'email_123' };
+    },
+    env: { VERCEL_PROJECT_PRODUCTION_URL: 'changed.example.com' },
+    token: () => 'discarded-token',
+    now: () => NOW,
+  });
+
+  assert.equal(first.statusCode, 503);
+  assert.equal(second.statusCode, 200);
+  assert.equal(secondInput?.html, firstInput?.html);
+  assert.equal(secondInput?.text, firstInput?.text);
+  assert.equal(secondInput?.attachmentUrl, firstInput?.attachmentUrl);
 });
 
 test('render failures stop before reservation and provider calls', async () => {

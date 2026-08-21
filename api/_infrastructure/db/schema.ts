@@ -21,7 +21,7 @@ import {
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from '../../_modules/quotation-content.js';
-import type { RenderedQuotationEmail } from '../../_shared/quotation-email.js';
+import type { RenderedQuotationEmail } from '../../_modules/quotation-email-renderer.js';
 import type { QuotationStatus } from '../../_modules/quotation-status.js';
 
 // Database default retained for the legacy column until its approved cleanup migration.

@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { loadLocalEnv } from './load-env.mjs';
 
 export function evaluateQuotationEmailCutover({ legacyPendingCount }) {
-  const count = Number.isInteger(legacyPendingCount) && legacyPendingCount >= 0
-    ? legacyPendingCount
-    : 0;
-  return { ok: count === 0, legacyPendingCount: count };
+  if (!Number.isInteger(legacyPendingCount) || legacyPendingCount < 0) {
+    return { ok: false, legacyPendingCount: null };
+  }
+  return { ok: legacyPendingCount === 0, legacyPendingCount };
 }
 
 export function formatQuotationEmailCutoverPreflight(result, now = () => new Date()) {
@@ -18,6 +18,12 @@ export function formatQuotationEmailCutoverPreflight(result, now = () => new Dat
     return [
       `timestamp: ${timestamp}`,
       'PASS nenhuma tentativa pendente usa snapshot legado',
+    ].join('\n') + '\n';
+  }
+  if (result.legacyPendingCount === null) {
+    return [
+      `timestamp: ${timestamp}`,
+      'FAIL preflight do e-mail inválido; reconcilie antes do cutover',
     ].join('\n') + '\n';
   }
   return [
@@ -47,7 +53,7 @@ export async function runQuotationEmailCutoverPreflight({
       SELECT count(*)::int AS count
       FROM quotation_email_deliveries
       WHERE state = 'pending'
-        AND NOT (
+        AND NOT COALESCE((
           jsonb_typeof(template_snapshot) = 'object'
           AND CASE
             WHEN jsonb_typeof(template_snapshot) = 'object'
@@ -60,10 +66,16 @@ export async function runQuotationEmailCutoverPreflight({
           AND char_length(btrim(template_snapshot ->> 'subject')) > 0
           AND char_length(btrim(template_snapshot ->> 'html')) > 0
           AND char_length(btrim(template_snapshot ->> 'text')) > 0
-        )
+        ), false)
     `;
+    const rawCount = row?.count;
+    const legacyPendingCount = typeof rawCount === 'number'
+      ? rawCount
+      : typeof rawCount === 'string' && /^\d+$/.test(rawCount.trim())
+        ? Number(rawCount)
+        : Number.NaN;
     return {
-      ...evaluateQuotationEmailCutover({ legacyPendingCount: Number(row?.count || 0) }),
+      ...evaluateQuotationEmailCutover({ legacyPendingCount }),
       timestamp: now().toISOString(),
     };
   } finally {

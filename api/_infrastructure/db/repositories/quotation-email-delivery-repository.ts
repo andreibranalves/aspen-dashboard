@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import {
   isRenderedQuotationEmail,
   type RenderedQuotationEmail,
-} from '../../../_shared/quotation-email.js';
+} from '../../../_modules/quotation-email-renderer.js';
 import { getDatabase, type AppDatabase } from '../client.js';
 import { quotationEmailDeliveries } from '../schema.js';
 

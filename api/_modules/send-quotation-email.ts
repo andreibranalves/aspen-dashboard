@@ -4,7 +4,7 @@ import {
   isRenderedQuotationEmail,
   renderQuotationEmail,
   type RenderedQuotationEmail,
-} from '../_shared/quotation-email.js';
+} from './quotation-email-renderer.js';
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { isIssuedQuotationStatus } from './quotation-status.js';
 import {
@@ -121,6 +121,34 @@ function publicBaseUrl(event: FunctionEvent, env: typeof process.env = process.e
   }
   const originHost = host === '::1' ? `[${host}]` : host;
   return strictOrigin(`${protocol}://${originHost}`, true);
+}
+
+function storedPublicQuotationUrl(
+  rendered: RenderedQuotationEmail,
+  publicToken: string,
+): string | null {
+  const match = rendered.text.match(
+    /https?:\/\/[^\s<>"']+\/api\/public-quotation\?token=[A-Za-z0-9_-]+/,
+  );
+  if (!match) return null;
+
+  try {
+    const parsed = new URL(match[0]);
+    if (
+      parsed.pathname !== '/api/public-quotation' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.hash ||
+      parsed.searchParams.get('token') !== publicToken ||
+      Array.from(parsed.searchParams.keys()).length !== 1
+    ) {
+      return null;
+    }
+    strictOrigin(parsed.origin, parsed.protocol === 'http:');
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function acceptedResponse(delivery: QuotationEmailDelivery): FunctionResult {
@@ -319,7 +347,8 @@ export async function handler(
       now: () => now().getTime(),
     });
     if (token.token !== publicToken) throw new Error('Token público inconsistente.');
-    const publicUrl = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
+    const publicUrl = storedPublicQuotationUrl(rendered, publicToken)
+      || `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
     const attachmentUrl = `${publicUrl}&format=pdf`;
 
     let sent: { id: string };
