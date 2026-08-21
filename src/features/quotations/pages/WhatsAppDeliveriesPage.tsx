@@ -56,7 +56,7 @@ const DEFAULT_FILTERS: DeliveryFilters = {
 };
 
 const STATE_FILTERS: Array<{ key: DeliveryState; label: string }> = [
-  { key: 'retry_scheduled', label: 'Retry agendado' },
+  { key: 'retry_scheduled', label: 'Reagendado' },
   { key: 'delivered', label: 'Entregues' },
   { key: 'failed', label: 'Falhos' },
 ];
@@ -477,7 +477,7 @@ export default function WhatsAppDeliveriesPage() {
           {[
             ['Ativos', result.summary.active],
             ['Requer ação', result.summary.requiresAction],
-            ['Retry agendado', result.summary.retryScheduled],
+            ['Reagendado', result.summary.retryScheduled],
             ['Atrasados', result.summary.delayed],
             ['Entregues nas últimas 24 horas', result.summary.deliveredLast24Hours],
           ].map(([label, value]) => (
