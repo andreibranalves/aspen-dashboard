@@ -78,14 +78,16 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     if (!value && value !== 0) return '';
     const num = Number(value);
     if (Number.isNaN(num)) return '';
-    return num >= 0 ? 'text-success' : 'text-destructive';
+    if (num === 0) return 'text-fg-muted';
+    return num > 0 ? 'text-success' : 'text-destructive';
   };
 
   const formatDelta = (value: unknown): string | null => {
     if (!value && value !== 0) return null;
     const num = Number(value);
     if (Number.isNaN(num)) return null;
-    const sign = num >= 0 ? '+' : '';
+    if (num === 0) return 'sem variação';
+    const sign = num > 0 ? '+' : '';
     return `${sign}${num.toFixed(1)}%`;
   };
 
