@@ -1364,11 +1364,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button
                 variant="outline"
                 size="sm"
+                title={
+                  deliveryPending
+                    ? 'Envio em andamento'
+                    : delivery
+                      ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status ao lado.'
+                      : (data.expirada || data.is_expired || data.derived_expired)
+                        ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+                        : undefined
+                }
                 disabled={deliveryPending || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
                 onClick={sendIssuedQuotation}
               >
                 <Phone size={14} /> Enviar WhatsApp
               </Button>
+              {delivery && !deliveryPending && (
+                <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
+              )}
               {(data.expirada || data.is_expired || data.derived_expired) && (
                 <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
               )}
