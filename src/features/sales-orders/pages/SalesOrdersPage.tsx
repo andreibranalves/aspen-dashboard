@@ -300,7 +300,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={DollarSign}
             label="Receita"
             value={formatBRL(summaryData.total_revenue)}
-            subtitle={`${summaryData.revenue_delta >= 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
+            subtitle={summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
           <SummaryCard
@@ -313,7 +313,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={TrendingUp}
             label="Ticket Médio"
             value={formatBRL(summaryData.avg_ticket)}
-            subtitle={`${summaryData.avg_ticket_delta >= 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
+            subtitle={summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
             colorClass="tone-warning-soft"
           />
           <SummaryCard
