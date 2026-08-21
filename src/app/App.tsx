@@ -5,7 +5,7 @@ import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 import { routes, type AppRoute } from '@/app/routes';
 import { routePath } from '@/app/match-route';
-import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
+import NotFoundPage from '@/components/shared/NotFoundPage';
 
 function findRoute(route: string): { entry: AppRoute; params: Record<string, string> } | null {
   const path = routePath(route);
@@ -31,7 +31,7 @@ export default function App() {
       content = <Suspense fallback={<PageLoader />}>{content}</Suspense>;
     }
   } else {
-    content = <AutoQuotePage />;
+    content = <NotFoundPage navigate={navigate} />;
   }
 
   if (matched && matched.entry.layout === false) {

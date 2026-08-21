@@ -40,6 +40,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/settings': 'Configurações',
   '/whatsapp-inbox': 'WhatsApp',
   '/whatsapp-deliveries': 'Envios WhatsApp',
+  '/comunicacao': 'Comunicação',
 };
 
 function getParentRoute(fallback: string): string {
@@ -72,7 +73,7 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Catálogo de Produtos', hash: getParentRoute('/products') },
-      { label: sku, hash: null },
+      { label: sku === 'new' ? 'Novo produto' : sku, hash: null },
     ];
   }
   if (path.startsWith('/leads/')) {
@@ -80,13 +81,13 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Clientes', hash: getParentRoute('/leads') },
-      { label: id, hash: null },
+      { label: id === 'cliente/new' ? 'Novo cliente' : id, hash: null },
     ];
   }
 
   const label = PAGE_LABELS[path];
   if (label) return [{ label: 'Início', hash: '/dashboard' }, { label, hash: null }];
-  return [{ label: 'Início', hash: '/dashboard' }, { label: path, hash: null }];
+  return [{ label: 'Início', hash: '/dashboard' }, { label: 'Página não encontrada', hash: null }];
 }
 
 export interface LayoutProps {

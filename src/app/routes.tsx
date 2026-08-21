@@ -6,6 +6,7 @@ import {
   FileText,
   MessageCircle,
   Package,
+  Radio,
   Settings,
   Send,
   ShoppingCart,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import { matchSegments, prefix } from '@/app/match-route';
 import LoginPage from '@/app/LoginPage';
+import NotFoundPage from '@/components/shared/NotFoundPage';
 import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
 import type { SetHashRouteGuard } from '@/hooks/useHashRoute';
 
@@ -122,7 +124,7 @@ export const routes: AppRoute[] = [
     path: '/quotations',
     suspense: true,
     render: ({ navigate }) => <QuotationsPage navigate={navigate} />,
-    nav: { label: 'Orçamentos', icon: FileText, section: 'Cadastros' },
+    nav: { label: 'Orçamentos', icon: FileText, section: 'Operacional' },
   },
   {
     path: '/products',
@@ -134,13 +136,13 @@ export const routes: AppRoute[] = [
     path: '/leads',
     suspense: true,
     render: ({ navigate }) => <LeadsPage navigate={navigate} />,
-    nav: { label: 'Clientes', icon: Users, section: 'Cadastros' },
+    nav: { label: 'Clientes', icon: Users, section: 'Operacional' },
   },
   {
     path: '/comunicacao',
     suspense: true,
     render: () => <ComunicacaoPage />,
-    nav: { label: 'Comunicação', icon: MessageCircle, section: 'Outros' },
+    nav: { label: 'Comunicação', icon: Radio, section: 'Outros' },
   },
   {
     path: '/settings',
@@ -152,5 +154,9 @@ export const routes: AppRoute[] = [
     path: '/manual',
     suspense: true,
     render: () => <ManualOrcamentoPage />,
+  },
+  {
+    path: '/404',
+    render: ({ navigate }) => <NotFoundPage navigate={navigate} />,
   },
 ];
