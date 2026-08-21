@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { VercelRequestLike, VercelResponseLike } from '../_http/types.js';
 import { getRouteName, isAuthenticated } from '../_shared/auth.js';
 import { checkRateLimitAsync } from '../_shared/rate-limit.js';
+import { applyWhatsappContextCors } from '../_http/whatsapp-context-cors.js';
 import { wrapFunctionHandler } from '../_http/function-adapter.js';
 import { routes } from './routes.js';
 
@@ -86,6 +87,7 @@ export async function handleApiRequest(
 ): Promise<void> {
   const requestLike = req as unknown as VercelRequestLike;
   const routeName = getRouteName(requestLike);
+  applyWhatsappContextCors(routeName, requestLike.headers || {}, res);
   try {
     if (routeName === 'evolution-webhook' && isOversizedEvolutionWebhookRequest(requestLike)) {
       res.status(413).json({ error: 'Corpo da requisição excede o limite permitido.' });

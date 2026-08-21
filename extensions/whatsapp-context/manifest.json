@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Aspen — Contexto comercial do WhatsApp",
+  "version": "0.1.0",
+  "description": "Mostra o contexto comercial do Aspen ao lado de uma conversa individual no WhatsApp Web.",
+  "permissions": [],
+  "host_permissions": [
+    "https://aspen-orcamento.vercel.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["config.js", "contact-adapter.js", "panel.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Contexto comercial Aspen"
+  }
+}

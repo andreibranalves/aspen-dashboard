@@ -9,6 +9,7 @@ import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QualityBadges } from '@/features/customers/components/QualityBadges';
+import { readNewClientPrefill } from '@/features/customers/new-client-prefill';
 import { ContextActions, type ContextAction } from '@/features/customers/components/ContextActions';
 import { projectClientDetail, type ProjectedClientDetail } from '@/lib/localProjections';
 
@@ -106,11 +107,14 @@ function InfoField({ label, value, children }: { label: string; value?: string; 
 export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetailPageProps) {
   const decodedId = decodeURIComponent(id || '');
   const isNewClient = decodedId === 'new';
+  const initialFields: EditFields = isNewClient
+    ? { ...EMPTY_FIELDS, ...readNewClientPrefill(window.location.hash) }
+    : EMPTY_FIELDS;
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | 'not_found' | null>(null);
   const [editing, setEditing] = useState(isNewClient);
-  const [fields, setFields] = useState<EditFields>(EMPTY_FIELDS);
+  const [fields, setFields] = useState<EditFields>(initialFields);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const setTopBarActions = useSetTopBarActions();
@@ -122,7 +126,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     try {
       if (isNewClient) {
         setDetail(null);
-        setFields(EMPTY_FIELDS);
+        setFields({ ...EMPTY_FIELDS, ...readNewClientPrefill(window.location.hash) });
         setEditing(true);
         return;
       }
