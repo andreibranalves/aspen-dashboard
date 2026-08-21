@@ -13,7 +13,7 @@ test('renders a readable quotation email with HTML and plain text alternatives',
 
   assert.equal(rendered.subject, 'Orçamento ORC-42 - Aspen');
   assert.match(rendered.html, /lang="pt-BR"/);
-  assert.match(rendered.html, /<strong>Olá, &lt;Maria &amp; Filhos&gt;, tudo bem\?<\/strong>/);
+  assert.match(rendered.html, /<strong>Olá, (?:<!-- -->)?&lt;Maria &amp; Filhos&gt;(?:<!-- -->)?, tudo bem\?<\/strong>/);
   assert.match(rendered.html, /Recebemos seu pedido de orçamento para nossos personalizados/);
   assert.match(rendered.html, /ORC-42/);
   assert.match(rendered.html, /src="https:\/\/app\.example\.com\/email-logo-light\.svg"/);
