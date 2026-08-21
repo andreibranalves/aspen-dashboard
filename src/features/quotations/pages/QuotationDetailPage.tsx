@@ -427,6 +427,34 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     return String(rawRate);
   }, []);
 
+  const repriceItem = useCallback(
+    async (key: string) => {
+      const item = items.find((candidate) => candidate._key === key);
+      if (!item || !item.sku || item.manual_rate) return;
+      const quantity = item.qty;
+      if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) return;
+      try {
+        const rate = await lookupProductPrice(item.sku, quantity);
+        setItems((previous) =>
+          previous.map((current) =>
+            current._key === key && current.qty === quantity && !current.manual_rate
+              ? {
+                  ...current,
+                  suggested_unit_price: rate,
+                  applied_unit_price: rate,
+                  price_difference: '0.00',
+                  line_total: String(Number(quantity) * Number(rate)),
+                }
+              : current,
+          ),
+        );
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Não foi possível consultar o preço.');
+      }
+    },
+    [items, lookupProductPrice],
+  );
+
   const selectProduct = useCallback(
     async (key: string, product: Product) => {
       const sku = String(product.sku || product.item_code || '');
@@ -608,7 +636,14 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [data.id, navigate]);
 
   const displayItems = items;
-  const displayedTotal = data.total;
+  const editingSubtotal = items.reduce(
+    (sum, item) => sum + Number(item.qty) * Number(item.applied_unit_price),
+    0,
+  );
+  const displayedSubtotal = editing ? editingSubtotal : data.subtotal;
+  const displayedTotal = editing
+    ? editingSubtotal + (Number.isFinite(Number(frete)) ? Number(frete) : 0)
+    : data.total;
   const selectedTemplateMetadata = templates.find((template) => template.key === selectedTemplate);
   const visibleTemplates = templates.filter(
     (template) => !template.archived || template.key === selectedTemplate
@@ -1159,12 +1194,18 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                     <TableCell className="text-center">
                       {editing ? (
                         <Input
+                          aria-label={`Quantidade de ${item.sku}`}
                           className="h-8 w-20 mx-auto"
                           type="number"
                           min="1"
                           step="1"
                           value={Number(item.qty)}
-                          onChange={(event) => updateItem(item._key, { qty: event.target.value })}
+                          onChange={(event) =>
+                            updateItem(item._key, { qty: event.target.value, line_total: '' })
+                          }
+                          onBlur={() => {
+                            void repriceItem(item._key);
+                          }}
                         />
                       ) : (
                         Number(item.qty)
@@ -1200,7 +1241,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatBRL(
-                        item.line_total || Number(item.qty) * Number(item.applied_unit_price)
+                        editing
+                          ? Number(item.qty) * Number(item.applied_unit_price)
+                          : item.line_total || Number(item.qty) * Number(item.applied_unit_price)
                       )}
                     </TableCell>
                     {editing && (
@@ -1228,8 +1271,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         </div>
 
         <div className="px-6 py-3 border-t text-right font-semibold">
-          Subtotal: {formatBRL(data.subtotal)} · Frete: {formatBRL(data.frete)} · Total:{' '}
-          {formatBRL(displayedTotal)}
+          Subtotal: {formatBRL(displayedSubtotal)} · Frete:{' '}
+          {formatBRL(editing ? frete : data.frete)} · Total: {formatBRL(displayedTotal)}
         </div>
         <div className="px-6 py-4 border-t flex items-center gap-3">
           {draftEditable && !editing && (
