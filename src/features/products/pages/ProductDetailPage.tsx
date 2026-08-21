@@ -17,10 +17,12 @@ import {
   AlertTriangle,
   Search,
   Check,
+  Copy,
   Trash2,
   Archive,
   ArchiveRestore,
 } from 'lucide-react';
+import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
 import { apiGet, apiPut, apiPost, apiDelete, apiPatch } from '@/lib/api/api';
 import { clearProductCache } from '@/lib/api/productCache';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -102,6 +104,18 @@ function buildEmptyProduct(): ProductDetail {
     },
     precos: [],
     preco_base: null,
+  };
+}
+
+function buildDuplicateDraft(source: ProductDetail): ProductDetail {
+  return {
+    ...source,
+    produto: {
+      ...source.produto,
+      sku: '',
+      ativo: true,
+      modificado_em: null,
+    },
   };
 }
 
@@ -216,6 +230,9 @@ interface ProductDetailPageProps {
 export default function ProductDetailPage({ sku, navigate }: ProductDetailPageProps) {
   const decodedSku = decodeURIComponent(sku || '');
   const isNewProduct = decodedSku === 'new';
+  const [duplicateFrom] = useHashQueryState('duplicate', '', parseHashString);
+  const duplicateSku = duplicateFrom.trim();
+  const isDuplicateDraft = isNewProduct && Boolean(duplicateSku);
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -261,7 +278,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
   const fetchProduct = useCallback(async (options: { force?: boolean } = {}) => {
     if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
-    const requestKey = decodedSku;
+    const requestKey = `${decodedSku}:${duplicateSku}`;
     const previousRequest = productRequestRef.current;
     if (!options.force && previousRequest?.key === requestKey) {
       return previousRequest.promise;
@@ -281,18 +298,22 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     const request = (async () => {
       const isCurrentRequest = () =>
         mountedRef.current &&
-        currentSkuRef.current === requestKey &&
+        currentSkuRef.current === decodedSku &&
         productRequestRef.current?.key === requestKey &&
         productRequestRef.current?.generation === generation;
 
       try {
         if (isNewProduct) {
-          const emptyProduct = buildEmptyProduct();
+          const draft = isDuplicateDraft
+            ? buildDuplicateDraft(await apiGet<ProductDetail>(
+              `/product-detail?sku=${encodeURIComponent(duplicateSku)}`
+            ))
+            : buildEmptyProduct();
           if (!isCurrentRequest()) return;
-          setProduct(emptyProduct);
+          setProduct(draft);
           setAtividades([]);
           setActivityError(null);
-          setEdited(buildEditedState(emptyProduct.produto, [], emptyProduct.preco_base));
+          setEdited(buildEditedState(draft.produto, draft.precos, draft.preco_base ?? draft.produto.preco_base));
           setEditing(true);
           return;
         }
@@ -319,7 +340,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     } finally {
       if (productRequestRef.current === requestRecord) productRequestRef.current = null;
     }
-  }, [decodedSku, isNewProduct]);
+  }, [decodedSku, duplicateSku, isDuplicateDraft, isNewProduct]);
 
   const fetchAtividades = useCallback(async (options: { force?: boolean } = {}) => {
     if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
@@ -563,6 +584,18 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
     setTopBarActions(
       <div className="flex items-center gap-2">
+        {!isNewProduct && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/products/new?duplicate=${encodeURIComponent(decodedSku)}`)}
+            disabled={saving || deleting}
+            aria-label="Duplicar produto"
+          >
+            <Copy size={14} />
+            Duplicar
+          </Button>
+        )}
         {editing ? (
           <>
             <Button
@@ -624,11 +657,13 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     return () => setTopBarActions(null);
   }, [
     cancelEditing,
+    decodedSku,
     deleteProduct,
     deleting,
     error,
     isNewProduct,
     loading,
+    navigate,
     product,
     saveProduct,
     saving,
@@ -644,7 +679,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       <div className="flex flex-col items-center py-16 text-fg-muted gap-3 max-w-[1060px] mx-auto">
         <Search size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Produto não encontrado</p>
-        <p className="text-sm">O SKU &quot;{decodedSku}&quot; não existe no catálogo.</p>
+        <p className="text-sm">O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.</p>
       </div>
     );
   }
@@ -686,6 +721,13 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </div>
       )}
 
+      {isDuplicateDraft && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <strong>Rascunho de duplicação.</strong>{' '}
+          Dados copiados; preencha o SKU antes de criar o produto.
+        </div>
+      )}
+
       <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4 min-w-0">
@@ -709,9 +751,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                     {produto.nome || 'Sem nome'}
                   </h2>
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${isNewProduct ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200' : produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}
                   >
-                    {produto.ativo ? 'Ativo' : 'Inativo'}
+                    {isNewProduct ? 'Rascunho' : produto.ativo ? 'Ativo' : 'Inativo'}
                   </span>
                 </div>
                 {produto.descricao && (
