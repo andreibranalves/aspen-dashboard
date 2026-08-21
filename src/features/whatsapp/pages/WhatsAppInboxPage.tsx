@@ -498,7 +498,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                       {crmDetail.crmMatch.matchSource === 'phone'
                         ? 'Telefone'
                         : crmDetail.crmMatch.matchSource === 'email'
-                          ? 'Email'
+                          ? 'E-mail'
                           : 'Nome'}
                     </span>
                   </div>
