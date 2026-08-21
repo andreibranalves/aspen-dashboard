@@ -342,13 +342,13 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     const previewRequestPromise = page.context().waitForEvent('request', {
       predicate: (request) => request.url().includes('/api/quotation-preview'),
     });
-    await page.getByRole('button', { name: 'Visualizar proposta' }).click();
+    await page.getByRole('button', { name: 'Pré-visualizar' }).click();
     const previewRequest = await previewRequestPromise;
     const previewPayload = JSON.parse(new globalThis.URLSearchParams(previewRequest.postData() || '').get('payload') || '{}');
     expect(previewPayload.extracted.items[0].item_name).toBe(customItemName);
     expect(previewPayload.extracted.template_key).toBe('minimalista');
 
-    await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+    await page.getByRole('button', { name: 'Enviar orçamento' }).click();
     await expect.poll(() => issueRequest?.draft?.extracted?.items?.[0]?.item_name, { timeout: 10000 }).toBe(customItemName);
     await expect.poll(() => issueRequest?.draft?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
     const pdfLink = page.getByRole('link', { name: 'Abrir PDF' });
@@ -406,7 +406,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await page.locator('textarea').first().fill(TEST_INPUT);
     await page.getByRole('button', { name: /Extrair/i }).click();
     await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-    await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+    await page.getByRole('button', { name: 'Enviar orçamento' }).click();
     await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'Enviar WhatsApp' }).click();

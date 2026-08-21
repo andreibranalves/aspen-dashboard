@@ -181,7 +181,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
   await page.locator('textarea').first().fill('10 produtos');
   await page.getByRole('button', { name: 'Extrair' }).click();
   await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Enviar orçamento' }).click();
   await expect(page.getByText('Emitido', { exact: true })).toBeVisible();
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });

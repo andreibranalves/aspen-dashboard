@@ -30,7 +30,6 @@ const LeadDetailPage = lazy(() => import('@/features/customers/pages/LeadDetailP
 const SettingsPage = lazy(() => import('@/features/settings/pages/SettingsPage'));
 const ManualOrcamentoPage = lazy(() => import('@/features/quotations/pages/ManualOrcamentoPage'));
 const ComunicacaoPage = lazy(() => import('@/features/communication/pages/ComunicacaoPage'));
-const WhatsAppInboxPage = lazy(() => import('@/features/whatsapp/pages/WhatsAppInboxPage'));
 const WhatsAppDeliveriesPage = lazy(() => import('@/features/quotations/pages/WhatsAppDeliveriesPage'));
 
 export interface RouteContext {
@@ -87,12 +86,6 @@ export const routes: AppRoute[] = [
     path: '/auto',
     render: () => <AutoQuotePage />,
     nav: { label: 'Auto', icon: Sparkles, section: 'Operacional' },
-  },
-  {
-    path: '/whatsapp-inbox',
-    suspense: true,
-    render: ({ navigate }) => <WhatsAppInboxPage navigate={navigate} />,
-    nav: { label: 'WhatsApp', icon: MessageCircle, section: 'Operacional' },
   },
   {
     path: '/whatsapp-deliveries',

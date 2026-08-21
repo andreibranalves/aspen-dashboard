@@ -38,7 +38,6 @@ const PAGE_LABELS: Record<string, string> = {
   '/products': 'Catálogo de Produtos',
   '/leads': 'Clientes',
   '/settings': 'Configurações',
-  '/whatsapp-inbox': 'WhatsApp',
   '/whatsapp-deliveries': 'Envios WhatsApp',
 };
 

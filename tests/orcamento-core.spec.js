@@ -129,7 +129,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await expect(page.getByText(PRODUCT.sku, { exact: true }).first()).toBeVisible();
     await page.getByLabel('Modelo HTML').selectOption('minimalista');
-    await page.getByRole('button', { name: 'Criar orçamento' }).click();
+    await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
     await expect(page.getByText('Rascunho persistido com sucesso')).toBeVisible();
     await expect(page.getByText(/ORC-20260042/)).toBeVisible();
@@ -192,7 +192,7 @@ test.describe('Orçamento manual — rascunho core @quotations @smoke', () => {
     await expect(page.getByText(PRODUCT.nome)).toBeVisible();
     await page.getByRole('button', { name: `Adicionar ${PRODUCT.sku} ao orçamento` }).click();
     await expect(page.getByText(PRODUCT.sku, { exact: true }).first()).toBeVisible();
-    await page.getByRole('button', { name: 'Criar orçamento' }).click();
+    await page.getByRole('button', { name: 'Salvar rascunho' }).click();
 
     await expect(page.getByText('Rascunho persistido com sucesso')).toBeVisible();
     await expect(page.getByText(/ORC-LOCAL-0001/)).toBeVisible();

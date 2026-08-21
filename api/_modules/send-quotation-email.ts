@@ -17,6 +17,7 @@ import {
 } from '../_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import { normalizeClientEmail } from './client-schema.js';
+import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { issuePublicQuotationToken } from './public-quotation.js';
 import {
   ResendTransportError,
@@ -261,6 +262,10 @@ export async function handler(
     revisionId = uuid(input.revision_id, 'Identificador da revisão inválido.');
     const normalizedRecipient = recipient(input.recipient);
     const now = dependencies.now || (() => new Date());
+    const environment = dependencies.env || process.env;
+    if (String(environment.APP_ENV || environment.VERCEL_ENV || '').trim()) {
+      assertExternalWritesAllowed('email', environment);
+    }
     const deliveries = dependencies.deliveries || createPostgresQuotationEmailDeliveryRepository(undefined, { now });
     const snapshots = dependencies.snapshots || createQuotationTemplateRepository();
     const issueToken = dependencies.issueToken || issuePublicQuotationToken;

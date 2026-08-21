@@ -17,7 +17,10 @@ import {
   buildDraftQuotationSnapshot,
   DraftPreviewInputError,
   type DraftSnapshotDependencies,
+  type PricingResolver,
 } from './quotation-draft-snapshot.js';
+import { createPostgresQuotationPricingResolver } from '../_infrastructure/db/repositories/quotation-pricing-repository.js';
+import { createPostgresSettingsRepository } from '../_infrastructure/db/repositories/settings-repository.js';
 import { renderQuotationPdf } from './quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from './quotation-document-storage.js';
 
@@ -29,6 +32,8 @@ export interface QuotationPreviewDependencies {
   recordWrite?: (...args: never[]) => Promise<void>;
   resolveDraftTemplate?: DraftSnapshotDependencies['resolveTemplate'];
   now?: () => Date;
+  resolvePricing?: PricingResolver;
+  resolveSettings?: DraftSnapshotDependencies['resolveSettings'];
 }
 
 const HTML_SECURITY_HEADERS = {
@@ -66,6 +71,8 @@ function json(statusCode: number, payload: Record<string, unknown>): FunctionRes
   };
 }
 
+export const createPostgresQuotationPreviewPricingResolver = createPostgresQuotationPricingResolver;
+
 function safeError(error: unknown): FunctionResult {
   if (
     error instanceof DraftPreviewInputError ||
@@ -88,6 +95,8 @@ export function createQuotationPreviewHandler(
   const repository = dependencies.repository || createQuotationTemplateRepository();
   const renderPdf = dependencies.renderPdf || renderQuotationPdf;
   const resolveDraftTemplate = dependencies.resolveDraftTemplate || resolveCurrentDraftTemplate;
+  const resolvePricing = dependencies.resolvePricing || (process.env.DATABASE_URL ? createPostgresQuotationPreviewPricingResolver() : undefined);
+  const resolveSettings = dependencies.resolveSettings || (process.env.DATABASE_URL ? () => createPostgresSettingsRepository().get() : undefined);
   const now = dependencies.now || (() => new Date());
   return async function quotationPreviewHandler(event: FunctionEvent): Promise<FunctionResult> {
     if (event.httpMethod === 'POST') {
@@ -95,6 +104,8 @@ export function createQuotationPreviewHandler(
         const snapshot = await buildDraftQuotationSnapshot(parsePostPayload(event), {
           now,
           resolveTemplate: resolveDraftTemplate,
+          resolvePricing,
+          resolveSettings,
         });
         const html = renderQuotationTemplate(snapshot.template, snapshot.viewModel);
         if (event.queryStringParameters?.format === 'html') {

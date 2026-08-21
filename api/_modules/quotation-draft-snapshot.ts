@@ -21,10 +21,20 @@ export type PricingResolver = (
   urgent?: boolean,
 ) => { rate: string | number } | Promise<{ rate: string | number }>;
 
+export interface DraftSnapshotSettings {
+  validade_dias?: number;
+  pagamento?: string;
+  entrega?: string;
+  frete_padrao?: string;
+  observacoes?: string;
+  template_padrao?: string;
+}
+
 export interface DraftSnapshotDependencies {
   now?: () => Date;
   resolveTemplate: (key: string, versionId?: string) => Promise<ResolvedQuotationTemplate | null>;
   resolvePricing?: PricingResolver;
+  resolveSettings?: () => Promise<DraftSnapshotSettings | null>;
 }
 
 export interface DraftQuotationSnapshot {
@@ -53,6 +63,11 @@ export interface DraftPreviewInput {
   template_key?: string;
   business_number?: string;
   prazo_producao?: string;
+  pagamento?: string;
+  entrega?: string;
+  observacoes?: string;
+  frete?: string;
+  validade_dias?: number;
   urgente: boolean;
   items: DraftPreviewItem[];
 }
@@ -126,6 +141,22 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
   if (items.length === 0) {
     throw new DraftPreviewInputError('Adicione ao menos um item válido antes de visualizar.');
   }
+  const optionalText = (key: string): string | undefined => {
+    const value = extracted[key];
+    if (value == null) return undefined;
+    const normalized = String(value).trim();
+    if (normalized.length > 4000) throw new DraftPreviewInputError(`${key} excede o limite permitido.`);
+    return normalized || undefined;
+  };
+  const validityDays = extracted.validade_dias == null ? undefined : Number(extracted.validade_dias);
+  if (validityDays !== undefined && (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > 365)) {
+    throw new DraftPreviewInputError('Validade deve ser um número inteiro entre 1 e 365 dias.');
+  }
+  let freight: string | undefined;
+  if (extracted.frete != null && String(extracted.frete).trim()) {
+    try { freight = formatMoneyCents(parseScaledInteger(extracted.frete, 2, 'Frete')); }
+    catch { throw new DraftPreviewInputError('Frete deve ser um valor decimal válido.'); }
+  }
 
   return {
     nome,
@@ -139,6 +170,11 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
       extracted.business_number == null ? undefined : String(extracted.business_number).trim(),
     prazo_producao:
       extracted.prazo_producao == null ? undefined : String(extracted.prazo_producao).trim(),
+    pagamento: optionalText('pagamento'),
+    entrega: optionalText('entrega'),
+    observacoes: optionalText('observacoes'),
+    frete: freight,
+    validade_dias: validityDays,
     urgente: extracted.urgente === true,
     items,
   };
@@ -158,8 +194,9 @@ function draftPreviewViewModel(
   now: Date
 ): QuotationTemplateViewModel {
   const current = Number.isNaN(now.getTime()) ? new Date() : now;
+  const validityDays = extracted.validade_dias || 15;
   const validityDate = new Date(current.getTime());
-  validityDate.setUTCDate(validityDate.getUTCDate() + 15);
+  validityDate.setUTCDate(validityDate.getUTCDate() + validityDays);
   const address = extracted.endereco;
   const addressParts = [
     addressValue(address, 'logradouro', 'endereco', 'address'),
@@ -232,12 +269,15 @@ function draftPreviewViewModel(
       },
     };
   });
-  const total = formatMoneyCents(totalCents);
+  const subtotal = formatMoneyCents(totalCents);
+  const freight = extracted.frete || '0.00';
+  const freightCents = parseScaledInteger(freight, 2, 'Frete');
+  const total = formatMoneyCents(totalCents + freightCents);
   const terms = {
-    pagamento: '',
-    entrega: '',
+    pagamento: extracted.pagamento || '',
+    entrega: extracted.entrega || '',
     production_deadline: extracted.prazo_producao || '',
-    observations: '',
+    observations: extracted.observacoes || '',
   };
   const quoteDate = current.toISOString().slice(0, 10);
   const validity = validityDate.toISOString().slice(0, 10);
@@ -254,7 +294,7 @@ function draftPreviewViewModel(
     date: quoteDate,
     validity_date: validity,
     validity,
-    validity_days: 15,
+    validity_days: validityDays,
     client,
     client_snapshot: client,
     items,
@@ -262,20 +302,20 @@ function draftPreviewViewModel(
     comparison: { brackets: [], products: [] },
     terms,
     terms_snapshot: terms,
-    subtotal: total,
-    freight: '0.00',
+    subtotal,
+    freight,
     total,
-    frete: '0.00',
+    frete: freight,
     secoes: {
       prazo_producao: { value: extracted.prazo_producao || '' },
-      pagamento: { body_html: '' },
-      condicoes_gerais: { body_html: '' },
+      pagamento: { body_html: extracted.pagamento || '' },
+      condicoes_gerais: { body_html: extracted.observacoes || '' },
     },
     display: {
       quote_date: formatQuotationDate(current),
       validity_date: formatQuotationDate(validityDate),
-      subtotal: formatQuotationCurrency(total),
-      freight: formatQuotationCurrency('0.00'),
+      subtotal: formatQuotationCurrency(subtotal),
+      freight: formatQuotationCurrency(freight),
       total: formatQuotationCurrency(total),
     },
   };
@@ -286,6 +326,42 @@ export async function buildDraftQuotationSnapshot(
   dependencies: DraftSnapshotDependencies,
 ): Promise<DraftQuotationSnapshot> {
   const extracted = parseDraftPreview(input);
+  const settings = dependencies.resolveSettings ? await dependencies.resolveSettings() : null;
+  if (settings) {
+    extracted.template_key ||= settings.template_padrao || undefined;
+    extracted.pagamento ||= settings.pagamento || undefined;
+    extracted.entrega ||= settings.entrega || undefined;
+    extracted.observacoes ||= settings.observacoes || undefined;
+    extracted.frete ||= settings.frete_padrao || undefined;
+    extracted.validade_dias ||= settings.validade_dias;
+  }
+  const pricingDifferences: DraftQuotationSnapshot['pricingDifferences'] = [];
+  if (dependencies.resolvePricing) {
+    for (const item of extracted.items) {
+      let resolved: { rate: string | number };
+      try {
+        resolved = await dependencies.resolvePricing(item, item.qty, extracted.urgente && !item.manual_rate);
+      } catch (error) {
+        if (error instanceof DraftPreviewInputError) throw error;
+        throw new DraftPreviewInputError(`Preço indisponível para o produto "${item.item_code}".`);
+      }
+      let expected: bigint;
+      let received: bigint;
+      try {
+        expected = parseScaledInteger(resolved.rate, 2, 'Preço do produto');
+        received = parseScaledInteger(item.rate, 2, 'Preço do item');
+      } catch {
+        throw new DraftPreviewInputError(`Preço indisponível para o produto "${item.item_code}".`);
+      }
+      if (expected <= 0n) throw new DraftPreviewInputError(`Preço indisponível para o produto "${item.item_code}".`);
+      if (!item.manual_rate && expected !== received) {
+        pricingDifferences.push({ path: `items.${item.item_code}.rate`, expected: Number(expected) / 100, received: Number(received) / 100 });
+        throw new DraftPreviewInputError(`O preço do produto "${item.item_code}" foi atualizado. Atualize o orçamento e tente novamente.`);
+      }
+      if (item.manual_rate) continue;
+      item.rate = Number(expected) / 100;
+    }
+  }
   const template = await dependencies.resolveTemplate(extracted.template_key || 'padrao');
   if (!template) throw new DraftPreviewInputError('Template do orçamento inválido.');
   const now = dependencies.now || (() => new Date());
@@ -293,6 +369,6 @@ export async function buildDraftQuotationSnapshot(
     template,
     viewModel: draftPreviewViewModel(extracted, now()),
     authoritativeDraft: extracted as unknown as Record<string, unknown>,
-    pricingDifferences: [],
+    pricingDifferences,
   };
 }

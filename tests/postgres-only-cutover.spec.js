@@ -16,7 +16,6 @@ const routes = [
   '/#/crm',
   '/#/sales-orders',
   '/#/comunicacao',
-  '/#/whatsapp-inbox',
 ];
 const readOnlyPaths = [
   '/api/products?limit=1',

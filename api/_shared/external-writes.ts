@@ -1,6 +1,6 @@
 import { createHttpError } from './http-error.js';
 
-export type ExternalWriteProvider = 'evolution';
+export type ExternalWriteProvider = 'evolution' | 'email';
 
 type Environment = typeof process.env;
 

@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
-import type { Draft, StoredAutoQuoteDraft } from '@/types/domain';
+import type { Draft, OrcamentoResponse, StoredAutoQuoteDraft } from '@/types/domain';
 import { loadAutoQuoteDrafts, saveAutoQuoteDrafts } from '@/lib/storage/autoQuoteDraftStorage';
 import {
   buildQuotePayload,
@@ -63,6 +63,8 @@ export default function AutoQuotePage() {
   const [extracting, setExtracting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [pricingConflictByDraft, setPricingConflictByDraft] = useState<Record<number, string[]>>({});
+  const [savingDraftByIndex, setSavingDraftByIndex] = useState<Record<number, boolean>>({});
+  const issueInFlight = useRef(new Set<number>());
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
 
@@ -294,7 +296,8 @@ export default function AutoQuotePage() {
   const createSingleQuote = useCallback(
     async (draftIndex: number) => {
       const draft = drafts.find((candidate) => candidate.index === draftIndex) as StoredAutoQuoteDraft | undefined;
-      if (!draft) return;
+      if (!draft || issueInFlight.current.has(draftIndex)) return;
+      issueInFlight.current.add(draftIndex);
       const key = draft.issueIdempotencyKey || globalThis.crypto.randomUUID();
       const requestDraft = { ...draft, issueIdempotencyKey: key };
       const nextDraft = { ...requestDraft, status: 'processing' as const, result: undefined };
@@ -304,8 +307,8 @@ export default function AutoQuotePage() {
         : candidate));
       try {
         const issue = await issueQuotation(buildQuotePayload(requestDraft), key, {
-          sourceQuotationId: draft.sourceQuotationId,
-          sourceRevisionId: draft.sourceRevisionId,
+          sourceQuotationId: draft.sourceQuotationId || draft.saved?.quotationId,
+          sourceRevisionId: draft.sourceRevisionId || draft.saved?.revisionId,
         });
         const data = {
           quotation_id: issue.businessNumber,
@@ -378,10 +381,39 @@ export default function AutoQuotePage() {
               : candidate));
           }
         }
+      } finally {
+        issueInFlight.current.delete(draftIndex);
       }
     },
     [drafts, loadHistory, refetchDraftPricing]
   );
+
+  const saveSingleDraft = useCallback(async (draftIndex: number) => {
+    const draft = drafts.find((candidate) => candidate.index === draftIndex) as StoredAutoQuoteDraft | undefined;
+    if (!draft || draft.saved || savingDraftByIndex[draftIndex]) return;
+    setSavingDraftByIndex((current) => ({ ...current, [draftIndex]: true }));
+    try {
+      const result = await apiPost<OrcamentoResponse>('/orcamento', buildQuotePayload(draft));
+      const quotationId = String(result.quote_id || result.quotation_uuid || '');
+      const revisionId = String(result.revision_id || result.quote_revision_id || '');
+      const businessNumber = String(result.quotation_name || result.quotation_id || '');
+      if (!quotationId || !revisionId || !businessNumber) throw new Error('Resposta inválida ao salvar o rascunho.');
+      setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
+        ? ({ ...candidate, saved: { quotationId, revisionId, businessNumber } } as StoredAutoQuoteDraft)
+        : candidate));
+      loadHistory();
+    } catch (error) {
+      setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
+        ? ({ ...candidate, result: { success: false, error: error instanceof Error ? error.message : 'Não foi possível salvar o rascunho.' } } as StoredAutoQuoteDraft)
+        : candidate));
+    } finally {
+      setSavingDraftByIndex((current) => {
+        const next = { ...current };
+        delete next[draftIndex];
+        return next;
+      });
+    }
+  }, [drafts, loadHistory, savingDraftByIndex]);
 
   const recoveredDrafts = useRef(new Set<number>());
   const recoveryTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -1014,6 +1046,8 @@ export default function AutoQuotePage() {
                     selectProduct={selectProduct}
                     onRefetchPricing={refetchDraftPricing}
                     onCreateQuote={createSingleQuote}
+                    onSaveDraft={saveSingleDraft}
+                    isSavingDraft={Boolean(savingDraftByIndex[draft.index])}
                     onPreviewQuote={previewSingleQuote}
                     onNewRevision={createNewRevision}
                     issue={issueProjection}

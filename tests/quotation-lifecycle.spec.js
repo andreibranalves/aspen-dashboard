@@ -1057,7 +1057,7 @@ test('manual quotation accepts metadata-free local responses @quotations @critic
   await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
   await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill('SKU-LOCAL');
   await page.getByRole('button', { name: 'Adicionar SKU-LOCAL ao orçamento' }).click();
-  await page.getByRole('button', { name: 'Criar orçamento' }).click();
+  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
   await expect(page.getByText('Rascunho persistido com sucesso', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
 });
@@ -1078,27 +1078,4 @@ test('empty local CRM and leads retain loading/error/retry states @quotations @c
   await expect(page.getByText('Erro ao carregar clientes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
-});
-
-test('communication screen consumes local conversation and message IDs only @quotations @critical', async ({ page }) => {
-  const conversation = {
-    id: 'conversation-local-1', canonicalPhone: '5511999990000', phone: '5511999990000',
-    displayLabel: 'Cliente local', displayName: 'Cliente local', identityStatus: 'verified',
-    lastMessageAt: '2026-07-01T12:00:00.000Z', lastMessagePreview: 'Olá', status: 'new',
-    createdAt: '2026-07-01T12:00:00.000Z', updatedAt: '2026-07-01T12:00:00.000Z',
-  };
-  const message = { id: 'message-local-1', conversationId: conversation.id, direction: 'inbound', type: 'text', body: 'Olá local', mediaUrl: '', timestamp: '2026-07-01T12:00:00.000Z' };
-  await page.route('**/api/whatsapp-conversations**', async (route) => {
-    const request = route.request();
-    const url = new globalThis.URL(request.url());
-    if (request.method() === 'GET' && url.searchParams.has('messages')) return fulfillJson(route, { success: true, data: [message] });
-    if (request.method() === 'GET' && url.searchParams.has('id')) return fulfillJson(route, { success: true, data: conversation });
-    if (request.method() === 'POST' && request.postDataJSON()?.action === 'sync-messages') return fulfillJson(route, { success: true, data: [message] });
-    if (request.method() === 'POST' && request.postDataJSON()?.action === 'sync') return fulfillJson(route, { success: true, data: { conversations: [conversation], syncedMessages: 1 } });
-    return fulfillJson(route, { success: true, data: [conversation] });
-  });
-  await page.goto('/#/whatsapp-inbox');
-  await expect(page.getByText('Cliente local', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Olá local', { exact: true })).toBeVisible();
-  await expect(page.locator('body')).not.toContainText(/provider|conversationId|messageId/i);
 });

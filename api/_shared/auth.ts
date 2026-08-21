@@ -83,6 +83,7 @@ export function isAuthenticated(
 ): boolean {
   const routeName = getRouteName(req);
   const method = String(req.method || '').toUpperCase();
+  if (routeName === 'whatsapp-context' && method === 'OPTIONS') return true;
   if (isMachineRoute(routeName)) return true;
   if (routeName === 'public-quotation' && method === 'GET') return true;
   if (AUTH_ROUTES.has(routeName)) return true;

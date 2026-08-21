@@ -66,7 +66,8 @@ function adaptResponse(res: ServerResponse): VercelResponseLike {
 export function createNodeHandler() {
   return async function nodeApiHandler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     for (const [key, value] of Object.entries(CORS_HEADERS)) res.setHeader(key, value);
-    if (req.method === 'OPTIONS') {
+    const routeName = new URL(req.url || '/', 'http://localhost').pathname.replace(/^\/api\/?/, '').split('/')[0];
+    if (req.method === 'OPTIONS' && routeName !== 'whatsapp-context') {
       res.writeHead(204);
       res.end();
       return;

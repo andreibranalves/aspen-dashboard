@@ -119,6 +119,8 @@ export interface QuoteDraftCreateInput {
   template?: unknown;
   secoes?: unknown;
   entrega?: unknown;
+  pagamento?: unknown;
+  validade_dias?: unknown;
   /** Inline client fields are kept here for callers that pass `extracted` directly. */
   nome?: unknown;
   name?: unknown;
@@ -572,6 +574,15 @@ async function reserveBusinessNumber(tx: QuoteTransaction, year: number): Promis
   return `ORC-${year}${String(number).padStart(4, '0')}`;
 }
 
+function inputValidityDays(value: unknown, fallback: number): number {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isInteger(normalized) || normalized < 1 || normalized > 365) {
+    throw new QuoteDraftInputError('Validade deve ser um número inteiro entre 1 e 365 dias.');
+  }
+  return normalized;
+}
+
 function inputText(value: unknown, label: string, maximum: number): string {
   if (value === undefined || value === null) return '';
   if (typeof value !== 'string') throw new QuoteDraftInputError(`${label} deve ser texto.`);
@@ -825,8 +836,11 @@ export function createPostgresQuoteDraftRepository(
     const items = normalizeItems(input.items);
     const clientId = normalizeClientId(input);
     const requestUrgent = input.urgente === true;
-    const requestObservations = hasOwn(input as unknown as Record<string, unknown>, 'observacoes')
+    const requestObservations = hasOwn(input as unknown as Record<string, unknown>, 'observacoes') && input.observacoes !== undefined
       ? input.observacoes
+      : undefined;
+    const requestPayment = hasOwn(input as unknown as Record<string, unknown>, 'pagamento') && input.pagamento !== undefined
+      ? input.pagamento
       : undefined;
     const requestDeadline = input.prazo_producao;
     const requestFreight = firstDefined(input as unknown as Record<string, unknown>, [
@@ -923,11 +937,12 @@ export function createPostgresQuoteDraftRepository(
         }
 
         const settings = await readSettings(tx);
+        const validityDays = inputValidityDays(input.validade_dias, settings.validade_dias);
         const template = await readSelectedTemplate(tx, settings, input);
         if (!template) throw new QuoteDraftInputError('Template do orçamento inválido.');
         const baseSections = normalizeQuotationSections(settings.secoes);
         let currentSections = baseSections;
-        if (input.secoes !== undefined || requestObservations !== undefined) {
+        if (input.secoes !== undefined || requestObservations !== undefined || requestPayment !== undefined) {
           try {
             if (
               input.secoes !== undefined &&
@@ -950,11 +965,18 @@ export function createPostgresQuoteDraftRepository(
                     body: inputText(requestObservations, 'Observações', 4000),
                   }
                 : undefined;
+            const paymentOverride =
+              input.secoes === undefined && requestPayment !== undefined
+                ? {
+                    ...baseSections.pagamento,
+                    body: inputText(requestPayment, 'Pagamento', 4000),
+                  }
+                : undefined;
             currentSections = normalizeQuotationSections(
               {
                 schema_version: baseSections.schema_version,
                 prazo_producao: mergeSection('prazo_producao'),
-                pagamento: mergeSection('pagamento'),
+                pagamento: paymentOverride || mergeSection('pagamento'),
                 condicoes_gerais: legacyOverride || mergeSection('condicoes_gerais'),
               },
               {
@@ -964,6 +986,9 @@ export function createPostgresQuoteDraftRepository(
             );
             if (requestObservations !== undefined && input.secoes !== undefined) {
               inputText(requestObservations, 'Observações', 4000);
+            }
+            if (requestPayment !== undefined && input.secoes !== undefined) {
+              inputText(requestPayment, 'Pagamento', 4000);
             }
           } catch (error) {
             throw new QuoteDraftInputError(error instanceof Error ? error.message : 'Seções inválidas.');
@@ -1074,8 +1099,10 @@ export function createPostgresQuoteDraftRepository(
             : await resolveQuotationRevisionMetadata(tx, {
                 templatePadrao: template.model.key,
                 templateHash: template.version.sourceHash,
-                pagamento: settings.pagamento,
-                entrega: settings.entrega,
+                pagamento: sectionsSnapshot.pagamento.current.body,
+                entrega: input.entrega !== undefined
+                  ? inputText(input.entrega, 'Entrega', 500)
+                  : settings.entrega,
                 observacoes: sectionsSnapshot.condicoes_gerais.current.body,
                 prazoProducao: deadline,
               });
@@ -1084,10 +1111,10 @@ export function createPostgresQuoteDraftRepository(
           quotationId,
           version: 1,
           status: 'rascunho',
-          validadeDias: settings.validade_dias,
+          validadeDias: validityDays,
           pagamento: sectionsSnapshot.pagamento.current.body,
           entrega:
-            hasOwn(input as Record<string, unknown>, 'entrega')
+            input.entrega !== undefined
               ? inputText(input.entrega, 'Entrega', 500)
               : settings.entrega,
           fretePadrao: settings.frete_padrao,
@@ -1186,9 +1213,9 @@ export function createPostgresQuoteDraftRepository(
           subtotal: formatMoneyCents(subtotalCents),
           frete: formatMoneyCents(freightCents),
           total: formatMoneyCents(totalCents),
-          validade_dias: settings.validade_dias,
+          validade_dias: validityDays,
           pagamento: sectionsSnapshot.pagamento.current.body,
-          entrega: hasOwn(input as Record<string, unknown>, 'entrega')
+          entrega: input.entrega !== undefined
             ? inputText(input.entrega, 'Entrega', 500)
             : settings.entrega,
           observacoes: sectionsSnapshot.condicoes_gerais.current.body,
