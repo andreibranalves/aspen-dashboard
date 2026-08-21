@@ -28,10 +28,16 @@ const QUOTATION_STATUS_META: Record<QuotationStatusCanonical, StatusMeta> = {
 export function normalizeQuotationStatus(status: unknown): QuotationStatusCanonical {
   const value = String(status || '').toLowerCase();
   if (value in QUOTATION_STATUS_META) return value as QuotationStatusCanonical;
-  if (value === 'issued') return 'emitido';
+  // Sinônimos legados pt-BR usados pelo backend/listas antigas.
+  if (value === 'issued' || value === 'enviado') return 'emitido';
   if (value === 'draft') return 'rascunho';
   if (value === 'approved' || value === 'ordered') return 'aprovado';
-  if (value === 'lost' || value === 'refused' || value === 'rejected') return 'recusado';
+  if (
+    value === 'lost' || value === 'refused' || value === 'rejected' ||
+    value === 'recusado' || value === 'perdido'
+  ) {
+    return 'recusado';
+  }
   if (value === 'expired') return 'expirado';
   if (value === 'cancelled' || value === 'canceled') return 'cancelado';
   return 'rascunho';

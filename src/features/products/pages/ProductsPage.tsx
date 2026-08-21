@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } from 'react';
 import {
   Search,
   AlertTriangle,
@@ -21,6 +21,8 @@ import { clearProductCache } from '@/lib/api/productCache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -48,6 +50,27 @@ type ProductStatus = 'active' | 'archived' | 'all';
 const parseProductStatus = parseHashOption<ProductStatus>(['active', 'archived', 'all']);
 const parseProductSort = parseHashOption(SORT_OPTIONS.map((option) => option.value));
 const parseProductLimit = parseHashAllowedInteger(PAGE_SIZES);
+
+type PendingProductArchive =
+  | { kind: 'single'; sku: string; archived: boolean }
+  | { kind: 'bulk'; skus: string[] };
+
+function archiveDialogText(pending: PendingProductArchive): { title: string; message: string; confirmLabel: string } {
+  if (pending.kind === 'single') {
+    const action = pending.archived ? 'Restaurar' : 'Arquivar';
+    return {
+      title: `${action} produto`,
+      message: `Tem certeza que deseja ${action.toLowerCase()} o produto ${pending.sku}?`,
+      confirmLabel: action,
+    };
+  }
+  const count = pending.skus.length;
+  return {
+    title: 'Arquivar produtos',
+    message: `Tem certeza que deseja arquivar ${count} produto${count !== 1 ? 's' : ''}?`,
+    confirmLabel: 'Arquivar',
+  };
+}
 
 export default function ProductsPage() {
   const [data, setData] = useState<Product[]>([]);
@@ -165,39 +188,56 @@ export default function ProductsPage() {
 
   // ── Delete ──
 
-  const handleDelete = useCallback(async (sku: string, archived: boolean) => {
-    const action = archived ? 'restaurar' : 'arquivar';
-    if (!confirm(`Tem certeza que deseja ${action} o produto ${sku}?`)) return;
-    try {
-      if (archived) {
-        await apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true });
-      } else {
-        await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
+  const { toast } = useToast();
+  const [pendingArchive, setPendingArchive] = useState<PendingProductArchive | null>(null);
+  const archiveDialog = useMemo(
+    () => (pendingArchive ? archiveDialogText(pendingArchive) : null),
+    [pendingArchive],
+  );
+
+  const requestArchive = useCallback((sku: string, archived: boolean) => {
+    setPendingArchive({ kind: 'single', sku, archived });
+  }, []);
+
+  const requestBulkArchive = useCallback(() => {
+    const skus = data
+      .filter((row) => selectedIds.includes(row.sku || row.item_code || ''))
+      .map((row) => row.sku || row.item_code || '')
+      .filter(Boolean);
+    if (skus.length === 0 || status === 'archived') return;
+    setPendingArchive({ kind: 'bulk', skus });
+  }, [data, selectedIds, status]);
+
+  const runArchive = useCallback(async (pending: PendingProductArchive) => {
+    if (pending.kind === 'single') {
+      const { sku, archived } = pending;
+      try {
+        if (archived) {
+          await apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true });
+        } else {
+          await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
+        }
+        clearProductCache();
+        toast(archived ? `Produto ${sku} restaurado.` : `Produto ${sku} arquivado.`, 'success');
+        await fetchData(search, page, limit, sort, status);
+      } catch (err) {
+        toast(`Erro ao ${archived ? 'restaurar' : 'arquivar'} o produto ${sku}: ` + ((err as Error).message || 'Tente novamente.'), 'error');
       }
-      clearProductCache();
-      await fetchData(search, page, limit, sort, status);
-    } catch (err) {
-      alert(`Erro ao ${action}: ` + ((err as Error).message || 'Tente novamente.'));
+      return;
     }
-  }, [fetchData, limit, page, search, sort, status]);
 
-  const handleBulkDelete = useCallback(async () => {
-    const selected = data.filter((row) => selectedIds.includes(row.sku || row.item_code || ''));
-    if (selected.length === 0 || status === 'archived') return;
-
-    const action = 'arquivar';
-    if (!confirm(`Tem certeza que deseja ${action} ${selected.length} produto${selected.length !== 1 ? 's' : ''}?`)) return;
-
+    const skus = pending.skus;
     try {
-      await Promise.all(selected.map((row) => apiDelete(`/products?id=${encodeURIComponent(row.sku || row.item_code || '')}`)));
+      await Promise.all(skus.map((sku) => apiDelete(`/products?id=${encodeURIComponent(sku)}`)));
       clearProductCache();
-      const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
+      const nextPage = skus.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
+      toast(`${skus.length} produto${skus.length !== 1 ? 's' : ''} arquivado${skus.length !== 1 ? 's' : ''}.`, 'success');
       await fetchData(search, nextPage, limit, sort, status);
     } catch (err) {
-      alert('Erro ao excluir produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'));
+      toast('Erro ao arquivar produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'), 'error');
     }
-  }, [data, selectedIds, page, search, limit, sort, status, fetchData]);
+  }, [data.length, fetchData, limit, page, search, setPage, sort, status, toast]);
 
   const selectedCount = selectedIds.length;
 
@@ -288,7 +328,7 @@ export default function ProductsPage() {
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <Tag size={36} className="text-fg-muted/40" />
           <p>Nenhum produto encontrado</p>
-          <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
+          <p className="text-sm">Ajuste os filtros ou cadastre pelo ERP.</p>
         </div>
       )}
 
@@ -345,7 +385,7 @@ export default function ProductsPage() {
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <button
-                          onClick={() => handleDelete(sku, p.ativo === false)}
+                          onClick={() => requestArchive(sku, p.ativo === false)}
                           className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
                           aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                           title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
@@ -404,7 +444,7 @@ export default function ProductsPage() {
                       </div>
                     </button>
                     <button
-                      onClick={() => handleDelete(sku, p.ativo === false)}
+                      onClick={() => requestArchive(sku, p.ativo === false)}
                       className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
                       aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                       title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
@@ -457,7 +497,7 @@ export default function ProductsPage() {
                 <Button variant="outline" onClick={() => setSelectedIds([])} disabled={selectedCount === 0}>
                   Limpar seleção
                 </Button>
-                <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
+                <Button variant="default" onClick={requestBulkArchive} disabled={selectedCount === 0}>
                   <Archive size={16} className="mr-2" />
                   Arquivar produtos
                 </Button>
@@ -466,6 +506,21 @@ export default function ProductsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={archiveDialog !== null}
+        title={archiveDialog?.title}
+        message={archiveDialog?.message}
+        confirmLabel={archiveDialog?.confirmLabel}
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          const pending = pendingArchive;
+          setPendingArchive(null);
+          if (pending) void runArchive(pending);
+        }}
+        onCancel={() => setPendingArchive(null)}
+      />
 
     </div>
   );

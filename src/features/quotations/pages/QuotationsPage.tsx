@@ -25,6 +25,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import PageHeader from '@/components/shared/PageHeader';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
+import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   parseHashAllowedInteger,
@@ -44,18 +47,13 @@ import {
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectQuotationListRow, type ProjectedQuotationListRow } from '@/lib/localProjections';
 
-const STATUS_LABELS: Record<string, string> = {
-  rascunho: 'Rascunho',
-  emitido: 'Enviado',
-  enviado: 'Enviado',
-  aprovado: 'Aprovado',
-  perdido: 'Perdido',
-};
-
+// Rótulos canônicos pt-BR vindos de @/lib/statusLabels (quotationStatusLabel /
+// quotationStatusBadgeKey). Os valores de filtro continuam os crus da API
+// ('enviado'); apenas o texto exibido usa o vocabulário canônico ('Emitido').
 const STATUS_OPTIONS = [
   { value: '', label: 'Todos', summaryKey: null },
   { value: 'rascunho', label: 'Rascunho', summaryKey: 'Rascunho' },
-  { value: 'enviado', label: 'Enviado', summaryKey: 'Enviado' },
+  { value: 'enviado', label: 'Emitido', summaryKey: 'Enviado' },
   { value: 'aprovado', label: 'Aprovado', summaryKey: 'Aprovado' },
   { value: 'perdido', label: 'Perdido', summaryKey: 'Perdido' },
 ] as const;
@@ -103,9 +101,14 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [statusSummary, setStatusSummary] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [duplicateTarget, setDuplicateTarget] = useState<string | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const setTopBarActions = useSetTopBarActions();
+  const { toast } = useToast();
 
   // TopBar actions
   useEffect(() => {
@@ -218,37 +221,41 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     fetchData(search, status, page, limit);
   }, []);
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir o orçamento ${id}?\n\nEsta ação não pode ser desfeita.`
-      )
-    )
-      return;
+  const handleDelete = useCallback(async () => {
+    const id = deleteTarget;
+    if (!id) return;
+    setDeleteTarget(null);
     try {
       await apiDelete(`/quotations?id=${encodeURIComponent(id)}`);
       setData((prev) => prev.filter((r) => r.id !== id));
       setTotalRecords((prev) => prev - 1);
+      setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+      toast(`Orçamento ${id} excluído.`, 'success');
     } catch (err) {
-      alert('Erro ao excluir: ' + ((err as Error).message || 'Tente novamente.'));
+      toast(`Erro ao excluir: ${(err as Error).message || 'Tente novamente.'}`, 'error');
     }
-  }, []);
+  }, [deleteTarget, toast]);
 
   const handleDuplicate = useCallback(
-    async (id: string) => {
-      if (!confirm(`Duplicar o orçamento ${id}? Será criada uma cópia com nova numeração.`)) return;
+    async () => {
+      const id = duplicateTarget;
+      if (!id) return;
+      setDuplicateTarget(null);
       try {
         const result = await apiPost<DuplicateQuotationResponse>('/duplicate-quotation', {
           quotation_id: id,
         });
         if (result.success) {
+          toast(`Orçamento ${result.new_id} criado a partir de ${id}.`, 'success');
           navigate(`/quotations/${encodeURIComponent(result.new_id)}`);
+        } else {
+          toast('Não foi possível duplicar o orçamento. Tente novamente.', 'error');
         }
       } catch (err) {
-        alert('Erro ao duplicar: ' + ((err as Error).message || 'Tente novamente.'));
+        toast(`Erro ao duplicar: ${(err as Error).message || 'Tente novamente.'}`, 'error');
       }
     },
-    [navigate]
+    [duplicateTarget, navigate, toast]
   );
 
   const toggleSelected = useCallback((id: string) => {
@@ -267,15 +274,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const handleBulkDelete = useCallback(async () => {
     const selectedRows = data.filter((row) => selectedIds.includes(row.id));
     if (selectedRows.length === 0) return;
-
-    const totalSelected = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir ${selectedRows.length} proposta${selectedRows.length !== 1 ? 's' : ''}?\n\n` +
-          `Valor total: ${formatBRL(totalSelected)}\n\nEssa ação não pode ser desfeita.`
-      )
-    )
-      return;
+    setBulkDeleteOpen(false);
+    setBulkDeleting(true);
 
     try {
       await Promise.all(
@@ -284,12 +284,22 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       const nextPage = selectedRows.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
       await fetchData(search, status, nextPage, limit);
-    } catch (err) {
-      alert(
-        'Erro ao excluir propostas selecionadas: ' + ((err as Error).message || 'Tente novamente.')
+      toast(
+        selectedRows.length === 1
+          ? 'Orçamento excluído.'
+          : `${selectedRows.length} orçamentos excluídos.`,
+        'success'
       );
+    } catch (err) {
+      toast(
+        'Erro ao excluir orçamentos selecionados: ' +
+          ((err as Error).message || 'Tente novamente.'),
+        'error'
+      );
+    } finally {
+      setBulkDeleting(false);
     }
-  }, [data, selectedIds, page, search, status, limit, fetchData]);
+  }, [data, selectedIds, page, search, status, limit, fetchData, toast]);
 
   const totalsQty = data.length;
   const totalsSum = data.reduce((s, r) => s + (Number(r.valor) || 0), 0);
@@ -298,6 +308,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const selectedTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
   const allSelected = data.length > 0 && selectedCount === data.length;
   const someSelected = selectedCount > 0 && !allSelected;
+  const bulkDeleteTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
+  const hasActiveFilters = Boolean(search.trim()) || Boolean(status);
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -359,7 +371,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <ActionBtn
           icon={Trash2}
           label={`Excluir orçamento ${row.id}`}
-          onClick={() => handleDelete(row.id)}
+          onClick={() => setDeleteTarget(row.id)}
           colorClass="hover:bg-destructive/10 hover:text-destructive"
         />
         {row.revision_id && (
@@ -372,21 +384,39 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         <ActionBtn
           icon={Copy}
           label={`Duplicar orçamento ${row.id}`}
-          onClick={() => handleDuplicate(row.id)}
+          onClick={() => setDuplicateTarget(row.id)}
         />
       </div>
     );
   };
 
   const EmailMarker = ({ row }: { row: QuotationRow }) => (
-    <div className="flex flex-col items-start gap-0.5">
-      <span className={row.email_sent ? 'text-xs font-medium text-success' : 'text-xs text-fg-muted'}>
+    <div
+      className="flex flex-col items-start gap-0.5"
+      title={
+        row.email_sent
+          ? `Último e-mail enviado em ${formatDate(row.email_sent_at)}`
+          : 'Nenhum e-mail foi enviado para este orçamento ainda'
+      }
+    >
+      <span
+        className={
+          row.email_sent ? 'text-xs font-medium text-success' : 'text-xs text-fg-muted/50'
+        }
+      >
         {row.email_sent ? 'E-mail enviado' : 'E-mail não enviado'}
       </span>
-      {row.email_sent_at && (
+      {row.email_sent && row.email_sent_at && (
         <span className="text-[11px] text-fg-muted">{formatDate(row.email_sent_at)}</span>
       )}
     </div>
+  );
+
+  const statusBadge = (row: QuotationRow) => (
+    <StatusBadge
+      status={quotationStatusBadgeKey(row.status_canonical)}
+      label={quotationStatusLabel(row.status_canonical)}
+    />
   );
 
   return (
@@ -463,8 +493,21 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       {!loading && !error && data.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <Clipboard size={36} className="text-fg-muted/40" />
-          <p>Nenhum orçamento encontrado</p>
-          <p className="text-sm">Tente ajustar os filtros ou criar um novo orçamento.</p>
+          {hasActiveFilters ? (
+            <>
+              <p>Nenhum orçamento encontrado</p>
+              <p className="text-sm">Tente ajustar os filtros ou criar um novo orçamento.</p>
+            </>
+          ) : (
+            <>
+              <p>Nenhum orçamento por aqui ainda</p>
+              <p className="text-sm">Crie seu primeiro orçamento para começar.</p>
+              <Button onClick={() => navigate('/manual')}>
+                <PlusCircle size={16} className="mr-2" />
+                Novo orçamento
+              </Button>
+            </>
+          )}
         </div>
       )}
 
@@ -515,12 +558,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   </TableCell>
                   <TableCell>{row.cliente}</TableCell>
                   <TableCell className="text-right font-mono">{formatBRL(row.valor)}</TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      status={row.status_canonical || 'unknown'}
-                      label={STATUS_LABELS[row.status_canonical || ''] || 'Status desconhecido'}
-                    />
-                  </TableCell>
+                  <TableCell>{statusBadge(row)}</TableCell>
                   <TableCell>
                     <EmailMarker row={row} />
                   </TableCell>
@@ -555,10 +593,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   />
                   <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
                 </div>
-                <StatusBadge
-                  status={row.status_canonical || 'unknown'}
-                  label={STATUS_LABELS[row.status_canonical || ''] || 'Status desconhecido'}
-                />
+                {statusBadge(row)}
               </div>
               <EmailMarker row={row} />
               <div className="flex items-center justify-between text-sm">
@@ -570,20 +605,20 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <div className="flex items-center gap-0.5">
                   <ActionBtn
                     icon={Pencil}
-                    label={`Editar ${row.id}`}
+                    label={`Editar orçamento ${row.id}`}
                     onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                   />
                   {row.revision_id && (
                     <ActionBtn
                       icon={FileText}
-                      label={`PDF ${row.id}`}
+                      label={`Abrir PDF do orçamento ${row.id}`}
                       href={buildQuotationPreviewUrl(row.revision_id)}
                     />
                   )}
                   <ActionBtn
                     icon={Copy}
-                    label={`Duplicar ${row.id}`}
-                    onClick={() => handleDuplicate(row.id)}
+                    label={`Duplicar orçamento ${row.id}`}
+                    onClick={() => setDuplicateTarget(row.id)}
                   />
                 </div>
               </div>
@@ -607,7 +642,9 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               <p className="font-semibold">{formatBRL(totalsSum)}</p>
             </div>
             <div className="text-xs text-fg-muted">
-              {status ? STATUS_LABELS[status] || status : 'todos os status'}
+              {status
+                ? STATUS_OPTIONS.find((option) => option.value === status)?.label || status
+                : 'todos os status'}
             </div>
           </div>
 
@@ -695,7 +732,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                     <span>
-                      {selectedCount} proposta{selectedCount !== 1 ? 's' : ''} selecionada
+                      {selectedCount} orçamento{selectedCount !== 1 ? 's' : ''} selecionado
                       {selectedCount !== 1 ? 's' : ''}
                     </span>
                   </div>
@@ -714,17 +751,53 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   </Button>
                   <Button
                     variant="default"
-                    onClick={handleBulkDelete}
-                    disabled={selectedCount === 0}
+                    onClick={() => setBulkDeleteOpen(true)}
+                    disabled={selectedCount === 0 || bulkDeleting}
                   >
                     <Trash2 size={16} className="mr-2" />
-                    Excluir propostas
+                    Excluir orçamentos
                   </Button>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+      {/* Confirmação: excluir orçamento */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Excluir orçamento?"
+        message={`Tem certeza que deseja excluir o orçamento ${deleteTarget || ''}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Confirmação: duplicar orçamento */}
+      <ConfirmDialog
+        open={duplicateTarget !== null}
+        title="Duplicar orçamento?"
+        message={`Duplicar o orçamento ${duplicateTarget || ''}? Será criada uma cópia com nova numeração.`}
+        confirmLabel="Duplicar"
+        cancelLabel="Cancelar"
+        variant="default"
+        onConfirm={handleDuplicate}
+        onCancel={() => setDuplicateTarget(null)}
+      />
+
+      {/* Confirmação: exclusão em massa */}
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title="Excluir orçamentos selecionados?"
+        message={`Tem certeza que deseja excluir ${selectedCount} orçamento${selectedCount !== 1 ? 's' : ''}? Valor total: ${formatBRL(bulkDeleteTotal)}. Essa ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={handleBulkDelete}
+        onCancel={() => setBulkDeleteOpen(false)}
+      />
     </div>
   );
 }

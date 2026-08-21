@@ -72,11 +72,30 @@ export default function SendHistoryTab() {
           className="flex items-start gap-3 p-3 rounded-lg border border-line bg-surface hover:border-primary/20 transition-colors"
         >
           <div className="shrink-0 mt-0.5">
-            {evt.status === 'sent' && <CheckCircle size={16} className="text-success" />}
-            {evt.status === 'failed' && <XCircle size={16} className="text-destructive" />}
-            {evt.status === 'skipped' && <Clock size={16} className="text-fg-muted" />}
+            {evt.status === 'sent' && (
+              <span role="img" title="Entregue" aria-label="Entregue" className="inline-flex">
+                <CheckCircle size={16} className="text-success" aria-hidden="true" />
+              </span>
+            )}
+            {evt.status === 'failed' && (
+              <span role="img" title="Falhou" aria-label="Falhou" className="inline-flex">
+                <XCircle size={16} className="text-destructive" aria-hidden="true" />
+              </span>
+            )}
+            {evt.status === 'skipped' && (
+              <span role="img" title="Pendente" aria-label="Pendente" className="inline-flex">
+                <Clock size={16} className="text-fg-muted" aria-hidden="true" />
+              </span>
+            )}
             {evt.status === 'pending' && (
-              <Loader2 size={16} className="text-warning animate-spin" />
+              <span
+                role="img"
+                title="Processando"
+                aria-label="Processando"
+                className="inline-flex"
+              >
+                <Loader2 size={16} className="text-warning animate-spin" aria-hidden="true" />
+              </span>
             )}
             {evt.duplicate_warning && (
               <AlertTriangle

@@ -2,6 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -219,8 +221,9 @@ export default function WhatsAppDeliveriesPage() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
-  const [clearMessage, setClearMessage] = useState<string | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const requestFilters = useMemo<DeliveryListFilters>(
     () => ({
@@ -273,20 +276,21 @@ export default function WhatsAppDeliveriesPage() {
   };
 
   const clearPending = async () => {
-    if (!window.confirm('Cancelar somente as entregas ainda não enviadas? Mensagens já aceitas não serão alteradas.')) return;
     setClearing(true);
-    setClearMessage(null);
     setError(null);
     try {
       const cancelled = await cancelPendingDeliveries();
-      setClearMessage(
+      toast(
         cancelled === 0
           ? 'Nenhuma tentativa pendente para cancelar.'
-          : `${cancelled} ${cancelled === 1 ? 'tentativa pendente cancelada.' : 'tentativas pendentes canceladas.'}`
+          : `${cancelled} ${cancelled === 1 ? 'tentativa pendente cancelada.' : 'tentativas pendentes canceladas.'}`,
+        cancelled === 0 ? 'info' : 'success'
       );
       setReloadVersion((value) => value + 1);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.');
+      const message =
+        nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.';
+      toast(message, 'error');
     } finally {
       setClearing(false);
     }
@@ -351,7 +355,7 @@ export default function WhatsAppDeliveriesPage() {
               type="button"
               variant="destructive"
               size="sm"
-              onClick={() => void clearPending()}
+              onClick={() => setClearConfirmOpen(true)}
               disabled={loading || clearing}
             >
               <Trash2 size={14} />
@@ -467,12 +471,6 @@ export default function WhatsAppDeliveriesPage() {
           </fieldset>
         </div>
       </section>
-
-      {clearMessage && (
-        <div role="status" className="rounded-xl border border-line bg-surface p-3 text-sm text-fg-muted">
-          {clearMessage}
-        </div>
-      )}
 
       {result && (
         <section className="grid grid-cols-2 gap-3 md:grid-cols-5" aria-label="Resumo das entregas">
@@ -644,6 +642,20 @@ export default function WhatsAppDeliveriesPage() {
           </div>
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        title="Limpar fila de envios"
+        message="Cancelar somente as entregas ainda não enviadas? Mensagens já aceitas não serão alteradas."
+        confirmLabel="Limpar fila"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setClearConfirmOpen(false);
+          void clearPending();
+        }}
+        onCancel={() => setClearConfirmOpen(false)}
+      />
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communica
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
 import MediaGridItem from '@/features/communication/components/MediaGridItem';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 
 export interface MediaLibraryProps {
@@ -14,6 +15,7 @@ export interface MediaLibraryProps {
 }
 
 export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
+  const { toast } = useToast();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,9 +41,11 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const removedTitle = deleteTarget.title;
     try {
       await deleteMedia(deleteTarget.id);
       setItems((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+      toast(`Mídia "${removedTitle || 'selecionada'}" removida.`, 'success');
     } catch (err) {
       setError((err as Error).message);
     } finally {

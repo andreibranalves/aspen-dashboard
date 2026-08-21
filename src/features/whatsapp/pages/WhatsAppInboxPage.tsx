@@ -70,6 +70,38 @@ function conversationTitle(
   return 'Contato sem nome';
 }
 
+interface ExtractionSummaryOrder {
+  nome: string;
+  itens: Array<{ codigo: string; qty: string }>;
+}
+
+/** Resumo legível do payload de extração (nome + itens com quantidade). */
+function summarizeExtraction(
+  payload: WhatsappExtractionResult['extractedPayload']
+): ExtractionSummaryOrder[] | null {
+  const orders = Array.isArray(payload?.orders) ? payload.orders : [];
+  const summary: ExtractionSummaryOrder[] = [];
+
+  for (const raw of orders) {
+    if (!raw || typeof raw !== 'object') continue;
+    const order = raw as Record<string, unknown>;
+    const nome = [order.nome, order.email, order.telefone]
+      .map((value) => String(value ?? '').trim())
+      .find(Boolean);
+    const rawItems = Array.isArray(order.items) ? order.items : [];
+    const itens = rawItems
+      .map((item) => ({
+        codigo: item && typeof item === 'object' ? String((item as Record<string, unknown>).item_code ?? '').trim() : '',
+        qty: item && typeof item === 'object' ? Number((item as Record<string, unknown>).qty ?? 0) : 0,
+      }))
+      .filter((item) => item.codigo)
+      .map((item) => ({ codigo: item.codigo, qty: item.qty.toLocaleString('pt-BR') }));
+    summary.push({ nome: nome || 'Cliente não identificado', itens });
+  }
+
+  return summary.length > 0 ? summary : null;
+}
+
 interface WhatsAppInboxPageProps {
   navigate?: (path: string) => void;
 }
@@ -92,6 +124,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [crmDetail, setCrmDetail] = useState<WhatsappConversationDetail | null>(null);
+  const [showRawExtraction, setShowRawExtraction] = useState(false);
 
   const quotationAttachments = useMemo(() => {
     return messages
@@ -196,6 +229,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
     if (!selected) return;
     setSaving(true);
     setError(null);
+    setShowRawExtraction(false);
     try {
       const data = await extractWhatsappQuote(selected.id);
       setExtraction(data);
@@ -268,16 +302,10 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               className="pl-9"
             />
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={load} disabled={loading || saving}>
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Atualizar
-            </Button>
-            <Button onClick={sync} disabled={saving}>
-              <RefreshCw size={14} className={saving ? 'animate-spin' : ''} />
-              Sincronizar
-            </Button>
-          </div>
+          <Button variant="outline" onClick={sync} disabled={loading || saving}>
+            <RefreshCw size={14} className={loading || saving ? 'animate-spin' : ''} />
+            Atualizar
+          </Button>
         </div>
       </div>
 
@@ -433,13 +461,19 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                   <p className="mb-2 text-xs font-semibold uppercase text-primary">
                     Orçamentos enviados
                   </p>
-                  {quotationAttachments.map((a) => (
-                    <div key={a.id} className="text-xs text-fg">
-                      <p>ID: {a.quotationId || '—'}</p>
-                      <p>Lead: {a.leadId || '—'}</p>
-                      <p>Cliente: {a.customerId || '—'}</p>
-                    </div>
-                  ))}
+                  {quotationAttachments.map((a) => {
+                    const quotationValue = a.quotationBusinessNumber || a.quotationId;
+                    return (
+                      <div key={a.id} className="space-y-0.5 text-xs text-fg">
+                        {quotationValue && <p>Orçamento: {quotationValue}</p>}
+                        {a.leadId && <p>Lead: {a.leadId}</p>}
+                        {a.customerId && <p>Cliente: {a.customerId}</p>}
+                        {!quotationValue && !a.leadId && !a.customerId && (
+                          <p className="text-fg-muted">Nenhum vínculo identificado.</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -487,9 +521,50 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               {extraction && (
                 <div className="rounded-lg border border-line p-3">
                   <p className="mb-2 text-xs font-semibold uppercase text-fg-muted">Extração</p>
-                  <pre className="max-h-56 overflow-auto whitespace-pre-wrap text-xs text-fg-muted">
-                    {JSON.stringify(extraction.extractedPayload, null, 2)}
-                  </pre>
+                  {(() => {
+                    const summary = summarizeExtraction(extraction.extractedPayload);
+                    if (!summary) {
+                      return (
+                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap text-xs text-fg-muted">
+                          {JSON.stringify(extraction.extractedPayload, null, 2)}
+                        </pre>
+                      );
+                    }
+                    return (
+                      <div className="space-y-3">
+                        {summary.map((order, index) => (
+                          <div key={`${order.nome}-${index}`}>
+                            <p className="text-sm font-medium text-fg">{order.nome}</p>
+                            {order.itens.length > 0 ? (
+                              <ul className="mt-1 space-y-0.5 text-xs text-fg-muted">
+                                {order.itens.map((item, itemIndex) => (
+                                  <li key={`${item.codigo}-${itemIndex}`}>
+                                    {item.codigo} · {item.qty} un
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-1 text-xs text-fg-muted">
+                                Nenhum item identificado.
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setShowRawExtraction((current) => !current)}
+                          className="text-xs text-fg-muted underline-offset-2 transition-colors hover:text-fg hover:underline"
+                        >
+                          {showRawExtraction ? 'Ocultar dados brutos' : 'Ver dados brutos'}
+                        </button>
+                        {showRawExtraction && (
+                          <pre className="max-h-56 overflow-auto whitespace-pre-wrap text-xs text-fg-muted">
+                            {JSON.stringify(extraction.extractedPayload, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

@@ -12,6 +12,7 @@ import { apiGet } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
 import {
@@ -384,16 +385,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="rounded-lg border border-line bg-surface shadow-sm">
-          <div className="p-8 space-y-4">
-            <div className="h-4 w-48 bg-surface-muted rounded animate-pulse" />
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-12 bg-surface-muted rounded animate-pulse" />
-            ))}
-          </div>
-        </div>
-      )}
+      {loading && <SkeletonTable cols={7} rows={8} />}
 
       {/* Error */}
       {!loading && error && (
@@ -411,7 +403,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <ShoppingCart size={36} className="text-fg-muted/40" />
           <p>Nenhum pedido encontrado</p>
-          <p className="text-sm">Tente ajustar os filtros ou criar um novo pedido.</p>
+          <p className="text-sm">Os pedidos aparecem aqui quando um orçamento é convertido no CRM.</p>
         </div>
       )}
 

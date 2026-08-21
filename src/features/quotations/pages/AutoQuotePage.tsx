@@ -213,6 +213,35 @@ export default function AutoQuotePage() {
     loadHistory();
   }, [loadHistory]);
 
+  // ── Prefill do cliente vindo do CRM (#/leads) — consome 'aspen_quote_prefill' uma única vez ──
+  useEffect(() => {
+    let raw: string | null;
+    try {
+      raw = window.sessionStorage.getItem('aspen_quote_prefill');
+      if (raw !== null) window.sessionStorage.removeItem('aspen_quote_prefill');
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as { nome?: unknown; email?: unknown; telefone?: unknown };
+      const nome = typeof prefill.nome === 'string' ? prefill.nome.trim() : '';
+      const email = typeof prefill.email === 'string' ? prefill.email.trim() : '';
+      const telefone = typeof prefill.telefone === 'string' ? prefill.telefone.trim() : '';
+      if (!nome && !email && !telefone) return;
+      setText((current) => {
+        if (current.trim() !== '') return current;
+        return [
+          `Nome: ${nome}`,
+          `E-mail: ${email}`,
+          `Telefone: ${telefone}`,
+        ].join('\n');
+      });
+    } catch {
+      /* prefill malformado — ignora */
+    }
+  }, []);
+
   const loadCommunicationFlows = useCallback(async () => {
     try {
       const data = await fetchFlows();
