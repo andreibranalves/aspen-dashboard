@@ -688,7 +688,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                     {produto.nome || 'Sem nome'}
                   </h2>
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${produto.ativo ? 'tone-success-soft' : 'bg-destructive/10 text-destructive dark:bg-destructive/10'}`}
                   >
                     {produto.ativo ? 'Ativo' : 'Inativo'}
                   </span>

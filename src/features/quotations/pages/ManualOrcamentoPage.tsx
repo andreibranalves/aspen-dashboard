@@ -1262,7 +1262,7 @@ export default function ManualOrcamentoPage() {
                 <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting} className="w-full">
                   Limpar tudo
                 </Button>
-                <p className="text-xs text-fg-muted text-center">
+                <p className="text-xs text-fg-muted text-left">
                   {canSubmit ? 'Pronto para criar o orçamento.' : 'Cliente e itens são obrigatórios.'}
                 </p>
               </div>

@@ -114,11 +114,11 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   useEffect(() => {
     setTopBarActions?.(
       <div className="flex items-center gap-2">
-        <Button onClick={() => navigate('/auto')} variant="default" size="sm">
+        <Button onClick={() => navigate('/auto')} variant="outline" size="sm">
           <Sparkles size={16} />
           Auto
         </Button>
-        <Button onClick={() => navigate('/manual')} variant="outline" size="sm">
+        <Button onClick={() => navigate('/manual')} variant="default" size="sm">
           <PlusCircle size={16} />
           Novo Orçamento
         </Button>
@@ -462,13 +462,27 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               ${
                 status === option.value
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-page text-fg-muted hover:text-fg hover:bg-surface'
+                  : 'bg-surface-muted text-fg-muted hover:text-fg'
               }`}
           >
             {option.label}
-            {option.value === '' && totalRecords > 0 && <span className="opacity-70">({totalRecords})</span>}
+            {option.value === '' && totalRecords > 0 && (
+              <span
+                className={`font-normal ${
+                  status === option.value ? 'text-primary-foreground/70' : 'text-fg-muted/70'
+                }`}
+              >
+                ({totalRecords})
+              </span>
+            )}
             {option.summaryKey && statusSummary[option.summaryKey] !== undefined && (
-              <span className="opacity-70">({statusSummary[option.summaryKey]})</span>
+              <span
+                className={`font-normal ${
+                  status === option.value ? 'text-primary-foreground/70' : 'text-fg-muted/70'
+                }`}
+              >
+                ({statusSummary[option.summaryKey]})
+              </span>
             )}
           </button>
         ))}
@@ -556,10 +570,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   <TableCell className="whitespace-nowrap text-fg-muted">
                     {formatDate(row.data)}
                   </TableCell>
-                  <TableCell>{row.cliente}</TableCell>
-                  <TableCell className="text-right font-mono">{formatBRL(row.valor)}</TableCell>
+                  <TableCell className="max-w-[220px] truncate">{row.cliente}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-mono">{formatBRL(row.valor)}</TableCell>
                   <TableCell>{statusBadge(row)}</TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <EmailMarker row={row} />
                   </TableCell>
                   <TableCell className="text-center">{actionButtons(row)}</TableCell>

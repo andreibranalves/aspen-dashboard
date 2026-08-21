@@ -62,14 +62,14 @@ interface SalesOrdersPageProps {
 
 interface DashboardSummary {
   total_revenue: number;
-  revenue_delta: number;
+  revenue_delta: number | null;
   orders_count: number;
-  orders_delta: number;
+  orders_delta: number | null;
   avg_ticket: number;
-  avg_ticket_delta: number;
+  avg_ticket_delta: number | null;
   open_orders: number;
   conversion_rate: number;
-  conversion_delta: number;
+  conversion_delta: number | null;
 }
 
 type SalesOrderItem = ProjectedSalesOrderListRow;
@@ -95,14 +95,15 @@ function projectDashboardSummary(value: unknown): DashboardSummary | null {
   const avgTicket = money(summary.avg_ticket);
   const openOrders = count(summary.open_orders);
   const conversionRate = delta(summary.conversion_rate);
+  // Sem período anterior comparável o backend envia o delta como null — o
+  // resumo continua válido; a UI apenas omite a linha de delta.
   const revenueDelta = delta(summary.revenue_delta);
   const ordersDelta = delta(summary.orders_delta);
   const avgTicketDelta = delta(summary.avg_ticket_delta);
   const conversionDelta = delta(summary.conversion_delta);
   if (
     totalRevenue === null || ordersCount === null || avgTicket === null || openOrders === null ||
-    conversionRate === null || revenueDelta === null || ordersDelta === null ||
-    avgTicketDelta === null || conversionDelta === null
+    conversionRate === null
   ) return null;
   return {
     total_revenue: totalRevenue,
@@ -300,7 +301,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={DollarSign}
             label="Receita"
             value={formatBRL(summaryData.total_revenue)}
-            subtitle={summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
+            subtitle={summaryData.revenue_delta === null ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
           <SummaryCard
@@ -313,7 +314,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={TrendingUp}
             label="Ticket Médio"
             value={formatBRL(summaryData.avg_ticket)}
-            subtitle={summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
+            subtitle={summaryData.avg_ticket_delta === null ? undefined : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
             colorClass="tone-warning-soft"
           />
           <SummaryCard
@@ -350,7 +351,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           value={status}
           onChange={onStatusChange}
           className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          aria-label="Filtrar por status"
+          aria-label="Status do pedido"
+          title="Status do pedido"
         >
           {STATUSES.map((s, i) => (
             <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
@@ -404,6 +406,9 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           <ShoppingCart size={36} className="text-fg-muted/40" />
           <p>Nenhum pedido encontrado</p>
           <p className="text-sm">Os pedidos aparecem aqui quando um orçamento é convertido no CRM.</p>
+          <Button variant="outline" onClick={() => navigate('/quotations')}>
+            Ver orçamentos
+          </Button>
         </div>
       )}
 

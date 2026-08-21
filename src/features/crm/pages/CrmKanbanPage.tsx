@@ -296,7 +296,7 @@ export default function CrmKanbanPage() {
       <div className="relative max-w-md">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
         <Input
-          placeholder="Buscar por nome do lead…"
+          placeholder="Buscar por nome do negócio…"
           value={search}
           onChange={onSearchChange}
           className="pl-9"
@@ -350,15 +350,32 @@ export default function CrmKanbanPage() {
 
       {/* Empty */}
       {!loading && !error && orderedColumns.every((c) => c.count === 0) && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+        <div className="flex flex-col items-center py-10 text-fg-muted gap-3">
           <BarChart3 size={36} className="text-fg-muted/40" />
           <p>Nenhum negócio no pipeline.</p>
-          <p className="text-sm">Os negócios do CRM aparecerão aqui.</p>
+          <p className="text-sm text-center max-w-md">
+            Converte clientes em negócios arrastando-os pelo funil. Os leads viram
+            negócios quando um orçamento é enviado.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+            <a
+              href="#/leads"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"
+            >
+              Ver clientes
+            </a>
+            <a
+              href="#/manual"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] h-10 px-4 py-2"
+            >
+              Novo orçamento
+            </a>
+          </div>
         </div>
       )}
 
       {/* Kanban board — constrained height with own scroll */}
-      {!loading && !error && orderedColumns.some((c) => c.count > 0) && (
+      {!loading && !error && (
         <div className="overflow-auto rounded-lg border border-line bg-page max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
           <div className="flex gap-4 p-3 min-h-[55vh]">
             {orderedColumns.map((col) => (

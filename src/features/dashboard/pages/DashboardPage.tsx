@@ -88,7 +88,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     if (Number.isNaN(num)) return null;
     if (num === 0) return 'sem variação';
     const sign = num > 0 ? '+' : '';
-    return `${sign}${num.toFixed(1)}%`;
+    return `${sign}${num.toFixed(1).replace('.', ',')}%`;
   };
 
   // ── Loading / Error states ──────────────────────────────────────────────────
@@ -202,7 +202,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           >
             <div className="flex items-center gap-2 text-fg-muted">
               <card.icon className="h-4 w-4 shrink-0 text-primary" />
-              <span className="text-xs font-medium uppercase tracking-wider">
+              <span className="min-w-0 truncate whitespace-nowrap text-xs font-medium uppercase tracking-wider">
                 {card.label}
               </span>
             </div>
@@ -371,7 +371,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                     </td>
                     <td className="py-2 pr-2">
                       <span className="inline-block px-2 py-0.5 text-xs rounded-pill bg-primary/10 text-primary font-medium">
-                        {q.status}
+                        {capitalize(q.status)}
                       </span>
                     </td>
                     <td className="py-2 text-right">

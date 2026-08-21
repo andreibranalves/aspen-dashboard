@@ -184,7 +184,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
                 <span className="mt-1 block text-xs text-fg-muted">{template.key} · Usado por {template.usage_count} revisões</span>
                 <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                   {template.is_default && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">Padrão</span>}
-                  <span className="rounded-full bg-surface-muted px-2 py-0.5 text-fg-muted">{template.archived ? 'Arquivado' : 'Ativo'}</span>
+                  <span className={`px-2 py-0.5 ${template.archived ? 'rounded-full bg-surface-muted text-fg-muted' : 'tone-success-soft'}`}>{template.archived ? 'Arquivado' : 'Ativo'}</span>
                 </span>
               </button>
             ))}

@@ -779,7 +779,7 @@ export default function AutoQuotePage() {
             )}
 
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
-              <label className="min-w-0 flex-1 text-xs font-medium text-fg-muted">
+              <label className="min-w-0 flex-1 text-xs text-fg-muted">
                 Template de pedido
                 <select
                   aria-label="Template de pedido"
@@ -937,7 +937,7 @@ export default function AutoQuotePage() {
                       type="button"
                       onClick={() => loadHistoryItem(item)}
                       className={cn(
-                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
+                        'w-full flex items-center justify-between rounded-lg px-0 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
                         idx === history.length - 1 && 'pb-1'
                       )}
                     >
@@ -945,11 +945,11 @@ export default function AutoQuotePage() {
                         <p className="font-medium text-fg truncate">{item.cliente || 'Cliente'}</p>
                         <p className="text-xs text-fg-muted truncate">{item.id}</p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <div className="flex items-center gap-3 shrink-0 ml-2">
                         <span className="text-[11px] text-fg-muted whitespace-nowrap">
                           {formatDate(item.data)}
                         </span>
-                        <span className="text-xs font-medium text-fg whitespace-nowrap">
+                        <span className="text-xs font-medium text-fg whitespace-nowrap [font-variant-numeric:tabular-nums]">
                           {formatBRL(item.valor)}
                         </span>
                       </div>
@@ -965,7 +965,8 @@ export default function AutoQuotePage() {
         <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-muted mb-4">
+              {/* rounded-xl (20px nesta escala) — rounded-2xl vale 30px aqui e vira círculo em h-16 */}
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-surface-muted mb-4">
                 <FileText size={32} className="text-fg-muted" />
               </div>
               <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>

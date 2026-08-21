@@ -35,7 +35,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
   '/crm': 'CRM — Kanban',
-  '/products': 'Catálogo de Produtos',
+  '/products': 'Produtos',
   '/leads': 'Clientes',
   '/settings': 'Configurações',
   '/whatsapp-inbox': 'WhatsApp',
@@ -72,7 +72,7 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     const sku = path.split('/products/')[1];
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Catálogo de Produtos', hash: getParentRoute('/products') },
+      { label: 'Produtos', hash: getParentRoute('/products') },
       { label: sku === 'new' ? 'Novo produto' : sku, hash: null },
     ];
   }

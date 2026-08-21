@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
@@ -353,10 +354,11 @@ export default function WhatsAppDeliveriesPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              variant="destructive"
+              variant="ghost"
               size="sm"
               onClick={() => setClearConfirmOpen(true)}
               disabled={loading || clearing}
+              className="ml-2 text-destructive hover:bg-destructive/10"
             >
               <Trash2 size={14} />
               {clearing ? 'Limpando…' : 'Limpar fila'}
@@ -450,6 +452,7 @@ export default function WhatsAppDeliveriesPage() {
                 id="delivery-from"
                 aria-label="Data inicial"
                 type="date"
+                className="[color-scheme:light] dark:[color-scheme:dark]"
                 value={filters.from}
                 onChange={(event) =>
                   updateFilters((current) => ({ ...current, from: event.target.value }))
@@ -462,6 +465,7 @@ export default function WhatsAppDeliveriesPage() {
                 id="delivery-to"
                 aria-label="Data final"
                 type="date"
+                className="[color-scheme:light] dark:[color-scheme:dark]"
                 value={filters.to}
                 onChange={(event) =>
                   updateFilters((current) => ({ ...current, to: event.target.value }))
@@ -511,12 +515,7 @@ export default function WhatsAppDeliveriesPage() {
       )}
 
       {loading && !result ? (
-        <div
-          className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-fg-muted"
-          role="status"
-        >
-          Carregando entregas WhatsApp…
-        </div>
+        <SkeletonTable cols={8} rows={8} />
       ) : result && result.data.length === 0 ? (
         <div
           className="rounded-xl border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"

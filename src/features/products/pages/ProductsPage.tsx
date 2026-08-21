@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } f
 import {
   Search,
   AlertTriangle,
+  Eye,
   Tag,
   PlusCircle,
   Archive,
@@ -22,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import PageHeader from '@/components/shared/PageHeader';
 import { useToast } from '@/components/shared/toast';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
@@ -243,8 +245,8 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
-      {/* Page title */}
-      <h1 className="text-2xl font-semibold text-fg">Produtos</h1>
+      {/* PageHeader */}
+      <PageHeader title="Produtos" />
 
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
@@ -279,7 +281,7 @@ export default function ProductsPage() {
                   setStatus(value);
                   setPage(1);
                 }}
-                className={`rounded-full px-3 py-1.5 transition-colors ${status === value ? 'bg-primary text-white' : 'text-fg-muted hover:text-fg'}`}
+                className={`rounded-full px-3 py-1.5 transition-colors ${status === value ? 'bg-primary text-primary-foreground' : 'text-fg-muted hover:text-fg'}`}
               >
                 {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
               </button>
@@ -353,8 +355,8 @@ export default function ProductsPage() {
                   <TableHead className="pl-0">Descrição</TableHead>
                   <TableHead className="pl-6">SKU</TableHead>
                   <TableHead className="text-center pr-4">Unidade</TableHead>
-                  <TableHead className="text-center pl-4">Preço</TableHead>
-                  <TableHead className="text-center w-[60px]">Ações</TableHead>
+                  <TableHead className="text-right pl-4">Preço</TableHead>
+                  <TableHead className="text-center w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -377,21 +379,33 @@ export default function ProductsPage() {
                         />
                       </TableCell>
                       <TableCell>{p.nome || p.item_name}</TableCell>
-                      <TableCell className="text-fg-muted max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
-                      <TableCell className="font-mono text-sm pl-6">{sku}</TableCell>
+                      <TableCell title={p.descricao || undefined} className="text-fg-muted max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
+                      <TableCell className="font-mono text-sm whitespace-nowrap pl-6">{sku}</TableCell>
                       <TableCell className="text-fg-muted text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
-                      <TableCell className="text-center font-medium pl-4">
+                      <TableCell className="text-right font-medium whitespace-nowrap pl-4">
                         {p.pricing_available && p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => requestArchive(sku, p.ativo === false)}
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
-                          aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                          title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
-                        >
-                          {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
-                        </button>
+                        <div className="flex items-center justify-center">
+                          <button
+                            onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
+                            className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-primary/10 hover:text-primary transition-colors"
+                            aria-label={`Ver detalhes do produto ${sku}`}
+                            title={`Ver detalhes ${sku}`}
+                          >
+                            <Eye size={18} />
+                          </button>
+                          <span className="ml-1 border-l border-line pl-1 inline-flex items-center">
+                            <button
+                              onClick={() => requestArchive(sku, p.ativo === false)}
+                              className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
+                              title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
+                            >
+                              {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
+                            </button>
+                          </span>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
