@@ -178,10 +178,12 @@
   background: hsl(var(--fg-muted) / 0.5);
 }
 
-/* ══ Focus ring — derived from primary ══ */
+/* ══ Focus ring — visible keyboard focus everywhere ══ */
 @layer base {
   *:focus-visible {
-    outline: none;
+    outline: 2px solid hsl(var(--primary) / 0.7);
+    outline-offset: 2px;
+    border-radius: inherit;
   }
 }
 

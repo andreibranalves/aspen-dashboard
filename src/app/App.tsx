@@ -1,5 +1,6 @@
 import { Suspense, type ReactNode } from 'react';
 import { useHashRoute, RouteGuardProvider } from '@/hooks/useHashRoute';
+import { ToastProvider } from '@/components/shared/toast';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 import { routes, type AppRoute } from '@/app/routes';
@@ -35,16 +36,20 @@ export default function App() {
 
   if (matched && matched.entry.layout === false) {
     return (
-      <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
-        {content}
-      </RouteGuardProvider>
+      <ToastProvider>
+        <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
+          {content}
+        </RouteGuardProvider>
+      </ToastProvider>
     );
   }
   return (
-    <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
-      <Layout route={route} onNavigate={navigate}>
-        {content}
-      </Layout>
-    </RouteGuardProvider>
+    <ToastProvider>
+      <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
+        <Layout route={route} onNavigate={navigate}>
+          {content}
+        </Layout>
+      </RouteGuardProvider>
+    </ToastProvider>
   );
 }
