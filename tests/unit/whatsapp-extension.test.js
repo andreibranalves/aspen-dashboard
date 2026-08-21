@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 async function loadAdapter() {
   const source = await readFile(new URL('../../extensions/whatsapp-context/contact-adapter.js', import.meta.url), 'utf8');
-  const sandbox = { globalThis: {} };
+  const sandbox = { globalThis: {}, URL };
   vm.runInNewContext(source, sandbox, { filename: 'contact-adapter.js' });
   return sandbox.globalThis.AspenWhatsAppContactAdapter;
 }
@@ -23,6 +23,17 @@ describe('WhatsApp Web contact adapter', () => {
     assert.equal(result.status, 'ready');
     assert.equal(result.displayName, 'Maria Silva');
     assert.equal(result.phone, '5511999999999');
+  });
+
+  it('fails closed when the visible link and text identify different phones', async () => {
+    const adapter = await loadAdapter();
+    const result = adapter.extractContactSnapshot({
+      headerText: 'Maria Silva\n+55 21 98888-7777',
+      titleTexts: ['Maria Silva'],
+      linkHrefs: ['https://wa.me/5511999999999'],
+    });
+
+    assert.equal(result.status, 'unsupported');
   });
 
   it('fails closed for groups and headers without trustworthy phones', async () => {

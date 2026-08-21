@@ -143,6 +143,23 @@ describe('whatsapp-context', () => {
     assert.equal(calls, 0);
   });
 
+  it('returns unsupported when the caller cannot provide an individual conversation', async () => {
+    const handler = createHandler({
+      findCandidatesByPhone: async () => {
+        throw new Error('CRM must not be queried');
+      },
+    });
+    const result = await handler({
+      httpMethod: 'GET',
+      headers: {},
+      queryStringParameters: { unsupported: 'true' },
+      body: '',
+    });
+
+    assert.equal(result.statusCode, 200);
+    assert.equal(parse(result).data.match, 'unsupported');
+  });
+
   it('rejects non-GET requests with a Portuguese public error', async () => {
     const result = await createHandler()({
       httpMethod: 'POST',

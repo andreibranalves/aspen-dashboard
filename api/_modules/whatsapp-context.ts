@@ -142,6 +142,7 @@ function baseData(displayName: string, phone: string): WhatsappContextData {
 export async function resolveWhatsappContext(input: {
   phone: unknown;
   displayName?: unknown;
+  unsupported?: boolean;
   findCandidatesByPhone: (
     phone: string,
     limit: number
@@ -150,6 +151,11 @@ export async function resolveWhatsappContext(input: {
   const displayName = cleanDisplayName(input.displayName);
   const phone = normalizeContextPhone(input.phone);
   const data = baseData(displayName, phone);
+  if (input.unsupported === true) {
+    data.match = 'unsupported';
+    data.actions.openNewContact = null;
+    return data;
+  }
   if (!phone) return data;
 
   let candidates: LocalCrmCandidate[];
@@ -198,6 +204,7 @@ export function createHandler(deps: WhatsappContextDependencies = {}): (event: F
       const data = await resolveWhatsappContext({
         phone: event.queryStringParameters?.phone,
         displayName: event.queryStringParameters?.name,
+        unsupported: event.queryStringParameters?.unsupported === 'true',
         findCandidatesByPhone,
       });
       return jsonResponse(event, deps, 200, { success: true, data });

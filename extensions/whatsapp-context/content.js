@@ -5,30 +5,44 @@
   if (globalThis.__aspenWhatsAppContextLoaded) return;
   globalThis.__aspenWhatsAppContextLoaded = true;
 
-  const host = document.createElement('div');
-  host.id = 'aspen-whatsapp-context-extension';
-  document.documentElement.appendChild(host);
-
+  let host = null;
+  let panel = null;
   let snapshot = globalThis.AspenWhatsAppContactAdapter.readActiveContact(document);
   let lastKey = `${snapshot.status}:${snapshot.phone || ''}:${snapshot.displayName || ''}`;
   let requestVersion = 0;
-
-  const panel = globalThis.AspenWhatsAppPanel.mount(host, {
-    onOpen: () => lookup(),
-  });
 
   function currentSnapshot() {
     snapshot = globalThis.AspenWhatsAppContactAdapter.readActiveContact(document);
     return snapshot;
   }
 
+  function removePanel() {
+    requestVersion += 1;
+    if (host) host.remove();
+    host = null;
+    panel = null;
+  }
+
+  function ensurePanel() {
+    if (panel || snapshot.status !== 'ready') return;
+    host = document.createElement('div');
+    host.id = 'aspen-whatsapp-context-extension';
+    document.documentElement.appendChild(host);
+    panel = globalThis.AspenWhatsAppPanel.mount(host, {
+      onOpen: () => lookup(),
+    });
+    panel.renderSnapshot(snapshot);
+  }
+
   function lookup() {
     const current = currentSnapshot();
-    panel.renderLoading(current);
     if (current.status !== 'ready') {
-      panel.renderSnapshot(current);
+      removePanel();
       return;
     }
+    ensurePanel();
+    if (!panel) return;
+    panel.renderLoading(current);
 
     const version = ++requestVersion;
     chrome.runtime.sendMessage(
@@ -38,7 +52,7 @@
         name: current.displayName || '',
       },
       (response) => {
-        if (version !== requestVersion) return;
+        if (version !== requestVersion || !panel) return;
         if (chrome.runtime.lastError) {
           panel.renderError('Não foi possível consultar o Aspen.', current);
           return;
@@ -57,9 +71,15 @@
     const key = `${next.status}:${next.phone || ''}:${next.displayName || ''}`;
     if (key === lastKey) return;
     lastKey = key;
-    if (panel.isOpen()) lookup();
+    snapshot = next;
+    if (next.status === 'ready') {
+      ensurePanel();
+      if (panel?.isOpen()) lookup();
+    } else {
+      removePanel();
+    }
   }
 
-  panel.renderSnapshot(snapshot);
+  ensurePanel();
   window.setInterval(refreshSnapshot, 1200);
 })();

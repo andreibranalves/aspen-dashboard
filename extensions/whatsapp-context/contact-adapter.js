@@ -51,8 +51,11 @@
     if (source.group === true) return unsupported();
 
     const hrefs = Array.isArray(source.linkHrefs) ? source.linkHrefs : [];
-    const phone = hrefs.map(phoneFromHref).find(Boolean) || phoneFromText(source.headerText);
-    if (!phone) return unsupported();
+    const hrefPhones = hrefs.map(phoneFromHref).filter(Boolean);
+    const textPhone = phoneFromText(source.headerText);
+    const phones = [...new Set([...hrefPhones, textPhone].filter(Boolean))];
+    if (phones.length !== 1) return unsupported();
+    const phone = phones[0];
 
     const titleTexts = Array.isArray(source.titleTexts) ? source.titleTexts : [];
     const candidates = [...titleTexts, ...String(source.headerText || '').split(/\n|·/)]
@@ -75,10 +78,13 @@
       .map((element) => element.getAttribute('title') || '');
     const linkHrefs = Array.from(header.querySelectorAll('a[href]'))
       .map((element) => element.getAttribute('href') || '');
+    const testId = header.getAttribute('data-testid') || '';
+    const group = /group|@g\.us/i.test(`${testId} ${linkHrefs.join(' ')}`);
     return extractContactSnapshot({
       headerText: header.innerText || header.textContent || '',
       titleTexts,
       linkHrefs,
+      group,
     });
   }
 
