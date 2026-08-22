@@ -12,18 +12,11 @@ Closes #
 
 ## Verification
 
-- [ ] Repository-required local checks
+- [ ] Relevant local checks
 - [ ] Relevant tests
 - [ ] CI green
 
-## Review notes
+## Risks
 
-- Risk:
 - Data/migration impact:
 - External-write impact:
-
-## Wayfinder
-
-- Map:
-- Current frontier:
-- Next frontier after merge:
