@@ -473,7 +473,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             {option.value === '' && totalRecords > 0 && (
               <span
                 className={`font-normal ${
-                  status === option.value ? 'text-primary-foreground/70' : 'text-fg-muted/70'
+                  status === option.value ? 'text-primary-foreground/80' : 'text-fg-muted'
                 }`}
               >
                 ({totalRecords})
@@ -482,7 +482,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             {option.summaryKey && statusSummary[option.summaryKey] !== undefined && (
               <span
                 className={`font-normal ${
-                  status === option.value ? 'text-primary-foreground/70' : 'text-fg-muted/70'
+                  status === option.value ? 'text-primary-foreground/80' : 'text-fg-muted'
                 }`}
               >
                 ({statusSummary[option.summaryKey]})
@@ -550,7 +550,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <TableHead>Cliente</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>E-mail</TableHead>
+                <TableHead className="whitespace-nowrap">E-mail</TableHead>
                 <TableHead className="text-center w-[180px]">Ações</TableHead>
               </TableRow>
             </TableHeader>

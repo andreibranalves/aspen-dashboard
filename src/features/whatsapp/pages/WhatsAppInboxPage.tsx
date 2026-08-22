@@ -333,7 +333,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
           {loading ? (
             <div className="space-y-2 p-3">
               {[1, 2, 3].map((item) => (
-                <div key={item} className="h-20 animate-pulse rounded-lg bg-surface-muted" />
+                <div key={item} className="skeleton h-20" />
               ))}
             </div>
           ) : conversations.length === 0 ? (
@@ -390,7 +390,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               </div>
               <div className="max-h-[560px] space-y-3 overflow-y-auto p-4">
                 {messagesLoading ? (
-                  <div className="text-sm text-fg-muted">Carregando mensagens…</div>
+                  <div className="skeleton h-16 w-full" aria-label="Carregando mensagens…" />
                 ) : messages.length === 0 ? (
                   <div className="flex flex-col items-center gap-3 py-8 text-sm text-fg-muted">
                     <p>Sem mensagens sincronizadas.</p>

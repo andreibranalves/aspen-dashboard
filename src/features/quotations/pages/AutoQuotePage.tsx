@@ -799,8 +799,7 @@ export default function AutoQuotePage() {
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="self-end sm:self-auto"
+                className="self-end sm:self-auto h-[38px]"
                 onClick={() => setOrderTemplateManagerOpen(true)}
               >
                 Gerenciar

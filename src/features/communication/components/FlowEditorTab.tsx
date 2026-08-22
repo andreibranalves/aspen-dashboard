@@ -318,7 +318,7 @@ export default function FlowEditorTab() {
             key={flow.id}
             onClick={() => setSelectedFlowId(flow.id)}
             className={[
-              'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               flow.id === selectedFlowId
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
@@ -387,7 +387,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.name}
                     onChange={(e) => updateFlow(selectedFlow.id, 'name', e.target.value)}
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-1"
+                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -396,7 +396,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.vendor_name || 'Juliana'}
                     onChange={(e) => updateFlow(selectedFlow.id, 'vendor_name', e.target.value)}
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-1"
+                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -409,7 +409,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_min_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-1"
+                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm mt-1"
                   />
                 </div>
                 <div>
@@ -422,7 +422,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_max_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-1"
+                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm mt-1"
                   />
                 </div>
               </div>
@@ -494,7 +494,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'template', e.target.value)
                             }
                             placeholder="Digite a mensagem. Use variáveis como (primeiro_nome), (produto_resumo)..."
-                            className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg min-h-[60px] resize-y"
+                            className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg min-h-[60px] resize-y"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             Preview:{' '}
@@ -514,7 +514,7 @@ export default function FlowEditorTab() {
                               onChange={(e) =>
                                 updateStep(selectedFlow.id, step.id, 'source', e.target.value)
                               }
-                              className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-0.5"
+                              className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg mt-0.5"
                             >
                               <option value="quotation_pdf">PDF (documento)</option>
                               <option value="quotation_webp">WebP (imagem)</option>
@@ -527,7 +527,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
                             }
                             placeholder="Legenda (opcional)"
-                            className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg"
+                            className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             {step.source === 'quotation_webp'
@@ -575,7 +575,7 @@ export default function FlowEditorTab() {
                                 )
                               }
                               placeholder="Ex: Referência de (grupo_produto)"
-                              className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-0.5"
+                              className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm mt-0.5"
                             />
                           </div>
                           <p className="text-[10px] text-fg-muted">
