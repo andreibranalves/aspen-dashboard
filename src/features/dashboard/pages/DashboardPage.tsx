@@ -211,8 +211,11 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               <span className="text-2xl font-semibold text-fg">
                 {card.value}
               </span>
-              <span className={cn('whitespace-nowrap text-xs font-medium', card.delta != null ? deltaClass(card.delta) : 'invisible')}>
-                {card.delta != null ? formatDelta(card.delta) : '—'}
+              <span
+                className={cn('whitespace-nowrap text-xs font-medium', card.delta != null ? deltaClass(card.delta) : 'text-fg-muted')}
+                title={card.delta != null ? 'Variação vs período anterior' : 'Métrica acumulada, fora do período'}
+              >
+                {card.delta != null ? formatDelta(card.delta) : 'geral'}
               </span>
             </div>
           </div>

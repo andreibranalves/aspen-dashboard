@@ -342,7 +342,7 @@ export default function FlowEditorTab() {
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-fg">{selectedFlow.name}</span>
               <span className="text-xs text-fg-muted">
-                {selectedFlow.steps?.length || 0} etapa(s)
+                {selectedFlow.steps?.length || 0} {selectedFlow.steps?.length === 1 ? 'etapa' : 'etapas'}
               </span>
             </div>
             <div className="flex items-center gap-1">

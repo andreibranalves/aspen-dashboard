@@ -450,26 +450,40 @@ export default function WhatsAppDeliveriesPage() {
               <span className="mb-1.5 block">Data inicial</span>
               <Input
                 id="delivery-from"
-                aria-label="Data inicial"
-                type="date"
+                aria-label="Data inicial (dd/mm/aaaa)"
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/aaaa"
+                maxLength={10}
                 className="[color-scheme:light] dark:[color-scheme:dark]"
-                value={filters.from}
-                onChange={(event) =>
-                  updateFilters((current) => ({ ...current, from: event.target.value }))
-                }
+                value={filters.from ? filters.from.split('-').reverse().join('/') : ''}
+                onChange={(event) => {
+                  const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
+                  const iso = digits.length >= 5
+                    ? `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`
+                    : '';
+                  updateFilters((current) => ({ ...current, from: iso }));
+                }}
               />
             </label>
             <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-to">
               <span className="mb-1.5 block">Data final</span>
               <Input
                 id="delivery-to"
-                aria-label="Data final"
-                type="date"
+                aria-label="Data final (dd/mm/aaaa)"
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/aaaa"
+                maxLength={10}
                 className="[color-scheme:light] dark:[color-scheme:dark]"
-                value={filters.to}
-                onChange={(event) =>
-                  updateFilters((current) => ({ ...current, to: event.target.value }))
-                }
+                value={filters.to ? filters.to.split('-').reverse().join('/') : ''}
+                onChange={(event) => {
+                  const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
+                  const iso = digits.length >= 5
+                    ? `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`
+                    : '';
+                  updateFilters((current) => ({ ...current, to: iso }));
+                }}
               />
             </label>
           </fieldset>

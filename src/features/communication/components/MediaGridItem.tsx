@@ -50,7 +50,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
           <button
             onClick={() => onDelete?.(item)}
-            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg bg-destructive text-on-solid hover:bg-destructive/90"
             title="Remover mídia"
           >
             <Trash2 size={16} />

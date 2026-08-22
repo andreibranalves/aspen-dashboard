@@ -114,7 +114,7 @@ export default function SendHistoryTab() {
                 <span className="text-xs text-fg-muted font-mono">{evt.quotation_id}</span>
               )}
               {evt.duplicate_warning && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-warning/80">
+                <span className="tone-warning-soft text-[11px] font-medium">
                   Duplicado
                 </span>
               )}

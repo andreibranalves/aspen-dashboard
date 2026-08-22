@@ -175,7 +175,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-red-700 dark:text-destructive/60">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <p className="text-sm">{error}</p>
         </div>
