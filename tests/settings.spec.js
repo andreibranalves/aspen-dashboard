@@ -147,12 +147,9 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.getByRole('button', { name: 'Salvar nova versão' }).click();
     await expect(page.getByText('Template salvo com sucesso.')).toBeVisible();
     await expect(page.getByText('Versão atual: 2')).toBeVisible();
-    const confirmations = [];
-    page.on('dialog', (dialog) => {
-      confirmations.push(dialog.message());
-      void dialog.accept();
-    });
     await page.getByRole('button', { name: 'Definir como padrão' }).click();
+    // confirmações migradas para ConfirmDialog (sem confirm() nativo)
+    await page.getByRole('dialog').getByRole('button', { name: 'Definir como padrão' }).click();
     await expect(page.getByText('Template padrão alterado.')).toBeVisible();
     await page.getByLabel('Condição de pagamento').fill('novo padrão');
     await page.getByRole('button', { name: 'Salvar configurações' }).click();
@@ -162,8 +159,8 @@ test.describe('Configurações de orçamento @quotations', () => {
     expect(savedSettings?.template_padrao).toBe('alternativo');
     expect(settingsPayload).not.toHaveProperty('template_padrao');
     await page.getByRole('button', { name: 'Arquivar' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Arquivar' }).click();
     await expect(page.getByText('Template arquivado.')).toBeVisible();
-    expect(confirmations).toEqual(['Definir este template como padrão?', 'Arquivar este template?']);
     await expect(page.getByRole('button', { name: /Alternativo alternativo/ })).toContainText('Arquivado');
   });
 

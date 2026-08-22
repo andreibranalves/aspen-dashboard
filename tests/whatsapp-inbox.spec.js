@@ -25,10 +25,10 @@ test.describe('WhatsApp Inbox Page @whatsapp @external @critical', () => {
 
     // Action buttons
     await expect(page.getByRole('button', { name: 'Atualizar' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sincronizar' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Atualizar' })).toBeVisible();
 
     // Three-column layout sections
-    await expect(page.getByText('Conversas')).toBeVisible();
+    await expect(page.getByText('Conversas', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Painel comercial')).toBeVisible();
   });
 
@@ -61,10 +61,10 @@ test.describe('WhatsApp Inbox Page @whatsapp @external @critical', () => {
     });
 
     await page.goto('/#/whatsapp-inbox');
-    await page.waitForSelector('button:has-text("Sincronizar")', { timeout: 10000 });
+    await page.waitForSelector('button:has-text("Atualizar")', { timeout: 10000 });
 
     // Click Sincronizar and wait for the sync request to complete
-    const syncBtn = page.getByRole('button', { name: 'Sincronizar' });
+    const syncBtn = page.getByRole('button', { name: 'Atualizar' });
     const syncResponse = page.waitForResponse(
       (res) => res.request().method() === 'POST' && res.url().includes('/api/whatsapp-conversations')
     );
@@ -159,7 +159,7 @@ test.describe('WhatsApp Inbox Page @whatsapp @external @critical', () => {
     });
 
     await page.goto('/#/whatsapp-inbox');
-    await page.waitForSelector('button:has-text("Sincronizar")', { timeout: 10000 });
+    await page.waitForSelector('button:has-text("Atualizar")', { timeout: 10000 });
 
     // Commercial panel actions
     await expect(page.getByRole('button', { name: /Extrair orçamento/ })).toBeVisible({

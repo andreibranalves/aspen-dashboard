@@ -269,7 +269,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/products');
     await expect(page.getByRole('heading', { name: 'Produtos' })).toBeVisible();
-    await page.getByRole('button', { name: 'Criar Produto' }).click();
+    await page.getByRole('button', { name: 'Novo produto' }).click();
     await expect(page.getByRole('button', { name: 'Criar produto' })).toBeVisible();
     await expect(
       page.getByText('Preço indisponível para este produto.', { exact: true })
@@ -500,7 +500,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     const deleteReady = new Promise((resolve) => { releaseDelete = resolve; });
     let saveStarted = 0;
     let deleteStarted = 0;
-    page.on('dialog', (dialog) => dialog.accept());
 
     await page.route('**/api/product-update**', async (route) => {
       const request = route.request();
@@ -549,6 +548,7 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/products/STATE-FIRST');
     await page.getByRole('button', { name: 'Arquivar produto' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
     await expect.poll(() => deleteStarted).toBe(1);
     await page.goto('/#/products/STATE-SECOND');
     await expect(page.getByText('Produto segundo', { exact: true }).first()).toBeVisible();
@@ -631,7 +631,6 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     const archived = product('RESTORE-SKU', 'Produto arquivado', false);
     const active = product('ARCHIVE-SKU', 'Produto ativo');
     await mockProductApi(page, [archived, active]);
-    page.on('dialog', (dialog) => dialog.accept());
 
     await page.route('**/api/product-update**', async (route) => {
       const request = route.request();
@@ -654,11 +653,13 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
 
     await page.goto('/#/products/RESTORE-SKU');
     await page.getByRole('button', { name: 'Restaurar produto' }).click();
-    await expect(page.getByText('Erro ao restaurar produto.', { exact: true })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Restaurar', exact: true }).click();
+    await expect(page.getByText(/Erro ao restaurar/i)).toBeVisible();
 
     await page.goto('/#/products/ARCHIVE-SKU');
     await page.getByRole('button', { name: 'Arquivar produto' }).click();
-    await expect(page.getByText('Erro ao arquivar produto.', { exact: true })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
+    await expect(page.getByText(/Erro ao arquivar/i)).toBeVisible();
   });
 
   test('cria novo produto sem consultar modo externo', async ({ page }) => {

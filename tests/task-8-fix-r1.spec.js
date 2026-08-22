@@ -30,10 +30,10 @@ test('lista de orçamentos abre o snapshot PostgreSQL da revisão clicada @quota
 
   await page.goto('/#/quotations');
   await expect(page.getByText(quotationId, { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Enviado', { exact: true }).first()).toContainText('Enviado');
+  await expect(page.getByText('Emitido', { exact: true }).first()).toContainText('Emitido');
   await expect(page.getByText('(2)', { exact: true })).toBeVisible();
   const popup = page.waitForEvent('popup');
-  await page.getByLabel(`Abrir PDF do orçamento ${quotationId}`).click();
+  await page.getByLabel(`Abrir PDF do orçamento ${quotationId}`).first().click();
   const opened = await popup;
   const url = new globalThis.URL(opened.url());
   expect(url.pathname).toBe('/api/quotation-preview');
@@ -233,7 +233,9 @@ test('métricas ausentes ou contagens inválidas exibem erro e não inventam zer
   await page.route('**/api/sales-dashboard**', (route) => json(route, { success: true, summary }));
   await page.route('**/api/sales-orders**', (route) => json(route, { success: true, items: [], has_more: false }));
   await page.goto('/#/sales-orders');
-  await expect(page.getByText('R$ 0,00').first()).toBeVisible();
+  // sem pedidos, valores monetários desconhecidos usam traço em vez de inventar zero
+  await expect(page.getByText('Receita').locator('..')).toContainText('—');
+  await expect(page.getByText('Ticket Médio').locator('..')).toContainText('—');
   for (const invalid of [
     { ...summary, open_orders: undefined },
     { ...summary, orders_count: '0' },

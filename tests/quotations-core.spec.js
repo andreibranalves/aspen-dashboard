@@ -86,21 +86,18 @@ test('email markers render on desktop and mobile', async ({ page }) => {
   });
 
   await page.goto('/#/quotations');
+  // marcador de e-mail agora é icônico: enviado = ícone + data; pendente = '—'
   const desktopRows = page.getByRole('row');
-  await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('E-mail enviado');
   await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
   const pendingDesktopRow = desktopRows.filter({ hasText: 'ORC-EMAIL-2' });
-  await expect(pendingDesktopRow).toContainText('E-mail não enviado');
-  await expect(pendingDesktopRow.getByText('E-mail não enviado').locator('..')).not.toContainText('17/08/2026');
+  await expect(pendingDesktopRow).not.toContainText('17/08/2026');
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   const mobileCards = page.locator('[class~="md:hidden"] > div');
-  await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('E-mail enviado');
   await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
   const pendingMobileCard = mobileCards.filter({ hasText: 'ORC-EMAIL-2' });
-  await expect(pendingMobileCard).toContainText('E-mail não enviado');
-  await expect(pendingMobileCard.getByText('E-mail não enviado').locator('..')).not.toContainText('17/08/2026');
+  await expect(pendingMobileCard).not.toContainText('17/08/2026');
 });
 
 test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({ page }) => {
@@ -155,6 +152,8 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByLabel('Pagamento do orçamento').fill('Não persistir');
   await page.getByRole('button', { name: 'Cancelar' }).click();
+  // cancelar com edições sujas pede confirmação
+  await page.getByRole('dialog').getByRole('button', { name: 'Descartar' }).click();
   await page.getByRole('button', { name: /Editar/ }).click();
   await expect(page.getByLabel('Pagamento do orçamento')).toHaveValue('À vista');
   await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
@@ -163,7 +162,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByLabel('Observações do orçamento').fill('Alteração local');
   await page.getByLabel('Preço aplicado SKU-1').fill('10.00');
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByText('Orçamento salvo.')).toBeVisible();
   expect(putCount).toBe(1);
   expect(lastPutPayload.concurrency_token).toBe(token);
   expect(lastPutPayload.pagamento).toBe('30 dias');

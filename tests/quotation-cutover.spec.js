@@ -174,7 +174,7 @@ test('cotação PostgreSQL mantém revisão, PDF, link público e erro sanitizad
 
   await page.goto(`/#/quotations/${CORE_ID}`);
   await expect(page.getByText(CORE_ID, { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Enviado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Emitido', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Revisão 1')).toBeVisible();
   await expect(page.getByText('Produto PostgreSQL')).toBeVisible();
 
