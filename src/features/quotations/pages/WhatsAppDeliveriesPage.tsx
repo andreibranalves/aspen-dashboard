@@ -500,7 +500,7 @@ export default function WhatsAppDeliveriesPage() {
             ['Entregues nas últimas 24 horas', result.summary.deliveredLast24Hours],
           ].map(([label, value]) => (
             <article key={label} className="rounded-xl border border-line bg-surface p-4 shadow-sm">
-              <p className="text-xs font-medium text-fg-muted">{label}</p>
+              <p className="text-xs font-medium text-fg-muted min-h-[2rem] flex items-start">{label}</p>
               <p className="mt-1 text-2xl font-semibold text-fg">{value}</p>
             </article>
           ))}
@@ -546,9 +546,9 @@ export default function WhatsAppDeliveriesPage() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Fluxo</TableHead>
-                <TableHead>Passos entregues/total</TableHead>
+                <TableHead className="whitespace-nowrap">Passos</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead>Última atualização</TableHead>
+                <TableHead className="whitespace-nowrap">Atualização</TableHead>
                 <TableHead>Ação</TableHead>
               </TableRow>
             </TableHeader>

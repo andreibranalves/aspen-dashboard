@@ -308,7 +308,7 @@ export default function CrmKanbanPage() {
 
   return (
     <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader title="CRM" description="Acompanhe cada cliente pelo funil de vendas." />
+      <PageHeader title="CRM" description="Acompanhe cada negócio pelo funil de vendas." />
       {/* Search — só com dados no funil */}
       {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
         <div className="relative max-w-md">
@@ -377,6 +377,12 @@ export default function CrmKanbanPage() {
             quando um orçamento é enviado.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+            <a
+              href="#/quotations"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"
+            >
+              Ver orçamentos
+            </a>
             <a
               href="#/leads"
               className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"

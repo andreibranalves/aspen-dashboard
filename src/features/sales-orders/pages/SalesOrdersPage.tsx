@@ -47,7 +47,7 @@ const PERIODS: PeriodOption[] = [
   { value: '7d', label: '7d' },
   { value: '30d', label: '30d' },
   { value: '90d', label: '90d' },
-  { value: 'month', label: 'Mês' },
+  { value: 'month', label: 'Mês atual' },
 ];
 
 const STATUSES = ['', 'Draft', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
@@ -320,7 +320,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           />
           <SummaryCard
             icon={Package}
-            label="Pedidos em Aberto"
+            label="Pedidos em aberto"
             value={String(summaryData.open_orders)}
             colorClass="tone-info-soft"
           />

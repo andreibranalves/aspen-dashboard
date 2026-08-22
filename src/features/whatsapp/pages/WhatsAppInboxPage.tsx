@@ -11,6 +11,7 @@ import {
 import PageHeader from '@/components/shared/PageHeader';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
 import { WhatsAppAttachmentCard } from '@/features/whatsapp/components/whatsapp-attachment-card';
 import { Input } from '@/components/ui/input';
 import { fmtPhone, formatDate } from '@/lib/formatting/formatters';
@@ -462,7 +463,10 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
             <div className="mt-4 space-y-4 text-sm">
               <div className="rounded-lg bg-surface-muted p-3 text-fg-muted">
                 <p>Telefone: {fmtPhone(selected.canonicalPhone) || 'Não identificado'}</p>
-                <p>Status: {statusLabel(selected.status)}</p>
+                <div className="flex items-center gap-1.5">
+                  <span>Status:</span>
+                  <StatusBadge status={selected.status} label={statusLabel(selected.status)} />
+                </div>
                 <p>Atualizado: {formatDate(selected.updatedAt)}</p>
                 <p>Orçamento: {selected.linkedQuotationId || 'Nenhum vínculo'}</p>
               </div>

@@ -932,14 +932,14 @@ export default function AutoQuotePage() {
                   <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="divide-y divide-line/60">
                   {history.map((item, idx) => (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => loadHistoryItem(item)}
                       className={cn(
-                        'w-full flex items-center justify-between rounded-lg px-0 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
+                        'w-full flex items-center justify-between px-0 py-2 text-left text-sm hover:bg-surface-muted transition-colors',
                         idx === history.length - 1 && 'pb-1'
                       )}
                     >
