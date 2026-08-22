@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import { createHttpError } from '../_shared/http-error.js';
 import { getDatabase, type AppDatabase } from '../_infrastructure/db/client.js';
-import { clients, crmDeals, quoteLeads, quoteRevisions, quotations } from '../_infrastructure/db/schema.js';
+import { clients, crmDeals, quoteLeads, quoteRevisions, quotationDeliveries, quotations } from '../_infrastructure/db/schema.js';
 import {
   cleanText,
   type WhatsappConversation,
@@ -61,6 +61,23 @@ export interface LocalQuotationRecord {
   } | null;
 }
 
+export interface LocalQuotationHistoryRecord {
+  id: string;
+  businessNumber: string;
+  status: string;
+  date: string;
+  total: string;
+  url: string;
+}
+
+export interface LocalDeliveryHistoryRecord {
+  id: string;
+  revisionId: string;
+  businessNumber: string;
+  status: 'pendente' | 'enviado' | 'entregue' | 'falhou' | 'sem entrega registrada';
+  date: string;
+}
+
 export interface LocalCrmCandidate {
   id: string;
   tipo: 'lead' | 'cliente';
@@ -81,6 +98,8 @@ export interface LocalWhatsappCrmRepository {
   getClient: (id: string) => Promise<LocalClientRecord | null>;
   getDeal: (id: string) => Promise<LocalDealRecord | null>;
   getQuotation: (id: string) => Promise<LocalQuotationRecord | null>;
+  listQuotationsByClientId?: (clientId: string, limit: number) => Promise<LocalQuotationHistoryRecord[]>;
+  listDeliveriesByQuotationIds?: (quotationIds: string[], limit: number) => Promise<LocalDeliveryHistoryRecord[]>;
   findQuoteLeadByExternalId?: (
     externalId: string,
     source?: string
@@ -275,6 +294,37 @@ function mapQuotation(row: Record<string, unknown>): LocalQuotationRecord {
       email: rowText(snapshot.clienteEmail ?? snapshot.cliente_email ?? snapshot.email),
     },
   };
+}
+
+function historyTime(value: unknown): number {
+  const parsed = value instanceof Date ? value : new Date(String(value ?? ''));
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function historyDate(value: unknown): string {
+  return new Date(historyTime(value)).toISOString().slice(0, 10);
+}
+
+function historyQuotationStatus(value: unknown): string {
+  const normalized = cleanText(value).toLowerCase();
+  if (normalized === 'rascunho') return 'Rascunho';
+  if (normalized === 'emitido' || normalized === 'enviado') return 'Enviado';
+  if (normalized === 'aprovado') return 'Aprovado';
+  if (normalized === 'perdido') return 'Perdido';
+  return 'Status indisponível';
+}
+
+function historyDeliveryStatus(value: unknown): LocalDeliveryHistoryRecord['status'] {
+  const normalized = cleanText(value).toLowerCase();
+  if (normalized === 'delivered') return 'entregue';
+  if (normalized === 'failed' || normalized === 'retry_scheduled') return 'falhou';
+  if (normalized === 'queued') return 'pendente';
+  if (['processing', 'provider_accepted', 'reconciling', 'needs_review'].includes(normalized)) return 'enviado';
+  return 'sem entrega registrada';
+}
+
+function historyQuotationUrl(businessNumber: string): string {
+  return `/#/quotations/${encodeURIComponent(businessNumber)}`;
 }
 
 function activeRows(rows: LocalRows): LocalRows {
@@ -578,6 +628,91 @@ export function createPostgresWhatsappCrmRepository(
       return repositoryFailure(error, 'Não foi possível acessar os orçamentos locais.');
     }
   };
+  const listQuotationsByClientId = async (
+    clientId: string,
+    limit: number,
+  ): Promise<LocalQuotationHistoryRecord[]> => {
+    try {
+      const safeLimit = Math.max(1, Math.min(Math.floor(limit) || 1, 50));
+      const latest = database
+        .selectDistinctOn([quotations.id], {
+          id: quotations.id,
+          businessNumber: quotations.businessNumber,
+          status: quotations.status,
+          createdAt: quotations.createdAt,
+          updatedAt: quotations.updatedAt,
+          total: quoteRevisions.total,
+          revisionId: quoteRevisions.id,
+          revisionCreatedAt: quoteRevisions.createdAt,
+        })
+        .from(quotations)
+        .innerJoin(quoteRevisions, eq(quoteRevisions.quotationId, quotations.id))
+        .where(eq(quotations.clientId, clientId))
+        .orderBy(asc(quotations.id), desc(quoteRevisions.version), asc(quoteRevisions.id))
+        .as('latest_client_quotations');
+      const rows = await database
+        .select()
+        .from(latest)
+        .orderBy(desc(latest.updatedAt), asc(latest.id))
+        .limit(safeLimit);
+      return rows.map((row) => {
+          const businessNumber = cleanText(row.businessNumber);
+          return {
+            id: row.id,
+            businessNumber,
+            status: historyQuotationStatus(row.status),
+            date: historyDate(row.updatedAt || row.revisionCreatedAt || row.createdAt),
+            total: rowText(row.total) || '0.00',
+            url: historyQuotationUrl(businessNumber),
+          };
+        });
+    } catch (error) {
+      return repositoryFailure(error, 'Não foi possível acessar o histórico de orçamentos.');
+    }
+  };
+
+  const listDeliveriesByQuotationIds = async (
+    quotationIds: string[],
+    limit: number,
+  ): Promise<LocalDeliveryHistoryRecord[]> => {
+    if (quotationIds.length === 0) return [];
+    try {
+      const safeLimit = Math.max(1, Math.min(Math.floor(limit) || 1, 50));
+      const revisionRows = await database
+        .select({ id: quoteRevisions.id, quotationId: quoteRevisions.quotationId, version: quoteRevisions.version })
+        .from(quoteRevisions)
+        .where(inArray(quoteRevisions.quotationId, quotationIds))
+        .orderBy(desc(quoteRevisions.version), asc(quoteRevisions.id));
+      const latestRevisionIds = [...new Set(revisionRows.map((row) => row.quotationId))]
+        .map((quotationId) => revisionRows.find((row) => row.quotationId === quotationId)?.id)
+        .filter((id): id is string => Boolean(id));
+      if (latestRevisionIds.length === 0) return [];
+      const rows = await database
+        .select({
+          id: quotationDeliveries.id,
+          revisionId: quotationDeliveries.revisionId,
+          state: quotationDeliveries.state,
+          updatedAt: quotationDeliveries.updatedAt,
+          businessNumber: quotations.businessNumber,
+        })
+        .from(quotationDeliveries)
+        .innerJoin(quoteRevisions, eq(quotationDeliveries.revisionId, quoteRevisions.id))
+        .innerJoin(quotations, eq(quoteRevisions.quotationId, quotations.id))
+        .where(inArray(quotationDeliveries.revisionId, latestRevisionIds))
+        .orderBy(desc(quotationDeliveries.updatedAt), asc(quotationDeliveries.id))
+        .limit(safeLimit);
+      return rows.map((row) => ({
+        id: row.id,
+        revisionId: row.revisionId,
+        businessNumber: cleanText(row.businessNumber),
+        status: historyDeliveryStatus(row.state),
+        date: historyDate(row.updatedAt),
+      }));
+    } catch (error) {
+      return repositoryFailure(error, 'Não foi possível acessar o histórico de entregas.');
+    }
+  };
+
   const findQuoteLeadByExternalId = async (
     externalId: string,
     source?: string
@@ -874,6 +1009,8 @@ export function createPostgresWhatsappCrmRepository(
     getClient,
     getDeal,
     getQuotation,
+    listQuotationsByClientId,
+    listDeliveriesByQuotationIds,
     findQuoteLeadByExternalId,
     findCandidatesByPhone: (phone, limit) => queryCandidates('phone', phone, limit),
     findCandidatesByEmail: async (emails, limit) => {

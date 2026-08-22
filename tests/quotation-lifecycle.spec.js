@@ -873,10 +873,17 @@ test('new revision prices a product selected from an added item row @quotations 
     data: [{ sku: 'SKU-NEW', nome: 'Produto novo', pricing_available: true }],
   }));
   await page.route('**/api/pricing-lookup', async (route) => {
-    pricingBodies.push(route.request().postDataJSON());
+    const payload = route.request().postDataJSON();
+    pricingBodies.push(payload);
+    const qty = String(payload.items?.[0]?.qty || '');
     await fulfillJson(route, {
       success: true,
-      items: [{ item_code: 'SKU-NEW', item_name: 'Produto novo', qty: '1.000', rate: '12.34' }],
+      items: [{
+        item_code: 'SKU-NEW',
+        item_name: 'Produto novo',
+        qty,
+        rate: qty === '100' ? '8.50' : '12.34',
+      }],
     });
   });
   await page.route('**/api/quotations**', async (route) => {
@@ -914,8 +921,13 @@ test('new revision prices a product selected from an added item row @quotations 
   await page.getByRole('button', { name: /SKU-NEW/ }).click();
 
   await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('12.34');
+  const quantity = row.locator('input[type="number"]').first();
+  await quantity.fill('100');
+  await quantity.blur();
+  await expect(row.getByLabel('Preço aplicado SKU-NEW')).toHaveValue('8.50');
   expect(pricingBodies).toEqual([
     { items: [{ item_code: 'SKU-NEW', qty: '1.000' }], urgent: false },
+    { items: [{ item_code: 'SKU-NEW', qty: '100' }], urgent: false },
   ]);
 });
 
@@ -1044,7 +1056,7 @@ test('manual quotation accepts metadata-free local responses @quotations @critic
   await page.getByRole('region', { name: 'Seleção de cliente' }).getByRole('combobox').selectOption('Google Ads');
   await page.getByRole('textbox', { name: 'Buscar produto para adicionar ao orçamento' }).fill('SKU-LOCAL');
   await page.getByRole('button', { name: 'Adicionar SKU-LOCAL ao orçamento' }).click();
-  await page.getByRole('button', { name: 'Criar orçamento' }).click();
+  await page.getByRole('button', { name: 'Salvar rascunho' }).click();
   await expect(page.getByText('Rascunho persistido com sucesso', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /Visualizar PDF/ })).toHaveCount(0);
 });
@@ -1065,27 +1077,4 @@ test('empty local CRM and leads retain loading/error/retry states @quotations @c
   await expect(page.getByText('Erro ao carregar clientes', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
   await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
-});
-
-test('communication screen consumes local conversation and message IDs only @quotations @critical', async ({ page }) => {
-  const conversation = {
-    id: 'conversation-local-1', canonicalPhone: '5511999990000', phone: '5511999990000',
-    displayLabel: 'Cliente local', displayName: 'Cliente local', identityStatus: 'verified',
-    lastMessageAt: '2026-07-01T12:00:00.000Z', lastMessagePreview: 'Olá', status: 'new',
-    createdAt: '2026-07-01T12:00:00.000Z', updatedAt: '2026-07-01T12:00:00.000Z',
-  };
-  const message = { id: 'message-local-1', conversationId: conversation.id, direction: 'inbound', type: 'text', body: 'Olá local', mediaUrl: '', timestamp: '2026-07-01T12:00:00.000Z' };
-  await page.route('**/api/whatsapp-conversations**', async (route) => {
-    const request = route.request();
-    const url = new globalThis.URL(request.url());
-    if (request.method() === 'GET' && url.searchParams.has('messages')) return fulfillJson(route, { success: true, data: [message] });
-    if (request.method() === 'GET' && url.searchParams.has('id')) return fulfillJson(route, { success: true, data: conversation });
-    if (request.method() === 'POST' && request.postDataJSON()?.action === 'sync-messages') return fulfillJson(route, { success: true, data: [message] });
-    if (request.method() === 'POST' && request.postDataJSON()?.action === 'sync') return fulfillJson(route, { success: true, data: { conversations: [conversation], syncedMessages: 1 } });
-    return fulfillJson(route, { success: true, data: [conversation] });
-  });
-  await page.goto('/#/whatsapp-inbox');
-  await expect(page.getByText('Cliente local', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Olá local', { exact: true })).toBeVisible();
-  await expect(page.locator('body')).not.toContainText(/provider|conversationId|messageId/i);
 });

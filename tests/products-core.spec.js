@@ -211,6 +211,41 @@ test.describe('Produtos — catálogo principal @products @smoke', () => {
     expect(rows[0].precos).toEqual([{ minimum_quantity: '30', unit_price: '8.50' }]);
   });
 
+  test('duplica produto em rascunho sem copiar o SKU e reaproveita preços', async ({ page }) => {
+    const source = product('CORE-SOURCE', 'Produto base');
+    source.preco_base = '10.00';
+    source.precos = [{ minimum_quantity: '30', unit_price: '8.50' }];
+    source.pricing_available = true;
+    const { requests, rows } = await mockProductApi(page, [source]);
+
+    await page.goto('/#/products/CORE-SOURCE');
+    await expect(page.getByRole('button', { name: 'Duplicar produto' })).toBeVisible();
+    await page.getByRole('button', { name: 'Duplicar produto' }).click();
+
+    await expect(page).toHaveURL(/#\/products\/new\?duplicate=CORE-SOURCE$/);
+    await expect(page.getByText('Rascunho de duplicação.', { exact: false })).toBeVisible();
+    await expect(page.getByPlaceholder('LNC-SED-70')).toHaveValue('');
+    await expect(page.getByPlaceholder('Nome do produto')).toHaveValue('Produto base');
+    await expect(page.getByLabel('Preço base')).toHaveValue('10.00');
+    await expect(page.getByLabel('Quantidade mínima da faixa 1')).toHaveValue('30');
+    await expect(page.getByLabel('Preço unitário da faixa 1')).toHaveValue('8.50');
+
+    await page.getByRole('button', { name: 'Criar produto' }).click();
+    await expect(page.getByText('SKU é obrigatório.', { exact: true })).toBeVisible();
+    expect(requests.filter((request) => request.method === 'POST')).toHaveLength(0);
+
+    await page.getByPlaceholder('LNC-SED-70').fill('CORE-COPY');
+    await page.getByRole('button', { name: 'Criar produto' }).click();
+    await expect(page).toHaveURL(/#\/products\/CORE-COPY$/);
+
+    const post = requests.find((request) => request.method === 'POST');
+    expect(post?.body?.sku).toBe('CORE-COPY');
+    expect(post?.body?.nome).toBe('Produto base');
+    expect(post?.body?.preco_base).toBe('10.00');
+    expect(post?.body?.precos).toEqual([{ minimum_quantity: '30', unit_price: '8.50' }]);
+    expect(rows.map((row) => row.sku)).toEqual(['CORE-SOURCE', 'CORE-COPY']);
+  });
+
   test('edita preço base/faixas dinâmicas e resolve limites no orçamento sem mutar cadastro', async ({ page }) => {
     const priced = product('CORE-PRICED', 'Produto com preço');
     priced.preco_base = '10.00';

@@ -1,63 +1,73 @@
-importScripts('config.js');
+/* global importScripts, URL, fetch, chrome, AbortController, clearTimeout, setTimeout */
+importScripts('./config.js');
 
-(function () {
-  /* global chrome, fetch, importScripts, URL */
+(function installAspenWhatsappBackground(global) {
   'use strict';
 
-  function cleanText(value, maxLength) {
-    if (typeof value !== 'string') return '';
-    let safe = '';
-    for (const character of value) {
-      const code = character.charCodeAt(0);
-      if (code >= 0x20 && code !== 0x7f) safe += character;
-    }
-    const normalized = safe.replace(/\s+/g, ' ').trim();
-    return normalized.slice(0, maxLength);
-  }
+  const config = global.ASPEN_WHATSAPP_CONTEXT_CONFIG || {};
+  const PHONE_RE = /^\d{10,15}$/;
+  const REQUEST_TIMEOUT_MS = 8000;
 
-  function phoneDigits(value) {
-    const digits = String(value || '').replace(/\D/g, '');
-    return digits.length >= 10 && digits.length <= 15 ? digits : '';
-  }
-
-  async function lookupContext(message) {
-    const phone = phoneDigits(message.phone);
-    const name = cleanText(message.name, 200);
-    if (!phone) return { ok: true, data: { match: 'unresolved' } };
-
-    const origin = globalThis.AspenExtensionConfig.origin;
-    const url = new URL('/api/whatsapp-context', origin);
-    url.searchParams.set('phone', phone);
-    if (name) url.searchParams.set('name', name);
-
+  function safeOrigin(value) {
     try {
-      const response = await fetch(url, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      });
-      let body = null;
-      try {
-        body = await response.json();
-      } catch {
-        body = null;
-      }
-      if (response.status === 401) {
-        return { ok: false, code: 'unauthenticated', error: 'Faça login no Aspen para consultar o contexto.' };
-      }
-      if (!response.ok || !body || body.success !== true || !body.data) {
-        return { ok: false, code: 'request_failed', error: 'Não foi possível consultar o contexto agora.' };
-      }
-      return { ok: true, data: body.data };
+      const parsed = new URL(String(value || '').trim());
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return '';
+      return parsed.origin;
     } catch {
-      return { ok: false, code: 'network', error: 'Aspen indisponível no momento.' };
+      return '';
     }
   }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (!message || message.type !== 'lookupContext') return false;
-    lookupContext(message).then(sendResponse).catch(() => {
-      sendResponse({ ok: false, code: 'request_failed', error: 'Não foi possível consultar o contexto agora.' });
-    });
-    return true;
+  function publicError(status) {
+    if (status === 401) return { status: 'login_required', message: 'Faça login no Aspen para consultar o contexto.' };
+    if (status >= 500) return { status: 'error', message: 'Aspen indisponível. Tente novamente.' };
+    return { status: 'error', message: 'Não foi possível consultar o contexto.' };
+  }
+
+  async function lookup(phone) {
+    const appOrigin = safeOrigin(config.appOrigin);
+    if (!appOrigin || !PHONE_RE.test(phone)) return { status: 'unresolved', message: 'Telefone não confirmado.' };
+    const endpoint = new URL(config.endpointPath || '/api/whatsapp-context', appOrigin);
+    endpoint.searchParams.set('phone', phone);
+    const controller = new AbortController();
+    const timeout = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(endpoint.toString(), {
+        method: 'GET',
+        credentials: 'include',
+        mode: 'cors',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      const body = await response.json().catch(function () { return null; });
+      if (!response.ok) return publicError(response.status);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return { status: 'error', message: 'Resposta inválida do Aspen.' };
+      return body;
+    } catch (error) {
+      return { status: 'error', message: error && error.name === 'AbortError' ? 'Aspen indisponível. Tente novamente.' : 'Não foi possível conectar ao Aspen.' };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function openApp(path) {
+    const origin = safeOrigin(config.appOrigin);
+    if (!origin) return;
+    const target = new URL(path || '/', origin).toString();
+    chrome.tabs.create({ url: target });
+  }
+
+  chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
+    if (!message || typeof message !== 'object') return false;
+    if (message.type === 'aspen-context:lookup') {
+      lookup(String(message.phone || '')).then(sendResponse);
+      return true;
+    }
+    if (message.type === 'aspen-context:open') {
+      openApp(String(message.path || '/'));
+      sendResponse({ ok: true });
+      return false;
+    }
+    return false;
   });
-})();
+})(globalThis);

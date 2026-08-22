@@ -1,15 +1,20 @@
-import type { FunctionEvent, FunctionResult } from '../_http/types.js';
-import { whatsappContextCorsHeaders } from '../_http/whatsapp-context-cors.js';
-import { createPostgresWhatsappCrmRepository } from './whatsapp-crm-match.js';
-import type { LocalCrmCandidate } from './whatsapp-crm-match.js';
+import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
+import {
+  createPostgresWhatsappCrmRepository,
+  type LocalClientRecord,
+  type LocalCrmCandidate,
+  type LocalQuoteLeadRecord,
+  type LocalWhatsappCrmRepository,
+} from './whatsapp-crm-match.js';
 import { normalizeWhatsappPhone } from './whatsapp-conversations-store.js';
-import { createHttpError } from '../_shared/http-error.js';
+import {
+  configuredWhatsappContextOrigin,
+  requestOrigin,
+  whatsappContextCorsHeaders,
+} from '../_shared/whatsapp-context-cors.js';
 
-const MAX_DISPLAY_NAME_LENGTH = 200;
-const CANDIDATE_LIMIT = 2;
-const ALLOWED_METHOD = 'GET';
-
-type ContextMatch = 'matched' | 'not_found' | 'ambiguous' | 'unresolved' | 'unsupported';
+export const WHATSAPP_CONTEXT_QUOTATION_LIMIT = 6;
+export const WHATSAPP_CONTEXT_DELIVERY_LIMIT = 12;
 
 export interface WhatsappContextContact {
   id: string;
@@ -19,201 +24,211 @@ export interface WhatsappContextContact {
   email: string | null;
 }
 
-export interface WhatsappContextData {
-  identity: {
-    displayName: string | null;
-    phone: string | null;
-    source: 'visible_contact' | null;
-  };
-  match: ContextMatch;
-  contact: WhatsappContextContact | null;
-  actions: {
-    openContact: string | null;
-    openNewContact: string | null;
-  };
+export interface WhatsappContextQuotation {
+  id: string;
+  businessNumber: string;
+  status: string;
+  date: string;
+  total: string;
+  url: string;
 }
 
-export interface WhatsappContextDependencies {
-  findCandidatesByPhone?: (
-    phone: string,
-    limit: number
-  ) => Promise<LocalCrmCandidate[]>;
-  extensionOrigin?: string;
+export interface WhatsappContextDelivery {
+  id: string;
+  revisionId: string;
+  businessNumber: string;
+  status: 'pendente' | 'enviado' | 'entregue' | 'falhou' | 'sem entrega registrada';
+  date: string;
 }
 
-function cleanDisplayName(value: unknown): string {
-  if (typeof value !== 'string') return '';
-  let safe = '';
-  for (const character of value) {
-    const code = character.charCodeAt(0);
-    if (code >= 0x20 && code !== 0x7f) safe += character;
-  }
-  return safe.replace(/\s+/g, ' ').trim().slice(0, MAX_DISPLAY_NAME_LENGTH);
+export type WhatsappContextProjection =
+  | { match: 'unresolved'; reason: string }
+  | { match: 'not_found'; contact: null; actions: { createContact: string } }
+  | { match: 'ambiguous'; contact: null; actions: { search: string } }
+  | {
+      match: 'matched';
+      contact: WhatsappContextContact;
+      latestQuotation: WhatsappContextQuotation | null;
+      quotations: WhatsappContextQuotation[];
+      deliveries: WhatsappContextDelivery[];
+      actions: { openContact: string; createContact: string };
+    };
+
+export interface WhatsappContextHistoryRepository {
+  listQuotationsByClientId?: (
+    clientId: string,
+    limit: number,
+  ) => Promise<WhatsappContextQuotation[]>;
+  listDeliveriesByQuotationIds?: (
+    quotationIds: string[],
+    limit: number,
+  ) => Promise<WhatsappContextDelivery[]>;
 }
 
-export function normalizeContextPhone(value: unknown): string {
-  return normalizeWhatsappPhone(value);
+export interface WhatsappContextHandlerDependencies {
+  crm?: LocalWhatsappCrmRepository;
+  findCandidatesByPhone?: (phone: string, limit: number) => Promise<LocalCrmCandidate[]>;
+  getQuoteLead?: (id: string) => Promise<LocalQuoteLeadRecord | null>;
+  getClient?: (id: string) => Promise<LocalClientRecord | null>;
+  getDeal?: LocalWhatsappCrmRepository['getDeal'];
+  getQuotation?: LocalWhatsappCrmRepository['getQuotation'];
+  history?: WhatsappContextHistoryRepository;
+  env?: typeof process.env;
 }
 
-function responseHeaders(event: FunctionEvent, deps: WhatsappContextDependencies): Record<string, string> {
-  const origin = event.headers?.origin ?? event.headers?.Origin;
-  return {
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-store',
-    ...whatsappContextCorsHeaders(
-      Array.isArray(origin) ? origin[0] : origin,
-      deps.extensionOrigin ?? process.env.WHATSAPP_CONTEXT_EXTENSION_ORIGIN
-    ),
-  };
-}
-
-function jsonResponse(
-  event: FunctionEvent,
-  deps: WhatsappContextDependencies,
+function json(
   statusCode: number,
-  body: unknown
+  body: unknown,
+  headers: Record<string, string> = {},
 ): FunctionResult {
   return {
     statusCode,
-    headers: responseHeaders(event, deps),
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
     body: JSON.stringify(body),
   };
 }
 
-const defaultFindCandidatesByPhone = async (
-  phone: string,
-  limit: number
-): Promise<LocalCrmCandidate[]> => {
-  const repository = createPostgresWhatsappCrmRepository();
-  return (await repository.findCandidatesByPhone?.(phone, limit)) || [];
-};
-
-function newContactPath(displayName: string, phone: string): string {
-  const params = new URLSearchParams();
-  if (displayName) params.set('nome', displayName);
-  if (phone) params.set('telefone', phone);
-  const query = params.toString();
-  return `/#/leads/cliente/new${query ? `?${query}` : ''}`;
+function text(value: unknown): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function contactPath(candidate: LocalCrmCandidate, lookupPhone: string): string {
-  if (candidate.tipo === 'lead') {
-    const params = new URLSearchParams({ search: lookupPhone, status: 'all' });
-    return `/#/leads?${params.toString()}`;
-  }
-  return `/#/leads/${candidate.tipo}/${encodeURIComponent(candidate.id)}`;
+function contactUrl(contact: Pick<WhatsappContextContact, 'id' | 'tipo'>): string {
+  return `/#/leads/${contact.tipo}/${encodeURIComponent(contact.id)}`;
+}
+
+function createContactUrl(phone: string | null | undefined): string {
+  const normalized = text(phone);
+  return normalized ? `/#/leads?search=${encodeURIComponent(normalized)}` : '/#/leads';
+}
+
+function candidateKey(candidate: LocalCrmCandidate): string {
+  return `${candidate.tipo}:${candidate.id}`;
 }
 
 function uniqueCandidates(candidates: LocalCrmCandidate[]): LocalCrmCandidate[] {
-  const unique = new Map<string, LocalCrmCandidate>();
+  const result = new Map<string, LocalCrmCandidate>();
   for (const candidate of candidates) {
-    if (!candidate || !candidate.id || (candidate.tipo !== 'lead' && candidate.tipo !== 'cliente')) continue;
-    unique.set(`${candidate.tipo}:${candidate.id}`, candidate);
+    if (!candidate || !text(candidate.id)) continue;
+    result.set(candidateKey(candidate), candidate);
   }
-  return [...unique.values()].slice(0, CANDIDATE_LIMIT);
+  return [...result.values()].sort((left, right) => candidateKey(left).localeCompare(candidateKey(right)));
 }
 
-function contactFromCandidate(candidate: LocalCrmCandidate, lookupPhone: string): WhatsappContextContact {
+function mapContact(
+  candidate: LocalCrmCandidate,
+  lead: LocalQuoteLeadRecord | null,
+  client: LocalClientRecord | null,
+): WhatsappContextContact {
   return {
-    id: String(candidate.id),
+    id: candidate.id,
     tipo: candidate.tipo,
-    nome: cleanDisplayName(candidate.nome),
-    telefone: normalizeContextPhone(candidate.telefone) || lookupPhone || null,
-    email: typeof candidate.email === 'string' && candidate.email.trim() ? candidate.email.trim() : null,
+    nome: text(lead?.nome || client?.nome || candidate.nome) || 'Contato sem nome',
+    telefone: text(lead?.telefone || client?.telefone || candidate.telefone) || null,
+    email: text(lead?.email || client?.email || candidate.email) || null,
   };
 }
 
-function baseData(displayName: string, phone: string): WhatsappContextData {
+async function resolveContact(
+  candidate: LocalCrmCandidate,
+  dependencies: WhatsappContextHandlerDependencies,
+): Promise<{ contact: WhatsappContextContact; clientId: string | null }> {
+  const crm = dependencies.crm;
+  const getLead = dependencies.getQuoteLead || crm?.getQuoteLead;
+  const getClient = dependencies.getClient || crm?.getClient;
+  const getDeal = dependencies.getDeal || crm?.getDeal;
+  const getQuotation = dependencies.getQuotation || crm?.getQuotation;
+  const lead = candidate.tipo === 'lead' && getLead ? await getLead(candidate.id) : null;
+  const deal = candidate.dealId && getDeal ? await getDeal(candidate.dealId) : null;
+  const clientId = candidate.tipo === 'cliente'
+    ? candidate.id
+    : deal?.clientId || null;
+  const client = clientId && getClient ? await getClient(clientId) : null;
+  if (candidate.tipo === 'lead' && !lead && getLead) throw new Error('lead not found');
+  if (candidate.tipo === 'cliente' && !client && getClient) throw new Error('client not found');
+  // A deal-backed lead can still point to a client; get the client only for the
+  // history graph while preserving the lead as the displayed identity.
+  if (!clientId && candidate.quotationId && getQuotation) {
+    const quotation = await getQuotation(candidate.quotationId);
+    return { contact: mapContact(candidate, lead, client), clientId: quotation?.clientId || null };
+  }
+  return { contact: mapContact(candidate, lead, client), clientId };
+}
+
+async function contextForCandidate(
+  candidate: LocalCrmCandidate,
+  dependencies: WhatsappContextHandlerDependencies,
+): Promise<WhatsappContextProjection> {
+  const { contact, clientId } = await resolveContact(candidate, dependencies);
+  let quotationsProjection: WhatsappContextQuotation[] = [];
+  let deliveries: WhatsappContextDelivery[] = [];
+  const history = dependencies.history || dependencies.crm;
+  if (clientId && history?.listQuotationsByClientId) {
+    quotationsProjection = await history.listQuotationsByClientId(clientId, WHATSAPP_CONTEXT_QUOTATION_LIMIT);
+    if (history.listDeliveriesByQuotationIds) {
+      deliveries = await history.listDeliveriesByQuotationIds(
+        quotationsProjection.map((quotation) => quotation.id),
+        WHATSAPP_CONTEXT_DELIVERY_LIMIT,
+      );
+    }
+  }
+  const latestQuotation = quotationsProjection[0] || null;
   return {
-    identity: {
-      displayName: displayName || null,
-      phone: phone || null,
-      source: phone ? 'visible_contact' : null,
-    },
-    match: phone ? 'not_found' : 'unresolved',
-    contact: null,
+    match: 'matched',
+    contact,
+    latestQuotation,
+    quotations: quotationsProjection,
+    deliveries,
     actions: {
-      openContact: null,
-      openNewContact: phone ? newContactPath(displayName, phone) : null,
+      openContact: contactUrl(contact),
+      createContact: createContactUrl(contact.telefone),
     },
   };
 }
 
-export async function resolveWhatsappContext(input: {
-  phone: unknown;
-  displayName?: unknown;
-  unsupported?: boolean;
-  findCandidatesByPhone: (
-    phone: string,
-    limit: number
-  ) => Promise<LocalCrmCandidate[]>;
-}): Promise<WhatsappContextData> {
-  const displayName = cleanDisplayName(input.displayName);
-  const phone = normalizeContextPhone(input.phone);
-  const data = baseData(displayName, phone);
-  if (input.unsupported === true) {
-    data.match = 'unsupported';
-    data.actions.openNewContact = null;
-    return data;
-  }
-  if (!phone) return data;
-
-  let candidates: LocalCrmCandidate[];
-  try {
-    candidates = uniqueCandidates(await input.findCandidatesByPhone(phone, CANDIDATE_LIMIT));
-  } catch {
-    throw createHttpError(503, 'Não foi possível consultar o contexto comercial.');
-  }
-
-  if (candidates.length === 0) return data;
-  if (candidates.length > 1) {
-    data.match = 'ambiguous';
-    data.actions.openNewContact = null;
-    return data;
-  }
-
-  const candidate = candidates[0];
-  data.match = 'matched';
-  data.contact = contactFromCandidate(candidate, phone);
-  data.identity.displayName = data.contact.nome || data.identity.displayName;
-  data.actions.openContact = contactPath(candidate, phone);
-  data.actions.openNewContact = null;
-  return data;
-}
-
-function errorStatus(error: unknown): number {
-  const value = error as { statusCode?: unknown } | null;
-  return Number.isInteger(value?.statusCode) ? Number(value?.statusCode) : 500;
-}
-
-function errorMessage(error: unknown): string {
-  const status = errorStatus(error);
-  if (status >= 400 && status < 500 && error instanceof Error) return error.message;
-  if (status === 503 && error instanceof Error) return error.message;
-  return 'Não foi possível consultar o contexto comercial.';
-}
-
-export function createHandler(deps: WhatsappContextDependencies = {}): (event: FunctionEvent) => Promise<FunctionResult> {
-  const findCandidatesByPhone = deps.findCandidatesByPhone || defaultFindCandidatesByPhone;
-
+export function createWhatsappContextHandler(
+  dependencies: WhatsappContextHandlerDependencies = {},
+): LegacyHandler {
+  const env = dependencies.env || process.env;
+  const configuredOrigin = configuredWhatsappContextOrigin(env);
+  let crm = dependencies.crm;
+  const getCrm = () => {
+    crm ||= createPostgresWhatsappCrmRepository();
+    return crm;
+  };
   return async (event: FunctionEvent): Promise<FunctionResult> => {
+    const origin = requestOrigin(event.headers || {});
+    const cors = whatsappContextCorsHeaders(origin, env);
+    if (origin && !cors['Access-Control-Allow-Origin']) {
+      return json(403, { error: 'Origem da extensão não autorizada.' });
+    }
+    if (event.httpMethod === 'OPTIONS') {
+      if (!configuredOrigin) return json(503, { error: 'Extensão Aspen não configurada.' });
+      return { statusCode: 204, headers: cors, body: '' };
+    }
+    if (event.httpMethod !== 'GET') return json(405, { error: 'Método não permitido.' }, cors);
+    if (!configuredOrigin && origin) return json(503, { error: 'Extensão Aspen não configurada.' }, cors);
+    const phone = normalizeWhatsappPhone(event.queryStringParameters?.phone);
+    if (!phone) return json(400, { match: 'unresolved', reason: 'Telefone confirmado não informado.' }, cors);
     try {
-      if (String(event.httpMethod || '').toUpperCase() !== ALLOWED_METHOD) {
-        return jsonResponse(event, deps, 405, { error: 'Método não permitido.' });
+      const findCandidatesByPhone = dependencies.findCandidatesByPhone || getCrm().findCandidatesByPhone;
+      if (!findCandidatesByPhone) return json(503, { error: 'Contexto comercial indisponível.' }, cors);
+      const candidates = uniqueCandidates(await findCandidatesByPhone(phone, 2));
+      if (candidates.length === 0) {
+        return json(200, { match: 'not_found', contact: null, actions: { createContact: createContactUrl(phone) } }, cors);
       }
-      const data = await resolveWhatsappContext({
-        phone: event.queryStringParameters?.phone,
-        displayName: event.queryStringParameters?.name,
-        unsupported: event.queryStringParameters?.unsupported === 'true',
-        findCandidatesByPhone,
+      if (candidates.length > 1) {
+        return json(200, { match: 'ambiguous', contact: null, actions: { search: createContactUrl(phone) } }, cors);
+      }
+      const result = await contextForCandidate(candidates[0], {
+        ...dependencies,
+        crm,
       });
-      return jsonResponse(event, deps, 200, { success: true, data });
+      return json(200, result, cors);
     } catch (error) {
-      const statusCode = errorStatus(error);
-      console.error('[whatsapp-context]', error instanceof Error ? error.name : typeof error, statusCode);
-      return jsonResponse(event, deps, statusCode, { error: errorMessage(error) });
+      console.error('[whatsapp-context]', error instanceof Error ? error.name : typeof error);
+      return json(503, { error: 'Não foi possível consultar o contexto comercial.' }, cors);
     }
   };
 }
 
-export const handler = createHandler();
+export const handler = createWhatsappContextHandler();

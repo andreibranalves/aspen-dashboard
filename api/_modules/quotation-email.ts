@@ -8,6 +8,8 @@ export interface SendQuotationEmailTransportInput {
   text: string;
 }
 
+import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
+
 export interface ResendTransportDependencies {
   fetchFn?: typeof fetch;
   env?: typeof process.env;
@@ -29,6 +31,9 @@ export async function sendQuotationEmailViaResend(
   dependencies: ResendTransportDependencies = {}
 ): Promise<{ id: string }> {
   const env = dependencies.env || process.env;
+  if (String(env.APP_ENV || env.VERCEL_ENV || '').trim()) {
+    assertExternalWritesAllowed('email', env);
+  }
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const from = String(env.RESEND_FROM_EMAIL || '').trim();
   const replyTo = String(env.RESEND_REPLY_TO || '').trim();

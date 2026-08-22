@@ -94,6 +94,11 @@ export interface DraftEdited {
   endereco: Address;
   items: DraftItem[];
   prazo_producao: string;
+  pagamento?: string;
+  entrega?: string;
+  observacoes?: string;
+  frete?: string;
+  validade_dias?: number;
   template_key?: string;
   _showAddr?: boolean;
 }
@@ -124,6 +129,11 @@ export interface StoredAutoQuoteDraft extends Draft {
   issue?: QuotationIssueProjection;
   sourceQuotationId?: string;
   sourceRevisionId?: string;
+  saved?: {
+    quotationId: string;
+    businessNumber: string;
+    revisionId: string;
+  };
 }
 
 export interface ProductSearchEntry {

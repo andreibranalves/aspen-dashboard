@@ -24,6 +24,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api/api';
+import { issueQuotation } from '@/lib/api/quotationIssueApi';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import {
   isUnpricedProduct,
@@ -215,6 +216,9 @@ export default function ManualOrcamentoPage() {
 
   // ── Submit state ──
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [sending, setSending] = useState<boolean>(false);
+  const manualSendInFlight = useRef(false);
+  const manualSendKey = useRef<{ fingerprint: string; key: string } | null>(null);
   const [result, setResult] = useState<OrcamentoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -423,9 +427,39 @@ export default function ManualOrcamentoPage() {
 
   const canSubmit = Boolean(getClientInfo().nome) && Boolean(leadSource) && isValidLeadSource(leadSource) && items.length > 0 && !submitting;
 
+  const buildManualPayload = useCallback(() => {
+    const { nome, email, telefone } = getClientInfo();
+    return {
+      extracted: {
+        nome,
+        email: email || null,
+        telefone: telefone || null,
+        urgente,
+        origem: leadSource || undefined,
+        cnpj: cnpj || undefined,
+        endereco: hasAnyAddressField(address) ? address : undefined,
+        items: items.map(item => ({
+          item_code: item.sku,
+          item_name: item.nome,
+          qty: item.qty,
+          rate: item.rate,
+          manual_rate: item._rateManual,
+        })),
+        ...(clientType === CLIENT_TYPE.EXISTING && selectedClient ? { client_id: selectedClient.id } : {}),
+        prazo_producao: prazo || undefined,
+        pagamento: undefined,
+        entrega: undefined,
+        frete: undefined,
+        validade_dias: undefined,
+        ...(templateKey ? { template_key: templateKey } : {}),
+        ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
+      },
+    };
+  }, [address, cnpj, clientType, getClientInfo, items, leadSource, observacoes, prazo, selectedClient, templateKey, urgente]);
+
   // ── Submit ──
   const handleSubmit = useCallback(async () => {
-    const { nome, email, telefone } = getClientInfo();
+    const { nome } = getClientInfo();
     if (!nome) { alert('Informe o nome do cliente.'); return; }
     if (!leadSource) { alert('Selecione a origem antes de criar o orçamento.'); return; }
     if (!isValidLeadSource(leadSource)) { alert('Origem selecionada não é válida.'); return; }
@@ -437,31 +471,7 @@ export default function ManualOrcamentoPage() {
     setResult(null);
 
     try {
-      const payload = {
-        extracted: {
-          nome,
-          email: email || undefined,
-          telefone: telefone || undefined,
-          urgente,
-          origem: leadSource || undefined,
-          cnpj: cnpj || undefined,
-          endereco: hasAnyAddressField(address) ? address : undefined,
-          items: items.map(item => ({
-            item_code: item.sku,
-            qty: item.qty,
-            rate: item.rate,
-            manual_rate: item._rateManual,
-          })),
-          ...(clientType === CLIENT_TYPE.EXISTING && selectedClient
-            ? { client_id: selectedClient.id }
-            : {}),
-          prazo_producao: prazo || undefined,
-          ...(templateKey ? { template_key: templateKey } : {}),
-          ...(observacoes.trim() ? { observacoes: observacoes.trim() } : {}),
-        },
-      };
-
-      const res = await apiPost<OrcamentoResponse>('/orcamento', payload);
+      const res = await apiPost<OrcamentoResponse>('/orcamento', buildManualPayload());
       setResult(res);
       clearManualDraft();
     } catch (err) {
@@ -470,10 +480,54 @@ export default function ManualOrcamentoPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj, address, clientType, selectedClient]);
+  }, [buildManualPayload, getClientInfo, items, urgente, prazo, templateKey, observacoes, leadSource, cnpj]);
+
+  const handlePreview = useCallback(() => {
+    const { nome } = getClientInfo();
+    if (!nome) { alert('Informe o nome do cliente.'); return; }
+    if (items.length === 0) { alert('Adicione ao menos um produto.'); return; }
+    if (cnpj && !isValidCnpj(cnpj)) { alert('CNPJ informado é inválido.'); return; }
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/api/quotation-preview?format=html';
+    form.target = '_blank';
+    form.style.display = 'none';
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(buildManualPayload());
+    form.append(input);
+    document.body.append(form);
+    form.submit();
+    form.remove();
+  }, [buildManualPayload, cnpj, getClientInfo, items.length]);
+
+  const handleSend = useCallback(async () => {
+    const { nome } = getClientInfo();
+    if (!nome || items.length === 0) { alert('Informe cliente e ao menos um produto.'); return; }
+    if (manualSendInFlight.current) return;
+    const payload = buildManualPayload();
+    const fingerprint = JSON.stringify(payload);
+    const current = manualSendKey.current;
+    const key = current?.fingerprint === fingerprint ? current.key : globalThis.crypto.randomUUID();
+    manualSendKey.current = { fingerprint, key };
+    manualSendInFlight.current = true;
+    setSending(true);
+    setError(null);
+    try {
+      const issue = await issueQuotation(payload, key);
+      setResult({ success: true, quotation_id: issue.businessNumber, quotation_name: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision_number: issue.revisionNumber, status: issue.status });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível enviar o orçamento.');
+    } finally {
+      manualSendInFlight.current = false;
+      setSending(false);
+    }
+  }, [buildManualPayload, getClientInfo, items.length]);
 
   // ── Reset all ──
   const resetForm = useCallback(() => {
+    manualSendKey.current = null;
     setItems([]);
     setResult(null);
     setError(null);
@@ -582,7 +636,7 @@ export default function ManualOrcamentoPage() {
               <Check size={18} className="text-on-solid" />
             </div>
             <div>
-              <p className="font-semibold text-success">Rascunho persistido com sucesso</p>
+              <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento enviado com sucesso' : 'Rascunho persistido com sucesso'}</p>
               <p className="text-sm text-success/70">
                 {capitalize(result.cliente || '')} · {businessNumber}
                 {result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
@@ -616,7 +670,7 @@ export default function ManualOrcamentoPage() {
         <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle size={20} className="text-destructive shrink-0" />
           <div>
-            <p className="font-medium text-destructive">Erro ao criar orçamento</p>
+            <p className="font-medium text-destructive">Erro ao salvar ou enviar orçamento</p>
             <p className="text-sm text-destructive">{error}</p>
           </div>
         </div>
@@ -1213,7 +1267,7 @@ export default function ManualOrcamentoPage() {
                 </div>
 
                 <div className="rounded-xl border border-line bg-surface-muted/20 px-3 py-2 text-sm text-fg-muted">
-                  {canSubmit ? 'Revise o resumo ao lado e crie o orçamento.' : 'Informe cliente e ao menos um item para liberar a criação.'}
+                  {canSubmit ? 'Pré-visualize sem salvar; salve ou envie somente quando decidir.' : 'Informe cliente e ao menos um item para liberar as ações.'}
                 </div>
               </section>
             </div>
@@ -1261,21 +1315,40 @@ export default function ManualOrcamentoPage() {
 
               <div className="border-t border-line pt-4 space-y-2">
                 <Button
-                  onClick={handleSubmit}
+                  variant="outline"
+                  onClick={handlePreview}
                   disabled={!canSubmit}
                   className="min-h-[44px] w-full"
-                  aria-label="Criar orçamento"
+                  aria-label="Pré-visualizar orçamento"
+                >
+                  Pré-visualizar
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit || sending}
+                  className="min-h-[44px] w-full"
+                  aria-label="Salvar rascunho"
                 >
                   {submitting ? (
                     <>
                       <Loader2 size={16} className="animate-spin mr-2" />
-                      Criando…
+                      Salvando…
                     </>
                   ) : (
-                    'Criar orçamento'
+                    'Salvar rascunho'
                   )}
                 </Button>
-                <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting} className="w-full">
+                <Button
+                  variant="success"
+                  onClick={handleSend}
+                  disabled={!canSubmit || submitting || sending}
+                  className="min-h-[44px] w-full"
+                  aria-label="Enviar orçamento"
+                >
+                  {sending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                  {sending ? 'Enviando…' : 'Enviar orçamento'}
+                </Button>
+                <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting || sending} className="w-full">
                   Limpar tudo
                 </Button>
                 <p className="text-xs text-fg-muted text-left">

@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import WhatsAppSendPanel from '@/features/quotations/components/WhatsAppSendPanel';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
-import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection } from '@/types/domain';
+import type { Draft, DraftEdited, DraftItem, QuotationIssueProjection, StoredAutoQuoteDraft } from '@/types/domain';
 import type { CommunicationFlow } from '@/lib/api/communicationApi';
 import type { DeliveryResolution, DeliveryView } from '@/lib/api/quotationDeliveryApi';
 import type { QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
@@ -42,6 +42,8 @@ export interface SplitResultCardProps {
   selectProduct: (draftIdx: number, itemIdx: number, product: Product) => void;
   onRefetchPricing: (draftIdx: number) => Promise<Draft | undefined>;
   onCreateQuote: (draftIdx: number) => void;
+  onSaveDraft?: (draftIdx: number) => void;
+  isSavingDraft?: boolean;
   onPreviewQuote: (draftIdx: number) => void;
   onNewRevision?: (draftIdx: number) => void;
   issue?: QuotationIssueProjection;
@@ -79,6 +81,8 @@ export default function SplitResultCard({
   selectProduct,
   onRefetchPricing,
   onCreateQuote,
+  onSaveDraft,
+  isSavingDraft = false,
   onPreviewQuote,
   onNewRevision,
   issue,
@@ -205,6 +209,8 @@ export default function SplitResultCard({
     [draft.index, onRemoveItem, activeSearchIdx]
   );
 
+  const savedDraft = draft as StoredAutoQuoteDraft;
+  const saved = savedDraft.saved;
   const isDone = Boolean(issue) || (draft.status === 'done' && draft.result?.success);
   const resultData = draft.result?.data;
   const items = isDone
@@ -271,6 +277,11 @@ export default function SplitResultCard({
             {isDone && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                 <Check size={10} /> Emitido
+              </span>
+            )}
+            {!isDone && saved && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted px-2 py-0.5 text-[10px] font-medium text-fg-muted">
+                <Check size={10} /> Rascunho salvo
               </span>
             )}
           </div>
@@ -664,17 +675,29 @@ export default function SplitResultCard({
               size="sm"
               onClick={() => onPreviewQuote(draft.index)}
               disabled={isProcessing || !canCreate}
+              title="Pré-visualização temporária; não salva nem envia."
             >
               <Eye size={13} />
-              Visualizar proposta
+              Pré-visualizar
             </Button>
+            {onSaveDraft && !saved && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSaveDraft(draft.index)}
+                disabled={isProcessing || isSavingDraft || !canCreate}
+              >
+                {isSavingDraft ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                {isSavingDraft ? 'Salvando…' : 'Salvar rascunho'}
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={() => onCreateQuote(draft.index)}
               disabled={isProcessing || !canCreate}
             >
               <Send size={13} />
-              Gerar orçamento
+              Enviar orçamento
             </Button>
           </>
         )}

@@ -178,6 +178,29 @@ test('aggregates multi-line totals in exact cents', async () => {
   assert.match(rendered(response), /Total<\/span><span>R\$ 0,30/);
 });
 
+test('renders draft terms, freight and custom validity without persistence', async () => {
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async () => template,
+    renderPdf: pdfRender,
+    now: () => new Date('2026-08-11T12:00:00.000Z'),
+  });
+  const response = await handler(post({ extracted: {
+    ...extracted,
+    pagamento: '50% na aprovação',
+    entrega: 'Retirada no local',
+    observacoes: 'Sem instalação',
+    frete: '10.00',
+    validade_dias: 30,
+  } }, { format: 'html' }));
+  assert.equal(response.statusCode, 200);
+  assert.match(response.body || '', /50% na aprovação/);
+  assert.match(response.body || '', /Retirada no local/);
+  assert.match(response.body || '', /Sem instalação/);
+  assert.match(response.body || '', /R\$ 10,00/);
+  assert.match(response.body || '', /10\/09\/2026/);
+});
+
 test('rejects draft preview without a client name', async () => {
   const handler = createQuotationPreviewHandler({
     repository: { get: async () => null },

@@ -49,11 +49,31 @@ export function createMigrationDatabaseConnection(databaseUrl: string): Database
 let cachedConnection: DatabaseConnection | undefined;
 let cachedMigrationConnection: DatabaseConnection | undefined;
 
+function postgresIdentity(value: string): string {
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { throw new Error('DATABASE_URL inválida.'); }
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') throw new Error('DATABASE_URL deve usar PostgreSQL.');
+  return [parsed.hostname.toLowerCase(), parsed.port || '5432', decodeURIComponent(parsed.pathname.replace(/^\//, ''))].join('|');
+}
+
+function assertPreviewIsolation(): void {
+  if (String(process.env.APP_ENV || '').trim().toLowerCase() !== 'preview') return;
+  if (String(process.env.EXTERNAL_WRITES_ENABLED || '').trim() !== '0') {
+    throw new Error('Preview exige EXTERNAL_WRITES_ENABLED=0.');
+  }
+  const production = String(process.env.PRODUCTION_DATABASE_URL || '').trim();
+  if (!production) throw new Error('Preview exige PRODUCTION_DATABASE_URL para provar isolamento.');
+  if (postgresIdentity(process.env.DATABASE_URL || '') === postgresIdentity(production)) {
+    throw new Error('Preview não pode usar o banco de produção.');
+  }
+}
+
 function getDatabaseUrl(): string {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('DATABASE_URL não configurada.');
   }
+  assertPreviewIsolation();
   return databaseUrl;
 }
 

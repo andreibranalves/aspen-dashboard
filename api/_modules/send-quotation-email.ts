@@ -4,7 +4,7 @@ import {
   isRenderedQuotationEmail,
   renderQuotationEmail,
   type RenderedQuotationEmail,
-} from '../_shared/quotation-email.js';
+} from './quotation-email-renderer.js';
 import type { FunctionEvent, FunctionResult } from '../_http/types.js';
 import { isIssuedQuotationStatus } from './quotation-status.js';
 import {
@@ -17,6 +17,7 @@ import {
 } from '../_infrastructure/db/repositories/quotation-email-delivery-repository.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
 import { normalizeClientEmail } from './client-schema.js';
+import { assertExternalWritesAllowed } from '../_shared/external-writes.js';
 import { issuePublicQuotationToken } from './public-quotation.js';
 import {
   ResendTransportError,
@@ -121,6 +122,34 @@ function publicBaseUrl(event: FunctionEvent, env: typeof process.env = process.e
   }
   const originHost = host === '::1' ? `[${host}]` : host;
   return strictOrigin(`${protocol}://${originHost}`, true);
+}
+
+function storedPublicQuotationUrl(
+  rendered: RenderedQuotationEmail,
+  publicToken: string,
+): string | null {
+  const match = rendered.text.match(
+    /https?:\/\/[^\s<>"']+\/api\/public-quotation\?token=[A-Za-z0-9_-]+/,
+  );
+  if (!match) return null;
+
+  try {
+    const parsed = new URL(match[0]);
+    if (
+      parsed.pathname !== '/api/public-quotation' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.hash ||
+      parsed.searchParams.get('token') !== publicToken ||
+      Array.from(parsed.searchParams.keys()).length !== 1
+    ) {
+      return null;
+    }
+    strictOrigin(parsed.origin, parsed.protocol === 'http:');
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 function acceptedResponse(delivery: QuotationEmailDelivery): FunctionResult {
@@ -233,6 +262,10 @@ export async function handler(
     revisionId = uuid(input.revision_id, 'Identificador da revisão inválido.');
     const normalizedRecipient = recipient(input.recipient);
     const now = dependencies.now || (() => new Date());
+    const environment = dependencies.env || process.env;
+    if (String(environment.APP_ENV || environment.VERCEL_ENV || '').trim()) {
+      assertExternalWritesAllowed('email', environment);
+    }
     const deliveries = dependencies.deliveries || createPostgresQuotationEmailDeliveryRepository(undefined, { now });
     const snapshots = dependencies.snapshots || createQuotationTemplateRepository();
     const issueToken = dependencies.issueToken || issuePublicQuotationToken;
@@ -319,7 +352,8 @@ export async function handler(
       now: () => now().getTime(),
     });
     if (token.token !== publicToken) throw new Error('Token público inconsistente.');
-    const publicUrl = `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
+    const publicUrl = storedPublicQuotationUrl(rendered, publicToken)
+      || `${baseUrl}/api/public-quotation?token=${encodeURIComponent(token.token)}`;
     const attachmentUrl = `${publicUrl}&format=pdf`;
 
     let sent: { id: string };

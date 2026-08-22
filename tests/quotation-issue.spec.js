@@ -62,12 +62,12 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   await page.waitForTimeout(500);
   const previewRequest = page.waitForRequest('**/api/quotation-preview');
   const previewPopup = page.waitForEvent('popup').catch(() => null);
-  await page.getByRole('button', { name: 'Visualizar proposta' }).click();
+  await page.getByRole('button', { name: 'Pré-visualizar' }).click();
   await Promise.race([previewRequest, previewPopup]);
   await expect.poll(() => previewWrites).toBe(1);
   expect(previewWrites).toBe(1);
   const postRequestPromise = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Gerar orçamento' }).dblclick();
+  await page.getByRole('button', { name: 'Enviar orçamento' }).dblclick();
   const postRequest = await postRequestPromise;
   const postKey = postRequest.headers()['idempotency-key'];
   expect(postKey).toMatch(/^[0-9a-f-]{8}-[0-9a-f-]{27}$/i);
@@ -98,7 +98,7 @@ test('active emission does not show a recovery error while POST is pending @quot
   });
   await page.goto('/#/auto');
   const postRequest = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
-  await page.getByRole('button', { name: 'Gerar orçamento' }).click();
+  await page.getByRole('button', { name: 'Enviar orçamento' }).click();
   await postRequest;
   try {
     await expect(page.getByText('Não foi possível consultar a emissão. Tente novamente.', { exact: true })).toHaveCount(0);

@@ -22,6 +22,7 @@ const ALLOWED_IMPORTS = {
       'crmDeals',
       'quoteLeads',
       'quoteRevisions',
+      'quotationDeliveries',
       'quotations',
     ]),
   },

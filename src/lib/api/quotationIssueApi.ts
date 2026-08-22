@@ -3,7 +3,7 @@ import type { QuotationSectionsSnapshot } from '../../../api/_modules/quotation-
 
 type BuiltQuotationDraft = ReturnType<typeof buildQuotePayload>;
 type BuiltQuotationExtracted = BuiltQuotationDraft['extracted'];
-type OptionalDraftMetadata = 'urgente' | 'origem' | 'cnpj' | 'endereco';
+type OptionalDraftMetadata = 'urgente' | 'origem' | 'cnpj' | 'endereco' | 'pagamento' | 'entrega' | 'frete' | 'observacoes' | 'validade_dias';
 
 export type QuotationDraftInput = {
   extracted: Omit<BuiltQuotationExtracted, OptionalDraftMetadata> &
@@ -38,6 +38,11 @@ export function buildQuotePayload(draft: Draft) {
           manual_rate: item._rateManual === true,
         })),
       prazo_producao: draft.edited.prazo_producao || undefined,
+      pagamento: draft.edited.pagamento || undefined,
+      entrega: draft.edited.entrega || undefined,
+      observacoes: draft.edited.observacoes || undefined,
+      frete: draft.edited.frete || undefined,
+      validade_dias: draft.edited.validade_dias,
       ...(draft.edited.template_key ? { template_key: draft.edited.template_key } : {}),
     },
   };

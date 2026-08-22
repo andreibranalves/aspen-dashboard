@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   evaluateQuotationEmailCutover,
   formatQuotationEmailCutoverPreflight,
+  runQuotationEmailCutoverPreflight,
 } from '../../scripts/quotation-email-cutover-preflight.mjs';
 
 test('email cutover preflight passes only without legacy pending snapshots', () => {
@@ -25,4 +26,32 @@ test('email cutover preflight blocks when legacy pending snapshots exist', () =>
   assert.deepEqual(result, { ok: false, legacyPendingCount: 2 });
   assert.match(output, /FAIL 2 tentativa\(s\) pendente\(s\) usam snapshot legado/);
   assert.doesNotMatch(output, /cliente@example|<html|public-token/);
+});
+
+test('email cutover preflight fails closed on an invalid count', () => {
+  const result = evaluateQuotationEmailCutover({ legacyPendingCount: '0' });
+  const output = formatQuotationEmailCutoverPreflight(
+    result,
+    () => new Date('2026-08-20T12:00:00.000Z'),
+  );
+
+  assert.deepEqual(result, { ok: false, legacyPendingCount: null });
+  assert.match(output, /FAIL preflight do e-mail inválido/);
+});
+
+test('database preflight fails closed when the count is malformed', async () => {
+  let closed = false;
+  const client = Object.assign(
+    async () => [{ count: null }],
+    { end: async () => { closed = true; } },
+  );
+
+  const result = await runQuotationEmailCutoverPreflight({
+    env: { DATABASE_URL: 'postgres://example.invalid/database' },
+    createClient: (() => client) as any,
+  });
+
+  assert.deepEqual(result.ok, false);
+  assert.equal(result.legacyPendingCount, null);
+  assert.equal(closed, true);
 });

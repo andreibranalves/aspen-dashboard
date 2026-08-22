@@ -1,25 +1,14 @@
-# Extensão Aspen — contexto comercial no WhatsApp Web
+# Extensão Aspen — contexto comercial
 
-Extensão interna Chromium/Chrome que mostra o contexto comercial do Aspen ao lado de uma conversa individual no WhatsApp Web.
+Superfície contextual somente leitura. Não lê nem envia corpo de mensagens ao Aspen.
 
-## Escopo da primeira versão
+## Instalação interna
 
-- identifica apenas o contato visível da conversa ativa;
-- usa telefone como candidato de consulta, nunca como chave primária de conversa;
-- mostra match de cliente/lead, não encontrado, ambíguo ou não suportado;
-- abre o cadastro existente ou o novo cadastro pré-preenchido;
-- não lê o histórico completo de mensagens;
-- não envia mensagens;
-- não altera o WhatsApp Web.
+1. Configure `appOrigin` em `config.js`.
+2. Confirme `WHATSAPP_CONTEXT_EXTENSION_ORIGIN` no Aspen com a origem `chrome-extension://<id>` gerada pelo Chrome.
+3. Abra `chrome://extensions`, ative **Modo do desenvolvedor** e use **Carregar sem compactação** nesta pasta.
+4. Recarregue a extensão após alterar arquivos e faça login no Aspen.
 
-## Instalação local
+`manifest.json` restringe o content script a `https://web.whatsapp.com/*`. O service worker usa a sessão autenticada do Aspen (`credentials: include`); não há API key ou segredo no pacote.
 
-1. Confirme o domínio do Aspen em `config.js` e em `manifest.json`.
-2. Configure no servidor o domínio/origem da extensão em `WHATSAPP_CONTEXT_EXTENSION_ORIGIN`.
-3. Abra `chrome://extensions`.
-4. Ative o modo desenvolvedor.
-5. Use **Carregar sem compactação** e selecione este diretório.
-6. Faça login no Aspen na mesma instalação/ambiente configurado.
-7. Abra uma conversa individual em `web.whatsapp.com`.
-
-A extensão não contém credenciais permanentes. As consultas dependem da sessão autenticada do Aspen e do endpoint protegido de contexto comercial.
+A identidade usa telefone visível como fast path e leitura IndexedDB limitada somente para resolver identidade. `@lid`, grupos, timeouts e mudanças de schema permanecem estados visíveis; não viram telefone.
