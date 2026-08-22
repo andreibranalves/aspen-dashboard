@@ -351,18 +351,7 @@ export default function WhatsAppDeliveriesPage() {
           <h2 id="delivery-filters-title" className="text-sm font-semibold text-fg">
             Filtros
           </h2>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setClearConfirmOpen(true)}
-              disabled={loading || clearing}
-              className="ml-2 text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 size={14} />
-              {clearing ? 'Limpando…' : 'Limpar fila'}
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
@@ -372,6 +361,17 @@ export default function WhatsAppDeliveriesPage() {
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
               Atualizar
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setClearConfirmOpen(true)}
+              disabled={loading || clearing}
+              className="ml-1 border-l border-line pl-3 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 size={14} />
+              {clearing ? 'Limpando…' : 'Limpar fila'}
             </Button>
           </div>
         </div>

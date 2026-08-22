@@ -1115,7 +1115,7 @@ export default function ManualOrcamentoPage() {
                     <div className="px-4 py-10 text-center text-fg-muted">
                       <ShoppingCart size={36} className="mx-auto text-fg-muted/40" />
                       <p className="mt-3 font-medium text-fg">Nenhum produto na tabela</p>
-                      <p className="mt-1 text-sm">Pesquise acima e clique em Adicionar. Depois edite quantidade e preço direto nas colunas da linha.</p>
+                      <p className="mt-1 text-sm">Pesquise acima e selecione o produto nos resultados da busca. Depois edite quantidade e preço direto na linha do item.</p>
                     </div>
                   </div>
                 )}

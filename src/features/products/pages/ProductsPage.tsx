@@ -57,6 +57,15 @@ type PendingProductArchive =
   | { kind: 'single'; sku: string; archived: boolean }
   | { kind: 'bulk'; skus: string[] };
 
+/** Normaliza abreviações de unidade para o padrão pt-BR (un/pç). */
+function normalizeUom(value: string | undefined): string {
+  const raw = (value || '').trim().toLowerCase();
+  if (!raw) return 'und';
+  if (['nos', 'no', 'un', 'unds'].includes(raw)) return 'un';
+  if (['pc', 'pç', 'pcs', 'pca'].includes(raw)) return 'pç';
+  return raw;
+}
+
 function archiveDialogText(pending: PendingProductArchive): { title: string; message: string; confirmLabel: string } {
   if (pending.kind === 'single') {
     const action = pending.archived ? 'Restaurar' : 'Arquivar';
@@ -381,7 +390,7 @@ export default function ProductsPage() {
                       <TableCell>{p.nome || p.item_name}</TableCell>
                       <TableCell title={p.descricao || undefined} className="text-fg-muted max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
                       <TableCell className="font-mono text-sm whitespace-nowrap pl-6">{sku}</TableCell>
-                      <TableCell className="text-fg-muted text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
+                      <TableCell className="text-fg-muted text-center whitespace-nowrap pr-4">{normalizeUom(p.unidade || p.stock_uom)}</TableCell>
                       <TableCell className="text-right font-medium whitespace-nowrap pl-4">
                         {p.pricing_available && p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
                       </TableCell>
@@ -398,7 +407,7 @@ export default function ProductsPage() {
                           <span className="ml-1 border-l border-line pl-1 inline-flex items-center">
                             <button
                               onClick={() => requestArchive(sku, p.ativo === false)}
-                              className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                               aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                               title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
                             >
@@ -447,7 +456,7 @@ export default function ProductsPage() {
                         <p className="mt-1 text-xs text-fg-muted">
                           <span className="font-mono text-primary">{sku}</span>
                           {' · '}
-                          {p.unidade || p.stock_uom || 'und'}
+                          {normalizeUom(p.unidade || p.stock_uom)}
                           {p.pricing_available && p.preco_minimo != null && (
                             <>
                               {' · '}

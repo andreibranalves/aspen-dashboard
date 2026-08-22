@@ -192,15 +192,12 @@ export default function FlowEditorTab() {
         <Button onClick={addFlow} size="sm">
           <Plus size={14} /> Novo fluxo
         </Button>
-        <Button
-          onClick={handleSave}
-          size="sm"
-          variant={isDirty ? 'default' : 'outline'}
-          disabled={saving || !isDirty}
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          Salvar
-        </Button>
+        {(isDirty || saving) && (
+          <Button onClick={handleSave} size="sm" disabled={saving}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Salvar
+          </Button>
+        )}
       </div> as ReactNode,
     );
 
@@ -319,7 +316,7 @@ export default function FlowEditorTab() {
             key={flow.id}
             onClick={() => setSelectedFlowId(flow.id)}
             className={[
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
               flow.id === selectedFlowId
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
@@ -365,7 +362,7 @@ export default function FlowEditorTab() {
                 className="p-1 rounded hover:bg-destructive/10"
                 title="Remover fluxo"
               >
-                <Trash2 size={14} className="text-destructive" />
+                <Trash2 size={14} className="text-fg-muted" />
               </button>
               <ChevronUp
                 size={16}

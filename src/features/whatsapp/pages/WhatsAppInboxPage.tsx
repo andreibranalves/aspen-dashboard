@@ -42,6 +42,15 @@ const parseWhatsappStatus = parseHashOption<WhatsappConversationStatus | 'all'>(
   STATUS_FILTERS.map((filter) => filter.value),
 );
 
+/** Tom semântico do status da conversa (alinhado ao vocabulário de tones do app). */
+function statusTone(status: WhatsappConversationStatus): string {
+  if (status === 'needs_quote') return 'tone-warning-soft';
+  if (status === 'quote_lead_created' || status === 'quotation_created') return 'tone-primary-soft';
+  if (status === 'closed') return 'tone-neutral-soft';
+  if (status === 'ignored') return 'tone-neutral-muted';
+  return 'tone-neutral-soft';
+}
+
 function statusLabel(status: WhatsappConversationStatus): string {
   if (status === 'needs_quote') return 'Pedido detectado';
   if (status === 'incomplete') return 'Incompleta';
@@ -352,7 +361,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                         {fmtPhone(conversation.canonicalPhone) || 'Telefone não identificado'}
                       </p>
                     </div>
-                    <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] text-fg-muted">
+                    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', statusTone(conversation.status))}>
                       {statusLabel(conversation.status)}
                     </span>
                   </div>

@@ -912,7 +912,7 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Bottom panel: recent quotations ── */}
-          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[300px] lg:h-[340px]">
+          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-6 flex flex-col h-[300px] lg:h-[340px]">
             <div className="mb-3 flex items-center gap-1.5 shrink-0 text-xs font-medium text-fg-muted">
               <History size={13} />
               Recentes

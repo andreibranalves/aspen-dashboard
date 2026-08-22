@@ -155,7 +155,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     },
     {
       icon: Clock,
-      label: 'Pedidos em aberto',
+      label: 'Em aberto',
       value: data ? String(data.summary.open_orders) : '—',
       delta: null,
     },
@@ -210,11 +210,9 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               <span className="text-2xl font-semibold text-fg">
                 {card.value}
               </span>
-              {card.delta != null && (
-                <span className={cn('whitespace-nowrap text-xs font-medium', deltaClass(card.delta))}>
-                  {formatDelta(card.delta)}
-                </span>
-              )}
+              <span className={cn('whitespace-nowrap text-xs font-medium', card.delta != null ? deltaClass(card.delta) : 'invisible')}>
+                {card.delta != null ? formatDelta(card.delta) : '—'}
+              </span>
             </div>
           </div>
         ))}

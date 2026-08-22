@@ -292,15 +292,23 @@ export default function CrmKanbanPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-        <Input
-          placeholder="Buscar por nome do negócio…"
-          value={search}
-          onChange={onSearchChange}
-          className="pl-9"
-        />
+      {/* Search + persistent primary action */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative max-w-md flex-1 min-w-[220px]">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          <Input
+            placeholder="Buscar por nome do negócio…"
+            value={search}
+            onChange={onSearchChange}
+            className="pl-9"
+          />
+        </div>
+        <a
+          href="#/manual"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
+        >
+          Novo orçamento
+        </a>
       </div>
 
       {/* Prune summary */}
@@ -374,14 +382,16 @@ export default function CrmKanbanPage() {
         </div>
       )}
 
-      {/* Kanban board — constrained height with own scroll */}
-      {!loading && !error && (
+      {/* Kanban board — constrained height with own scroll. Hidden while empty: the
+          empty-state block above already teaches the conversion flow, and showing
+          zero columns beside it duplicated the message. */}
+      {!loading && !error && !orderedColumns.every((c) => c.count === 0) && (
         <div className="overflow-auto rounded-lg border border-line bg-page max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)] [scrollbar-width:thin]">
           <div className="flex gap-3 p-3 min-h-[55vh] w-max">
             {orderedColumns.map((col) => (
               <div
                 key={col.status}
-                className="flex-shrink-0 w-72 bg-surface border border-line rounded-lg flex flex-col"
+                className="flex-shrink-0 w-[17.5rem] bg-surface border border-line rounded-lg flex flex-col"
               >
                 {/* Column header */}
                 <div className="px-4 py-3 font-medium text-sm flex items-center justify-between">
