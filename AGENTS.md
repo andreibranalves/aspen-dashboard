@@ -59,6 +59,16 @@ npm run verify:full
 - Use `verify:fast` durante o desenvolvimento.
 - Use `verify:full` antes de considerar uma alteração concluída.
 
+## Development workflow
+
+O development lifecycle global se aplica. GitHub Issues é a fonte de verdade, e iniciativas não triviais usam `/wayfinder` com child issues e dependencies nativas. Implemente apenas a frontier desbloqueada, em branch dedicada, e abra PR para todo trabalho não trivial. O implementer não faz merge da própria implementação.
+
+Execute `npm run verify:fast` durante o desenvolvimento e `npm run verify:full` antes do handoff ou review, quando aplicável. O merge exige CI obrigatório verde e review independente aprovado. Use `master` como branch padrão. Após o merge, resolva a issue e avance o Wayfinder.
+
+Mantenha os human gates já definidos para migrations, produção, external writes e dados. Consulte `docs/agents/development-loop.md` ao planejar, implementar, revisar, integrar ou concluir trabalho não trivial.
+
+Ao concluir qualquer tarefa, sempre informe de forma objetiva o próximo passo recomendado, considerando a sequência lógica do projeto. Não encerre apenas dizendo que terminou. Não execute o próximo passo sem solicitação do usuário, salvo modo autônomo explicitamente autorizado.
+
 ## Agent skills
 
 ### Issue tracker
