@@ -648,7 +648,7 @@ export default function WhatsAppDeliveriesPage() {
                 onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                 disabled={page >= totalPages || loading}
               >
-                Próxima
+                Próximo
                 <ChevronRight size={15} />
               </Button>
             </div>

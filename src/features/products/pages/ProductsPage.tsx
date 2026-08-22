@@ -6,6 +6,7 @@ import {
   Tag,
   PlusCircle,
   Archive,
+  ChevronDown,
   ArchiveRestore,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
@@ -42,10 +43,10 @@ interface SortOption {
 }
 
 const SORT_OPTIONS: SortOption[] = [
-  { value: 'item_name asc', label: 'Nome' },
-  { value: 'modified desc', label: 'Mais recentes' },
-  { value: 'modified asc', label: 'Atualização mais antiga' },
-  { value: 'item_code asc', label: 'Código SKU' },
+  { value: 'item_name asc', label: 'Nome (A–Z)' },
+  { value: 'modified desc', label: 'Criação (mais recente)' },
+  { value: 'modified asc', label: 'Criação (mais antiga)' },
+  { value: 'item_code asc', label: 'Código SKU (A–Z)' },
 ];
 
 type ProductStatus = 'active' | 'archived' | 'all';
@@ -270,15 +271,19 @@ export default function ProductsPage() {
         </div>
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
-          <select
-            value={limit}
-            onChange={onLimitChange}
-            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          >
-            {PAGE_SIZES.map(n => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={limit}
+              onChange={onLimitChange}
+              aria-label="Itens por página"
+              className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            >
+              {PAGE_SIZES.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          </div>
         </div>
         <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1 text-xs">
             {(['active', 'archived', 'all'] as const).map((value) => (

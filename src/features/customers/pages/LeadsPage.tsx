@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } from 'react';
-import { Search, Phone, Mail, AlertTriangle, Users, Eye, ChevronRight, Archive, ArchiveRestore, UserPlus, Check, X, Sparkles, FilePlus2 , MessageCircle } from 'lucide-react';
+import { Search, Phone, Mail, AlertTriangle, Users, Eye, ChevronRight, Archive, ArchiveRestore, UserPlus, Check, X, Sparkles, FilePlus2 , MessageCircle, ChevronDown } from 'lucide-react';
 import { apiGet, apiPut, apiPatch, apiDelete } from '@/lib/api/api';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
@@ -389,9 +389,13 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input placeholder="Buscar por nome, documento, e-mail ou telefone…" value={search} onChange={onSearchChange} className="pl-9" aria-label="Buscar clientes" />
         </div>
-        <select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg" aria-label="Itens por página">
-          {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-        </select>
+        <span className="text-xs font-medium text-fg-muted">Itens por página</span>
+          <div className="relative">
+            <select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página" className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25">
+            {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          </div>
       </div>
 
       {loading && <SkeletonTable cols={showStatusColumn ? 6 : 5} rows={8} />}
