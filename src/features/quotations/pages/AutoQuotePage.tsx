@@ -943,7 +943,7 @@ export default function AutoQuotePage() {
                         <p className="font-medium text-fg truncate">{item.cliente || 'Cliente'}</p>
                         <p className="text-xs text-fg-muted truncate">{item.id}</p>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-2">
+                      <div className="flex items-center gap-4 shrink-0 ml-2">
                         <span className="w-[72px] text-right text-[11px] text-fg-muted whitespace-nowrap [font-variant-numeric:tabular-nums]">
                           {formatDate(item.data)}
                         </span>

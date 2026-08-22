@@ -373,7 +373,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
         {/* Limit selector */}
         <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <span className="whitespace-nowrap">Itens/página</span>
+          <span className="whitespace-nowrap">Itens por página</span>
           <select
             value={limit}
             onChange={onLimitChange}

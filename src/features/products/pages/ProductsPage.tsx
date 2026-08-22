@@ -42,10 +42,10 @@ interface SortOption {
 }
 
 const SORT_OPTIONS: SortOption[] = [
-  { value: 'item_name asc', label: 'nome' },
-  { value: 'modified desc', label: 'mais recentes' },
-  { value: 'modified asc', label: 'atualização mais antiga' },
-  { value: 'item_code asc', label: 'código SKU' },
+  { value: 'item_name asc', label: 'Nome' },
+  { value: 'modified desc', label: 'Mais recentes' },
+  { value: 'modified asc', label: 'Atualização mais antiga' },
+  { value: 'item_code asc', label: 'Código SKU' },
 ];
 
 type ProductStatus = 'active' | 'archived' | 'all';
@@ -134,12 +134,12 @@ export default function ProductsPage() {
     }
   }, [status]);
 
-  // TopBar actions — Criar Produto
+  // TopBar actions — Novo produto
   useEffect(() => {
     setTopBarActions?.(
       <Button size="sm" onClick={() => navigate('/products/new')}>
         <PlusCircle size={16} />
-        Criar Produto
+        Novo produto
       </Button>
     );
     return () => setTopBarActions?.(null);
