@@ -269,15 +269,6 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
       timestamp: new Date().toISOString(),
     };
 
-  useEffect(() => {
-    setTopBarActions?.(
-      <Button variant="outline" size="sm" onClick={sync} disabled={loading || saving}>
-        <RefreshCw size={14} className={loading || saving ? 'animate-spin' : ''} />
-        Atualizar
-      </Button>
-    );
-    return () => setTopBarActions?.(null);
-  }, [setTopBarActions, sync, loading, saving]);
     setMessages((prev) => [...prev, optimistic]);
     try {
       const stored = await sendWhatsappMessage(selected.id, text);
@@ -290,6 +281,16 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
       setSending(false);
     }
   }, [draft, selected, sending]);
+
+  useEffect(() => {
+    setTopBarActions?.(
+      <Button variant="outline" size="sm" onClick={sync} disabled={loading || saving}>
+        <RefreshCw size={14} className={loading || saving ? 'animate-spin' : ''} />
+        Atualizar
+      </Button>
+    );
+    return () => setTopBarActions?.(null);
+  }, [setTopBarActions, sync, loading, saving]);
 
   return (
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">

@@ -18,6 +18,7 @@ import {
   PlusCircle,
   Copy,
   MailCheck,
+  ChevronDown,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -441,17 +442,21 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         </div>
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
-          <select
-            value={limit}
-            onChange={onLimitChange}
-            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          >
-            {PAGE_SIZES.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={limit}
+              onChange={onLimitChange}
+              className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+              aria-label="Itens por página"
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          </div>
         </div>
       </div>
 

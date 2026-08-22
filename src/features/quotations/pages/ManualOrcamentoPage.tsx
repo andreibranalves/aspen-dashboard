@@ -754,8 +754,9 @@ export default function ManualOrcamentoPage() {
                 {/* ── Origem (obrigatória para compatibilidade com CRM) ── */}
                 <div className="space-y-1 pt-3 border-t border-line">
                   <label className="text-xs font-medium text-fg-muted">Origem *</label>
+                  <div className="relative">
                   <select
-                    className="w-full rounded-full border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                    className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >
@@ -764,6 +765,8 @@ export default function ManualOrcamentoPage() {
                       <option key={s.value} value={s.value}>{s.label}</option>
                     ))}
                   </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+                  </div>
                 </div>
 
                 {/* ── CNPJ (opcional) ── */}

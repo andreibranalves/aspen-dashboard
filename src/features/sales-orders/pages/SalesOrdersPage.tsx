@@ -7,7 +7,7 @@ import {
   type MouseEvent,
 } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Search, ShoppingCart, TrendingUp, DollarSign, Package } from 'lucide-react';
+import { Search, ShoppingCart, TrendingUp, DollarSign, Package, ChevronDown } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
@@ -349,18 +349,20 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
         {/* Status select */}
         <span className="sr-only" id="order-status-label">Status do pedido</span>
-        <select
-          aria-labelledby="order-status-label"
-          value={status}
-          onChange={onStatusChange}
-          className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          aria-label="Status do pedido"
-          title="Status do pedido"
-        >
-          {STATUSES.map((s, i) => (
-            <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            aria-labelledby="order-status-label"
+            value={status}
+            onChange={onStatusChange}
+            className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            title="Status do pedido"
+          >
+            {STATUSES.map((s, i) => (
+              <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+        </div>
 
         {/* Search */}
         <div className="relative max-w-md flex-1 min-w-[200px]">
@@ -407,7 +409,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {!loading && !error && items.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <ShoppingCart size={36} className="text-fg-muted/40" />
-          <p>{search || (status && status !== 'todos') ? 'Nenhum pedido encontrado' : 'Nenhum pedido encontrado'}</p>
+          <p>{search ? 'Nenhum pedido encontrado para a busca.' : status !== 'todos' ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}</p>
           <p className="text-sm">Os pedidos aparecem aqui quando um orçamento é convertido no CRM.</p>
           <Button variant="outline" onClick={() => navigate('/quotations')}>
             Ver orçamentos

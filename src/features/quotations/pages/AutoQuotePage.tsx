@@ -7,6 +7,7 @@ import {
   History,
   Image as ImageIcon,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
@@ -781,12 +782,13 @@ export default function AutoQuotePage() {
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
               <label className="min-w-0 flex-1 text-xs text-fg-muted">
                 Template de pedido
+                <div className="relative mt-1">
                 <select
                   aria-label="Template de pedido"
                   value={orderTemplateId}
                   onChange={(event) => setOrderTemplateId(event.target.value)}
                   disabled={extracting || orderTemplatesLoading}
-                  className="mt-1 w-full rounded-full border border-line bg-surface px-3 py-2 text-sm text-fg"
+                  className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                 >
                   <option value="">Nenhum</option>
                   {orderTemplates.map((template) => (
@@ -795,6 +797,8 @@ export default function AutoQuotePage() {
                     </option>
                   ))}
                 </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+                </div>
               </label>
               <Button
                 type="button"
