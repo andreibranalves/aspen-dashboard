@@ -699,7 +699,7 @@ export default function ManualOrcamentoPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
                       <label className="text-xs text-fg-muted mb-1 block">Nome *</label>
                       <Input

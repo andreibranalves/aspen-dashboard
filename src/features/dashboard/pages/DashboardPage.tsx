@@ -356,7 +356,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Orçamento</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Cliente</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Idade</th>
-                  <th className="text-right py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
+                  <th className="text-right py-2 pr-8 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Status</th>
                   <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Ações</th>
                 </tr>
@@ -377,7 +377,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                       {capitalize(q.customer)}
                     </td>
                     <td className="py-2 pr-2 text-fg-muted">há {q.age} dias</td>
-                    <td className="py-2 pr-2 text-right text-fg font-medium">
+                    <td className="py-2 pr-8 text-right text-fg font-medium">
                       {formatBRL(q.value)}
                     </td>
                     <td className="py-2 pr-2">

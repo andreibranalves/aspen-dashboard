@@ -301,7 +301,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           <SummaryCard
             icon={DollarSign}
             label="Receita"
-            value={formatBRL(summaryData.total_revenue)}
+            value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
             subtitle={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
@@ -412,9 +412,17 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <ShoppingCart size={36} className="text-fg-muted/40" />
           <p>{search ? 'Nenhum pedido encontrado para a busca.' : status ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}</p>
-          <Button variant="outline" onClick={() => navigate('/quotations')}>
-            Ver orçamentos
-          </Button>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <a
+              href="#/manual"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
+            >
+              Novo orçamento
+            </a>
+            <Button variant="outline" onClick={() => navigate('/quotations')}>
+              Ver orçamentos
+            </Button>
+          </div>
         </div>
       )}
 

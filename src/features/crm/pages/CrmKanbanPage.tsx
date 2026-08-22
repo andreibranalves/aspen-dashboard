@@ -373,8 +373,8 @@ export default function CrmKanbanPage() {
           <Columns3 size={36} className="text-fg-muted/40" />
           <p>Nenhum negócio no pipeline.</p>
           <p className="text-sm text-center max-w-md">
-            Converte clientes em negócios arrastando-os pelo funil. Um negócio nasce
-            quando um orçamento é enviado.
+            Um negócio nasce quando um orçamento é enviado a um cliente.
+            Depois, acompanhe cada etapa aqui no funil.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
             <a

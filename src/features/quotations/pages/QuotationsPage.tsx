@@ -364,7 +364,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   const actionButtons = (row: QuotationRow) => {
     return (
-      <div className="flex items-center justify-end gap-1 pr-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
         <ActionBtn
           icon={Pencil}
           label={`Editar orçamento ${row.id}`}
