@@ -186,7 +186,7 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
   const send = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(send).toBeVisible({ timeout: 10000 });
   await send.click();
-  await expect(page.getByText('Aceito pela Evolution', { exact: true }).first()).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Aceito', { exact: true }).first()).toBeVisible({ timeout: 10000 });
   const acceptedButton = page.getByRole('button', { name: 'Enviar WhatsApp' });
   await expect(acceptedButton).toBeVisible();
   await expect(acceptedButton).toBeDisabled();

@@ -192,6 +192,7 @@ export default function ManualOrcamentoPage() {
   const [templateError, setTemplateError] = useState<string | null>(null);
   // ── Destructive-action confirmation ──
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
     setTemplateLoading(true);
@@ -462,6 +463,7 @@ export default function ManualOrcamentoPage() {
 
       const res = await apiPost<OrcamentoResponse>('/orcamento', payload);
       setResult(res);
+      clearManualDraft();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao criar orçamento.';
       setError(message);
@@ -553,7 +555,15 @@ export default function ManualOrcamentoPage() {
   // ── Navigation guard: filled form must never die silently ──
   const { setNavigationGuard } = useRouteGuardContext();
   useEffect(() => {
-    setNavigationGuard(hasFormData && !result ? () => false : null);
+    if (!hasFormData || result) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return;
+    }
+    setNavigationGuard((nextRoute) => {
+      setPendingRoute(nextRoute);
+      return false;
+    });
     return () => setNavigationGuard(null);
   }, [hasFormData, result, setNavigationGuard]);
 
@@ -1289,6 +1299,22 @@ export default function ManualOrcamentoPage() {
           resetForm();
         }}
         onCancel={() => setConfirmClear(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem concluir o orçamento?"
+        message="O rascunho permanece salvo neste navegador e será restaurado quando você voltar."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
       />
     </div>
   );

@@ -642,7 +642,7 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
 
 test('detail reload restores durable accepted, reconciling, delivered and failed delivery states @quotations @critical', async ({ page }) => {
   const phases = [
-    ['provider_accepted', 'Aceito pela Evolution'],
+    ['provider_accepted', 'Aceito'],
     ['reconciling', 'Reconciliação em andamento'],
     ['delivered', 'Entregue'],
     ['failed', 'Falhou'],

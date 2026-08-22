@@ -177,7 +177,7 @@ test('accepted provider state stays accepted and blocks automatic replay', async
   const { requests } = await installDurableRoutes(page, () => 'provider_accepted');
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
   await send.click();
-  await expect(page.getByText('Aceito pela Evolution', { exact: true })).toBeVisible();
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
   await expect(send).toBeDisabled();
   await send.click({ force: true });
   expect(requests).toHaveLength(1);

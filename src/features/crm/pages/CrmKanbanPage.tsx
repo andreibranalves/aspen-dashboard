@@ -283,9 +283,10 @@ export default function CrmKanbanPage() {
   );
 
   const openLeadCard = useCallback((deal: Deal) => {
-    const leadId = String(deal.lead_name || '').trim();
-    if (!leadId || leadId === 'Sem nome') return;
-    window.location.hash = `#/leads/cliente/${encodeURIComponent(leadId)}`;
+    const leadName = String(deal.lead_name || '').trim();
+    if (!leadName || leadName === 'Sem nome') return;
+    // ponytail: deal não traz id do lead/cliente; busca por nome na lista de leads
+    window.location.hash = `#/leads?search=${encodeURIComponent(leadName)}&status=all`;
   }, []);
 
   const orderedColumns = PIPELINE.map(
@@ -436,8 +437,8 @@ export default function CrmKanbanPage() {
                         }}
                       >
                         {shown.map((deal) => {
-                          const leadId = String(deal.lead_name || '').trim();
-                          const leadClickable = !!leadId && leadId !== 'Sem nome';
+                          const leadName = String(deal.lead_name || '').trim();
+                          const leadClickable = !!leadName && leadName !== 'Sem nome';
                           return (
                             <div
                               key={deal.id}

@@ -177,15 +177,11 @@ test('limpar fila cancela somente tentativas pendentes e mantém histórico', as
     }
     return json(route, listResponse(cleared ? [] : [pendingDelivery]));
   });
-  page.once('dialog', async (dialog) => {
-    expect(dialog.type()).toBe('confirm');
-    expect(dialog.message()).toMatch(/ainda não enviadas/i);
-    await dialog.accept();
-  });
-
   await page.goto('/#/whatsapp-deliveries');
   await expect(page.getByText('ORC-CLEAR', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Limpar fila' }).click();
+  // confirmação migrada para ConfirmDialog (sem confirm() nativo)
+  await page.getByRole('dialog').getByRole('button', { name: 'Limpar fila' }).click();
   await expect(page.getByText('1 tentativa pendente cancelada.', { exact: true })).toBeVisible();
   await expect(page.getByText('ORC-CLEAR', { exact: true })).toHaveCount(0);
 });
@@ -255,7 +251,7 @@ test('filters expose Portuguese controls and query state, search, and period', a
   for (const label of [
     'Requer ação',
     'Em processamento',
-    'Retry agendado',
+    'Reagendado',
     'Atrasados',
     'Entregues',
     'Falhos',
@@ -277,8 +273,8 @@ test('filters expose Portuguese controls and query state, search, and period', a
   const searchQuery = queries.find((query) => query.get('search') === 'Maria');
   expect(searchQuery).toBeTruthy();
 
-  await page.getByLabel('Data inicial').fill('2026-08-01');
-  await page.getByLabel('Data final').fill('2026-08-31');
+  await page.getByLabel('Data inicial').fill('01/08/2026');
+  await page.getByLabel('Data final').fill('31/08/2026');
   await expect
     .poll(() =>
       queries.some(

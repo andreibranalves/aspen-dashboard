@@ -63,6 +63,21 @@ const STATE_FILTERS: Array<{ key: DeliveryState; label: string }> = [
   { key: 'failed', label: 'Falhos' },
 ];
 
+// Converte dígitos ddmmaaaa em ISO; só aceita data completa e válida.
+function brDateDigitsToIso(digits: string): string {
+  if (digits.length !== 8) return '';
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
+  return `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
+}
+
+function formatBrDateDraft(digits: string): string {
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/');
+}
+
 function parseDeliveryFilters(raw: string | null, fallback: DeliveryFilters): DeliveryFilters {
   if (!raw) return fallback;
   try {
@@ -226,6 +241,15 @@ export default function WhatsAppDeliveriesPage() {
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Texto em edição nos campos de data; o filtro só recebe data completa e válida.
+  const [dateDraft, setDateDraft] = useState({ from: '', to: '' });
+  useEffect(() => {
+    setDateDraft({
+      from: filters.from ? filters.from.split('-').reverse().join('/') : '',
+      to: filters.to ? filters.to.split('-').reverse().join('/') : '',
+    });
+  }, [filters.from, filters.to]);
 
   const requestFilters = useMemo<DeliveryListFilters>(
     () => ({
@@ -456,13 +480,15 @@ export default function WhatsAppDeliveriesPage() {
                 placeholder="dd/mm/aaaa"
                 maxLength={10}
                 className="[color-scheme:light] dark:[color-scheme:dark]"
-                value={filters.from ? filters.from.split('-').reverse().join('/') : ''}
+                value={dateDraft.from}
                 onChange={(event) => {
                   const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
-                  const iso = digits.length >= 5
-                    ? `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`
-                    : '';
-                  updateFilters((current) => ({ ...current, from: iso }));
+                  setDateDraft((current) => ({ ...current, from: formatBrDateDraft(digits) }));
+                  const iso = brDateDigitsToIso(digits);
+                  // filtro só muda com data válida ou campo limpo; edição parcial mantém o anterior
+                  if (iso || digits.length === 0) {
+                    updateFilters((current) => ({ ...current, from: iso }));
+                  }
                 }}
               />
             </label>
@@ -476,13 +502,14 @@ export default function WhatsAppDeliveriesPage() {
                 placeholder="dd/mm/aaaa"
                 maxLength={10}
                 className="[color-scheme:light] dark:[color-scheme:dark]"
-                value={filters.to ? filters.to.split('-').reverse().join('/') : ''}
+                value={dateDraft.to}
                 onChange={(event) => {
                   const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
-                  const iso = digits.length >= 5
-                    ? `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`
-                    : '';
-                  updateFilters((current) => ({ ...current, to: iso }));
+                  setDateDraft((current) => ({ ...current, to: formatBrDateDraft(digits) }));
+                  const iso = brDateDigitsToIso(digits);
+                  if (iso || digits.length === 0) {
+                    updateFilters((current) => ({ ...current, to: iso }));
+                  }
                 }}
               />
             </label>
