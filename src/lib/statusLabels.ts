@@ -9,7 +9,8 @@ export type QuotationStatusCanonical =
   | 'aprovado'
   | 'recusado'
   | 'expirado'
-  | 'cancelado';
+  | 'cancelado'
+  | 'unknown';
 
 interface StatusMeta {
   label: string;
@@ -23,6 +24,7 @@ const QUOTATION_STATUS_META: Record<QuotationStatusCanonical, StatusMeta> = {
   recusado: { label: 'Perdido', badge: 'Lost' },
   expirado: { label: 'Expirado', badge: 'Expired' },
   cancelado: { label: 'Cancelado', badge: 'Cancelled' },
+  unknown: { label: 'Status desconhecido', badge: 'Draft' },
 };
 
 export function normalizeQuotationStatus(status: unknown): QuotationStatusCanonical {
@@ -40,7 +42,8 @@ export function normalizeQuotationStatus(status: unknown): QuotationStatusCanoni
   }
   if (value === 'expired') return 'expirado';
   if (value === 'cancelled' || value === 'canceled') return 'cancelado';
-  return 'rascunho';
+  // Status não reconhecido não pode virar um estado comercial válido.
+  return 'unknown';
 }
 
 export function quotationStatusLabel(status: unknown): string {

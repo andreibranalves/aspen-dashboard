@@ -140,6 +140,11 @@ function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
   return cloneSections(existing);
 }
 
+// Comparação determinística de itens: ignora _key (ID de UI gerado aleatoriamente).
+function comparableItems(items: CoreQuotationItem[]): Omit<CoreQuotationItem, '_key'>[] {
+  return items.map(({ _key: _ignored, ...rest }) => rest);
+}
+
 const EMAIL_AMBIGUOUS_ERROR = 'O resultado do envio não pôde ser confirmado. Tente novamente.';
 const EMAIL_SEND_ERROR = 'Não foi possível enviar o e-mail. Tente novamente.';
 
@@ -562,7 +567,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   // ── Dirty detection for the edit form ──
   const isDirty = useMemo(() => {
     if (!editing) return false;
-    if (JSON.stringify(items) !== JSON.stringify(asCoreItems(data.items))) return true;
+    if (JSON.stringify(comparableItems(items)) !== JSON.stringify(comparableItems(asCoreItems(data.items)))) return true;
+    if (clientId !== (data.client_id || '')) return true;
     if (validadeDias !== String(data.validade_dias ?? '')) return true;
     if (pagamento !== (data.pagamento || '')) return true;
     if (entrega !== (data.entrega || '')) return true;
@@ -571,8 +577,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     if (prazoProducao !== (data.prazo_producao || '')) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
     if (selectedTemplate !== (data.template_key || 'padrao')) return true;
+    if (selectedVersionId !== (data.template_version_id || '')) return true;
     return false;
-  }, [editing, items, data, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate]);
+  }, [editing, items, data, clientId, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate, selectedVersionId]);
 
   const save = useCallback(async () => {
     const token = concurrencyTokenRef.current;

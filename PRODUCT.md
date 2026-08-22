@@ -29,7 +29,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 
 ## Capabilities and Constraints
 
-- Rotas por hash (`src/app/routes.tsx`), sem React Router; 16 rotas: Auto, WhatsApp (inbox), Envios WhatsApp, Dashboard, Pedidos, CRM, Orçamentos, Produtos, Clientes, Comunicação, Configurações, detalhes de orçamento/pedido/produto/lead, login e orçamento manual.
+- Rotas por hash (`src/app/routes.tsx`), sem React Router; cobre o fluxo ponta a ponta: Auto, WhatsApp, Envios WhatsApp, Dashboard, Pedidos, CRM, Orçamentos, Produtos, Clientes, Comunicação, Configurações, telas de detalhe e orçamento manual.
 - Evolution API é o único transporte de WhatsApp; sem fallbacks de provedor/transporte/persistência novos.
 - Sem biblioteca de estado global; preferência por estado local/contexto.
 - Dark mode com toggle na sidebar.
@@ -44,8 +44,7 @@ Pipeline de orçamentos nativo em WhatsApp: a Evolution API é o único transpor
 
 ## Evidence on Hand
 
-- Baseline observável de qualidade em `docs/baseline-refatoracao.md` (checks, tempos, falhas de e2e conhecidas).
-- Suíte e2e Playwright cobrindo orçamentos, produtos, settings, inbox WhatsApp (falhas locais conhecidas registradas no baseline).
+- Suíte e2e Playwright cobrindo orçamentos, produtos, settings e entregas WhatsApp.
 - Templates de e-mail com as logos da marca; biblioteca de mídia no app.
 
 ## Product Principles

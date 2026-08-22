@@ -63,6 +63,28 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByText(CLIENT.nome, { exact: true }).last()).toBeVisible();
   });
 
+  test('ação de novo orçamento preserva o contexto do cliente', async ({ page }) => {
+    await page.route('**/api/leads-clients**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [CLIENT],
+          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        }),
+      });
+    });
+
+    await page.goto('/#/leads');
+    await expect(page.locator('tbody tr').filter({ hasText: CLIENT.nome })).toBeVisible();
+    await page.getByRole('button', { name: `Novo orçamento para ${CLIENT.nome}` }).click();
+    await expect(page).toHaveURL(/#\/auto$/);
+    const textarea = page.locator('textarea').first();
+    await expect(textarea).toHaveValue(new RegExp(CLIENT.nome));
+    await expect(textarea).toHaveValue(new RegExp(CLIENT.email));
+    await expect(textarea).toHaveValue(new RegExp(CLIENT.telefone));
+  });
+
   test('cria, pesquisa, edita, arquiva, filtra arquivados e restaura sem terminologia Lead', async ({ page }) => {
     let rows = [{ ...CLIENT }];
     /** @type {Map<string, ClientDetail>} */

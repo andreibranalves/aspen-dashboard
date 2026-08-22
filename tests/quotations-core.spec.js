@@ -100,6 +100,30 @@ test('email markers render on desktop and mobile', async ({ page }) => {
   await expect(pendingMobileCard).not.toContainText('17/08/2026');
 });
 
+test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({ page }) => {
+  let authoritative = detail();
+  await page.route('**/api/quotations**', async (route) => {
+    if (route.request().method() === 'GET' && new globalThis.URL(route.request().url()).searchParams.get('id')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [{ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByText('Produto local')).toBeVisible();
+
+  // editar sem alterar nada e cancelar: dirty detection determinística não deve disparar
+  await page.getByRole('button', { name: /Editar/ }).click();
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(page.getByText('Descartar alterações?')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Editar/ })).toBeVisible();
+});
+
 test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({ page }) => {
   const customItemName = 'Lenço 100 x 100 cm';
   let putCount = 0;
