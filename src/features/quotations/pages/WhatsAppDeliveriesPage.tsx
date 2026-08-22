@@ -341,10 +341,11 @@ export default function WhatsAppDeliveriesPage() {
 
   return (
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
-      <PageHeader title="Envios WhatsApp" />
-
-      <section className="space-y-4" aria-label="Filtros de entregas">
-        <div className="flex flex-wrap items-center justify-end gap-3">
+      <PageHeader
+        title="Envios WhatsApp"
+        description="Fila de mensagens disparadas pelo funil de orçamentos."
+        action={
+          <>
             <Button
               type="button"
               variant="outline"
@@ -361,13 +362,16 @@ export default function WhatsAppDeliveriesPage() {
               size="sm"
               onClick={() => setClearConfirmOpen(true)}
               disabled={loading || clearing}
-              className="ml-1 border-l border-line pl-3 text-destructive hover:bg-destructive/10"
+              className="border-l border-line pl-3 text-destructive hover:bg-destructive/10"
             >
               <Trash2 size={14} />
               {clearing ? 'Limpando…' : 'Limpar fila'}
             </Button>
-          </div>
+          </>
+        }
+      />
 
+      <section className="space-y-4" aria-label="Filtros de entregas">
         <div className="flex flex-wrap gap-2">
           <label className={filterInputClass(filters.requiresAction)}>
             <input

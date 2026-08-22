@@ -283,6 +283,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
+        description="Pedidos confirmados a partir de orçamentos convertidos no CRM."
       />
 
       {/* Summary cards */}
@@ -301,7 +302,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={DollarSign}
             label="Receita"
             value={formatBRL(summaryData.total_revenue)}
-            subtitle={summaryData.revenue_delta === null ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
+            subtitle={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? '—' : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
           <SummaryCard
@@ -314,7 +315,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={TrendingUp}
             label="Ticket Médio"
             value={formatBRL(summaryData.avg_ticket)}
-            subtitle={summaryData.avg_ticket_delta === null ? undefined : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
+            subtitle={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? '—' : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
             colorClass="tone-warning-soft"
           />
           <SummaryCard
@@ -347,7 +348,9 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </div>
 
         {/* Status select */}
+        <span className="sr-only" id="order-status-label">Status do pedido</span>
         <select
+          aria-labelledby="order-status-label"
           value={status}
           onChange={onStatusChange}
           className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"

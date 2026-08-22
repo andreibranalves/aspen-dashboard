@@ -755,7 +755,7 @@ export default function ManualOrcamentoPage() {
                 <div className="space-y-1 pt-3 border-t border-line">
                   <label className="text-xs font-medium text-fg-muted">Origem *</label>
                   <select
-                    className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
+                    className="w-full rounded-full border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >

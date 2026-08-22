@@ -280,7 +280,16 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
 
   return (
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
-      <PageHeader title="WhatsApp" />
+      <PageHeader
+        title="WhatsApp"
+        description="Conversas e mensagens do número comercial."
+        action={
+          <Button variant="outline" size="sm" onClick={sync} disabled={loading || saving}>
+            <RefreshCw size={14} className={loading || saving ? 'animate-spin' : ''} />
+            Atualizar
+          </Button>
+        }
+      />
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
@@ -311,10 +320,6 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               className="pl-9"
             />
           </div>
-          <Button variant="outline" size="sm" onClick={sync} disabled={loading || saving}>
-            <RefreshCw size={14} className={loading || saving ? 'animate-spin' : ''} />
-            Atualizar
-          </Button>
         </div>
       </div>
 
