@@ -566,7 +566,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                   </TableCell>
-                  <TableCell className="font-mono text-sm">{row.id}</TableCell>
+                  <TableCell className="whitespace-nowrap font-mono text-sm">{row.id}</TableCell>
                   <TableCell className="whitespace-nowrap text-fg-muted">
                     {formatDate(row.data)}
                   </TableCell>

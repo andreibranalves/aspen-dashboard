@@ -340,7 +340,7 @@ export default function WhatsAppDeliveriesPage() {
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
   return (
-    <div className="mx-auto max-w-[1320px] space-y-5 pb-10 animate-fade-in">
+    <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
       <PageHeader title="Envios WhatsApp" />
 
       <section

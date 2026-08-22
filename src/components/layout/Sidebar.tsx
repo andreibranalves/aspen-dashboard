@@ -21,6 +21,9 @@ export default function Sidebar({
   toggleDarkMode,
 }: SidebarProps) {
   const currentPath = routePath(currentRoute);
+  // Fluxos filhos destacam o item-pai correspondente (ex.: /manual pertence a Orçamentos).
+  const activeAffinity: Record<string, string> = { '/manual': '/quotations' };
+  const effectivePath = activeAffinity[currentPath] ?? currentPath;
 
   return (
     <>
@@ -73,18 +76,18 @@ export default function Sidebar({
                     'w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                     collapsed && 'justify-center gap-0 px-0',
                     'hover:bg-primary/5',
-                    currentPath === hash || currentPath.startsWith(`${hash}/`)
+                    effectivePath === hash || effectivePath.startsWith(`${hash}/`)
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-fg-muted',
                   )}
                   title={collapsed ? label : undefined}
-                  aria-current={currentPath === hash ? 'page' : undefined}
+                  aria-current={effectivePath === hash ? 'page' : undefined}
                 >
                   <Icon
                     size={20}
                     className={cn(
                       'shrink-0',
-                      (currentPath === hash || currentPath.startsWith(`${hash}/`))
+                      (effectivePath === hash || effectivePath.startsWith(`${hash}/`))
                         ? 'text-primary'
                         : 'text-fg-muted',
                     )}

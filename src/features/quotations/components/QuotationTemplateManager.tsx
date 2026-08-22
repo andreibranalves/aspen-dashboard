@@ -211,7 +211,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
               <Button type="button" variant="outline" onClick={() => void validate()} disabled={saving || !source || !key}><Eye size={14} /> Validar e visualizar preview</Button>
               <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : <Save />} {detail ? 'Salvar nova versão' : 'Criar modelo'}</Button>
               {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => void setDefault()} disabled={saving}>Definir como padrão</Button>}
-              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => void archive()} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
+              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10 -ml-2" onClick={() => void archive()} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
             </div>
             {defaultKey && <p className="text-xs text-fg-muted">Modelo padrão: {defaultKey}</p>}
             </>}

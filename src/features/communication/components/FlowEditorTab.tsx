@@ -321,7 +321,7 @@ export default function FlowEditorTab() {
             className={[
               'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
               flow.id === selectedFlowId
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
             ].join(' ')}
           >

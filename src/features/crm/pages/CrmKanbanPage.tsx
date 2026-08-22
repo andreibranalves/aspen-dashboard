@@ -376,8 +376,8 @@ export default function CrmKanbanPage() {
 
       {/* Kanban board — constrained height with own scroll */}
       {!loading && !error && (
-        <div className="overflow-auto rounded-lg border border-line bg-page max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
-          <div className="flex gap-4 p-3 min-h-[55vh]">
+        <div className="overflow-auto rounded-lg border border-line bg-page max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)] [scrollbar-width:thin]">
+          <div className="flex gap-3 p-3 min-h-[55vh] w-max">
             {orderedColumns.map((col) => (
               <div
                 key={col.status}

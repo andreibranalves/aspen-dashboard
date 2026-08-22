@@ -270,7 +270,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
   }, [draft, selected, sending]);
 
   return (
-    <div className="mx-auto max-w-[1320px] space-y-5 pb-10 animate-fade-in">
+    <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
       <PageHeader title="WhatsApp" />
 
       <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-sm">

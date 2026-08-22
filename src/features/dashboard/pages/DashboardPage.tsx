@@ -202,7 +202,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           >
             <div className="flex items-center gap-2 text-fg-muted">
               <card.icon className="h-4 w-4 shrink-0 text-primary" />
-              <span className="min-w-0 truncate whitespace-nowrap text-xs font-medium uppercase tracking-wider">
+              <span className="min-w-0 text-xs font-medium uppercase tracking-wider">
                 {card.label}
               </span>
             </div>
@@ -211,7 +211,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                 {card.value}
               </span>
               {card.delta != null && (
-                <span className={cn('text-xs font-medium', deltaClass(card.delta))}>
+                <span className={cn('whitespace-nowrap text-xs font-medium', deltaClass(card.delta))}>
                   {formatDelta(card.delta)}
                 </span>
               )}
