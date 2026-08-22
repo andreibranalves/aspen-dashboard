@@ -150,7 +150,7 @@ function filterInputClass(active: boolean): string {
   return cn(
     'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm transition-colors',
     active
-      ? 'border-primary/30 bg-primary/10 text-primary'
+      ? 'border-primary bg-primary text-on-solid'
       : 'border-line bg-surface text-fg-muted hover:bg-surface-muted hover:text-fg'
   );
 }
@@ -343,15 +343,8 @@ export default function WhatsAppDeliveriesPage() {
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
       <PageHeader title="Envios WhatsApp" />
 
-      <section
-        className="space-y-4 rounded-xl border border-line bg-surface p-4 shadow-sm"
-        aria-labelledby="delivery-filters-title"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="delivery-filters-title" className="text-sm font-semibold text-fg">
-            Filtros
-          </h2>
-          <div className="flex flex-wrap items-center gap-2">
+      <section className="space-y-4" aria-label="Filtros de entregas">
+        <div className="flex flex-wrap items-center justify-end gap-3">
             <Button
               type="button"
               variant="outline"
@@ -374,7 +367,6 @@ export default function WhatsAppDeliveriesPage() {
               {clearing ? 'Limpando…' : 'Limpar fila'}
             </Button>
           </div>
-        </div>
 
         <div className="flex flex-wrap gap-2">
           <label className={filterInputClass(filters.requiresAction)}>

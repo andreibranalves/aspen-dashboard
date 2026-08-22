@@ -34,7 +34,7 @@ const PAGE_LABELS: Record<string, string> = {
   '/auto': 'Auto — Extração',
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
-  '/crm': 'CRM — Kanban',
+  '/crm': 'CRM',
   '/products': 'Produtos',
   '/leads': 'Clientes',
   '/settings': 'Configurações',

@@ -870,7 +870,6 @@ export default function AutoQuotePage() {
               <Button
                 onClick={handleExtract}
                 disabled={extracting || (!text.trim() && !imageData)}
-                size="sm"
               >
                 {extracting ? (
                   <>

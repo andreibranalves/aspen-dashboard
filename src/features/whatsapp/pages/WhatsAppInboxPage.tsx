@@ -282,7 +282,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
       <PageHeader title="WhatsApp" />
 
-      <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 shadow-sm">
+      <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           {STATUS_FILTERS.map((item) => (
             <button
@@ -302,7 +302,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div className="relative w-full md:w-80">
+          <div className="relative w-full md:max-w-md">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
             <Input
               value={query}

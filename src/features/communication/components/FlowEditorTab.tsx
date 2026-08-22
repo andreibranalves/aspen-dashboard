@@ -366,7 +366,7 @@ export default function FlowEditorTab() {
               >
                 <Trash2 size={14} />
               </button>
-              <ChevronUp
+              <ChevronDown
                 size={16}
                 className={
                   expandedFlow === selectedFlow.id
