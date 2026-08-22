@@ -66,7 +66,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
           className={[
             'text-xs px-2.5 py-1 rounded-full transition-colors',
             filterGroup === ''
-              ? 'bg-primary text-white'
+              ? 'bg-primary text-on-solid'
               : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
           ].join(' ')}
         >
@@ -79,7 +79,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
             className={[
               'text-xs px-2.5 py-1 rounded-full transition-colors',
               filterGroup === group
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-on-solid'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
             ].join(' ')}
           >

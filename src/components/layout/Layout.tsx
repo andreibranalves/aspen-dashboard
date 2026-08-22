@@ -50,7 +50,7 @@ function getParentRoute(fallback: string): string {
 
 function getBreadcrumb(route: string): BreadcrumbItem[] {
   const path = routePath(route);
-  if (path === '/dashboard') return [{ label: 'Início', hash: null }];
+  if (path === '/dashboard') return [{ label: 'Início', hash: '/dashboard' }, { label: 'Dashboard', hash: null }];
 
   if (path.startsWith('/quotations/')) {
     const id = path.split('/quotations/')[1];

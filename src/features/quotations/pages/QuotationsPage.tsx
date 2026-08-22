@@ -18,7 +18,6 @@ import {
   PlusCircle,
   Copy,
   MailCheck,
-  MailX,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -411,7 +410,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           )}
         </>
       ) : (
-        <MailX size={14} className="shrink-0 text-fg-muted/40" aria-hidden="true" />
+        <span className="text-fg-muted/40" aria-hidden="true">—</span>
       )}
     </div>
   );

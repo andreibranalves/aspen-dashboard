@@ -337,7 +337,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               className={cn(
                 'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors',
                 period === p.value
-                  ? 'bg-primary text-white'
+                  ? 'bg-primary text-on-solid'
                   : 'bg-surface-muted text-fg-muted hover:text-fg hover:bg-surface',
               )}
             >

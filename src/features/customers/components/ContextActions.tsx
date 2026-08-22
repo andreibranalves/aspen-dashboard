@@ -34,7 +34,7 @@ export function ContextActions({ actions, className }: ContextActionsProps) {
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-1',
           isDisabled
             ? 'cursor-not-allowed opacity-35 bg-surface-muted text-fg-muted'
-            : 'bg-surface-muted text-fg hover:bg-primary hover:text-white active:scale-[0.97]',
+            : 'bg-surface-muted text-fg hover:bg-primary hover:text-on-solid active:scale-[0.97]',
         );
 
         const content = (

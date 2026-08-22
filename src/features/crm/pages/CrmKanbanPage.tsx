@@ -371,7 +371,7 @@ export default function CrmKanbanPage() {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1" aria-hidden="true">
             {PIPELINE.map((stage) => (
-              <span key={stage} className="rounded-full bg-surface-muted px-2.5 py-1 text-[11px] text-fg-muted">
+              <span key={stage} className="cursor-default rounded-full bg-surface-muted px-2.5 py-1 text-[11px] text-fg-muted">
                 {pipelineLabel(stage)}
               </span>
             ))}
