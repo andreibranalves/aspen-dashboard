@@ -312,7 +312,7 @@ export default function ProductsPage() {
             }}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               sort === opt.value
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted hover:text-fg'
             }`}
           >

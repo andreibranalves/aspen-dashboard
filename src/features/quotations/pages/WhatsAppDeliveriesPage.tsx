@@ -148,7 +148,7 @@ function updateSummary(
 
 function filterInputClass(active: boolean): string {
   return cn(
-    'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition-colors',
+    'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm transition-colors',
     active
       ? 'border-primary/30 bg-primary/10 text-primary'
       : 'border-line bg-surface text-fg-muted hover:bg-surface-muted hover:text-fg'

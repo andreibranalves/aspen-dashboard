@@ -260,7 +260,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-fg-muted">Nenhum produto vendido no período.</p>
+            <div className="flex flex-col items-center py-6 text-fg-muted gap-2">
+              <Package size={24} className="text-fg-muted/40" aria-hidden="true" />
+              <p className="text-sm">Nenhum produto vendido no período.</p>
+            </div>
           )}
         </div>
 
@@ -296,7 +299,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-fg-muted">Nenhum cliente no período.</p>
+            <div className="flex flex-col items-center py-6 text-fg-muted gap-2">
+              <Users size={24} className="text-fg-muted/40" aria-hidden="true" />
+              <p className="text-sm">Nenhum cliente no período.</p>
+            </div>
           )}
         </div>
       </div>
@@ -329,7 +335,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
             </table>
           </div>
         ) : (
-          <p className="text-sm text-fg-muted">Nenhuma venda no período.</p>
+          <div className="flex flex-col items-center py-6 text-fg-muted gap-2">
+              <BarChart3 size={24} className="text-fg-muted/40" aria-hidden="true" />
+              <p className="text-sm">Nenhuma venda no período.</p>
+            </div>
         )}
       </div>
 
@@ -349,7 +358,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Idade</th>
                   <th className="text-right py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Status</th>
-                  <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Ação</th>
+                  <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -358,7 +367,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                     <td className="py-2 pr-2">
                       <button
                         onClick={(): void => navigate(`/quotations/${encodeURIComponent(q.id || '')}`)}
-                        className="text-primary hover:underline font-mono text-xs flex items-center gap-1"
+                        className="text-primary hover:underline text-xs [font-variant-numeric:tabular-nums] flex items-center gap-1"
                       >
                         {q.id}
                         <ExternalLink className="h-3 w-3 shrink-0" />

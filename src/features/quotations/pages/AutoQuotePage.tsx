@@ -946,10 +946,10 @@ export default function AutoQuotePage() {
                         <p className="text-xs text-fg-muted truncate">{item.id}</p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0 ml-2">
-                        <span className="text-[11px] text-fg-muted whitespace-nowrap">
+                        <span className="w-[72px] text-right text-[11px] text-fg-muted whitespace-nowrap [font-variant-numeric:tabular-nums]">
                           {formatDate(item.data)}
                         </span>
-                        <span className="text-xs font-medium text-fg whitespace-nowrap [font-variant-numeric:tabular-nums]">
+                        <span className="min-w-[92px] text-right text-xs font-medium text-fg whitespace-nowrap [font-variant-numeric:tabular-nums]">
                           {formatBRL(item.valor)}
                         </span>
                       </div>

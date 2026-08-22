@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Search, AlertTriangle, BarChart3, Clipboard, Send, X } from 'lucide-react';
+import { Search, AlertTriangle, Columns3, Clipboard, Send, X } from 'lucide-react';
 import { apiGet, apiPost, apiPut } from '@/lib/api/api';
 import { pipelineLabel } from '@/lib/statusLabels';
 import { useToast } from '@/components/shared/toast';
@@ -363,7 +363,7 @@ export default function CrmKanbanPage() {
       {/* Empty */}
       {!loading && !error && orderedColumns.every((c) => c.count === 0) && (
         <div className="flex flex-col items-center py-10 text-fg-muted gap-3">
-          <BarChart3 size={36} className="text-fg-muted/40" />
+          <Columns3 size={36} className="text-fg-muted/40" />
           <p>Nenhum negócio no pipeline.</p>
           <p className="text-sm text-center max-w-md">
             Converte clientes em negócios arrastando-os pelo funil. Os leads viram
@@ -374,7 +374,7 @@ export default function CrmKanbanPage() {
               href="#/manual"
               className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] h-10 px-4 py-2"
             >
-              Criar orçamento
+              Novo orçamento
             </a>
             <a
               href="#/leads"

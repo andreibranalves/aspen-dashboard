@@ -772,10 +772,11 @@ export default function ManualOrcamentoPage() {
                   <div className="relative">
                     <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
                     <Input
-                      className="h-10 pl-9 text-sm font-mono"
+                      className="h-10 pl-9 text-sm font-mono placeholder:text-fg-muted"
                       value={cnpj ? formatCnpj(cnpj) : ''}
                       onChange={e => setCnpj(normalizeCnpj(e.target.value))}
                       placeholder="00.000.000/0000-00"
+                      autoComplete="off"
                     />
                   </div>
                   {cnpj && !isValidCnpj(cnpj) && (
@@ -1236,7 +1237,9 @@ export default function ManualOrcamentoPage() {
               <div className="border-t border-line pt-4">
                 <div className="flex items-end justify-between gap-3">
                   <span className="text-sm text-fg-muted">Subtotal</span>
-                  <span className="text-2xl font-bold tracking-tight">{formatBRL(subtotal)}</span>
+                  <span className="text-2xl font-bold tracking-tight [font-variant-numeric:tabular-nums]">
+                    {formatBRL(subtotal)}
+                  </span>
                 </div>
                 <p className="text-xs text-fg-muted mt-2">
                   Os preços e totais são confirmados pelo servidor no momento da criação.
