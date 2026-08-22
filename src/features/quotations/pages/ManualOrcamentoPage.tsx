@@ -775,7 +775,7 @@ export default function ManualOrcamentoPage() {
                   <div className="relative">
                     <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
                     <Input
-                      className="h-10 pl-9 text-sm [font-variant-numeric:tabular-nums] placeholder:text-fg-muted"
+                      className="h-10 pl-9 text-sm"
                       value={cnpj ? formatCnpj(cnpj) : ''}
                       onChange={e => setCnpj(normalizeCnpj(e.target.value))}
                       placeholder="00.000.000/0000-00"
