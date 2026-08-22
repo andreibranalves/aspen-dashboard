@@ -64,7 +64,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
         <button
           onClick={() => setFilterGroup('')}
           className={[
-            'text-xs px-2.5 py-1 rounded-full transition-colors',
+            'text-xs px-3 py-1 font-medium rounded-full transition-colors',
             filterGroup === ''
               ? 'bg-primary text-on-solid'
               : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
@@ -77,7 +77,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
             key={group}
             onClick={() => setFilterGroup(group)}
             className={[
-              'text-xs px-2.5 py-1 rounded-full transition-colors',
+              'text-xs px-3 py-1 font-medium rounded-full transition-colors',
               filterGroup === group
                 ? 'bg-primary text-on-solid'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',

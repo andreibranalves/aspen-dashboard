@@ -411,7 +411,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {!loading && !error && items.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <ShoppingCart size={36} className="text-fg-muted/40" />
-          <p>{search ? 'Nenhum pedido encontrado para a busca.' : status !== 'todos' ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}</p>
+          <p>{search ? 'Nenhum pedido encontrado para a busca.' : status ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}</p>
           <p className="text-sm">Os pedidos aparecem aqui quando um orçamento é convertido no CRM.</p>
           <Button variant="outline" onClick={() => navigate('/quotations')}>
             Ver orçamentos

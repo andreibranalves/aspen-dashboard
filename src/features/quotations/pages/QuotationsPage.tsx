@@ -579,7 +579,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     {formatDate(row.data)}
                   </TableCell>
                   <TableCell className="max-w-[220px] truncate">{row.cliente}</TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-mono">{formatBRL(row.valor)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-right [font-variant-numeric:tabular-nums]">{formatBRL(row.valor)}</TableCell>
                   <TableCell>{statusBadge(row)}</TableCell>
                   <TableCell className="whitespace-nowrap">
                     <EmailMarker row={row} />

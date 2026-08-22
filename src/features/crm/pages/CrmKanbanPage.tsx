@@ -5,6 +5,7 @@ import { pipelineLabel } from '@/lib/statusLabels';
 import { useToast } from '@/components/shared/toast';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PIPELINE } from '@/lib/constants';
@@ -291,29 +292,35 @@ export default function CrmKanbanPage() {
     (status) => columns.find((c) => c.status === status) || { status, count: 0, deals: [] }
   );
 
+  const setTopBarActions = useSetTopBarActions();
+
+  useEffect(() => {
+    setTopBarActions?.(
+      <a
+        href="#/manual"
+        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-primary px-3 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
+      >
+        Novo orçamento
+      </a>
+    );
+    return () => setTopBarActions?.(null);
+  }, [setTopBarActions]);
+
   return (
     <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
       <PageHeader title="CRM" description="Acompanhe cada cliente pelo funil de vendas." />
-      {/* Search + persistent primary action. Busca só com dados no funil. */}
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
-          <div className="relative max-w-md flex-1 min-w-[220px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-            <Input
-              placeholder="Buscar por nome do negócio…"
-              value={search}
-              onChange={onSearchChange}
-              className="pl-9"
-            />
-          </div>
-        )}
-        <a
-          href="#/manual"
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
-        >
-          Novo orçamento
-        </a>
-      </div>
+      {/* Search — só com dados no funil */}
+      {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
+        <div className="relative max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          <Input
+            placeholder="Buscar por nome do negócio…"
+            value={search}
+            onChange={onSearchChange}
+            className="pl-9"
+          />
+        </div>
+      )}
 
       {/* Prune summary */}
       {pruneSummary && (
@@ -370,12 +377,6 @@ export default function CrmKanbanPage() {
             negócios quando um orçamento é enviado.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
-            <a
-              href="#/manual"
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] h-10 px-4 py-2"
-            >
-              Novo orçamento
-            </a>
             <a
               href="#/leads"
               className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"
