@@ -17,6 +17,7 @@
   let lastFingerprint = '';
   let observer;
   let syncTimer;
+  let syncSequence = 0;
 
   function escapeHtml(value) {
     return String(value == null ? '' : value)
@@ -31,7 +32,8 @@
       ready: ['Contato identificado', 'Consultando o contexto comercial Aspen…'],
       unresolved: ['Contato não resolvido', 'Telefone confirmado não encontrado. O painel continua disponível.'],
       unsupported: ['Conversa não suportada', 'Grupos e comunidades não possuem contexto comercial automático.'],
-      error: ['Não foi possível consultar', state.error || 'Tente novamente.'],
+      login_required: ['Faça login no Aspen', state.error || 'Abra o Aspen, faça login e tente novamente.'],
+      error: ['Aspen indisponível', state.error || 'Tente novamente.'],
     }[status] || ['Aspen', ''];
   }
 
@@ -63,7 +65,7 @@
     const status = conversation.status || 'idle';
     const [title, description] = messageForStatus(status);
     const visible = state.open ? 'aspen-open' : 'aspen-closed';
-    root.innerHTML = `<aside class="aspen-panel ${visible}" aria-label="Contexto comercial Aspen"><header><div><strong>Aspen</strong><small>Contexto comercial</small></div><button data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel">${state.open ? '×' : '‹'}</button></header>${state.open ? `<main>${conversation.status === 'ready' && state.loading ? '<div class="aspen-state"><strong>Consultando Aspen</strong><span>Carregando contexto comercial…</span></div>' : conversation.status === 'ready' && state.context ? renderContext(state.context) : `<div class="aspen-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${conversation.displayName ? `<small>${escapeHtml(conversation.displayName)}</small>` : ''}${conversation.status === 'unresolved' ? '<button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>' : conversation.status === 'error' ? '<button data-action="retry">Tentar novamente</button>' : ''}</div>`}</main>` : ''}</aside>`;
+    root.innerHTML = `<aside class="aspen-panel ${visible}" aria-label="Contexto comercial Aspen"><header><div><strong>Aspen</strong><small>Contexto comercial</small></div><button data-action="toggle" aria-label="${state.open ? 'Fechar' : 'Abrir'} painel">${state.open ? '×' : '‹'}</button></header>${state.open ? `<main>${conversation.status === 'ready' && state.loading ? '<div class="aspen-state"><strong>Consultando Aspen</strong><span>Carregando contexto comercial…</span></div>' : conversation.status === 'ready' && state.context ? renderContext(state.context) : `<div class="aspen-state"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span>${conversation.displayName ? `<small>${escapeHtml(conversation.displayName)}</small>` : ''}${conversation.status === 'unresolved' ? '<button data-action="retry">Tentar novamente</button><button data-action="search">Pesquisar no Aspen</button>' : conversation.status === 'login_required' ? '<button data-action="open" data-path="/">Abrir Aspen</button><button data-action="retry">Tentar novamente</button>' : conversation.status === 'error' ? '<button data-action="retry">Tentar novamente</button>' : ''}</div>`}</main>` : ''}</aside>`;
   }
 
   function mount() {
@@ -95,7 +97,7 @@
       state.loading = false;
       if (!result || result.status === 'error' || result.status === 'login_required') {
         state.error = result && result.message || 'Aspen indisponível.';
-        state.conversation = { ...conversation, status: 'error' };
+        state.conversation = { ...conversation, status: result && result.status === 'login_required' ? 'login_required' : 'error' };
       } else {
         state.context = result;
       }
@@ -105,24 +107,25 @@
 
   async function sync(force) {
     if (!provider) { state.conversation = { status: 'unsupported' }; render(); return; }
-    const generation = state.generation + 1;
-    state.generation = generation;
+    const sequence = ++syncSequence;
+    const previousConversation = state.conversation;
     state.conversation = { status: 'resolving', displayName: state.conversation.displayName || null };
-    state.loading = false;
-    state.error = '';
     render();
     let conversation;
     try { conversation = await provider.resolveConversation({ force: Boolean(force) }); } catch { conversation = { status: 'error' }; }
-    if (generation !== state.generation) return;
+    if (sequence !== syncSequence) return;
     const fingerprint = JSON.stringify([conversation.status, conversation.phone, conversation.technicalId, conversation.displayName]);
     if (!force && fingerprint === lastFingerprint) {
-      state.conversation = conversation;
+      state.conversation = state.loading || state.context ? conversation : previousConversation;
       render();
       return;
     }
+    const generation = ++state.generation;
     lastFingerprint = fingerprint;
     state.conversation = conversation;
     state.context = null;
+    state.loading = false;
+    state.error = '';
     render();
     if (conversation.status === 'ready' && conversation.phone) lookupContext(conversation, generation);
   }

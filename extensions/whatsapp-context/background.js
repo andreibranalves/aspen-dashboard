@@ -1,4 +1,4 @@
-/* global importScripts, URL, fetch, chrome */
+/* global importScripts, URL, fetch, chrome, AbortController, clearTimeout, setTimeout */
 importScripts('./config.js');
 
 (function installAspenWhatsappBackground(global) {
@@ -6,6 +6,7 @@ importScripts('./config.js');
 
   const config = global.ASPEN_WHATSAPP_CONTEXT_CONFIG || {};
   const PHONE_RE = /^\d{10,15}$/;
+  const REQUEST_TIMEOUT_MS = 8000;
 
   function safeOrigin(value) {
     try {
@@ -28,19 +29,24 @@ importScripts('./config.js');
     if (!appOrigin || !PHONE_RE.test(phone)) return { status: 'unresolved', message: 'Telefone não confirmado.' };
     const endpoint = new URL(config.endpointPath || '/api/whatsapp-context', appOrigin);
     endpoint.searchParams.set('phone', phone);
+    const controller = new AbortController();
+    const timeout = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(endpoint.toString(), {
         method: 'GET',
         credentials: 'include',
         mode: 'cors',
         headers: { Accept: 'application/json' },
+        signal: controller.signal,
       });
       const body = await response.json().catch(function () { return null; });
       if (!response.ok) return publicError(response.status);
       if (!body || typeof body !== 'object' || Array.isArray(body)) return { status: 'error', message: 'Resposta inválida do Aspen.' };
       return body;
-    } catch {
-      return { status: 'error', message: 'Não foi possível conectar ao Aspen.' };
+    } catch (error) {
+      return { status: 'error', message: error && error.name === 'AbortError' ? 'Aspen indisponível. Tente novamente.' : 'Não foi possível conectar ao Aspen.' };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
