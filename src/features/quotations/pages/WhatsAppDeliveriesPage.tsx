@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -148,10 +149,10 @@ function updateSummary(
 
 function filterInputClass(active: boolean): string {
   return cn(
-    'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-3.5 text-sm transition-colors',
+    'inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
     active
-      ? 'border-primary bg-primary text-on-solid'
-      : 'border-line bg-surface text-fg-muted hover:bg-surface-muted hover:text-fg'
+      ? 'bg-primary text-on-solid [&_input]:accent-white'
+      : 'bg-surface-muted text-fg-muted hover:text-fg'
   );
 }
 
@@ -339,44 +340,47 @@ export default function WhatsAppDeliveriesPage() {
 
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
+  const setTopBarActions = useSetTopBarActions();
+
+  useEffect(() => {
+    setTopBarActions?.(
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setReloadVersion((value) => value + 1)}
+          disabled={loading || clearing}
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
+          Atualizar
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setClearConfirmOpen(true)}
+          disabled={loading || clearing}
+          className="border-l border-line pl-3 text-destructive hover:bg-destructive/10"
+        >
+          <Trash2 size={14} />
+          {clearing ? 'Limpando…' : 'Limpar fila'}
+        </Button>
+      </>
+    );
+    return () => setTopBarActions?.(null);
+  }, [setTopBarActions, loading, clearing, setReloadVersion, setClearConfirmOpen]);
+
   return (
     <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
-      <PageHeader
-        title="Envios WhatsApp"
-        description="Fila de mensagens disparadas pelo funil de orçamentos."
-        action={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setReloadVersion((value) => value + 1)}
-              disabled={loading || clearing}
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-              Atualizar
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setClearConfirmOpen(true)}
-              disabled={loading || clearing}
-              className="border-l border-line pl-3 text-destructive hover:bg-destructive/10"
-            >
-              <Trash2 size={14} />
-              {clearing ? 'Limpando…' : 'Limpar fila'}
-            </Button>
-          </>
-        }
-      />
+      <PageHeader title="Envios WhatsApp" description="Fila de mensagens disparadas pelo funil de orçamentos." />
 
       <section className="space-y-4" aria-label="Filtros de entregas">
         <div className="flex flex-wrap gap-2">
           <label className={filterInputClass(filters.requiresAction)}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-primary"
+              className="h-3.5 w-3.5 accent-primary"
               checked={filters.requiresAction}
               onChange={(event) =>
                 updateFilters((current) => ({ ...current, requiresAction: event.target.checked }))
@@ -387,7 +391,7 @@ export default function WhatsAppDeliveriesPage() {
           <label className={filterInputClass(filters.includeActive)}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-primary"
+              className="h-3.5 w-3.5 accent-primary"
               checked={filters.includeActive}
               onChange={(event) =>
                 updateFilters((current) => ({ ...current, includeActive: event.target.checked }))
@@ -398,7 +402,7 @@ export default function WhatsAppDeliveriesPage() {
           <label className={filterInputClass(filters.delayed)}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-primary"
+              className="h-3.5 w-3.5 accent-primary"
               checked={filters.delayed}
               onChange={(event) =>
                 updateFilters((current) => ({ ...current, delayed: event.target.checked }))
@@ -410,7 +414,7 @@ export default function WhatsAppDeliveriesPage() {
             <label key={key} className={filterInputClass(filters.states.includes(key))}>
               <input
                 type="checkbox"
-                className="h-4 w-4 accent-primary"
+                className="h-3.5 w-3.5 accent-primary"
                 checked={filters.states.includes(key)}
                 onChange={() => toggleState(key)}
               />

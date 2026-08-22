@@ -293,7 +293,7 @@ export default function CrmKanbanPage() {
 
   return (
     <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader title="CRM" description="Acompanhe cada contato da carteira pelo funil de vendas." />
+      <PageHeader title="CRM" description="Acompanhe cada cliente pelo funil de vendas." />
       {/* Search + persistent primary action. Busca só com dados no funil. */}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (

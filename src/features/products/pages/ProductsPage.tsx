@@ -407,7 +407,7 @@ export default function ProductsPage() {
                           <span className="ml-1 border-l border-line pl-1 inline-flex items-center">
                             <button
                               onClick={() => requestArchive(sku, p.ativo === false)}
-                              className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded text-destructive/60 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded text-fg-muted hover:bg-surface-muted hover:text-fg transition-colors"
                               aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
                               title={`${p.ativo === false ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
                             >

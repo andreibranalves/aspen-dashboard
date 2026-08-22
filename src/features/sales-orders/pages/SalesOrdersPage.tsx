@@ -302,7 +302,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             icon={DollarSign}
             label="Receita"
             value={formatBRL(summaryData.total_revenue)}
-            subtitle={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? '—' : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
+            subtitle={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? 'vs período anterior' : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
           <SummaryCard
@@ -314,8 +314,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           <SummaryCard
             icon={TrendingUp}
             label="Ticket Médio"
-            value={formatBRL(summaryData.avg_ticket)}
-            subtitle={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? '—' : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
+            value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+            subtitle={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? 'vs período anterior' : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
             colorClass="tone-warning-soft"
           />
           <SummaryCard
@@ -407,7 +407,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {!loading && !error && items.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <ShoppingCart size={36} className="text-fg-muted/40" />
-          <p>{search || (status && status !== 'todos') ? 'Nenhum pedido encontrado' : 'Nenhum pedido por aqui ainda'}</p>
+          <p>{search || (status && status !== 'todos') ? 'Nenhum pedido encontrado' : 'Nenhum pedido encontrado'}</p>
           <p className="text-sm">Os pedidos aparecem aqui quando um orçamento é convertido no CRM.</p>
           <Button variant="outline" onClick={() => navigate('/quotations')}>
             Ver orçamentos
