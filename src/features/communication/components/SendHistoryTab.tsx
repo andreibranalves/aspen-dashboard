@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
+import { StatusBadge } from '@/components/ui/badge';
 
 interface SendEvent {
   id: string;
@@ -72,11 +73,30 @@ export default function SendHistoryTab() {
           className="flex items-start gap-3 p-3 rounded-lg border border-line bg-surface hover:border-primary/20 transition-colors"
         >
           <div className="shrink-0 mt-0.5">
-            {evt.status === 'sent' && <CheckCircle size={16} className="text-success" />}
-            {evt.status === 'failed' && <XCircle size={16} className="text-destructive" />}
-            {evt.status === 'skipped' && <Clock size={16} className="text-fg-muted" />}
+            {evt.status === 'sent' && (
+              <span role="img" title="Entregue" aria-label="Entregue" className="inline-flex">
+                <CheckCircle size={16} className="text-success" aria-hidden="true" />
+              </span>
+            )}
+            {evt.status === 'failed' && (
+              <span role="img" title="Falhou" aria-label="Falhou" className="inline-flex">
+                <XCircle size={16} className="text-destructive" aria-hidden="true" />
+              </span>
+            )}
+            {evt.status === 'skipped' && (
+              <span role="img" title="Pendente" aria-label="Pendente" className="inline-flex">
+                <Clock size={16} className="text-fg-muted" aria-hidden="true" />
+              </span>
+            )}
             {evt.status === 'pending' && (
-              <Loader2 size={16} className="text-warning animate-spin" />
+              <span
+                role="img"
+                title="Processando"
+                aria-label="Processando"
+                className="inline-flex"
+              >
+                <Loader2 size={16} className="text-warning animate-spin" aria-hidden="true" />
+              </span>
             )}
             {evt.duplicate_warning && (
               <AlertTriangle
@@ -95,9 +115,7 @@ export default function SendHistoryTab() {
                 <span className="text-xs text-fg-muted font-mono">{evt.quotation_id}</span>
               )}
               {evt.duplicate_warning && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-warning/80">
-                  Duplicado
-                </span>
+                <StatusBadge status="Open" label="Duplicado" className="tone-warning-soft" />
               )}
             </div>
             <div className="flex items-center gap-3 text-xs text-fg-muted mt-1">

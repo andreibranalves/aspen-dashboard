@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { fetchFlows, saveFlows } from '@/lib/api/communicationApi';
 import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/api/communicationApi';
 import { renderFlowTemplate } from '@/lib/api/whatsappFlows';
@@ -127,6 +128,7 @@ export default function FlowEditorTab() {
   const [flows, setFlows] = useState<EditableFlow[]>([]);
   const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
+  const [confirmDeleteFlowId, setConfirmDeleteFlowId] = useState<string | null>(null);
   const [expandedFlow, setExpandedFlow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -192,15 +194,12 @@ export default function FlowEditorTab() {
         <Button onClick={addFlow} size="sm">
           <Plus size={14} /> Novo fluxo
         </Button>
-        <Button
-          onClick={handleSave}
-          size="sm"
-          variant={isDirty ? 'default' : 'outline'}
-          disabled={saving || !isDirty}
-        >
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          Salvar
-        </Button>
+        {(isDirty || saving) && (
+          <Button onClick={handleSave} size="sm" disabled={saving}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            Salvar
+          </Button>
+        )}
       </div> as ReactNode,
     );
 
@@ -319,9 +318,9 @@ export default function FlowEditorTab() {
             key={flow.id}
             onClick={() => setSelectedFlowId(flow.id)}
             className={[
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+              'px-3 py-1 rounded-full text-xs font-medium transition-colors',
               flow.id === selectedFlowId
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
             ].join(' ')}
           >
@@ -329,6 +328,17 @@ export default function FlowEditorTab() {
           </button>
         ))}
       </div>
+
+      {/* Flow editor — hint quando nada selecionado */}
+      {!selectedFlow && flows.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line text-center py-12">
+          <MessageSquare size={28} className="text-fg-muted/40 mb-3" aria-hidden="true" />
+          <p className="text-sm font-medium text-fg">Nenhum fluxo criado ainda</p>
+          <p className="mt-1 max-w-sm text-sm text-fg-muted">
+            Use <strong>Novo fluxo</strong> para criar sua primeira automação de WhatsApp.
+          </p>
+        </div>
+      )}
 
       {/* Flow editor */}
       {selectedFlow && (
@@ -343,7 +353,7 @@ export default function FlowEditorTab() {
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-fg">{selectedFlow.name}</span>
               <span className="text-xs text-fg-muted">
-                {selectedFlow.steps?.length || 0} etapa(s)
+                {selectedFlow.steps?.length || 0} {selectedFlow.steps?.length === 1 ? 'etapa' : 'etapas'}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -360,14 +370,14 @@ export default function FlowEditorTab() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  deleteFlow(selectedFlow.id);
+                  setConfirmDeleteFlowId(selectedFlow.id);
                 }}
-                className="p-1 rounded hover:bg-destructive/10"
+                className="p-1 rounded text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                 title="Remover fluxo"
               >
-                <Trash2 size={14} className="text-destructive" />
+                <Trash2 size={14} />
               </button>
-              <ChevronUp
+              <ChevronDown
                 size={16}
                 className={
                   expandedFlow === selectedFlow.id
@@ -388,7 +398,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.name}
                     onChange={(e) => updateFlow(selectedFlow.id, 'name', e.target.value)}
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -397,7 +407,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.vendor_name || 'Juliana'}
                     onChange={(e) => updateFlow(selectedFlow.id, 'vendor_name', e.target.value)}
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -410,7 +420,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_min_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
                 </div>
                 <div>
@@ -423,7 +433,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_max_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
                 </div>
               </div>
@@ -455,7 +465,7 @@ export default function FlowEditorTab() {
                           onChange={(e) =>
                             handleStepTypeChange(selectedFlow.id, step.id, e.target.value as StepType)
                           }
-                          className="text-xs rounded border border-line bg-surface px-1.5 py-0.5 text-fg"
+                          className="appearance-none rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                         >
                           {STEP_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -495,7 +505,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'template', e.target.value)
                             }
                             placeholder="Digite a mensagem. Use variáveis como (primeiro_nome), (produto_resumo)..."
-                            className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg min-h-[60px] resize-y"
+                            className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg min-h-[60px] resize-y"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             Preview:{' '}
@@ -515,7 +525,7 @@ export default function FlowEditorTab() {
                               onChange={(e) =>
                                 updateStep(selectedFlow.id, step.id, 'source', e.target.value)
                               }
-                              className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg mt-0.5"
+                              className="mt-0.5 w-full appearance-none rounded-full border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                             >
                               <option value="quotation_pdf">PDF (documento)</option>
                               <option value="quotation_webp">WebP (imagem)</option>
@@ -528,7 +538,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
                             }
                             placeholder="Legenda (opcional)"
-                            className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-fg"
+                            className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             {step.source === 'quotation_webp'
@@ -576,7 +586,7 @@ export default function FlowEditorTab() {
                                 )
                               }
                               placeholder="Ex: Referência de (grupo_produto)"
-                              className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-sm mt-0.5"
+                              className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-0.5"
                             />
                           </div>
                           <p className="text-[10px] text-fg-muted">
@@ -633,6 +643,20 @@ export default function FlowEditorTab() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteFlowId !== null}
+        title="Remover fluxo?"
+        message={`O fluxo "${flows.find((f) => f.id === confirmDeleteFlowId)?.name || ''}" será removido da lista local. Salve para persistir a alteração.`}
+        confirmLabel="Remover"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          if (confirmDeleteFlowId) deleteFlow(confirmDeleteFlowId);
+          setConfirmDeleteFlowId(null);
+        }}
+        onCancel={() => setConfirmDeleteFlowId(null)}
+      />
     </div>
   );
 }

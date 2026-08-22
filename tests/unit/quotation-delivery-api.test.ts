@@ -88,7 +88,7 @@ test('projector distinguishes provider acceptance from device delivery', () => {
     updatedAt,
     actionDeadline: null,
   } as unknown as DeliveryView);
-  assert.equal(providerAccepted.label, 'Aceito pela Evolution');
+  assert.equal(providerAccepted.label, 'Aceito');
   const delayedAccepted = projectDelivery({
     ...fixture({ state: 'provider_accepted' }),
     state: 'provider_accepted',

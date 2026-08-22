@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent } from 'react';
-import { Search, AlertTriangle, BarChart3, Clipboard, Send, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Search, AlertTriangle, Columns3, Clipboard, Send, X, PlusCircle } from 'lucide-react';
 import { apiGet, apiPost, apiPut } from '@/lib/api/api';
+import { pipelineLabel } from '@/lib/statusLabels';
+import { useToast } from '@/components/shared/toast';
 import { cn } from '@/lib/utils';
+import PageHeader from '@/components/shared/PageHeader';
+import { useSetTopBarActions } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PIPELINE } from '@/lib/constants';
@@ -81,7 +85,11 @@ function formatDateBR(value?: string): string {
   return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 }
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export default function CrmKanbanPage() {
+  const { toast } = useToast();
   const [columns, setColumns] = useState<Column[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +104,7 @@ export default function CrmKanbanPage() {
   const [pruneSummary, setPruneSummary] = useState<string | null>(null);
   const [visiblePerColumn, setVisiblePerColumn] = useState<Record<string, number>>({});
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pruneDialogRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async (searchVal: string) => {
     setLoading(true);
@@ -130,6 +139,42 @@ export default function CrmKanbanPage() {
     fetchData(search);
     fetchPruneCandidates();
   }, [fetchData, fetchPruneCandidates]);
+
+  // Prune modal: Esc para fechar, foco inicial no diálogo, focus trap e
+  // restauração de foco — mesmo comportamento do ConfirmDialog compartilhado.
+  useEffect(() => {
+    if (!pruneOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    pruneDialogRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setPruneOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const dialog = pruneDialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      previousFocus?.focus?.();
+    };
+  }, [pruneOpen]);
 
   const onSearchChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
@@ -226,31 +271,55 @@ export default function CrmKanbanPage() {
           status: newStatus,
         });
         if (!result.success) {
-          fetchData(search); // reload on failure
+          toast('Não foi possível mover o negócio. Tente novamente.', 'error');
+          await fetchData(search); // reverte a atualização otimista
         }
-      } catch {
-        fetchData(search);
+      } catch (err) {
+        toast((err as Error).message || 'Não foi possível mover o negócio.', 'error');
+        await fetchData(search); // reverte a atualização otimista
       }
     },
-    [search, fetchData]
+    [search, fetchData, toast]
   );
+
+  const openLeadCard = useCallback((deal: Deal) => {
+    const leadName = String(deal.lead_name || '').trim();
+    if (!leadName || leadName === 'Sem nome') return;
+    // ponytail: deal não traz id do lead/cliente; busca por nome na lista de leads
+    window.location.hash = `#/leads?search=${encodeURIComponent(leadName)}&status=all`;
+  }, []);
 
   const orderedColumns = PIPELINE.map(
     (status) => columns.find((c) => c.status === status) || { status, count: 0, deals: [] }
   );
 
+  const setTopBarActions = useSetTopBarActions();
+
+  useEffect(() => {
+    setTopBarActions?.(
+      <Button onClick={(): void => { window.location.hash = '#/manual'; }}>
+        <PlusCircle size={16} />
+        Novo orçamento
+      </Button>
+    );
+    return () => setTopBarActions?.(null);
+  }, [setTopBarActions]);
+
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-        <Input
-          placeholder="Buscar por nome do lead…"
-          value={search}
-          onChange={onSearchChange}
-          className="pl-9"
-        />
-      </div>
+    <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
+      <PageHeader title="CRM" description="Acompanhe cada negócio pelo funil de vendas." />
+      {/* Search — só com dados no funil */}
+      {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
+        <div className="relative max-w-md">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          <Input
+            placeholder="Buscar por nome do negócio…"
+            value={search}
+            onChange={onSearchChange}
+            className="pl-9"
+          />
+        </div>
+      )}
 
       {/* Prune summary */}
       {pruneSummary && (
@@ -299,25 +368,44 @@ export default function CrmKanbanPage() {
 
       {/* Empty */}
       {!loading && !error && orderedColumns.every((c) => c.count === 0) && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <BarChart3 size={36} className="text-fg-muted/40" />
-          <p>Nenhum deal no pipeline</p>
-          <p className="text-sm">Os deals do CRM aparecerão aqui.</p>
+        <div className="flex flex-col items-center py-10 text-fg-muted gap-3">
+          <Columns3 size={36} className="text-fg-muted/40" />
+          <p>Nenhum negócio no pipeline.</p>
+          <p className="text-sm text-center max-w-md">
+            Um negócio nasce quando um orçamento é enviado a um cliente.
+            Depois, acompanhe cada etapa aqui no funil.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
+            <a
+              href="#/manual"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] h-10 px-4 py-2"
+            >
+              Novo orçamento
+            </a>
+            <a
+              href="#/quotations"
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"
+            >
+              Ver orçamentos
+            </a>
+          </div>
         </div>
       )}
 
-      {/* Kanban board — constrained height with own scroll */}
-      {!loading && !error && orderedColumns.some((c) => c.count > 0) && (
-        <div className="overflow-auto rounded-lg border border-line bg-page max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)]">
-          <div className="flex gap-4 p-3 min-h-[55vh]">
+      {/* Kanban board — constrained height with own scroll. Hidden while empty: the
+          empty-state block above already teaches the conversion flow, and showing
+          zero columns beside it duplicated the message. */}
+      {!loading && !error && !orderedColumns.every((c) => c.count === 0) && (
+        <div className="overflow-auto rounded-lg border border-line bg-page max-h-[calc(100vh-9.5rem)] md:max-h-[calc(100vh-10rem)] [scrollbar-width:thin]">
+          <div className="flex gap-3 p-3 min-h-[55vh] w-max">
             {orderedColumns.map((col) => (
               <div
                 key={col.status}
-                className="flex-shrink-0 w-72 bg-surface border border-line rounded-lg flex flex-col"
+                className="flex-shrink-0 w-[17.5rem] bg-surface border border-line rounded-lg flex flex-col"
               >
                 {/* Column header */}
                 <div className="px-4 py-3 font-medium text-sm flex items-center justify-between">
-                  <span>{col.status}</span>
+                  <span>{pipelineLabel(col.status)}</span>
                   <span className="bg-surface-muted text-fg-muted text-xs rounded-full px-2 py-0.5">
                     {col.count}
                   </span>
@@ -348,44 +436,70 @@ export default function CrmKanbanPage() {
                           setDraggingId(null);
                         }}
                       >
-                        {shown.map((deal) => (
-                          <div
-                            key={deal.id}
-                            draggable
-                            onDragStart={(e: DragEvent<HTMLDivElement>) => {
-                              setDraggingId(deal.id);
-                              e.dataTransfer.effectAllowed = 'move';
-                              e.dataTransfer.setData('text/plain', deal.id);
-                            }}
-                            onDragEnd={() => setDraggingId(null)}
-                            className={cn(
-                              'bg-surface rounded-lg border border-line p-3 cursor-grab active:cursor-grabbing hover:border-fg-muted/30 transition-all',
-                              draggingId === deal.id && 'opacity-50'
-                            )}
-                          >
-                            <p className="font-medium text-sm">{deal.lead_name || '—'}</p>
-                            {deal.email && (
-                              <p className="text-xs text-fg-muted truncate mt-0.5">{deal.email}</p>
-                            )}
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              {deal.quotation && (
-                                <span className="inline-flex items-center text-xs bg-primary/10 text-primary rounded px-1.5 py-0.5">
-                                  <Clipboard size={12} className="mr-1" />
-                                  {deal.quotation}
-                                </span>
+                        {shown.map((deal) => {
+                          const leadName = String(deal.lead_name || '').trim();
+                          const leadClickable = !!leadName && leadName !== 'Sem nome';
+                          return (
+                            <div
+                              key={deal.id}
+                              draggable
+                              onDragStart={(e: DragEvent<HTMLDivElement>) => {
+                                setDraggingId(deal.id);
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', deal.id);
+                              }}
+                              onDragEnd={() => setDraggingId(null)}
+                              onClick={leadClickable ? () => openLeadCard(deal) : undefined}
+                              onKeyDown={
+                                leadClickable
+                                  ? (e: ReactKeyboardEvent<HTMLDivElement>) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        openLeadCard(deal);
+                                      }
+                                    }
+                                  : undefined
+                              }
+                              role={leadClickable ? 'link' : undefined}
+                              tabIndex={leadClickable ? 0 : undefined}
+                              aria-label={leadClickable ? `Abrir lead ${deal.lead_name}` : undefined}
+                              className={cn(
+                                'bg-surface rounded-lg border border-line p-3 transition-all',
+                                leadClickable
+                                  ? 'cursor-pointer hover:border-primary/40 focus-visible:outline-2 focus-visible:outline-primary'
+                                  : 'cursor-grab active:cursor-grabbing hover:border-fg-muted/30',
+                                draggingId === deal.id && 'opacity-50'
                               )}
-                              {Number(deal.follow_up_stage) > 0 && (
-                                <span className="inline-flex items-center text-xs bg-surface-muted text-fg rounded px-1.5 py-0.5">
-                                  <Send size={12} className="mr-1" /> Follow-up{' '}
-                                  {deal.follow_up_stage}
-                                </span>
+                            >
+                              <p className="font-medium text-sm">{deal.lead_name || '—'}</p>
+                              {deal.email && (
+                                <p className="text-xs text-fg-muted truncate mt-0.5">{deal.email}</p>
                               )}
-                              <span className="text-xs text-fg-muted">
-                                {daysAgo(deal.modificado_em || deal.criado_em)}
-                              </span>
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                {deal.quotation && (
+                                  <a
+                                    href={`#/quotations/${encodeURIComponent(deal.quotation)}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center text-xs bg-primary/10 text-primary rounded px-1.5 py-0.5 hover:bg-primary/20 transition-colors"
+                                    aria-label={`Abrir orçamento ${deal.quotation}`}
+                                  >
+                                    <Clipboard size={12} className="mr-1" />
+                                    {deal.quotation}
+                                  </a>
+                                )}
+                                {Number(deal.follow_up_stage) > 0 && (
+                                  <span className="inline-flex items-center text-xs bg-surface-muted text-fg rounded px-1.5 py-0.5">
+                                    <Send size={12} className="mr-1" /> Follow-up{' '}
+                                    {deal.follow_up_stage}
+                                  </span>
+                                )}
+                                <span className="text-xs text-fg-muted">
+                                  {daysAgo(deal.modificado_em || deal.criado_em)}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       {hidden > 0 && (
                         <button
@@ -412,8 +526,23 @@ export default function CrmKanbanPage() {
 
       {/* Prune modal */}
       {pruneOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="bg-surface border border-line rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setPruneOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Dialog */}
+          <div
+            ref={pruneDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Revisar limpeza de pipeline"
+            tabIndex={-1}
+            className="relative bg-surface border border-line rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col focus:outline-none"
+          >
             <div className="px-5 py-4 border-b border-line flex items-start justify-between gap-4">
               <div>
                 <h2 className="font-semibold text-fg">Revisar limpeza de pipeline</h2>

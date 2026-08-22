@@ -3,6 +3,7 @@ import { FileText, Truck, DollarSign, Check } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import SkeletonDetail from '@/components/shared/SkeletonDetail';
 
 const STATUS_LABELS: Record<string, string> = {
   Draft: 'Rascunho',
@@ -67,20 +68,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
 
   // ── Loading ──
   if (loading) {
-    return (
-      <div className="space-y-4 max-w-[1060px] mx-auto">
-        <div className="h-4 w-40 bg-surface-muted rounded animate-pulse" />
-        <div className="bg-surface rounded-lg border border-line shadow-sm p-6 space-y-4">
-          <div className="h-8 w-48 bg-surface-muted rounded animate-pulse" />
-          <div className="grid grid-cols-3 gap-6">
-            <div className="h-12 bg-surface-muted rounded animate-pulse" />
-            <div className="h-12 bg-surface-muted rounded animate-pulse" />
-            <div className="h-12 bg-surface-muted rounded animate-pulse" />
-          </div>
-          <div className="h-40 bg-surface-muted rounded animate-pulse" />
-        </div>
-      </div>
-    );
+    return <SkeletonDetail />;
   }
 
   // ── Error ──

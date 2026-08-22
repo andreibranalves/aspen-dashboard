@@ -7,6 +7,7 @@ import {
   History,
   Image as ImageIcon,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import { apiPost, apiGet } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
@@ -15,6 +16,7 @@ import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplates
 import { capitalize, formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import SplitResultCard from '@/features/quotations/components/SplitResultCard';
 import { useImageInput } from '@/hooks/useImageInput';
 import { useExtractionDrafts } from '@/hooks/useExtractionDrafts';
@@ -213,6 +215,35 @@ export default function AutoQuotePage() {
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  // ── Prefill do cliente vindo do CRM (#/leads) — consome 'aspen_quote_prefill' uma única vez ──
+  useEffect(() => {
+    let raw: string | null;
+    try {
+      raw = window.sessionStorage.getItem('aspen_quote_prefill');
+      if (raw !== null) window.sessionStorage.removeItem('aspen_quote_prefill');
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw) as { nome?: unknown; email?: unknown; telefone?: unknown };
+      const nome = typeof prefill.nome === 'string' ? prefill.nome.trim() : '';
+      const email = typeof prefill.email === 'string' ? prefill.email.trim() : '';
+      const telefone = typeof prefill.telefone === 'string' ? prefill.telefone.trim() : '';
+      if (!nome && !email && !telefone) return;
+      setText((current) => {
+        if (current.trim() !== '') return current;
+        return [
+          `Nome: ${nome}`,
+          `E-mail: ${email}`,
+          `Telefone: ${telefone}`,
+        ].join('\n');
+      });
+    } catch {
+      /* prefill malformado — ignora */
+    }
+  }, []);
 
   const loadCommunicationFlows = useCallback(async () => {
     try {
@@ -550,6 +581,10 @@ export default function AutoQuotePage() {
     }
   }, []);
 
+  // ── Destructive-action confirmations ──
+  const [confirmReset, setConfirmReset] = useState<boolean>(false);
+  const [confirmClearResults, setConfirmClearResults] = useState<boolean>(false);
+
   // ── Reset ──
   const handleReset = useCallback(() => {
     setText('');
@@ -748,7 +783,7 @@ export default function AutoQuotePage() {
   const visibleDrafts = [...activeDrafts].reverse();
 
   return (
-    <div className="flex h-full flex-col overflow-hidden animate-fade-in">
+    <div className="mx-auto w-full max-w-[1060px] flex h-full flex-col overflow-hidden animate-fade-in">
       <OrderTemplateManager
         open={orderTemplateManagerOpen}
         templates={orderTemplates}
@@ -762,13 +797,13 @@ export default function AutoQuotePage() {
             {/* Page title */}
             <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
             {templateError && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm">
                 <span className="min-w-0">{templateError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
               </div>
             )}
             {orderTemplatesError && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs">
                 <span className="min-w-0">{orderTemplatesError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadOrderTemplates}>
                   Tentar novamente
@@ -777,14 +812,15 @@ export default function AutoQuotePage() {
             )}
 
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
-              <label className="min-w-0 flex-1 text-xs font-medium text-fg-muted">
+              <label className="min-w-0 flex-1 text-xs text-fg-muted">
                 Template de pedido
+                <div className="relative mt-1">
                 <select
                   aria-label="Template de pedido"
                   value={orderTemplateId}
                   onChange={(event) => setOrderTemplateId(event.target.value)}
                   disabled={extracting || orderTemplatesLoading}
-                  className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
+                  className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                 >
                   <option value="">Nenhum</option>
                   {orderTemplates.map((template) => (
@@ -793,12 +829,13 @@ export default function AutoQuotePage() {
                     </option>
                   ))}
                 </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+                </div>
               </label>
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="self-end sm:self-auto"
+                className="self-end sm:self-auto h-[38px]"
                 onClick={() => setOrderTemplateManagerOpen(true)}
               >
                 Gerenciar
@@ -838,7 +875,7 @@ export default function AutoQuotePage() {
 
                 <textarea
                   className={cn(
-                    'w-full resize-none overflow-hidden rounded-xl border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                    'w-full resize-none overflow-hidden rounded-[10px] border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
                   placeholder={
@@ -868,7 +905,6 @@ export default function AutoQuotePage() {
               <Button
                 onClick={handleExtract}
                 disabled={extracting || (!text.trim() && !imageData)}
-                size="sm"
               >
                 {extracting ? (
                   <>
@@ -884,7 +920,11 @@ export default function AutoQuotePage() {
               </Button>
 
               {(text || imageData) && (
-                <Button variant="ghost" size="sm" onClick={handleReset}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => (activeDrafts.length > 0 ? setConfirmReset(true) : handleReset())}
+                >
                   <RotateCcw size={14} />
                   Limpar
                 </Button>
@@ -893,7 +933,7 @@ export default function AutoQuotePage() {
 
             {/* Error */}
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300">
+              <div className="tone-destructive-soft rounded-xl p-3 text-sm">
                 <div className="flex items-start gap-2">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
@@ -906,7 +946,7 @@ export default function AutoQuotePage() {
           </div>
 
           {/* ── Bottom panel: recent quotations ── */}
-          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-auto flex flex-col h-[300px] lg:h-[340px]">
+          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-6 flex flex-col h-[300px] lg:h-[340px]">
             <div className="mb-3 flex items-center gap-1.5 shrink-0 text-xs font-medium text-fg-muted">
               <History size={13} />
               Recentes
@@ -924,14 +964,14 @@ export default function AutoQuotePage() {
                   <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="divide-y divide-line/60">
                   {history.map((item, idx) => (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => loadHistoryItem(item)}
                       className={cn(
-                        'w-full flex items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-muted transition-colors',
+                        'w-full flex items-center justify-between px-0 py-2 text-left text-sm hover:bg-surface-muted transition-colors',
                         idx === history.length - 1 && 'pb-1'
                       )}
                     >
@@ -939,11 +979,11 @@ export default function AutoQuotePage() {
                         <p className="font-medium text-fg truncate">{item.cliente || 'Cliente'}</p>
                         <p className="text-xs text-fg-muted truncate">{item.id}</p>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-[11px] text-fg-muted whitespace-nowrap">
+                      <div className="flex items-center gap-4 shrink-0 ml-2">
+                        <span className="w-[72px] text-right text-[11px] text-fg-muted whitespace-nowrap [font-variant-numeric:tabular-nums]">
                           {formatDate(item.data)}
                         </span>
-                        <span className="text-xs font-medium text-fg whitespace-nowrap">
+                        <span className="min-w-[92px] text-right text-xs font-medium text-fg whitespace-nowrap [font-variant-numeric:tabular-nums]">
                           {formatBRL(item.valor)}
                         </span>
                       </div>
@@ -958,15 +998,19 @@ export default function AutoQuotePage() {
         {/* ── RIGHT PANEL (50%) ── */}
         <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-muted mb-4">
-                <FileText size={32} className="text-fg-muted" />
+            <div className="flex h-full flex-col">
+              <h2 className="text-lg font-semibold text-fg mb-3">Resultado</h2>
+              <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-line text-center">
+                {/* rounded-xl (20px nesta escala) — rounded-2xl vale 30px aqui e vira círculo em h-16 */}
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-surface-muted mb-4">
+                  <FileText size={32} className="text-fg-muted" />
+                </div>
+                <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>
+                <p className="mt-1 max-w-sm text-sm text-fg-muted">
+                  Cole a mensagem do cliente no painel esquerdo e clique em <strong>Extrair</strong> para
+                  gerar orçamentos.
+                </p>
               </div>
-              <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>
-              <p className="mt-1 max-w-sm text-sm text-fg-muted">
-                Cole o texto do pedido no painel esquerdo e clique em <strong>Extrair</strong> para
-                gerar orçamentos.
-              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -977,7 +1021,7 @@ export default function AutoQuotePage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={clearResults}
+                  onClick={() => setConfirmClearResults(true)}
                   disabled={activeDrafts.length === 0}
                   className="text-fg-muted"
                 >
@@ -1080,6 +1124,34 @@ export default function AutoQuotePage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmReset}
+        title="Descartar pedido e resultados?"
+        message="O texto e a imagem atuais serão apagados e todos os rascunhos extraídos (incluindo orçamentos ainda não emitidos) serão removidos deste navegador."
+        confirmLabel="Descartar tudo"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmReset(false);
+          handleReset();
+        }}
+        onCancel={() => setConfirmReset(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmClearResults}
+        title="Limpar a lista de resultados?"
+        message="Todos os rascunhos extraídos serão removidos deste navegador, incluindo os que ainda não foram emitidos."
+        confirmLabel="Limpar lista"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmClearResults(false);
+          clearResults();
+        }}
+        onCancel={() => setConfirmClearResults(false)}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { routes } from '../../api/_app/routes.js';
 function fakeResponse() {
   let statusCode = 200;
   const bodies: unknown[] = [];
+  const headers: Record<string, string | number | string[]> = {};
   const res = {
     status(code: number) {
       statusCode = code;
@@ -19,9 +20,11 @@ function fakeResponse() {
     send(data: unknown) {
       bodies.push(data);
     },
-    setHeader(_key: string, _value: string | number | string[]) {},
+    setHeader(key: string, value: string | number | string[]) {
+      headers[key] = value;
+    },
   } satisfies VercelResponseLike;
-  return { res, lastStatus: () => statusCode, lastBody: () => bodies[bodies.length - 1] };
+  return { res, lastStatus: () => statusCode, lastBody: () => bodies[bodies.length - 1], headers };
 }
 
 const SAVED_ENV: Record<string, string | undefined> = {};
@@ -83,6 +86,26 @@ test('handleApiRequest: sem autenticação responde 401', async () => {
   await handleApiRequest(req, res);
   assert.equal(lastStatus(), 401);
   assert.deepEqual(lastBody(), { error: 'Não autorizado. Faça login em /api/login.' });
+});
+
+test('handleApiRequest: contexto WhatsApp mantém CORS na resposta 401 da sessão', async () => {
+  withEnv({
+    NODE_ENV: 'test',
+    APP_AUTH_BYPASS: '',
+    APP_PASSWORD_HASH: '',
+    APP_SESSION_SECRET: '',
+    WHATSAPP_CONTEXT_EXTENSION_ORIGIN: 'chrome-extension://test',
+  });
+  const req = {
+    method: 'GET',
+    url: '/api/whatsapp-context?phone=5511999999999',
+    headers: { origin: 'chrome-extension://test' },
+  } as unknown as import('node:http').IncomingMessage;
+  const { res, lastStatus, headers } = fakeResponse();
+  await handleApiRequest(req, res);
+  assert.equal(lastStatus(), 401);
+  assert.equal(headers['Access-Control-Allow-Origin'], 'chrome-extension://test');
+  assert.equal(headers['Access-Control-Allow-Credentials'], 'true');
 });
 
 test('handleApiRequest: rota inexistente responde 404 via pipeline completo', async () => {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import {
   archiveQuotationTemplate,
@@ -36,6 +38,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   const [source, setSource] = useState('');
   const [validation, setValidation] = useState<{ warnings: string[]; preview: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<'archive' | 'set_default' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
@@ -126,7 +129,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }
 
   async function setDefault() {
-    if (!detail || !window.confirm('Definir este template como padrão?')) return;
+    if (!detail) return;
     setSaving(true);
     try {
       const result = await setDefaultQuotationTemplate(detail.id);
@@ -142,7 +145,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }
 
   async function archive() {
-    if (!detail || !window.confirm('Arquivar este template?')) return;
+    if (!detail) return;
     setSaving(true);
     try {
       await archiveQuotationTemplate(detail.id);
@@ -183,8 +186,8 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
                 <span className="block font-medium text-fg">{template.name}</span>
                 <span className="mt-1 block text-xs text-fg-muted">{template.key} · Usado por {template.usage_count} revisões</span>
                 <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                  {template.is_default && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">Padrão</span>}
-                  <span className="rounded-full bg-surface-muted px-2 py-0.5 text-fg-muted">{template.archived ? 'Arquivado' : 'Ativo'}</span>
+                  {template.is_default && <StatusBadge status="Open" label="Padrão" />}
+                  <StatusBadge status={template.archived ? 'Draft' : 'Issued'} label={template.archived ? 'Arquivado' : 'Ativo'} />
                 </span>
               </button>
             ))}
@@ -205,19 +208,39 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
             {detail && <p className="text-xs text-fg-muted">Versão atual: {detail.current_version || 1}</p>}
             <label className="block space-y-1.5 text-sm text-fg"><span className="font-medium">Fonte HTML</span><textarea value={source} onChange={(event) => setSource(event.target.value)} disabled={saving} rows={14} className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 font-mono text-xs leading-[1.4] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50" /></label>
             {validation?.warnings.map((warning) => <p key={warning} className="text-sm text-warning">Aviso: {warning}</p>)}
+            {/* Fundo branco intencional: preview de e-mail é sempre renderizado em fundo claro */}
             {validation?.preview && <iframe title="Preview do template" sandbox="" srcDoc={validation.preview} className="h-80 w-full rounded-lg border border-line bg-white" />}
             {message && <p role="status" className="text-sm text-fg">{message}</p>}
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               <Button type="button" variant="outline" onClick={() => void validate()} disabled={saving || !source || !key}><Eye size={14} /> Validar e visualizar preview</Button>
               <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : <Save />} {detail ? 'Salvar nova versão' : 'Criar modelo'}</Button>
-              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => void setDefault()} disabled={saving}>Definir como padrão</Button>}
-              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => void archive()} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
+              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => setPendingConfirm('set_default')} disabled={saving}>Definir como padrão</Button>}
+              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setPendingConfirm('archive')} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
             </div>
             {defaultKey && <p className="text-xs text-fg-muted">Modelo padrão: {defaultKey}</p>}
             </>}
           </div>
         </div>
       )}
+          <ConfirmDialog
+        open={pendingConfirm !== null}
+        title={pendingConfirm === 'archive' ? 'Arquivar este modelo?' : 'Definir como padrão?'}
+        message={
+          pendingConfirm === 'archive'
+            ? 'O modelo deixará de estar disponível para novos orçamentos, mas o histórico é preservado.'
+            : 'Novos orçamentos usarão este modelo por padrão.'
+        }
+        confirmLabel={pendingConfirm === 'archive' ? 'Arquivar' : 'Definir como padrão'}
+        cancelLabel="Cancelar"
+        variant={pendingConfirm === 'archive' ? 'destructive' : 'default'}
+        onConfirm={() => {
+          const action = pendingConfirm;
+          setPendingConfirm(null);
+          if (action === 'archive') void archive();
+          if (action === 'set_default') void setDefault();
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </section>
   );
 }

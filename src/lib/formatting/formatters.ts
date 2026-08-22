@@ -2,13 +2,13 @@
  * Formatters — portados do dashboard.html original.
  */
 
-/** R$ 1.455,30 (pontos nos milhares, vírgula decimal) */
+/** R$\u00a01.455,30 (nbsp após o símbolo evita quebra de linha; pontos nos milhares, vírgula decimal) */
 export function formatBRL(value: string | number | null | undefined): string {
   const num = Number(value);
-  if (Number.isNaN(num)) return 'R$ 0,00';
+  if (Number.isNaN(num)) return 'R$\u00a00,00';
   const [int, dec] = Math.abs(num).toFixed(2).split('.');
   const intFormatted = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${num < 0 ? '-' : ''}R$ ${intFormatted},${dec}`;
+  return `${num < 0 ? '-' : ''}R$\u00a0${intFormatted},${dec}`;
 }
 
 export function normalizePhoneDigits(phone: unknown, maxDigits = 15): string {

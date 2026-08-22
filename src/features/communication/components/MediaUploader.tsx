@@ -122,7 +122,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         <select
           value={selectedGroup}
           onChange={(e) => setSelectedGroup(e.target.value as ProductGroup)}
-          className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
+          className="w-full appearance-none rounded-full border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
           disabled={uploading || groups.length === 0}
         >
           {groups.length === 0 && <option value="">Nenhuma categoria cadastrada</option>}
@@ -175,7 +175,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
 
       {/* Error */}
       {error && (
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-red-700 dark:text-destructive/60">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 text-destructive">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <p className="text-sm">{error}</p>
         </div>

@@ -2,6 +2,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   type ChangeEvent,
   type MutableRefObject,
@@ -29,8 +30,11 @@ import { searchProducts } from '@/lib/api/productCache';
 import type { Product } from '@/types/domain';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
+import { useToast } from '@/components/shared/toast';
+import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import {
@@ -40,21 +44,23 @@ import {
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
 import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
 
-const STATUS_LABELS: Record<string, string> = {
-  Rascunho: 'Rascunho',
-  Emitido: 'Emitido',
-  Enviado: 'Enviado',
-  Aprovado: 'Aprovado',
-  Perdido: 'Perdido',
-  Draft: 'Rascunho',
-  Issued: 'Emitido',
-  Open: 'Aberto',
-  Replied: 'Respondido',
-  Ordered: 'Convertido',
-  Lost: 'Perdido',
-  Expired: 'Expirado',
-  Cancelled: 'Cancelado',
+// Estados legados de conversação (fora do vocabulário canônico de orçamentos).
+const LEGACY_CONVERSATION_STATUS: Record<string, { label: string; badge: string }> = {
+  Open: { label: 'Aberto', badge: 'Open' },
+  Replied: { label: 'Respondido', badge: 'Replied' },
 };
+
+function statusBadgeProps(status: unknown): { status: string; label: string } {
+  const raw = String(status ?? '');
+  const legacy = LEGACY_CONVERSATION_STATUS[raw];
+  if (legacy) return { status: legacy.badge, label: legacy.label };
+  return {
+    status: quotationStatusBadgeKey(raw),
+    label: quotationStatusLabel(raw),
+  };
+}
+
+const LOSS_REASONS = ['Preço', 'Prazo', 'Sem retorno do cliente', 'Outro'] as const;
 
 type QuotationItem = ProjectedQuotationItem & {
   _key?: string;
@@ -134,6 +140,11 @@ function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
   return cloneSections(existing);
 }
 
+// Comparação determinística de itens: ignora _key (ID de UI gerado aleatoriamente).
+function comparableItems(items: CoreQuotationItem[]): Omit<CoreQuotationItem, '_key'>[] {
+  return items.map(({ _key: _ignored, ...rest }) => rest);
+}
+
 const EMAIL_AMBIGUOUS_ERROR = 'O resultado do envio não pôde ser confirmado. Tente novamente.';
 const EMAIL_SEND_ERROR = 'Não foi possível enviar o e-mail. Tente novamente.';
 
@@ -162,6 +173,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [data, setData] = useState<QuotationData>(initialData);
   const draftEditable = data.status_canonical === 'rascunho';
   const [editing, setEditing] = useState(false);
+  const [confirmDiscardEdits, setConfirmDiscardEdits] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -177,7 +189,18 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     'aprovado' | 'perdido' | 'create_revision' | null
   >(null);
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'info' | 'error'>('info');
+  const [confirmIssueOpen, setConfirmIssueOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [lossReasonOpen, setLossReasonOpen] = useState(false);
+  const [lossReasonChoice, setLossReasonChoice] = useState('');
+  const [lossReasonDetail, setLossReasonDetail] = useState('');
   const [conflict, setConflict] = useState('');
+  const { toast } = useToast();
+  const showMessage = useCallback((text: string, tone: 'info' | 'error' = 'info') => {
+    setMessage(text);
+    setMessageTone(tone);
+  }, []);
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
   const [clientId, setClientId] = useState(data.client_id || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
@@ -245,7 +268,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setProductResults({});
     Object.values(productTimers.current).forEach((timer) => clearTimeout(timer));
     productTimers.current = {};
-    setMessage('');
+    showMessage('');
     setEditing(false);
     setConflict('');
   }, [initialData]);
@@ -391,7 +414,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       }
       setProductResults((previous) => ({ ...previous, [key]: results as Product[] }));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Não foi possível buscar produtos.');
+      toast(error instanceof Error ? error.message : 'Não foi possível buscar produtos.', 'error');
       setProductResults((previous) => ({ ...previous, [key]: [] }));
     }
   }, []);
@@ -481,7 +504,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           line_total: String(Number(qty) * Number(rate)),
         });
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Não foi possível consultar o preço.');
+        toast(error instanceof Error ? error.message : 'Não foi possível consultar o preço.', 'error');
       }
     },
     [items, lookupProductPrice, updateItem]
@@ -534,12 +557,29 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.template_key || 'padrao');
       setSelectedVersionId(authoritative.template_version_id || '');
-      setMessage('');
+      showMessage('');
       setConflict('');
       setEditing(false);
     },
     [data]
   );
+
+  // ── Dirty detection for the edit form ──
+  const isDirty = useMemo(() => {
+    if (!editing) return false;
+    if (JSON.stringify(comparableItems(items)) !== JSON.stringify(comparableItems(asCoreItems(data.items)))) return true;
+    if (clientId !== (data.client_id || '')) return true;
+    if (validadeDias !== String(data.validade_dias ?? '')) return true;
+    if (pagamento !== (data.pagamento || '')) return true;
+    if (entrega !== (data.entrega || '')) return true;
+    if (frete !== String(data.frete)) return true;
+    if (observacoes !== (data.observacoes || '')) return true;
+    if (prazoProducao !== (data.prazo_producao || '')) return true;
+    if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
+    if (selectedTemplate !== (data.template_key || 'padrao')) return true;
+    if (selectedVersionId !== (data.template_version_id || '')) return true;
+    return false;
+  }, [editing, items, data, clientId, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate, selectedVersionId]);
 
   const save = useCallback(async () => {
     const token = concurrencyTokenRef.current;
@@ -548,7 +588,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       return;
     }
     setSaving(true);
-    setMessage('Salvando…');
+    showMessage('Salvando…');
     setConflict('');
     try {
       const refreshed = await apiPut<unknown>(
@@ -579,7 +619,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       concurrencyTokenRef.current = projection.concurrencyToken;
       setData(projection.data);
       resetEditor(projection.data);
-      setMessage('Salvo.');
+      toast('Orçamento salvo.', 'success');
       setEditing(false);
     } catch (error) {
       const status = (error as { status?: number }).status;
@@ -588,9 +628,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           (error as Error).message ||
             'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.'
         );
-        setMessage('');
+        showMessage('');
       } else {
-        setMessage(`Erro ao salvar: ${(error as Error).message || 'Tente novamente.'}`);
+        showMessage(`Erro ao salvar: ${(error as Error).message || 'Tente novamente.'}`, 'error');
       }
     } finally {
       setSaving(false);
@@ -617,23 +657,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, [onReload]);
 
   const handleDelete = useCallback(async () => {
+    setConfirmDeleteOpen(false);
     if (data.status_canonical !== 'rascunho') {
-      setMessage('Somente rascunhos podem ser excluídos.');
+      toast('Somente rascunhos podem ser excluídos.', 'info');
       return;
     }
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir o orçamento ${data.id}?\n\nEsta ação não pode ser desfeita.`
-      )
-    )
-      return;
     try {
       await apiDelete(`/quotations?id=${encodeURIComponent(data.id)}`);
+      toast(`Orçamento ${data.id} excluído.`, 'success');
       navigate('/quotations');
     } catch (err) {
-      setMessage(`Erro ao excluir: ${err instanceof Error ? err.message : 'Tente novamente.'}`);
+      showMessage(`Erro ao excluir: ${err instanceof Error ? err.message : 'Tente novamente.'}`, 'error');
     }
-  }, [data.id, navigate]);
+  }, [data.id, data.status_canonical, navigate, showMessage, toast]);
 
   const displayItems = items;
   const editingSubtotal = items.reduce(
@@ -657,10 +693,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       'noopener,noreferrer'
     );
   }, [data.id, data.revision_id, draftEditable, selectedVersionId]);
-  const emitir = useCallback(async () => {
-    if (!confirm(`Emitir orçamento ${data.id}? Após emissão não poderá ser editado.`)) return;
+  const runIssue = useCallback(async () => {
+    setConfirmIssueOpen(false);
     setIssuing(true);
-    setMessage('');
+    showMessage('');
     setConflict('');
     try {
       const key = globalThis.crypto.randomUUID();
@@ -676,22 +712,19 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         template_version_id: selectedVersionId || undefined,
         secoes: sections,
       } }, key, { sourceQuotationId: data.quotation_uuid || undefined, sourceRevisionId: data.revision_id || undefined });
-      setMessage(`Orçamento ${issue.businessNumber} emitido.`);
+      toast(`Orçamento ${issue.businessNumber} emitido.`, 'success');
       await onReload();
     } catch (error) {
-      setMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`);
+      showMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`, 'error');
     } finally {
       setIssuing(false);
     }
-  }, [data.cliente, data.email, data.id, data.quotation_uuid, data.revision_id, entrega, frete, items, observacoes, onReload, pagamento, prazoProducao, sections, selectedTemplate, selectedVersionId, validadeDias]);
+  }, [data.cliente, data.email, data.id, data.quotation_uuid, data.revision_id, entrega, frete, items, observacoes, onReload, pagamento, prazoProducao, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
 
   const markCommercialStatus = useCallback(
-    async (status: 'aprovado' | 'perdido') => {
-      const lossReason = status === 'perdido'
-        ? window.prompt('Informe o motivo da perda:')?.trim() || ''
-        : undefined;
+    async (status: 'aprovado' | 'perdido', lossReason?: string) => {
       if (status === 'perdido' && !lossReason) {
-        setMessage('Informe um motivo para marcar o orçamento como perdido.');
+        toast('Informe um motivo para marcar o orçamento como perdido.', 'info');
         return;
       }
       const token = concurrencyTokenRef.current;
@@ -702,7 +735,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         return;
       }
       setLifecycleAction(status);
-      setMessage(status === 'aprovado' ? 'Marcando como aprovado…' : 'Marcando como perdido…');
+      showMessage(status === 'aprovado' ? 'Marcando como aprovado…' : 'Marcando como perdido…');
       setConflict('');
       try {
         const refreshed = await apiPost<QuotationData>(
@@ -718,9 +751,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         if (!projection) throw new Error('Resposta inválida ao atualizar o estado do orçamento.');
         concurrencyTokenRef.current = projection.concurrencyToken;
         setData(projection.data);
-        setMessage(
-          status === 'aprovado' ? 'Orçamento aprovado.' : 'Orçamento marcado como perdido.'
+        toast(
+          status === 'aprovado' ? 'Orçamento aprovado.' : 'Orçamento marcado como perdido.',
+          'success'
         );
+        showMessage('');
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
@@ -728,17 +763,18 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             (error as Error).message ||
               'O orçamento mudou. Recarregue para conferir o estado atual.'
           );
-          setMessage('');
+          showMessage('');
         } else {
-          setMessage(
-            `Erro ao atualizar o estado: ${(error as Error).message || 'Tente novamente.'}`
+          showMessage(
+            `Erro ao atualizar o estado: ${(error as Error).message || 'Tente novamente.'}`,
+            'error'
           );
         }
       } finally {
         setLifecycleAction(null);
       }
     },
-    [concurrencyTokenRef, data.id]
+    [concurrencyTokenRef, data.id, showMessage, toast]
   );
 
   const createRevision = useCallback(
@@ -751,7 +787,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         return;
       }
       setLifecycleAction('create_revision');
-      setMessage('Criando nova revisão…');
+      showMessage('Criando nova revisão…');
       setConflict('');
       try {
         const refreshed = await apiPost<QuotationData>(
@@ -767,7 +803,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         concurrencyTokenRef.current = projection.concurrencyToken;
         setData(projection.data);
         resetEditor(projection.data);
-        setMessage('Nova revisão criada em rascunho.');
+        toast('Nova revisão criada em rascunho.', 'success');
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
@@ -775,16 +811,48 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             (error as Error).message ||
               'A revisão mudou ou já existe um rascunho. Recarregue para conferir.'
           );
-          setMessage('');
+          showMessage('');
         } else {
-          setMessage(`Erro ao criar revisão: ${(error as Error).message || 'Tente novamente.'}`);
+          showMessage(`Erro ao criar revisão: ${(error as Error).message || 'Tente novamente.'}`, 'error');
         }
       } finally {
         setLifecycleAction(null);
       }
     },
-    [concurrencyTokenRef, data.id, resetEditor]
+    [concurrencyTokenRef, data.id, resetEditor, showMessage, toast]
   );
+  const openLossReasonDialog = useCallback(() => {
+    setLossReasonChoice('');
+    setLossReasonDetail('');
+    setLossReasonOpen(true);
+  }, []);
+
+  const closeLossReasonDialog = useCallback(() => {
+    setLossReasonOpen(false);
+  }, []);
+
+  const submitLossReason = useCallback(() => {
+    const detail = lossReasonDetail.trim();
+    const reason =
+      lossReasonChoice === 'Outro'
+        ? detail
+        : detail
+          ? `${lossReasonChoice}: ${detail}`
+          : lossReasonChoice;
+    if (!reason) return;
+    setLossReasonOpen(false);
+    void markCommercialStatus('perdido', reason);
+  }, [lossReasonChoice, lossReasonDetail, markCommercialStatus]);
+
+  useEffect(() => {
+    if (!lossReasonOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeLossReasonDialog();
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [lossReasonOpen, closeLossReasonDialog]);
+
   const openIssuedDocument = useCallback(() => {
     const params = new URLSearchParams({ id: data.revision_id || data.id || '', format: 'pdf' });
     window.open(`/api/quotation-preview?${params.toString()}`, '_blank', 'noopener,noreferrer');
@@ -858,7 +926,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         <div className="px-6 py-4 border-b flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="font-mono text-lg font-semibold">{data.id}</span>
-            <StatusBadge status={data.status} label={STATUS_LABELS[data.status] || data.status} />
+            <StatusBadge {...statusBadgeProps(data.status)} />
             {data.revision_number && (
               <span className="text-xs text-fg-muted">Revisão {data.revision_number}</span>
             )}
@@ -1114,7 +1182,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               variant="outline"
               size="sm"
               disabled={lifecycleAction !== null}
-              onClick={() => markCommercialStatus('perdido')}
+              onClick={openLossReasonDialog}
             >
               {lifecycleAction === 'perdido' && <Loader2 size={14} className="animate-spin" />}
               Marcar como perdido
@@ -1280,7 +1348,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               variant="outline"
               size="sm"
               onClick={() => {
-                setMessage('');
+                showMessage('');
                 setEditing(true);
               }}
             >
@@ -1292,7 +1360,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               variant="success"
               size="sm"
               disabled={issuing || lifecycleAction !== null}
-              onClick={emitir}
+              onClick={() => setConfirmIssueOpen(true)}
             >
               {issuing ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}{' '}
               {issuing ? 'Emitindo…' : 'Emitir orçamento'}
@@ -1303,7 +1371,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button variant="success" size="sm" disabled={saving} onClick={save}>
                 <Save size={14} /> {saving ? 'Salvando…' : 'Salvar'}
               </Button>
-              <Button variant="outline" size="sm" disabled={saving} onClick={() => resetEditor()}>
+              <Button variant="outline" size="sm" disabled={saving} onClick={() => (isDirty ? setConfirmDiscardEdits(true) : resetEditor())}>
                 Cancelar
               </Button>
             </>
@@ -1346,11 +1414,23 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               <Button
                 variant="outline"
                 size="sm"
+                title={
+                  deliveryPending
+                    ? 'Envio em andamento'
+                    : delivery
+                      ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status ao lado.'
+                      : (data.expirada || data.is_expired || data.derived_expired)
+                        ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+                        : undefined
+                }
                 disabled={deliveryPending || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
                 onClick={sendIssuedQuotation}
               >
                 <Phone size={14} /> Enviar WhatsApp
               </Button>
+              {delivery && !deliveryPending && (
+                <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
+              )}
               {(data.expirada || data.is_expired || data.derived_expired) && (
                 <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
               )}
@@ -1358,7 +1438,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           )}
           {draftEditable && !editing && (
             <Button
-              onClick={handleDelete}
+              onClick={() => setConfirmDeleteOpen(true)}
               variant="outline"
               size="sm"
               className="text-destructive border-destructive/20 hover:bg-destructive/10"
@@ -1375,7 +1455,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             <span
               role="status"
               aria-live="polite"
-              className={`text-xs ${message.startsWith('Erro') ? 'text-destructive' : 'text-fg-muted'}`}
+              className={`text-xs ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
             >
               {message}
             </span>
@@ -1418,8 +1498,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                         </TableCell>
                         <TableCell>
                           <StatusBadge
-                            status={entry.status}
-                            label={STATUS_LABELS[entry.status] || entry.status}
+                            {...statusBadgeProps(entry.status)}
                           />
                         </TableCell>
                         <TableCell>{entry.template_key || '—'}</TableCell>
@@ -1475,6 +1554,103 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         onCancel={cancelEmailDialog}
         onSubmit={sendQuotationEmail}
       />
+      <ConfirmDialog
+        open={confirmDiscardEdits}
+        title="Descartar alterações?"
+        message="As edições deste orçamento (itens, condições e seções) que ainda não foram salvas serão perdidas."
+        confirmLabel="Descartar"
+        cancelLabel="Continuar editando"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmDiscardEdits(false);
+          resetEditor();
+        }}
+        onCancel={() => setConfirmDiscardEdits(false)}
+      />
+      <ConfirmDialog
+        open={confirmIssueOpen}
+        title={`Emitir orçamento ${data.id}?`}
+        message="Após a emissão este orçamento não poderá mais ser editado."
+        confirmLabel="Emitir"
+        cancelLabel="Cancelar"
+        variant="default"
+        onConfirm={runIssue}
+        onCancel={() => setConfirmIssueOpen(false)}
+      />
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Excluir orçamento?"
+        message={`Tem certeza que deseja excluir o orçamento ${data.id}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
+      {lossReasonOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={closeLossReasonDialog}
+            aria-hidden="true"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="loss-reason-title"
+            className="relative w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-2xl"
+          >
+            <h3 id="loss-reason-title" className="text-lg font-semibold text-fg">
+              Motivo da perda
+            </h3>
+            <p className="mt-2 text-sm text-fg-muted">
+              Informe por que o orçamento {data.id} foi perdido. O motivo fica registrado no
+              histórico.
+            </p>
+            <label className="mt-4 block text-sm">
+              <span className="text-xs text-fg-muted">Motivo</span>
+              <select
+                autoFocus
+                value={lossReasonChoice}
+                onChange={(event) => setLossReasonChoice(event.target.value)}
+                className="mt-1 h-9 w-full rounded border border-line bg-surface px-2 text-sm"
+              >
+                <option value="">Selecione…</option>
+                {LOSS_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>
+                    {reason}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="mt-3 block text-sm">
+              <span className="text-xs text-fg-muted">Detalhes (opcional)</span>
+              <textarea
+                value={lossReasonDetail}
+                onChange={(event) => setLossReasonDetail(event.target.value)}
+                rows={3}
+                placeholder="Contexto adicional sobre a perda…"
+                className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="mt-5 flex justify-end gap-3">
+              <Button variant="outline" onClick={closeLossReasonDialog}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={
+                  !lossReasonChoice ||
+                  (lossReasonChoice === 'Outro' && !lossReasonDetail.trim())
+                }
+                onClick={submitLossReason}
+              >
+                Marcar como perdido
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

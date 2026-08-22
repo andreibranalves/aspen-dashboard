@@ -86,21 +86,42 @@ test('email markers render on desktop and mobile', async ({ page }) => {
   });
 
   await page.goto('/#/quotations');
+  // marcador de e-mail agora é icônico: enviado = ícone + data; pendente = '—'
   const desktopRows = page.getByRole('row');
-  await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('E-mail enviado');
   await expect(desktopRows.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
   const pendingDesktopRow = desktopRows.filter({ hasText: 'ORC-EMAIL-2' });
-  await expect(pendingDesktopRow).toContainText('E-mail não enviado');
-  await expect(pendingDesktopRow.getByText('E-mail não enviado').locator('..')).not.toContainText('17/08/2026');
+  await expect(pendingDesktopRow).not.toContainText('17/08/2026');
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   const mobileCards = page.locator('[class~="md:hidden"] > div');
-  await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('E-mail enviado');
   await expect(mobileCards.filter({ hasText: 'ORC-EMAIL-1' })).toContainText('17/08/2026');
   const pendingMobileCard = mobileCards.filter({ hasText: 'ORC-EMAIL-2' });
-  await expect(pendingMobileCard).toContainText('E-mail não enviado');
-  await expect(pendingMobileCard.getByText('E-mail não enviado').locator('..')).not.toContainText('17/08/2026');
+  await expect(pendingMobileCard).not.toContainText('17/08/2026');
+});
+
+test('cancelar edição sem alterações não abre confirmação de descarte @quotations @smoke', async ({ page }) => {
+  let authoritative = detail();
+  await page.route('**/api/quotations**', async (route) => {
+    if (route.request().method() === 'GET' && new globalThis.URL(route.request().url()).searchParams.get('id')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(authoritative) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [{ id, revision_id: '22222222-2222-4222-8222-222222222222', cliente: 'Cliente local', data: '2026-07-01', valor: '90.00', status: 'Rascunho', status_canonical: 'rascunho' }], pagination: { page: 1, limit: 10, total: 1, total_pages: 1 }, status_summary: { Rascunho: 1 } }),
+    });
+  });
+
+  await page.goto(`/#/quotations/${id}`);
+  await expect(page.getByText('Produto local')).toBeVisible();
+
+  // editar sem alterar nada e cancelar: dirty detection determinística não deve disparar
+  await page.getByRole('button', { name: /Editar/ }).click();
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(page.getByText('Descartar alterações?')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Editar/ })).toBeVisible();
 });
 
 test('local quotations list/search/open/edit and surface optimistic conflicts @quotations @smoke', async ({ page }) => {
@@ -155,6 +176,8 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByLabel('Pagamento do orçamento').fill('Não persistir');
   await page.getByRole('button', { name: 'Cancelar' }).click();
+  // cancelar com edições sujas pede confirmação
+  await page.getByRole('dialog').getByRole('button', { name: 'Descartar' }).click();
   await page.getByRole('button', { name: /Editar/ }).click();
   await expect(page.getByLabel('Pagamento do orçamento')).toHaveValue('À vista');
   await page.getByLabel('Nome exibido no orçamento SKU-1').fill(customItemName);
@@ -163,7 +186,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await page.getByLabel('Observações do orçamento').fill('Alteração local');
   await page.getByLabel('Preço aplicado SKU-1').fill('10.00');
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByText('Orçamento salvo.')).toBeVisible();
   expect(putCount).toBe(1);
   expect(lastPutPayload.concurrency_token).toBe(token);
   expect(lastPutPayload.pagamento).toBe('30 dias');

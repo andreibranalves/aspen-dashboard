@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } from 'react';
 import {
   Search,
   AlertTriangle,
+  Eye,
   Tag,
   PlusCircle,
   Archive,
+  ChevronDown,
   ArchiveRestore,
 } from 'lucide-react';
 import { useHashRoute } from '@/hooks/useHashRoute';
@@ -21,6 +23,9 @@ import { clearProductCache } from '@/lib/api/productCache';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SkeletonTable from '@/components/shared/SkeletonTable';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import PageHeader from '@/components/shared/PageHeader';
+import { useToast } from '@/components/shared/toast';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
@@ -38,16 +43,46 @@ interface SortOption {
 }
 
 const SORT_OPTIONS: SortOption[] = [
-  { value: 'item_name asc', label: 'nome' },
-  { value: 'modified desc', label: 'mais recentes' },
-  { value: 'modified asc', label: 'data de atualização' },
-  { value: 'item_code asc', label: 'código (sku)' },
+  { value: 'item_name asc', label: 'Nome (A–Z)' },
+  { value: 'modified desc', label: 'Criação (mais recente)' },
+  { value: 'modified asc', label: 'Criação (mais antiga)' },
+  { value: 'item_code asc', label: 'Código SKU (A–Z)' },
 ];
 
 type ProductStatus = 'active' | 'archived' | 'all';
 const parseProductStatus = parseHashOption<ProductStatus>(['active', 'archived', 'all']);
 const parseProductSort = parseHashOption(SORT_OPTIONS.map((option) => option.value));
 const parseProductLimit = parseHashAllowedInteger(PAGE_SIZES);
+
+type PendingProductArchive =
+  | { kind: 'single'; sku: string; archived: boolean }
+  | { kind: 'bulk'; skus: string[] };
+
+/** Normaliza abreviações de unidade para o padrão pt-BR (un/pç). */
+function normalizeUom(value: string | undefined): string {
+  const raw = (value || '').trim().toLowerCase();
+  if (!raw) return 'und';
+  if (['nos', 'no', 'un', 'unds'].includes(raw)) return 'un';
+  if (['pc', 'pç', 'pcs', 'pca'].includes(raw)) return 'pç';
+  return raw;
+}
+
+function archiveDialogText(pending: PendingProductArchive): { title: string; message: string; confirmLabel: string } {
+  if (pending.kind === 'single') {
+    const action = pending.archived ? 'Restaurar' : 'Arquivar';
+    return {
+      title: `${action} produto`,
+      message: `Tem certeza que deseja ${action.toLowerCase()} o produto ${pending.sku}?`,
+      confirmLabel: action,
+    };
+  }
+  const count = pending.skus.length;
+  return {
+    title: 'Arquivar produtos',
+    message: `Tem certeza que deseja arquivar ${count} produto${count !== 1 ? 's' : ''}?`,
+    confirmLabel: 'Arquivar',
+  };
+}
 
 export default function ProductsPage() {
   const [data, setData] = useState<Product[]>([]);
@@ -100,12 +135,12 @@ export default function ProductsPage() {
     }
   }, [status]);
 
-  // TopBar actions — Criar Produto
+  // TopBar actions — Novo produto
   useEffect(() => {
     setTopBarActions?.(
       <Button size="sm" onClick={() => navigate('/products/new')}>
         <PlusCircle size={16} />
-        Criar Produto
+        Novo produto
       </Button>
     );
     return () => setTopBarActions?.(null);
@@ -165,46 +200,63 @@ export default function ProductsPage() {
 
   // ── Delete ──
 
-  const handleDelete = useCallback(async (sku: string, archived: boolean) => {
-    const action = archived ? 'restaurar' : 'arquivar';
-    if (!confirm(`Tem certeza que deseja ${action} o produto ${sku}?`)) return;
-    try {
-      if (archived) {
-        await apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true });
-      } else {
-        await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
+  const { toast } = useToast();
+  const [pendingArchive, setPendingArchive] = useState<PendingProductArchive | null>(null);
+  const archiveDialog = useMemo(
+    () => (pendingArchive ? archiveDialogText(pendingArchive) : null),
+    [pendingArchive],
+  );
+
+  const requestArchive = useCallback((sku: string, archived: boolean) => {
+    setPendingArchive({ kind: 'single', sku, archived });
+  }, []);
+
+  const requestBulkArchive = useCallback(() => {
+    const skus = data
+      .filter((row) => selectedIds.includes(row.sku || row.item_code || ''))
+      .map((row) => row.sku || row.item_code || '')
+      .filter(Boolean);
+    if (skus.length === 0 || status === 'archived') return;
+    setPendingArchive({ kind: 'bulk', skus });
+  }, [data, selectedIds, status]);
+
+  const runArchive = useCallback(async (pending: PendingProductArchive) => {
+    if (pending.kind === 'single') {
+      const { sku, archived } = pending;
+      try {
+        if (archived) {
+          await apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true });
+        } else {
+          await apiDelete(`/products?id=${encodeURIComponent(sku)}`);
+        }
+        clearProductCache();
+        toast(archived ? `Produto ${sku} restaurado.` : `Produto ${sku} arquivado.`, 'success');
+        await fetchData(search, page, limit, sort, status);
+      } catch (err) {
+        toast(`Erro ao ${archived ? 'restaurar' : 'arquivar'} o produto ${sku}: ` + ((err as Error).message || 'Tente novamente.'), 'error');
       }
-      clearProductCache();
-      await fetchData(search, page, limit, sort, status);
-    } catch (err) {
-      alert(`Erro ao ${action}: ` + ((err as Error).message || 'Tente novamente.'));
+      return;
     }
-  }, [fetchData, limit, page, search, sort, status]);
 
-  const handleBulkDelete = useCallback(async () => {
-    const selected = data.filter((row) => selectedIds.includes(row.sku || row.item_code || ''));
-    if (selected.length === 0 || status === 'archived') return;
-
-    const action = 'arquivar';
-    if (!confirm(`Tem certeza que deseja ${action} ${selected.length} produto${selected.length !== 1 ? 's' : ''}?`)) return;
-
+    const skus = pending.skus;
     try {
-      await Promise.all(selected.map((row) => apiDelete(`/products?id=${encodeURIComponent(row.sku || row.item_code || '')}`)));
+      await Promise.all(skus.map((sku) => apiDelete(`/products?id=${encodeURIComponent(sku)}`)));
       clearProductCache();
-      const nextPage = selected.length === data.length && page > 1 ? page - 1 : page;
+      const nextPage = skus.length === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
+      toast(`${skus.length} produto${skus.length !== 1 ? 's' : ''} arquivado${skus.length !== 1 ? 's' : ''}.`, 'success');
       await fetchData(search, nextPage, limit, sort, status);
     } catch (err) {
-      alert('Erro ao excluir produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'));
+      toast('Erro ao arquivar produtos selecionados: ' + ((err as Error).message || 'Tente novamente.'), 'error');
     }
-  }, [data, selectedIds, page, search, limit, sort, status, fetchData]);
+  }, [data.length, fetchData, limit, page, search, setPage, sort, status, toast]);
 
   const selectedCount = selectedIds.length;
 
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
-      {/* Page title */}
-      <h1 className="text-2xl font-semibold text-fg">Produtos</h1>
+      {/* PageHeader */}
+      <PageHeader title="Produtos" description="Catálogo com preços da tabela — edite cada item na sua página de detalhe." />
 
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">
@@ -219,15 +271,19 @@ export default function ProductsPage() {
         </div>
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
-          <select
-            value={limit}
-            onChange={onLimitChange}
-            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          >
-            {PAGE_SIZES.map(n => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={limit}
+              onChange={onLimitChange}
+              aria-label="Itens por página"
+              className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            >
+              {PAGE_SIZES.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          </div>
         </div>
         <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1 text-xs">
             {(['active', 'archived', 'all'] as const).map((value) => (
@@ -239,7 +295,7 @@ export default function ProductsPage() {
                   setStatus(value);
                   setPage(1);
                 }}
-                className={`rounded-full px-3 py-1.5 transition-colors ${status === value ? 'bg-primary text-white' : 'text-fg-muted hover:text-fg'}`}
+                className={`rounded-full px-3 py-1.5 transition-colors ${status === value ? 'bg-primary text-primary-foreground' : 'text-fg-muted hover:text-fg'}`}
               >
                 {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
               </button>
@@ -261,7 +317,7 @@ export default function ProductsPage() {
             }}
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               sort === opt.value
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted hover:text-fg'
             }`}
           >
@@ -288,7 +344,7 @@ export default function ProductsPage() {
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <Tag size={36} className="text-fg-muted/40" />
           <p>Nenhum produto encontrado</p>
-          <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
+          <p className="text-sm">Ajuste os filtros ou cadastre pelo ERP.</p>
         </div>
       )}
 
@@ -313,8 +369,8 @@ export default function ProductsPage() {
                   <TableHead className="pl-0">Descrição</TableHead>
                   <TableHead className="pl-6">SKU</TableHead>
                   <TableHead className="text-center pr-4">Unidade</TableHead>
-                  <TableHead className="text-center pl-4">Preço</TableHead>
-                  <TableHead className="text-center w-[60px]">Ações</TableHead>
+                  <TableHead className="text-right pl-4">Preço</TableHead>
+                  <TableHead className="text-center w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -337,21 +393,33 @@ export default function ProductsPage() {
                         />
                       </TableCell>
                       <TableCell>{p.nome || p.item_name}</TableCell>
-                      <TableCell className="text-fg-muted max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
-                      <TableCell className="font-mono text-sm pl-6">{sku}</TableCell>
-                      <TableCell className="text-fg-muted text-center pr-4">{p.unidade || p.stock_uom || 'und'}</TableCell>
-                      <TableCell className="text-center font-medium pl-4">
+                      <TableCell title={p.descricao || undefined} className="text-fg-muted max-w-[200px] truncate pl-0">{p.descricao || '—'}</TableCell>
+                      <TableCell className="font-mono text-sm whitespace-nowrap pl-6">{sku}</TableCell>
+                      <TableCell className="text-fg-muted text-center whitespace-nowrap pr-4">{normalizeUom(p.unidade || p.stock_uom)}</TableCell>
+                      <TableCell className="text-right font-medium whitespace-nowrap pl-4">
                         {p.pricing_available && p.preco_minimo != null ? formatBRL(p.preco_minimo) : '—'}
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleDelete(sku, p.ativo === false)}
-                          className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors"
-                          aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                          title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
-                        >
-                          {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
-                        </button>
+                        <div className="flex items-center justify-center">
+                          <button
+                            onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
+                            className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-primary/10 hover:text-primary transition-colors"
+                            aria-label={`Ver detalhes do produto ${sku}`}
+                            title={`Ver detalhes ${sku}`}
+                          >
+                            <Eye size={18} />
+                          </button>
+                          <span className="ml-1 border-l border-line pl-1 inline-flex items-center">
+                            <button
+                              onClick={() => requestArchive(sku, p.ativo === false)}
+                              className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded text-fg-muted hover:bg-surface-muted hover:text-fg transition-colors"
+                              aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
+                              title={`${p.ativo === false ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
+                            >
+                              {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
+                            </button>
+                          </span>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -393,7 +461,7 @@ export default function ProductsPage() {
                         <p className="mt-1 text-xs text-fg-muted">
                           <span className="font-mono text-primary">{sku}</span>
                           {' · '}
-                          {p.unidade || p.stock_uom || 'und'}
+                          {normalizeUom(p.unidade || p.stock_uom)}
                           {p.pricing_available && p.preco_minimo != null && (
                             <>
                               {' · '}
@@ -404,10 +472,10 @@ export default function ProductsPage() {
                       </div>
                     </button>
                     <button
-                      onClick={() => handleDelete(sku, p.ativo === false)}
-                      className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/100/10 hover:text-destructive transition-colors shrink-0"
+                      onClick={() => requestArchive(sku, p.ativo === false)}
+                      className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
                       aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                      title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
+                      title={`${p.ativo === false ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
                     >
                       {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
                     </button>
@@ -457,7 +525,7 @@ export default function ProductsPage() {
                 <Button variant="outline" onClick={() => setSelectedIds([])} disabled={selectedCount === 0}>
                   Limpar seleção
                 </Button>
-                <Button variant="default" onClick={handleBulkDelete} disabled={selectedCount === 0}>
+                <Button variant="default" onClick={requestBulkArchive} disabled={selectedCount === 0}>
                   <Archive size={16} className="mr-2" />
                   Arquivar produtos
                 </Button>
@@ -466,6 +534,21 @@ export default function ProductsPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={archiveDialog !== null}
+        title={archiveDialog?.title}
+        message={archiveDialog?.message}
+        confirmLabel={archiveDialog?.confirmLabel}
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          const pending = pendingArchive;
+          setPendingArchive(null);
+          if (pending) void runArchive(pending);
+        }}
+        onCancel={() => setPendingArchive(null)}
+      />
 
     </div>
   );

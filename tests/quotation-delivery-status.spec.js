@@ -266,9 +266,9 @@ test('single click persists status across reload and never offers blind retry', 
   const lifecycle = await mockDeliveryLifecycle(page, ['queued', 'processing', 'provider_accepted', 'delivered']);
   await issueAutoQuote(page);
   await page.getByRole('button', { name: /enviar whatsapp/i }).click();
-  await expect(page.getByText('Aceito pela Evolution')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Aceito')).toBeVisible({ timeout: 15000 });
   await page.reload();
-  await expect(page.getByText('Aceito pela Evolution')).toBeVisible();
+  await expect(page.getByText('Aceito')).toBeVisible();
   await expect(page.getByRole('button', { name: /enviar whatsapp/i })).toBeDisabled();
   await expect(page.getByText('Entregue')).toBeVisible({ timeout: 10000 });
   expect(lifecycle.getSendCount()).toBe(1);
@@ -415,7 +415,7 @@ test('polling failure keeps the last delivery status and shows a non-destructive
       : json(route, { error: 'status unavailable' }, 503);
   });
   await page.goto(`/#/quotations/${quotationId}`);
-  await expect(page.getByText('Aceito pela Evolution', { exact: true })).toBeVisible();
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
   await expect(page.getByText('status unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByText('Aceito pela Evolution', { exact: true })).toBeVisible();
+  await expect(page.getByText('Aceito', { exact: true })).toBeVisible();
 });

@@ -1,10 +1,11 @@
 import { Suspense, type ReactNode } from 'react';
-import { useHashRoute } from '@/hooks/useHashRoute';
+import { useHashRoute, RouteGuardProvider } from '@/hooks/useHashRoute';
+import { ToastProvider } from '@/components/shared/toast';
 import Layout from '@/components/layout/Layout';
 import PageLoader from '@/components/shared/PageLoader';
 import { routes, type AppRoute } from '@/app/routes';
 import { routePath } from '@/app/match-route';
-import AutoQuotePage from '@/features/quotations/pages/AutoQuotePage';
+import NotFoundPage from '@/components/shared/NotFoundPage';
 
 function findRoute(route: string): { entry: AppRoute; params: Record<string, string> } | null {
   const path = routePath(route);
@@ -30,13 +31,25 @@ export default function App() {
       content = <Suspense fallback={<PageLoader />}>{content}</Suspense>;
     }
   } else {
-    content = <AutoQuotePage />;
+    content = <NotFoundPage navigate={navigate} />;
   }
 
-  if (matched && matched.entry.layout === false) return content;
+  if (matched && matched.entry.layout === false) {
+    return (
+      <ToastProvider>
+        <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
+          {content}
+        </RouteGuardProvider>
+      </ToastProvider>
+    );
+  }
   return (
-    <Layout route={route} onNavigate={navigate}>
-      {content}
-    </Layout>
+    <ToastProvider>
+      <RouteGuardProvider setNavigationGuard={setNavigationGuard}>
+        <Layout route={route} onNavigate={navigate}>
+          {content}
+        </Layout>
+      </RouteGuardProvider>
+    </ToastProvider>
   );
 }

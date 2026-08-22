@@ -7,11 +7,12 @@ import {
   type MouseEvent,
 } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Search, ShoppingCart, TrendingUp, DollarSign, Package } from 'lucide-react';
+import { Search, ShoppingCart, TrendingUp, DollarSign, Package, ChevronDown } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,7 +47,7 @@ const PERIODS: PeriodOption[] = [
   { value: '7d', label: '7d' },
   { value: '30d', label: '30d' },
   { value: '90d', label: '90d' },
-  { value: 'month', label: 'Mês' },
+  { value: 'month', label: 'Mês atual' },
 ];
 
 const STATUSES = ['', 'Draft', 'To Deliver and Bill', 'To Bill', 'To Deliver', 'Completed', 'Cancelled', 'Closed'];
@@ -61,14 +62,14 @@ interface SalesOrdersPageProps {
 
 interface DashboardSummary {
   total_revenue: number;
-  revenue_delta: number;
+  revenue_delta: number | null;
   orders_count: number;
-  orders_delta: number;
+  orders_delta: number | null;
   avg_ticket: number;
-  avg_ticket_delta: number;
+  avg_ticket_delta: number | null;
   open_orders: number;
   conversion_rate: number;
-  conversion_delta: number;
+  conversion_delta: number | null;
 }
 
 type SalesOrderItem = ProjectedSalesOrderListRow;
@@ -94,14 +95,15 @@ function projectDashboardSummary(value: unknown): DashboardSummary | null {
   const avgTicket = money(summary.avg_ticket);
   const openOrders = count(summary.open_orders);
   const conversionRate = delta(summary.conversion_rate);
+  // Sem período anterior comparável o backend envia o delta como null — o
+  // resumo continua válido; a UI apenas omite a linha de delta.
   const revenueDelta = delta(summary.revenue_delta);
   const ordersDelta = delta(summary.orders_delta);
   const avgTicketDelta = delta(summary.avg_ticket_delta);
   const conversionDelta = delta(summary.conversion_delta);
   if (
     totalRevenue === null || ordersCount === null || avgTicket === null || openOrders === null ||
-    conversionRate === null || revenueDelta === null || ordersDelta === null ||
-    avgTicketDelta === null || conversionDelta === null
+    conversionRate === null
   ) return null;
   return {
     total_revenue: totalRevenue,
@@ -281,6 +283,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
+        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM — ${{
+          today: 'hoje',
+          '7d': 'últimos 7 dias',
+          '30d': 'últimos 30 dias',
+          '90d': 'últimos 90 dias',
+          month: 'mês atual',
+        }[period] ?? 'período selecionado'}.`}
       />
 
       {/* Summary cards */}
@@ -298,8 +307,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           <SummaryCard
             icon={DollarSign}
             label="Receita"
-            value={formatBRL(summaryData.total_revenue)}
-            subtitle={`${summaryData.revenue_delta >= 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
+            value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
+            subtitle={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
             colorClass="bg-success/10 text-success"
           />
           <SummaryCard
@@ -311,13 +320,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           <SummaryCard
             icon={TrendingUp}
             label="Ticket Médio"
-            value={formatBRL(summaryData.avg_ticket)}
-            subtitle={`${summaryData.avg_ticket_delta >= 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
+            value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
+            subtitle={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? undefined : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
             colorClass="tone-warning-soft"
           />
           <SummaryCard
             icon={Package}
-            label="Pedidos em Aberto"
+            label="Pedidos em aberto"
             value={String(summaryData.open_orders)}
             colorClass="tone-info-soft"
           />
@@ -335,7 +344,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               className={cn(
                 'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors',
                 period === p.value
-                  ? 'bg-primary text-white'
+                  ? 'bg-primary text-on-solid'
                   : 'bg-surface-muted text-fg-muted hover:text-fg hover:bg-surface',
               )}
             >
@@ -345,16 +354,23 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </div>
 
         {/* Status select */}
-        <select
-          value={status}
-          onChange={onStatusChange}
-          className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          aria-label="Filtrar por status"
-        >
-          {STATUSES.map((s, i) => (
-            <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-fg-muted whitespace-nowrap">Status</span>
+          <div className="relative">
+          <select
+            aria-labelledby="order-status-label"
+            value={status}
+            onChange={onStatusChange}
+            className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+            title="Status do pedido"
+          >
+            {STATUSES.map((s, i) => (
+              <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
+            ))}
+          </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          </div>
+        </div>
 
         {/* Search */}
         <div className="relative max-w-md flex-1 min-w-[200px]">
@@ -370,7 +386,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
         {/* Limit selector */}
         <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <span className="whitespace-nowrap">Itens/página</span>
+          <span className="whitespace-nowrap">Itens por página</span>
           <select
             value={limit}
             onChange={onLimitChange}
@@ -384,16 +400,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       </div>
 
       {/* Loading */}
-      {loading && (
-        <div className="rounded-lg border border-line bg-surface shadow-sm">
-          <div className="p-8 space-y-4">
-            <div className="h-4 w-48 bg-surface-muted rounded animate-pulse" />
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-12 bg-surface-muted rounded animate-pulse" />
-            ))}
-          </div>
-        </div>
-      )}
+      {loading && <SkeletonTable cols={7} rows={8} />}
 
       {/* Error */}
       {!loading && error && (
@@ -410,8 +417,18 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {!loading && !error && items.length === 0 && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
           <ShoppingCart size={36} className="text-fg-muted/40" />
-          <p>Nenhum pedido encontrado</p>
-          <p className="text-sm">Tente ajustar os filtros ou criar um novo pedido.</p>
+          <p>{search ? 'Nenhum pedido encontrado para a busca.' : status ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <a
+              href="#/manual"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
+            >
+              Novo orçamento
+            </a>
+            <Button variant="outline" onClick={() => navigate('/quotations')}>
+              Ver orçamentos
+            </Button>
+          </div>
         </div>
       )}
 

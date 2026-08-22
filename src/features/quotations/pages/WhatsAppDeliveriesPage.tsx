@@ -1,7 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, Trash2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
+import { useSetTopBarActions } from '@/components/layout/Layout';
+import SkeletonTable from '@/components/shared/SkeletonTable';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -54,10 +58,25 @@ const DEFAULT_FILTERS: DeliveryFilters = {
 };
 
 const STATE_FILTERS: Array<{ key: DeliveryState; label: string }> = [
-  { key: 'retry_scheduled', label: 'Retry agendado' },
+  { key: 'retry_scheduled', label: 'Reagendado' },
   { key: 'delivered', label: 'Entregues' },
   { key: 'failed', label: 'Falhos' },
 ];
+
+// Converte dígitos ddmmaaaa em ISO; só aceita data completa e válida.
+function brDateDigitsToIso(digits: string): string {
+  if (digits.length !== 8) return '';
+  const day = Number(digits.slice(0, 2));
+  const month = Number(digits.slice(2, 4));
+  const year = Number(digits.slice(4));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return '';
+  return `${digits.slice(4)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
+}
+
+function formatBrDateDraft(digits: string): string {
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/');
+}
 
 function parseDeliveryFilters(raw: string | null, fallback: DeliveryFilters): DeliveryFilters {
   if (!raw) return fallback;
@@ -145,10 +164,10 @@ function updateSummary(
 
 function filterInputClass(active: boolean): string {
   return cn(
-    'inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm transition-colors',
+    'inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
     active
-      ? 'border-primary/30 bg-primary/10 text-primary'
-      : 'border-line bg-surface text-fg-muted hover:bg-surface-muted hover:text-fg'
+      ? 'bg-primary text-on-solid [&_input]:accent-white'
+      : 'bg-surface-muted text-fg-muted hover:text-fg'
   );
 }
 
@@ -219,8 +238,18 @@ export default function WhatsAppDeliveriesPage() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
-  const [clearMessage, setClearMessage] = useState<string | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  // Texto em edição nos campos de data; o filtro só recebe data completa e válida.
+  const [dateDraft, setDateDraft] = useState({ from: '', to: '' });
+  useEffect(() => {
+    setDateDraft({
+      from: filters.from ? filters.from.split('-').reverse().join('/') : '',
+      to: filters.to ? filters.to.split('-').reverse().join('/') : '',
+    });
+  }, [filters.from, filters.to]);
 
   const requestFilters = useMemo<DeliveryListFilters>(
     () => ({
@@ -273,20 +302,21 @@ export default function WhatsAppDeliveriesPage() {
   };
 
   const clearPending = async () => {
-    if (!window.confirm('Cancelar somente as entregas ainda não enviadas? Mensagens já aceitas não serão alteradas.')) return;
     setClearing(true);
-    setClearMessage(null);
     setError(null);
     try {
       const cancelled = await cancelPendingDeliveries();
-      setClearMessage(
+      toast(
         cancelled === 0
           ? 'Nenhuma tentativa pendente para cancelar.'
-          : `${cancelled} ${cancelled === 1 ? 'tentativa pendente cancelada.' : 'tentativas pendentes canceladas.'}`
+          : `${cancelled} ${cancelled === 1 ? 'tentativa pendente cancelada.' : 'tentativas pendentes canceladas.'}`,
+        cancelled === 0 ? 'info' : 'success'
       );
       setReloadVersion((value) => value + 1);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.');
+      const message =
+        nextError instanceof Error ? nextError.message : 'Não foi possível limpar a fila.';
+      toast(message, 'error');
     } finally {
       setClearing(false);
     }
@@ -334,47 +364,47 @@ export default function WhatsAppDeliveriesPage() {
 
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / PAGE_SIZE));
 
+  const setTopBarActions = useSetTopBarActions();
+
+  useEffect(() => {
+    setTopBarActions?.(
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setReloadVersion((value) => value + 1)}
+          disabled={loading || clearing}
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
+          Atualizar
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setClearConfirmOpen(true)}
+          disabled={loading || clearing}
+          className="border-l border-line pl-3 text-destructive hover:bg-destructive/10"
+        >
+          <Trash2 size={14} />
+          {clearing ? 'Limpando…' : 'Limpar fila'}
+        </Button>
+      </>
+    );
+    return () => setTopBarActions?.(null);
+  }, [setTopBarActions, loading, clearing, setReloadVersion, setClearConfirmOpen]);
+
   return (
-    <div className="mx-auto max-w-[1320px] space-y-5 pb-10 animate-fade-in">
-      <PageHeader title="Envios WhatsApp" />
+    <div className="mx-auto max-w-[1060px] space-y-4 pb-10 animate-fade-in">
+      <PageHeader title="Envios WhatsApp" description="Fila de mensagens disparadas pelo funil de orçamentos." />
 
-      <section
-        className="space-y-4 rounded-xl border border-line bg-surface p-4 shadow-sm"
-        aria-labelledby="delivery-filters-title"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="delivery-filters-title" className="text-sm font-semibold text-fg">
-            Filtros
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={() => void clearPending()}
-              disabled={loading || clearing}
-            >
-              <Trash2 size={14} />
-              {clearing ? 'Limpando…' : 'Limpar fila'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setReloadVersion((value) => value + 1)}
-              disabled={loading || clearing}
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
-              Atualizar
-            </Button>
-          </div>
-        </div>
-
+      <section className="space-y-4" aria-label="Filtros de entregas">
         <div className="flex flex-wrap gap-2">
           <label className={filterInputClass(filters.requiresAction)}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-primary"
+              className="h-3.5 w-3.5 accent-primary"
               checked={filters.requiresAction}
               onChange={(event) =>
                 updateFilters((current) => ({ ...current, requiresAction: event.target.checked }))
@@ -385,7 +415,7 @@ export default function WhatsAppDeliveriesPage() {
           <label className={filterInputClass(filters.includeActive)}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-primary"
+              className="h-3.5 w-3.5 accent-primary"
               checked={filters.includeActive}
               onChange={(event) =>
                 updateFilters((current) => ({ ...current, includeActive: event.target.checked }))
@@ -396,7 +426,7 @@ export default function WhatsAppDeliveriesPage() {
           <label className={filterInputClass(filters.delayed)}>
             <input
               type="checkbox"
-              className="h-4 w-4 accent-primary"
+              className="h-3.5 w-3.5 accent-primary"
               checked={filters.delayed}
               onChange={(event) =>
                 updateFilters((current) => ({ ...current, delayed: event.target.checked }))
@@ -408,7 +438,7 @@ export default function WhatsAppDeliveriesPage() {
             <label key={key} className={filterInputClass(filters.states.includes(key))}>
               <input
                 type="checkbox"
-                className="h-4 w-4 accent-primary"
+                className="h-3.5 w-3.5 accent-primary"
                 checked={filters.states.includes(key)}
                 onChange={() => toggleState(key)}
               />
@@ -444,47 +474,60 @@ export default function WhatsAppDeliveriesPage() {
               <span className="mb-1.5 block">Data inicial</span>
               <Input
                 id="delivery-from"
-                aria-label="Data inicial"
-                type="date"
-                value={filters.from}
-                onChange={(event) =>
-                  updateFilters((current) => ({ ...current, from: event.target.value }))
-                }
+                aria-label="Data inicial (dd/mm/aaaa)"
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/aaaa"
+                maxLength={10}
+                className="[color-scheme:light] dark:[color-scheme:dark]"
+                value={dateDraft.from}
+                onChange={(event) => {
+                  const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
+                  setDateDraft((current) => ({ ...current, from: formatBrDateDraft(digits) }));
+                  const iso = brDateDigitsToIso(digits);
+                  // filtro só muda com data válida ou campo limpo; edição parcial mantém o anterior
+                  if (iso || digits.length === 0) {
+                    updateFilters((current) => ({ ...current, from: iso }));
+                  }
+                }}
               />
             </label>
             <label className="block text-xs font-medium text-fg-muted" htmlFor="delivery-to">
               <span className="mb-1.5 block">Data final</span>
               <Input
                 id="delivery-to"
-                aria-label="Data final"
-                type="date"
-                value={filters.to}
-                onChange={(event) =>
-                  updateFilters((current) => ({ ...current, to: event.target.value }))
-                }
+                aria-label="Data final (dd/mm/aaaa)"
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/aaaa"
+                maxLength={10}
+                className="[color-scheme:light] dark:[color-scheme:dark]"
+                value={dateDraft.to}
+                onChange={(event) => {
+                  const digits = event.target.value.replace(/\D/g, '').slice(0, 8);
+                  setDateDraft((current) => ({ ...current, to: formatBrDateDraft(digits) }));
+                  const iso = brDateDigitsToIso(digits);
+                  if (iso || digits.length === 0) {
+                    updateFilters((current) => ({ ...current, to: iso }));
+                  }
+                }}
               />
             </label>
           </fieldset>
         </div>
       </section>
 
-      {clearMessage && (
-        <div role="status" className="rounded-xl border border-line bg-surface p-3 text-sm text-fg-muted">
-          {clearMessage}
-        </div>
-      )}
-
       {result && (
         <section className="grid grid-cols-2 gap-3 md:grid-cols-5" aria-label="Resumo das entregas">
           {[
             ['Ativos', result.summary.active],
             ['Requer ação', result.summary.requiresAction],
-            ['Retry agendado', result.summary.retryScheduled],
+            ['Reagendado', result.summary.retryScheduled],
             ['Atrasados', result.summary.delayed],
             ['Entregues nas últimas 24 horas', result.summary.deliveredLast24Hours],
           ].map(([label, value]) => (
             <article key={label} className="rounded-xl border border-line bg-surface p-4 shadow-sm">
-              <p className="text-xs font-medium text-fg-muted">{label}</p>
+              <p className="text-xs font-medium text-fg-muted min-h-[2rem] flex items-start">{label}</p>
               <p className="mt-1 text-2xl font-semibold text-fg">{value}</p>
             </article>
           ))}
@@ -513,12 +556,7 @@ export default function WhatsAppDeliveriesPage() {
       )}
 
       {loading && !result ? (
-        <div
-          className="rounded-xl border border-line bg-surface p-8 text-center text-sm text-fg-muted"
-          role="status"
-        >
-          Carregando entregas WhatsApp…
-        </div>
+        <SkeletonTable cols={8} rows={8} />
       ) : result && result.data.length === 0 ? (
         <div
           className="rounded-xl border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
@@ -535,9 +573,9 @@ export default function WhatsAppDeliveriesPage() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Fluxo</TableHead>
-                <TableHead>Passos entregues/total</TableHead>
+                <TableHead className="whitespace-nowrap">Passos</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead>Última atualização</TableHead>
+                <TableHead className="whitespace-nowrap">Atualização</TableHead>
                 <TableHead>Ação</TableHead>
               </TableRow>
             </TableHeader>
@@ -556,8 +594,8 @@ export default function WhatsAppDeliveriesPage() {
                       <TableCell className="max-w-[180px] truncate">
                         {delivery.clientName}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {fmtPhone(delivery.phone) || 'Telefone não identificado'}
+                      <TableCell className="max-w-[140px] truncate text-xs">
+                        {fmtPhone(delivery.phone) || 'Sem telefone'}
                       </TableCell>
                       <TableCell className="max-w-[180px] truncate">
                         {delivery.flowName || 'Fluxo não identificado'}
@@ -637,13 +675,27 @@ export default function WhatsAppDeliveriesPage() {
                 onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                 disabled={page >= totalPages || loading}
               >
-                Próxima
+                Próximo
                 <ChevronRight size={15} />
               </Button>
             </div>
           </div>
         </>
       ) : null}
+
+      <ConfirmDialog
+        open={clearConfirmOpen}
+        title="Limpar fila de envios"
+        message="Cancelar somente as entregas ainda não enviadas? Mensagens já aceitas não serão alteradas."
+        confirmLabel="Limpar fila"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setClearConfirmOpen(false);
+          void clearPending();
+        }}
+        onCancel={() => setClearConfirmOpen(false)}
+      />
     </div>
   );
 }

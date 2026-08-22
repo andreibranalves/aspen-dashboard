@@ -7,6 +7,7 @@ import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communica
 import type { MediaItem, ProductGroup } from '@/lib/api/communicationApi';
 import MediaGridItem from '@/features/communication/components/MediaGridItem';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
 
 export interface MediaLibraryProps {
@@ -14,6 +15,7 @@ export interface MediaLibraryProps {
 }
 
 export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
+  const { toast } = useToast();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,9 +41,11 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    const removedTitle = deleteTarget.title;
     try {
       await deleteMedia(deleteTarget.id);
       setItems((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+      toast(`Mídia "${removedTitle || 'selecionada'}" removida.`, 'success');
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -60,9 +64,9 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
         <button
           onClick={() => setFilterGroup('')}
           className={[
-            'text-xs px-2.5 py-1 rounded-full transition-colors',
+            'text-xs px-3 py-1 font-medium rounded-full transition-colors',
             filterGroup === ''
-              ? 'bg-primary text-white'
+              ? 'bg-primary text-on-solid'
               : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
           ].join(' ')}
         >
@@ -73,9 +77,9 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
             key={group}
             onClick={() => setFilterGroup(group)}
             className={[
-              'text-xs px-2.5 py-1 rounded-full transition-colors',
+              'text-xs px-3 py-1 font-medium rounded-full transition-colors',
               filterGroup === group
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-on-solid'
                 : 'bg-surface-muted text-fg-muted hover:bg-surface-muted/80',
             ].join(' ')}
           >

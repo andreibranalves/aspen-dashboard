@@ -303,7 +303,8 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByRole('button', { name: 'Leads', exact: true })).toHaveCount(0);
 
     await page.goto('/#/pre-orcamentos');
-    await page.waitForSelector('textarea', { timeout: 10000 });
+    // rota desconhecida agora exibe 404 em vez de cair no Auto
+    await expect(page.getByRole('heading', { name: 'Página não encontrada' })).toBeVisible();
     await expect(page.getByText('Pré-orçamentos', { exact: true })).toHaveCount(0);
   });
 

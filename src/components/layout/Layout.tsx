@@ -31,14 +31,15 @@ export interface BreadcrumbItem {
 const PAGE_LABELS: Record<string, string> = {
   '/dashboard': 'Início',
   '/quotations': 'Orçamentos',
-  '/auto': 'Auto — Extração',
+  '/auto': 'Auto',
   '/manual': 'Novo Orçamento',
   '/sales-orders': 'Pedidos',
-  '/crm': 'CRM — Kanban',
-  '/products': 'Catálogo de Produtos',
+  '/crm': 'CRM',
+  '/products': 'Produtos',
   '/leads': 'Clientes',
   '/settings': 'Configurações',
   '/whatsapp-deliveries': 'Envios WhatsApp',
+  '/comunicacao': 'Comunicação',
 };
 
 function getParentRoute(fallback: string): string {
@@ -48,7 +49,7 @@ function getParentRoute(fallback: string): string {
 
 function getBreadcrumb(route: string): BreadcrumbItem[] {
   const path = routePath(route);
-  if (path === '/dashboard') return [{ label: 'Início', hash: null }];
+  if (path === '/dashboard') return [{ label: 'Início', hash: '/dashboard' }, { label: 'Dashboard', hash: null }];
 
   if (path.startsWith('/quotations/')) {
     const id = path.split('/quotations/')[1];
@@ -70,8 +71,8 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     const sku = path.split('/products/')[1];
     return [
       { label: 'Início', hash: '/dashboard' },
-      { label: 'Catálogo de Produtos', hash: getParentRoute('/products') },
-      { label: sku, hash: null },
+      { label: 'Produtos', hash: getParentRoute('/products') },
+      { label: sku === 'new' ? 'Novo produto' : sku, hash: null },
     ];
   }
   if (path.startsWith('/leads/')) {
@@ -79,13 +80,13 @@ function getBreadcrumb(route: string): BreadcrumbItem[] {
     return [
       { label: 'Início', hash: '/dashboard' },
       { label: 'Clientes', hash: getParentRoute('/leads') },
-      { label: id, hash: null },
+      { label: id === 'cliente/new' ? 'Novo cliente' : id, hash: null },
     ];
   }
 
   const label = PAGE_LABELS[path];
   if (label) return [{ label: 'Início', hash: '/dashboard' }, { label, hash: null }];
-  return [{ label: 'Início', hash: '/dashboard' }, { label: path, hash: null }];
+  return [{ label: 'Início', hash: '/dashboard' }, { label: 'Página não encontrada', hash: null }];
 }
 
 export interface LayoutProps {

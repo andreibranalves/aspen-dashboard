@@ -30,11 +30,13 @@ import {
   isUnpricedProduct,
   searchProducts as cachedSearchProducts,
 } from '@/lib/api/productCache';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
 import type { OrcamentoResponse, Product } from '@/types/domain';
 import { formatBRL, fmtPhone, capitalize, formatPhoneInput, normalizePhoneDigits } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   LEAD_SOURCES,
@@ -94,6 +96,64 @@ function makeItemKey(sku: string): string {
   return `${sku}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// ── Draft persistence (manual quotation) ──
+// Same philosophy as autoQuoteDraftStorage: losing a filled form to an
+// accidental navigation is unacceptable. Storage failures never block editing.
+const MANUAL_DRAFT_STORAGE_KEY = 'aspen_manual_draft';
+const MANUAL_DRAFT_STORAGE_VERSION = 1;
+
+interface ManualDraft {
+  version: number;
+  clientType: string;
+  clientSearch: string;
+  selectedClient: Client | null;
+  newClient: NewClient;
+  leadSource: string;
+  cnpj: string;
+  address: Address;
+  showAddress: boolean;
+  items: CartItem[];
+  prazo: string;
+  observacoes: string;
+  urgente: boolean;
+  templateKey: string;
+}
+
+function isManualDraft(value: unknown): value is ManualDraft {
+  if (typeof value !== 'object' || value === null) return false;
+  const draft = value as Record<string, unknown>;
+  return (
+    draft.version === MANUAL_DRAFT_STORAGE_VERSION &&
+    typeof draft.clientType === 'string' &&
+    Array.isArray(draft.items)
+  );
+}
+
+function loadManualDraft(): ManualDraft | null {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(MANUAL_DRAFT_STORAGE_KEY) || 'null');
+    return isManualDraft(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveManualDraft(draft: ManualDraft): void {
+  try {
+    window.localStorage.setItem(MANUAL_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  } catch {
+    // localStorage indisponível ou cheio; a edição continua.
+  }
+}
+
+function clearManualDraft(): void {
+  try {
+    window.localStorage.removeItem(MANUAL_DRAFT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export default function ManualOrcamentoPage() {
   // ── Client state ──
   const [clientType, setClientType] = useState<string>(CLIENT_TYPE.NEW);
@@ -131,6 +191,9 @@ export default function ManualOrcamentoPage() {
   const [templateKey, setTemplateKey] = useState<string>('');
   const [templateLoading, setTemplateLoading] = useState<boolean>(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  // ── Destructive-action confirmation ──
+  const [confirmClear, setConfirmClear] = useState<boolean>(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
     setTemplateLoading(true);
@@ -410,6 +473,7 @@ export default function ManualOrcamentoPage() {
     try {
       const res = await apiPost<OrcamentoResponse>('/orcamento', buildManualPayload());
       setResult(res);
+      clearManualDraft();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao criar orçamento.';
       setError(message);
@@ -483,7 +547,79 @@ export default function ManualOrcamentoPage() {
     setProductResults([]);
     setAddingSku(null);
     setPricingRows(new Set());
+    clearManualDraft();
   }, []);
+
+  // ── Draft persistence ──
+  const draftRestoredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const draft = loadManualDraft();
+    if (!draft) return;
+    if (Array.isArray(draft.items)) setItems(draft.items);
+    if (draft.clientType) setClientType(draft.clientType);
+    setSelectedClient(draft.selectedClient ?? null);
+    setClientSearch(draft.clientSearch || '');
+    setNewClient(draft.newClient ?? { nome: '', email: '', telefone: '' });
+    if (draft.leadSource) setLeadSource(draft.leadSource);
+    if (draft.cnpj) setCnpj(draft.cnpj);
+    if (draft.address) setAddress(draft.address);
+    setShowAddress(Boolean(draft.showAddress));
+    if (draft.prazo) setPrazo(draft.prazo);
+    if (draft.observacoes) setObservacoes(draft.observacoes);
+    setUrgente(Boolean(draft.urgente));
+    if (draft.templateKey) setTemplateKey(draft.templateKey);
+  }, []);
+
+  const hasFormData = Boolean(
+    items.length > 0 ||
+    getClientInfo().nome ||
+    leadSource ||
+    cnpj ||
+    hasAnyAddressField(address) ||
+    prazo ||
+    observacoes.trim(),
+  );
+
+  useEffect(() => {
+    if (result) return;
+    if (!hasFormData) {
+      clearManualDraft();
+      return;
+    }
+    saveManualDraft({
+      version: MANUAL_DRAFT_STORAGE_VERSION,
+      clientType,
+      clientSearch,
+      selectedClient,
+      newClient,
+      leadSource,
+      cnpj,
+      address,
+      showAddress,
+      items,
+      prazo,
+      observacoes,
+      urgente,
+      templateKey,
+    });
+  }, [result, hasFormData, clientType, clientSearch, selectedClient, newClient, leadSource, cnpj, address, showAddress, items, prazo, observacoes, urgente, templateKey]);
+
+  // ── Navigation guard: filled form must never die silently ──
+  const { setNavigationGuard } = useRouteGuardContext();
+  useEffect(() => {
+    if (!hasFormData || result) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return;
+    }
+    setNavigationGuard((nextRoute) => {
+      setPendingRoute(nextRoute);
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, [hasFormData, result, setNavigationGuard]);
 
   // ── Render ──
   return (
@@ -497,7 +633,7 @@ export default function ManualOrcamentoPage() {
               <>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-success flex items-center justify-center">
-              <Check size={18} className="text-white" />
+              <Check size={18} className="text-on-solid" />
             </div>
             <div>
               <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento enviado com sucesso' : 'Rascunho persistido com sucesso'}</p>
@@ -508,9 +644,21 @@ export default function ManualOrcamentoPage() {
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={resetForm}>
-            Novo orçamento
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={resetForm}>
+              Novo orçamento
+            </Button>
+            {(result.quotation_id || result.quotation_uuid) && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  window.location.hash = `/quotations/${result.quotation_uuid || result.quotation_id}`;
+                }}
+              >
+                Abrir orçamento
+              </Button>
+            )}
+          </div>
               </>
             );
           })()}
@@ -542,12 +690,12 @@ export default function ManualOrcamentoPage() {
                     <p className="text-sm text-fg-muted mt-1">Use um cadastro existente ou crie o contato nesta venda.</p>
                   </div>
 
-                  <div className="flex gap-1 bg-surface-muted rounded-lg p-0.5 w-fit">
+                  <div className="flex gap-1 bg-surface-muted/60 border border-line rounded-lg p-0.5 w-fit">
                     <button
                       onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.NEW ? 'bg-surface-muted font-medium text-fg' : 'text-fg-muted hover:text-fg',
+                        clientType === CLIENT_TYPE.NEW ? 'bg-surface shadow-sm font-medium text-fg border border-line/60' : 'text-fg-muted hover:text-fg',
                       )}
                       aria-label="Cadastrar novo cliente"
                     >
@@ -557,7 +705,7 @@ export default function ManualOrcamentoPage() {
                       onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.EXISTING ? 'bg-surface-muted font-medium text-fg' : 'text-fg-muted hover:text-fg',
+                        clientType === CLIENT_TYPE.EXISTING ? 'bg-surface shadow-sm font-medium text-fg border border-line/60' : 'text-fg-muted hover:text-fg',
                       )}
                       aria-label="Buscar cliente existente"
                     >
@@ -615,7 +763,7 @@ export default function ManualOrcamentoPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
                       <label className="text-xs text-fg-muted mb-1 block">Nome *</label>
                       <Input
@@ -626,13 +774,13 @@ export default function ManualOrcamentoPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-fg-muted mb-1 block">Email</label>
+                      <label className="text-xs text-fg-muted mb-1 block">E-mail</label>
                       <Input
                         type="email"
                         placeholder="email@exemplo.com"
                         value={newClient.email}
                         onChange={e => setNewClient(prev => ({ ...prev, email: e.target.value }))}
-                        aria-label="Email do cliente"
+                        aria-label="E-mail do cliente"
                       />
                     </div>
                     <div>
@@ -670,8 +818,9 @@ export default function ManualOrcamentoPage() {
                 {/* ── Origem (obrigatória para compatibilidade com CRM) ── */}
                 <div className="space-y-1 pt-3 border-t border-line">
                   <label className="text-xs font-medium text-fg-muted">Origem *</label>
+                  <div className="relative">
                   <select
-                    className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
+                    className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >
@@ -680,6 +829,8 @@ export default function ManualOrcamentoPage() {
                       <option key={s.value} value={s.value}>{s.label}</option>
                     ))}
                   </select>
+                  <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+                  </div>
                 </div>
 
                 {/* ── CNPJ (opcional) ── */}
@@ -688,10 +839,11 @@ export default function ManualOrcamentoPage() {
                   <div className="relative">
                     <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
                     <Input
-                      className="h-10 pl-9 text-sm font-mono"
+                      className="h-10 pl-9 text-sm"
                       value={cnpj ? formatCnpj(cnpj) : ''}
                       onChange={e => setCnpj(normalizeCnpj(e.target.value))}
                       placeholder="00.000.000/0000-00"
+                      autoComplete="off"
                     />
                   </div>
                   {cnpj && !isValidCnpj(cnpj) && (
@@ -937,7 +1089,7 @@ export default function ManualOrcamentoPage() {
                                   <button
                                     type="button"
                                     onClick={() => removeItem(item._key)}
-                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/100/10 hover:text-destructive transition-colors"
+                                    className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                                     aria-label={`Remover ${item.sku}`}
                                   >
                                     <Trash2 size={15} />
@@ -966,7 +1118,7 @@ export default function ManualOrcamentoPage() {
                               <button
                                 type="button"
                                 onClick={() => removeItem(item._key)}
-                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/100/10 hover:text-destructive transition-colors"
+                                className="min-h-[40px] min-w-[40px] inline-flex items-center justify-center rounded-md text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                                 aria-label={`Remover ${item.sku}`}
                               >
                                 <Trash2 size={15} />
@@ -1031,7 +1183,7 @@ export default function ManualOrcamentoPage() {
                     <div className="px-4 py-10 text-center text-fg-muted">
                       <ShoppingCart size={36} className="mx-auto text-fg-muted/40" />
                       <p className="mt-3 font-medium text-fg">Nenhum produto na tabela</p>
-                      <p className="mt-1 text-sm">Pesquise acima e clique em Adicionar. Depois edite quantidade e preço direto nas colunas da linha.</p>
+                      <p className="mt-1 text-sm">Pesquise acima e selecione o produto nos resultados da busca. Depois edite quantidade e preço direto na linha do item.</p>
                     </div>
                   </div>
                 )}
@@ -1129,7 +1281,7 @@ export default function ManualOrcamentoPage() {
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-fg-muted">Cliente</span>
-                  <span className="font-medium text-right truncate max-w-[180px]">
+                  <span className={cn('font-medium text-right truncate max-w-[180px]', !getClientInfo().nome && 'text-fg-muted/60')}>
                     {getClientInfo().nome || 'Não informado'}
                   </span>
                 </div>
@@ -1152,7 +1304,9 @@ export default function ManualOrcamentoPage() {
               <div className="border-t border-line pt-4">
                 <div className="flex items-end justify-between gap-3">
                   <span className="text-sm text-fg-muted">Subtotal</span>
-                  <span className="text-2xl font-bold tracking-tight">{formatBRL(subtotal)}</span>
+                  <span className="text-2xl font-bold tracking-tight [font-variant-numeric:tabular-nums]">
+                    {formatBRL(subtotal)}
+                  </span>
                 </div>
                 <p className="text-xs text-fg-muted mt-2">
                   Os preços e totais são confirmados pelo servidor no momento da criação.
@@ -1194,10 +1348,10 @@ export default function ManualOrcamentoPage() {
                   {sending ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
                   {sending ? 'Enviando…' : 'Enviar orçamento'}
                 </Button>
-                <Button variant="outline" onClick={resetForm} disabled={submitting || sending} className="w-full">
+                <Button variant="outline" onClick={() => setConfirmClear(true)} disabled={submitting || sending} className="w-full">
                   Limpar tudo
                 </Button>
-                <p className="text-xs text-fg-muted text-center">
+                <p className="text-xs text-fg-muted text-left">
                   {canSubmit ? 'Pronto para criar o orçamento.' : 'Cliente e itens são obrigatórios.'}
                 </p>
               </div>
@@ -1205,6 +1359,36 @@ export default function ManualOrcamentoPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Limpar o formulário?"
+        message="Todos os dados preenchidos neste orçamento serão descartados. Um rascunho permanece salvo neste navegador até ser concluído ou descartado."
+        confirmLabel="Limpar tudo"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmClear(false);
+          resetForm();
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem concluir o orçamento?"
+        message="O rascunho permanece salvo neste navegador e será restaurado quando você voltar."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
+      />
     </div>
   );
 }

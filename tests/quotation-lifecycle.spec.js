@@ -615,12 +615,14 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
   await page.getByLabel('Modelo do orçamento').selectOption('minimalista');
   await page.getByLabel('Título - Pagamento').fill('Pagamento revisado');
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByText('Orçamento salvo.').first()).toBeVisible();
   await page.getByRole('button', { name: 'Editar' }).click();
   await page.getByLabel('Validade do orçamento').fill('42');
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText('Salvo.')).toBeVisible();
+  await expect(page.getByText('Orçamento salvo.').first()).toBeVisible();
   await page.getByRole('button', { name: 'Emitir orçamento' }).click();
+  // emissão pede confirmação
+  await page.getByRole('dialog').getByRole('button', { name: 'Emitir', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
   expect(issueKey).toMatch(/^[0-9a-f-]{36}$/i);
   expect(issuePayload).toMatchObject({
@@ -642,7 +644,7 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
 
 test('detail reload restores durable accepted, reconciling, delivered and failed delivery states @quotations @critical', async ({ page }) => {
   const phases = [
-    ['provider_accepted', 'Aceito pela Evolution'],
+    ['provider_accepted', 'Aceito'],
     ['reconciling', 'Reconciliação em andamento'],
     ['delivered', 'Entregue'],
     ['failed', 'Falhou'],
@@ -720,20 +722,17 @@ test('expired detail blocks send, loss requires reason and emitted deletion rema
   });
   await page.route('**/api/communication-flows**', async (route) => fulfillJson(route, { success: true, selectedFlowId: null, flows: [] }));
   await routeTemplates(page);
-  let reason = '';
-  page.on('dialog', async (dialog) => {
-    if (dialog.type() === 'prompt') await dialog.accept(reason);
-    else await dialog.accept();
-  });
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByRole('button', { name: 'Enviar WhatsApp' })).toBeDisabled();
   await expect(page.getByText('Orçamento vencido. Crie uma nova revisão.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Excluir' })).toHaveCount(0);
+  // motivo da perda agora é dialog dedicado (sem window.prompt)
   await page.getByRole('button', { name: 'Marcar como perdido' }).click();
-  await expect(page.getByText('Informe um motivo para marcar o orçamento como perdido.')).toBeVisible();
+  const lossDialog = page.getByRole('dialog', { name: 'Motivo da perda' });
+  await expect(lossDialog.getByRole('button', { name: 'Marcar como perdido' })).toBeDisabled();
   expect(posts).toHaveLength(0);
-  reason = 'Preço';
-  await page.getByRole('button', { name: 'Marcar como perdido' }).click();
+  await lossDialog.getByLabel('Motivo').selectOption('Preço');
+  await lossDialog.getByRole('button', { name: 'Marcar como perdido' }).click();
   expect(posts[0]).toMatchObject({ action: 'set_status', status: 'perdido', loss_reason: 'Preço', concurrency_token: token });
 });
 
@@ -1066,7 +1065,7 @@ test('empty local CRM and leads retain loading/error/retry states @quotations @c
   await page.route('**/api/crm-deals**', async (route) => fulfillJson(route, { columns: [] }));
   await page.route('**/api/crm-prune-candidates**', async (route) => fulfillJson(route, { candidates: [], meta: { threshold_days: 30, protect_recent_days: 7, count: 0 } }));
   await page.goto('/#/crm');
-  await expect(page.getByText('Nenhum deal no pipeline', { exact: true })).toBeVisible();
+  await expect(page.getByText('Nenhum negócio no pipeline.', { exact: true })).toBeVisible();
 
   let leadAttempts = 0;
   await page.route('**/api/leads-clients**', async (route) => {

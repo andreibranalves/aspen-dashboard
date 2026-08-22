@@ -53,7 +53,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     await page.goto('/#/leads');
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Criar cliente' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Novo contato' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Ativos' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Arquivados' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
@@ -61,6 +61,28 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByText(CLIENT.nome, { exact: true }).first().click();
     await expect(page.getByText('Cliente', { exact: true }).last()).toBeVisible();
     await expect(page.getByText(CLIENT.nome, { exact: true }).last()).toBeVisible();
+  });
+
+  test('ação de novo orçamento preserva o contexto do cliente', async ({ page }) => {
+    await page.route('**/api/leads-clients**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [CLIENT],
+          pagination: { page: 1, limit: 10, total: 1, total_pages: 1 },
+        }),
+      });
+    });
+
+    await page.goto('/#/leads');
+    await expect(page.locator('tbody tr').filter({ hasText: CLIENT.nome })).toBeVisible();
+    await page.getByRole('button', { name: `Novo orçamento para ${CLIENT.nome}` }).click();
+    await expect(page).toHaveURL(/#\/auto$/);
+    const textarea = page.locator('textarea').first();
+    await expect(textarea).toHaveValue(new RegExp(CLIENT.nome));
+    await expect(textarea).toHaveValue(new RegExp(CLIENT.email));
+    await expect(textarea).toHaveValue(new RegExp(CLIENT.telefone));
   });
 
   test('cria, pesquisa, edita, arquiva, filtra arquivados e restaura sem terminologia Lead', async ({ page }) => {
@@ -150,7 +172,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByRole('heading', { name: 'Clientes' })).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Criar cliente' }).click();
+    await page.getByRole('button', { name: 'Novo contato' }).click();
     await expect(page).toHaveURL(/#\/leads\/cliente\/new/);
     await expect(page.getByText('Novo cliente', { exact: true })).toBeVisible();
     await page.getByPlaceholder('Nome do cliente').fill('Ana Cliente');
@@ -176,12 +198,14 @@ test.describe('Clientes locais @crm @smoke', () => {
     await expect(page.getByText('Nota do drawer', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Fechar', exact: true }).click();
 
-    page.on('dialog', (dialog) => dialog.accept());
+    // Confirmação migrada para ConfirmDialog (sem confirm() nativo)
     await page.getByRole('button', { name: /Arquivar Ana Cliente Editada/ }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
     await page.getByRole('button', { name: 'Arquivados' }).click();
     await expect(page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: /Restaurar Ana Cliente Editada/ })).toBeVisible();
     await page.getByRole('button', { name: /Restaurar Ana Cliente Editada/ }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Restaurar', exact: true }).click();
     await page.getByRole('button', { name: 'Ativos' }).click();
     await expect(page.locator('tbody tr').filter({ hasText: 'Ana Cliente Editada' }).first()).toBeVisible();
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
@@ -227,7 +251,7 @@ test.describe('Clientes locais @crm @smoke', () => {
 
     release();
     await expect(page.getByText('Nenhum cliente encontrado', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Criar cliente' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Novo contato' }).first()).toBeVisible();
     await expect(sidebarClients).toBeVisible();
     await expect(page.getByText('Leads', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Lead', { exact: true })).toHaveCount(0);
@@ -237,12 +261,6 @@ test.describe('Clientes locais @crm @smoke', () => {
     let rows = [{ ...CLIENT }];
     const archiveRequests = [];
     const restoreRequests = [];
-    const confirmations = [];
-
-    page.on('dialog', async (dialog) => {
-      confirmations.push(dialog.message());
-      await dialog.accept();
-    });
 
     await page.route('**/api/leads-clients**', async (route) => {
       const request = route.request();
@@ -277,10 +295,10 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByLabel(`Selecionar ${CLIENT.nome}`).check();
     await expect(page.getByRole('button', { name: 'Arquivar clientes' })).toBeVisible();
     await page.getByRole('button', { name: 'Arquivar clientes' }).click();
+    await expect(page.getByRole('dialog').getByText('Arquivar 1 cliente?')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Arquivar', exact: true }).click();
     await expect(page.getByText('Nenhum cliente encontrado')).toBeVisible();
     expect(archiveRequests).toEqual([{ id: CLIENT.id }]);
-    expect(confirmations.at(0)).toMatch(/Arquivar 1 cliente/);
-    expect(confirmations.at(0)).not.toMatch(/não pode ser desfeita/i);
 
     await page.getByRole('button', { name: 'Todos' }).click();
     await page.getByLabel(`Selecionar ${CLIENT.nome}`).check();
@@ -293,10 +311,10 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByLabel(`Selecionar ${CLIENT.nome}`).check();
     await expect(page.getByRole('button', { name: 'Restaurar clientes' })).toBeVisible();
     await page.getByRole('button', { name: 'Restaurar clientes' }).click();
+    await expect(page.getByRole('dialog').getByText('Restaurar 1 cliente?')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'Restaurar', exact: true }).click();
     await expect(page.getByText('Nenhum cliente encontrado')).toBeVisible();
     expect(restoreRequests).toEqual([{ id: CLIENT.id, body: { arquivado: false } }]);
-    expect(confirmations.at(1)).toMatch(/Restaurar 1 cliente/);
-    expect(confirmations.some((message) => /não pode ser desfeita/i.test(message))).toBe(false);
   });
 
   test('cliente local cria, lê e edita observações', async ({ page }) => {

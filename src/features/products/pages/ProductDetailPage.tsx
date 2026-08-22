@@ -16,7 +16,6 @@ import {
   X,
   AlertTriangle,
   Search,
-  Check,
   Copy,
   Trash2,
   Archive,
@@ -28,6 +27,8 @@ import { clearProductCache } from '@/lib/api/productCache';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { useToast } from '@/components/shared/toast';
 import { useSetTopBarActions } from '@/components/layout/Layout';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 
@@ -70,11 +71,6 @@ interface Atividade {
   data: string;
   texto: string;
   id: string;
-}
-
-interface Toast {
-  type: 'success' | 'error';
-  message: string;
 }
 
 interface EditedProduct {
@@ -240,7 +236,8 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const [edited, setEdited] = useState<Partial<EditedProduct>>({});
   const [saving, setSaving] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const { toast } = useToast();
+  const [confirmArchiveOpen, setConfirmArchiveOpen] = useState<boolean>(false);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [activityLoading, setActivityLoading] = useState<boolean>(() => !isNewProduct);
@@ -434,7 +431,6 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   const saveProduct = useCallback(async () => {
     if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
     setSaving(true);
-    setToast(null);
 
     try {
       const { produto } = product || {};
@@ -453,12 +449,12 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       const normalizedNome = (nome || '').trim();
 
       if (isNewProduct && !normalizedSku) {
-        setToast({ type: 'error', message: 'SKU é obrigatório.' });
+        toast('SKU é obrigatório.', 'error');
         return;
       }
 
       if (!normalizedNome) {
-        setToast({ type: 'error', message: 'Nome do produto é obrigatório.' });
+        toast('Nome do produto é obrigatório.', 'error');
         return;
       }
 
@@ -484,7 +480,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
         }
         if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
-        setToast({ type: 'success', message: 'Produto criado com sucesso!' });
+        toast('Produto criado com sucesso!', 'success');
         clearProductCache();
         navigate(`/products/${encodeURIComponent(normalizedSku)}`);
         return;
@@ -510,11 +506,11 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       );
       if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       if (!result.success) {
-        setToast({ type: 'error', message: 'Erro ao salvar produto.' });
+        toast('Erro ao salvar produto.', 'error');
         return;
       }
 
-      setToast({ type: 'success', message: 'Produto atualizado com sucesso!' });
+      toast('Produto atualizado com sucesso!', 'success');
       clearProductCache();
       setEditing(false);
       refreshActivity();
@@ -522,7 +518,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     } catch (err) {
       if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       const apiErr = err as { message?: string };
-      setToast({ type: 'error', message: apiErr.message || 'Erro ao salvar produto.' });
+      toast(apiErr.message || 'Erro ao salvar produto.', 'error');
     } finally {
       if (mountedRef.current && currentSkuRef.current === decodedSku) setSaving(false);
     }
@@ -534,17 +530,21 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     navigate,
     product,
     refreshActivity,
+    toast,
   ]);
+
+  const requestArchive = useCallback(() => {
+    if (isNewProduct || !mountedRef.current || currentSkuRef.current !== decodedSku) return;
+    if (!product) return;
+    setConfirmArchiveOpen(true);
+  }, [decodedSku, isNewProduct, product]);
 
   const deleteProduct = useCallback(async () => {
     if (isNewProduct || !mountedRef.current || currentSkuRef.current !== decodedSku) return;
-    const restoring = product?.produto.ativo === false;
-    if (!window.confirm(`Tem certeza que deseja ${restoring ? 'restaurar' : 'arquivar'} o produto ${decodedSku}?`)) {
-      return;
-    }
+    if (!product) return;
+    const restoring = product.produto.ativo === false;
 
     setDeleting(true);
-    setToast(null);
     try {
       if (restoring) {
         await apiPatch(`/product-update?sku=${encodeURIComponent(decodedSku)}`, { ativo: true });
@@ -554,25 +554,18 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       clearProductCache();
       refreshActivity();
+      toast(restoring ? 'Produto restaurado.' : 'Produto arquivado.', 'success');
       await fetchProduct({ force: true });
     } catch (err) {
       if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
       const fallbackMessage = restoring
         ? 'Erro ao restaurar produto.'
         : 'Erro ao arquivar produto.';
-      setToast({ type: 'error', message: selectContextualErrorMessage(err, fallbackMessage) });
+      toast(selectContextualErrorMessage(err, fallbackMessage), 'error');
     } finally {
       if (mountedRef.current && currentSkuRef.current === decodedSku) setDeleting(false);
     }
-  }, [decodedSku, fetchProduct, isNewProduct, product, refreshActivity]);
-
-  useEffect(() => {
-    if (!toast) return undefined;
-    const timer = setTimeout(() => {
-      if (mountedRef.current) setToast(null);
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [toast]);
+  }, [decodedSku, fetchProduct, isNewProduct, product, refreshActivity, toast]);
 
   useEffect(() => {
     if (!setTopBarActions) return undefined;
@@ -634,7 +627,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           <Button
             variant="outline"
             size="sm"
-            onClick={deleteProduct}
+            onClick={requestArchive}
             disabled={saving || deleting}
             aria-label={product?.produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
             className="text-destructive border-destructive/20 hover:bg-destructive/10"
@@ -665,6 +658,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
     loading,
     navigate,
     product,
+    requestArchive,
     saveProduct,
     saving,
     setTopBarActions,
@@ -680,6 +674,9 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         <Search size={40} className="text-fg-muted/40" />
         <p className="text-lg font-medium">Produto não encontrado</p>
         <p className="text-sm">O SKU &quot;{isDuplicateDraft ? duplicateSku : decodedSku}&quot; não existe no catálogo.</p>
+        <Button variant="outline" onClick={() => navigate('/products')}>
+          Voltar ao catálogo
+        </Button>
       </div>
     );
   }
@@ -704,29 +701,13 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
   return (
     <div className="space-y-5 animate-fade-in max-w-[1060px] mx-auto">
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-top-2 ${
-            toast.type === 'success'
-              ? 'bg-success/10 text-success border border-success/30'
-              : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-800/40'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <Check size={16} className="inline mr-1" />
-          ) : (
-            <X size={16} className="inline mr-1" />
-          )}
-          {toast.message}
-        </div>
-      )}
-
       {isDuplicateDraft && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
           <strong>Rascunho de duplicação.</strong>{' '}
           Dados copiados; preencha o SKU antes de criar o produto.
         </div>
       )}
+
 
       <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -751,7 +732,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                     {produto.nome || 'Sem nome'}
                   </h2>
                   <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${isNewProduct ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200' : produto.ativo ? 'bg-success/10 text-success' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300'}`}
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${isNewProduct ? 'tone-warning-soft' : produto.ativo ? 'tone-success-soft' : 'bg-destructive/10 text-destructive dark:bg-destructive/10'}`}
                   >
                     {isNewProduct ? 'Rascunho' : produto.ativo ? 'Ativo' : 'Inativo'}
                   </span>
@@ -1046,6 +1027,20 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
           )}
         </SectionCard>
       )}
+
+      <ConfirmDialog
+        open={confirmArchiveOpen}
+        title={product?.produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
+        message={`Tem certeza que deseja ${product?.produto.ativo === false ? 'restaurar' : 'arquivar'} o produto ${decodedSku}?`}
+        confirmLabel={product?.produto.ativo === false ? 'Restaurar' : 'Arquivar'}
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          setConfirmArchiveOpen(false);
+          void deleteProduct();
+        }}
+        onCancel={() => setConfirmArchiveOpen(false)}
+      />
     </div>
   );
 }

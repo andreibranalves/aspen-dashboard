@@ -74,6 +74,13 @@ export default function WhatsAppSendPanel({
           </span>
         )}
       </div>
+      {!hasValidSteps && (
+        <p className="text-xs text-warning mb-2 mt-3">
+          {!selectedFlow
+            ? 'Nenhum fluxo de WhatsApp disponível.'
+            : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}
+        </p>
+      )}
       {!hideButton && (
         <div className="mt-3 space-y-2">
           {hasValidSteps ? (
@@ -82,6 +89,13 @@ export default function WhatsAppSendPanel({
                 type="button"
                 size="lg"
                 className="w-full"
+                title={
+                  isPending
+                    ? 'Envio em andamento'
+                    : deliveryBlocksSend || status?.state === 'accepted'
+                      ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status abaixo.'
+                      : undefined
+                }
                 disabled={
                   isPending ||
                   deliveryBlocksSend ||
@@ -109,6 +123,15 @@ export default function WhatsAppSendPanel({
                             ? 'Enviando…'
                             : 'Enviar WhatsApp'}
               </Button>
+              {delivery && !isPending && (
+                <p className="text-xs leading-5 text-center text-fg-muted">
+                  Já enviado. Acompanhe o status{' '}
+                  <a href="#/whatsapp-deliveries" className="text-primary hover:underline">
+                    em Envios WhatsApp
+                  </a>
+                  .
+                </p>
+              )}
               {(status?.message || delivery?.publicError) && (
                 <p
                   className={cn(
@@ -128,13 +151,7 @@ export default function WhatsAppSendPanel({
                 </p>
               )}
             </>
-          ) : (
-            <p className="text-xs text-warning mb-2">
-              {!selectedFlow
-                ? 'Nenhum fluxo de WhatsApp disponível.'
-                : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}
-            </p>
-          )}
+          ) : null}
         </div>
       )}
     </>

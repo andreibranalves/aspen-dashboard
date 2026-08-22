@@ -22,11 +22,13 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, label, className }: StatusBadgeProps) {
-  const variant = badgeVariants[status] || badgeVariants.Draft;
+  // Quando className já define um tone-*, pular o fallback (a cascata CSS favoreceria tone-neutral-soft).
+  const hasCustomTone = Boolean(className?.includes('tone-'));
+  const variant = badgeVariants[status] || (hasCustomTone ? '' : badgeVariants.Draft);
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+        'inline-flex max-w-[180px] items-center whitespace-nowrap overflow-hidden text-ellipsis rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
         variant,
         className,
       )}

@@ -24,7 +24,7 @@ export default function BackButton({ onClick, label = 'voltar', className }: Bac
       )}
       aria-label={label}
     >
-      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white">
+      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-on-solid">
         <ChevronLeft size={16} strokeWidth={2.5} />
       </span>
       <span>{label}</span>

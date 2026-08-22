@@ -11,11 +11,13 @@ import {
   ExternalLink,
   type LucideIcon,
 } from 'lucide-react';
+import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
 import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
@@ -78,15 +80,17 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     if (!value && value !== 0) return '';
     const num = Number(value);
     if (Number.isNaN(num)) return '';
-    return num >= 0 ? 'text-success' : 'text-destructive';
+    if (num === 0) return 'text-fg-muted';
+    return num > 0 ? 'text-success' : 'text-destructive';
   };
 
   const formatDelta = (value: unknown): string | null => {
     if (!value && value !== 0) return null;
     const num = Number(value);
     if (Number.isNaN(num)) return null;
-    const sign = num >= 0 ? '+' : '';
-    return `${sign}${num.toFixed(1)}%`;
+    if (num === 0) return 'sem variação';
+    const sign = num > 0 ? '+' : '';
+    return `${sign}${num.toFixed(1).replace('.', ',')}%`;
   };
 
   // ── Loading / Error states ──────────────────────────────────────────────────
@@ -153,7 +157,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     },
     {
       icon: Clock,
-      label: 'Pedidos em aberto',
+      label: 'Em aberto',
       value: data ? String(data.summary.open_orders) : '—',
       delta: null,
     },
@@ -200,26 +204,27 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           >
             <div className="flex items-center gap-2 text-fg-muted">
               <card.icon className="h-4 w-4 shrink-0 text-primary" />
-              <span className="text-xs font-medium uppercase tracking-wider">
+              <span className="min-w-0 text-xs font-medium uppercase tracking-wider">
                 {card.label}
               </span>
             </div>
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="text-2xl font-semibold text-fg">
                 {card.value}
               </span>
-              {card.delta != null && (
-                <span className={cn('text-xs font-medium', deltaClass(card.delta))}>
-                  {formatDelta(card.delta)}
-                </span>
-              )}
+              <span
+                className={cn('whitespace-nowrap text-xs font-medium', card.delta != null ? deltaClass(card.delta) : 'text-fg-muted')}
+                title={card.delta != null ? 'Variação vs período anterior' : 'Métrica acumulada, fora do período'}
+              >
+                {card.delta != null ? formatDelta(card.delta) : 'geral'}
+              </span>
             </div>
           </div>
         ))}
       </div>
 
       {/* ── Top Products + Top Clients (side by side on lg) ─────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ── "O que vendeu" — Top Products ──────────────────────── */}
         <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
           <h2 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
@@ -256,7 +261,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-fg-muted">Nenhum produto vendido no período.</p>
+            <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
+              <Package size={24} className="text-fg-muted/40" aria-hidden="true" />
+              <p className="text-sm">Nenhum produto vendido no período.</p>
+            </div>
           )}
         </div>
 
@@ -292,7 +300,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-fg-muted">Nenhum cliente no período.</p>
+            <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
+              <Users size={24} className="text-fg-muted/40" aria-hidden="true" />
+              <p className="text-sm">Nenhum cliente no período.</p>
+            </div>
           )}
         </div>
       </div>
@@ -325,7 +336,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
             </table>
           </div>
         ) : (
-          <p className="text-sm text-fg-muted">Nenhuma venda no período.</p>
+          <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
+              <BarChart3 size={24} className="text-fg-muted/40" aria-hidden="true" />
+              <p className="text-sm">Nenhuma venda no período.</p>
+            </div>
         )}
       </div>
 
@@ -343,9 +357,9 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Orçamento</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Cliente</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Idade</th>
-                  <th className="text-right py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
+                  <th className="text-right py-2 pr-8 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
                   <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Status</th>
-                  <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Ação</th>
+                  <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -354,7 +368,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                     <td className="py-2 pr-2">
                       <button
                         onClick={(): void => navigate(`/quotations/${encodeURIComponent(q.id || '')}`)}
-                        className="text-primary hover:underline font-mono text-xs flex items-center gap-1"
+                        className="text-primary hover:underline text-xs [font-variant-numeric:tabular-nums] flex items-center gap-1"
                       >
                         {q.id}
                         <ExternalLink className="h-3 w-3 shrink-0" />
@@ -364,13 +378,14 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                       {capitalize(q.customer)}
                     </td>
                     <td className="py-2 pr-2 text-fg-muted">há {q.age} dias</td>
-                    <td className="py-2 pr-2 text-right text-fg font-medium">
+                    <td className="py-2 pr-8 text-right text-fg font-medium">
                       {formatBRL(q.value)}
                     </td>
                     <td className="py-2 pr-2">
-                      <span className="inline-block px-2 py-0.5 text-xs rounded-pill bg-primary/10 text-primary font-medium">
-                        {q.status}
-                      </span>
+                      <StatusBadge
+                        status={quotationStatusBadgeKey(q.status)}
+                        label={quotationStatusLabel(q.status)}
+                      />
                     </td>
                     <td className="py-2 text-right">
                       <Button

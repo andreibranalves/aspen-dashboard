@@ -357,7 +357,7 @@ export function projectDelivery(delivery: DeliveryView): DeliveryProjection {
   const labels: Record<DeliveryState, string> = {
     queued: 'Na fila',
     processing: 'Enviando',
-    provider_accepted: 'Aceito pela Evolution',
+    provider_accepted: 'Aceito',
     reconciling: 'Reconciliação em andamento',
     retry_scheduled: 'Nova tentativa agendada',
     needs_review: 'Revisão necessária',

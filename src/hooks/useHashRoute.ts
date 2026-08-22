@@ -1,7 +1,24 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, createContext, createElement, useContext, type ReactNode } from 'react';
 
 export type HashRouteGuard = (nextRoute: string) => boolean;
 export type SetHashRouteGuard = (guard: HashRouteGuard | null) => void;
+
+/**
+ * Contexto que repassa setNavigationGuard às páginas renderizadas fora da
+ * árvore de props do App (rotas lazy). Permite a uma página proteger seu
+ * estado não salvo contra navegação acidental.
+ */
+const RouteGuardContext = createContext<{ setNavigationGuard: SetHashRouteGuard } | null>(null);
+
+export function RouteGuardProvider({ setNavigationGuard, children }: { setNavigationGuard: SetHashRouteGuard; children: ReactNode }) {
+  return createElement(RouteGuardContext.Provider, { value: { setNavigationGuard } }, children);
+}
+
+export function useRouteGuardContext(): { setNavigationGuard: SetHashRouteGuard } {
+  const ctx = useContext(RouteGuardContext);
+  if (!ctx) throw new Error('useRouteGuardContext deve ser usado dentro de RouteGuardProvider.');
+  return ctx;
+}
 
 interface HashHistoryState {
   __aspenRoute?: unknown;

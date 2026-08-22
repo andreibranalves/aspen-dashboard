@@ -145,9 +145,9 @@ export default function SettingsPage() {
 
         {loading && (
           <div className="space-y-3" aria-label="Carregando configurações">
-            <div className="h-10 rounded-[10px] bg-surface-muted animate-pulse" />
-            <div className="h-10 rounded-[10px] bg-surface-muted animate-pulse" />
-            <div className="h-24 rounded-[10px] bg-surface-muted animate-pulse" />
+            <div className="skeleton h-10" />
+            <div className="skeleton h-10" />
+            <div className="skeleton h-24" />
           </div>
         )}
 
