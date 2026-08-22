@@ -372,9 +372,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                         {fmtPhone(conversation.canonicalPhone) || 'Telefone não identificado'}
                       </p>
                     </div>
-                    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', statusTone(conversation.status))}>
-                      {statusLabel(conversation.status)}
-                    </span>
+                    <StatusBadge status={conversation.status} label={statusLabel(conversation.status)} className={statusTone(conversation.status)} />
                   </div>
                   <p className="mt-2 line-clamp-2 text-xs text-fg-muted">
                     {conversation.lastMessagePreview || 'Sem prévia de mensagem'}

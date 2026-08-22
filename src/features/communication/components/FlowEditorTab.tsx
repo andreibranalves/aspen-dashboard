@@ -329,6 +329,17 @@ export default function FlowEditorTab() {
         ))}
       </div>
 
+      {/* Flow editor — hint quando nada selecionado */}
+      {!selectedFlow && flows.length === 0 && (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line text-center py-12">
+          <MessageSquare size={28} className="text-fg-muted/40 mb-3" aria-hidden="true" />
+          <p className="text-sm font-medium text-fg">Nenhum fluxo criado ainda</p>
+          <p className="mt-1 max-w-sm text-sm text-fg-muted">
+            Use <strong>Novo fluxo</strong> para criar sua primeira automação de WhatsApp.
+          </p>
+        </div>
+      )}
+
       {/* Flow editor */}
       {selectedFlow && (
         <div className="border border-line rounded-xl bg-surface overflow-hidden">

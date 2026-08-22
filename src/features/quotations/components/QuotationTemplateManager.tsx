@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import {
@@ -185,8 +186,8 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
                 <span className="block font-medium text-fg">{template.name}</span>
                 <span className="mt-1 block text-xs text-fg-muted">{template.key} · Usado por {template.usage_count} revisões</span>
                 <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                  {template.is_default && <span className="tone-info-soft inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium">Padrão</span>}
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${template.archived ? 'bg-surface-muted text-fg-muted' : 'tone-success-soft'}`}>{template.archived ? 'Arquivado' : 'Ativo'}</span>
+                  {template.is_default && <StatusBadge status="Open" label="Padrão" />}
+                  <StatusBadge status={template.archived ? 'Draft' : 'Issued'} label={template.archived ? 'Arquivado' : 'Ativo'} />
                 </span>
               </button>
             ))}
