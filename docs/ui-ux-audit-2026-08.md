@@ -118,3 +118,17 @@ com mais personalidade mantendo pesos atuais.
 3. **Estados mortos visíveis** (P1 5,7,8 + quick wins 5-9).
 4. **Glossário pt-BR + STATUS_LABELS central** (P2 11) e navegação (P2 12).
 5. **A11y floor** (P1 9): ring global de focus-visible + ConfirmDialog acessível.
+
+
+---
+
+## Log de iterações (gate de 3 revisores independentes)
+
+| Rodada | Notas (A/B/C) | Principais correções aplicadas |
+|---|---|---|
+| 1 | 7–8 / 4–7.5 / 6–9 | Rascunho do manual persistente + guarda de navegação; ConfirmDialog acessível + toast global; labels canônicos pt-BR; 404; navegação; migração de confirm/alert |
+| 2 | 7.5–8 / 6–7 / 6.5–9.5 | Botões desabilitados legíveis; nbsp em moeda; CRM com colunas+CTAs; nowrap em células; chips unificados; 'Ativo' verde consistente; skeleton em Envios |
+| 3 | — | Estado vazio exclusivo no CRM; CTA persistente; KPIs com ritmo uniforme; normalizeUom; chips semânticos no inbox; Salvar só quando dirty |
+
+Critério: APPROVED exige 10/10 dos 3 revisores por tela. Iterações continuam até
+as correções restantes serem preferência subjetiva, não defeito.
