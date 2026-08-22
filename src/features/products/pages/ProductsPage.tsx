@@ -255,7 +255,7 @@ export default function ProductsPage() {
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
       {/* PageHeader */}
-      <PageHeader title="Produtos" />
+      <PageHeader title="Produtos" description="Catálogo com preços da tabela — edite cada item na sua página de detalhe." />
 
       {/* Search + Page size */}
       <div className="flex flex-wrap items-center gap-3">

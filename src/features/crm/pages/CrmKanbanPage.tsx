@@ -293,7 +293,7 @@ export default function CrmKanbanPage() {
 
   return (
     <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader title="CRM" />
+      <PageHeader title="CRM" description="Acompanhe cada contato da carteira pelo funil de vendas." />
       {/* Search + persistent primary action. Busca só com dados no funil. */}
       <div className="flex flex-wrap items-center justify-end gap-3">
         {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
@@ -369,14 +369,6 @@ export default function CrmKanbanPage() {
             Converte clientes em negócios arrastando-os pelo funil. Os leads viram
             negócios quando um orçamento é enviado.
           </p>
-          <p className="text-[11px] uppercase tracking-wider text-fg-muted/60 mt-2">Etapas do funil</p>
-          <div className="flex flex-wrap items-center justify-center gap-1.5" aria-hidden="true">
-            {PIPELINE.map((stage) => (
-              <span key={stage} className="cursor-default rounded-full bg-surface-muted px-2.5 py-1 text-[11px] text-fg-muted">
-                {pipelineLabel(stage)}
-              </span>
-            ))}
-          </div>
           <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
             <a
               href="#/manual"

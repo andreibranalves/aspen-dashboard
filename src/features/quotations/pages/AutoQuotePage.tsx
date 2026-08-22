@@ -786,7 +786,7 @@ export default function AutoQuotePage() {
                   value={orderTemplateId}
                   onChange={(event) => setOrderTemplateId(event.target.value)}
                   disabled={extracting || orderTemplatesLoading}
-                  className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
+                  className="mt-1 w-full rounded-full border border-line bg-surface px-3 py-2 text-sm text-fg"
                 >
                   <option value="">Nenhum</option>
                   {orderTemplates.map((template) => (
