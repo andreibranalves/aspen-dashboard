@@ -83,7 +83,10 @@ export function useQuotationDeliveries(identities: DeliveryIdentity[]) {
         !identitiesRef.current.some((current) => deliveryIdentityKey(current) === key)
       )
         return;
-      setResolvedKeys((previous) => removeKey(previous, key));
+      // A failed lookup still completes the poll cycle. Keeping the key
+      // pending forever would leave Enviar WhatsApp disabled until reload.
+      setResolvedKeys((previous) => addKey(previous, key));
+      setPendingKeys((previous) => removeKey(previous, key));
       setErrorByKey((previous) => ({
         ...previous,
         [key]: errorMessage(error, 'Não foi possível atualizar a entrega.'),
