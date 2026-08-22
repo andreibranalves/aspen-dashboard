@@ -374,7 +374,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           icon={Trash2}
           label={`Excluir orçamento ${row.id}`}
           onClick={() => setDeleteTarget(row.id)}
-          colorClass="hover:bg-destructive/10 hover:text-destructive"
+          colorClass="text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
         />
         {row.revision_id && (
           <ActionBtn

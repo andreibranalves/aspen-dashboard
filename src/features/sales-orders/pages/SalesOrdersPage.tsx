@@ -283,7 +283,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
-        description="Pedidos confirmados a partir de orçamentos convertidos no CRM."
+        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM — ${PERIODS.find((p) => p.value === period)?.label ?? period}.`}
       />
 
       {/* Summary cards */}
@@ -348,8 +348,9 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         </div>
 
         {/* Status select */}
-        <span className="sr-only" id="order-status-label">Status do pedido</span>
-        <div className="relative">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-fg-muted whitespace-nowrap">Status</span>
+          <div className="relative">
           <select
             aria-labelledby="order-status-label"
             value={status}
@@ -361,7 +362,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
               <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
             ))}
           </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+          </div>
         </div>
 
         {/* Search */}
