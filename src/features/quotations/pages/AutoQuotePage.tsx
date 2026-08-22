@@ -751,7 +751,7 @@ export default function AutoQuotePage() {
   const visibleDrafts = [...activeDrafts].reverse();
 
   return (
-    <div className="flex h-full flex-col overflow-hidden animate-fade-in">
+    <div className="mx-auto w-full max-w-[1060px] flex h-full flex-col overflow-hidden animate-fade-in">
       <OrderTemplateManager
         open={orderTemplateManagerOpen}
         templates={orderTemplates}
@@ -765,13 +765,13 @@ export default function AutoQuotePage() {
             {/* Page title */}
             <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
             {templateError && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm">
                 <span className="min-w-0">{templateError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
               </div>
             )}
             {orderTemplatesError && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs">
                 <span className="min-w-0">{orderTemplatesError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadOrderTemplates}>
                   Tentar novamente
@@ -843,7 +843,7 @@ export default function AutoQuotePage() {
 
                 <textarea
                   className={cn(
-                    'w-full resize-none overflow-hidden rounded-xl border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                    'w-full resize-none overflow-hidden rounded-[10px] border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
                   placeholder={
@@ -901,7 +901,7 @@ export default function AutoQuotePage() {
 
             {/* Error */}
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300">
+              <div className="tone-destructive-soft rounded-xl p-3 text-sm">
                 <div className="flex items-start gap-2">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>

@@ -567,8 +567,8 @@ export default function WhatsAppDeliveriesPage() {
                       <TableCell className="max-w-[180px] truncate">
                         {delivery.clientName}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {fmtPhone(delivery.phone) || 'Telefone não identificado'}
+                      <TableCell className="max-w-[140px] truncate text-xs">
+                        {fmtPhone(delivery.phone) || 'Sem telefone'}
                       </TableCell>
                       <TableCell className="max-w-[180px] truncate">
                         {delivery.flowName || 'Fluxo não identificado'}

@@ -17,6 +17,7 @@ import { formatBRL, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
 import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
@@ -381,14 +382,10 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                       {formatBRL(q.value)}
                     </td>
                     <td className="py-2 pr-2">
-                      <span className={cn(
-                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                        quotationStatusBadgeKey(q.status) === 'Issued' ? 'tone-success-soft'
-                          : quotationStatusBadgeKey(q.status) === 'Draft' ? 'tone-neutral-soft'
-                          : 'tone-primary-soft',
-                      )}>
-                        {quotationStatusLabel(q.status)}
-                      </span>
+                      <StatusBadge
+                        status={quotationStatusBadgeKey(q.status)}
+                        label={quotationStatusLabel(q.status)}
+                      />
                     </td>
                     <td className="py-2 text-right">
                       <Button
