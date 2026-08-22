@@ -363,7 +363,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   const actionButtons = (row: QuotationRow) => {
     return (
-      <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-end gap-1 pr-3" onClick={(e) => e.stopPropagation()}>
         <ActionBtn
           icon={Pencil}
           label={`Editar orçamento ${row.id}`}
@@ -550,7 +550,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="whitespace-nowrap">E-mail</TableHead>
-                <TableHead className="text-center w-[180px]">Ações</TableHead>
+                <TableHead className="text-right w-[180px] pr-4">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

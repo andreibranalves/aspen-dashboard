@@ -22,7 +22,9 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, label, className }: StatusBadgeProps) {
-  const variant = badgeVariants[status] || badgeVariants.Draft;
+  // Quando className já define um tone-*, pular o fallback (a cascata CSS favoreceria tone-neutral-soft).
+  const hasCustomTone = Boolean(className?.includes('tone-'));
+  const variant = badgeVariants[status] || (hasCustomTone ? '' : badgeVariants.Draft);
   return (
     <span
       className={cn(

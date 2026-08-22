@@ -42,7 +42,7 @@ export default function ComunicacaoPage() {
   return (
     <>
       <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-        <PageHeader title="Comunicação" />
+        <PageHeader title="Comunicação" description="Fluxos, mídias e histórico das mensagens de WhatsApp." />
 
         {/* Tab bar */}
         <div className="flex flex-wrap gap-1 border-b border-line">

@@ -962,7 +962,7 @@ export default function AutoQuotePage() {
         {/* ── RIGHT PANEL (50%) ── */}
         <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
-            <div className="flex h-full flex-col p-4">
+            <div className="flex h-full flex-col">
               <h2 className="text-lg font-semibold text-fg mb-3">Resultado</h2>
               <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-line text-center">
                 {/* rounded-xl (20px nesta escala) — rounded-2xl vale 30px aqui e vira círculo em h-16 */}
