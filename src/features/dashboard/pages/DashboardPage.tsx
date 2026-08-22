@@ -207,7 +207,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                 {card.label}
               </span>
             </div>
-            <div className="flex items-baseline gap-2">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="text-2xl font-semibold text-fg">
                 {card.value}
               </span>
