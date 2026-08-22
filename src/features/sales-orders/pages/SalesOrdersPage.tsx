@@ -283,7 +283,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
-        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM — ${PERIODS.find((p) => p.value === period)?.label ?? period}.`}
+        description={`Pedidos confirmados a partir de orçamentos convertidos no CRM (período: ${PERIODS.find((p) => p.value === period)?.label ?? period}).`}
       />
 
       {/* Summary cards */}

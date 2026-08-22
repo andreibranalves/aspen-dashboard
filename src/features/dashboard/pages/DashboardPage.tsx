@@ -223,7 +223,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
       </div>
 
       {/* ── Top Products + Top Clients (side by side on lg) ─────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ── "O que vendeu" — Top Products ──────────────────────── */}
         <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
           <h2 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">

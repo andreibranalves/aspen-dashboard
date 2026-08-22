@@ -377,25 +377,25 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   return (
     <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
       <PageHeader title="Clientes" description="Contatos da carteira — use Novo orçamento para transformar um contato em venda." />
-      <div className="flex flex-wrap gap-2">
-        {(['active', 'archived', 'all'] as const).map((value) => (
-          <button key={value} type="button" onClick={() => { setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} className={`rounded-full px-3 py-1 text-xs font-medium ${status === value ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg'}`}>
-            {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
-          </button>
-        ))}
-      </div>
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative max-w-md flex-1">
+        <div className="relative max-w-md flex-1 min-w-[220px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input placeholder="Buscar por nome, documento, e-mail ou telefone…" value={search} onChange={onSearchChange} className="pl-9" aria-label="Buscar clientes" />
         </div>
         <span className="text-xs font-medium text-fg-muted">Itens por página</span>
-          <div className="relative">
-            <select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página" className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25">
+        <div className="relative">
+          <select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página" className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25">
             {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-          </div>
+          </select>
+          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {(['active', 'archived', 'all'] as const).map((value) => (
+            <button key={value} type="button" onClick={() => { setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} className={`rounded-full px-3 py-1 text-xs font-medium ${status === value ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg'}`}>
+              {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && <SkeletonTable cols={showStatusColumn ? 6 : 5} rows={8} />}

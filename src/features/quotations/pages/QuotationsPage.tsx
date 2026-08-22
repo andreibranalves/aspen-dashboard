@@ -446,7 +446,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             <select
               value={limit}
               onChange={onLimitChange}
-              className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+              className="appearance-none border border-line rounded-full pl-3 pr-8 py-2.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
               aria-label="Itens por página"
             >
               {PAGE_SIZES.map((n) => (
@@ -555,7 +555,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="whitespace-nowrap">E-mail</TableHead>
-                <TableHead className="text-right w-[180px] pr-4">Ações</TableHead>
+                <TableHead className="text-right w-[180px]">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
