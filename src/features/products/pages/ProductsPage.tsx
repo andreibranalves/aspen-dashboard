@@ -45,7 +45,7 @@ const SORT_OPTIONS: SortOption[] = [
   { value: 'item_name asc', label: 'nome' },
   { value: 'modified desc', label: 'mais recentes' },
   { value: 'modified asc', label: 'data de atualização' },
-  { value: 'item_code asc', label: 'código (sku)' },
+  { value: 'item_code asc', label: 'código SKU' },
 ];
 
 type ProductStatus = 'active' | 'archived' | 'all';
@@ -409,7 +409,7 @@ export default function ProductsPage() {
                               onClick={() => requestArchive(sku, p.ativo === false)}
                               className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                               aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                              title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
+                              title={`${p.ativo === false ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
                             >
                               {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
                             </button>
@@ -470,7 +470,7 @@ export default function ProductsPage() {
                       onClick={() => requestArchive(sku, p.ativo === false)}
                       className="inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
                       aria-label={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} produto ${sku}`}
-                      title={`${p.ativo === false ? 'Restaurar' : 'Arquivar'} ${sku}`}
+                      title={`${p.ativo === false ? 'Restaurar produto' : 'Arquivar produto (não exclui)'} — ${sku}`}
                     >
                       {p.ativo === false ? <ArchiveRestore size={18} /> : <Archive size={18} />}
                     </button>

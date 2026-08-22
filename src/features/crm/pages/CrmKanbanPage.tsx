@@ -292,17 +292,19 @@ export default function CrmKanbanPage() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Search + persistent primary action */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative max-w-md flex-1 min-w-[220px]">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-          <Input
-            placeholder="Buscar por nome do negócio…"
-            value={search}
-            onChange={onSearchChange}
-            className="pl-9"
-          />
-        </div>
+      {/* Search + persistent primary action. Busca só com dados no funil. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
+          <div className="relative max-w-md flex-1 min-w-[220px]">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
+            <Input
+              placeholder="Buscar por nome do negócio…"
+              value={search}
+              onChange={onSearchChange}
+              className="pl-9"
+            />
+          </div>
+        )}
         <a
           href="#/manual"
           className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
@@ -371,12 +373,6 @@ export default function CrmKanbanPage() {
               className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"
             >
               Ver clientes
-            </a>
-            <a
-              href="#/manual"
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] h-10 px-4 py-2"
-            >
-              Novo orçamento
             </a>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, Eye, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import {
   archiveQuotationTemplate,
@@ -36,6 +37,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   const [source, setSource] = useState('');
   const [validation, setValidation] = useState<{ warnings: string[]; preview: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<'archive' | 'set_default' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadTemplates = useCallback(async () => {
@@ -126,7 +128,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }
 
   async function setDefault() {
-    if (!detail || !window.confirm('Definir este template como padrão?')) return;
+    if (!detail) return;
     setSaving(true);
     try {
       const result = await setDefaultQuotationTemplate(detail.id);
@@ -142,7 +144,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }
 
   async function archive() {
-    if (!detail || !window.confirm('Arquivar este template?')) return;
+    if (!detail) return;
     setSaving(true);
     try {
       await archiveQuotationTemplate(detail.id);
@@ -210,14 +212,33 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               <Button type="button" variant="outline" onClick={() => void validate()} disabled={saving || !source || !key}><Eye size={14} /> Validar e visualizar preview</Button>
               <Button type="button" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 className="animate-spin" /> : <Save />} {detail ? 'Salvar nova versão' : 'Criar modelo'}</Button>
-              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => void setDefault()} disabled={saving}>Definir como padrão</Button>}
-              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10 -ml-2" onClick={() => void archive()} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
+              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="outline" onClick={() => setPendingConfirm('set_default')} disabled={saving}>Definir como padrão</Button>}
+              {detail && !detail.is_default && !detail.archived && <Button type="button" variant="ghost" className="text-destructive hover:bg-destructive/10 -ml-2" onClick={() => setPendingConfirm('archive')} disabled={saving}><Trash2 size={14} /> Arquivar</Button>}
             </div>
             {defaultKey && <p className="text-xs text-fg-muted">Modelo padrão: {defaultKey}</p>}
             </>}
           </div>
         </div>
       )}
+          <ConfirmDialog
+        open={pendingConfirm !== null}
+        title={pendingConfirm === 'archive' ? 'Arquivar este modelo?' : 'Definir como padrão?'}
+        message={
+          pendingConfirm === 'archive'
+            ? 'O modelo deixará de estar disponível para novos orçamentos, mas o histórico é preservado.'
+            : 'Novos orçamentos usarão este modelo por padrão.'
+        }
+        confirmLabel={pendingConfirm === 'archive' ? 'Arquivar' : 'Definir como padrão'}
+        cancelLabel="Cancelar"
+        variant={pendingConfirm === 'archive' ? 'destructive' : 'default'}
+        onConfirm={() => {
+          const action = pendingConfirm;
+          setPendingConfirm(null);
+          if (action === 'archive') void archive();
+          if (action === 'set_default') void setDefault();
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
     </section>
   );
 }

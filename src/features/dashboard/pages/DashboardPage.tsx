@@ -11,6 +11,7 @@ import {
   ExternalLink,
   type LucideIcon,
 } from 'lucide-react';
+import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
@@ -368,8 +369,13 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
                       {formatBRL(q.value)}
                     </td>
                     <td className="py-2 pr-2">
-                      <span className="inline-block px-2 py-0.5 text-xs rounded-pill bg-primary/10 text-primary font-medium">
-                        {capitalize(q.status)}
+                      <span className={cn(
+                        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                        quotationStatusBadgeKey(q.status) === 'Issued' ? 'tone-success-soft'
+                          : quotationStatusBadgeKey(q.status) === 'Draft' ? 'tone-neutral-soft'
+                          : 'tone-primary-soft',
+                      )}>
+                        {quotationStatusLabel(q.status)}
                       </span>
                     </td>
                     <td className="py-2 text-right">

@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { fetchFlows, saveFlows } from '@/lib/api/communicationApi';
 import type { CommunicationFlow, FlowContext, FlowChannel } from '@/lib/api/communicationApi';
 import { renderFlowTemplate } from '@/lib/api/whatsappFlows';
@@ -127,6 +128,7 @@ export default function FlowEditorTab() {
   const [flows, setFlows] = useState<EditableFlow[]>([]);
   const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
+  const [confirmDeleteFlowId, setConfirmDeleteFlowId] = useState<string | null>(null);
   const [expandedFlow, setExpandedFlow] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -357,12 +359,12 @@ export default function FlowEditorTab() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  deleteFlow(selectedFlow.id);
+                  setConfirmDeleteFlowId(selectedFlow.id);
                 }}
-                className="p-1 rounded hover:bg-destructive/10"
+                className="p-1 rounded text-fg-muted hover:bg-destructive/10 hover:text-destructive transition-colors"
                 title="Remover fluxo"
               >
-                <Trash2 size={14} className="text-fg-muted" />
+                <Trash2 size={14} />
               </button>
               <ChevronUp
                 size={16}
@@ -630,6 +632,20 @@ export default function FlowEditorTab() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteFlowId !== null}
+        title="Remover fluxo?"
+        message={`O fluxo "${flows.find((f) => f.id === confirmDeleteFlowId)?.name || ''}" será removido da lista local. Salve para persistir a alteração.`}
+        confirmLabel="Remover"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        onConfirm={() => {
+          if (confirmDeleteFlowId) deleteFlow(confirmDeleteFlowId);
+          setConfirmDeleteFlowId(null);
+        }}
+        onCancel={() => setConfirmDeleteFlowId(null)}
+      />
     </div>
   );
 }

@@ -17,6 +17,8 @@ import {
   Clipboard,
   PlusCircle,
   Copy,
+  MailCheck,
+  MailX,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -392,22 +394,24 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
   const EmailMarker = ({ row }: { row: QuotationRow }) => (
     <div
-      className="flex flex-col items-start gap-0.5"
+      className="flex items-center gap-1.5"
       title={
         row.email_sent
           ? `Último e-mail enviado em ${formatDate(row.email_sent_at)}`
-          : 'Nenhum e-mail foi enviado para este orçamento ainda'
+          : 'Nenhum e-mail enviado para este orçamento ainda'
       }
     >
-      <span
-        className={
-          row.email_sent ? 'text-xs font-medium text-success' : 'text-xs text-fg-muted/50'
-        }
-      >
-        {row.email_sent ? 'E-mail enviado' : 'E-mail não enviado'}
-      </span>
-      {row.email_sent && row.email_sent_at && (
-        <span className="text-[11px] text-fg-muted">{formatDate(row.email_sent_at)}</span>
+      {row.email_sent ? (
+        <>
+          <MailCheck size={14} className="shrink-0 text-success" aria-hidden="true" />
+          {row.email_sent_at && (
+            <span className="whitespace-nowrap text-[11px] text-fg-muted">
+              {formatDate(row.email_sent_at)}
+            </span>
+          )}
+        </>
+      ) : (
+        <MailX size={14} className="shrink-0 text-fg-muted/40" aria-hidden="true" />
       )}
     </div>
   );

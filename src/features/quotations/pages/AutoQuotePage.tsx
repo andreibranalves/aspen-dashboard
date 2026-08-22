@@ -971,7 +971,7 @@ export default function AutoQuotePage() {
               </div>
               <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>
               <p className="mt-1 max-w-sm text-sm text-fg-muted">
-                Cole o texto do pedido no painel esquerdo e clique em <strong>Extrair</strong> para
+                Cole a mensagem do cliente no painel esquerdo e clique em <strong>Extrair</strong> para
                 gerar orçamentos.
               </p>
             </div>
