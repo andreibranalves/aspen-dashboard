@@ -515,13 +515,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
                     {crmDetail.crmMatch.email && (
                       <p className="text-fg-muted">{crmDetail.crmMatch.email}</p>
                     )}
-                    <span className="inline-block rounded-full bg-surface-muted px-2 py-0.5 text-[10px] text-fg-muted">
-                      {crmDetail.crmMatch.matchSource === 'phone'
-                        ? 'Telefone'
-                        : crmDetail.crmMatch.matchSource === 'email'
-                          ? 'E-mail'
-                          : 'Nome'}
-                    </span>
+                    <StatusBadge status="Draft" label={crmDetail.crmMatch.matchSource === 'phone' ? 'Telefone' : crmDetail.crmMatch.matchSource === 'email' ? 'E-mail' : 'Nome'} />
                   </div>
                   <Button
                     size="sm"

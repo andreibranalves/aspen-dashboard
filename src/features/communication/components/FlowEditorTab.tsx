@@ -398,7 +398,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.name}
                     onChange={(e) => updateFlow(selectedFlow.id, 'name', e.target.value)}
-                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 text-fg mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -407,7 +407,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.vendor_name || 'Juliana'}
                     onChange={(e) => updateFlow(selectedFlow.id, 'vendor_name', e.target.value)}
-                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 text-fg mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -420,7 +420,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_min_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
                 </div>
                 <div>
@@ -433,7 +433,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_max_seconds', Number(e.target.value))
                     }
-                    className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
+                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
                 </div>
               </div>
@@ -465,7 +465,7 @@ export default function FlowEditorTab() {
                           onChange={(e) =>
                             handleStepTypeChange(selectedFlow.id, step.id, e.target.value as StepType)
                           }
-                          className="text-xs rounded border border-line bg-surface px-1.5 py-0.5 text-fg"
+                          className="appearance-none rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                         >
                           {STEP_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -505,7 +505,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'template', e.target.value)
                             }
                             placeholder="Digite a mensagem. Use variáveis como (primeiro_nome), (produto_resumo)..."
-                            className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 text-fg min-h-[60px] resize-y"
+                            className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg min-h-[60px] resize-y"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             Preview:{' '}
@@ -525,7 +525,7 @@ export default function FlowEditorTab() {
                               onChange={(e) =>
                                 updateStep(selectedFlow.id, step.id, 'source', e.target.value)
                               }
-                              className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 text-fg mt-0.5"
+                              className="mt-0.5 w-full appearance-none rounded-full border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                             >
                               <option value="quotation_pdf">PDF (documento)</option>
                               <option value="quotation_webp">WebP (imagem)</option>
@@ -538,7 +538,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
                             }
                             placeholder="Legenda (opcional)"
-                            className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 text-fg"
+                            className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             {step.source === 'quotation_webp'
@@ -586,7 +586,7 @@ export default function FlowEditorTab() {
                                 )
                               }
                               placeholder="Ex: Referência de (grupo_produto)"
-                              className="w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 mt-0.5"
+                              className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-0.5"
                             />
                           </div>
                           <p className="text-[10px] text-fg-muted">

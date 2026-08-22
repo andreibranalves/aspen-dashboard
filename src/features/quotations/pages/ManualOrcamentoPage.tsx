@@ -626,12 +626,12 @@ export default function ManualOrcamentoPage() {
                     <p className="text-sm text-fg-muted mt-1">Use um cadastro existente ou crie o contato nesta venda.</p>
                   </div>
 
-                  <div className="flex gap-1 bg-surface-muted rounded-lg p-0.5 w-fit">
+                  <div className="flex gap-1 bg-surface-muted/60 border border-line rounded-lg p-0.5 w-fit">
                     <button
                       onClick={() => { setClientType(CLIENT_TYPE.NEW); setSelectedClient(null); setClientSearch(''); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.NEW ? 'bg-surface-muted font-medium text-fg' : 'text-fg-muted hover:text-fg',
+                        clientType === CLIENT_TYPE.NEW ? 'bg-surface shadow-sm font-medium text-fg border border-line/60' : 'text-fg-muted hover:text-fg',
                       )}
                       aria-label="Cadastrar novo cliente"
                     >
@@ -641,7 +641,7 @@ export default function ManualOrcamentoPage() {
                       onClick={() => { setClientType(CLIENT_TYPE.EXISTING); setNewClient({ nome: '', email: '', telefone: '' }); }}
                       className={cn(
                         'px-3 py-1.5 text-sm rounded-md transition-colors',
-                        clientType === CLIENT_TYPE.EXISTING ? 'bg-surface-muted font-medium text-fg' : 'text-fg-muted hover:text-fg',
+                        clientType === CLIENT_TYPE.EXISTING ? 'bg-surface shadow-sm font-medium text-fg border border-line/60' : 'text-fg-muted hover:text-fg',
                       )}
                       aria-label="Buscar cliente existente"
                     >

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { Search, AlertTriangle, Columns3, Clipboard, Send, X } from 'lucide-react';
+import { Search, AlertTriangle, Columns3, Clipboard, Send, X, PlusCircle } from 'lucide-react';
 import { apiGet, apiPost, apiPut } from '@/lib/api/api';
 import { pipelineLabel } from '@/lib/statusLabels';
 import { useToast } from '@/components/shared/toast';
@@ -296,12 +296,10 @@ export default function CrmKanbanPage() {
 
   useEffect(() => {
     setTopBarActions?.(
-      <a
-        href="#/manual"
-        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-primary px-3 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
-      >
+      <Button onClick={(): void => { window.location.hash = '#/manual'; }}>
+        <PlusCircle size={16} />
         Novo orçamento
-      </a>
+      </Button>
     );
     return () => setTopBarActions?.(null);
   }, [setTopBarActions]);

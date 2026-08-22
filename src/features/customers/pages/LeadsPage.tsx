@@ -389,9 +389,9 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
           </select>
           <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
         </div>
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
+        <div className="ml-auto flex items-center gap-1 rounded-full border border-line bg-surface p-1">
           {(['active', 'archived', 'all'] as const).map((value) => (
-            <button key={value} type="button" onClick={() => { setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} className={`rounded-full px-3 py-1 text-xs font-medium ${status === value ? 'bg-primary text-primary-foreground' : 'bg-page text-fg-muted hover:text-fg'}`}>
+            <button key={value} type="button" onClick={() => { setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${status === value ? 'bg-primary text-primary-foreground' : 'text-fg-muted hover:text-fg'}`}>
               {value === 'active' ? 'Ativos' : value === 'archived' ? 'Arquivados' : 'Todos'}
             </button>
           ))}

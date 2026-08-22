@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Clock, Loader2 } from 'lucide-react';
 import SkeletonComunicacao from '@/features/communication/components/SkeletonComunicacao';
+import { StatusBadge } from '@/components/ui/badge';
 
 interface SendEvent {
   id: string;
@@ -114,9 +115,7 @@ export default function SendHistoryTab() {
                 <span className="text-xs text-fg-muted font-mono">{evt.quotation_id}</span>
               )}
               {evt.duplicate_warning && (
-                <span className="tone-warning-soft inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium">
-                  Duplicado
-                </span>
+                <StatusBadge status="Open" label="Duplicado" className="tone-warning-soft" />
               )}
             </div>
             <div className="flex items-center gap-3 text-xs text-fg-muted mt-1">
