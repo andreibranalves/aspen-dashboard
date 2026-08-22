@@ -369,6 +369,13 @@ export default function CrmKanbanPage() {
             Converte clientes em negócios arrastando-os pelo funil. Os leads viram
             negócios quando um orçamento é enviado.
           </p>
+          <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1" aria-hidden="true">
+            {PIPELINE.map((stage) => (
+              <span key={stage} className="rounded-full bg-surface-muted px-2.5 py-1 text-[11px] text-fg-muted">
+                {pipelineLabel(stage)}
+              </span>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
             <a
               href="#/manual"

@@ -311,7 +311,7 @@ export default function WhatsAppInboxPage({ navigate }: WhatsAppInboxPageProps) 
               className="pl-9"
             />
           </div>
-          <Button variant="outline" onClick={sync} disabled={loading || saving}>
+          <Button variant="outline" size="sm" onClick={sync} disabled={loading || saving}>
             <RefreshCw size={14} className={loading || saving ? 'animate-spin' : ''} />
             Atualizar
           </Button>

@@ -1214,7 +1214,7 @@ export default function ManualOrcamentoPage() {
               <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-fg-muted">Cliente</span>
-                  <span className="font-medium text-right truncate max-w-[180px]">
+                  <span className={cn('font-medium text-right truncate max-w-[180px]', !getClientInfo().nome && 'text-fg-muted/60')}>
                     {getClientInfo().nome || 'Não informado'}
                   </span>
                 </div>

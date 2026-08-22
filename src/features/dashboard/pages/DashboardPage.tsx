@@ -260,7 +260,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               </table>
             </div>
           ) : (
-            <div className="flex flex-col items-center py-6 text-fg-muted gap-2">
+            <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
               <Package size={24} className="text-fg-muted/40" aria-hidden="true" />
               <p className="text-sm">Nenhum produto vendido no período.</p>
             </div>
@@ -299,7 +299,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
               </table>
             </div>
           ) : (
-            <div className="flex flex-col items-center py-6 text-fg-muted gap-2">
+            <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
               <Users size={24} className="text-fg-muted/40" aria-hidden="true" />
               <p className="text-sm">Nenhum cliente no período.</p>
             </div>
@@ -335,7 +335,7 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
             </table>
           </div>
         ) : (
-          <div className="flex flex-col items-center py-6 text-fg-muted gap-2">
+          <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
               <BarChart3 size={24} className="text-fg-muted/40" aria-hidden="true" />
               <p className="text-sm">Nenhuma venda no período.</p>
             </div>
