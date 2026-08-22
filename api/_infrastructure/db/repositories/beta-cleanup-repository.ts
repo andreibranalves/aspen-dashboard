@@ -215,6 +215,21 @@ async function buildPlan(db: CleanupDatabase, candidates: BetaCleanupCandidate[]
     if (!changed) break;
   }
 
+  const [existingClients, existingLeads, existingDeals, existingQuotations] = await Promise.all([
+    clientIds.size ? selectIn(db.select({ id: clients.id }).from(clients).where(inArray(clients.id, [...clientIds]))) : Promise.resolve([]),
+    leadIds.size ? selectIn(db.select({ id: quoteLeads.id }).from(quoteLeads).where(inArray(quoteLeads.id, [...leadIds]))) : Promise.resolve([]),
+    dealIds.size ? selectIn(db.select({ id: crmDeals.id }).from(crmDeals).where(inArray(crmDeals.id, [...dealIds]))) : Promise.resolve([]),
+    quotationIds.size ? selectIn(db.select({ id: quotations.id }).from(quotations).where(inArray(quotations.id, [...quotationIds]))) : Promise.resolve([]),
+  ]);
+  clientIds.clear();
+  leadIds.clear();
+  dealIds.clear();
+  quotationIds.clear();
+  for (const row of existingClients) clientIds.add(row.id);
+  for (const row of existingLeads) leadIds.add(row.id);
+  for (const row of existingDeals) dealIds.add(row.id);
+  for (const row of existingQuotations) quotationIds.add(row.id);
+
   const quotationList = [...quotationIds];
   const revisionRows = quotationList.length
     ? await selectIn(db.select().from(quoteRevisions).where(inArray(quoteRevisions.quotationId, quotationList)))
