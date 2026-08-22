@@ -1191,7 +1191,7 @@ export default function ManualOrcamentoPage() {
                 <div>
                   <label className="text-xs text-fg-muted mb-1 block">Observações</label>
                   <textarea
-                    className="w-full min-h-[88px] rounded-[10px] border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/15 resize-y"
+                    className="w-full min-h-[88px] rounded-[10px] border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 resize-y"
                     placeholder="Detalhes de arte, entrega, acabamentos ou condições comerciais…"
                     value={observacoes}
                     onChange={e => setObservacoes(e.target.value)}
