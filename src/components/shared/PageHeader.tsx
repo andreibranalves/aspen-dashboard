@@ -3,20 +3,22 @@ import { cn } from '@/lib/utils';
 
 /**
  * PageHeader — cabeçalho de página reutilizável.
- * Título padronizado em text-2xl (igual à página de Produtos).
+ * Título padronizado em text-2xl; descrição em text-sm text-fg-muted.
+ * Ações da página ficam aqui (não na TopBar): a secundária à esquerda,
+ * a primária à direita, dentro do grupo `actions`.
  */
 export interface PageHeaderProps {
   /** título da página (obrigatório) */
   title: string;
   /** descrição curta abaixo do título (opcional) */
   description?: string;
-  /** ação primária (botão/link, opcional) */
-  action?: ReactNode;
+  /** grupo de ações da página (secundária → primária) */
+  actions?: ReactNode;
   /** classes extras */
   className?: string;
 }
 
-export default function PageHeader({ title, description, action, className }: PageHeaderProps) {
+export default function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
     <div className={cn('flex items-start justify-between gap-4 flex-wrap', className)}>
       <div className="space-y-1 min-w-0">
@@ -25,8 +27,8 @@ export default function PageHeader({ title, description, action, className }: Pa
           <p className="text-sm text-fg-muted">{description}</p>
         )}
       </div>
-      {action && (
-        <div className="shrink-0">{action}</div>
+      {actions && (
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
       )}
     </div>
   );

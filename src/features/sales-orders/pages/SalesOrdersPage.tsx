@@ -6,15 +6,20 @@ import {
   type ChangeEvent,
   type MouseEvent,
 } from 'react';
-import type { LucideIcon } from 'lucide-react';
-import { Search, ShoppingCart, TrendingUp, DollarSign, Package, ChevronDown } from 'lucide-react';
+import { Search, ShoppingCart, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react';
 import { apiGet } from '@/lib/api/api';
 import { formatBRL } from '@/lib/formatting/formatters';
-import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
+import PageToolbar from '@/components/shared/PageToolbar';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import { projectSalesOrderListRow, type ProjectedSalesOrderListRow } from '@/lib/localProjections';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
+import { FilterChip } from '@/components/ui/filter-chip';
+import { Select } from '@/components/ui/select';
+import { StatCard } from '@/components/ui/stat-card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   parseHashAllowedInteger,
   parseHashOption,
@@ -247,39 +252,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
     return <span className="text-fg-muted">—</span>;
   };
 
-  // ── Summary card component ──────────────────────────────────────────────────
-  interface SummaryCardProps {
-    icon: LucideIcon;
-    label: string;
-    value: string;
-    subtitle?: string;
-    colorClass?: string;
-  }
-
-  const SummaryCard = ({ icon: Icon, label, value, subtitle, colorClass }: SummaryCardProps) => {
-    return (
-      <div className="flex items-start gap-3 rounded-lg border border-line bg-surface p-4 shadow-sm flex-1 min-w-[160px]">
-        <div className={cn(
-          'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-          colorClass || 'bg-surface-muted text-fg-muted',
-        )}>
-          <Icon size={20} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs text-fg-muted">{label}</p>
-          <p className="text-lg font-semibold text-fg truncate">{value}</p>
-          {subtitle && (
-            <p className="text-xs text-fg-muted">{subtitle}</p>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   const summaryData = summary;
 
   return (
-    <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
+    <PageShell>
       {/* PageHeader */}
       <PageHeader
         title="Pedidos"
@@ -304,72 +280,54 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       )}
       {summaryData && (
         <div className="flex flex-wrap gap-3">
-          <SummaryCard
+          <StatCard
             icon={DollarSign}
             label="Receita"
+            className="flex-1"
             value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.total_revenue)}
-            subtitle={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
-            colorClass="bg-success/10 text-success"
+            metadata={summaryData.revenue_delta === null || (summaryData.revenue_delta === 0 && !summaryData.total_revenue) ? undefined : summaryData.revenue_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.revenue_delta > 0 ? '+' : ''}${summaryData.revenue_delta}% vs período anterior`}
           />
-          <SummaryCard
+          <StatCard
             icon={ShoppingCart}
             label="Pedidos"
+            className="flex-1"
             value={String(summaryData.orders_count)}
-            colorClass="bg-primary/10 text-primary"
           />
-          <SummaryCard
+          <StatCard
             icon={TrendingUp}
             label="Ticket Médio"
+            className="flex-1"
             value={summaryData.orders_count === 0 ? '—' : formatBRL(summaryData.avg_ticket)}
-            subtitle={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? undefined : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
-            colorClass="tone-warning-soft"
+            metadata={summaryData.avg_ticket_delta === null || (summaryData.avg_ticket_delta === 0 && !summaryData.avg_ticket) ? undefined : summaryData.avg_ticket_delta === 0 ? 'sem variação vs período anterior' : `${summaryData.avg_ticket_delta > 0 ? '+' : ''}${summaryData.avg_ticket_delta}% vs período anterior`}
           />
-          <SummaryCard
+          <StatCard
             icon={Package}
             label="Pedidos em aberto"
+            className="flex-1"
             value={String(summaryData.open_orders)}
-            colorClass="tone-info-soft"
           />
         </div>
       )}
 
       {/* Filter row */}
-      <div className="flex flex-wrap items-center gap-3">
+      <PageToolbar>
         {/* Period chips */}
         <div className="flex flex-wrap gap-1.5">
           {PERIODS.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => onPeriodChange(p.value)}
-              className={cn(
-                'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                period === p.value
-                  ? 'bg-primary text-on-solid'
-                  : 'bg-surface-muted text-fg-muted hover:text-fg hover:bg-surface',
-              )}
-            >
+            <FilterChip key={p.value} selected={period === p.value} onClick={() => onPeriodChange(p.value)}>
               {p.label}
-            </button>
+            </FilterChip>
           ))}
         </div>
 
         {/* Status select */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-fg-muted whitespace-nowrap">Status</span>
-          <div className="relative">
-          <select
-            aria-labelledby="order-status-label"
-            value={status}
-            onChange={onStatusChange}
-            className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-            title="Status do pedido"
-          >
+          <Select aria-labelledby="order-status-label" value={status} onChange={onStatusChange} title="Status do pedido">
             {STATUSES.map((s, i) => (
               <option key={s} value={s}>{STATUS_DISPLAY[i]}</option>
             ))}
-          </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-          </div>
+          </Select>
         </div>
 
         {/* Search */}
@@ -387,17 +345,13 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
         {/* Limit selector */}
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span className="whitespace-nowrap">Itens por página</span>
-          <select
-            value={limit}
-            onChange={onLimitChange}
-            className="border border-line rounded-[10px] px-3 py-2 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-          >
+          <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
             {[10, 25, 50, 100].map(n => (
               <option key={n} value={n}>{n}</option>
             ))}
-          </select>
+          </Select>
         </div>
-      </div>
+      </PageToolbar>
 
       {/* Loading */}
       {loading && <SkeletonTable cols={7} rows={8} />}
@@ -405,7 +359,8 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       {/* Error */}
       {!loading && error && (
         <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <p className="text-lg">Erro ao carregar pedidos</p>
+          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
+          <p>Erro ao carregar pedidos</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={fetchOrders}>
             Tentar novamente
@@ -415,21 +370,20 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
       {/* Empty */}
       {!loading && !error && items.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <ShoppingCart size={36} className="text-fg-muted/40" />
-          <p>{search ? 'Nenhum pedido encontrado para a busca.' : status ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}</p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <a
-              href="#/manual"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-on-solid transition-colors hover:bg-primary/90"
-            >
-              Novo orçamento
-            </a>
-            <Button variant="outline" onClick={() => navigate('/quotations')}>
-              Ver orçamentos
-            </Button>
-          </div>
-        </div>
+        <EmptyState
+          icon={ShoppingCart}
+          title={search ? 'Nenhum pedido encontrado para a busca.' : status ? 'Nenhum pedido com esse status.' : 'Os pedidos aparecem aqui quando um orçamento é convertido no CRM.'}
+          actions={
+            <>
+              <Button asChild>
+                <a href="#/manual">Novo orçamento</a>
+              </Button>
+              <Button variant="outline" onClick={() => navigate('/quotations')}>
+                Ver orçamentos
+              </Button>
+            </>
+          }
+        />
       )}
 
       {/* ── Desktop Table (hidden on small screens) ── */}
@@ -463,12 +417,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
                     {formatBRL(row.grand_total)}
                   </TableCell>
                   <TableCell>
-                    <span className={cn(
-                      'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
-                      statusBadgeClass(row.status),
-                    )}>
-                      {STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
-                    </span>
+                    <StatusBadge
+                      status={row.status || ''}
+                      label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
+                    />
                   </TableCell>
                   <TableCell className="text-sm text-fg-muted">
                     {formatDelivery(row)}
@@ -494,12 +446,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
-                <span className={cn(
-                  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
-                  statusBadgeClass(row.status),
-                )}>
-                  {STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
-                </span>
+                <StatusBadge
+                  status={row.status || ''}
+                  label={STATUS_LABELS[row.status || ''] || 'Status desconhecido'}
+                />
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-fg truncate">{row.customer_name || 'Cliente não identificado'}</span>
@@ -560,21 +510,6 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
-}
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-function statusBadgeClass(status: string | undefined): string {
-  const map: Record<string, string> = {
-    'Draft': 'bg-surface-muted text-fg-muted',
-    'To Deliver and Bill': 'bg-primary/10 text-primary',
-    'To Bill': 'tone-info-soft',
-    'To Deliver': 'tone-info-soft',
-    'Completed': 'bg-success/10 text-success',
-    'Cancelled': 'bg-surface-muted text-fg-muted/40 line-through',
-    'Closed': 'bg-surface-muted text-fg-muted/50',
-  };
-  return map[status || ''] || 'bg-surface-muted text-fg-muted';
 }

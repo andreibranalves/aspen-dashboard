@@ -9,6 +9,7 @@ import {
   Users,
   FileText,
   ExternalLink,
+  AlertTriangle,
   type LucideIcon,
 } from 'lucide-react';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
@@ -16,8 +17,11 @@ import { apiGet } from '@/lib/api/api';
 import { formatBRL, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
+import { FilterChip } from '@/components/ui/filter-chip';
+import { StatCard } from '@/components/ui/stat-card';
 import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
@@ -97,8 +101,8 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-        <PageHeader title="Dashboard" />
+      <PageShell>
+        <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-3">
@@ -113,24 +117,23 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           <div className="h-6 w-full bg-surface-muted rounded animate-pulse" />
           <div className="h-6 w-full bg-surface-muted rounded animate-pulse" />
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
-        <PageHeader title="Dashboard" />
-        <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
-          <div className="flex items-center gap-3 text-destructive">
-            <BarChart3 className="h-5 w-5 shrink-0" />
-            <p className="text-sm">{error}</p>
-          </div>
-          <Button variant="outline" className="mt-4" onClick={() => void fetchDashboard()}>
+      <PageShell>
+        <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
+        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+          <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
+          <p>Erro ao carregar dashboard</p>
+          <p className="text-sm">{error}</p>
+          <Button variant="outline" onClick={() => void fetchDashboard()}>
             Tentar novamente
           </Button>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -173,53 +176,40 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
+    <PageShell>
       {/* ── Header ─────────────────────────────────────────────── */}
-      <PageHeader title="Dashboard" />
+      <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
 
       {/* ── Period filter chips ─────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2">
         {PERIODS.map((p) => (
-          <button
-            key={p.key}
-            onClick={(): void => setPeriod(p.key)}
-            className={cn(
-              'px-3 py-1 text-xs rounded-full border transition-colors',
-              period === p.key
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-transparent text-fg border-line hover:bg-primary/5'
-            )}
-          >
+          <FilterChip key={p.key} selected={period === p.key} onClick={() => setPeriod(p.key)}>
             {p.label}
-          </button>
+          </FilterChip>
         ))}
       </div>
 
       {/* ── Summary cards ───────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {summaryCards.map((card, idx) => (
-          <div
+          <StatCard
             key={idx}
-            className="bg-surface rounded-lg border border-line shadow-sm p-5 flex flex-col gap-2"
-          >
-            <div className="flex items-center gap-2 text-fg-muted">
-              <card.icon className="h-4 w-4 shrink-0 text-primary" />
-              <span className="min-w-0 text-xs font-medium uppercase tracking-wider">
-                {card.label}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <span className="text-2xl font-semibold text-fg">
-                {card.value}
-              </span>
-              <span
-                className={cn('whitespace-nowrap text-xs font-medium', card.delta != null ? deltaClass(card.delta) : 'text-fg-muted')}
-                title={card.delta != null ? 'Variação vs período anterior' : 'Métrica acumulada, fora do período'}
-              >
-                {card.delta != null ? formatDelta(card.delta) : 'geral'}
-              </span>
-            </div>
-          </div>
+            icon={card.icon}
+            label={card.label}
+            value={card.value}
+            metadata={
+              card.delta != null ? (
+                <span
+                  className={cn('whitespace-nowrap text-xs font-medium', deltaClass(card.delta))}
+                  title="Variação vs período anterior"
+                >
+                  {formatDelta(card.delta)}
+                </span>
+              ) : (
+                <span title="Métrica acumulada, fora do período">geral</span>
+              )
+            }
+          />
         ))}
       </div>
 
@@ -405,6 +395,6 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
           <p className="text-sm text-fg-muted">Nenhum orçamento parado no período.</p>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }
