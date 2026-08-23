@@ -1,5 +1,4 @@
 import { cn } from '@/lib/utils';
-import { composeButtonSlotProps } from '@/lib/button-slot';
 import { cloneElement, forwardRef, isValidElement, type ButtonHTMLAttributes, type ReactElement } from 'react';
 
 /**
@@ -40,9 +39,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   asChild?: boolean;
 }
 
-const Button = forwardRef<HTMLElement, ButtonProps>(
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { className, variant = 'default', size = 'default', asChild, children, ...props },
+    { className, variant = 'default', size = 'default', asChild, children, 'data-variant': dataVariant, ...props },
     ref
   ) => {
     const classes = cn(
@@ -57,23 +56,18 @@ const Button = forwardRef<HTMLElement, ButtonProps>(
     );
 
     if (asChild && isValidElement(children)) {
-      const child = children as ReactElement<Record<string, unknown>>;
-      const slotProps = composeButtonSlotProps(
-        { ...props, ...(ref ? { ref } : {}) },
-        child.props,
-        { variant, classes },
-      );
-      return cloneElement(child, slotProps);
+      const child = children as ReactElement<{ className?: string; 'data-variant'?: string }>;
+      return cloneElement(child, {
+        'data-variant': dataVariant ?? variant,
+        className: cn(classes, child.props.className),
+      });
     }
 
     return (
       <button
-        data-variant={variant}
+        data-variant={dataVariant ?? variant}
         className={classes}
-        ref={(node) => {
-          if (typeof ref === 'function') ref(node);
-          else if (ref) ref.current = node;
-        }}
+        ref={ref}
         {...props}
       >
         {children}
