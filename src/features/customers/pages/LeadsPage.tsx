@@ -12,7 +12,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { StatusBadge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@/components/shared/EmptyState';
 import {
   parseHashAllowedInteger,
   parseHashOption,

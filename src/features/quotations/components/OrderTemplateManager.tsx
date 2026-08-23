@@ -282,7 +282,7 @@ export default function OrderTemplateManager({
           aria-modal="true"
           aria-labelledby="order-template-manager-title"
           tabIndex={-1}
-          className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl focus:outline-none sm:max-h-[calc(100vh-3rem)]"
+          className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-2xl focus:outline-none sm:max-h-[calc(100vh-3rem)]"
         >
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
             <div>
@@ -306,7 +306,7 @@ export default function OrderTemplateManager({
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             {error && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300">
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300">
                 {error}
               </div>
             )}
@@ -327,7 +327,7 @@ export default function OrderTemplateManager({
                 {templates.map((template) => (
                   <div
                     key={template.id}
-                    className="flex flex-col gap-3 rounded-xl border border-line bg-surface-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 rounded-lg border border-line bg-surface-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium text-fg">{template.name}</p>
@@ -412,7 +412,7 @@ export default function OrderTemplateManager({
                       className="pl-9"
                     />
                     {searchTerm.trim().length >= 2 && (
-                      <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-xl">
+                      <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-xl">
                         {searchLoading ? (
                           <p className="px-3 py-2 text-sm text-fg-muted">Buscando produtos…</p>
                         ) : searchResults.length ? (
@@ -445,7 +445,7 @@ export default function OrderTemplateManager({
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-fg">SKUs selecionados</p>
                   {selectedItems.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-sm text-fg-muted">
+                    <div className="rounded-lg border border-dashed border-line px-3 py-6 text-center text-sm text-fg-muted">
                       Busque e selecione os produtos que entram neste template.
                     </div>
                   ) : (

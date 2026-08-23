@@ -67,7 +67,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
         <div className="text-center mb-8">
           <div
             className={cn(
-              'inline-flex items-center justify-center w-14 h-14 rounded-2xl',
+              'inline-flex items-center justify-center w-14 h-14 rounded-lg',
               'mb-4 shadow-lg shadow-primary/20'
             )}
             style={{

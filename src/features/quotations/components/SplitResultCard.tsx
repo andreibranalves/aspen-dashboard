@@ -252,7 +252,7 @@ export default function SplitResultCard({
     <div
       ref={cardRef}
       className={cn(
-        'rounded-xl border border-line bg-surface',
+        'rounded-lg border border-line bg-surface',
         isProcessing && !immutableIssue && 'opacity-60 pointer-events-none'
       )}
     >

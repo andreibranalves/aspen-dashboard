@@ -83,7 +83,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={item.id}
             role={item.tone === 'error' ? 'alert' : 'status'}
             className={cn(
-              'pointer-events-auto flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm font-medium shadow-lg backdrop-blur-sm animate-fade-in',
+              'pointer-events-auto flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm font-medium shadow-lg backdrop-blur-sm animate-fade-in',
               TONE_STYLES[item.tone],
             )}
           >

@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@/components/shared/EmptyState';
 import SkeletonTable from '@/components/shared/SkeletonTable';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import PageHeader from '@/components/shared/PageHeader';

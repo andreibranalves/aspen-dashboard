@@ -23,7 +23,7 @@ export default function MediaGridItem({ item, onDelete }: MediaGridItemProps) {
   const isVideo = item.kind === 'video';
 
   return (
-    <div className="group relative rounded-xl border border-line bg-surface overflow-hidden hover:border-primary/30 transition-colors">
+    <div className="group relative rounded-lg border border-line bg-surface overflow-hidden hover:border-primary/30 transition-colors">
       {/* Thumbnail */}
       <div className="aspect-square bg-surface-muted flex items-center justify-center overflow-hidden">
         {isVideo ? (

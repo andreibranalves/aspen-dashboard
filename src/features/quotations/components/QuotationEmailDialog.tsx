@@ -106,7 +106,7 @@ export function QuotationEmailDialog({
         aria-modal="true"
         aria-labelledby="quotation-email-title"
         tabIndex={-1}
-        className="relative w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-2xl"
+        className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
         onSubmit={(event) => {
           event.preventDefault();
           void onSubmit(email);

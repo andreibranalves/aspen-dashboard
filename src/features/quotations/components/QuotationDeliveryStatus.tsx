@@ -165,7 +165,7 @@ export function QuotationDeliveryStatus({
             closeDialog();
           }}
           onClose={resetDialog}
-          className="max-w-md rounded-xl border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
+          className="max-w-md rounded-lg border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
         >
           <form onSubmit={submitResolution} className="space-y-4 p-5">
             <div>

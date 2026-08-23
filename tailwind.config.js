@@ -8,85 +8,94 @@ export default {
         sans: ['Inter', 'Inter Variable', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
-        // ── Alpine vocabulary (canonical) ──
-        line: 'hsl(var(--line))',
-        page: 'hsl(var(--page))',
+        // Canonical Aspen semantic tokens.
+        page: 'rgb(var(--page))',
         surface: {
-          DEFAULT: 'hsl(var(--surface))',
-          muted: 'hsl(var(--surface-muted))',
+          DEFAULT: 'rgb(var(--surface))',
+          subtle: 'rgb(var(--surface-subtle))',
+          hover: 'rgb(var(--surface-hover))',
+          selected: 'rgb(var(--surface-selected))',
+          muted: 'rgb(var(--surface-muted))',
         },
-        shell: 'hsl(var(--shell))',
-        fg: {
-          DEFAULT: 'hsl(var(--fg))',
-          muted: 'hsl(var(--fg-muted))',
+        border: {
+          DEFAULT: 'rgb(var(--border-default))',
+          subtle: 'rgb(var(--border-subtle))',
+          strong: 'rgb(var(--border-strong))',
         },
-        'on-solid': 'hsl(var(--on-solid))',
-
+        text: {
+          primary: 'rgb(var(--text-primary))',
+          secondary: 'rgb(var(--text-secondary))',
+          tertiary: 'rgb(var(--text-tertiary))',
+          disabled: 'rgb(var(--text-disabled))',
+        },
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--on-solid))',
+          DEFAULT: 'rgb(var(--primary))',
+          foreground: 'rgb(var(--on-primary))',
         },
         success: {
-          DEFAULT: 'hsl(var(--success))',
-          foreground: 'hsl(var(--on-solid))',
+          DEFAULT: 'rgb(var(--success))',
+          foreground: 'rgb(var(--on-primary))',
         },
         warning: {
-          DEFAULT: 'hsl(var(--warning))',
-          foreground: 'hsl(var(--on-solid))',
+          DEFAULT: 'rgb(var(--warning))',
+          foreground: 'rgb(var(--on-primary))',
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--on-solid))',
+          DEFAULT: 'rgb(var(--destructive))',
+          foreground: 'rgb(var(--on-primary))',
         },
         info: {
-          DEFAULT: 'hsl(var(--primary))', // alias → primary
-          foreground: 'hsl(var(--on-solid))',
+          DEFAULT: 'rgb(var(--info))',
+          foreground: 'rgb(var(--on-primary))',
         },
 
-        // ── Shadcn compatibility aliases (internos, não públicos) ──
-        border: 'hsl(var(--line))',
-        input: 'hsl(var(--line))',
-        ring: 'hsl(var(--primary))',
-        background: 'hsl(var(--page))',
-        foreground: 'hsl(var(--fg))',
+        // Compatibility aliases retained while consumers migrate.
+        line: 'rgb(var(--line))',
+        shell: 'rgb(var(--shell))',
+        fg: {
+          DEFAULT: 'rgb(var(--fg))',
+          muted: 'rgb(var(--fg-muted))',
+        },
+        'on-solid': 'rgb(var(--on-solid))',
+
+        // shadcn-compatible names for primitives that use the standard API.
+        input: 'rgb(var(--border-default))',
+        ring: 'rgb(var(--primary))',
+        background: 'rgb(var(--page))',
+        foreground: 'rgb(var(--text-primary))',
         card: {
-          DEFAULT: 'hsl(var(--surface))',
-          foreground: 'hsl(var(--fg))',
+          DEFAULT: 'rgb(var(--surface))',
+          foreground: 'rgb(var(--text-primary))',
         },
         popover: {
-          DEFAULT: 'hsl(var(--surface))',
-          foreground: 'hsl(var(--fg))',
+          DEFAULT: 'rgb(var(--surface))',
+          foreground: 'rgb(var(--text-primary))',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--surface-muted))',
-          foreground: 'hsl(var(--fg))',
+          DEFAULT: 'rgb(var(--surface-subtle))',
+          foreground: 'rgb(var(--text-primary))',
         },
         muted: {
-          DEFAULT: 'hsl(var(--surface-muted))',
-          foreground: 'hsl(var(--fg-muted))',
+          DEFAULT: 'rgb(var(--surface-subtle))',
+          foreground: 'rgb(var(--text-secondary))',
         },
         accent: {
-          DEFAULT: 'hsl(var(--surface-muted))',
-          foreground: 'hsl(var(--fg))',
+          DEFAULT: 'rgb(var(--surface-hover))',
+          foreground: 'rgb(var(--text-primary))',
         },
-
-        // ── Sidebar (theme-aware) ──
         sidebar: {
-          DEFAULT: 'hsl(var(--shell))',
-          foreground: 'hsl(var(--fg))',
-          hover: 'hsl(var(--surface-muted))',
-          active: 'hsl(var(--line))',
+          DEFAULT: 'rgb(var(--shell))',
+          foreground: 'rgb(var(--text-primary))',
+          hover: 'rgb(var(--surface-hover))',
+          active: 'rgb(var(--surface-selected))',
         },
       },
       borderRadius: {
         xs: '4px',
         sm: '6px',
-        md: '10px',
-        lg: '15px',
-        xl: '20px',
-        '2xl': '30px',
-        '3xl': '40px',
-        pill: '100px',
+        md: '8px',
+        lg: '12px',
+        full: '9999px',
       },
       keyframes: {
         'accordion-down': {

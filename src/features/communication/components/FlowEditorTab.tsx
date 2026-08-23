@@ -331,7 +331,7 @@ export default function FlowEditorTab() {
 
       {/* Flow editor — hint quando nada selecionado */}
       {!selectedFlow && flows.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line text-center py-12">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-line text-center py-12">
           <MessageSquare size={28} className="text-fg-muted/40 mb-3" aria-hidden="true" />
           <p className="text-sm font-medium text-fg">Nenhum fluxo criado ainda</p>
           <p className="mt-1 max-w-sm text-sm text-fg-muted">
@@ -342,7 +342,7 @@ export default function FlowEditorTab() {
 
       {/* Flow editor */}
       {selectedFlow && (
-        <div className="border border-line rounded-xl bg-surface overflow-hidden">
+        <div className="border border-line rounded-lg bg-surface overflow-hidden">
           {/* Flow metadata */}
           <button
             onClick={() =>
@@ -398,7 +398,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.name}
                     onChange={(e) => updateFlow(selectedFlow.id, 'name', e.target.value)}
-                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
+                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -407,7 +407,7 @@ export default function FlowEditorTab() {
                     type="text"
                     value={selectedFlow.vendor_name || 'Juliana'}
                     onChange={(e) => updateFlow(selectedFlow.id, 'vendor_name', e.target.value)}
-                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
+                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg mt-1"
                   />
                 </div>
                 <div>
@@ -420,7 +420,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_min_seconds', Number(e.target.value))
                     }
-                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
+                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
                 </div>
                 <div>
@@ -433,7 +433,7 @@ export default function FlowEditorTab() {
                     onChange={(e) =>
                       updateFlow(selectedFlow.id, 'delay_max_seconds', Number(e.target.value))
                     }
-                    className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
+                    className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-1"
                   />
                 </div>
               </div>
@@ -505,7 +505,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'template', e.target.value)
                             }
                             placeholder="Digite a mensagem. Use variáveis como (primeiro_nome), (produto_resumo)..."
-                            className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg min-h-[60px] resize-y"
+                            className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg min-h-[60px] resize-y"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             Preview:{' '}
@@ -538,7 +538,7 @@ export default function FlowEditorTab() {
                               updateStep(selectedFlow.id, step.id, 'caption', e.target.value)
                             }
                             placeholder="Legenda (opcional)"
-                            className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg"
+                            className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] text-fg"
                           />
                           <p className="text-[10px] text-fg-muted mt-1">
                             {step.source === 'quotation_webp'
@@ -586,7 +586,7 @@ export default function FlowEditorTab() {
                                 )
                               }
                               placeholder="Ex: Referência de (grupo_produto)"
-                              className="w-full flex h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-0.5"
+                              className="w-full flex h-10 w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-sm text-fg transition-colors placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50 sm:text-[15px] mt-0.5"
                             />
                           </div>
                           <p className="text-[10px] text-fg-muted">

@@ -141,7 +141,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         onDragLeave={onDragLeave}
         onClick={() => !uploading && fileInputRef.current?.click()}
         className={[
-          'relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
+          'relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
           dragging
             ? 'border-primary bg-primary/5'
             : 'border-line hover:border-primary/50 hover:bg-surface-muted',

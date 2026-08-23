@@ -1598,7 +1598,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             role="dialog"
             aria-modal="true"
             aria-labelledby="loss-reason-title"
-            className="relative w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-2xl"
+            className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
           >
             <h3 id="loss-reason-title" className="text-lg font-semibold text-fg">
               Motivo da perda
