@@ -14,13 +14,11 @@ export interface PageHeaderProps {
   description?: string;
   /** grupo de ações da página (secundária → primária) */
   actions?: ReactNode;
-  /** ação única (legado, equivalente a actions com um elemento) */
-  action?: ReactNode;
   /** classes extras */
   className?: string;
 }
 
-export default function PageHeader({ title, description, actions, action, className }: PageHeaderProps) {
+export default function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
     <div className={cn('flex items-start justify-between gap-4 flex-wrap', className)}>
       <div className="space-y-1 min-w-0">
@@ -29,8 +27,8 @@ export default function PageHeader({ title, description, actions, action, classN
           <p className="text-sm text-fg-muted">{description}</p>
         )}
       </div>
-      {(actions || action) && (
-        <div className="flex shrink-0 items-center gap-2">{actions ?? action}</div>
+      {actions && (
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
       )}
     </div>
   );
