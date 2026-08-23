@@ -820,7 +820,7 @@ export default function AutoQuotePage() {
                   value={orderTemplateId}
                   onChange={(event) => setOrderTemplateId(event.target.value)}
                   disabled={extracting || orderTemplatesLoading}
-                  className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                  className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                 >
                   <option value="">Nenhum</option>
                   {orderTemplates.map((template) => (
@@ -875,7 +875,7 @@ export default function AutoQuotePage() {
 
                 <textarea
                   className={cn(
-                    'w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
+                    'w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
                   placeholder={

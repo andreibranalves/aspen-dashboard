@@ -86,7 +86,7 @@ export function DetailDrawer({
           <button
             onClick={onClose}
             aria-label="Fechar"
-            className="shrink-0 rounded-full p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="shrink-0 rounded-full p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           >
             <X className="size-5" />
           </button>

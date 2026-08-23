@@ -820,7 +820,7 @@ export default function ManualOrcamentoPage() {
                   <label className="text-xs font-medium text-fg-muted">Origem *</label>
                   <div className="relative">
                   <select
-                    className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                    className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >
@@ -1258,7 +1258,7 @@ export default function ManualOrcamentoPage() {
                 <div>
                   <label className="text-xs text-fg-muted mb-1 block">Observações</label>
                   <textarea
-                    className="w-full min-h-[88px] rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 resize-y"
+                    className="w-full min-h-[88px] rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page resize-y"
                     placeholder="Detalhes de arte, entrega, acabamentos ou condições comerciais…"
                     value={observacoes}
                     onChange={e => setObservacoes(e.target.value)}

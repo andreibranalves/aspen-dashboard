@@ -2,7 +2,6 @@ import { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LogIn, ShieldAlert } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface LoginPageProps {
   navigate: (hash: string) => void;
@@ -65,16 +64,8 @@ export default function LoginPage({ navigate }: LoginPageProps) {
       <div className="w-full max-w-sm">
         {/* Logo / branding */}
         <div className="text-center mb-8">
-          <div
-            className={cn(
-              'inline-flex items-center justify-center w-14 h-14 rounded-lg',
-              'mb-4 shadow-lg shadow-primary/20'
-            )}
-            style={{
-              background: 'linear-gradient(135deg, var(--accent-ice), var(--accent-twilight))',
-            }}
-          >
-            <ShieldAlert className="w-7 h-7 text-white" />
+          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/20">
+            <ShieldAlert className="h-7 w-7 text-on-primary" />
           </div>
           <h1 className="text-xl font-semibold text-fg">Aspen Orçamento</h1>
           <p className="text-sm text-fg-muted mt-1">Entre com a senha para continuar</p>

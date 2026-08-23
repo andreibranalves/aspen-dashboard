@@ -211,7 +211,7 @@ function SelectField({
       value={value || ''}
       onChange={onChange}
       disabled={disabled}
-      className={`mt-1 h-10 w-full rounded-md border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-50 ${className}`}
+      className={`mt-1 h-10 w-full rounded-md border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-50 ${className}`}
     >
       {children}
     </select>
@@ -768,7 +768,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               <textarea
                 value={edited.descricao || ''}
                 onChange={(e) => setEdited((prev) => ({ ...prev, descricao: e.target.value }))}
-                className="mt-1 min-h-[110px] w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+      className="mt-1 min-h-[110px] w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                 placeholder="Descrição do produto"
               />
             </div>

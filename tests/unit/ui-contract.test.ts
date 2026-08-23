@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import path from 'node:path';
 
@@ -49,10 +49,31 @@ const canonicalDark = {
 };
 
 function readThemeDeclarations(css: string, selector: string): Record<string, string> {
-  const block = css.match(new RegExp(`${selector.replace('.', '\\.') }\\s*\\{([\\s\\S]*?)\\n  \\}`))?.[1];
+  const block = css.match(
+    new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([\\s\\S]*?)\\n  \\}`)
+  )?.[1];
   assert.ok(block, `missing ${selector} token block`);
   return Object.fromEntries(
-    [...block.matchAll(/^\s*--([\w-]+):\s*([^;]+);/gm)].map(([, name, value]) => [name, value.trim()]),
+    [...block.matchAll(/^\s*--([\w-]+):\s*([^;]+);/gm)].map(([, name, value]) => [
+      name,
+      value.trim(),
+    ])
+  );
+}
+
+function relativeLuminance(rgb: string): number {
+  const channels = rgb.split(' ').map((channel) => Number(channel) / 255);
+  return channels
+    .map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+    .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0);
+}
+
+function contrastRatio(first: string, second: string): number {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+  return (
+    (Math.max(firstLuminance, secondLuminance) + 0.05) /
+    (Math.min(firstLuminance, secondLuminance) + 0.05)
   );
 }
 
@@ -86,11 +107,51 @@ describe('Aspen UI v2 visual contract', () => {
   it('uses only the canonical radius names and keeps the reference docs versioned', () => {
     const tailwind = read('tailwind.config.js');
     const source = read('src/index.css');
-    assert.match(tailwind, /borderRadius:\s*\{[\s\S]*xs:[^\n]*4px[\s\S]*sm:[^\n]*6px[\s\S]*md:[^\n]*8px[\s\S]*lg:[^\n]*12px[\s\S]*full:[^\n]*9999px/);
+    assert.match(
+      tailwind,
+      /borderRadius:\s*\{[\s\S]*xs:[^\n]*4px[\s\S]*sm:[^\n]*6px[\s\S]*md:[^\n]*8px[\s\S]*lg:[^\n]*12px[\s\S]*full:[^\n]*9999px/
+    );
     assert.doesNotMatch(tailwind, /(?:xl|2xl|3xl|pill):/);
-    assert.doesNotMatch(`${source}\n${readSourceFiles()}`, /rounded-(?:xl|2xl|3xl|pill)|rounded-\[[^\]]+\]/);
+    assert.doesNotMatch(
+      `${source}\n${readSourceFiles()}`,
+      /rounded(?:-[trblse]{1,2})?-(?:xl|2xl|3xl|pill|\[[^\]]+\])/
+    );
     assert.equal(existsSync(path.join(root, 'docs/design/DESIGN-aspen.md')), true);
     assert.equal(existsSync(path.join(root, 'docs/design/DESIGN-supabase.md')), true);
+  });
+
+  it('keeps shared floating action chrome within the canonical radius scale', () => {
+    const bulkActionBar = read('src/components/shared/BulkActionBar.tsx');
+    assert.match(bulkActionBar, /rounded-t-lg/);
+    assert.doesNotMatch(bulkActionBar, /rounded-t-(?:xl|2xl|3xl|pill|\[[^\]]+\])/);
+  });
+
+  it('keeps semantic action labels and focus indicators at the canonical contrast floor', () => {
+    const button = read('src/components/ui/button.tsx');
+    const input = read('src/components/ui/input.tsx');
+    const select = read('src/components/ui/select.tsx');
+    const css = read('src/index.css');
+    const uiSource = readSourceFiles();
+
+    assert.match(button, /bg-success text-on-solid dark:text-page/);
+    assert.match(button, /bg-destructive text-on-solid dark:text-page/);
+    assert.ok(contrastRatio(canonicalDark.success, canonicalDark.page) >= 4.5);
+    assert.ok(contrastRatio(canonicalDark.destructive, canonicalDark.page) >= 4.5);
+
+    assert.match(css, /\*:focus-visible \{[\s\S]*outline: 2px solid rgb\(var\(--primary\)\);/);
+    for (const source of [button, input, select]) {
+      assert.match(source, /focus-visible:ring-\d+ focus-visible:ring-primary(?:\s|['"])/);
+      assert.doesNotMatch(source, /focus-visible:ring-primary\/\d+/);
+    }
+    assert.doesNotMatch(uiSource, /focus-visible:ring-primary\/\d+/);
+    assert.ok(contrastRatio(canonicalLight.primary, canonicalLight.page) >= 3);
+    assert.ok(contrastRatio(canonicalDark.primary, canonicalDark.page) >= 3);
+  });
+
+  it('keeps LoginPage branding on canonical semantic tokens', () => {
+    const loginPage = read('src/app/LoginPage.tsx');
+    assert.match(loginPage, /bg-primary/);
+    assert.doesNotMatch(loginPage, /accent-(?:ice|twilight)/);
   });
 
   it('keeps foundation primitive contracts aligned with the approved dimensions', () => {
@@ -116,11 +177,15 @@ describe('Aspen UI v2 visual contract', () => {
 });
 
 function readSourceFiles(): string {
-  return [
-    read('src/components/ui/button.tsx'),
-    read('src/components/ui/input.tsx'),
-    read('src/components/ui/select.tsx'),
-    read('src/components/ui/table.tsx'),
-    read('src/components/shared/EmptyState.tsx'),
-  ].join('\n');
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(entryPath);
+      else if (/\.(?:css|js|jsx|ts|tsx)$/.test(entry.name))
+        files.push(readFileSync(entryPath, 'utf8'));
+    }
+  };
+  visit(path.join(root, 'src'));
+  return files.join('\n');
 }
