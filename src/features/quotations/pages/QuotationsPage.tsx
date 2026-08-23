@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@/components/shared/EmptyState';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
 import PageToolbar from '@/components/shared/PageToolbar';

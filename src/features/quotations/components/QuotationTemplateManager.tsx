@@ -160,7 +160,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
   }
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-6 space-y-5">
+    <section className="rounded-lg border border-line bg-surface p-6 space-y-5">
       <div>
         <h2 className="text-sm font-semibold text-fg">Modelos de orçamento</h2>
         <p className="mt-1 text-sm text-fg-muted">Gerencie modelos HTML e suas versões.</p>
@@ -206,7 +206,7 @@ export function QuotationTemplateManager({ onTemplatesChanged }: QuotationTempla
               <label className="space-y-1.5 text-sm text-fg"><span className="font-medium">Chave imutável</span><Input value={key} onChange={(event) => setKey(event.target.value)} disabled={saving || !!detail} /></label>
             </div>
             {detail && <p className="text-xs text-fg-muted">Versão atual: {detail.current_version || 1}</p>}
-            <label className="block space-y-1.5 text-sm text-fg"><span className="font-medium">Fonte HTML</span><textarea value={source} onChange={(event) => setSource(event.target.value)} disabled={saving} rows={14} className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 font-mono text-xs leading-[1.4] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50" /></label>
+            <label className="block space-y-1.5 text-sm text-fg"><span className="font-medium">Fonte HTML</span><textarea value={source} onChange={(event) => setSource(event.target.value)} disabled={saving} rows={14} className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 font-mono text-xs leading-[1.4] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50" /></label>
             {validation?.warnings.map((warning) => <p key={warning} className="text-sm text-warning">Aviso: {warning}</p>)}
             {/* Fundo branco intencional: preview de e-mail é sempre renderizado em fundo claro */}
             {validation?.preview && <iframe title="Preview do template" sandbox="" srcDoc={validation.preview} className="h-80 w-full rounded-lg border border-line bg-white" />}

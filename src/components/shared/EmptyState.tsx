@@ -3,9 +3,8 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * EmptyState — estado vazio com ícone, título, explicação e ações opcionais.
- * Ações só quando existe próximo passo válido. Erro de carregamento NÃO é
- * empty state — renderize markup próprio de erro.
+ * EmptyState is an application-level composition for a valid zero-result
+ * response, not a UI primitive and not an error state.
  */
 export interface EmptyStateProps {
   icon: LucideIcon;
@@ -25,3 +24,5 @@ export function EmptyState({ icon: Icon, title, description, actions, className 
     </div>
   );
 }
+
+export default EmptyState;

@@ -130,7 +130,7 @@ export default function SettingsPage() {
 
       <QuotationTemplateManager />
 
-      <section className="rounded-xl border border-line bg-surface p-6 space-y-5">
+      <section className="rounded-lg border border-line bg-surface p-6 space-y-5">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
             <SlidersHorizontal size={20} className="text-primary" />
@@ -219,7 +219,7 @@ export default function SettingsPage() {
                 disabled={saving}
                 maxLength={500}
                 rows={3}
-                className="w-full resize-y rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full resize-y rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
               />
             </label>
 
@@ -261,7 +261,7 @@ export default function SettingsPage() {
       </section>
 
       {/* WhatsApp flows moved notice */}
-      <div className="rounded-xl border border-line bg-surface p-6 space-y-4">
+      <div className="rounded-lg border border-line bg-surface p-6 space-y-4">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
             <MessageCircle size={20} className="text-primary" />

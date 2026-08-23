@@ -159,7 +159,7 @@ interface SectionCardProps {
 
 function SectionCard({ title, description, icon: Icon, children }: SectionCardProps) {
   return (
-    <section className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
+    <section className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
       <div className="flex items-start gap-3">
         {Icon && (
           <div className="mt-0.5 rounded-full bg-surface-muted p-2 text-fg-muted">
@@ -211,7 +211,7 @@ function SelectField({
       value={value || ''}
       onChange={onChange}
       disabled={disabled}
-      className={`mt-1 h-10 w-full rounded-[10px] border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:opacity-50 ${className}`}
+      className={`mt-1 h-10 w-full rounded-sm border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-50 ${className}`}
     >
       {children}
     </select>
@@ -702,24 +702,24 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
   return (
     <div className="space-y-5 animate-fade-in max-w-[1060px] mx-auto">
       {isDuplicateDraft && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-200">
           <strong>Rascunho de duplicação.</strong>{' '}
           Dados copiados; preencha o SKU antes de criar o produto.
         </div>
       )}
 
 
-      <section className="bg-surface rounded-xl border border-line shadow-sm p-5">
+      <section className="bg-surface rounded-lg border border-line shadow-sm p-5">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-4 min-w-0">
             {hasImage ? (
               <img
                 src={produto.imagem ?? undefined}
                 alt={produto.nome}
-                className="h-16 w-16 shrink-0 rounded-2xl border border-line object-cover"
+                className="h-16 w-16 shrink-0 rounded-lg border border-line object-cover"
               />
             ) : (
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Package size={20} />
               </div>
             )}
@@ -768,7 +768,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               <textarea
                 value={edited.descricao || ''}
                 onChange={(e) => setEdited((prev) => ({ ...prev, descricao: e.target.value }))}
-                className="mt-1 min-h-[110px] w-full rounded-[10px] border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+      className="mt-1 min-h-[110px] w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] leading-[1.3] text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                 placeholder="Descrição do produto"
               />
             </div>
@@ -971,7 +971,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
                     const quantity = tier.minimum_quantity ?? tier.faixa ?? tier.qty;
                     const rate = tier.unit_price ?? tier.rate;
                     return (
-                      <div key={`saved-tier-${index}`} className="rounded-xl border border-line bg-surface/50 p-3">
+                      <div key={`saved-tier-${index}`} className="rounded-lg border border-line bg-surface/50 p-3">
                         <p className="text-[11px] uppercase tracking-wide text-fg-muted font-medium">A partir de {String(quantity)} un.</p>
                         <p className="mt-2 text-sm font-medium text-fg font-mono">{rate != null ? formatBRL(rate) : '—'}</p>
                       </div>
@@ -1011,7 +1011,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
               {atividades.map((atividade, index) => (
                 <div
                   key={atividade.id || `${atividade.tipo}-${atividade.data}-${index}`}
-                  className="rounded-xl border border-line bg-surface/50 px-4 py-3 text-sm"
+                  className="rounded-lg border border-line bg-surface/50 px-4 py-3 text-sm"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <span className="text-fg break-words">{atividade.texto}</span>

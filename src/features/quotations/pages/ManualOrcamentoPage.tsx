@@ -626,7 +626,7 @@ export default function ManualOrcamentoPage() {
     <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
       {/* ══ Success Result ══ */}
       {result && (
-        <div className="bg-success/10 border border-success/30 rounded-xl p-5 space-y-4">
+        <div className="bg-success/10 border border-success/30 rounded-lg p-5 space-y-4">
           {(() => {
             const businessNumber = result.quotation_name || result.quotation_id || '';
             return (
@@ -637,7 +637,7 @@ export default function ManualOrcamentoPage() {
             </div>
             <div>
               <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento enviado com sucesso' : 'Rascunho persistido com sucesso'}</p>
-              <p className="text-sm text-success/70">
+              <p className="text-sm text-success">
                 {capitalize(result.cliente || '')} · {businessNumber}
                 {result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
               </p>
@@ -667,7 +667,7 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Error ══ */}
       {error && !result && (
-        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-xl p-4 flex items-start gap-3">
+        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3">
           <AlertTriangle size={20} className="text-destructive shrink-0" />
           <div>
             <p className="font-medium text-destructive">Erro ao salvar ou enviar orçamento</p>
@@ -681,7 +681,7 @@ export default function ManualOrcamentoPage() {
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
             <div className="space-y-5 min-w-0">
               {/* ══ 1. Cliente ══ */}
-              <section aria-label="Seleção de cliente" className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Seleção de cliente" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
@@ -733,7 +733,7 @@ export default function ManualOrcamentoPage() {
                     </div>
 
                     {clientResults.length > 0 && (
-                      <div className="border border-line rounded-xl divide-y divide-border max-h-60 overflow-y-auto bg-surface">
+                      <div className="border border-line rounded-lg divide-y divide-border max-h-60 overflow-y-auto bg-surface">
                         {clientResults.map(client => (
                           <button
                             key={client.id}
@@ -798,7 +798,7 @@ export default function ManualOrcamentoPage() {
                 )}
 
                 {selectedClient && clientType === CLIENT_TYPE.EXISTING && (
-                  <div className="flex flex-wrap items-center gap-2 text-sm bg-primary/5 border border-primary/20 text-fg rounded-xl px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2 text-sm bg-primary/5 border border-primary/20 text-fg rounded-lg px-3 py-2">
                     <Check size={14} className="text-primary" />
                     <span className="font-medium">{selectedClient.nome}</span>
                     {selectedClient.email && <span className="text-fg-muted">· {selectedClient.email}</span>}
@@ -809,7 +809,7 @@ export default function ManualOrcamentoPage() {
                   </div>
                 )}
                 {selectedClient?.cnpj && cnpj && normalizeCnpj(selectedClient.cnpj) !== cnpj && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300 flex items-start gap-2">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300 flex items-start gap-2">
                     <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                     CNPJ informado ({formatCnpj(cnpj)}) difere do CNPJ cadastrado ({formatCnpj(selectedClient.cnpj)}). O CNPJ do cadastro será mantido.
                   </div>
@@ -820,7 +820,7 @@ export default function ManualOrcamentoPage() {
                   <label className="text-xs font-medium text-fg-muted">Origem *</label>
                   <div className="relative">
                   <select
-                    className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                    className="w-full appearance-none rounded-sm border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >
@@ -937,7 +937,7 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 2. Itens ══ */}
-              <section aria-label="Itens do orçamento" className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Itens do orçamento" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
@@ -970,7 +970,7 @@ export default function ManualOrcamentoPage() {
                 </div>
 
                 {productResults.length > 0 && (
-                  <div className="border border-line rounded-xl overflow-hidden bg-surface divide-y divide-border max-h-72 overflow-y-auto">
+                  <div className="border border-line rounded-lg overflow-hidden bg-surface divide-y divide-border max-h-72 overflow-y-auto">
                     {productResults.map(product => (
                       <div key={product.sku} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between hover:bg-surface-muted/30 transition-colors">
                         <div className="min-w-0">
@@ -1106,7 +1106,7 @@ export default function ManualOrcamentoPage() {
                       {items.map(item => {
                         const rowLoading = pricingRows.has(item._key);
                         return (
-                          <div key={item._key} className="border border-line rounded-xl p-3 space-y-3 bg-surface">
+                          <div key={item._key} className="border border-line rounded-lg p-3 space-y-3 bg-surface">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -1173,7 +1173,7 @@ export default function ManualOrcamentoPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-line bg-surface-muted/20 overflow-hidden">
+                  <div className="rounded-lg border border-dashed border-line bg-surface-muted/20 overflow-hidden">
                     <div className="grid grid-cols-[1fr_88px_120px_120px] gap-3 border-b border-line bg-surface-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-fg-muted max-md:hidden">
                       <span>Produto</span>
                       <span className="text-right">Qtd</span>
@@ -1190,7 +1190,7 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 3. Condições ══ */}
-              <section aria-label="Condições do orçamento" className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Condições do orçamento" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
                 <div>
                   <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
                     <FileText size={18} /> 3. Condições e fechamento
@@ -1199,14 +1199,14 @@ export default function ManualOrcamentoPage() {
                 </div>
 
                 {hasZeroPrice && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-500/10 dark:text-red-200 flex items-start gap-2">
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-500/10 dark:text-red-200 flex items-start gap-2">
                     <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                     Existe item com preço R$ 0,00. Revise o preço unitário antes de criar o orçamento.
                   </div>
                 )}
 
                 {templateError && (
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800/40 dark:bg-amber-500/10 dark:text-amber-300">
                     <span>{templateError}</span>
                     <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
                   </div>
@@ -1225,7 +1225,7 @@ export default function ManualOrcamentoPage() {
                   <div>
                     <label className="text-xs text-fg-muted mb-1 block">Modelo HTML</label>
                     <select
-                      className="w-full rounded-[12px] border border-line bg-surface px-3 py-2 text-sm text-fg"
+                      className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg"
                       value={templateKey}
                       onChange={(event) => setTemplateKey(event.target.value)}
                       disabled={templateLoading || templates.length === 0}
@@ -1237,7 +1237,7 @@ export default function ManualOrcamentoPage() {
                       ))}
                     </select>
                   </div>
-                  <div className="rounded-xl border border-line bg-surface px-3 py-2 flex items-center justify-between gap-3">
+                  <div className="rounded-lg border border-line bg-surface px-3 py-2 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium">Pedido urgente</p>
                       <p className="text-xs text-fg-muted">Recalcula itens com preço automático em +30%.</p>
@@ -1258,7 +1258,7 @@ export default function ManualOrcamentoPage() {
                 <div>
                   <label className="text-xs text-fg-muted mb-1 block">Observações</label>
                   <textarea
-                    className="w-full min-h-[88px] rounded-[10px] border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 resize-y"
+                    className="w-full min-h-[88px] rounded-md border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page resize-y"
                     placeholder="Detalhes de arte, entrega, acabamentos ou condições comerciais…"
                     value={observacoes}
                     onChange={e => setObservacoes(e.target.value)}
@@ -1266,14 +1266,14 @@ export default function ManualOrcamentoPage() {
                   />
                 </div>
 
-                <div className="rounded-xl border border-line bg-surface-muted/20 px-3 py-2 text-sm text-fg-muted">
+                <div className="rounded-lg border border-line bg-surface-muted/20 px-3 py-2 text-sm text-fg-muted">
                   {canSubmit ? 'Pré-visualize sem salvar; salve ou envie somente quando decidir.' : 'Informe cliente e ao menos um item para liberar as ações.'}
                 </div>
               </section>
             </div>
 
             {/* ══ Side Summary ══ */}
-            <aside className="xl:sticky xl:top-0 bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
+            <aside className="xl:sticky xl:top-0 bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
                 <Calculator size={17} /> Resumo
               </div>

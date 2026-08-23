@@ -86,7 +86,7 @@ export default function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-2xl"
+        className="relative w-full max-w-md rounded-lg border border-line bg-surface p-6 shadow-2xl"
       >
         <div className="flex items-start gap-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">

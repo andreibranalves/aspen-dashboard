@@ -34,7 +34,7 @@ export default function SkeletonComunicacao() {
           <Skeleton className="h-9 w-24 rounded-md" />
         </div>
 
-        <div className="bg-surface rounded-xl border border-line shadow-sm p-5 space-y-4">
+        <div className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
           <div className="flex items-start gap-4">
             <Skeleton className="h-16 w-16 rounded-lg shrink-0" />
             <div className="space-y-2 flex-1">

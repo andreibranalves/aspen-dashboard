@@ -2,7 +2,7 @@ import { ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
- * BackButton — pill button with a left-chevron icon inside a solid primary circle.
+ * BackButton — compact button with a left-chevron icon inside a solid primary circle.
  * Reference: navbar back action (circle arrow + "voltar" label).
  */
 interface BackButtonProps {
@@ -17,7 +17,7 @@ export default function BackButton({ onClick, label = 'voltar', className }: Bac
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-sm font-medium',
+        'inline-flex items-center gap-2 rounded-sm pl-1 pr-3 py-1 text-sm font-medium',
         'bg-surface border border-line text-primary hover:bg-primary/5 active:scale-[0.97]',
         'transition-all duration-200 shrink-0',
         className,

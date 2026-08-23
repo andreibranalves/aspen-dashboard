@@ -19,7 +19,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { Select } from '@/components/ui/select';
 import { StatCard } from '@/components/ui/stat-card';
-import { EmptyState } from '@/components/ui/empty-state';
+import { EmptyState } from '@/components/shared/EmptyState';
 import {
   parseHashAllowedInteger,
   parseHashOption,

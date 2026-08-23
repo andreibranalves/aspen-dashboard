@@ -85,7 +85,7 @@ export default function DraftReviewCard({
     <div
       key={i}
       className={cn(
-        'overflow-hidden rounded-[24px] border border-line bg-surface shadow-sm transition-all',
+        'overflow-hidden rounded-lg border border-line bg-surface shadow-sm transition-all',
         isApproved && 'border-primary/40 bg-primary/5',
       )}
     >
@@ -93,7 +93,7 @@ export default function DraftReviewCard({
       <div className="flex flex-col gap-4 border-b border-line bg-surface/50 p-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
           <span className={cn(
-            'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
             isApproved ? 'bg-primary/10 text-primary' : 'bg-primary/10 text-primary',
           )}>
             <CardIcon status={isApproved ? 'approved' : 'draft'} />
@@ -106,7 +106,7 @@ export default function DraftReviewCard({
             </div>
           </div>
         </div>
-        <div className="rounded-[20px] border border-line bg-surface px-5 py-4 text-left lg:min-w-[220px] lg:text-right">
+        <div className="rounded-lg border border-line bg-surface px-5 py-4 text-left lg:min-w-[220px] lg:text-right">
           <p className="text-xs font-medium text-fg-muted">Total estimado</p>
           <p className="mt-1 text-2xl font-semibold tracking-tight text-fg">{formatBRL(total)}</p>
         </div>
@@ -145,7 +145,7 @@ export default function DraftReviewCard({
 
         {/* ── Sidebar: Summary + Actions ── */}
         <aside className="space-y-4">
-          <div className="rounded-[20px] border border-line bg-surface/50 p-4">
+          <div className="rounded-lg border border-line bg-surface/50 p-4">
             <h3 className="text-sm font-semibold text-fg">Resumo</h3>
             <dl className="mt-3 space-y-3 text-sm">
               <div className="flex justify-between gap-4">

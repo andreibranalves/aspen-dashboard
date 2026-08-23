@@ -797,13 +797,13 @@ export default function AutoQuotePage() {
             {/* Page title */}
             <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
             {templateError && (
-              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm">
+              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm">
                 <span className="min-w-0">{templateError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadTemplates}>Tentar novamente</Button>
               </div>
             )}
             {orderTemplatesError && (
-              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs">
+              <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs">
                 <span className="min-w-0">{orderTemplatesError}</span>
                 <Button type="button" variant="outline" size="sm" onClick={loadOrderTemplates}>
                   Tentar novamente
@@ -820,7 +820,7 @@ export default function AutoQuotePage() {
                   value={orderTemplateId}
                   onChange={(event) => setOrderTemplateId(event.target.value)}
                   disabled={extracting || orderTemplatesLoading}
-                  className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                  className="w-full appearance-none rounded-sm border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                 >
                   <option value="">Nenhum</option>
                   {orderTemplates.map((template) => (
@@ -847,7 +847,7 @@ export default function AutoQuotePage() {
               <div className="relative">
                 {imageData && (
                   <div className="absolute left-3 top-3 z-10">
-                    <div className="group relative h-16 w-16 overflow-hidden rounded-xl border border-line bg-surface-muted shadow-sm">
+                    <div className="group relative h-16 w-16 overflow-hidden rounded-lg border border-line bg-surface-muted shadow-sm">
                       {imagePreview ? (
                         <img
                           src={imagePreview}
@@ -875,7 +875,7 @@ export default function AutoQuotePage() {
 
                 <textarea
                   className={cn(
-                    'w-full resize-none overflow-hidden rounded-[10px] border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
+                    'w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
                   placeholder={
@@ -933,7 +933,7 @@ export default function AutoQuotePage() {
 
             {/* Error */}
             {error && (
-              <div className="tone-destructive-soft rounded-xl p-3 text-sm">
+              <div className="tone-destructive-soft rounded-lg p-3 text-sm">
                 <div className="flex items-start gap-2">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
@@ -1000,9 +1000,9 @@ export default function AutoQuotePage() {
           {activeDrafts.length === 0 ? (
             <div className="flex h-full flex-col">
               <h2 className="text-lg font-semibold text-fg mb-3">Resultado</h2>
-              <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-line text-center">
-                {/* rounded-xl (20px nesta escala) — rounded-2xl vale 30px aqui e vira círculo em h-16 */}
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-surface-muted mb-4">
+              <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-line text-center">
+                {/* The canonical large radius keeps this empty-state icon balanced. */}
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-surface-muted mb-4">
                   <FileText size={32} className="text-fg-muted" />
                 </div>
                 <h2 className="text-lg font-semibold text-fg">Nenhum pedido extraído</h2>
@@ -1051,7 +1051,7 @@ export default function AutoQuotePage() {
                   return (
                     <div
                       key={draft.index}
-                      className="overflow-hidden rounded-[20px] border border-destructive/30 bg-surface shadow-sm"
+                      className="overflow-hidden rounded-lg border border-destructive/30 bg-surface shadow-sm"
                     >
                       <div className="flex items-start gap-3 p-5 text-sm text-destructive">
                         <AlertTriangle size={18} className="mt-0.5 shrink-0" />

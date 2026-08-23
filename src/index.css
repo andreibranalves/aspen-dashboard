@@ -1,8 +1,8 @@
-/* ═══════════════════════════════════════════════════════
-   Alpine Design System — Aspen Orçamento
-   Neutros com viés azul + semânticos coerentes (light + dark)
-   Vocabulário: page / surface / shell / line / fg
-   ═══════════════════════════════════════════════════════ */
+/*
+ * Aspen UI v2 foundation.
+ * Canonical semantic tokens live here; compatibility aliases remain until all
+ * repository consumers migrate to the canonical names.
+ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap');
 
@@ -10,135 +10,83 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer utilities {
-  .spinner {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid hsl(var(--fg-muted) / 0.3);
-    border-top-color: hsl(var(--fg));
-    border-radius: 50%;
-    animation: spin 0.6s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  /* ── Skeleton loading states ── */
-  .skeleton {
-    position: relative;
-    overflow: hidden;
-    border-radius: 0.375rem;
-    background-color: hsl(var(--surface-muted) / 0.55);
-  }
-
-  .skeleton::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      hsl(var(--fg) / 0.05) 50%,
-      transparent 100%
-    );
-    transform: translateX(-100%);
-    animation: skeleton-shimmer 1.6s infinite;
-  }
-
-  @keyframes skeleton-shimmer {
-    100% {
-      transform: translateX(100%);
-    }
-  }
-
-  .skeleton-text {
-    display: inline-block;
-    vertical-align: middle;
-    height: 1lh;
-    border-radius: 0.25rem;
-    background-color: hsl(var(--surface-muted) / 0.55);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .skeleton::after,
-    .skeleton-text::after {
-      animation: none;
-    }
-  }
-}
-
 @layer base {
   :root {
-    /* ── Light Alpine tokens ── */
-    --page: 0 0% 100%; /* #ffffff */
-    --surface: 0 0% 100%; /* #ffffff — igual a page no light */
-    --surface-muted: 218 47% 95%; /* #eef2f9 — cinza com viés azul */
-    --shell: 0 0% 100%; /* #ffffff — sidebar (igual ao nav bar no light) */
-    --line: 215 32% 88%; /* #d8e0eb — bordas/divisórias */
-    --fg: 223 42% 12%; /* #11182a — texto principal */
-    --fg-muted: 223 18% 44%; /* #5c6b84 — texto secundário */
-    --on-solid: 0 0% 100%; /* #ffffff — texto sobre áreas sólidas */
+    /* Canonical Aspen light tokens. */
+    --page: 255 255 255;
+    --surface: 255 255 255;
+    --surface-subtle: 250 250 250;
+    --surface-hover: 247 247 248;
+    --surface-selected: 244 247 252;
+    --border-subtle: 237 237 237;
+    --border-default: 226 226 229;
+    --border-strong: 209 209 214;
+    --text-primary: 24 24 27;
+    --text-secondary: 82 82 91;
+    --text-tertiary: 113 113 122;
+    --text-disabled: 161 161 170;
+    --primary: 22 92 216;
+    --on-primary: 255 255 255;
+    --success: 26 122 76;
+    --warning: 154 91 19;
+    --destructive: 184 58 57;
+    --info: 22 92 216;
 
-    /* ── Semânticos ── */
-    --primary: 218 82% 47%; /* #165cd8 */
-    --success: 155 65% 29%; /* #1a7a4c */
-    --warning: 35 75% 41%; /* #b86e1a — âmbar terroso */
-    --destructive: 1 52% 50%; /* #c2403f */
-    /* info = primary (mesmo valor) */
+    /* Compatibility aliases for existing Aspen consumers. */
+    --surface-muted: var(--surface-subtle);
+    --line: var(--border-default);
+    --fg: var(--text-primary);
+    --fg-muted: var(--text-secondary);
+    --on-solid: var(--on-primary);
+    --shell: var(--page);
 
-    /* ── Decorativos ── */
-    --accent-ice: #57b6e0;
-    --accent-twilight: #15317a;
-    --accent-amber: #f0a857;
-    --gradient-glacier: linear-gradient(135deg, var(--accent-ice), var(--accent-twilight));
-
-    /* ── Compatibilidade shadcn (aliases internos) ── */
+    /* Standard primitive aliases. */
     --background: var(--page);
-    --foreground: var(--fg);
+    --foreground: var(--text-primary);
     --card: var(--surface);
-    --card-foreground: var(--fg);
+    --card-foreground: var(--text-primary);
     --popover: var(--surface);
-    --popover-foreground: var(--fg);
-    --primary-foreground: var(--on-solid);
-    --secondary: var(--surface-muted);
-    --secondary-foreground: var(--fg);
-    --muted: var(--surface-muted);
-    --muted-foreground: var(--fg-muted);
-    --accent: var(--surface-muted);
-    --accent-foreground: var(--fg);
-    --destructive-foreground: var(--on-solid);
-    --border: var(--line);
-    --input: var(--line);
+    --popover-foreground: var(--text-primary);
+    --primary-foreground: var(--on-primary);
+    --secondary: var(--surface-subtle);
+    --secondary-foreground: var(--text-primary);
+    --muted: var(--surface-subtle);
+    --muted-foreground: var(--text-secondary);
+    --accent: var(--surface-hover);
+    --accent-foreground: var(--text-primary);
+    --destructive-foreground: var(--on-primary);
+    --border: var(--border-default);
+    --input: var(--border-default);
     --ring: var(--primary);
-    --radius: 0.625rem;
+    --radius: 0.5rem;
   }
 
   .dark {
-    /* ── Dark Alpine tokens ── */
-    --page: 222 36% 9%; /* #0f1420 */
-    --surface: 222 36% 9%; /* #0f1420 — igual a page */
-    --surface-muted: 218 30% 15%; /* #1a2230 */
-    --shell: 222 36% 9%; /* #0f1420 — sidebar (igual ao nav bar no dark) */
-    --line: 219 26% 22%; /* #2a3447 */
-    --fg: 217 45% 96%; /* #f2f5fa */
-    --fg-muted: 217 21% 63%; /* #8e9db5 */
-    --on-solid: 0 0% 100%; /* #ffffff */
-
-    /* ── Semânticos ── */
-    --primary: 218 82% 47%; /* #165cd8 — igual ao light */
-    --success: 155 58% 49%; /* #34c77e */
-    --warning: 36 84% 64%; /* #f0a857 */
-    --destructive: 1 68% 65%; /* #e2696a */
+    /* Canonical Aspen dark tokens. */
+    --page: 15 20 32;
+    --surface: 20 26 38;
+    --surface-subtle: 26 34 48;
+    --surface-hover: 32 42 58;
+    --surface-selected: 29 45 74;
+    --border-subtle: 37 47 64;
+    --border-default: 51 64 86;
+    --border-strong: 70 84 108;
+    --text-primary: 242 245 250;
+    --text-secondary: 180 191 208;
+    --text-tertiary: 142 157 181;
+    --text-disabled: 102 116 138;
+    --primary: 47 111 219;
+    --on-primary: 255 255 255;
+    --success: 52 199 126;
+    --warning: 240 168 87;
+    --destructive: 226 105 106;
+    --info: 111 156 236;
   }
-}
 
-@layer base {
   * {
     @apply border-line;
   }
+
   body {
     @apply bg-page text-fg;
     font-family:
@@ -160,97 +108,124 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-}
 
-/* ══ Scrollbar ══ */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--fg-muted) / 0.3);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--fg-muted) / 0.5);
-}
-
-/* ══ Focus ring — visible keyboard focus everywhere ══ */
-@layer base {
   *:focus-visible {
-    outline: 2px solid hsl(var(--primary) / 0.7);
+    outline: 2px solid rgb(var(--primary));
     outline-offset: 2px;
     border-radius: inherit;
   }
 }
 
-/* ══ Tone utilities — semantic soft chips/alerts ══ */
+@layer utilities {
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgb(var(--text-secondary) / 0.3);
+    border-top-color: rgb(var(--text-primary));
+    border-radius: 9999px;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: 6px;
+    background-color: rgb(var(--surface-subtle) / 0.55);
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--text-primary) / 0.05) 50%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: skeleton-shimmer 1.6s infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .skeleton-text {
+    display: inline-block;
+    vertical-align: middle;
+    height: 1lh;
+    border-radius: 4px;
+    background-color: rgb(var(--surface-subtle) / 0.55);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton::after,
+    .skeleton-text::after {
+      animation: none;
+    }
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--text-secondary) / 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--text-secondary) / 0.5);
+}
+
 @layer components {
+  /* Status and semantic badges are the only normal use of full-radius pills. */
   .tone-primary-soft {
-    @apply bg-primary/10 text-primary rounded-full border border-transparent;
+    @apply rounded-full border border-transparent bg-primary/10 text-primary;
   }
+
   .tone-success-soft {
-    @apply bg-success/10 text-success rounded-full border border-transparent;
+    @apply rounded-full border border-transparent bg-success/10 text-success;
   }
+
   .tone-warning-soft {
-    @apply bg-warning/10 text-warning rounded-full border border-transparent;
+    @apply rounded-full border border-transparent bg-warning/10 text-warning;
   }
+
   .tone-destructive-soft {
-    @apply bg-destructive/10 text-destructive rounded-full border border-transparent;
+    @apply rounded-full border border-transparent bg-destructive/10 text-destructive;
   }
+
   .tone-info-soft {
-    @apply bg-primary/10 text-primary rounded-full border border-transparent;
+    @apply rounded-full border border-transparent bg-info/10 text-info;
   }
+
   .tone-neutral-soft {
-    @apply bg-surface-muted text-fg-muted rounded-full border border-transparent;
+    @apply rounded-full border border-transparent bg-surface-muted text-fg-muted;
   }
+
   .tone-neutral-muted {
     @apply bg-surface-muted text-fg-muted/50;
   }
 }
 
-/* ══ Sidebar — segue light/dark ══ */
-/* ponytail: aside inherits :root/.dark tokens directly, no override needed */
-
-/* ══ Utility classes for Alpine patterns ══ */
-@layer components {
-  .btn-pill {
-    @apply inline-flex items-center justify-center gap-2 rounded-full;
-    @apply text-sm font-medium transition-all duration-200;
-    @apply focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--page))];
-    @apply disabled:pointer-events-none disabled:opacity-50;
-  }
-
-  .card-alpine {
-    @apply rounded-xl border border-line bg-surface;
-  }
-
-  .card-alpine-featured {
-    @apply rounded-xl border border-line bg-surface-muted;
-  }
-
-  .spotlight-glacier {
-    background: var(--gradient-glacier);
-    @apply rounded-3xl text-white p-8;
-  }
-
-  .divider-line {
-    @apply border-t border-line;
-  }
-
-  .input-alpine {
-    @apply rounded-[10px] border border-line bg-surface;
-    @apply text-fg placeholder:text-fg-muted;
-    @apply px-3.5 py-2.5 text-[15px] leading-[1.3];
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/15 focus-visible:ring-offset-0;
-    @apply disabled:cursor-not-allowed disabled:opacity-50;
-  }
-}
-
 ::selection {
-  background: hsl(var(--primary) / 0.25);
-  color: hsl(var(--fg));
+  background: rgb(var(--primary) / 0.25);
+  color: rgb(var(--text-primary));
 }

@@ -252,7 +252,7 @@ export default function SplitResultCard({
     <div
       ref={cardRef}
       className={cn(
-        'rounded-xl border border-line bg-surface',
+        'rounded-lg border border-line bg-surface',
         isProcessing && !immutableIssue && 'opacity-60 pointer-events-none'
       )}
     >
@@ -324,7 +324,7 @@ export default function SplitResultCard({
                     aria-label="Origem"
                     value={draft.edited.origem || DEFAULT_LEAD_SOURCE}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
-                    className="h-7 w-full rounded-md border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
+                    className="h-7 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                   >
                     {LEAD_SOURCES.map((source) => (
                       <option key={source.value} value={source.value}>
@@ -377,7 +377,7 @@ export default function SplitResultCard({
                 value={draft.edited.template_key || ''}
                 onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                 disabled={templateLoading || templates.length === 0}
-                className="h-8 w-full rounded-md border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
+                className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
                 {!draft.edited.template_key && <option value="">Padrão do servidor</option>}
                 {templates.map((template) => (
@@ -636,7 +636,7 @@ export default function SplitResultCard({
                 href={issueViewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
+              className="inline-flex h-8 items-center justify-center gap-2 whitespace-nowrap rounded-full bg-surface px-3 text-xs font-medium text-fg transition-all duration-200 hover:bg-surface-muted active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
               >
                 <FileText size={13} />
                 Abrir PDF
@@ -708,7 +708,7 @@ export default function SplitResultCard({
         <div className="border-t border-line bg-surface/30 p-3">
           <div className="flex flex-col gap-2">
             <textarea
-              className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               rows={2}
               placeholder="Ex.: também quero 50 lenços"
               value={reExtractText}

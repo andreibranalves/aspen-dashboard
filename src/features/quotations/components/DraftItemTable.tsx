@@ -46,7 +46,7 @@ export default function DraftItemTable({
   addDraftItem,
 }: DraftItemTableProps) {
   return (
-    <div className="overflow-hidden rounded-[20px] border border-line">
+    <div className="overflow-hidden rounded-lg border border-line">
       <div className="flex items-center justify-between gap-3 border-b border-line bg-surface/50 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-fg">
           <Package size={16} className="text-primary" /> Itens sugeridos

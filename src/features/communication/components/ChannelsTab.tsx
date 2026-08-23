@@ -7,7 +7,7 @@ import { CheckCircle } from 'lucide-react';
 export default function ChannelsTab() {
   return (
     <div className="space-y-4">
-      <div className="p-4 rounded-xl border border-line bg-surface">
+      <div className="p-4 rounded-lg border border-line bg-surface">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10">
             <CheckCircle size={20} className="text-success dark:text-success/80" />
@@ -21,7 +21,7 @@ export default function ChannelsTab() {
         </div>
       </div>
 
-      <div className="p-4 rounded-xl border border-line bg-surface">
+      <div className="p-4 rounded-lg border border-line bg-surface">
         <h3 className="text-sm font-medium text-fg mb-2">
           Variáveis de ambiente necessárias
         </h3>

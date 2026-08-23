@@ -526,7 +526,7 @@ export default function WhatsAppDeliveriesPage() {
             ['Atrasados', result.summary.delayed],
             ['Entregues nas últimas 24 horas', result.summary.deliveredLast24Hours],
           ].map(([label, value]) => (
-            <article key={label} className="rounded-xl border border-line bg-surface p-4 shadow-sm">
+            <article key={label} className="rounded-lg border border-line bg-surface p-4 shadow-sm">
               <p className="text-xs font-medium text-fg-muted min-h-[2rem] flex items-start">{label}</p>
               <p className="mt-1 text-2xl font-semibold text-fg">{value}</p>
             </article>
@@ -536,7 +536,7 @@ export default function WhatsAppDeliveriesPage() {
 
       {error && (
         <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
           role="alert"
         >
           <span className="flex items-center gap-2">
@@ -559,7 +559,7 @@ export default function WhatsAppDeliveriesPage() {
         <SkeletonTable cols={8} rows={8} />
       ) : result && result.data.length === 0 ? (
         <div
-          className="rounded-xl border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
+          className="rounded-lg border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
           role="status"
         >
           Nenhuma entrega encontrada para os filtros selecionados.

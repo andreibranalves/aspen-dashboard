@@ -41,7 +41,7 @@ export default function CustomerMetadataForm({
     <>
       {/* ── Name ── */}
       <Input
-        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-fg shadow-none focus-visible:ring-0"
+        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-fg shadow-none"
         value={edited.nome}
         onChange={e => updateDraftField(draftIdx, 'nome', e.target.value)}
         placeholder="Nome do cliente"
@@ -49,7 +49,7 @@ export default function CustomerMetadataForm({
       />
 
       {/* ── Client metadata card ── */}
-      <div className="rounded-[20px] border border-line bg-surface/40 p-4">
+      <div className="rounded-lg border border-line bg-surface/40 p-4">
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg">
           <User size={16} className="text-primary" /> Cliente
         </div>
@@ -100,7 +100,7 @@ export default function CustomerMetadataForm({
           <label className="text-xs font-medium text-fg-muted">Origem do lead *</label>
           <select
             className={cn(
-              'w-full rounded-[12px] border px-3 py-2 text-sm',
+              'w-full rounded-sm border px-3 py-2 text-sm',
               isApproved ? 'border-line bg-surface text-fg' : 'border-line bg-surface text-fg',
             )}
             value={edited.origem || ''}
