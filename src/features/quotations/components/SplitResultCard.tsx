@@ -324,7 +324,7 @@ export default function SplitResultCard({
                     aria-label="Origem"
                     value={draft.edited.origem || DEFAULT_LEAD_SOURCE}
                     onChange={(e) => onUpdateField(draft.index, 'origem', e.target.value)}
-                    className="h-7 w-full rounded-md border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                    className="h-7 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                   >
                     {LEAD_SOURCES.map((source) => (
                       <option key={source.value} value={source.value}>
@@ -377,7 +377,7 @@ export default function SplitResultCard({
                 value={draft.edited.template_key || ''}
                 onChange={(event) => onUpdateField(draft.index, 'template_key', event.target.value)}
                 disabled={templateLoading || templates.length === 0}
-                className="h-8 w-full rounded-md border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                className="h-8 w-full rounded-sm border border-input bg-page px-2 text-xs text-fg shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
               >
                 {!draft.edited.template_key && <option value="">Padrão do servidor</option>}
                 {templates.map((template) => (

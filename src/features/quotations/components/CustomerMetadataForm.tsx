@@ -41,7 +41,7 @@ export default function CustomerMetadataForm({
     <>
       {/* ── Name ── */}
       <Input
-        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-fg shadow-none focus-visible:ring-0"
+        className="mt-2 h-10 max-w-[320px] border-transparent bg-transparent px-0 text-lg font-semibold text-fg shadow-none"
         value={edited.nome}
         onChange={e => updateDraftField(draftIdx, 'nome', e.target.value)}
         placeholder="Nome do cliente"

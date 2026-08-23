@@ -637,7 +637,7 @@ export default function ManualOrcamentoPage() {
             </div>
             <div>
               <p className="font-semibold text-success">{result.status === 'emitido' ? 'Orçamento enviado com sucesso' : 'Rascunho persistido com sucesso'}</p>
-              <p className="text-sm text-success/70">
+              <p className="text-sm text-success">
                 {capitalize(result.cliente || '')} · {businessNumber}
                 {result.revision_number ? ` · Revisão ${result.revision_number}` : ''}
               </p>

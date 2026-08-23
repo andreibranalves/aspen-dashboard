@@ -59,7 +59,11 @@ TableHead.displayName = 'TableHead';
 
 const TableCell = forwardRef<HTMLTableCellElement, TdHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
-    <td ref={ref} className={cn('px-4 py-3 align-middle text-fg', className)} {...props} />
+    <td
+      ref={ref}
+      className={cn('px-4 py-3 align-middle text-fg', '[&:has([role=checkbox])]:pr-0', className)}
+      {...props}
+    />
   ),
 );
 TableCell.displayName = 'TableCell';

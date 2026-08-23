@@ -1129,7 +1129,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   <span className="text-xs text-fg-muted">Modelo do orçamento</span>
                   <select
                     aria-label="Modelo do orçamento"
-                    className="mt-1 h-9 w-full rounded border border-line bg-surface px-2 text-sm"
+                    className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
                     value={selectedTemplate}
                     disabled={!draftEditable}
                     onChange={(event) => {
@@ -1393,7 +1393,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               </Button>
               <select
                 aria-label="Fluxo de WhatsApp"
-                className="h-8 rounded border border-line bg-surface px-2 text-xs"
+                className="h-8 rounded-sm border border-line bg-surface px-2 text-xs"
                 value={deliveryFlowId}
                 onChange={(event) => setDeliveryFlowId(event.target.value)}
                 disabled={deliveryPending}
@@ -1613,7 +1613,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 autoFocus
                 value={lossReasonChoice}
                 onChange={(event) => setLossReasonChoice(event.target.value)}
-                className="mt-1 h-9 w-full rounded border border-line bg-surface px-2 text-sm"
+                className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
               >
                 <option value="">Selecione…</option>
                 {LOSS_REASONS.map((reason) => (

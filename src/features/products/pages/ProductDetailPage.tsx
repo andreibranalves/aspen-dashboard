@@ -211,7 +211,7 @@ function SelectField({
       value={value || ''}
       onChange={onChange}
       disabled={disabled}
-      className={`mt-1 h-10 w-full rounded-md border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-50 ${className}`}
+      className={`mt-1 h-10 w-full rounded-sm border border-line bg-surface px-3.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:opacity-50 ${className}`}
     >
       {children}
     </select>

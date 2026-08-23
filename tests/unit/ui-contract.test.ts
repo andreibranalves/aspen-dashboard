@@ -77,6 +77,14 @@ function contrastRatio(first: string, second: string): number {
   );
 }
 
+function blendRgb(foreground: string, background: string, alpha: number): string {
+  const foregroundChannels = foreground.split(' ').map(Number);
+  const backgroundChannels = background.split(' ').map(Number);
+  return foregroundChannels
+    .map((channel, index) => Math.round(channel * alpha + backgroundChannels[index] * (1 - alpha)))
+    .join(' ');
+}
+
 describe('Aspen UI v2 visual contract', () => {
   it('defines the approved light and dark semantic colors exactly', () => {
     const css = read('src/index.css');
@@ -166,9 +174,45 @@ describe('Aspen UI v2 visual contract', () => {
 
   it('keeps hand-styled native selects on the canonical 6px radius', () => {
     const offenders = readNativeSelectConsumers()
-      .filter(({ source }) => /rounded-(?:full|lg)\b/.test(source))
-      .map(({ file }) => file);
+      .map(({ file, source }) => ({
+        file,
+        radii: [...source.matchAll(/(?:^|\s)(rounded(?:-[^\s'"`})]+)?)/g)].map(
+          ([, radius]) => radius,
+        ),
+      }))
+      .filter(({ radii }) => radii.length !== 1 || radii[0] !== 'rounded-sm')
+      .map(({ file, radii }) => `${file}: ${radii.join(', ') || 'missing'}`);
     assert.deepEqual(offenders, []);
+  });
+
+  it('keeps checkbox table cells flush with the checkbox column', () => {
+    const table = read('src/components/ui/table.tsx');
+    const tableCell = table.match(/const TableCell[\s\S]*?TableCell\.displayName/)?.[0];
+
+    assert.ok(tableCell, 'missing TableCell implementation');
+    assert.match(tableCell, /\[&:has\(\[role=checkbox\]\)\]:pr-0/);
+  });
+
+  it('preserves the shared focus ring on composed customer metadata inputs', () => {
+    const customerMetadataForm = read('src/features/quotations/components/CustomerMetadataForm.tsx');
+    const nameInput = customerMetadataForm.match(
+      /<Input[\s\S]*?placeholder="Nome do cliente"[\s\S]*?\/>/,
+    )?.[0];
+
+    assert.ok(nameInput, 'missing customer name input');
+    assert.match(nameInput, /border-transparent/);
+    assert.match(nameInput, /bg-transparent/);
+    assert.match(nameInput, /shadow-none/);
+    assert.doesNotMatch(nameInput, /focus-visible:ring-0/);
+  });
+
+  it('keeps manual quotation success messaging above the dark contrast floor', () => {
+    const manualQuotation = read('src/features/quotations/pages/ManualOrcamentoPage.tsx');
+    const darkSuccessSurface = blendRgb(canonicalDark.success, canonicalDark.page, 0.1);
+
+    assert.match(manualQuotation, /className="bg-success\/10 border border-success\/30/);
+    assert.match(manualQuotation, /<p className="text-sm text-success">/);
+    assert.ok(contrastRatio(canonicalDark.success, darkSuccessSurface) >= 4.5);
   });
 
   it('keeps foundation primitive contracts aligned with the approved dimensions', () => {
