@@ -38,7 +38,7 @@
     --fg: var(--text-primary);
     --fg-muted: var(--text-secondary);
     --on-solid: var(--on-primary);
-    --shell: var(--surface);
+    --shell: var(--page);
 
     /* Standard primitive aliases. */
     --background: var(--page);

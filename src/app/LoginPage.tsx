@@ -65,7 +65,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
         {/* Logo / branding */}
         <div className="text-center mb-8">
           <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/20">
-            <ShieldAlert className="h-7 w-7 text-on-primary" />
+            <ShieldAlert className="h-7 w-7 text-primary-foreground" />
           </div>
           <h1 className="text-xl font-semibold text-fg">Aspen Orçamento</h1>
           <p className="text-sm text-fg-muted mt-1">Entre com a senha para continuar</p>

@@ -122,7 +122,7 @@ export default function MediaUploader({ onUploadComplete }: MediaUploaderProps) 
         <select
           value={selectedGroup}
           onChange={(e) => setSelectedGroup(e.target.value as ProductGroup)}
-          className="w-full appearance-none rounded-full border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          className="w-full appearance-none rounded-sm border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           disabled={uploading || groups.length === 0}
         >
           {groups.length === 0 && <option value="">Nenhuma categoria cadastrada</option>}

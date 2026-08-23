@@ -820,7 +820,7 @@ export default function ManualOrcamentoPage() {
                   <label className="text-xs font-medium text-fg-muted">Origem *</label>
                   <div className="relative">
                   <select
-                    className="w-full appearance-none rounded-full border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                    className="w-full appearance-none rounded-sm border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                     value={leadSource}
                     onChange={e => setLeadSource(e.target.value)}
                   >
@@ -1225,7 +1225,7 @@ export default function ManualOrcamentoPage() {
                   <div>
                     <label className="text-xs text-fg-muted mb-1 block">Modelo HTML</label>
                     <select
-                      className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg"
+                      className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg"
                       value={templateKey}
                       onChange={(event) => setTemplateKey(event.target.value)}
                       disabled={templateLoading || templates.length === 0}

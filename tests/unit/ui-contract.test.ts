@@ -104,6 +104,12 @@ describe('Aspen UI v2 visual contract', () => {
     }
   });
 
+  it('keeps the shell compatibility alias on the Phase-0 page token', () => {
+    const css = read('src/index.css');
+    assert.match(css, /--shell:\s*var\(--page\)/);
+    assert.doesNotMatch(css, /--shell:\s*var\(--surface\)/);
+  });
+
   it('uses only the canonical radius names and keeps the reference docs versioned', () => {
     const tailwind = read('tailwind.config.js');
     const source = read('src/index.css');
@@ -150,8 +156,19 @@ describe('Aspen UI v2 visual contract', () => {
 
   it('keeps LoginPage branding on canonical semantic tokens', () => {
     const loginPage = read('src/app/LoginPage.tsx');
+    const tailwind = read('tailwind.config.js');
     assert.match(loginPage, /bg-primary/);
+    assert.match(loginPage, /text-primary-foreground/);
+    assert.doesNotMatch(loginPage, /text-on-primary/);
+    assert.match(tailwind, /primary:\s*\{[\s\S]*foreground:\s*'rgb\(var\(--on-primary\)\)'/);
     assert.doesNotMatch(loginPage, /accent-(?:ice|twilight)/);
+  });
+
+  it('keeps hand-styled native selects on the canonical 6px radius', () => {
+    const offenders = readNativeSelectConsumers()
+      .filter(({ source }) => /rounded-(?:full|lg)\b/.test(source))
+      .map(({ file }) => file);
+    assert.deepEqual(offenders, []);
   });
 
   it('keeps foundation primitive contracts aligned with the approved dimensions', () => {
@@ -188,4 +205,22 @@ function readSourceFiles(): string {
   };
   visit(path.join(root, 'src'));
   return files.join('\n');
+}
+
+function readNativeSelectConsumers(): Array<{ file: string; source: string }> {
+  const consumers: Array<{ file: string; source: string }> = [];
+  const visit = (directory: string) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(entryPath);
+      else if (entry.name.endsWith('.tsx')) {
+        const source = readFileSync(entryPath, 'utf8');
+        for (const match of source.matchAll(/<select\b[\s\S]*?<\/select>/g)) {
+          consumers.push({ file: path.relative(root, entryPath), source: match[0] });
+        }
+      }
+    }
+  };
+  visit(path.join(root, 'src'));
+  return consumers;
 }

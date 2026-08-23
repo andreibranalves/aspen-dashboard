@@ -465,7 +465,7 @@ export default function FlowEditorTab() {
                           onChange={(e) =>
                             handleStepTypeChange(selectedFlow.id, step.id, e.target.value as StepType)
                           }
-                          className="appearance-none rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                          className="appearance-none rounded-sm border border-line bg-surface px-2.5 py-1 text-xs font-medium text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                         >
                           {STEP_TYPE_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
@@ -525,7 +525,7 @@ export default function FlowEditorTab() {
                               onChange={(e) =>
                                 updateStep(selectedFlow.id, step.id, 'source', e.target.value)
                               }
-                      className="mt-0.5 w-full appearance-none rounded-full border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+                      className="mt-0.5 w-full appearance-none rounded-sm border border-line bg-surface px-3.5 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                             >
                               <option value="quotation_pdf">PDF (documento)</option>
                               <option value="quotation_webp">WebP (imagem)</option>

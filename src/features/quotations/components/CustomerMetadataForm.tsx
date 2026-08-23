@@ -100,7 +100,7 @@ export default function CustomerMetadataForm({
           <label className="text-xs font-medium text-fg-muted">Origem do lead *</label>
           <select
             className={cn(
-              'w-full rounded-lg border px-3 py-2 text-sm',
+              'w-full rounded-sm border px-3 py-2 text-sm',
               isApproved ? 'border-line bg-surface text-fg' : 'border-line bg-surface text-fg',
             )}
             value={edited.origem || ''}
