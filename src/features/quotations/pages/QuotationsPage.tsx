@@ -4,8 +4,6 @@ import {
   useCallback,
   useRef,
   type ChangeEvent,
-  type ComponentType,
-  type MouseEvent,
 } from 'react';
 import {
   Search,
@@ -18,7 +16,6 @@ import {
   PlusCircle,
   Copy,
   MailCheck,
-  ChevronDown,
 } from 'lucide-react';
 import { apiGet, apiPost, apiDelete } from '@/lib/api/api';
 import { formatBRL, formatDate } from '@/lib/formatting/formatters';
@@ -26,11 +23,16 @@ import { buildQuotationPreviewUrl } from '@/lib/formatting/printFormats';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
+import { FilterChip } from '@/components/ui/filter-chip';
+import { Select } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
+import PageToolbar from '@/components/shared/PageToolbar';
+import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
-import { useSetTopBarActions } from '@/components/layout/Layout';
 import {
   parseHashAllowedInteger,
   parseHashOption,
@@ -83,14 +85,6 @@ interface QuotationsPageProps {
   navigate: (hash: string) => void;
 }
 
-interface ActionBtnProps {
-  icon: ComponentType<{ size?: number }>;
-  label: string;
-  href?: string;
-  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
-  colorClass?: string;
-}
-
 export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [data, setData] = useState<QuotationRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -109,25 +103,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
-  const setTopBarActions = useSetTopBarActions();
   const { toast } = useToast();
-
-  // TopBar actions
-  useEffect(() => {
-    setTopBarActions?.(
-      <div className="flex items-center gap-2">
-        <Button onClick={() => navigate('/auto')} variant="outline" size="sm">
-          <Sparkles size={16} />
-          Auto
-        </Button>
-        <Button onClick={() => navigate('/manual')} variant="default" size="sm">
-          <PlusCircle size={16} />
-          Novo Orçamento
-        </Button>
-      </div>
-    );
-    return () => setTopBarActions?.(null);
-  }, [navigate, setTopBarActions]);
 
   const fetchData = useCallback(
     async (searchVal: string, statusVal: string, pageNum: number, limitVal: number) => {
@@ -329,65 +305,51 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     return nums;
   };
 
-  // Action button component (reusable) — 40x40 hit area
-  const ActionBtn = ({ icon: Icon, label, href, onClick, colorClass = '' }: ActionBtnProps) => {
-    const cls = `inline-flex items-center justify-center min-h-[40px] min-w-[40px] rounded hover:bg-surface-muted transition-colors ${colorClass}`;
-    if (href) {
-      return (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cls}
-          aria-label={label}
-          title={label}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Icon size={18} />
-        </a>
-      );
-    }
-    return (
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick?.(e);
-        }}
-        className={cls}
-        aria-label={label}
-        title={label}
-      >
-        <Icon size={18} />
-      </button>
-    );
-  };
-
   const actionButtons = (row: QuotationRow) => {
     return (
       <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-        <ActionBtn
-          icon={Pencil}
-          label={`Editar orçamento ${row.id}`}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Editar orçamento ${row.id}`}
+          title={`Editar orçamento ${row.id}`}
           onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
-        />
-        <ActionBtn
-          icon={Trash2}
-          label={`Excluir orçamento ${row.id}`}
+        >
+          <Pencil />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Excluir orçamento ${row.id}`}
+          title={`Excluir orçamento ${row.id}`}
+          className="text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
           onClick={() => setDeleteTarget(row.id)}
-          colorClass="text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
-        />
+        >
+          <Trash2 />
+        </Button>
         {row.revision_id && (
-          <ActionBtn
-            icon={FileText}
-            label={`Abrir PDF do orçamento ${row.id}`}
-            href={buildQuotationPreviewUrl(row.revision_id)}
-          />
+          <Button variant="ghost" size="icon" asChild>
+            <a
+              href={buildQuotationPreviewUrl(row.revision_id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Abrir PDF do orçamento ${row.id}`}
+              title={`Abrir PDF do orçamento ${row.id}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <FileText />
+            </a>
+          </Button>
         )}
-        <ActionBtn
-          icon={Copy}
-          label={`Duplicar orçamento ${row.id}`}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Duplicar orçamento ${row.id}`}
+          title={`Duplicar orçamento ${row.id}`}
           onClick={() => setDuplicateTarget(row.id)}
-        />
+        >
+          <Copy />
+        </Button>
       </div>
     );
   };
@@ -424,12 +386,27 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   );
 
   return (
-    <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
-      {/* PageHeader + primary action */}
-      <PageHeader title="Orçamentos" />
+    <PageShell className="pb-28">
+      {/* PageHeader + page actions */}
+      <PageHeader
+        title="Orçamentos"
+        description="Gerencie propostas e acompanhe seu andamento."
+        actions={
+          <>
+            <Button onClick={() => navigate('/auto')} variant="outline">
+              <Sparkles />
+              Auto
+            </Button>
+            <Button onClick={() => navigate('/manual')} variant="default">
+              <PlusCircle />
+              Novo orçamento
+            </Button>
+          </>
+        }
+      />
 
       {/* Search + Page size */}
-      <div className="flex flex-wrap items-center gap-3">
+      <PageToolbar>
         <div className="relative max-w-md flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input
@@ -442,57 +419,32 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         </div>
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <span>Itens por página</span>
-          <div className="relative">
-            <select
-              value={limit}
-              onChange={onLimitChange}
-              className="appearance-none border border-line rounded-full pl-3 pr-8 py-2.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-              aria-label="Itens por página"
-            >
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-          </div>
+          <Select value={limit} onChange={onLimitChange} aria-label="Itens por página">
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </Select>
         </div>
-      </div>
+      </PageToolbar>
 
       {/* Status chips */}
       <div className="flex flex-wrap gap-2">
         {STATUS_OPTIONS.map((option) => (
-          <button
-            key={option.value}
-            onClick={() => onStatusClick(option.value)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors
-              ${
-                status === option.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-surface-muted text-fg-muted hover:text-fg'
-              }`}
-          >
+          <FilterChip key={option.value} selected={status === option.value} onClick={() => onStatusClick(option.value)}>
             {option.label}
             {option.value === '' && totalRecords > 0 && (
-              <span
-                className={`font-normal ${
-                  status === option.value ? 'text-primary-foreground/80' : 'text-fg-muted'
-                }`}
-              >
+              <span className={`font-normal ${status === option.value ? 'text-on-solid/80' : 'text-fg-muted'}`}>
                 ({totalRecords})
               </span>
             )}
             {option.summaryKey && statusSummary[option.summaryKey] !== undefined && (
-              <span
-                className={`font-normal ${
-                  status === option.value ? 'text-primary-foreground/80' : 'text-fg-muted'
-                }`}
-              >
+              <span className={`font-normal ${status === option.value ? 'text-on-solid/80' : 'text-fg-muted'}`}>
                 ({statusSummary[option.summaryKey]})
               </span>
             )}
-          </button>
+          </FilterChip>
         ))}
       </div>
 
@@ -513,24 +465,23 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
       {/* Empty */}
       {!loading && !error && data.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <Clipboard size={36} className="text-fg-muted/40" />
-          {hasActiveFilters ? (
-            <>
-              <p>Nenhum orçamento encontrado</p>
-              <p className="text-sm">Tente ajustar os filtros ou criar um novo orçamento.</p>
-            </>
-          ) : (
-            <>
-              <p>Nenhum orçamento por aqui ainda</p>
-              <p className="text-sm">Crie seu primeiro orçamento para começar.</p>
+        <EmptyState
+          icon={Clipboard}
+          title={hasActiveFilters ? 'Nenhum orçamento encontrado' : 'Nenhum orçamento por aqui ainda'}
+          description={
+            hasActiveFilters
+              ? 'Tente ajustar os filtros ou criar um novo orçamento.'
+              : 'Crie seu primeiro orçamento para começar.'
+          }
+          actions={
+            !hasActiveFilters ? (
               <Button onClick={() => navigate('/manual')}>
-                <PlusCircle size={16} className="mr-2" />
+                <PlusCircle />
                 Novo orçamento
               </Button>
-            </>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
       )}
 
       {/* ── Desktop Table (hidden on mobile) ── */}
@@ -625,23 +576,38 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
               <div className="flex items-center justify-between">
                 <span className="font-mono font-semibold">{formatBRL(row.valor)}</span>
                 <div className="flex items-center gap-0.5">
-                  <ActionBtn
-                    icon={Pencil}
-                    label={`Editar orçamento ${row.id}`}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Editar orçamento ${row.id}`}
+                    title={`Editar orçamento ${row.id}`}
                     onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
-                  />
+                  >
+                    <Pencil />
+                  </Button>
                   {row.revision_id && (
-                    <ActionBtn
-                      icon={FileText}
-                      label={`Abrir PDF do orçamento ${row.id}`}
-                      href={buildQuotationPreviewUrl(row.revision_id)}
-                    />
+                    <Button variant="ghost" size="icon" asChild>
+                      <a
+                        href={buildQuotationPreviewUrl(row.revision_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Abrir PDF do orçamento ${row.id}`}
+                        title={`Abrir PDF do orçamento ${row.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <FileText />
+                      </a>
+                    </Button>
                   )}
-                  <ActionBtn
-                    icon={Copy}
-                    label={`Duplicar orçamento ${row.id}`}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Duplicar orçamento ${row.id}`}
+                    title={`Duplicar orçamento ${row.id}`}
                     onClick={() => setDuplicateTarget(row.id)}
-                  />
+                  >
+                    <Copy />
+                  </Button>
                 </div>
               </div>
             </div>
@@ -737,53 +703,45 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         </div>
       )}
 
-      <div
-        className={`fixed inset-x-0 bottom-0 z-40 transition-all duration-300 ${selectedCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}
-        >
-          <div className="mx-auto max-w-[1060px] px-4">
-            <div className="overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface/95 backdrop-blur shadow-[0_-12px_24px_rgba(0,0,0,0.08)]">
-              <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 md:px-6">
-                <div className="flex flex-wrap items-center gap-6">
-                  <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                    <input
-                      ref={selectAllRef}
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={(e) => toggleSelectAll(e.target.checked)}
-                      aria-label="Selecionar todos os orçamentos desta página"
-                      className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
-                    />
-                    <span>
-                      {selectedCount} orçamento{selectedCount !== 1 ? 's' : ''} selecionado
-                      {selectedCount !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="block text-xs text-fg-muted">Valor total selecionado</span>
-                    <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedIds([])}
-                    disabled={selectedCount === 0}
-                  >
-                    Limpar seleção
-                  </Button>
-                  <Button
-                    variant="default"
-                    onClick={() => setBulkDeleteOpen(true)}
-                    disabled={selectedCount === 0 || bulkDeleting}
-                  >
-                    <Trash2 size={16} className="mr-2" />
-                    Excluir orçamentos
-                  </Button>
-                </div>
-              </div>
-            </div>
+      <BulkActionBar visible={selectedCount > 0}>
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-2 text-sm font-medium text-fg">
+            <input
+              ref={selectAllRef}
+              type="checkbox"
+              checked={allSelected}
+              onChange={(e) => toggleSelectAll(e.target.checked)}
+              aria-label="Selecionar todos os orçamentos desta página"
+              className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+            />
+            <span>
+              {selectedCount} orçamento{selectedCount !== 1 ? 's' : ''} selecionado
+              {selectedCount !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div>
+            <span className="block text-xs text-fg-muted">Valor total selecionado</span>
+            <p className="font-semibold text-lg">{formatBRL(selectedTotal)}</p>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setSelectedIds([])}
+            disabled={selectedCount === 0}
+          >
+            Limpar seleção
+          </Button>
+          <Button
+            variant="default"
+            onClick={() => setBulkDeleteOpen(true)}
+            disabled={selectedCount === 0 || bulkDeleting}
+          >
+            <Trash2 className="mr-2" />
+            Excluir orçamentos
+          </Button>
+        </div>
+      </BulkActionBar>
 
       {/* Confirmação: excluir orçamento */}
       <ConfirmDialog
@@ -820,6 +778,6 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         onConfirm={handleBulkDelete}
         onCancel={() => setBulkDeleteOpen(false)}
       />
-    </div>
+    </PageShell>
   );
 }

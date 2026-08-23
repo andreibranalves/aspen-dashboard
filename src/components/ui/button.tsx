@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { forwardRef, type ButtonHTMLAttributes } from 'react';
+import { cloneElement, forwardRef, isValidElement, type ButtonHTMLAttributes, type ReactElement } from 'react';
 
 /**
  * Button — Alpine pill button system.
@@ -33,33 +33,42 @@ type ButtonSize = keyof typeof sizes;
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** Clona o elemento filho (ex.: <a>) aplicando as classes do Button. */
   asChild?: boolean;
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
-    { className, variant = 'default', size = 'default', asChild: _asChild, children, ...props },
+    { className, variant = 'default', size = 'default', asChild, children, ...props },
     ref
   ) => {
-    const Comp = 'button' as const;
+    const classes = cn(
+      'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200',
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+      'disabled:pointer-events-none',
+      'data-[variant=outline]:disabled:opacity-40 data-[variant=ghost]:disabled:opacity-40 data-[variant=secondary]:disabled:opacity-40 data-[variant=link]:disabled:opacity-40',
+      '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+      variants[variant],
+      sizes[size],
+      className
+    );
+
+    if (asChild && isValidElement(children)) {
+      const child = children as ReactElement<{ className?: string }>;
+      return cloneElement(child, {
+        className: cn(classes, child.props.className),
+      });
+    }
+
     return (
-      <Comp
+      <button
         data-variant={variant}
-        className={cn(
-          'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-page',
-          'disabled:pointer-events-none',
-          'data-[variant=outline]:disabled:opacity-40 data-[variant=ghost]:disabled:opacity-40 data-[variant=secondary]:disabled:opacity-40 data-[variant=link]:disabled:opacity-40',
-          '[&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
-          variants[variant],
-          sizes[size],
-          className
-        )}
+        className={classes}
         ref={ref}
         {...props}
       >
         {children}
-      </Comp>
+      </button>
     );
   }
 );

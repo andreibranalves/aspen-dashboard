@@ -13,6 +13,15 @@ const badgeVariants: Record<string, string> = {
   Lost:      'tone-destructive-soft',
   Expired:   'tone-neutral-muted',
   Cancelled: 'tone-neutral-muted line-through',
+  // Pedidos (status do ERP)
+  'To Deliver and Bill': 'tone-primary-soft',
+  'To Bill':             'tone-info-soft',
+  'To Deliver':          'tone-info-soft',
+  Completed:             'tone-success-soft',
+  Closed:                'tone-neutral-muted',
+  // Clientes
+  Active:    'tone-success-soft',
+  Archived:  'tone-neutral-soft',
 };
 
 interface StatusBadgeProps {

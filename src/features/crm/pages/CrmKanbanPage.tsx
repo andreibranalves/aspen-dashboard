@@ -5,9 +5,10 @@ import { pipelineLabel } from '@/lib/statusLabels';
 import { useToast } from '@/components/shared/toast';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
-import { useSetTopBarActions } from '@/components/layout/Layout';
+import PageShell from '@/components/shared/PageShell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PIPELINE } from '@/lib/constants';
 import SkeletonKanban from '@/features/crm/components/SkeletonKanban';
 import { parseHashString, useHashQueryState } from '@/hooks/useHashQueryState';
@@ -293,21 +294,18 @@ export default function CrmKanbanPage() {
     (status) => columns.find((c) => c.status === status) || { status, count: 0, deals: [] }
   );
 
-  const setTopBarActions = useSetTopBarActions();
-
-  useEffect(() => {
-    setTopBarActions?.(
-      <Button onClick={(): void => { window.location.hash = '#/manual'; }}>
-        <PlusCircle size={16} />
-        Novo orçamento
-      </Button>
-    );
-    return () => setTopBarActions?.(null);
-  }, [setTopBarActions]);
-
   return (
-    <div className="space-y-4 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader title="CRM" description="Acompanhe cada negócio pelo funil de vendas." />
+    <PageShell>
+      <PageHeader
+        title="CRM"
+        description="Acompanhe cada negócio pelo funil de vendas."
+        actions={
+          <Button onClick={(): void => { window.location.hash = '#/manual'; }}>
+            <PlusCircle />
+            Novo orçamento
+          </Button>
+        }
+      />
       {/* Search — só com dados no funil */}
       {!loading && !error && !orderedColumns.every((col) => col.count === 0) && (
         <div className="relative max-w-md">
@@ -317,6 +315,7 @@ export default function CrmKanbanPage() {
             value={search}
             onChange={onSearchChange}
             className="pl-9"
+            aria-label="Buscar negócios"
           />
         </div>
       )}
@@ -368,28 +367,21 @@ export default function CrmKanbanPage() {
 
       {/* Empty */}
       {!loading && !error && orderedColumns.every((c) => c.count === 0) && (
-        <div className="flex flex-col items-center py-10 text-fg-muted gap-3">
-          <Columns3 size={36} className="text-fg-muted/40" />
-          <p>Nenhum negócio no pipeline.</p>
-          <p className="text-sm text-center max-w-md">
-            Um negócio nasce quando um orçamento é enviado a um cliente.
-            Depois, acompanhe cada etapa aqui no funil.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
-            <a
-              href="#/manual"
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 bg-primary text-on-solid hover:bg-primary/90 active:scale-[0.97] h-10 px-4 py-2"
-            >
-              Novo orçamento
-            </a>
-            <a
-              href="#/quotations"
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-all duration-200 border border-line bg-transparent text-fg hover:bg-primary/5 active:scale-[0.97] h-10 px-4 py-2"
-            >
-              Ver orçamentos
-            </a>
-          </div>
-        </div>
+        <EmptyState
+          icon={Columns3}
+          title="Nenhum negócio no pipeline."
+          description="Um negócio nasce quando um orçamento é enviado a um cliente. Depois, acompanhe cada etapa aqui no funil."
+          actions={
+            <>
+              <Button asChild>
+                <a href="#/manual">Novo orçamento</a>
+              </Button>
+              <Button variant="outline" asChild>
+                <a href="#/quotations">Ver orçamentos</a>
+              </Button>
+            </>
+          }
+        />
       )}
 
       {/* Kanban board — constrained height with own scroll. Hidden while empty: the
@@ -634,6 +626,6 @@ export default function CrmKanbanPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

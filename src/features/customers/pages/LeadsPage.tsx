@@ -1,14 +1,18 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent } from 'react';
-import { Search, Phone, Mail, AlertTriangle, Users, Eye, ChevronRight, Archive, ArchiveRestore, UserPlus, Check, X, Sparkles, ReceiptText, MessageCircle, ChevronDown } from 'lucide-react';
+import { Search, Phone, Mail, AlertTriangle, Users, Eye, ChevronRight, Archive, ArchiveRestore, UserPlus, Check, X, Sparkles, ReceiptText, MessageCircle } from 'lucide-react';
 import { apiGet, apiPut, apiPatch, apiDelete } from '@/lib/api/api';
 import { createQuoteForClient } from '@/features/customers/quote-prefill';
 import { fmtPhone } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import PageHeader from '@/components/shared/PageHeader';
+import PageShell from '@/components/shared/PageShell';
+import BulkActionBar from '@/components/shared/BulkActionBar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { useToast } from '@/components/shared/toast';
-import { useSetTopBarActions } from '@/components/layout/Layout';
+import { StatusBadge } from '@/components/ui/badge';
+import { Select } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   parseHashAllowedInteger,
   parseHashOption,
@@ -159,7 +163,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
-  const setTopBarActions = useSetTopBarActions();
   const { toast } = useToast();
   const [pendingArchive, setPendingArchive] = useState<PendingLeadArchive | null>(null);
   const archiveDialog = useMemo(
@@ -199,15 +202,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   }, [limit, page, search, status]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    setTopBarActions?.(
-      <Button size="sm" onClick={() => navigate?.('/leads/cliente/new')}>
-        <UserPlus size={16} /> Novo contato
-      </Button>,
-    );
-    return () => setTopBarActions?.(null);
-  }, [navigate, setTopBarActions]);
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = selectedIds.length > 0 && selectedIds.length < data.length;
@@ -356,20 +350,26 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const showStatusColumn = status !== 'active';
 
   return (
-    <div className="space-y-4 pb-28 animate-fade-in max-w-[1060px] mx-auto">
-      <PageHeader title="Clientes" description="Contatos da carteira — use Novo orçamento para transformar um contato em venda." />
+    <PageShell className="pb-28">
+      <PageHeader
+        title="Clientes"
+        description="Contatos da carteira — use Novo orçamento para transformar um contato em venda."
+        actions={
+          <Button onClick={() => navigate?.('/leads/cliente/new')}>
+            <UserPlus />
+            Novo contato
+          </Button>
+        }
+      />
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-md flex-1 min-w-[220px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
           <Input placeholder="Buscar por nome, documento, e-mail ou telefone…" value={search} onChange={onSearchChange} className="pl-9" aria-label="Buscar clientes" />
         </div>
         <span className="text-xs font-medium text-fg-muted">Itens por página</span>
-        <div className="relative">
-          <select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página" className="appearance-none border border-line rounded-full pl-3 pr-8 py-1.5 text-sm bg-surface text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25">
-            {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
-          </select>
-          <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-        </div>
+        <Select value={limit} onChange={(event) => { const value = Number(event.target.value); setLimit(value); setPage(1); void fetchData(search, 1, status, value); }} aria-label="Itens por página">
+          {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+        </Select>
         <div className="ml-auto flex items-center gap-1 rounded-full border border-line bg-surface p-1">
           {(['active', 'archived', 'all'] as const).map((value) => (
             <button key={value} type="button" onClick={() => { setStatus(value); setPage(1); void fetchData(search, 1, value, limit); }} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${status === value ? 'bg-primary text-primary-foreground' : 'text-fg-muted hover:text-fg'}`}>
@@ -389,35 +389,33 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         </div>
       )}
       {!loading && !error && data.length === 0 && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <Users size={36} className="text-fg-muted/40" />
-          <p>Nenhum cliente encontrado</p>
-          {!search && status === 'active' ? (
-            <>
-              <p className="text-sm">Cadastre um cliente para começar.</p>
-              <Button type="button" onClick={() => navigate?.('/leads/cliente/new')}>
-                <UserPlus size={16} />
+        <EmptyState
+          icon={Users}
+          title="Nenhum cliente encontrado"
+          description={!search && status === 'active' ? 'Cadastre um cliente para começar.' : 'Tente ajustar a busca ou os filtros.'}
+          actions={
+            !search && status === 'active' ? (
+              <Button onClick={() => navigate?.('/leads/cliente/new')}>
+                <UserPlus />
                 Novo contato
               </Button>
-            </>
-          ) : (
-            <p className="text-sm">Tente ajustar a busca ou os filtros.</p>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
       )}
       {!loading && !error && data.length > 0 && (
         <>
           <div className="hidden md:block">
             <Table>
               <TableHeader><TableRow><TableHead className="w-12"><input ref={selectAllRef} type="checkbox" checked={allSelected} onChange={(event) => toggleAll(event.target.checked)} aria-label="Selecionar todos os clientes" /></TableHead><TableHead>Nome</TableHead><TableHead>E-mail</TableHead><TableHead>Telefone</TableHead><TableHead className="hidden xl:table-cell">Documento</TableHead>{showStatusColumn && <TableHead>Status</TableHead>}<TableHead className="text-center">Ações</TableHead></TableRow></TableHeader>
-              <TableBody>{data.map((row) => <TableRow key={row.id} className="cursor-pointer" onClick={() => navigateToDetail(row.id)}><TableCell onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} aria-label={`Selecionar ${row.nome || row.id}`} /></TableCell><TableCell className="font-medium">{row.nome || '—'}</TableCell><TableCell className="text-fg-muted">{row.email || '—'}</TableCell><TableCell className="text-fg-muted">{fmtPhone(row.telefone)}</TableCell><TableCell className="hidden xl:table-cell text-fg-muted text-xs font-mono">{row.documento ? formatDocument(row.documento) : '—'}</TableCell>{showStatusColumn && <TableCell><span className={`rounded-full px-2 py-0.5 text-xs ${row.status === 'archived' ? 'bg-surface-muted text-fg-muted' : 'bg-success/10 text-success'}`}>{row.status === 'archived' ? 'Arquivado' : 'Ativo'}</span></TableCell>}<TableCell onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-center gap-1"><button type="button" title={`Novo orçamento para ${row.nome || row.id}`} aria-label={`Novo orçamento para ${row.nome || row.id}`} className="min-h-10 min-w-10 inline-flex items-center justify-center rounded bg-primary/10 text-primary hover:bg-primary/20" onClick={(event) => { event.stopPropagation(); createQuoteForClient(row, navigate); }}><ReceiptText size={18} /></button><button type="button" onClick={() => void openDrawer(row)} className="min-h-10 min-w-10 rounded hover:bg-primary/10" aria-label={`Visualização rápida ${row.nome || row.id}`}><Eye size={18} /></button>{row.telefone && <a href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="min-h-10 min-w-10 inline-flex items-center justify-center rounded text-success hover:bg-success/10" title="Abrir conversa no WhatsApp" aria-label={`WhatsApp ${row.nome || row.id}`}><MessageCircle size={18} /></a>}{row.email && <a href={`mailto:${row.email}`} className="min-h-10 min-w-10 inline-flex items-center justify-center rounded hover:bg-surface-muted" aria-label={`E-mail ${row.nome || row.id}`}><Mail size={18} /></a>}<span className="ml-1 border-l border-line pl-1 inline-flex items-center"><button type="button" onClick={() => void toggleArchive(row)} className="min-h-10 min-w-10 inline-flex items-center justify-center rounded text-destructive/60 hover:bg-destructive/10 hover:text-destructive transition-colors" aria-label={`${row.status === 'archived' ? 'Restaurar' : 'Arquivar'} ${row.nome || row.id}`}>{row.status === 'archived' ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button></span></div></TableCell></TableRow>)}</TableBody>
+              <TableBody>{data.map((row) => <TableRow key={row.id} className="cursor-pointer" onClick={() => navigateToDetail(row.id)}><TableCell onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} aria-label={`Selecionar ${row.nome || row.id}`} /></TableCell><TableCell className="font-medium">{row.nome || '—'}</TableCell><TableCell className="text-fg-muted">{row.email || '—'}</TableCell><TableCell className="text-fg-muted">{fmtPhone(row.telefone)}</TableCell><TableCell className="hidden xl:table-cell text-fg-muted text-xs font-mono">{row.documento ? formatDocument(row.documento) : '—'}</TableCell>{showStatusColumn && <TableCell><StatusBadge status={row.status === 'archived' ? 'Archived' : 'Active'} label={row.status === 'archived' ? 'Arquivado' : 'Ativo'} /></TableCell>}<TableCell onClick={(event) => event.stopPropagation()}><div className="flex items-center justify-center gap-1"><Button variant="ghost" size="icon" title={`Novo orçamento para ${row.nome || row.id}`} aria-label={`Novo orçamento para ${row.nome || row.id}`} className="bg-primary/10 text-primary hover:bg-primary/20" onClick={(event) => { event.stopPropagation(); createQuoteForClient(row, navigate); }}><ReceiptText /></Button><Button variant="ghost" size="icon" onClick={() => void openDrawer(row)} aria-label={`Visualização rápida ${row.nome || row.id}`}><Eye /></Button>{row.telefone && <Button variant="ghost" size="icon" asChild><a href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-success hover:bg-success/10" title="Abrir conversa no WhatsApp" aria-label={`WhatsApp ${row.nome || row.id}`}><MessageCircle /></a></Button>}{row.email && <Button variant="ghost" size="icon" asChild><a href={`mailto:${row.email}`} aria-label={`E-mail ${row.nome || row.id}`}><Mail /></a></Button>}<span className="ml-1 border-l border-line pl-1 inline-flex items-center"><Button variant="ghost" size="icon" onClick={() => void toggleArchive(row)} className="text-destructive/50 hover:bg-destructive/10 hover:text-destructive" aria-label={`${row.status === 'archived' ? 'Restaurar' : 'Arquivar'} ${row.nome || row.id}`}>{row.status === 'archived' ? <ArchiveRestore /> : <Archive />}</Button></span></div></TableCell></TableRow>)}</TableBody>
             </Table>
           </div>
-          <div className="md:hidden space-y-3">{data.map((row) => <div key={row.id} className="bg-surface rounded-lg border border-line p-4 space-y-2" onClick={() => navigateToDetail(row.id)}><div className="flex items-center justify-between"><span className="font-medium">{row.nome || '—'}</span><span className="text-xs text-fg-muted">{row.status === 'archived' ? 'Arquivado' : 'Ativo'}</span></div><p className="text-xs text-fg-muted">{row.email || '—'}</p><div className="flex gap-1" onClick={(event) => event.stopPropagation()}><button type="button" aria-label={`Novo orçamento para ${row.nome || row.id}`} title="Novo orçamento" className="min-h-10 min-w-10 inline-flex items-center justify-center text-primary" onClick={(event) => { event.stopPropagation(); createQuoteForClient(row, navigate); }}><ReceiptText size={18} /></button>{row.telefone && <a href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${row.nome || row.id}`} title="Abrir conversa no WhatsApp" className="min-h-10 min-w-10 inline-flex items-center justify-center text-success"><MessageCircle size={18} /></a>}{row.email && <a href={`mailto:${row.email}`} aria-label={`E-mail ${row.nome || row.id}`} className="min-h-10 min-w-10 inline-flex items-center justify-center"><Mail size={18} /></a>}</div></div>)}</div>
+          <div className="md:hidden space-y-3">{data.map((row) => <div key={row.id} className="bg-surface rounded-lg border border-line p-4 space-y-2" onClick={() => navigateToDetail(row.id)}><div className="flex items-center justify-between"><span className="font-medium">{row.nome || '—'}</span><span className="text-xs text-fg-muted">{row.status === 'archived' ? 'Arquivado' : 'Ativo'}</span></div><p className="text-xs text-fg-muted">{row.email || '—'}</p><div className="flex gap-1" onClick={(event) => event.stopPropagation()}><Button variant="ghost" size="icon" aria-label={`Novo orçamento para ${row.nome || row.id}`} title="Novo orçamento" className="text-primary" onClick={(event) => { event.stopPropagation(); createQuoteForClient(row, navigate); }}><ReceiptText /></Button>{row.telefone && <Button variant="ghost" size="icon" asChild><a href={`https://wa.me/${row.telefone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${row.nome || row.id}`} title="Abrir conversa no WhatsApp" className="text-success"><MessageCircle /></a></Button>}{row.email && <Button variant="ghost" size="icon" asChild><a href={`mailto:${row.email}`} aria-label={`E-mail ${row.nome || row.id}`}><Mail /></a></Button>}</div></div>)}</div>
         </>
       )}
       {totalPages > 1 && <div className="flex items-center justify-between text-sm"><span className="text-fg-muted">Página {page} de {totalPages} · {totalRecords} registro{totalRecords === 1 ? '' : 's'}</span><div className="flex gap-1"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => { setPage(page - 1); void fetchData(search, page - 1); }}>‹ Anterior</Button>{pageNumbers.map((number) => <Button key={number} variant={number === page ? 'default' : 'outline'} size="sm" onClick={() => { setPage(number); void fetchData(search, number); }}>{number}</Button>)}<Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => { setPage(page + 1); void fetchData(search, page + 1); }}>Próximo ›</Button></div></div>}
-      {selectedIds.length > 0 && <div className="fixed inset-x-0 bottom-0 z-40"><div className="mx-auto max-w-[1060px] px-4"><div className="rounded-t-2xl border border-b-0 border-line bg-surface p-4 flex items-center justify-between"><span>{selectedIds.length} cliente{selectedIds.length === 1 ? '' : 's'} selecionado{selectedIds.length === 1 ? '' : 's'}</span><div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedIds([])}>Limpar seleção</Button><Button onClick={requestBulkArchive}>{status === 'archived' ? <ArchiveRestore size={16} /> : <Archive size={16} />} {status === 'archived' ? 'Restaurar clientes' : 'Arquivar clientes'}</Button></div></div></div></div>}
+      {selectedIds.length > 0 && <BulkActionBar visible><span>{selectedIds.length} cliente{selectedIds.length === 1 ? '' : 's'} selecionado{selectedIds.length === 1 ? '' : 's'}</span><div className="flex gap-2"><Button variant="outline" onClick={() => setSelectedIds([])}>Limpar seleção</Button><Button onClick={requestBulkArchive}>{status === 'archived' ? <ArchiveRestore /> : <Archive />} {status === 'archived' ? 'Restaurar clientes' : 'Arquivar clientes'}</Button></div></BulkActionBar>}
 
       <DetailDrawer open={drawerOpen} onClose={closeDrawer} title={detail?.display_name || detail?.nome || 'Carregando…'} description={selectedId ? `Cliente · ${selectedId}` : undefined} actions={detail && <div className="space-y-3"><QualityBadges badges={qualityBadges(detail)} /><ContextActions actions={contextActions()} /><div className="flex gap-2">{!editMode ? <Button variant="outline" size="sm" onClick={() => { setEditFields(fieldsFromDetail(detail)); setEditMode(true); }}>Editar</Button> : <><Button size="sm" onClick={() => void updateDetail()} disabled={detailSaving}><Check size={14} /> Salvar</Button><Button variant="outline" size="sm" onClick={() => setEditMode(false)} disabled={detailSaving}><X size={14} /> Cancelar</Button></>}</div></div>}>
         {detailLoading && <div className="py-12 text-center text-sm text-fg-muted">Carregando detalhes…</div>}
@@ -436,6 +434,6 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         onConfirm={confirmPendingArchive}
         onCancel={() => setPendingArchive(null)}
       />
-    </div>
+    </PageShell>
   );
 }
