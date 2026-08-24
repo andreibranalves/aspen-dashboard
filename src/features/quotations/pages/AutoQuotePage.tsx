@@ -1,19 +1,17 @@
-import { useState, useCallback, useEffect, useMemo, useRef, type ClipboardEvent } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type ClipboardEvent, type ReactNode } from 'react';
 import {
   Sparkles,
   FileText,
   AlertTriangle,
   RotateCcw,
-  History,
   Image as ImageIcon,
   X,
-  ChevronDown,
 } from 'lucide-react';
-import { apiPost, apiGet } from '@/lib/api/api';
+import { apiPost } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
 import OrderTemplateManager from '@/features/quotations/components/OrderTemplateManager';
 import { listOrderTemplates, type OrderTemplate } from '@/lib/api/orderTemplatesApi';
-import { capitalize, formatBRL, formatDate } from '@/lib/formatting/formatters';
+import { capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -37,13 +35,6 @@ import {
 import type { DeliveryView } from '@/lib/api/quotationDeliveryApi';
 import { isSendableQuotationStatus, sendContextKey, type SendContext } from '@/lib/api/communicationSend';
 
-interface HistoryItem {
-  id: string;
-  cliente?: string;
-  data?: string;
-  valor?: string | number;
-}
-
 function moneyCents(value: unknown): number | null {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : null;
@@ -57,18 +48,64 @@ function loadInitialAutoQuoteDrafts() {
   }
 }
 
+function templateSlug(name: string): string {
+  return name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function renderTemplateText(text: string, templates: OrderTemplate[]): ReactNode[] {
+  const bySlug = new Map(templates.map((template) => [templateSlug(template.name), template]));
+  const nodes: ReactNode[] = [];
+  const mentionPattern = /(^|\s)(@[\p{L}\p{N}_-]+)/gu;
+  let lastIndex = 0;
+  let pillIndex = 0;
+
+  for (const match of text.matchAll(mentionPattern)) {
+    const token = match[2];
+    const tokenStart = (match.index || 0) + match[1].length;
+    const template = bySlug.get(templateSlug(token.slice(1)));
+    if (!template) continue;
+    if (tokenStart > lastIndex) nodes.push(text.slice(lastIndex, tokenStart));
+    nodes.push(
+      <span
+        key={`${template.id}-${pillIndex++}`}
+        title={`Template: ${template.name}`}
+        className="whitespace-nowrap bg-surface font-semibold text-fg"
+      >
+        {token}
+      </span>
+    );
+    lastIndex = tokenStart + token.length;
+  }
+
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
+}
+
+function inlineTemplateSelections(text: string, templates: OrderTemplate[]) {
+  const bySlug = new Map(templates.map((template) => [templateSlug(template.name), template]));
+  const selections: Array<{ id: string; quantity: number }> = [];
+  const unknown: string[] = [];
+  for (const match of text.matchAll(/(\d+(?:[.,]\d+)?)\s*@([\p{L}\p{N}_-]+)/gu)) {
+    const template = bySlug.get(templateSlug(match[2]));
+    if (!template) unknown.push(`@${match[2]}`);
+    else selections.push({ id: template.id, quantity: Number(match[1].replace(',', '.')) });
+  }
+  return { selections, unknown };
+}
+
 export default function AutoQuotePage() {
   // ── Helpers ──
 
   // ── Input state ──
   const [text, setText] = useState<string>('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const selectionFrameRef = useRef<number | null>(null);
+  const [mention, setMention] = useState<{ start: number; end: number; query: string } | null>(null);
   const [extracting, setExtracting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [pricingConflictByDraft, setPricingConflictByDraft] = useState<Record<number, string[]>>({});
   const [savingDraftByIndex, setSavingDraftByIndex] = useState<Record<number, boolean>>({});
   const issueInFlight = useRef(new Set<number>());
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
 
   // ── Quotation template ──
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
@@ -78,13 +115,10 @@ export default function AutoQuotePage() {
 
   // ── Order template ──
   const [orderTemplates, setOrderTemplates] = useState<OrderTemplate[]>([]);
-  const [orderTemplateId, setOrderTemplateId] = useState<string>('');
-  const [orderTemplatesLoading, setOrderTemplatesLoading] = useState<boolean>(true);
   const [orderTemplatesError, setOrderTemplatesError] = useState<string | null>(null);
   const [orderTemplateManagerOpen, setOrderTemplateManagerOpen] = useState(false);
 
   const loadOrderTemplates = useCallback(async () => {
-    setOrderTemplatesLoading(true);
     setOrderTemplatesError(null);
     try {
       const response = await listOrderTemplates();
@@ -92,15 +126,9 @@ export default function AutoQuotePage() {
         ? response.data.filter((template) => !template.archived)
         : [];
       setOrderTemplates(available);
-      setOrderTemplateId((current) =>
-        available.some((template) => template.id === current) ? current : ''
-      );
     } catch {
       setOrderTemplates([]);
-      setOrderTemplateId('');
       setOrderTemplatesError('Não foi possível carregar os templates de pedido.');
-    } finally {
-      setOrderTemplatesLoading(false);
     }
   }, []);
 
@@ -201,25 +229,6 @@ export default function AutoQuotePage() {
   // ── Image input ──
   const { imageData, imagePreview, clearImage, handleImageFile } = useImageInput();
 
-  // ── Load recent quotations ──
-  const loadHistory = useCallback(async () => {
-    setHistoryLoading(true);
-    try {
-      const res = await apiGet<{ data?: HistoryItem[] }>(
-        '/quotations?limit=5&order_by=creation+desc'
-      );
-      if (res.data) setHistory(res.data.slice(0, 5));
-    } catch {
-      /* non-critical */
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
-
   // ── Prefill do cliente vindo do CRM (#/leads) — consome 'aspen_quote_prefill' uma única vez ──
   useEffect(() => {
     let raw: string | null;
@@ -285,9 +294,54 @@ export default function AutoQuotePage() {
     };
   }, []);
 
+  const updateMention = useCallback((value: string, caret: number | null) => {
+    if (caret === null) return setMention(null);
+    const match = value.slice(0, caret).match(/(?:^|\s)@([\p{L}\p{N}_-]*)$/u);
+    setMention(match ? { start: caret - match[1].length - 1, end: caret, query: match[1] } : null);
+  }, []);
+
+  const mentionTemplates = useMemo(() => {
+    if (!mention) return [];
+    const query = templateSlug(mention.query);
+    return orderTemplates.filter((template) => templateSlug(template.name).includes(query)).slice(0, 6);
+  }, [mention, orderTemplates]);
+
+  const cancelPendingSelection = useCallback(() => {
+    if (selectionFrameRef.current === null) return;
+    window.cancelAnimationFrame(selectionFrameRef.current);
+    selectionFrameRef.current = null;
+  }, []);
+
+  const focusTextareaAt = useCallback((caret: number) => {
+    cancelPendingSelection();
+    selectionFrameRef.current = window.requestAnimationFrame(() => {
+      selectionFrameRef.current = null;
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(caret, caret);
+    });
+  }, [cancelPendingSelection]);
+
+  useEffect(() => () => cancelPendingSelection(), [cancelPendingSelection]);
+
+  const insertTemplateMention = useCallback((template: OrderTemplate) => {
+    if (!mention) return;
+    const afterMention = text.slice(mention.end);
+    const inserted = `@${templateSlug(template.name)}`;
+    const next = text.slice(0, mention.start) + inserted + afterMention;
+    const caret = mention.start + inserted.length;
+    setText(next);
+    setMention(null);
+    focusTextareaAt(caret);
+  }, [focusTextareaAt, mention, text]);
+
   // ── Extract text → build drafts ──
   const handleExtract = useCallback(async () => {
     if (!text.trim() && !imageData) return;
+    const inline = inlineTemplateSelections(text, orderTemplates);
+    if (inline.unknown.length) {
+      setError(`Template não encontrado: ${inline.unknown.join(', ')}.`);
+      return;
+    }
     setExtracting(true);
     setError(null);
     try {
@@ -297,7 +351,7 @@ export default function AutoQuotePage() {
         text: text || null,
         imageBase64: imageData?.base64 || null,
         imageMimeType: imageData?.mime || null,
-        ...(orderTemplateId ? { orderTemplateId } : {}),
+        ...(inline.selections.length ? { orderTemplateSelections: inline.selections } : {}),
       });
       const orders = res.orders;
       if (!orders || orders.length === 0) {
@@ -319,13 +373,12 @@ export default function AutoQuotePage() {
         const next = [...prev, ...appendedDrafts];
         return next;
       });
-      loadHistory();
     } catch (err) {
       setError((err as Error).message || 'Erro na extração.');
     } finally {
       setExtracting(false);
     }
-  }, [text, imageData, orderTemplateId, templateKey, fetchPricing, buildDraftsFromOrders, loadHistory]);
+  }, [text, imageData, orderTemplates, templateKey, fetchPricing, buildDraftsFromOrders]);
 
   // ── Create single quotation (draftIndex = draft.index, not array index) ──
   const createSingleQuote = useCallback(
@@ -356,7 +409,6 @@ export default function AutoQuotePage() {
         setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
           ? ({ ...candidate, issue, result: { success: true, data }, status: 'done' } as StoredAutoQuoteDraft)
           : candidate));
-        loadHistory();
       } catch (err) {
         const apiError = err instanceof QuotationIssueApiError ? err : null;
         const priceConflict = Boolean(apiError && isPriceAuthoritativeConflict(apiError));
@@ -420,7 +472,7 @@ export default function AutoQuotePage() {
         issueInFlight.current.delete(draftIndex);
       }
     },
-    [drafts, loadHistory, refetchDraftPricing]
+    [drafts, refetchDraftPricing]
   );
 
   const saveSingleDraft = useCallback(async (draftIndex: number) => {
@@ -436,7 +488,6 @@ export default function AutoQuotePage() {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
         ? ({ ...candidate, saved: { quotationId, revisionId, businessNumber } } as StoredAutoQuoteDraft)
         : candidate));
-      loadHistory();
     } catch (error) {
       setDrafts((current) => current.map((candidate) => candidate.index === draftIndex
         ? ({ ...candidate, result: { success: false, error: error instanceof Error ? error.message : 'Não foi possível salvar o rascunho.' } } as StoredAutoQuoteDraft)
@@ -448,7 +499,7 @@ export default function AutoQuotePage() {
         return next;
       });
     }
-  }, [drafts, loadHistory, savingDraftByIndex]);
+  }, [drafts, savingDraftByIndex]);
 
   const recoveredDrafts = useRef(new Set<number>());
   const recoveryTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -537,35 +588,6 @@ export default function AutoQuotePage() {
     [drafts]
   );
 
-  // ── Load history item: fetch detail and format as text ──
-  const loadHistoryItem = useCallback(async (item: HistoryItem) => {
-    setError(null);
-    try {
-      const res = await apiGet<{
-        cliente?: string;
-        email?: string;
-        telefone?: string;
-        items?: { item_code?: string; qty?: number }[];
-      }>(`/quotations?id=${encodeURIComponent(item.id)}`);
-      if (!res) return;
-      const nome = res.cliente || item.cliente || 'Cliente';
-      const email = res.email || '';
-      const telefone = res.telefone || '';
-      const itemsText = (res.items || []).map((it) => `${it.item_code} ${it.qty} un`).join(', ');
-      const formatted = [
-        `Nome: ${nome}`,
-        email ? `E-mail: ${email}` : 'E-mail:',
-        telefone ? `Telefone: ${telefone}` : 'Telefone:',
-        itemsText ? `Pedido: ${itemsText}` : 'Pedido:',
-      ].join('\n');
-      setText(formatted);
-      document.querySelector('.panel-left')?.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (loadError) {
-      console.warn('[AutoQuotePage] failed to load history item:', (loadError as Error).message);
-      setText(`${item.id} — ${item.cliente || 'Cliente'}`);
-    }
-  }, []);
-
   // ── Destructive-action confirmations ──
   const [confirmReset, setConfirmReset] = useState<boolean>(false);
   const [confirmClearResults, setConfirmClearResults] = useState<boolean>(false);
@@ -580,7 +602,6 @@ export default function AutoQuotePage() {
     setExtracting(false);
     setProductSearch({});
     setWaFlowByDraft({});
-    setOrderTemplateId('');
     try {
       window.sessionStorage.removeItem('aspen_drafts');
     } catch (storageError) {
@@ -713,7 +734,7 @@ export default function AutoQuotePage() {
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex h-1/2 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto border-r border-line bg-surface lg:h-auto lg:overflow-hidden lg:w-1/2 lg:flex-none">
-          <div className="px-4 md:px-6 pt-4 md:pt-5 space-y-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 md:px-6 md:pt-5 space-y-4">
             {/* Page title */}
             <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
             {templateError && (
@@ -731,42 +752,11 @@ export default function AutoQuotePage() {
               </div>
             )}
 
-            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
-              <label className="min-w-0 flex-1 text-xs text-fg-muted">
-                Template de pedido
-                <div className="relative mt-1">
-                <select
-                  aria-label="Template de pedido"
-                  value={orderTemplateId}
-                  onChange={(event) => setOrderTemplateId(event.target.value)}
-                  disabled={extracting || orderTemplatesLoading}
-                  className="w-full appearance-none rounded-sm border border-line bg-surface pl-3 pr-8 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-                >
-                  <option value="">Nenhum</option>
-                  {orderTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-muted" />
-                </div>
-              </label>
-              <Button
-                type="button"
-                variant="outline"
-                className="self-end sm:self-auto h-[38px]"
-                onClick={() => setOrderTemplateManagerOpen(true)}
-              >
-                Gerenciar
-              </Button>
-            </div>
-
             {/* Text input */}
             <div className="mt-2">
               <div className="relative">
                 {imageData && (
-                  <div className="absolute left-3 top-3 z-10">
+                  <div className="absolute left-3 top-3 z-20">
                     <div className="group relative h-16 w-16 overflow-hidden rounded-lg border border-line bg-surface-muted shadow-sm">
                       {imagePreview ? (
                         <img
@@ -793,16 +783,39 @@ export default function AutoQuotePage() {
                   </div>
                 )}
 
+                {text && (
+                  <div
+                    aria-hidden="true"
+                    className={cn(
+                      'pointer-events-none absolute inset-px z-20 overflow-hidden whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-transparent',
+                      imageData ? 'pt-24' : ''
+                    )}
+                  >
+                    {renderTemplateText(text, orderTemplates)}
+                  </div>
+                )}
+
                 <textarea
+                  ref={textareaRef}
                   className={cn(
-                    'w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+                    'relative z-10 w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
-                  placeholder={
-                    'Cole aqui a mensagem do cliente, formato natural é aceito. Inclua nome, telefone, e-mail, produto e quantidade.\n\nEx.: "João Lopes, 200 lenços de cetim de seda, joao@gmail.com, (11) 99999-9999."'
-                  }
+                  placeholder="Cole aqui a mensagem do cliente, formato natural é aceito. Inclua nome, telefone, e-mail, produto e quantidade."
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(event) => {
+                    cancelPendingSelection();
+                    const value = event.target.value;
+                    setText(value);
+                    updateMention(value, event.target.selectionStart);
+                  }}
+                  onClick={(event) => {
+                    cancelPendingSelection();
+                    updateMention(event.currentTarget.value, event.currentTarget.selectionStart);
+                  }}
+                  onKeyUp={(event) => updateMention(event.currentTarget.value, event.currentTarget.selectionStart)}
+                  aria-controls={mention ? 'order-template-mentions' : undefined}
+                  aria-expanded={Boolean(mention && mentionTemplates.length)}
                   disabled={extracting}
                   onPaste={(e: ClipboardEvent<HTMLTextAreaElement>) => {
                     const items = e.clipboardData?.items;
@@ -817,7 +830,31 @@ export default function AutoQuotePage() {
                     }
                   }}
                 />
+                {mention && (
+                  <div
+                    id="order-template-mentions"
+                    className="absolute inset-x-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-lg"
+                  >
+                    {mentionTemplates.length ? mentionTemplates.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => insertTemplateMention(template)}
+                        className="flex w-full items-center justify-between gap-3 rounded-sm px-3 py-2 text-left text-sm text-fg hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <span>{template.name}</span>
+                        <span className="text-xs text-fg-muted">@{templateSlug(template.name)}</span>
+                      </button>
+                    )) : (
+                      <p className="px-3 py-2 text-sm text-fg-muted">Nenhum template encontrado.</p>
+                    )}
+                  </div>
+                )}
               </div>
+              <p className="mt-1.5 text-xs text-fg-muted">
+                Atalho: digite a quantidade e <strong>@template</strong>, por exemplo, 30 @cangas.
+              </p>
             </div>
 
             {/* Actions row */}
@@ -864,54 +901,14 @@ export default function AutoQuotePage() {
               </div>
             )}
           </div>
-
-          {/* ── Bottom panel: recent quotations ── */}
-          <div className="border-t border-line px-4 md:px-6 pt-4 pb-3 mt-6 flex flex-col h-[300px] lg:h-[340px]">
-            <div className="mb-3 flex items-center gap-1.5 shrink-0 text-xs font-medium text-fg-muted">
-              <History size={13} />
-              Recentes
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4 md:-mx-6 md:px-6">
-              {historyLoading ? (
-                <div className="space-y-2 h-full">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="h-10 rounded-lg bg-surface-muted animate-pulse" />
-                  ))}
-                </div>
-              ) : history.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-fg-muted">Nenhum orçamento recente.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-line/60">
-                  {history.map((item, idx) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => loadHistoryItem(item)}
-                      className={cn(
-                        'w-full flex items-center justify-between px-0 py-2 text-left text-sm hover:bg-surface-muted transition-colors',
-                        idx === history.length - 1 && 'pb-1'
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-fg truncate">{item.cliente || 'Cliente'}</p>
-                        <p className="text-xs text-fg-muted truncate">{item.id}</p>
-                      </div>
-                      <div className="flex items-center gap-4 shrink-0 ml-2">
-                        <span className="w-[72px] text-right text-[11px] text-fg-muted whitespace-nowrap [font-variant-numeric:tabular-nums]">
-                          {formatDate(item.data)}
-                        </span>
-                        <span className="min-w-[92px] text-right text-xs font-medium text-fg whitespace-nowrap [font-variant-numeric:tabular-nums]">
-                          {formatBRL(item.valor)}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="flex shrink-0 justify-start border-t border-line px-4 py-3 md:px-6">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOrderTemplateManagerOpen(true)}
+            >
+              Gerenciar templates
+            </Button>
           </div>
         </div>
 

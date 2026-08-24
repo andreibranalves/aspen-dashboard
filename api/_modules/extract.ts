@@ -575,6 +575,7 @@ interface ExtractionPayload {
   customRules?: string;
   existingItems?: Array<{ item_code: string; qty: number }>;
   orderTemplateId?: string;
+  orderTemplateSelections?: Array<{ id: string; quantity: number }>;
 }
 
 function normalizeExistingItems(value: unknown): Array<{ item_code: string; qty: number }> | undefined {
@@ -629,6 +630,22 @@ function normalizeExtractionPayload(value: unknown): ExtractionPayload {
     : typeof value.orderTemplateId === 'string'
       ? value.orderTemplateId.trim() || undefined
       : (() => { throw createHttpError(400, 'Template de pedido inválido.'); })();
+  const orderTemplateSelections = value.orderTemplateSelections === undefined
+    ? undefined
+    : Array.isArray(value.orderTemplateSelections) && value.orderTemplateSelections.length <= 20
+      ? value.orderTemplateSelections.map((selection, index) => {
+          if (!isRecord(selection) || typeof selection.id !== 'string' || !selection.id.trim()) {
+            throw createHttpError(400, `Template inline ${index + 1} inválido.`);
+          }
+          const quantity = parseTemplateQuantity(selection.quantity);
+          if (quantity === null) throw createHttpError(400, `Quantidade do template inline ${index + 1} inválida.`);
+          return { id: selection.id.trim(), quantity: Math.max(30, quantity) };
+        })
+      : (() => { throw createHttpError(400, 'Templates inline inválidos.'); })();
+
+  if (orderTemplateId && orderTemplateSelections?.length) {
+    throw createHttpError(400, 'Use o seletor ou templates inline, não os dois ao mesmo tempo.');
+  }
 
   return {
     text,
@@ -637,6 +654,7 @@ function normalizeExtractionPayload(value: unknown): ExtractionPayload {
     customRules,
     existingItems: normalizeExistingItems(value.existingItems),
     orderTemplateId,
+    orderTemplateSelections,
   };
 }
 
@@ -668,6 +686,12 @@ export function createExtractHandler(
       const template = payload.orderTemplateId
         ? await dependencies.orderTemplates.getForExtraction(payload.orderTemplateId)
         : undefined;
+      const inlineTemplates = await Promise.all(
+        (payload.orderTemplateSelections || []).map(async ({ id, quantity }) => ({
+          template: await dependencies.orderTemplates.getForExtraction(id),
+          quantity,
+        }))
+      );
       const args = [
         payload.text,
         payload.imageBase64,
@@ -678,7 +702,18 @@ export function createExtractHandler(
       const orders = template
         ? await dependencies.extractOrders(...args, template)
         : await dependencies.extractOrders(...args);
-      return json(200, { orders: template ? applyOrderTemplate(orders, template) : orders });
+      const resolvedOrders = inlineTemplates.length
+        ? orders.map((order) => ({
+            ...order,
+            items: inlineTemplates.flatMap(({ template: inlineTemplate, quantity }) =>
+              inlineTemplate.items
+                .slice()
+                .sort((a, b) => a.position - b.position)
+                .map(({ sku }) => ({ item_code: sku, qty: quantity }))
+            ),
+          }))
+        : template ? applyOrderTemplate(orders, template) : orders;
+      return json(200, { orders: resolvedOrders });
     } catch (error) {
       return extractionErrorResponse(error);
     }

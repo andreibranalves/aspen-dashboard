@@ -78,6 +78,53 @@ test('extract with a selected template expands quantities and ignores model SKUs
   ]);
 });
 
+test('extract expands multiple inline templates with their own quantities', async () => {
+  const templates = {
+    cangas: { ...template, id: 'cangas', items: [{ sku: 'CNG-1', name: 'Canga', position: 0 }] },
+    lencos: { ...template, id: 'lencos', items: [{ sku: 'LNC-1', name: 'Lenço', position: 0 }] },
+  };
+  const selectedHandler = createExtractHandler({
+    orderTemplates: {
+      getForExtraction: async (id: string) => templates[id as keyof typeof templates],
+    },
+    extractOrders: async () => [{ nome: 'Andrei', items: [] }],
+  });
+
+  const result = await selectedHandler(event('POST', {
+    text: 'Andrei andrei@gmail.com 30 @cangas e 50 @lencos',
+    orderTemplateSelections: [
+      { id: 'cangas', quantity: 30 },
+      { id: 'lencos', quantity: 50 },
+    ],
+  }));
+
+  assert.equal(result.statusCode, 200);
+  assert.deepEqual(JSON.parse(result.body || '').orders[0].items, [
+    { item_code: 'CNG-1', qty: 30 },
+    { item_code: 'LNC-1', qty: 50 },
+  ]);
+});
+
+test('extract validates inline template quantities and prevents mixed modes', async () => {
+  const selectedHandler = createExtractHandler({
+    orderTemplates: { getForExtraction: async () => template },
+    extractOrders: async () => [],
+  });
+
+  const invalid = await selectedHandler(event('POST', {
+    text: 'Cliente',
+    orderTemplateSelections: [{ id: 'pack-id', quantity: 0 }],
+  }));
+  assert.equal(invalid.statusCode, 400);
+
+  const mixed = await selectedHandler(event('POST', {
+    text: 'Cliente',
+    orderTemplateId: 'pack-id',
+    orderTemplateSelections: [{ id: 'pack-id', quantity: 30 }],
+  }));
+  assert.equal(mixed.statusCode, 400);
+});
+
 test('extract returns 422 instead of inventing a quantity from a boolean', async () => {
   const selectedHandler = createExtractHandler({
     orderTemplates: { getForExtraction: async () => template },
