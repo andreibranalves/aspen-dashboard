@@ -6,6 +6,7 @@ import {
   RotateCcw,
   Image as ImageIcon,
   X,
+  Settings,
 } from 'lucide-react';
 import { apiPost } from '@/lib/api/api';
 import { listQuotationTemplates, type QuotationTemplateMetadata } from '@/lib/api/quotationTemplatesApi';
@@ -852,9 +853,6 @@ export default function AutoQuotePage() {
                   </div>
                 )}
               </div>
-              <p className="mt-1.5 text-xs text-fg-muted">
-                Atalho: digite a quantidade e <strong>@template</strong>, por exemplo, 30 @cangas.
-              </p>
             </div>
 
             {/* Actions row */}
@@ -907,6 +905,7 @@ export default function AutoQuotePage() {
               variant="outline"
               onClick={() => setOrderTemplateManagerOpen(true)}
             >
+              <Settings size={14} />
               Gerenciar templates
             </Button>
           </div>
