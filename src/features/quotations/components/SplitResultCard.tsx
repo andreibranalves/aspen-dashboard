@@ -44,7 +44,6 @@ export interface SplitResultCardProps {
   onSaveDraft?: (draftIdx: number) => void;
   isSavingDraft?: boolean;
   onPreviewQuote: (draftIdx: number) => void;
-  onNewRevision?: (draftIdx: number) => void;
   issue?: QuotationIssueProjection;
   issueError?: string;
   pricingConflictItems?: string[];
@@ -79,7 +78,6 @@ export default function SplitResultCard({
   onSaveDraft,
   isSavingDraft = false,
   onPreviewQuote,
-  onNewRevision,
   issue,
   issueError,
   pricingConflictItems = [],
@@ -597,17 +595,16 @@ export default function SplitResultCard({
               <Pencil size={13} />
               {editing ? 'Concluir' : 'Editar'}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onAddItem(draft.index);
-                if (!editing) toggleEditing();
-              }}
-            >
-              <Plus size={13} />
-              Item
-            </Button>
+            {editing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onAddItem(draft.index)}
+              >
+                <Plus size={13} />
+                Item
+              </Button>
+            )}
           </>
         )}
 
@@ -634,11 +631,6 @@ export default function SplitResultCard({
                 Abrir PDF
               </span>
             )}
-            {onNewRevision && (
-              <Button variant="ghost" size="sm" onClick={() => onNewRevision(draft.index)}>
-                Nova revisão
-              </Button>
-            )}
             {waSendEnabled ? (
               <Button
                 size="sm"
@@ -654,16 +646,18 @@ export default function SplitResultCard({
           </>
         ) : (
           <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onPreviewQuote(draft.index)}
-              disabled={isProcessing || !canCreate}
-              title="Pré-visualização temporária; não salva nem envia."
-            >
-              <Eye size={13} />
-              Pré-visualizar
-            </Button>
+            {!editing && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onPreviewQuote(draft.index)}
+                disabled={isProcessing || !canCreate}
+                title="Pré-visualização temporária; não salva nem envia."
+              >
+                <Eye size={13} />
+                Ver
+              </Button>
+            )}
             {onSaveDraft && !saved && (
               <Button
                 variant="outline"
@@ -675,14 +669,16 @@ export default function SplitResultCard({
                 {isSavingDraft ? 'Salvando…' : 'Salvar rascunho'}
               </Button>
             )}
-            <Button
-              size="sm"
-              onClick={() => onCreateQuote(draft.index)}
-              disabled={isProcessing || !canCreate}
-            >
-              <Send size={13} />
-              Enviar orçamento
-            </Button>
+            {!editing && (
+              <Button
+                size="sm"
+                onClick={() => onCreateQuote(draft.index)}
+                disabled={isProcessing || !canCreate}
+              >
+                <Send size={13} />
+                Gerar orçamento
+              </Button>
+            )}
           </>
         )}
       </div>

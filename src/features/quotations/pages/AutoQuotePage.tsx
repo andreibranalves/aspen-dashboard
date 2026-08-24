@@ -507,25 +507,6 @@ export default function AutoQuotePage() {
     for (const draft of drafts as StoredAutoQuoteDraft[]) recoverQuotationIssue(draft);
   }, [drafts, recoverQuotationIssue]);
 
-  const createNewRevision = useCallback((draftIndex: number) => {
-    setDrafts((prev) => {
-      const source = prev.find((candidate) => candidate.index === draftIndex) as StoredAutoQuoteDraft | undefined;
-      if (!source?.issue) return prev;
-      const nextIndex = Math.max(-1, ...prev.map((candidate) => candidate.index)) + 1;
-      const next = [...prev, {
-        ...source,
-        index: nextIndex,
-        issue: undefined,
-        issueIdempotencyKey: undefined,
-        sourceQuotationId: source.issue.quotationId,
-        sourceRevisionId: source.issue.revisionId,
-        status: undefined,
-        result: undefined,
-      } as StoredAutoQuoteDraft];
-      return next;
-    });
-  }, []);
-
   const previewSingleQuote = useCallback(
     (draftIndex: number) => {
       const draft = drafts.find((candidate) => candidate.index === draftIndex);
@@ -1023,7 +1004,6 @@ export default function AutoQuotePage() {
                     onSaveDraft={saveSingleDraft}
                     isSavingDraft={Boolean(savingDraftByIndex[draft.index])}
                     onPreviewQuote={previewSingleQuote}
-                    onNewRevision={createNewRevision}
                     issue={issueProjection}
                     issueError={draft.result?.error}
                     pricingConflictItems={pricingConflictByDraft[draft.index] || []}
