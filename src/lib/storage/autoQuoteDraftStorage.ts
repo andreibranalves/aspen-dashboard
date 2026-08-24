@@ -120,6 +120,6 @@ export function saveAutoQuoteDrafts(storage: WriteStorage, drafts: StoredAutoQuo
       JSON.stringify({ version: AUTO_QUOTE_DRAFTS_STORAGE_VERSION, drafts }),
     );
   } catch {
-    // localStorage can be unavailable or full; draft editing must continue.
+    // Browser storage can be unavailable or full; draft editing must continue.
   }
 }

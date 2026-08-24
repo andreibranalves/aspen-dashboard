@@ -51,7 +51,7 @@ function moneyCents(value: unknown): number | null {
 
 function loadInitialAutoQuoteDrafts() {
   try {
-    return typeof window === 'undefined' ? [] : loadAutoQuoteDrafts(window.localStorage);
+    return typeof window === 'undefined' ? [] : loadAutoQuoteDrafts(window.sessionStorage);
   } catch {
     return [];
   }
@@ -147,6 +147,15 @@ export default function AutoQuotePage() {
     selectProduct,
     buildDraftsFromOrders,
   } = useExtractionDrafts(loadInitialAutoQuoteDrafts());
+
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem('aspen_drafts');
+    } catch {
+      /* legacy local storage may be unavailable */
+    }
+  }, []);
+
   const skipDraftPersistence = useRef(false);
   const draftsHydrated = useRef(true);
   const activeDrafts = drafts.filter((draft) => !draft.discarded);
@@ -186,7 +195,7 @@ export default function AutoQuotePage() {
       skipDraftPersistence.current = false;
       return;
     }
-    saveAutoQuoteDrafts(window.localStorage, drafts);
+    saveAutoQuoteDrafts(window.sessionStorage, drafts);
   }, [drafts]);
 
   // ── Image input ──
@@ -327,7 +336,7 @@ export default function AutoQuotePage() {
       const key = draft.issueIdempotencyKey || globalThis.crypto.randomUUID();
       const requestDraft = { ...draft, issueIdempotencyKey: key };
       const nextDraft = { ...requestDraft, status: 'processing' as const, result: undefined };
-      saveAutoQuoteDrafts(window.localStorage, drafts.map((candidate) => candidate.index === draftIndex ? nextDraft : candidate) as StoredAutoQuoteDraft[]);
+      saveAutoQuoteDrafts(window.sessionStorage, drafts.map((candidate) => candidate.index === draftIndex ? nextDraft : candidate) as StoredAutoQuoteDraft[]);
       setDrafts((prev) => prev.map((candidate) => candidate.index === draftIndex
         ? ({ ...requestDraft, status: 'processing' as const, result: undefined } as StoredAutoQuoteDraft)
         : candidate));
@@ -573,7 +582,7 @@ export default function AutoQuotePage() {
     setWaFlowByDraft({});
     setOrderTemplateId('');
     try {
-      localStorage.removeItem('aspen_drafts');
+      window.sessionStorage.removeItem('aspen_drafts');
     } catch (storageError) {
       console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
     }
@@ -585,7 +594,7 @@ export default function AutoQuotePage() {
     setProductSearch({});
     setWaFlowByDraft({});
     try {
-      localStorage.removeItem('aspen_drafts');
+      window.sessionStorage.removeItem('aspen_drafts');
     } catch (storageError) {
       console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
     }

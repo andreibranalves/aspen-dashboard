@@ -40,7 +40,7 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
   await page.addInitScript(({ storedDraft, idempotencyKey }) => {
-    globalThis.localStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{ ...storedDraft, ...(idempotencyKey ? { issueIdempotencyKey: idempotencyKey } : {}) }] }));
+    globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify({ version: 1, drafts: [{ ...storedDraft, ...(idempotencyKey ? { issueIdempotencyKey: idempotencyKey } : {}) }] }));
   }, { storedDraft: draft, idempotencyKey: key });
   return { requests, releasePost: () => releasePost?.() };
 }
@@ -51,9 +51,9 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
     status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
   }, { deferPost: true });
   await page.addInitScript(() => {
-    const value = JSON.parse(globalThis.localStorage.getItem('aspen_drafts'));
+    const value = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts'));
     value.drafts[0].issueIdempotencyKey = undefined;
-    globalThis.localStorage.setItem('aspen_drafts', JSON.stringify(value));
+    globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify(value));
   });
   let previewWrites = 0;
   page.context().on('request', (request) => { if (request.url().includes('/api/quotation-preview')) previewWrites += 1; });
@@ -71,7 +71,7 @@ test('preview and emission use explicit UI clicks with one stable idempotent POS
   const postRequest = await postRequestPromise;
   const postKey = postRequest.headers()['idempotency-key'];
   expect(postKey).toMatch(/^[0-9a-f-]{8}-[0-9a-f-]{27}$/i);
-  await expect.poll(() => page.evaluate(() => JSON.parse(globalThis.localStorage.getItem('aspen_drafts') || '{}').drafts?.[0]?.issueIdempotencyKey)).toBe(postKey);
+  await expect.poll(() => page.evaluate(() => JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts') || '{}').drafts?.[0]?.issueIdempotencyKey)).toBe(postKey);
   releasePost();
   await expect.poll(() => requests.filter((request) => request.method() === 'POST').length).toBe(1);
   const recordedPost = requests.find((request) => request.method() === 'POST');
@@ -92,9 +92,9 @@ test('active emission does not show a recovery error while POST is pending @quot
     status: 'emitido', issued_at: '2026-08-13T00:00:00.000Z', valid_until: '2026-08-28', pdf_url: '/api/quotation-preview?id=q-1&format=pdf',
   }, { deferPost: true });
   await page.addInitScript(() => {
-    const value = JSON.parse(globalThis.localStorage.getItem('aspen_drafts'));
+    const value = JSON.parse(globalThis.sessionStorage.getItem('aspen_drafts'));
     value.drafts[0].issueIdempotencyKey = undefined;
-    globalThis.localStorage.setItem('aspen_drafts', JSON.stringify(value));
+    globalThis.sessionStorage.setItem('aspen_drafts', JSON.stringify(value));
   });
   await page.goto('/#/auto');
   const postRequest = page.waitForRequest((request) => request.url().includes('/api/quotation-issues') && request.method() === 'POST');
