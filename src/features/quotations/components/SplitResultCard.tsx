@@ -13,7 +13,6 @@ import {
   FileText,
   Check,
   Phone,
-  Sparkles,
   Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -63,10 +62,6 @@ export interface SplitResultCardProps {
   onSelectWhatsAppFlow?: (draftIdx: number, flowId: string) => void;
   onSendWhatsApp?: (draftIdx: number) => void;
   onResolveDelivery?: (decision: DeliveryResolution, note: string) => void | Promise<void>;
-  reExtractText?: string;
-  reExtractLoading?: boolean;
-  onReExtractTextChange?: (draftIdx: number, value: string) => void;
-  onSubmitReExtract?: (draftIdx: number) => void;
 }
 
 export default function SplitResultCard({
@@ -102,13 +97,8 @@ export default function SplitResultCard({
   onSelectWhatsAppFlow,
   onSendWhatsApp,
   onResolveDelivery,
-  reExtractText = '',
-  reExtractLoading = false,
-  onReExtractTextChange,
-  onSubmitReExtract,
 }: SplitResultCardProps) {
   const [editing, setEditing] = useState(false);
-  const [showReExtract, setShowReExtract] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -615,15 +605,6 @@ export default function SplitResultCard({
               <Plus size={13} />
               Item
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowReExtract((prev) => !prev)}
-              disabled={reExtractLoading}
-            >
-              <Sparkles size={13} />
-              Extrair mais
-            </Button>
           </>
         )}
 
@@ -702,52 +683,6 @@ export default function SplitResultCard({
           </>
         )}
       </div>
-
-      {/* ── Re-extract inline input ── */}
-      {showReExtract && !isDone && (
-        <div className="border-t border-line bg-surface/30 p-3">
-          <div className="flex flex-col gap-2">
-            <textarea
-              className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-5 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-              rows={2}
-              placeholder="Ex.: também quero 50 lenços"
-              value={reExtractText}
-              onChange={(e) => onReExtractTextChange?.(draft.index, e.target.value)}
-              disabled={reExtractLoading}
-            />
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setShowReExtract(false);
-                  onReExtractTextChange?.(draft.index, '');
-                }}
-                disabled={reExtractLoading}
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => onSubmitReExtract?.(draft.index)}
-                disabled={reExtractLoading || !reExtractText.trim()}
-              >
-                {reExtractLoading ? (
-                  <>
-                    <Loader2 size={13} className="animate-spin mr-1.5" />
-                    Extraindo…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={13} className="mr-1.5" />
-                    Adicionar
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {issueError && !isDone && (
         <p role="alert" className="border-t border-line px-4 py-3 text-xs text-destructive">{issueError}</p>

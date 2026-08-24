@@ -331,6 +331,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     // Aguarda a extração terminar e os rascunhos aparecerem
     // O texto "Resultados (1)" aparece quando os drafts estão prontos
     await expect(page.getByText(/Resultados \(1\)/i)).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'Extrair mais', exact: true })).toHaveCount(0);
 
     // Deve mostrar "Pedido 1 de 1" confirmando que o rascunho foi renderizado
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
