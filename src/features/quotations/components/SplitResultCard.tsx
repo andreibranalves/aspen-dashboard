@@ -482,7 +482,10 @@ export default function SplitResultCard({
                           </label>
                         </div>
                       ) : (
-                        <span className="block truncate font-medium text-fg">
+                        <span
+                          className="block truncate font-medium text-fg"
+                          title={item.item_name || item.item_code || undefined}
+                        >
                           {item.item_name || item.item_code || '—'}
                         </span>
                       )}
