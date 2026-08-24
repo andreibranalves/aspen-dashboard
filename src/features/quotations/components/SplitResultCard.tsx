@@ -658,7 +658,7 @@ export default function SplitResultCard({
                 Ver
               </Button>
             )}
-            {onSaveDraft && !saved && (
+            {onSaveDraft && !saved && !editing && (
               <Button
                 variant="outline"
                 size="sm"

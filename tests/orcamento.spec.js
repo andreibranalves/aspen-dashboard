@@ -337,6 +337,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     await expect(page.getByText(/Pedido 1 de 1/i)).toBeVisible({ timeout: 10000 });
     const customItemName = 'Lenço 100 x 100 cm';
     await page.getByRole('button', { name: 'Editar' }).click();
+    await expect(page.getByRole('button', { name: 'Salvar rascunho' })).toHaveCount(0);
     await page.getByLabel('Nome exibido no orçamento LNC-SED-70').fill(customItemName);
     await expect(page.getByLabel('Modelo HTML')).toHaveValue('padrao');
     await page.getByLabel('Modelo HTML').selectOption('minimalista');
