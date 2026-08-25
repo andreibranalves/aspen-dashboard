@@ -16,7 +16,10 @@ import {
   formatQuotationQuantity,
   type QuotationTemplateViewModel,
 } from '../../../_modules/quotation-template-catalog.js';
-import { toSafeMultilineHtml } from '../../../_modules/quotation-content.js';
+import {
+  normalizeQuotationSections,
+  toSafeMultilineHtml,
+} from '../../../_modules/quotation-content.js';
 import { canonicalQuotationStatus } from '../../../_modules/quotation-status.js';
 
 type DatabaseProvider = () => AppDatabase;
@@ -100,7 +103,10 @@ export async function readQuotationTemplateSnapshot(
         await db
           .select({ version: quotationTemplateVersions, model: quotationTemplates })
           .from(quotationTemplateVersions)
-          .innerJoin(quotationTemplates, eq(quotationTemplates.id, quotationTemplateVersions.templateId))
+          .innerJoin(
+            quotationTemplates,
+            eq(quotationTemplates.id, quotationTemplateVersions.templateId)
+          )
           .where(eq(quotationTemplateVersions.id, revision.templateVersionId))
           .limit(1)
       ).map(({ version, model }) => ({ ...version, template: model }))[0] || null
@@ -115,7 +121,10 @@ export async function readQuotationTemplateSnapshot(
     const [selected] = await db
       .select({ version: quotationTemplateVersions, model: quotationTemplates })
       .from(quotationTemplateVersions)
-      .innerJoin(quotationTemplates, eq(quotationTemplates.id, quotationTemplateVersions.templateId))
+      .innerJoin(
+        quotationTemplates,
+        eq(quotationTemplates.id, quotationTemplateVersions.templateId)
+      )
       .where(eq(quotationTemplateVersions.id, templateVersionId))
       .limit(1);
     if (!selected || selected.model.archived) {
@@ -401,20 +410,59 @@ export function quotationSnapshotViewModel(
     const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
     const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
     const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
-    result.secoes = {
+    const sections = normalizeQuotationSections({
       prazo_producao: {
-        value: prazoCurrent.enabled ? nullable(revision.prazoProducao) : '',
+        enabled: prazoCurrent.enabled === true,
+        title: String(prazoCurrent.title || 'Prazo de produção'),
       },
       pagamento: {
-        body_html: pagtoCurrent.enabled
-          ? toSafeMultilineHtml(String(pagtoCurrent.body || ''))
+        enabled: pagtoCurrent.enabled === true,
+        title: String(pagtoCurrent.title || 'Pagamento'),
+        body: String(pagtoCurrent.body || ''),
+      },
+      condicoes_gerais: {
+        enabled: condicoesCurrent.enabled === true,
+        title: String(condicoesCurrent.title || 'Condições Gerais'),
+        body: String(condicoesCurrent.body || ''),
+      },
+    });
+    const prazoVisible = sections.prazo_producao.enabled;
+    const pagamentoVisible = sections.pagamento.enabled;
+    const condicoesVisible = sections.condicoes_gerais.enabled;
+    result.secoes = {
+      prazo_producao: {
+        enabled: prazoVisible,
+        title: prazoVisible ? sections.prazo_producao.title : '',
+        value: prazoVisible ? nullable(revision.prazoProducao) : '',
+      },
+      pagamento: {
+        enabled: pagamentoVisible,
+        title: pagamentoVisible ? sections.pagamento.title : '',
+        body_html: pagamentoVisible
+          ? toSafeMultilineHtml(sections.pagamento.body)
           : toSafeMultilineHtml(''),
       },
       condicoes_gerais: {
-        body_html: condicoesCurrent.enabled
-          ? toSafeMultilineHtml(String(condicoesCurrent.body || ''))
+        enabled: condicoesVisible,
+        title: condicoesVisible ? sections.condicoes_gerais.title : '',
+        body_html: condicoesVisible
+          ? toSafeMultilineHtml(sections.condicoes_gerais.body)
           : toSafeMultilineHtml(''),
       },
+    };
+    // Once a canonical snapshot exists, legacy mirror fields must not leak a
+    // disabled section or override its current content in a historical template.
+    result.terms = {
+      pagamento: pagamentoVisible ? sections.pagamento.body : '',
+      entrega: condicoesVisible ? revision.entrega : '',
+      production_deadline: prazoVisible ? revision.prazoProducao : '',
+      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
+    };
+    result.terms_snapshot = {
+      pagamento: pagamentoVisible ? sections.pagamento.body : '',
+      entrega: condicoesVisible ? revision.entrega : '',
+      production_deadline: prazoVisible ? revision.prazoProducao : '',
+      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     };
   }
 
