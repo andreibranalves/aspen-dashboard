@@ -623,10 +623,31 @@ export default function ManualOrcamentoPage() {
 
   // ── Render ──
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1060px] mx-auto">
+    <div className="mx-auto max-w-[1060px] space-y-6 animate-fade-in">
+      {!result && (
+        <header className="space-y-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
+              Documento comercial
+            </p>
+            <h1 className="mt-1 text-xl font-semibold tracking-tight text-fg">Novo orçamento</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-5 text-fg-muted">
+              Preencha os dados do cliente, revise os itens e escolha quando salvar ou enviar.
+            </p>
+          </div>
+          <ol aria-label="Etapas do orçamento" className="flex flex-wrap gap-2 text-xs text-fg-muted">
+            <li className="rounded-sm border border-primary/30 bg-primary/5 px-3 py-1.5 font-medium text-primary">
+              1 · Cliente
+            </li>
+            <li className="rounded-sm border border-line bg-surface px-3 py-1.5">2 · Itens</li>
+            <li className="rounded-sm border border-line bg-surface px-3 py-1.5">3 · Condições e fechamento</li>
+          </ol>
+        </header>
+      )}
+
       {/* ══ Success Result ══ */}
       {result && (
-        <div className="bg-success/10 border border-success/30 rounded-lg p-5 space-y-4">
+        <div className="bg-success/10 border border-success/30 rounded-lg p-5 space-y-4" role="status" aria-live="polite">
           {(() => {
             const businessNumber = result.quotation_name || result.quotation_id || '';
             return (
@@ -667,7 +688,7 @@ export default function ManualOrcamentoPage() {
 
       {/* ══ Error ══ */}
       {error && !result && (
-        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3">
+        <div className="bg-red-50 border border-red-200 dark:bg-red-500/10 dark:border-red-800/40 rounded-lg p-4 flex items-start gap-3" role="alert">
           <AlertTriangle size={20} className="text-destructive shrink-0" />
           <div>
             <p className="font-medium text-destructive">Erro ao salvar ou enviar orçamento</p>
@@ -681,7 +702,7 @@ export default function ManualOrcamentoPage() {
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
             <div className="space-y-5 min-w-0">
               {/* ══ 1. Cliente ══ */}
-              <section aria-label="Seleção de cliente" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Seleção de cliente" className="rounded-lg border border-line bg-surface p-5 space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
@@ -937,7 +958,7 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 2. Itens ══ */}
-              <section aria-label="Itens do orçamento" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Itens do orçamento" className="rounded-lg border border-line bg-surface p-5 space-y-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
@@ -1190,7 +1211,7 @@ export default function ManualOrcamentoPage() {
               </section>
 
               {/* ══ 3. Condições ══ */}
-              <section aria-label="Condições do orçamento" className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+              <section aria-label="Condições do orçamento" className="rounded-lg border border-line bg-surface p-5 space-y-4">
                 <div>
                   <h2 className="text-base font-semibold text-card-foreground flex items-center gap-2">
                     <FileText size={18} /> 3. Condições e fechamento
@@ -1225,7 +1246,7 @@ export default function ManualOrcamentoPage() {
                   <div>
                     <label className="text-xs text-fg-muted mb-1 block">Modelo HTML</label>
                     <select
-                      className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg"
+                      className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                       value={templateKey}
                       onChange={(event) => setTemplateKey(event.target.value)}
                       disabled={templateLoading || templates.length === 0}
@@ -1273,7 +1294,7 @@ export default function ManualOrcamentoPage() {
             </div>
 
             {/* ══ Side Summary ══ */}
-            <aside className="xl:sticky xl:top-0 bg-surface rounded-lg border border-line shadow-sm p-5 space-y-4">
+            <aside className="xl:sticky xl:top-0 rounded-lg border border-line bg-surface p-5 space-y-4" aria-label="Resumo e ações do orçamento">
               <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
                 <Calculator size={17} /> Resumo
               </div>

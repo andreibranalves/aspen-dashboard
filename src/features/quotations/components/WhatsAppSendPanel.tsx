@@ -2,6 +2,7 @@
 // WhatsApp flow selector + send button for quotation result cards.
 // Extracted from AutoQuotePage.jsx.
 
+import { useId } from 'react';
 import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -44,9 +45,12 @@ export default function WhatsAppSendPanel({
   onSend,
   hideButton = false,
 }: WhatsAppSendPanelProps) {
-  const selectedFlow = normalizeFlow(
-    (flows.find((f) => f.id === selectedFlowId) || flows[0] || {}) as unknown as Partial<Flow>
-  );
+  const flowSelectId = useId();
+  const selectedFlow = flows.length > 0
+    ? normalizeFlow(
+        (flows.find((f) => f.id === selectedFlowId) || flows[0]) as unknown as Partial<Flow>
+      )
+    : null;
   const sequence = selectedFlow ? flowToSequencePayload(selectedFlow) : null;
   const hasValidSteps = sequence && sequence.steps.length > 0;
   const deliveryProjection = delivery ? projectDelivery(delivery) : null;
@@ -55,12 +59,17 @@ export default function WhatsAppSendPanel({
 
   return (
     <>
-      <div className="space-y-1 mb-3 mt-4">
-        <label className="text-xs font-medium text-fg-muted">Fluxo de WhatsApp</label>
+      <div className="mb-3 mt-4 space-y-1" aria-busy={isPending}>
+        <label htmlFor={flowSelectId} className="text-xs font-medium text-fg-muted">
+          Fluxo de WhatsApp
+        </label>
         <select
-          className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg"
-          value={selectedFlowId}
+          id={flowSelectId}
+          aria-label="Fluxo de WhatsApp"
+          className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+          value={selectedFlowId || ''}
           onChange={(e) => onSelectFlow?.(e.target.value)}
+          disabled={flows.length === 0}
         >
           {flows.map((flow) => (
             <option key={flow.id} value={flow.id}>
@@ -73,9 +82,14 @@ export default function WhatsAppSendPanel({
             {getFlowSummary(selectedFlow)}
           </span>
         )}
+        {delivery && (
+          <p className="text-xs leading-5 text-fg-muted" role="status" aria-live="polite">
+            Status da entrega: {deliveryProjection?.label || 'Em processamento'}.
+          </p>
+        )}
       </div>
       {!hasValidSteps && (
-        <p className="text-xs text-warning mb-2 mt-3">
+        <p className="mb-2 mt-3 text-xs leading-5 text-warning" role="status">
           {!selectedFlow
             ? 'Nenhum fluxo de WhatsApp disponível.'
             : 'Este fluxo não tem etapas válidas. Configure pelo menos uma mensagem ou mídia em Comunicação.'}

@@ -736,8 +736,16 @@ export default function AutoQuotePage() {
         {/* ── LEFT PANEL (50%) ── */}
         <div className="panel-left flex h-1/2 min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto border-r border-line bg-surface lg:h-auto lg:overflow-hidden lg:w-1/2 lg:flex-none">
           <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 md:px-6 md:pt-5 space-y-4">
-            {/* Page title */}
-            <h1 className="text-lg font-semibold text-fg">Pedido do cliente</h1>
+            {/* Stage 1: the source material is what the system understood. */}
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-primary">
+                1 · O que foi entendido
+              </p>
+              <h1 className="text-lg font-semibold tracking-tight text-fg">Pedido do cliente</h1>
+              <p className="text-sm leading-5 text-fg-muted">
+                Cole a conversa ou envie uma imagem. O conteúdo só vira orçamento depois da sua revisão.
+              </p>
+            </div>
             {templateError && (
               <div className="tone-warning-soft flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm">
                 <span className="min-w-0">{templateError}</span>
@@ -797,11 +805,13 @@ export default function AutoQuotePage() {
                 )}
 
                 <textarea
+                  id="auto-quote-input"
                   ref={textareaRef}
                   className={cn(
                     'relative z-10 w-full resize-none overflow-hidden rounded-md border border-line bg-surface px-4 py-3 text-sm leading-6 text-fg placeholder:text-fg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
                     imageData ? 'min-h-[210px] pt-24' : 'min-h-[130px]'
                   )}
+                  aria-label="Mensagem do cliente para extração"
                   placeholder="Cole aqui a mensagem do cliente, formato natural é aceito. Inclua nome, telefone, e-mail, produto e quantidade."
                   value={text}
                   onChange={(event) => {
@@ -888,7 +898,7 @@ export default function AutoQuotePage() {
 
             {/* Error */}
             {error && (
-              <div className="tone-destructive-soft rounded-lg p-3 text-sm">
+              <div className="tone-destructive-soft rounded-lg p-3 text-sm" role="alert">
                 <div className="flex items-start gap-2">
                   <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                   <div>
@@ -915,7 +925,12 @@ export default function AutoQuotePage() {
         <div className="h-1/2 min-h-0 w-full min-w-0 flex-1 overflow-y-auto bg-page px-4 pb-6 pt-4 md:px-6 md:pt-5 lg:h-auto lg:w-1/2 lg:flex-none">
           {activeDrafts.length === 0 ? (
             <div className="flex h-full flex-col">
-              <h2 className="text-lg font-semibold text-fg mb-3">Resultado</h2>
+              <div className="mb-3 space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+                  2 · Precisa de revisão
+                </p>
+                <h2 className="text-lg font-semibold tracking-tight text-fg">Resultado</h2>
+              </div>
               <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-line text-center">
                 {/* The canonical large radius keeps this empty-state icon balanced. */}
                 <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-surface-muted mb-4">
@@ -930,10 +945,18 @@ export default function AutoQuotePage() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-fg">
-                  Resultados ({activeDrafts.length})
-                </h2>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+                    2 · Precisa de revisão
+                  </p>
+                  <h2 className="text-lg font-semibold tracking-tight text-fg">
+                    Resultados ({activeDrafts.length})
+                  </h2>
+                  <p className="text-sm text-fg-muted">
+                    Confira os dados, itens e preços antes de criar o documento.
+                  </p>
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"

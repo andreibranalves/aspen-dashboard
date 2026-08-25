@@ -21,6 +21,12 @@ function formatUpdatedAt(value: string): string {
   }).format(new Date(value));
 }
 
+function formatProgress(delivery: DeliveryView): string {
+  const { delivered, total } = delivery.progress;
+  if (total === 0) return 'Nenhuma etapa configurada';
+  return `Etapas entregues: ${delivered} de ${total}`;
+}
+
 export function QuotationDeliveryStatus({
   delivery,
   pending = false,
@@ -59,6 +65,7 @@ export function QuotationDeliveryStatus({
       : delivery?.state === 'delivered'
         ? 'text-success'
         : 'text-fg';
+  const progressLabel = delivery ? formatProgress(delivery) : null;
 
   const openDialog = (nextDecision: DeliveryResolution) => {
     const activeElement = document.activeElement;
@@ -115,14 +122,12 @@ export function QuotationDeliveryStatus({
       <div
         role="status"
         aria-live="polite"
+        aria-busy={pending}
+        aria-label={`Status da entrega: ${statusLabel}`}
         className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', statusTone)}
       >
         <strong>{statusLabel}</strong>
-        {delivery && (
-          <span className="text-fg-muted">
-            Etapas entregues: {delivery.progress.delivered} de {delivery.progress.total}
-          </span>
-        )}
+        {progressLabel && <span className="text-fg-muted">{progressLabel}</span>}
       </div>
       {delivery && (
         <div className="space-y-1 text-fg-muted">
@@ -165,7 +170,7 @@ export function QuotationDeliveryStatus({
             closeDialog();
           }}
           onClose={resetDialog}
-          className="max-w-md rounded-lg border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
+          className="max-h-[90vh] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-lg border border-line bg-surface p-0 text-fg shadow-xl backdrop:bg-black/40"
         >
           <form onSubmit={submitResolution} className="space-y-4 p-5">
             <div>

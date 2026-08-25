@@ -126,6 +126,12 @@ function stateTone(state: DeliveryState): string {
   return 'tone-primary-soft';
 }
 
+function formatDeliveryProgress(delivery: DeliveryView): string {
+  const { delivered, total } = delivery.progress;
+  if (total === 0) return 'Sem etapas';
+  return `${delivered} de ${total} ${total === 1 ? 'etapa' : 'etapas'}`;
+}
+
 function inclusiveUtcEndOfDay(value: string): string {
   const endOfDay = new Date(`${value}T23:59:59.999Z`);
   return Number.isNaN(endOfDay.getTime()) ? value : endOfDay.toISOString();
@@ -178,7 +184,7 @@ interface DeliveryDetailsProps {
 
 function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps) {
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+    <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <QuotationDeliveryStatus
         delivery={delivery}
         pending={pending}
@@ -190,6 +196,11 @@ function DeliveryDetails({ delivery, pending, onResolve }: DeliveryDetailsProps)
           Passos da entrega
         </h3>
         <ol className="mt-3 space-y-2" aria-label={`Passos da entrega ${delivery.businessNumber}`}>
+          {delivery.steps.length === 0 && (
+            <li className="rounded-lg border border-dashed border-line bg-surface p-3 text-xs text-fg-muted">
+              Nenhuma etapa configurada para esta entrega.
+            </li>
+          )}
           {delivery.steps.map((step, index) => (
             <li
               key={step.id}
@@ -552,7 +563,10 @@ export default function WhatsAppDeliveriesPage() {
       )}
 
       {loading && !result ? (
-        <SkeletonTable cols={8} rows={8} />
+        <div role="status" aria-live="polite" aria-label="Carregando entregas">
+          <span className="sr-only">Carregando entregas…</span>
+          <SkeletonTable cols={8} rows={8} />
+        </div>
       ) : result && result.data.length === 0 ? (
         <div
           className="rounded-lg border border-dashed border-line bg-surface p-10 text-center text-sm text-fg-muted"
@@ -562,17 +576,21 @@ export default function WhatsAppDeliveriesPage() {
         </div>
       ) : result ? (
         <>
-          <Table>
+          <Table
+            aria-label="Tabela de entregas WhatsApp"
+            aria-busy={loading}
+            className="min-w-[760px]"
+          >
             <TableHeader>
               <TableRow>
-                <TableHead>Orçamento</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Fluxo</TableHead>
-                <TableHead className="whitespace-nowrap">Passos</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="whitespace-nowrap">Atualização</TableHead>
-                <TableHead>Ação</TableHead>
+                <TableHead scope="col">Orçamento</TableHead>
+                <TableHead scope="col">Cliente</TableHead>
+                <TableHead scope="col">Telefone</TableHead>
+                <TableHead scope="col">Fluxo</TableHead>
+                <TableHead scope="col" className="whitespace-nowrap">Passos</TableHead>
+                <TableHead scope="col">Estado</TableHead>
+                <TableHead scope="col" className="whitespace-nowrap">Atualização</TableHead>
+                <TableHead scope="col">Ação</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -587,20 +605,24 @@ export default function WhatsAppDeliveriesPage() {
                       <TableCell className="whitespace-nowrap font-medium text-fg">
                         {delivery.businessNumber}
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate">
-                        {delivery.clientName}
+                      <TableCell className="max-w-[180px] truncate" title={delivery.clientName || 'Cliente não identificado'}>
+                        {delivery.clientName || 'Cliente não identificado'}
                       </TableCell>
-                      <TableCell className="max-w-[140px] truncate text-xs">
+                      <TableCell className="max-w-[140px] truncate text-xs" title={fmtPhone(delivery.phone) || 'Sem telefone'}>
                         {fmtPhone(delivery.phone) || 'Sem telefone'}
                       </TableCell>
-                      <TableCell className="max-w-[180px] truncate">
+                      <TableCell className="max-w-[180px] truncate" title={delivery.flowName || 'Fluxo não identificado'}>
                         {delivery.flowName || 'Fluxo não identificado'}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {delivery.progress.delivered} / {delivery.progress.total}
+                      <TableCell className="whitespace-nowrap text-xs" aria-label={`Progresso: ${formatDeliveryProgress(delivery)}`}>
+                        {formatDeliveryProgress(delivery)}
                       </TableCell>
                       <TableCell>
-                        <span role="status" aria-live="polite">
+                        <span
+                          role="status"
+                          aria-live="polite"
+                          aria-label={`Estado: ${projection.label}. Progresso: ${formatDeliveryProgress(delivery)}`}
+                        >
                           <StatusBadge
                             status={delivery.state}
                             label={projection.label}
