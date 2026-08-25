@@ -1,20 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import {
-  BarChart3,
-  TrendingUp,
-  DollarSign,
-  Package,
-  Clock,
-  ShoppingCart,
-  Users,
-  FileText,
-  ExternalLink,
   AlertTriangle,
+  BarChart3,
+  Clock,
+  DollarSign,
+  ExternalLink,
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { apiGet } from '@/lib/api/api';
-import { formatBRL, capitalize } from '@/lib/formatting/formatters';
+import { formatBRL, formatDate, capitalize } from '@/lib/formatting/formatters';
 import { cn } from '@/lib/utils';
 import PageHeader from '@/components/shared/PageHeader';
 import PageShell from '@/components/shared/PageShell';
@@ -22,7 +21,18 @@ import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
 import { FilterChip } from '@/components/ui/filter-chip';
 import { StatCard } from '@/components/ui/stat-card';
-import { projectDashboardData, type ProjectedDashboardData } from '@/lib/localProjections';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  projectDashboardView,
+  type DashboardViewData,
+} from '@/features/dashboard/dashboardViewModel';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
 
 interface PeriodOption {
@@ -48,12 +58,31 @@ interface SummaryCard {
   icon: LucideIcon;
   label: string;
   value: string;
-  delta: number | null | undefined;
+  delta: number | null;
+}
+
+function Unavailable({ children = 'Dados não disponíveis no momento.' }: { children?: ReactNode }) {
+  return <p className="py-6 text-sm text-fg-muted">{children}</p>;
+}
+
+function OmittedRowsNote({ omitted }: { omitted: number }) {
+  if (!omitted) return null;
+  return (
+    <p className="mt-3 text-xs text-fg-muted">
+      {omitted} {omitted === 1 ? 'registro não foi exibido' : 'registros não foram exibidos'} por
+      falta de dados confirmados.
+    </p>
+  );
+}
+
+function formatDashboardDate(value: string): string {
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return dateOnly ? `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}` : formatDate(value);
 }
 
 export default function DashboardPage({ navigate }: DashboardPageProps) {
   const [period, setPeriod] = useHashQueryState('period', '30d', parseDashboardPeriod);
-  const [data, setData] = useState<ProjectedDashboardData | null>(null);
+  const [data, setData] = useState<DashboardViewData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,59 +92,63 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     setData(null);
     try {
       const result = await apiGet<unknown>(`/sales-dashboard?period=${period}`);
-      const projected = projectDashboardData(result);
+      const projected = projectDashboardView(result);
       if (!projected) throw new Error('Resposta inválida ao carregar o dashboard.');
       setData(projected);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao carregar dashboard.';
-      setError(message);
+    } catch {
+      setError('Não foi possível carregar o dashboard. Tente novamente.');
     } finally {
       setLoading(false);
     }
   }, [period]);
 
   useEffect(() => {
-    fetchDashboard();
+    void fetchDashboard();
   }, [fetchDashboard]);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-
-  const deltaClass = (value: unknown): string => {
-    if (!value && value !== 0) return '';
-    const num = Number(value);
-    if (Number.isNaN(num)) return '';
-    if (num === 0) return 'text-fg-muted';
-    return num > 0 ? 'text-success' : 'text-destructive';
+  const deltaClass = (value: number): string => {
+    if (value === 0) return 'text-fg-muted';
+    return value > 0 ? 'text-success' : 'text-destructive';
   };
 
-  const formatDelta = (value: unknown): string | null => {
-    if (!value && value !== 0) return null;
-    const num = Number(value);
-    if (Number.isNaN(num)) return null;
-    if (num === 0) return 'sem variação';
-    const sign = num > 0 ? '+' : '';
-    return `${sign}${num.toFixed(1).replace('.', ',')}%`;
+  const formatDelta = (value: number | null): string | null => {
+    if (value === null) return null;
+    if (value === 0) return 'sem variação';
+    const sign = value > 0 ? '+' : '';
+    return `${sign}${value.toFixed(1).replace('.', ',')}%`;
   };
-
-  // ── Loading / Error states ──────────────────────────────────────────────────
 
   if (loading) {
     return (
       <PageShell>
         <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-3">
-              <div className="h-4 w-24 bg-surface-muted rounded animate-pulse" />
-              <div className="h-8 w-32 bg-surface-muted rounded animate-pulse" />
-            </div>
+        <div className="flex flex-wrap gap-2" aria-hidden="true">
+          {PERIODS.map((option) => (
+            <div key={option.key} className="h-8 w-20 animate-pulse rounded-sm bg-surface-muted" />
           ))}
         </div>
-        <div className="bg-surface rounded-lg border border-line shadow-sm p-5 space-y-3">
-          <div className="h-4 w-40 bg-surface-muted rounded animate-pulse" />
-          <div className="h-6 w-full bg-surface-muted rounded animate-pulse" />
-          <div className="h-6 w-full bg-surface-muted rounded animate-pulse" />
-          <div className="h-6 w-full bg-surface-muted rounded animate-pulse" />
+        <div
+          className="rounded-lg border border-line bg-surface p-5"
+          aria-busy="true"
+          aria-label="Carregando dashboard"
+        >
+          <div className="h-4 w-48 animate-pulse rounded-sm bg-surface-muted" />
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="space-y-3 rounded-lg border border-line p-4">
+                <div className="h-4 w-24 animate-pulse rounded-sm bg-surface-muted" />
+                <div className="h-8 w-32 animate-pulse rounded-sm bg-surface-muted" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-line bg-surface p-5" aria-hidden="true">
+          <div className="h-4 w-52 animate-pulse rounded-sm bg-surface-muted" />
+          <div className="mt-4 space-y-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-10 animate-pulse rounded-sm bg-surface-muted" />
+            ))}
+          </div>
         </div>
       </PageShell>
     );
@@ -125,9 +158,12 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     return (
       <PageShell>
         <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
+        <div
+          className="flex flex-col items-center gap-3 rounded-lg border border-destructive/30 bg-surface px-4 py-16 text-center text-fg-muted"
+          role="alert"
+        >
           <AlertTriangle size={32} className="text-destructive/60" aria-hidden="true" />
-          <p>Erro ao carregar dashboard</p>
+          <p className="text-sm text-destructive">Erro ao carregar dashboard</p>
           <p className="text-sm">{error}</p>
           <Button variant="outline" onClick={() => void fetchDashboard()}>
             Tentar novamente
@@ -137,264 +173,326 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     );
   }
 
-  // ── Summary cards config ─────────────────────────────────────────────────────
+  if (!data) return null;
 
-  const summaryCards: SummaryCard[] = [
-    {
-      icon: DollarSign,
-      label: 'Total vendido',
-      value: data ? formatBRL(data.summary.total_revenue) : '—',
-      delta: data?.summary.revenue_delta,
-    },
-    {
-      icon: ShoppingCart,
-      label: 'Pedidos',
-      value: data ? String(data.summary.orders_count) : '—',
-      delta: data?.summary.orders_delta,
-    },
-    {
-      icon: TrendingUp,
-      label: 'Ticket médio',
-      value: data ? formatBRL(data.summary.avg_ticket) : '—',
-      delta: data?.summary.avg_ticket_delta,
-    },
-    {
-      icon: Clock,
-      label: 'Em aberto',
-      value: data ? String(data.summary.open_orders) : '—',
-      delta: null,
-    },
-    {
-      icon: BarChart3,
-      label: 'Conversão',
-      value:
-        data
-          ? `${Number((data.summary.conversion_rate * 100).toFixed(2))}%`
-          : '—',
-      delta: data?.summary.conversion_delta,
-    },
-  ];
+  const summary = data.summary;
+  const summaryCards: SummaryCard[] = summary
+    ? [
+        {
+          icon: DollarSign,
+          label: 'Total vendido',
+          value: formatBRL(summary.total_revenue),
+          delta: summary.revenue_delta,
+        },
+        {
+          icon: ShoppingCart,
+          label: 'Pedidos',
+          value: String(summary.orders_count),
+          delta: summary.orders_delta,
+        },
+        {
+          icon: TrendingUp,
+          label: 'Ticket médio',
+          value: formatBRL(summary.avg_ticket),
+          delta: summary.avg_ticket_delta,
+        },
+        {
+          icon: Clock,
+          label: 'Em aberto',
+          value: String(summary.open_orders),
+          delta: null,
+        },
+        {
+          icon: BarChart3,
+          label: 'Conversão',
+          value: `${Number((summary.conversion_rate * 100).toFixed(2))}%`,
+          delta: summary.conversion_delta,
+        },
+      ]
+    : [];
+  const selectedPeriodLabel =
+    PERIODS.find((option) => option.key === period)?.label ?? 'período selecionado';
+  const attention = data.attention;
 
   return (
     <PageShell>
-      {/* ── Header ─────────────────────────────────────────────── */}
       <PageHeader title="Dashboard" description="Visão geral do desempenho comercial." />
 
-      {/* ── Period filter chips ─────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2">
-        {PERIODS.map((p) => (
-          <FilterChip key={p.key} selected={period === p.key} onClick={() => setPeriod(p.key)}>
-            {p.label}
+      <div className="flex flex-wrap items-center gap-2" aria-label="Período do dashboard">
+        {PERIODS.map((option) => (
+          <FilterChip
+            key={option.key}
+            selected={period === option.key}
+            onClick={() => setPeriod(option.key)}
+          >
+            {option.label}
           </FilterChip>
         ))}
       </div>
 
-      {/* ── Summary cards ───────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {summaryCards.map((card, idx) => (
-          <StatCard
-            key={idx}
-            icon={card.icon}
-            label={card.label}
-            value={card.value}
-            metadata={
-              card.delta != null ? (
-                <span
-                  className={cn('whitespace-nowrap text-xs font-medium', deltaClass(card.delta))}
-                  title="Variação vs período anterior"
-                >
-                  {formatDelta(card.delta)}
-                </span>
-              ) : (
-                <span title="Métrica acumulada, fora do período">geral</span>
-              )
-            }
-          />
-        ))}
-      </div>
-
-      {/* ── Top Products + Top Clients (side by side on lg) ─────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* ── "O que vendeu" — Top Products ──────────────────────── */}
-        <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
-            <Package className="h-4 w-4 text-primary" />
-            O que vendeu
-          </h2>
-          {data?.top_products && data.top_products.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-line">
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">SKU</th>
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Produto</th>
-                    <th className="text-right py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Qtd</th>
-                    <th className="text-right py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Receita</th>
-                    <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Pedidos</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.top_products.map((p, i) => (
-                    <tr key={p.sku || i} className="border-b border-line/50 last:border-0">
-                      <td className="py-2 pr-2 text-fg-muted font-mono text-xs">{p.sku}</td>
-                      <td className="py-2 pr-2 text-fg font-medium truncate max-w-[180px]">
-                        {p.product}
-                      </td>
-                      <td className="py-2 pr-2 text-right text-fg">{p.quantity}</td>
-                      <td className="py-2 pr-2 text-right text-fg font-medium">
-                        {formatBRL(p.revenue)}
-                      </td>
-                      <td className="py-2 text-right text-fg">{p.orders}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
-              <Package size={24} className="text-fg-muted/40" aria-hidden="true" />
-              <p className="text-sm">Nenhum produto vendido no período.</p>
-            </div>
+      <section
+        className="rounded-lg border border-line bg-surface p-5"
+        aria-labelledby="dashboard-attention-title"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-fg-muted">
+              Trabalho que requer atenção
+            </p>
+            <h2 id="dashboard-attention-title" className="mt-1 text-base font-semibold text-fg">
+              Orçamentos para follow-up
+            </h2>
+          </div>
+          {attention && (
+            <span className="text-xs text-fg-muted">
+              {attention.items.length} {attention.items.length === 1 ? 'pendência' : 'pendências'}
+            </span>
           )}
         </div>
-
-        {/* ── "Top clientes" — Top Customers ─────────────────────── */}
-        <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
-          <h2 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
-            <Users className="h-4 w-4 text-primary" />
-            Top clientes
-          </h2>
-          {data?.top_customers && data.top_customers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-line">
-                    <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Cliente</th>
-                    <th className="text-right py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Receita</th>
-                    <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Pedidos</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.top_customers.map((c, i) => (
-                    <tr key={c.name || i} className="border-b border-line/50 last:border-0">
-                      <td className="py-2 pr-2 text-fg font-medium truncate max-w-[240px]">
-                        {capitalize(c.name)}
-                      </td>
-                      <td className="py-2 pr-2 text-right text-fg font-medium">
-                        {formatBRL(c.revenue)}
-                      </td>
-                      <td className="py-2 text-right text-fg">{c.orders}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
-              <Users size={24} className="text-fg-muted/40" aria-hidden="true" />
-              <p className="text-sm">Nenhum cliente no período.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── "Vendas por dia" — Sales by Day ──────────────────────── */}
-      <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
-        <h2 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-primary" />
-          Vendas por dia
-        </h2>
-        {data?.sales_by_day && data.sales_by_day.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line">
-                  <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Data</th>
-                  <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Receita</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.sales_by_day.map((d, i) => (
-                  <tr key={d.date || i} className="border-b border-line/50 last:border-0">
-                    <td className="py-2 pr-2 text-fg">{d.date}</td>
-                    <td className="py-2 text-right text-fg font-medium">
-                      {formatBRL(d.revenue)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {!attention ? (
+          <Unavailable>Esta fila não está disponível para o período selecionado.</Unavailable>
+        ) : attention.items.length === 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 py-6 text-sm text-fg-muted">
+            <span>Nenhum orçamento parado no momento.</span>
+            <Button variant="outline" size="sm" onClick={() => navigate('/quotations')}>
+              Ver orçamentos
+            </Button>
           </div>
         ) : (
-          <div className="flex flex-col items-center py-3 text-fg-muted gap-1.5">
-              <BarChart3 size={24} className="text-fg-muted/40" aria-hidden="true" />
-              <p className="text-sm">Nenhuma venda no período.</p>
-            </div>
-        )}
-      </div>
-
-      {/* ── "Orçamentos para follow-up" — Stale Quotations ───────── */}
-      <div className="bg-surface rounded-lg border border-line shadow-sm p-5">
-        <h2 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
-          <FileText className="h-4 w-4 text-primary" />
-          Orçamentos para follow-up
-        </h2>
-        {data?.stale_quotations && data.stale_quotations.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line">
-                  <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Orçamento</th>
-                  <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Cliente</th>
-                  <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Idade</th>
-                  <th className="text-right py-2 pr-8 font-medium text-fg-muted text-xs uppercase tracking-wider">Valor</th>
-                  <th className="text-left py-2 pr-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Status</th>
-                  <th className="text-right py-2 font-medium text-fg-muted text-xs uppercase tracking-wider">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.stale_quotations.map((q, i) => (
-                  <tr key={q.id || i} className="border-b border-line/50 last:border-0">
-                    <td className="py-2 pr-2">
+          <div className="mt-4">
+            <Table className="min-w-[720px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Orçamento</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Idade</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {attention.items.map((quotation) => (
+                  <TableRow key={quotation.id}>
+                    <TableCell>
                       <button
-                        onClick={(): void => navigate(`/quotations/${encodeURIComponent(q.id || '')}`)}
-                        className="text-primary hover:underline text-xs [font-variant-numeric:tabular-nums] flex items-center gap-1"
+                        type="button"
+                        onClick={() => navigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
+                        className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
                       >
-                        {q.id}
-                        <ExternalLink className="h-3 w-3 shrink-0" />
+                        {quotation.id}
+                        <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
                       </button>
-                    </td>
-                    <td className="py-2 pr-2 text-fg truncate max-w-[180px]">
-                      {capitalize(q.customer)}
-                    </td>
-                    <td className="py-2 pr-2 text-fg-muted">há {q.age} dias</td>
-                    <td className="py-2 pr-8 text-right text-fg font-medium">
-                      {formatBRL(q.value)}
-                    </td>
-                    <td className="py-2 pr-2">
+                    </TableCell>
+                    <TableCell className="max-w-[220px] truncate">
+                      {capitalize(quotation.customer)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-fg-muted">
+                      há {quotation.age} {quotation.age === 1 ? 'dia' : 'dias'}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatBRL(quotation.value)}
+                    </TableCell>
+                    <TableCell>
                       <StatusBadge
-                        status={quotationStatusBadgeKey(q.status)}
-                        label={quotationStatusLabel(q.status)}
+                        status={quotationStatusBadgeKey(quotation.status)}
+                        label={quotationStatusLabel(quotation.status)}
                       />
-                    </td>
-                    <td className="py-2 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={(): void => navigate(`/quotations/${encodeURIComponent(q.id || '')}`)}
+                        onClick={() => navigate(`/quotations/${encodeURIComponent(quotation.id)}`)}
                       >
                         Abrir
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
+            <OmittedRowsNote omitted={attention.omitted} />
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="dashboard-summary-title">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-fg-muted">
+              Situação comercial
+            </p>
+            <h2 id="dashboard-summary-title" className="mt-1 text-base font-semibold text-fg">
+              Resumo de {selectedPeriodLabel.toLowerCase()}
+            </h2>
+          </div>
+        </div>
+        {summary ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {summaryCards.map((card) => {
+              const formattedDelta = formatDelta(card.delta);
+              return (
+                <StatCard
+                  key={card.label}
+                  icon={card.icon}
+                  label={card.label}
+                  value={card.value}
+                  metadata={
+                    formattedDelta ? (
+                      <span
+                        className={cn(
+                          'whitespace-nowrap text-xs font-medium',
+                          deltaClass(card.delta as number)
+                        )}
+                      >
+                        {formattedDelta}
+                      </span>
+                    ) : undefined
+                  }
+                />
+              );
+            })}
           </div>
         ) : (
-          <p className="text-sm text-fg-muted">Nenhum orçamento parado no período.</p>
+          <div className="rounded-lg border border-line bg-surface px-5 py-6">
+            <Unavailable>As métricas do resumo não estão disponíveis no momento.</Unavailable>
+            <Button variant="outline" size="sm" onClick={() => void fetchDashboard()}>
+              Tentar novamente
+            </Button>
+          </div>
         )}
-      </div>
+      </section>
+
+      <section aria-labelledby="dashboard-analytics-title">
+        <div className="mb-3">
+          <p className="text-xs font-medium uppercase tracking-wider text-fg-muted">
+            Analytics confirmados
+          </p>
+          <h2 id="dashboard-analytics-title" className="mt-1 text-base font-semibold text-fg">
+            Desempenho comercial
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-line bg-surface p-5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg">
+              <Package className="h-4 w-4 text-primary" aria-hidden="true" />O que vendeu
+            </h3>
+            {data.topProducts === null ? (
+              <Unavailable>Produtos mais vendidos não estão disponíveis.</Unavailable>
+            ) : data.topProducts.items.length === 0 ? (
+              <Unavailable>Nenhum produto vendido no período.</Unavailable>
+            ) : (
+              <>
+                <Table className="min-w-[560px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Produto</TableHead>
+                      <TableHead className="text-right">Qtd</TableHead>
+                      <TableHead className="text-right">Receita</TableHead>
+                      <TableHead className="text-right">Pedidos</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.topProducts.items.map((product) => (
+                      <TableRow key={product.sku}>
+                        <TableCell className="font-mono text-xs text-fg-muted">
+                          {product.sku}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate font-medium">
+                          {product.product}
+                        </TableCell>
+                        <TableCell className="text-right">{product.quantity}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatBRL(product.revenue)}
+                        </TableCell>
+                        <TableCell className="text-right">{product.orders}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <OmittedRowsNote omitted={data.topProducts.omitted} />
+              </>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-line bg-surface p-5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg">
+              <Users className="h-4 w-4 text-primary" aria-hidden="true" />
+              Top clientes
+            </h3>
+            {data.topCustomers === null ? (
+              <Unavailable>Clientes com maior receita não estão disponíveis.</Unavailable>
+            ) : data.topCustomers.items.length === 0 ? (
+              <Unavailable>Nenhum cliente no período.</Unavailable>
+            ) : (
+              <>
+                <Table className="min-w-[440px]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead className="text-right">Receita</TableHead>
+                      <TableHead className="text-right">Pedidos</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.topCustomers.items.map((customer) => (
+                      <TableRow key={customer.name}>
+                        <TableCell className="max-w-[240px] truncate font-medium">
+                          {capitalize(customer.name)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatBRL(customer.revenue)}
+                        </TableCell>
+                        <TableCell className="text-right">{customer.orders}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <OmittedRowsNote omitted={data.topCustomers.omitted} />
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-line bg-surface p-5">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg">
+            <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
+            Vendas por dia
+          </h3>
+          {data.salesByDay === null ? (
+            <Unavailable>A série diária não está disponível.</Unavailable>
+          ) : data.salesByDay.items.length === 0 ? (
+            <Unavailable>Nenhuma venda no período.</Unavailable>
+          ) : (
+            <>
+              <Table className="min-w-[420px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="text-right">Receita</TableHead>
+                    <TableHead className="text-right">Pedidos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.salesByDay.items.map((day) => (
+                    <TableRow key={day.date}>
+                      <TableCell>{formatDashboardDate(day.date)}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatBRL(day.revenue)}
+                      </TableCell>
+                      <TableCell className="text-right">{day.orders}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <OmittedRowsNote omitted={data.salesByDay.omitted} />
+            </>
+          )}
+        </div>
+      </section>
     </PageShell>
   );
 }
