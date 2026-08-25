@@ -346,7 +346,7 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     const previewRequestPromise = page.context().waitForEvent('request', {
       predicate: (request) => request.url().includes('/api/quotation-preview'),
     });
-    await page.getByRole('button', { name: 'Ver' }).click();
+    await page.getByRole('button', { name: 'Ver', exact: true }).click();
     const previewRequest = await previewRequestPromise;
     const previewPayload = JSON.parse(new globalThis.URLSearchParams(previewRequest.postData() || '').get('payload') || '{}');
     expect(previewPayload.extracted.items[0].item_name).toBe(customItemName);
