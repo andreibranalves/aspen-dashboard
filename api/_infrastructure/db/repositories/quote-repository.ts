@@ -42,6 +42,7 @@ import {
 import { DEFAULT_SETTINGS, type Settings } from './settings-repository.js';
 import {
   normalizeQuotationSections,
+  withQuotationProductionDeadline,
   type QuotationSectionsSnapshot,
 } from '../../../_modules/quotation-content.js';
 import { readCurrentQuotationTemplateVersion } from './quotation-template-library-repository.js';
@@ -941,6 +942,7 @@ export function createPostgresQuoteDraftRepository(
         const template = await readSelectedTemplate(tx, settings, input);
         if (!template) throw new QuoteDraftInputError('Template do orçamento inválido.');
         const baseSections = normalizeQuotationSections(settings.secoes);
+        const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
         let currentSections = baseSections;
         if (input.secoes !== undefined || requestObservations !== undefined || requestPayment !== undefined) {
           try {
@@ -994,11 +996,23 @@ export function createPostgresQuoteDraftRepository(
             throw new QuoteDraftInputError(error instanceof Error ? error.message : 'Seções inválidas.');
           }
         }
+        const canonicalDeadline =
+          currentSections.prazo_producao.value === undefined
+            ? deadline
+            : currentSections.prazo_producao.value;
+        const baseSectionsWithDeadline = withQuotationProductionDeadline(
+          baseSections,
+          canonicalDeadline
+        );
+        const currentSectionsWithDeadline = withQuotationProductionDeadline(
+          currentSections,
+          canonicalDeadline
+        );
         const sectionsSnapshot: QuotationSectionsSnapshot = {
           schema_version: baseSections.schema_version,
           prazo_producao: {
-            base: copy(baseSections.prazo_producao),
-            current: copy(currentSections.prazo_producao),
+            base: copy(baseSectionsWithDeadline.prazo_producao),
+            current: copy(currentSectionsWithDeadline.prazo_producao),
           },
           pagamento: {
             base: copy(baseSections.pagamento),
@@ -1013,7 +1027,6 @@ export function createPostgresQuoteDraftRepository(
           requestFreight === undefined
             ? parseNonNegativeMoney(settings.frete_padrao, 'Frete')
             : parseNonNegativeMoney(requestFreight, 'Frete');
-        const deadline = inputText(requestDeadline, 'Prazo de produção', 500);
         const resolvedItems: Array<{
           id: string;
           position: number;
@@ -1104,7 +1117,7 @@ export function createPostgresQuoteDraftRepository(
                   ? inputText(input.entrega, 'Entrega', 500)
                   : settings.entrega,
                 observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-                prazoProducao: deadline,
+                prazoProducao: canonicalDeadline,
               });
         await tx.insert(quoteRevisions).values({
           id: revisionId,
@@ -1120,7 +1133,7 @@ export function createPostgresQuoteDraftRepository(
           fretePadrao: settings.frete_padrao,
           frete: formatMoneyCents(freightCents),
           observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-          prazoProducao: deadline,
+          prazoProducao: canonicalDeadline,
           templatePadrao: template.model.key,
           templateHash: template.version.sourceHash,
           templateVersionId: template.version.id || revisionMetadata.templateVersionId,
@@ -1219,7 +1232,7 @@ export function createPostgresQuoteDraftRepository(
             ? inputText(input.entrega, 'Entrega', 500)
             : settings.entrega,
           observacoes: sectionsSnapshot.condicoes_gerais.current.body,
-          prazo_producao: deadline,
+          prazo_producao: canonicalDeadline,
           template_padrao: template.model.key,
           template_key: template.model.key,
           template_hash: template.version.sourceHash,

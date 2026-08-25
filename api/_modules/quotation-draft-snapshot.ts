@@ -14,7 +14,11 @@ import {
   URGENT_NUMERATOR,
 } from './pricing-core.js';
 import { applyQuotationSectionPolicy } from './quotation-document.js';
-import { normalizeQuotationSections, type QuotationSectionsSettings } from './quotation-content.js';
+import {
+  normalizeQuotationSections,
+  withQuotationProductionDeadline,
+  type QuotationSectionsSettings,
+} from './quotation-content.js';
 
 export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (
@@ -64,6 +68,7 @@ export interface DraftPreviewInput {
   cnpj?: string;
   endereco?: Record<string, unknown>;
   template_key?: string;
+  template_version_id?: string;
   business_number?: string;
   prazo_producao?: string;
   pagamento?: string;
@@ -170,6 +175,10 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
     endereco: isRecord(extracted.endereco) ? extracted.endereco : undefined,
     template_key:
       typeof extracted.template_key === 'string' ? extracted.template_key.trim() : undefined,
+    template_version_id:
+      typeof extracted.template_version_id === 'string'
+        ? extracted.template_version_id.trim()
+        : undefined,
     business_number:
       extracted.business_number == null ? undefined : String(extracted.business_number).trim(),
     prazo_producao:
@@ -214,7 +223,7 @@ function draftSettingsWithLegacyOverrides(
 
 function normalizeDraftSections(
   source: unknown,
-  legacy: { pagamento?: string; entrega?: string; observacoes?: string }
+  legacy: { pagamento?: string; entrega?: string; observacoes?: string; prazoProducao?: string }
 ): QuotationSectionsSettings {
   let settings = source;
   if (isRecord(source)) {
@@ -237,7 +246,10 @@ function normalizeDraftSections(
     }
   }
   try {
-    return normalizeQuotationSections(settings, legacy);
+    const normalized = normalizeQuotationSections(settings, legacy);
+    return normalized.prazo_producao.value === undefined
+      ? withQuotationProductionDeadline(normalized, legacy.prazoProducao)
+      : normalized;
   } catch (error) {
     throw new DraftPreviewInputError(
       error instanceof Error ? error.message : 'Seções do orçamento inválidas.'
@@ -413,7 +425,10 @@ export async function buildDraftQuotationSnapshot(
       item.rate = Number(expected) / 100;
     }
   }
-  const template = await dependencies.resolveTemplate(extracted.template_key || 'padrao');
+  const template = await dependencies.resolveTemplate(
+    extracted.template_key || 'padrao',
+    extracted.template_version_id,
+  );
   if (!template) throw new DraftPreviewInputError('Template do orçamento inválido.');
   const sections = normalizeDraftSections(
     extracted.secoes !== undefined
@@ -426,12 +441,12 @@ export async function buildDraftQuotationSnapshot(
       pagamento: extracted.pagamento,
       entrega: extracted.entrega,
       observacoes: extracted.observacoes,
+      prazoProducao: extracted.prazo_producao,
     }
   );
   const now = dependencies.now || (() => new Date());
   const viewModel = applyQuotationSectionPolicy(draftPreviewViewModel(extracted, now()), sections, {
     entrega: extracted.entrega,
-    prazoProducao: extracted.prazo_producao,
   });
   return {
     template,

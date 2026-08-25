@@ -479,16 +479,43 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function hydrateProductionDeadlineValue(
+  revision: typeof quoteRevisions.$inferSelect,
+  snapshot: QuotationSectionsSnapshot
+): QuotationSectionsSnapshot {
+  const deadline =
+    snapshot.prazo_producao.current.value ??
+    snapshot.prazo_producao.base.value ??
+    String(revision.prazoProducao || '');
+  return {
+    ...snapshot,
+    prazo_producao: {
+      base: { ...snapshot.prazo_producao.base, value: snapshot.prazo_producao.base.value ?? deadline },
+      current: { ...snapshot.prazo_producao.current, value: snapshot.prazo_producao.current.value ?? deadline },
+    },
+  };
+}
+
 function legacySectionsSnapshotForUpdate(
   revision: typeof quoteRevisions.$inferSelect,
   values: { pagamento: string; entrega: string; observacoes: string; prazoProducao: string }
 ): QuotationSectionsSnapshot {
-  const stored = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
+  const stored = hydrateProductionDeadlineValue(
+    revision,
+    revision.sectionsSnapshot || snapshotFromLegacyRevision(revision)
+  );
+  const storedDeadline =
+    stored.prazo_producao.base.value ?? stored.prazo_producao.current.value ?? values.prazoProducao;
+  const deadline = values.prazoProducao;
   return {
     schema_version: stored.schema_version,
     prazo_producao: {
-      base: copy(stored.prazo_producao.base),
-      current: { ...copy(stored.prazo_producao.current), enabled: Boolean(values.prazoProducao) },
+      base: { ...copy(stored.prazo_producao.base), value: storedDeadline },
+      current: {
+        ...copy(stored.prazo_producao.current),
+        value: deadline,
+        enabled: Boolean(deadline),
+      },
     },
     pagamento: {
       base: copy(stored.pagamento.base),
@@ -511,7 +538,10 @@ function sectionSnapshotForUpdate(
   const supplied = input.secoes ?? input.sections_snapshot;
   if (supplied === undefined) return undefined;
   if (!isRecord(supplied)) throw new QuoteManagementInputError('Seções devem ser um objeto.');
-  const stored = revision.sectionsSnapshot || snapshotFromLegacyRevision(revision);
+  const stored = hydrateProductionDeadlineValue(
+    revision,
+    revision.sectionsSnapshot || snapshotFromLegacyRevision(revision)
+  );
   const candidate = supplied as Record<string, unknown>;
   if (hasOwn(candidate, 'base')) {
     const expectedBase = {
@@ -532,7 +562,14 @@ function sectionSnapshotForUpdate(
     const value = current[key];
     const suppliedCurrent = isRecord(value) && value.current !== undefined ? value.current : value;
     if (!isRecord(suppliedCurrent)) return stored[key].current;
-    return { ...stored[key].current, ...suppliedCurrent };
+    const merged = { ...stored[key].current, ...suppliedCurrent };
+    if (key === 'prazo_producao' && merged.value === undefined) {
+      return {
+        ...merged,
+        value: stored.prazo_producao.current.value ?? stored.prazo_producao.base.value ?? String(revision.prazoProducao || ''),
+      };
+    }
+    return merged;
   };
   try {
     const merged = normalizeQuotationSections({
@@ -543,7 +580,13 @@ function sectionSnapshotForUpdate(
     });
     return {
       schema_version: stored.schema_version,
-      prazo_producao: { base: copy(stored.prazo_producao.base), current: copy(merged.prazo_producao) },
+      prazo_producao: {
+        base: copy(stored.prazo_producao.base),
+        current: {
+          ...copy(merged.prazo_producao),
+          value: merged.prazo_producao.value ?? stored.prazo_producao.current.value,
+        },
+      },
       pagamento: { base: copy(stored.pagamento.base), current: copy(merged.pagamento) },
       condicoes_gerais: { base: copy(stored.condicoes_gerais.base), current: copy(merged.condicoes_gerais) },
     };
@@ -1296,7 +1339,6 @@ export function createPostgresQuoteDraftManagementRepository(
           }
           const templateSelection = await readTemplateSelection(tx, input, revision);
           const sectionsSnapshot = sectionSnapshotForUpdate(input, revision);
-          const hasDedicatedPrazo = hasOwn(input, 'prazo_producao');
           const clientId = selectedClientId || quotation.clientId;
           const [client] = await tx
             .select()
@@ -1410,54 +1452,43 @@ export function createPostgresQuoteDraftManagementRepository(
           const totalCents = subtotalCents + freightCents;
           assertMoneyWithinLimit(totalCents, 'Total do orçamento');
           const validadeDias = readValidity(input, revision.validadeDias);
-          const pagamento = hasOwn(input, 'pagamento')
-            ? inputText(input.pagamento, 'Pagamento', 4000, revision.pagamento)
-            : sectionsSnapshot
-              ? sectionsSnapshot.pagamento.current.body
+          const pagamento = sectionsSnapshot
+            ? sectionsSnapshot.pagamento.current.body
+            : hasOwn(input, 'pagamento')
+              ? inputText(input.pagamento, 'Pagamento', 4000, revision.pagamento)
               : revision.pagamento;
           const entrega = hasOwn(input, 'entrega')
             ? inputText(input.entrega, 'Entrega', 500, revision.entrega)
             : sectionsSnapshot
               ? ''
               : revision.entrega;
-          const observacoes = hasOwn(input, 'observacoes') || hasOwn(input, 'notes')
-            ? inputText(
-                firstDefined(input, ['observacoes', 'notes']),
-                'Observações',
-                4000,
-                revision.observacoes
-              )
-            : sectionsSnapshot
-              ? sectionsSnapshot.condicoes_gerais.current.body
+          const observacoes = sectionsSnapshot
+            ? sectionsSnapshot.condicoes_gerais.current.body
+            : hasOwn(input, 'observacoes') || hasOwn(input, 'notes')
+              ? inputText(
+                  firstDefined(input, ['observacoes', 'notes']),
+                  'Observações',
+                  4000,
+                  revision.observacoes
+                )
               : revision.observacoes;
-          const prazoProducao = inputText(
-            input.prazo_producao,
-            'Prazo de produção',
-            500,
-            sectionsSnapshot && !sectionsSnapshot.prazo_producao.current.enabled
-              ? ''
-              : revision.prazoProducao
-          );
+          const prazoProducao = sectionsSnapshot
+            ? String(sectionsSnapshot.prazo_producao.current.value ?? '')
+            : inputText(input.prazo_producao, 'Prazo de produção', 500, revision.prazoProducao);
           const revisionSections = sectionsSnapshot || legacySectionsSnapshotForUpdate(revision, {
             pagamento,
             entrega,
             observacoes,
             prazoProducao,
           });
-          // Dedicated legacy input wins when both forms are supplied. Otherwise
-          // disabling the section clears its legacy mirror; enabling preserves
-          // the existing duration because the section has no body field.
+          // Canonical section values win whenever a snapshot is supplied. The
+          // deadline mirror is cleared when the canonical section is hidden.
           if (sectionsSnapshot) {
-            if (hasOwn(input, 'pagamento')) revisionSections.pagamento.current.body = pagamento;
-            if (hasOwn(input, 'observacoes') || hasOwn(input, 'notes')) {
-              revisionSections.condicoes_gerais.current.body = observacoes;
-            }
-            revisionSections.prazo_producao.current.enabled = hasDedicatedPrazo
-              ? Boolean(prazoProducao)
-              : Boolean(prazoProducao) && sectionsSnapshot.prazo_producao.current.enabled;
+            revisionSections.prazo_producao.current.enabled =
+              sectionsSnapshot.prazo_producao.current.enabled;
           }
           const synchronizedPrazoProducao = revisionSections.prazo_producao.current.enabled
-            ? prazoProducao
+            ? revisionSections.prazo_producao.current.value
             : '';
           const updatedAt = updatedAtFor(now, asDate(quotation.updatedAt));
           const revisionMetadata = {

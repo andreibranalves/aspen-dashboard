@@ -16,6 +16,7 @@ export interface QuotationSectionSettings {
   enabled: boolean;
   title: string;
   body?: string;
+  value?: string;
 }
 
 export interface QuotationSectionsSettings {
@@ -25,9 +26,17 @@ export interface QuotationSectionsSettings {
   condicoes_gerais: QuotationSectionSettings & { body: string };
 }
 
+export interface QuotationProductionDeadlineSnapshotSection extends QuotationSectionSettings {
+  /** Historical snapshots may predate the canonical deadline value. */
+  value?: string;
+}
+
 export interface QuotationSectionsSnapshot {
   schema_version: typeof QUOTATION_SECTION_SCHEMA_VERSION;
-  prazo_producao: { base: QuotationSectionSettings; current: QuotationSectionSettings };
+  prazo_producao: {
+    base: QuotationProductionDeadlineSnapshotSection;
+    current: QuotationProductionDeadlineSnapshotSection;
+  };
   pagamento: {
     base: QuotationSectionSettings & { body: string };
     current: QuotationSectionSettings & { body: string };
@@ -82,7 +91,7 @@ function validateAndNormalizeSection(
 
   // Reject unknown keys
   const allowedKeys =
-    key === 'prazo_producao' ? ['enabled', 'title'] : ['enabled', 'title', 'body'];
+    key === 'prazo_producao' ? ['enabled', 'title', 'value'] : ['enabled', 'title', 'body'];
   for (const k of Object.keys(obj)) {
     if (!allowedKeys.includes(k)) {
       throw new Error(`Campo desconhecido "${k}" na seção "${key}".`);
@@ -102,8 +111,14 @@ function validateAndNormalizeSection(
     throw new Error(`Título da seção "${key}" excede ${MAX_SECTION_TITLE_LENGTH} caracteres.`);
   }
 
-  // body: only allowed on pagamento/condicoes_gerais, must be string within bounds
+  // value: only allowed on prazo_producao, must be a bounded string.
   if (key === 'prazo_producao') {
+    if (obj.value !== undefined && typeof obj.value !== 'string') {
+      throw new Error(`Campo "value" da seção "${key}" deve ser string.`);
+    }
+    if (typeof obj.value === 'string' && obj.value.length > 500) {
+      throw new Error(`Valor da seção "${key}" excede 500 caracteres.`);
+    }
     if (obj.body !== undefined) {
       throw new Error(`Seção "prazo_producao" não possui campo "body".`);
     }
@@ -120,6 +135,9 @@ function validateAndNormalizeSection(
     enabled: obj.enabled,
     title: obj.title,
   };
+  if (key === 'prazo_producao' && typeof obj.value === 'string') {
+    result.value = obj.value;
+  }
   if (key !== 'prazo_producao') {
     result.body = typeof obj.body === 'string' ? obj.body : (defaults.body ?? '');
   }
@@ -199,14 +217,31 @@ export function normalizeQuotationSections(
   return result;
 }
 
+export function withQuotationProductionDeadline(
+  settings: QuotationSectionsSettings,
+  value: unknown
+): QuotationSectionsSettings & { prazo_producao: QuotationSectionSettings & { value: string } } {
+  return {
+    ...deepCopy(settings),
+    prazo_producao: {
+      ...deepCopy(settings.prazo_producao),
+      value: value == null ? '' : String(value),
+    },
+  };
+}
+
 export function createQuotationSectionsSnapshot(
   settings: QuotationSectionsSettings
 ): QuotationSectionsSnapshot {
+  const production = {
+    ...deepCopy(settings.prazo_producao),
+    value: settings.prazo_producao.value || '',
+  };
   return {
     schema_version: settings.schema_version,
     prazo_producao: {
-      base: deepCopy(settings.prazo_producao),
-      current: deepCopy(settings.prazo_producao),
+      base: deepCopy(production),
+      current: deepCopy(production),
     },
     pagamento: {
       base: deepCopy(settings.pagamento),
