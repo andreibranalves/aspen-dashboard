@@ -213,6 +213,7 @@ export default function SplitResultCard({
   const issueViewUrl = issue?.pdfUrl || viewUrl;
   const displayName = (resultData?.cliente as string | undefined) || draft.edited.nome;
   const deliveryBlocksSend = Boolean(delivery);
+  const failedDelivery = delivery?.state === 'failed';
 
   function toggleEditing() {
     if (!editing) {
@@ -555,8 +556,8 @@ export default function SplitResultCard({
                         type="button"
                         onClick={() => handleRemoveItem(ii)}
                         className="inline-flex min-h-8 min-w-8 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-                        aria-label={`Remover ${item.item_name || item.item_code || `item ${ii + 1}`}`}
-                        title="Remover produto"
+                        aria-label={`Excluir ${item.item_name || item.item_code || `item ${ii + 1}`}`}
+                        title="Excluir produto"
                       >
                         <X size={13} />
                       </button>
@@ -660,6 +661,17 @@ export default function SplitResultCard({
                 <FileText size={13} />
                 Abrir PDF
               </span>
+            )}
+            {failedDelivery && issue?.businessNumber && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  window.location.hash = `/quotations/${encodeURIComponent(issue.businessNumber)}`;
+                }}
+              >
+                Nova revisão
+              </Button>
             )}
             {waSendEnabled ? (
               <Button

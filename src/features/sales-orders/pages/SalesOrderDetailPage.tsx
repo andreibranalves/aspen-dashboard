@@ -171,7 +171,7 @@ export default function SalesOrderDetailPage({ id, navigate }: SalesOrderDetailP
     <PageShell>
       <PageHeader
         title="Pedido"
-        description={data.customer_name || 'Detalhes do pedido de venda.'}
+        description="Detalhes do pedido de venda."
         actions={
           <Button variant="ghost" onClick={() => navigate('/sales-orders')}>
             ← Voltar aos pedidos

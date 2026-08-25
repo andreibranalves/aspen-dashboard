@@ -697,7 +697,14 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
                   return (
                     <TableRow
                       key={row.id}
+                      interactive
                       data-state={selectedIds.includes(row.id) ? 'selected' : undefined}
+                      className="cursor-pointer"
+                      onClick={(event) => {
+                        const target = event.target as HTMLElement;
+                        if (target.closest('a,button,input,select,textarea,summary,details')) return;
+                        navigateToDetail(row.id);
+                      }}
                     >
                       <TableCell>
                         <input

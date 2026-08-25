@@ -617,11 +617,12 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
           )}
           {current.latest_quotation && (
             <SectionCard
-              title="Orçamento recente"
+              title="Atividade recente"
               description="Último orçamento retornado para este cliente."
               icon={FileText}
             >
               <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-fg-muted">Orçamento recente</p>
                 <p className="break-words font-medium">{current.latest_quotation.name}</p>
                 <p className="text-xs text-fg-muted">
                   {current.latest_quotation.status || '—'}

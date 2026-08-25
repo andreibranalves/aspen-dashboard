@@ -546,8 +546,7 @@ export default function ProductsPage() {
                     <TableRow
                       key={sku}
                       tabIndex={0}
-                      role="link"
-                      aria-label={`Abrir produto ${sku}`}
+                      aria-label={`Abrir produto ${sku}: ${name}`}
                       data-state={isSelected ? 'selected' : undefined}
                       className="group cursor-pointer"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
@@ -575,7 +574,7 @@ export default function ProductsPage() {
                             event.stopPropagation();
                             navigate(`/products/${encodeURIComponent(sku)}`);
                           }}
-                          aria-label={`Abrir produto ${sku}`}
+                          aria-label={`Abrir produto ${sku}: ${name}`}
                         >
                           <span className="flex min-w-0 flex-wrap items-center gap-2">
                             <span
@@ -679,7 +678,7 @@ export default function ProductsPage() {
                       type="button"
                       onClick={() => navigate(`/products/${encodeURIComponent(sku)}`)}
                       className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
-                      aria-label={`Abrir produto ${sku}`}
+                      aria-label={`Abrir produto ${sku}: ${name}`}
                     >
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="line-clamp-2 text-sm font-semibold text-fg">{name}</span>

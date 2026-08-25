@@ -82,11 +82,7 @@ export default function WhatsAppSendPanel({
             {getFlowSummary(selectedFlow)}
           </span>
         )}
-        {delivery && (
-          <p className="text-xs leading-5 text-fg-muted" role="status" aria-live="polite">
-            Status da entrega: {deliveryProjection?.label || 'Em processamento'}.
-          </p>
-        )}
+
       </div>
       {!hasValidSteps && (
         <p className="mb-2 mt-3 text-xs leading-5 text-warning" role="status">

@@ -93,10 +93,14 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
     try {
       const result = await apiGet<unknown>(`/sales-dashboard?period=${period}`);
       const projected = projectDashboardView(result);
-      if (!projected) throw new Error('Resposta inválida ao carregar o dashboard.');
+      if (!projected || !projected.summary) throw new Error('Resposta inválida ao carregar o dashboard.');
       setData(projected);
-    } catch {
-      setError('Não foi possível carregar o dashboard. Tente novamente.');
+    } catch (error) {
+      setError(
+        error instanceof Error && error.message === 'Resposta inválida ao carregar o dashboard.'
+          ? error.message
+          : 'Não foi possível carregar o dashboard. Tente novamente.'
+      );
     } finally {
       setLoading(false);
     }
