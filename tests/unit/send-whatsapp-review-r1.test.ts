@@ -875,7 +875,9 @@ test('document rendering failures stay safe before WhatsApp transport', async ()
     repository: repository(),
     store: store(),
     token: () => publicToken,
-    renderDocument: () => { throw new Error('customer personal data and provider secret'); },
+    renderDocument: () => {
+      throw Object.assign(new Error('customer personal data and provider secret'), { statusCode: 500 });
+    },
   });
 
   assert.equal(result.statusCode, 503);
@@ -883,6 +885,27 @@ test('document rendering failures stay safe before WhatsApp transport', async ()
     error: 'Não foi possível preparar o documento do orçamento.',
   });
   assert.doesNotMatch(result.body || '', /personal data|provider secret|stack/i);
+});
+
+test('unexpected PDF renderer status codes stay sanitized', async () => {
+  const result = await sendWhatsapp(event({
+    quotation_id: businessNumber,
+    revision_id: revisionId,
+    sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] },
+  }), {
+    repository: repository(),
+    store: store(),
+    token: () => publicToken,
+    renderPdf: async () => {
+      throw Object.assign(new Error('renderer secret'), { statusCode: 500 });
+    },
+  });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(JSON.parse(result.body || '{}'), {
+    error: 'Não foi possível preparar o PDF do orçamento.',
+  });
+  assert.doesNotMatch(result.body || '', /renderer secret|stack/i);
 });
 
 test('generated PDF is capped, validated, and redacted from response', async () => {

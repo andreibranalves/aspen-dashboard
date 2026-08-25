@@ -295,7 +295,9 @@ export function quotationSnapshotViewModel(
         entrega: nullable(revision.entrega),
         observacoes: nullable(revision.observacoes),
       });
-  const prazoVisible = sections.prazo_producao.enabled;
+  const prazoVisible = hasCanonicalSections
+    ? sections.prazo_producao.enabled
+    : Boolean(revision.prazoProducao);
   const pagamentoVisible = sections.pagamento.enabled;
   const condicoesVisible = sections.condicoes_gerais.enabled;
   result.secoes = {

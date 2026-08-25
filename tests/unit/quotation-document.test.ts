@@ -147,6 +147,36 @@ test('canonical production deadline feeds section and legacy mirrors', () => {
   assert.equal(document.viewModel.terms_snapshot.production_deadline, '10 dias úteis');
 });
 
+test('legacy production deadline controls section visibility without altering canonical snapshots', () => {
+  for (const deadline of ['', '5 dias']) {
+    const legacySnapshot = {
+      ...snapshot,
+      revision: {
+        ...snapshot.revision,
+        prazoProducao: deadline,
+        sectionsSnapshot: null,
+      },
+      sectionsSnapshot: null,
+    } as any;
+    const document = renderQuotationDocument(legacySnapshot, template);
+    const visible = Boolean(deadline);
+
+    assert.equal(document.viewModel.secoes.prazo_producao.enabled, visible);
+    assert.equal(document.viewModel.secoes.prazo_producao.title, visible ? 'Prazo de produção' : '');
+    assert.equal(document.viewModel.secoes.prazo_producao.value, visible ? deadline : '');
+    assert.equal(document.viewModel.terms.production_deadline, deadline);
+  }
+
+  const canonicalSnapshot = {
+    ...snapshot,
+    revision: { ...snapshot.revision, prazoProducao: '' },
+  } as any;
+  assert.equal(
+    renderQuotationDocument(canonicalSnapshot, template).viewModel.secoes.prazo_producao.enabled,
+    true,
+  );
+});
+
 test('canonical seam resolves a historical built-in v1 by key and hash', () => {
   const builtIn = getQuotationTemplate('padrao');
   assert.ok(builtIn);

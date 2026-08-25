@@ -510,28 +510,32 @@ export async function loadPostgresSendContext(input: {
 
   let pdfBase64 = '';
   if (input.needPdf) {
+    let issued: boolean;
     try {
-      if (!isIssuedQuotationStatus(snapshot.revision.status)) {
-        throw createHttpError(409, 'Emita o orçamento antes de enviar WhatsApp.');
-      }
-      const renderPdf = input.renderPdf || renderQuotationPdfHtml;
-      const pdf = Buffer.from(await renderPdf(document.html));
-      if (!isValidPdfBuffer(pdf)) throw createHttpError(503, 'Não foi possível gerar o PDF do orçamento.');
-      if (pdf.length > MAX_QUOTATION_PDF_BYTES) {
-        throw createHttpError(413, 'O PDF do orçamento excede o limite permitido.');
-      }
-      const encodedPdf = pdf.toString('base64');
-      if (encodedPdf.length > Math.ceil((MAX_QUOTATION_PDF_BYTES / 3)) * 4) {
-        throw createHttpError(413, 'O PDF do orçamento excede o limite permitido.');
-      }
-      pdfBase64 = encodedPdf;
-    } catch (error) {
-      if (error && typeof error === 'object' && 'statusCode' in error) throw error;
-      if (error instanceof Error && /rascunho|compartilh/i.test(error.message)) {
-        throw createHttpError(409, 'Emita o orçamento antes de enviar WhatsApp.');
-      }
+      issued = isIssuedQuotationStatus(snapshot.revision.status);
+    } catch {
       throw createHttpError(503, 'Não foi possível preparar o PDF do orçamento.');
     }
+    if (!issued) {
+      throw createHttpError(409, 'Emita o orçamento antes de enviar WhatsApp.');
+    }
+
+    let pdf: Buffer;
+    try {
+      const renderPdf = input.renderPdf || renderQuotationPdfHtml;
+      pdf = Buffer.from(await renderPdf(document.html));
+    } catch {
+      throw createHttpError(503, 'Não foi possível preparar o PDF do orçamento.');
+    }
+    if (!isValidPdfBuffer(pdf)) throw createHttpError(503, 'Não foi possível gerar o PDF do orçamento.');
+    if (pdf.length > MAX_QUOTATION_PDF_BYTES) {
+      throw createHttpError(413, 'O PDF do orçamento excede o limite permitido.');
+    }
+    const encodedPdf = pdf.toString('base64');
+    if (encodedPdf.length > Math.ceil((MAX_QUOTATION_PDF_BYTES / 3)) * 4) {
+      throw createHttpError(413, 'O PDF do orçamento excede o limite permitido.');
+    }
+    pdfBase64 = encodedPdf;
   }
 
   let token;
