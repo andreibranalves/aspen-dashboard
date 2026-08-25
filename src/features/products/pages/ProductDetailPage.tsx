@@ -150,8 +150,11 @@ function buildEditedState(
   };
 }
 
-function selectContextualErrorMessage(_error: unknown, fallback: string): string {
-  return fallback;
+const SAFE_PRODUCT_ERROR_MESSAGES = new Set(['SKU já cadastrado.']);
+
+function selectContextualErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message.trim() : '';
+  return SAFE_PRODUCT_ERROR_MESSAGES.has(message) ? message : fallback;
 }
 
 interface SectionCardProps {
@@ -414,12 +417,14 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
       setPendingRoute(null);
       return () => setNavigationGuard(null);
     }
-    setNavigationGuard((nextRoute) => {
-      setPendingRoute(nextRoute);
-      return false;
-    });
+    setNavigationGuard(saving
+      ? () => true
+      : (nextRoute) => {
+          setPendingRoute(nextRoute);
+          return false;
+        });
     return () => setNavigationGuard(null);
-  }, [hasUnsavedChanges, setNavigationGuard]);
+  }, [hasUnsavedChanges, saving, setNavigationGuard]);
 
   const startEditing = useCallback(() => {
     const { produto, precos = [], preco_base } = product || {};
@@ -502,15 +507,26 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
       if (isNewProduct) {
         await apiPost('/products', createPayload);
-        if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
         if (ativo !== true) {
-          await apiPut(`/product-update?sku=${encodeURIComponent(normalizedSku)}`, { ativo });
-          if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
+          try {
+            await apiPut(`/product-update?sku=${encodeURIComponent(normalizedSku)}`, { ativo });
+          } catch (error) {
+            try {
+              await apiDelete(`/products?id=${encodeURIComponent(normalizedSku)}`);
+            } catch {
+              // Best effort: preserve the original failure without exposing internals.
+            }
+            throw error;
+          }
         }
         if (!mountedRef.current || currentSkuRef.current !== decodedSku) return;
         toast('Produto criado com sucesso!', 'success');
         clearProductCache();
-        navigate(`/products/${encodeURIComponent(normalizedSku)}`);
+        const currentRoute = window.location.hash.replace(/^#/, '').split('?')[0];
+        if (currentRoute === '/products/new') {
+          setNavigationGuard(null);
+          navigate(`/products/${encodeURIComponent(normalizedSku)}`);
+        }
         return;
       }
 
@@ -711,6 +727,7 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
 
   return (
     <PageShell className="space-y-6">
+      <fieldset disabled={saving} className="contents">
       <PageHeader
         title={isNewProduct ? 'Novo produto' : displayName}
         description={produto.descricao?.trim() || 'Cadastro e precificação do produto.'}
@@ -1107,13 +1124,14 @@ export default function ProductDetailPage({ sku, navigate }: ProductDetailPagePr
         </SectionCard>
       )}
 
+      </fieldset>
       <ConfirmDialog
         open={confirmArchiveOpen}
         title={product?.produto.ativo === false ? 'Restaurar produto' : 'Arquivar produto'}
         message={`Tem certeza que deseja ${product?.produto.ativo === false ? 'restaurar' : 'arquivar'} o produto ${decodedSku}?`}
         confirmLabel={product?.produto.ativo === false ? 'Restaurar' : 'Arquivar'}
         cancelLabel="Cancelar"
-        variant="destructive"
+        variant={product?.produto.ativo === false ? 'default' : 'destructive'}
         onConfirm={() => {
           setConfirmArchiveOpen(false);
           void deleteProduct();

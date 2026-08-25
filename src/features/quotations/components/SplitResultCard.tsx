@@ -205,7 +205,7 @@ export default function SplitResultCard({
     ? (resultData?.items as DraftItem[] | undefined) || draft.edited.items || []
     : draft.edited.items || [];
   const total = items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.rate) || 0), 0);
-  const totalUrgente = draft.edited.urgente ? total * 1.3 : total;
+  const totalUrgente = total;
   const validItems = items.filter((it) => it.item_code && it.qty > 0).length;
   const canCreate = validItems > 0 && Boolean(draft.edited.nome?.trim());
   const displayItems = editing ? items : items.filter((it) => it.item_code);

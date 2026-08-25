@@ -2,7 +2,7 @@
 // Tabs: Fluxos WhatsApp, Biblioteca de Mídias, Histórico and Canais.
 // Route: #/comunicacao
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { MessageSquare, Image, Clock, Settings2 } from 'lucide-react';
 import PageHeader from '@/components/shared/PageHeader';
@@ -11,7 +11,9 @@ import MediaUploader from '@/features/communication/components/MediaUploader';
 import MediaLibrary from '@/features/communication/components/MediaLibrary';
 import SendHistoryTab from '@/features/communication/components/SendHistoryTab';
 import ChannelsTab from '@/features/communication/components/ChannelsTab';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { parseHashOption, useHashQueryState } from '@/hooks/useHashQueryState';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
 
 interface TabItem {
   id: string;
@@ -30,6 +32,10 @@ const parseCommunicationTab = parseHashOption<string>(TABS.map((tab) => tab.id))
 export default function ComunicacaoPage() {
   const [activeTab, setActiveTab] = useHashQueryState('tab', 'flows', parseCommunicationTab);
   const [mediaRefreshKey, setMediaRefreshKey] = useState<number>(0);
+  const [flowsDirty, setFlowsDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  const { setNavigationGuard } = useRouteGuardContext();
 
   const handleUploadComplete = useCallback(() => {
     setMediaRefreshKey((k) => k + 1);
@@ -37,10 +43,28 @@ export default function ComunicacaoPage() {
 
   const handleTabChange = useCallback(
     (nextTabId: string) => {
-      if (nextTabId !== activeTab) setActiveTab(nextTabId);
+      if (nextTabId === activeTab) return;
+      if (activeTab === 'flows' && flowsDirty) {
+        setPendingTab(nextTabId);
+        return;
+      }
+      setActiveTab(nextTabId);
     },
-    [activeTab, setActiveTab]
+    [activeTab, flowsDirty, setActiveTab]
   );
+
+  useEffect(() => {
+    if (!flowsDirty) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return () => setNavigationGuard(null);
+    }
+    setNavigationGuard((nextRoute) => {
+      setPendingRoute(nextRoute);
+      return false;
+    });
+    return () => setNavigationGuard(null);
+  }, [flowsDirty, setNavigationGuard]);
 
   const activeTabPanelId = `communication-panel-${activeTab}`;
 
@@ -93,7 +117,11 @@ export default function ComunicacaoPage() {
         tabIndex={0}
         className="min-h-[400px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       >
-        {activeTab === 'flows' && <FlowEditorTab />}
+        {(activeTab === 'flows' || flowsDirty) && (
+          <div className={activeTab === 'flows' ? undefined : 'hidden'}>
+            <FlowEditorTab onDirtyChange={setFlowsDirty} />
+          </div>
+        )}
 
         {activeTab === 'media' && (
           <div className="space-y-6">
@@ -106,6 +134,37 @@ export default function ComunicacaoPage() {
 
         {activeTab === 'channels' && <ChannelsTab />}
       </div>
+      <ConfirmDialog
+        open={pendingTab !== null}
+        title="Sair sem salvar?"
+        message="As alterações dos fluxos que ainda não foram salvas serão perdidas."
+        confirmLabel="Sair da aba"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingTab;
+          setPendingTab(null);
+          setFlowsDirty(false);
+          if (target) setActiveTab(target);
+        }}
+        onCancel={() => setPendingTab(null)}
+      />
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem salvar?"
+        message="As alterações dos fluxos que ainda não foram salvas serão perdidas."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setFlowsDirty(false);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
+      />
     </div>
   );
 }

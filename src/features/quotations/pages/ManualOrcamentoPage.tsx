@@ -120,13 +120,34 @@ interface ManualDraft {
   templateKey: string;
 }
 
+function isNewClient(value: unknown): value is NewClient {
+  if (typeof value !== 'object' || value === null) return false;
+  const client = value as Record<string, unknown>;
+  return typeof client.nome === 'string' && typeof client.email === 'string' && typeof client.telefone === 'string';
+}
+
+function isCartItem(value: unknown): value is CartItem {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item._key === 'string' &&
+    typeof item.sku === 'string' &&
+    typeof item.nome === 'string' &&
+    typeof item.qty === 'number' && Number.isFinite(item.qty) && item.qty > 0 &&
+    typeof item.rate === 'number' && Number.isFinite(item.rate) && item.rate >= 0 &&
+    typeof item._rateManual === 'boolean'
+  );
+}
+
 function isManualDraft(value: unknown): value is ManualDraft {
   if (typeof value !== 'object' || value === null) return false;
   const draft = value as Record<string, unknown>;
   return (
     draft.version === MANUAL_DRAFT_STORAGE_VERSION &&
     typeof draft.clientType === 'string' &&
-    Array.isArray(draft.items)
+    isNewClient(draft.newClient) &&
+    Array.isArray(draft.items) &&
+    draft.items.every(isCartItem)
   );
 }
 
@@ -193,6 +214,7 @@ export default function ManualOrcamentoPage() {
   const [templateKey, setTemplateKey] = useState<string>('');
   const [templateLoading, setTemplateLoading] = useState<boolean>(true);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const templateOverrideRef = useRef<string | null>(null);
   // ── Destructive-action confirmation ──
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
   const [pendingRoute, setPendingRoute] = useState<string | null>(null);
@@ -204,7 +226,8 @@ export default function ManualOrcamentoPage() {
       const response = await listQuotationTemplates(true);
       const available = response.templates || response.data || [];
       setTemplates(available);
-      setTemplateKey(response.default_key || available.find((template) => template.is_default)?.key || '');
+      const defaultKey = response.default_key || available.find((template) => template.is_default)?.key || '';
+      setTemplateKey(templateOverrideRef.current ?? defaultKey);
     } catch {
       setTemplateError('Não foi possível carregar os modelos HTML.');
     } finally {
@@ -221,6 +244,12 @@ export default function ManualOrcamentoPage() {
   const [sending, setSending] = useState<boolean>(false);
   const manualSendInFlight = useRef(false);
   const manualSendKey = useRef<{ fingerprint: string; key: string } | null>(null);
+  const pricingVersionsRef = useRef<Record<string, number>>({});
+  const nextPricingVersion = useCallback((_key: string): number => {
+    const version = (pricingVersionsRef.current[_key] || 0) + 1;
+    pricingVersionsRef.current[_key] = version;
+    return version;
+  }, []);
   const [result, setResult] = useState<OrcamentoResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -243,21 +272,31 @@ export default function ManualOrcamentoPage() {
     if (autoItems.length === 0) return;
 
     setPricingRows(new Set(autoItems.map(item => item._key)));
+    const requested = autoItems.map((item) => ({
+      ...item,
+      version: nextPricingVersion(item._key),
+    }));
     try {
-      const pricedItems = await Promise.all(autoItems.map(async (item) => ({
+      const pricedItems = await Promise.all(requested.map(async (item) => ({
         _key: item._key,
+        sku: item.sku,
+        qty: item.qty,
+        version: item.version,
         rate: await lookupRate(item.sku, item.qty, urgentValue),
       })));
-      const priceMap = new Map(pricedItems.map(item => [item._key, item.rate]));
-      setItems(prev => prev.map(item => (
-        priceMap.has(item._key) ? { ...item, rate: priceMap.get(item._key) ?? item.rate } : item
-      )));
+      const priceMap = new Map(pricedItems.map(item => [item._key, item]));
+      setItems(prev => prev.map(item => {
+        const priced = priceMap.get(item._key);
+        if (!priced || pricingVersionsRef.current[item._key] !== priced.version) return item;
+        if (item.sku !== priced.sku || item.qty !== priced.qty || item._rateManual) return item;
+        return { ...item, rate: priced.rate };
+      }));
     } catch {
       // mantém os preços atuais se a precificação não responder
     } finally {
       setPricingRows(new Set());
     }
-  }, [items, lookupRate]);
+  }, [items, lookupRate, nextPricingVersion]);
 
   // ── Client search ──
   const searchClients = useCallback(async (term: string) => {
@@ -355,36 +394,19 @@ export default function ManualOrcamentoPage() {
     setItems(prev => prev.map(item => (item._key === _key ? { ...item, qty } : item)));
     if (current._rateManual) return;
 
+    const requestVersion = nextPricingVersion(_key);
+    const requestedSku = current.sku;
     setPricingRows(prev => new Set(prev).add(_key));
     try {
-      const rate = await lookupRate(current.sku, qty, urgente);
-      setItems(prev => prev.map(item => (item._key === _key ? { ...item, rate } : item)));
-    } catch {
-      // mantém preço atual
-    } finally {
-      setPricingRows(prev => {
-        const next = new Set(prev);
-        next.delete(_key);
-        return next;
-      });
-    }
-  }, [items, lookupRate, urgente]);
-
-  const updateItemRate = useCallback((_key: string, value: string | number) => {
-    const rate = Math.max(0, toNumber(value, 0));
-    setItems(prev => prev.map(item => (
-      item._key === _key ? { ...item, rate, _rateManual: true } : item
-    )));
-  }, []);
-
-  const resetItemRate = useCallback(async (_key: string) => {
-    const current = items.find(item => item._key === _key);
-    if (!current) return;
-    setPricingRows(prev => new Set(prev).add(_key));
-    try {
-      const rate = await lookupRate(current.sku, current.qty, urgente);
+      const rate = await lookupRate(requestedSku, qty, urgente);
       setItems(prev => prev.map(item => (
-        item._key === _key ? { ...item, rate, _rateManual: false } : item
+        item._key === _key &&
+        pricingVersionsRef.current[_key] === requestVersion &&
+        item.sku === requestedSku &&
+        item.qty === qty &&
+        !item._rateManual
+          ? { ...item, rate }
+          : item
       )));
     } catch {
       // mantém preço atual
@@ -395,7 +417,43 @@ export default function ManualOrcamentoPage() {
         return next;
       });
     }
-  }, [items, lookupRate, urgente]);
+  }, [items, lookupRate, nextPricingVersion, urgente]);
+
+  const updateItemRate = useCallback((_key: string, value: string | number) => {
+    nextPricingVersion(_key);
+    const rate = Math.max(0, toNumber(value, 0));
+    setItems(prev => prev.map(item => (
+      item._key === _key ? { ...item, rate, _rateManual: true } : item
+    )));
+  }, [nextPricingVersion]);
+
+  const resetItemRate = useCallback(async (_key: string) => {
+    const current = items.find(item => item._key === _key);
+    if (!current) return;
+    const requestVersion = nextPricingVersion(_key);
+    const requestedSku = current.sku;
+    const requestedQty = current.qty;
+    setPricingRows(prev => new Set(prev).add(_key));
+    try {
+      const rate = await lookupRate(requestedSku, requestedQty, urgente);
+      setItems(prev => prev.map(item => (
+        item._key === _key &&
+        pricingVersionsRef.current[_key] === requestVersion &&
+        item.sku === requestedSku &&
+        item.qty === requestedQty
+          ? { ...item, rate, _rateManual: false }
+          : item
+      )));
+    } catch {
+      // mantém preço atual
+    } finally {
+      setPricingRows(prev => {
+        const next = new Set(prev);
+        next.delete(_key);
+        return next;
+      });
+    }
+  }, [items, lookupRate, nextPricingVersion, urgente]);
 
   const removeItem = useCallback((_key: string) => {
     setItems(prev => prev.filter(item => item._key !== _key));
@@ -517,6 +575,7 @@ export default function ManualOrcamentoPage() {
     setError(null);
     try {
       const issue = await issueQuotation(payload, key);
+      clearManualDraft();
       setResult({ success: true, quotation_id: issue.businessNumber, quotation_name: issue.businessNumber, quotation_uuid: issue.quotationId, revision_id: issue.revisionId, revision_number: issue.revisionNumber, status: issue.status });
     } catch {
       setError('Não foi possível enviar o orçamento. Tente novamente.');
@@ -570,7 +629,10 @@ export default function ManualOrcamentoPage() {
     if (draft.prazo) setPrazo(draft.prazo);
     if (draft.observacoes) setObservacoes(draft.observacoes);
     setUrgente(Boolean(draft.urgente));
-    if (draft.templateKey) setTemplateKey(draft.templateKey);
+    if (draft.templateKey) {
+      templateOverrideRef.current = draft.templateKey;
+      setTemplateKey(draft.templateKey);
+    }
   }, []);
 
   const hasFormData = Boolean(
@@ -1249,7 +1311,10 @@ export default function ManualOrcamentoPage() {
                     <select
                       className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
                       value={templateKey}
-                      onChange={(event) => setTemplateKey(event.target.value)}
+                      onChange={(event) => {
+                        templateOverrideRef.current = event.target.value;
+                        setTemplateKey(event.target.value);
+                      }}
                       disabled={templateLoading || templates.length === 0}
                       aria-label="Modelo HTML"
                     >

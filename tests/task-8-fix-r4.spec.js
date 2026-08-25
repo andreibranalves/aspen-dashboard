@@ -251,13 +251,14 @@ test('same component double click sends one backend request and failure cleanup 
   await page.route('**/api/whatsapp-send-status**', (route) => json(route, { error: 'not found' }, 404));
   await page.route('**/api/quotation-deliveries**', (route) => json(route, { error: 'not found' }, 404));
   const send = page.getByRole('button', { name: /enviar whatsapp/i });
+  await expect(send).toBeEnabled();
   await send.evaluate((button) => {
     button.click();
     button.click();
   });
   await expect.poll(() => sendCount).toBe(1);
   releaseFirst?.();
-  await expect(page.getByText('Falha temporária.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Não foi possível iniciar o envio.', { exact: true })).toBeVisible();
   await expect(send).toBeEnabled();
   fail = false;
   await send.click();

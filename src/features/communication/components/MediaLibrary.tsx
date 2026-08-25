@@ -1,7 +1,7 @@
 // MediaLibrary — dense view of media assets with product-group filtering.
 // Delete confirmation and the existing media API calls are preserved.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AlertCircle, Filter, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { fetchMedia, deleteMedia, formatProductGroup } from '@/lib/api/communicationApi';
@@ -27,6 +27,7 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
   const [error, setError] = useState('');
   const [filterGroup, setFilterGroup] = useState<ProductGroup | ''>('');
   const [deleteTarget, setDeleteTarget] = useState<MediaItem | null>(null);
+  const deleteInFlightRef = useRef(false);
 
   const loadMedia = useCallback(async () => {
     setLoading(true);
@@ -46,16 +47,19 @@ export default function MediaLibrary({ refreshKey }: MediaLibraryProps) {
   }, [loadMedia, refreshKey]);
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const removedTitle = deleteTarget.title;
+    const target = deleteTarget;
+    if (!target || deleteInFlightRef.current) return;
+    deleteInFlightRef.current = true;
+    setDeleteTarget(null);
+    const removedTitle = target.title;
     try {
-      await deleteMedia(deleteTarget.id);
-      setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+      await deleteMedia(target.id);
+      setItems((current) => current.filter((item) => item.id !== target.id));
       toast(`Mídia “${removedTitle || 'selecionada'}” removida.`, 'success');
     } catch (deleteError) {
       setError(errorMessage(deleteError, 'Não foi possível remover a mídia.'));
     } finally {
-      setDeleteTarget(null);
+      deleteInFlightRef.current = false;
     }
   };
 

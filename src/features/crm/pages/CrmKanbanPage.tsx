@@ -110,20 +110,24 @@ export default function CrmKanbanPage() {
   const [pruneSummary, setPruneSummary] = useState<string | null>(null);
   const [visiblePerColumn, setVisiblePerColumn] = useState<Record<string, number>>({});
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGenerationRef = useRef(0);
   const moveMenuRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
   const pruneDialogRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async (searchVal: string) => {
+    const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
       const url = searchVal ? `/crm-deals?search=${encodeURIComponent(searchVal)}` : '/crm-deals';
       const data = await apiGet<CrmDealsResponse>(url);
+      if (requestGeneration !== requestGenerationRef.current) return;
       setColumns(data.columns || []);
     } catch {
+      if (requestGeneration !== requestGenerationRef.current) return;
       setError('Não foi possível carregar o pipeline CRM.');
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
     }
   }, []);
 
@@ -143,9 +147,12 @@ export default function CrmKanbanPage() {
   }, []);
 
   useEffect(() => {
-    fetchData(search);
-    fetchPruneCandidates();
-  }, [fetchData, fetchPruneCandidates]);
+    void fetchData(search);
+  }, [fetchData, search]);
+
+  useEffect(() => {
+    void fetchPruneCandidates();
+  }, [fetchPruneCandidates]);
 
   useEffect(() => {
     return () => {
@@ -201,15 +208,14 @@ export default function CrmKanbanPage() {
   const onSearchChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
-      setSearch(val);
       if (searchTimer.current) {
         clearTimeout(searchTimer.current);
       }
       searchTimer.current = setTimeout(() => {
-        fetchData(val);
+        setSearch(val);
       }, 350);
     },
-    [fetchData]
+    [setSearch]
   );
 
   const togglePruneSelection = useCallback((dealId: string) => {
@@ -447,7 +453,6 @@ export default function CrmKanbanPage() {
               onClick={() => {
                 if (searchTimer.current) clearTimeout(searchTimer.current);
                 setSearch('');
-                fetchData('');
               }}
             >
               Limpar busca

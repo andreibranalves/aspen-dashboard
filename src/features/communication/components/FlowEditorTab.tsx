@@ -148,7 +148,11 @@ function stepCountLabel(count: number): string {
   return `${count} ${count === 1 ? 'etapa' : 'etapas'}`;
 }
 
-export default function FlowEditorTab() {
+interface FlowEditorTabProps {
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export default function FlowEditorTab({ onDirtyChange }: FlowEditorTabProps) {
   const [flows, setFlows] = useState<EditableFlow[]>([]);
   const [savedFlows, setSavedFlows] = useState<EditableFlow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState('');
@@ -162,6 +166,11 @@ export default function FlowEditorTab() {
 
   const isDirty = JSON.stringify(flows) !== JSON.stringify(savedFlows);
   const selectedFlow = flows.find((flow) => flow.id === selectedFlowId) || flows[0];
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+    return () => onDirtyChange?.(false);
+  }, [isDirty, onDirtyChange]);
 
   const loadFlows = useCallback(async () => {
     setLoading(true);

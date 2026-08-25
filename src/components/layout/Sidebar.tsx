@@ -114,7 +114,7 @@ export default function Sidebar({
             <button
               type="button"
               onClick={onToggle}
-              className="min-h-8 min-w-8 shrink-0 rounded-sm p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-fg-muted transition-colors hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               aria-label={collapsed ? 'Abrir menu' : 'Fechar menu'}
               aria-expanded={sidebarOpen}
               aria-controls="aspen-sidebar"

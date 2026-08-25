@@ -318,7 +318,7 @@ test('local quotations list/search/open/edit and surface optimistic conflicts @q
   await expect(page.getByText(customItemName)).toBeVisible();
   await page.getByRole('button', { name: /Editar/ }).click();
   await page.getByRole('button', { name: /Salvar/ }).click();
-  await expect(page.getByText(/alterado por outro usuário/i)).toBeVisible();
+  await expect(page.getByText(/O orçamento (foi alterado por outro usuário|mudou ou não pode mais ser editado)/i)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Recarregar' })).toBeVisible();
 });
 

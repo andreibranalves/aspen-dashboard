@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -85,24 +85,28 @@ export default function DashboardPage({ navigate }: DashboardPageProps) {
   const [data, setData] = useState<DashboardViewData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const requestGenerationRef = useRef(0);
 
   const fetchDashboard = useCallback(async () => {
+    const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     setData(null);
     try {
       const result = await apiGet<unknown>(`/sales-dashboard?period=${period}`);
+      if (requestGeneration !== requestGenerationRef.current) return;
       const projected = projectDashboardView(result);
       if (!projected || !projected.summary) throw new Error('Resposta inválida ao carregar o dashboard.');
       setData(projected);
     } catch (error) {
+      if (requestGeneration !== requestGenerationRef.current) return;
       setError(
         error instanceof Error && error.message === 'Resposta inválida ao carregar o dashboard.'
           ? error.message
           : 'Não foi possível carregar o dashboard. Tente novamente.'
       );
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
     }
   }, [period]);
 

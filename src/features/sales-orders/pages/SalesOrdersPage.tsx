@@ -178,16 +178,21 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState<number>(1);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGenerationRef = useRef(0);
+  const summaryRequestGenerationRef = useRef(0);
 
   const fetchSummary = useCallback(async () => {
+    const requestGeneration = ++summaryRequestGenerationRef.current;
     setSummary(null);
     setSummaryError(null);
     try {
       const response = await apiGet<unknown>('/sales-dashboard?period=30d');
+      if (requestGeneration !== summaryRequestGenerationRef.current) return;
       const projected = projectDashboardSummary(response);
       if (!projected) throw new Error('Resposta inválida ao carregar métricas de vendas.');
       setSummary(projected);
     } catch {
+      if (requestGeneration !== summaryRequestGenerationRef.current) return;
       setSummaryError('Não foi possível carregar as métricas de vendas. Tente novamente.');
     }
   }, []);
@@ -199,6 +204,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
 
   // ── Fetch orders ────────────────────────────────────────────────────────────
   const fetchOrders = useCallback(async () => {
+    const requestGeneration = ++requestGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -209,6 +215,7 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       if (status) params.set('status', status);
       if (search) params.set('search', search);
       const data = await apiGet<OrdersResponse>(`/sales-orders?${params}`);
+      if (requestGeneration !== requestGenerationRef.current) return;
       if (!Array.isArray(data.items) || typeof data.has_more !== 'boolean') {
         throw new Error('Resposta inválida ao carregar pedidos.');
       }
@@ -219,9 +226,10 @@ export default function SalesOrdersPage({ navigate }: SalesOrdersPageProps) {
       setItems(projectedRows as SalesOrderItem[]);
       setTotalPages(data.has_more ? page + 1 : page);
     } catch {
+      if (requestGeneration !== requestGenerationRef.current) return;
       setError('Não foi possível carregar os pedidos. Tente novamente.');
     } finally {
-      setLoading(false);
+      if (requestGeneration === requestGenerationRef.current) setLoading(false);
     }
   }, [page, limit, period, status, search]);
 

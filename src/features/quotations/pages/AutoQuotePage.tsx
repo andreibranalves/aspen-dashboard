@@ -107,6 +107,7 @@ export default function AutoQuotePage() {
   const [pricingConflictByDraft, setPricingConflictByDraft] = useState<Record<number, string[]>>({});
   const [savingDraftByIndex, setSavingDraftByIndex] = useState<Record<number, boolean>>({});
   const issueInFlight = useRef(new Set<number>());
+  const extractionGenerationRef = useRef(0);
 
   // ── Quotation template ──
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
@@ -269,8 +270,8 @@ export default function AutoQuotePage() {
         (f) => f.context === 'already_talking' || /já estou/i.test(f.name || '')
       );
       setDefaultWaFlowId(alreadyTalking?.id || data.selectedFlowId || flows[0]?.id || '');
-    } catch (err) {
-      console.warn('[AutoQuotePage] failed to load communication flows:', (err as Error).message);
+    } catch {
+      console.warn('[AutoQuotePage] failed to load communication flows');
       setWaFlows([]);
       setDefaultWaFlowId('');
     }
@@ -343,6 +344,7 @@ export default function AutoQuotePage() {
       setError(`Template não encontrado: ${inline.unknown.join(', ')}.`);
       return;
     }
+    const generation = ++extractionGenerationRef.current;
     setExtracting(true);
     setError(null);
     try {
@@ -354,6 +356,7 @@ export default function AutoQuotePage() {
         imageMimeType: imageData?.mime || null,
         ...(inline.selections.length ? { orderTemplateSelections: inline.selections } : {}),
       });
+      if (generation !== extractionGenerationRef.current) return;
       const orders = res.orders;
       if (!orders || orders.length === 0) {
         setError('Nenhum pedido identificado no texto.');
@@ -366,9 +369,11 @@ export default function AutoQuotePage() {
       const pricedNonUrgent = nonUrgent.length > 0
         ? await fetchPricing(nonUrgent, false)
         : [];
+      if (generation !== extractionGenerationRef.current) return;
       const pricedUrgent = urgent.length > 0
         ? await fetchPricing(urgent, true)
         : [];
+      if (generation !== extractionGenerationRef.current) return;
       const pricedByIndex = new Map(
         [...pricedNonUrgent, ...pricedUrgent].map((draft) => [draft.index, draft])
       );
@@ -383,9 +388,11 @@ export default function AutoQuotePage() {
         return next;
       });
     } catch {
-      setError('Não foi possível extrair os pedidos. Tente novamente.');
+      if (generation === extractionGenerationRef.current) {
+        setError('Não foi possível extrair os pedidos. Tente novamente.');
+      }
     } finally {
-      setExtracting(false);
+      if (generation === extractionGenerationRef.current) setExtracting(false);
     }
   }, [text, imageData, orderTemplates, templateKey, fetchPricing, buildDraftsFromOrders]);
 
@@ -603,6 +610,7 @@ export default function AutoQuotePage() {
 
   // ── Reset ──
   const handleReset = useCallback(() => {
+    extractionGenerationRef.current += 1;
     setText('');
     clearImage();
     skipDraftPersistence.current = true;
@@ -613,20 +621,21 @@ export default function AutoQuotePage() {
     setWaFlowByDraft({});
     try {
       window.sessionStorage.removeItem('aspen_drafts');
-    } catch (storageError) {
-      console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
+    } catch {
+      console.warn('[AutoQuotePage] failed to clear drafts');
     }
   }, [clearImage, setDrafts, setProductSearch]);
 
   const clearResults = useCallback(() => {
+    extractionGenerationRef.current += 1;
     skipDraftPersistence.current = true;
     setDrafts([]);
     setProductSearch({});
     setWaFlowByDraft({});
     try {
       window.sessionStorage.removeItem('aspen_drafts');
-    } catch (storageError) {
-      console.warn('[AutoQuotePage] failed to clear drafts:', (storageError as Error).message);
+    } catch {
+      console.warn('[AutoQuotePage] failed to clear drafts');
     }
   }, [setDrafts, setProductSearch]);
 
@@ -721,8 +730,8 @@ export default function AutoQuotePage() {
           revisionId: context.revisionId,
           flowId: context.flowId,
         });
-      } catch (err) {
-        console.error('[sendWhatsApp] failed:', err instanceof Error ? err.message : err);
+      } catch {
+        console.error('[sendWhatsApp] failed');
       } finally {
         activeSendKeys.current.delete(contextKey);
       }

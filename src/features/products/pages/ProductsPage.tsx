@@ -129,6 +129,8 @@ export default function ProductsPage() {
     parseProductStatus
   );
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listRequestGenerationRef = useRef(0);
+  const listRequestKeyRef = useRef<string | null>(null);
   const clearPendingSearch = useCallback(() => {
     if (searchTimer.current) {
       clearTimeout(searchTimer.current);
@@ -150,6 +152,12 @@ export default function ProductsPage() {
       sortValue: string,
       statusValue: ProductStatus
     ) => {
+      const requestKey = JSON.stringify([searchValue, pageValue, limitValue, sortValue, statusValue]);
+      const requestGeneration = requestKey === listRequestKeyRef.current
+        ? listRequestGenerationRef.current
+        : listRequestGenerationRef.current + 1;
+      listRequestGenerationRef.current = requestGeneration;
+      listRequestKeyRef.current = requestKey;
       setLoading(true);
       setError(null);
       setSelectedIds([]);
@@ -162,18 +170,20 @@ export default function ProductsPage() {
         params.set('status', statusValue);
 
         const result = await apiGet<ProductsApiResponse>(`/products?${params.toString()}`);
+        if (requestGeneration !== listRequestGenerationRef.current) return;
         const projected = projectProductListResponse(result);
         if (!projected) throw new Error('Resposta inválida ao carregar produtos.');
         setData(projected.data);
         setTotalPages(projected.pagination.total_pages);
         setTotalRecords(projected.pagination.total);
       } catch {
+        if (requestGeneration !== listRequestGenerationRef.current) return;
         setData([]);
         setTotalPages(0);
         setTotalRecords(0);
         setError('Não foi possível carregar o catálogo. Tente novamente.');
       } finally {
-        setLoading(false);
+        if (requestGeneration === listRequestGenerationRef.current) setLoading(false);
       }
     },
     []
@@ -314,24 +324,28 @@ export default function ProductsPage() {
       }
 
       const { skus, archived } = pending;
-      try {
-        await Promise.all(
-          skus.map((sku) =>
-            archived
-              ? apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true })
-              : apiDelete(`/products?id=${encodeURIComponent(sku)}`)
-          )
-        );
-        clearProductCache();
-        const nextPage = skus.length === data.length && page > 1 ? page - 1 : page;
-        setPage(nextPage);
-        const action = archived ? 'restaurado' : 'arquivado';
+      const results = await Promise.allSettled(
+        skus.map((sku) =>
+          archived
+            ? apiPatch(`/product-update?sku=${encodeURIComponent(sku)}`, { ativo: true })
+            : apiDelete(`/products?id=${encodeURIComponent(sku)}`)
+        )
+      );
+      const successCount = results.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = results.length - successCount;
+      clearProductCache();
+      const nextPage = successCount === data.length && page > 1 ? page - 1 : page;
+      setPage(nextPage);
+      await fetchData(search, nextPage, limit, sort, status);
+      const action = archived ? 'restaurado' : 'arquivado';
+      if (failedCount === 0) {
         toast(
-          `${skus.length} produto${skus.length !== 1 ? 's' : ''} ${action}${skus.length !== 1 ? 's' : ''}.`,
+          `${successCount} produto${successCount !== 1 ? 's' : ''} ${action}${successCount !== 1 ? 's' : ''}.`,
           'success'
         );
-        await fetchData(search, nextPage, limit, sort, status);
-      } catch {
+      } else if (successCount > 0) {
+        toast(`${successCount} concluído(s); ${failedCount} falhou(aram).`, 'error');
+      } else {
         toast(
           archived
             ? 'Erro ao restaurar os produtos selecionados.'

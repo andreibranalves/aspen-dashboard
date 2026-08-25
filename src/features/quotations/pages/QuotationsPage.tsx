@@ -102,11 +102,19 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestGenerationRef = useRef(0);
+  const requestKeyRef = useRef<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
   const fetchData = useCallback(
     async (searchVal: string, statusVal: string, pageNum: number, limitVal: number) => {
+      const requestKey = JSON.stringify([searchVal, statusVal, pageNum, limitVal]);
+      const requestGeneration = requestKey === requestKeyRef.current
+        ? requestGenerationRef.current
+        : requestGenerationRef.current + 1;
+      requestGenerationRef.current = requestGeneration;
+      requestKeyRef.current = requestKey;
       setLoading(true);
       setError(null);
       setSelectedIds([]);
@@ -118,6 +126,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         if (statusVal) params.set('status', statusVal);
 
         const result = await apiGet<QuotationsApiResponse>(`/quotations?${params.toString()}`);
+        if (requestGeneration !== requestGenerationRef.current) return;
         if (!Array.isArray(result.data) || !result.pagination || typeof result.status_summary !== 'object' || result.status_summary === null || Array.isArray(result.status_summary)) {
           throw new Error('Resposta inválida ao carregar orçamentos.');
         }
@@ -140,11 +149,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
         setTotalPages(totalPages);
         setTotalRecords(totalRecords);
         setStatusSummary(projectedSummary);
-      } catch (err) {
-        console.error('[quotations]', err);
+      } catch {
+        if (requestGeneration !== requestGenerationRef.current) return;
+        console.error('[quotations] failed to load list');
         setError('Não foi possível carregar os orçamentos. Tente novamente.');
       } finally {
-        setLoading(false);
+        if (requestGeneration === requestGenerationRef.current) setLoading(false);
       }
     },
     []
@@ -160,28 +170,25 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       }
       searchTimer.current = setTimeout(() => {
         setPage(1);
-        fetchData(val, status, 1, limit);
       }, 350);
     },
-    [status, limit, fetchData]
+    [setPage, setSearch]
   );
 
   const onStatusClick = useCallback(
     (s: string) => {
       setStatus(s);
       setPage(1);
-      fetchData(search, s, 1, limit);
     },
-    [search, limit, fetchData]
+    [setPage, setStatus]
   );
 
   const onPageChange = useCallback(
     (p: number) => {
       setPage(p);
-      fetchData(search, status, p, limit);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
-    [search, status, limit, fetchData]
+    [setPage]
   );
 
   const onLimitChange = useCallback(
@@ -189,15 +196,14 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       const newLimit = parseInt(e.target.value, 10);
       setLimit(newLimit);
       setPage(1);
-      fetchData(search, status, 1, newLimit);
     },
-    [search, status, fetchData]
+    [setLimit, setPage]
   );
 
-  // Initial load
+  // Hash-backed query state is the source of truth for browser navigation.
   useEffect(() => {
-    fetchData(search, status, page, limit);
-  }, []);
+    void fetchData(search, status, page, limit);
+  }, [fetchData, limit, page, search, status]);
 
   const handleDelete = useCallback(async () => {
     const id = deleteTarget;
@@ -256,20 +262,24 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     setBulkDeleting(true);
 
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedRows.map((row) => apiDelete(`/quotations?id=${encodeURIComponent(row.id)}`))
       );
-      const nextPage = selectedRows.length === data.length && page > 1 ? page - 1 : page;
+      const deletedCount = results.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = results.length - deletedCount;
+      const nextPage = deletedCount === data.length && page > 1 ? page - 1 : page;
       setPage(nextPage);
       await fetchData(search, status, nextPage, limit);
-      toast(
-        selectedRows.length === 1
-          ? 'Orçamento excluído.'
-          : `${selectedRows.length} orçamentos excluídos.`,
-        'success'
-      );
-    } catch {
-      toast('Não foi possível excluir os orçamentos selecionados. Tente novamente.', 'error');
+      if (failedCount === 0) {
+        toast(
+          deletedCount === 1 ? 'Orçamento excluído.' : `${deletedCount} orçamentos excluídos.`,
+          'success'
+        );
+      } else if (deletedCount > 0) {
+        toast(`${deletedCount} excluído(s); ${failedCount} não foi(ram) excluído(s).`, 'error');
+      } else {
+        toast('Não foi possível excluir os orçamentos selecionados. Tente novamente.', 'error');
+      }
     } finally {
       setBulkDeleting(false);
     }
@@ -289,8 +299,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
     setSearch('');
     setStatus('');
     setPage(1);
-    fetchData('', '', 1, limit);
-  }, [fetchData, limit, setPage, setSearch, setStatus]);
+  }, [setPage, setSearch, setStatus]);
 
   useEffect(() => {
     if (selectAllRef.current) {

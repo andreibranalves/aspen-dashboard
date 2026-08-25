@@ -32,8 +32,10 @@ import { formatBRL, formatDate } from '@/lib/formatting/formatters';
 import { Button } from '@/components/ui/button';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
+import { useRouteGuardContext } from '@/hooks/useHashRoute';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
@@ -62,6 +64,12 @@ function statusBadgeProps(status: unknown): { status: string; label: string } {
 }
 
 const LOSS_REASONS = ['Preço', 'Prazo', 'Sem retorno do cliente', 'Outro'] as const;
+const SAFE_CONFLICT_MESSAGES = new Set([
+  'O orçamento foi alterado por outro usuário. Recarregue antes de salvar.',
+  'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.',
+  'O orçamento mudou. Recarregue para conferir o estado atual.',
+  'A revisão mudou ou já existe um rascunho. Recarregue para conferir.',
+]);
 const DIALOG_FOCUSABLE_SELECTOR =
   'button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -177,6 +185,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const draftEditable = data.status_canonical === 'rascunho';
   const [editing, setEditing] = useState(false);
   const [confirmDiscardEdits, setConfirmDiscardEdits] = useState(false);
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -203,6 +212,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const lossReasonRestoreFocusRef = useRef<HTMLElement | null>(null);
   const [conflict, setConflict] = useState('');
   const { toast } = useToast();
+  const { setNavigationGuard } = useRouteGuardContext();
   const showMessage = useCallback((text: string, tone: 'info' | 'error' = 'info') => {
     setMessage(text);
     setMessageTone(tone);
@@ -229,6 +239,12 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [productResults, setProductResults] = useState<Record<string, Product[]>>({});
   const clientTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pricingVersionsRef = useRef<Record<string, number>>({});
+  const nextPricingVersion = useCallback((key: string): number => {
+    const version = (pricingVersionsRef.current[key] || 0) + 1;
+    pricingVersionsRef.current[key] = version;
+    return version;
+  }, []);
   const deliveryIdentity = data.status_canonical !== 'rascunho' && data.revision_id && deliveryFlowId
     ? { revisionId: data.revision_id, flowId: deliveryFlowId }
     : null;
@@ -399,10 +415,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   );
 
   const updateItem = useCallback((key: string, patch: Partial<CoreQuotationItem>) => {
+    nextPricingVersion(key);
     setItems((previous) =>
       previous.map((item) => (item._key === key ? { ...item, ...patch } : item))
     );
-  }, []);
+  }, [nextPricingVersion]);
 
   const searchItemProducts = useCallback(async (key: string, term: string) => {
     if (term.trim().length < 2) {
@@ -458,12 +475,18 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       const item = items.find((candidate) => candidate._key === key);
       if (!item || !item.sku || item.manual_rate) return;
       const quantity = item.qty;
+      const sku = item.sku;
+      const requestVersion = nextPricingVersion(key);
       if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) return;
       try {
-        const rate = await lookupProductPrice(item.sku, quantity);
+        const rate = await lookupProductPrice(sku, quantity);
         setItems((previous) =>
           previous.map((current) =>
-            current._key === key && current.qty === quantity && !current.manual_rate
+            current._key === key &&
+            pricingVersionsRef.current[key] === requestVersion &&
+            current.sku === sku &&
+            current.qty === quantity &&
+            !current.manual_rate
               ? {
                   ...current,
                   suggested_unit_price: rate,
@@ -478,7 +501,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         setMessage('Não foi possível consultar o preço. Tente novamente.');
       }
     },
-    [items, lookupProductPrice],
+    [items, lookupProductPrice, nextPricingVersion],
   );
 
   const selectProduct = useCallback(
@@ -496,21 +519,33 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         price_difference: '',
         line_total: '',
       });
+      const requestVersion = nextPricingVersion(key);
       setProductTerms((previous) => ({ ...previous, [key]: sku }));
       setProductResults((previous) => ({ ...previous, [key]: [] }));
       try {
         const rate = await lookupProductPrice(sku, qty);
-        updateItem(key, {
-          suggested_unit_price: rate,
-          applied_unit_price: rate,
-          price_difference: '0.00',
-          line_total: String(Number(qty) * Number(rate)),
-        });
+        setItems((previous) =>
+          previous.map((current) =>
+            current._key === key &&
+            pricingVersionsRef.current[key] === requestVersion &&
+            current.sku === sku &&
+            String(current.qty) === String(qty) &&
+            !current.manual_rate
+              ? {
+                  ...current,
+                  suggested_unit_price: rate,
+                  applied_unit_price: rate,
+                  price_difference: '0.00',
+                  line_total: String(Number(qty) * Number(rate)),
+                }
+              : current,
+          ),
+        );
       } catch {
         toast('Não foi possível consultar o preço. Tente novamente.', 'error');
       }
     },
-    [items, lookupProductPrice, updateItem]
+    [items, lookupProductPrice, nextPricingVersion, updateItem]
   );
 
   const addItem = useCallback(() => {
@@ -535,8 +570,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   }, []);
 
   const removeItem = useCallback((key: string) => {
+    nextPricingVersion(key);
     setItems((previous) => previous.filter((item) => item._key !== key));
-  }, []);
+  }, [nextPricingVersion]);
 
   const resetEditor = useCallback(
     (authoritative: QuotationData = data) => {
@@ -584,6 +620,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     return false;
   }, [editing, items, data, clientId, validadeDias, pagamento, entrega, frete, observacoes, prazoProducao, sections, selectedTemplate, selectedVersionId]);
 
+  useEffect(() => {
+    if (!isDirty) {
+      setNavigationGuard(null);
+      setPendingRoute(null);
+      return () => setNavigationGuard(null);
+    }
+    setNavigationGuard(saving
+      ? () => true
+      : (nextRoute) => {
+          setPendingRoute(nextRoute);
+          return false;
+        });
+    return () => setNavigationGuard(null);
+  }, [isDirty, saving, setNavigationGuard]);
+
   const save = useCallback(async () => {
     const token = concurrencyTokenRef.current;
     if (!token) {
@@ -627,7 +678,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 409) {
-        setConflict('O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.');
+        const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+          ? error.message
+          : 'O orçamento mudou ou não pode mais ser editado. Recarregue para conferir.';
+        setConflict(safeMessage);
         showMessage('');
       } else {
         showMessage('Não foi possível salvar o orçamento. Tente novamente.', 'error');
@@ -759,7 +813,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
-          setConflict('O orçamento mudou. Recarregue para conferir o estado atual.');
+          const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+            ? error.message
+            : 'O orçamento mudou. Recarregue para conferir o estado atual.';
+          setConflict(safeMessage);
           showMessage('');
         } else {
           showMessage('Não foi possível atualizar o estado do orçamento. Tente novamente.', 'error');
@@ -801,7 +858,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       } catch (error) {
         const responseStatus = (error as { status?: number }).status;
         if (responseStatus === 409) {
-          setConflict('A revisão mudou ou já existe um rascunho. Recarregue para conferir.');
+          const safeMessage = error instanceof Error && SAFE_CONFLICT_MESSAGES.has(error.message)
+            ? error.message
+            : 'A revisão mudou ou já existe um rascunho. Recarregue para conferir.';
+          setConflict(safeMessage);
           showMessage('');
         } else {
           showMessage('Não foi possível criar a revisão. Tente novamente.', 'error');
@@ -900,8 +960,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         revisionId: data.revision_id,
         flowId: deliveryFlowId,
       });
-    } catch (error) {
-      console.error('[QuotationDetailPage] failed to enqueue WhatsApp delivery:', error);
+    } catch {
+      console.error('[QuotationDetailPage] failed to enqueue WhatsApp delivery');
     }
   }, [data.derived_expired, data.expirada, data.id, data.is_expired, data.quotation_id, data.revision_id, delivery, deliveryFlowId, deliveryPending, enqueue]);
   const sendQuotationEmail = useCallback(async (recipient: string) => {
@@ -987,6 +1047,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </div>
         )}
 
+        <fieldset disabled={saving} className="contents">
         <section aria-label="Dados principais" className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-line px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
           <div className="relative min-w-0">
             <span className="text-xs font-medium text-fg-muted">Cliente</span>
@@ -1630,6 +1691,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             </Table>
           </section>
         )}
+        </fieldset>
       </div>
       <QuotationEmailDialog
         open={emailDialogOpen}
@@ -1638,6 +1700,21 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
         error={emailError}
         onCancel={cancelEmailDialog}
         onSubmit={sendQuotationEmail}
+      />
+      <ConfirmDialog
+        open={pendingRoute !== null}
+        title="Sair sem salvar?"
+        message="As edições deste orçamento que ainda não foram salvas serão perdidas."
+        confirmLabel="Sair da página"
+        cancelLabel="Continuar editando"
+        variant="default"
+        onConfirm={() => {
+          const target = pendingRoute;
+          setPendingRoute(null);
+          setNavigationGuard(null);
+          if (target) window.location.hash = target;
+        }}
+        onCancel={() => setPendingRoute(null)}
       />
       <ConfirmDialog
         open={confirmDiscardEdits}
@@ -1697,11 +1774,13 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             </p>
             <label className="mt-4 block text-sm">
               <span className="text-xs text-fg-muted">Motivo</span>
-              <select
+              <Select
                 ref={lossReasonSelectRef}
                 value={lossReasonChoice}
                 onChange={(event) => setLossReasonChoice(event.target.value)}
-                className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
+                className="mt-1 w-full"
+                aria-label="Motivo da perda"
+                required
               >
                 <option value="">Selecione…</option>
                 {LOSS_REASONS.map((reason) => (
@@ -1709,16 +1788,20 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                     {reason}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="mt-3 block text-sm">
-              <span className="text-xs text-fg-muted">Detalhes (opcional)</span>
+              <span className="text-xs text-fg-muted">
+                Detalhes {lossReasonChoice === 'Outro' ? '(obrigatório)' : '(opcional)'}
+              </span>
               <textarea
                 value={lossReasonDetail}
                 onChange={(event) => setLossReasonDetail(event.target.value)}
                 rows={3}
                 placeholder="Contexto adicional sobre a perda…"
                 className="mt-1 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm"
+                required={lossReasonChoice === 'Outro'}
+                aria-required={lossReasonChoice === 'Outro' ? 'true' : undefined}
               />
             </label>
             <div className="mt-5 flex justify-end gap-3">

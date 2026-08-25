@@ -593,6 +593,7 @@ test.describe('Clientes locais @crm @smoke', () => {
     await page.getByRole('button', { name: 'Editar cadastro' }).click();
     await page.getByPlaceholder('Nome do cliente').fill('Alteração descartada');
     await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Descartar', exact: true }).click();
     await expect(page.getByText(serverName, { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Alteração descartada', { exact: true })).toHaveCount(0);
 

@@ -31,12 +31,16 @@ export function DetailDrawer({
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+        if (dialogs.at(-1) !== panelRef.current) return;
         event.stopPropagation();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== 'Tab' || !panelRef.current) return;
@@ -54,7 +58,7 @@ export function DetailDrawer({
         first.focus();
       }
     },
-    [onClose]
+    []
   );
 
   useEffect(() => {

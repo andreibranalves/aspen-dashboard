@@ -244,7 +244,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     if (!editing) return false;
     const baseline = detail ? fieldsFromDetail(detail) : initialFields;
     return JSON.stringify(fields) !== JSON.stringify(baseline);
-  }, [detail, editing, fields, initialFields]);
+  }, [detail, editing, fields, initialFields, saving]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) {
@@ -252,12 +252,14 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
       setPendingRoute(null);
       return () => setNavigationGuard(null);
     }
-    setNavigationGuard((nextRoute) => {
-      setPendingRoute(nextRoute);
-      return false;
-    });
+    setNavigationGuard(saving
+      ? () => true
+      : (nextRoute) => {
+          setPendingRoute(nextRoute);
+          return false;
+        });
     return () => setNavigationGuard(null);
-  }, [hasUnsavedChanges, setNavigationGuard]);
+  }, [hasUnsavedChanges, saving, setNavigationGuard]);
 
   const save = useCallback(async () => {
     if (!fields.nome.trim()) {
@@ -287,7 +289,11 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         const createdId = String(created.created || created.id || created.name || '');
         if (!createdId) throw new Error('Cliente criado, mas não foi possível abrir o cadastro.');
         toast('Cliente criado com sucesso.', 'success');
-        navigate(`/leads/cliente/${encodeURIComponent(createdId)}`);
+        const currentRoute = window.location.hash.replace(/^#/, '').split('?')[0];
+        if (currentRoute === '/leads/cliente/new') {
+          setNavigationGuard(null);
+          navigate(`/leads/cliente/${encodeURIComponent(createdId)}`);
+        }
         return;
       }
       const updated = await apiPut<unknown>(
@@ -305,7 +311,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
     } finally {
       setSaving(false);
     }
-  }, [decodedId, fields, isNewClient, navigate, toast]);
+  }, [decodedId, fields, isNewClient, navigate, setNavigationGuard, toast]);
 
   const archive = useCallback(async () => {
     if (!detail || isNewClient) return;
@@ -441,10 +447,11 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
 
   return (
     <PageShell className="space-y-5">
+      <fieldset disabled={saving} className="contents">
       <PageHeader
         title={title}
         description={isNewClient ? undefined : 'Cadastro e contexto comercial do cliente.'}
-        actions={headerActions}
+        actions={confirmDiscardEdits || pendingRoute !== null ? undefined : headerActions}
       />
 
       {!isNewClient && (
@@ -682,6 +689,7 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         </>
       )}
 
+      </fieldset>
       <ConfirmDialog
         open={archiveDialogOpen}
         title={archived ? 'Restaurar cliente' : 'Arquivar cliente'}
@@ -689,7 +697,10 @@ export default function LeadDetailPage({ tipo: _tipo, id, navigate }: LeadDetail
         confirmLabel={archived ? 'Restaurar' : 'Arquivar'}
         cancelLabel="Cancelar"
         variant={archived ? 'default' : 'destructive'}
-        onConfirm={() => void archive()}
+        onConfirm={() => {
+          setArchiveDialogOpen(false);
+          void archive();
+        }}
         onCancel={() => setArchiveDialogOpen(false)}
       />
       <ConfirmDialog

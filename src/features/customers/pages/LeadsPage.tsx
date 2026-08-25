@@ -224,6 +224,8 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [totalRecords, setTotalRecords] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listRequestGenerationRef = useRef(0);
+  const listRequestKeyRef = useRef<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
   const [pendingArchive, setPendingArchive] = useState<PendingLeadArchive | null>(null);
@@ -241,9 +243,16 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
   const [editFields, setEditFields] = useState<EditFields>(EMPTY_FIELDS);
   const [confirmDrawerDiscard, setConfirmDrawerDiscard] = useState(false);
   const [drawerDiscardAction, setDrawerDiscardAction] = useState<(() => void) | null>(null);
+  const drawerRequestRef = useRef(0);
 
   const fetchData = useCallback(
     async (searchValue = search, pageValue = page, statusValue = status, limitValue = limit) => {
+      const requestKey = JSON.stringify([searchValue, pageValue, statusValue, limitValue]);
+      const requestGeneration = requestKey === listRequestKeyRef.current
+        ? listRequestGenerationRef.current
+        : listRequestGenerationRef.current + 1;
+      listRequestGenerationRef.current = requestGeneration;
+      listRequestKeyRef.current = requestKey;
       setLoading(true);
       setError(null);
       setSelectedIds([]);
@@ -255,21 +264,30 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
         });
         if (searchValue) params.set('search', searchValue);
         const result = await apiGet<LeadsResponse>(`/leads-clients?${params.toString()}`);
+        if (requestGeneration !== listRequestGenerationRef.current) return;
         const projected = projectClientListResponse(result);
         if (!projected) throw new Error('Resposta inválida ao carregar clientes.');
+        const safePage = projected.pagination.total_pages > 0
+          ? Math.min(pageValue, projected.pagination.total_pages)
+          : 1;
+        if (safePage !== pageValue) {
+          setPage(safePage);
+          return;
+        }
         setData(projected.data);
         setTotalPages(projected.pagination.total_pages);
         setTotalRecords(projected.pagination.total);
       } catch {
+        if (requestGeneration !== listRequestGenerationRef.current) return;
         setData([]);
         setTotalPages(0);
         setTotalRecords(0);
         setError('Não foi possível carregar os clientes. Tente novamente.');
       } finally {
-        setLoading(false);
+        if (requestGeneration === listRequestGenerationRef.current) setLoading(false);
       }
     },
-    [limit, page, search, status]
+    [limit, page, search, setPage, status]
   );
 
   useEffect(() => {
@@ -303,31 +321,42 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
     [fetchData, limit, setPage, setSearch, status]
   );
 
-  const openDrawer = useCallback(async (row: DataRow) => {
-    setSelectedId(row.id);
-    setDrawerOpen(true);
-    setDetail(null);
-    setDetailError(null);
+  const loadDrawerDetail = useCallback(async (id: string) => {
+    const requestId = ++drawerRequestRef.current;
     setDetailLoading(true);
-    setEditMode(false);
-    setConfirmDrawerDiscard(false);
-    setDrawerDiscardAction(null);
+    setDetailError(null);
     try {
-      const result = await apiGet<unknown>(`/client-detail?name=${encodeURIComponent(row.id)}`);
+      const result = await apiGet<unknown>(`/client-detail?name=${encodeURIComponent(id)}`);
       const projected = projectClientDetail(result);
       if (!projected) throw new Error('Resposta inválida ao carregar cliente.');
+      if (requestId !== drawerRequestRef.current) return;
       setDetail(projected);
     } catch {
+      if (requestId !== drawerRequestRef.current) return;
+      setDetail(null);
       setDetailError('Não foi possível carregar os detalhes. Tente novamente.');
     } finally {
-      setDetailLoading(false);
+      if (requestId === drawerRequestRef.current) setDetailLoading(false);
     }
   }, []);
 
+  const openDrawer = useCallback((row: DataRow) => {
+    setSelectedId(row.id);
+    setDrawerOpen(true);
+    setDetail(null);
+    setDetailSaving(false);
+    setEditMode(false);
+    setConfirmDrawerDiscard(false);
+    setDrawerDiscardAction(null);
+    void loadDrawerDetail(row.id);
+  }, [loadDrawerDetail]);
+
   const closeDrawer = useCallback(() => {
+    drawerRequestRef.current += 1;
     setDrawerOpen(false);
     setSelectedId(null);
     setDetail(null);
+    setDetailSaving(false);
     setDetailError(null);
     setEditMode(false);
     setConfirmDrawerDiscard(false);
@@ -356,6 +385,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
   const updateDetail = useCallback(async () => {
     if (!selectedId || !detail) return;
+    const requestId = drawerRequestRef.current;
     const fields = editFields;
     if (!fields.nome.trim()) {
       setDetailError('Nome é obrigatório.');
@@ -385,6 +415,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       );
       const projected = projectClientDetail(result);
       if (!projected) throw new Error('Resposta inválida ao salvar cliente.');
+      if (requestId !== drawerRequestRef.current) return;
       setDetail(projected);
       setEditFields(fieldsFromDetail(projected));
       setEditMode(false);
@@ -403,9 +434,11 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
       );
       toast('Cliente atualizado com sucesso.', 'success');
     } catch {
-      setDetailError('Não foi possível salvar as alterações. Tente novamente.');
+      if (requestId === drawerRequestRef.current) {
+        setDetailError('Não foi possível salvar as alterações. Tente novamente.');
+      }
     } finally {
-      setDetailSaving(false);
+      if (requestId === drawerRequestRef.current) setDetailSaving(false);
     }
   }, [detail, editFields, selectedId, toast]);
 
@@ -508,21 +541,24 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
 
   const runBulkArchive = useCallback(
     async (rows: DataRow[], restoring: boolean) => {
-      try {
-        await Promise.all(
-          rows.map((row) =>
-            restoring
-              ? apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false })
-              : apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}`)
-          )
-        );
-        const count = rows.length;
+      const results = await Promise.allSettled(
+        rows.map((row) =>
+          restoring
+            ? apiPatch(`/client-detail?name=${encodeURIComponent(row.id)}`, { arquivado: false })
+            : apiDelete(`/leads-clients?id=${encodeURIComponent(row.id)}`)
+        )
+      );
+      const successCount = results.filter((result) => result.status === 'fulfilled').length;
+      const failedCount = results.length - successCount;
+      await fetchData();
+      if (failedCount === 0) {
         toast(
-          `${count} cliente${count === 1 ? '' : 's'} ${restoring ? 'restaurado' : 'arquivado'}${count === 1 ? '' : 's'}.`,
+          `${successCount} cliente${successCount === 1 ? '' : 's'} ${restoring ? 'restaurado' : 'arquivado'}${successCount === 1 ? '' : 's'}.`,
           'success'
         );
-        await fetchData();
-      } catch {
+      } else if (successCount > 0) {
+        toast(`${successCount} concluído(s); ${failedCount} falhou(aram).`, 'error');
+      } else {
         toast(
           `Não foi possível ${restoring ? 'restaurar' : 'arquivar'} os clientes selecionados. Tente novamente.`,
           'error'
@@ -1071,7 +1107,7 @@ export default function LeadsPage({ navigate }: LeadsPageProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => selectedId && detail && void openDrawer(detail)}
+              onClick={() => selectedId && void loadDrawerDetail(selectedId)}
             >
               Tentar novamente
             </Button>

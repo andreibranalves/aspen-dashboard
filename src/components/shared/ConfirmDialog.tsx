@@ -52,6 +52,8 @@ export default function ConfirmDialog({
 
     const dialog = dialogRef.current;
     const handleKeyDown = (event: KeyboardEvent) => {
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+      if (dialogs.at(-1) !== dialog) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -78,6 +80,8 @@ export default function ConfirmDialog({
       }
     };
     const handleFocusIn = (event: FocusEvent) => {
+      const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+      if (dialogs.at(-1) !== dialog) return;
       if (dialog && !dialog.contains(event.target as Node)) cancelRef.current?.focus();
     };
 
@@ -128,7 +132,7 @@ export default function ConfirmDialog({
             type="button"
             onClick={() => onCancelRef.current?.()}
             aria-label="Fechar"
-            className="min-h-8 min-w-8 shrink-0 rounded-sm p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="min-h-9 min-w-9 shrink-0 rounded-sm p-1.5 text-fg-muted hover:bg-surface-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X size={18} aria-hidden="true" />
           </button>

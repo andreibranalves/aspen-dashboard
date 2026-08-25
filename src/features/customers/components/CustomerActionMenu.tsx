@@ -36,6 +36,12 @@ export function CustomerActionMenu({
         dismiss(false);
       }
     };
+    const handleFocusOut = (event: FocusEvent) => {
+      const nextTarget = event.relatedTarget as Node | null;
+      if (!menuRef.current?.contains(nextTarget) && !triggerRef.current?.contains(nextTarget)) {
+        dismiss(false);
+      }
+    };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -49,9 +55,11 @@ export function CustomerActionMenu({
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('focusout', handleFocusOut);
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('focusout', handleFocusOut);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [dismiss, open]);

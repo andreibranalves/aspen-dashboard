@@ -210,7 +210,7 @@ test.describe('Configurações de orçamento @quotations', () => {
     await page.getByLabel('Chave imutável').fill('novo');
     await page.getByLabel('Fonte HTML').fill(source);
     await page.getByRole('button', { name: 'Criar modelo' }).click();
-    await expect(page.getByRole('alert')).toContainText('Falha temporária.');
+    await expect(page.getByRole('alert')).toContainText('Não foi possível carregar o template.');
     await page.getByRole('button', { name: 'Tentar novamente' }).click();
     await expect(page.getByLabel('Fonte HTML')).toHaveValue(source);
     expect(detailCalls).toBe(2);
