@@ -11,11 +11,13 @@ import {
   createQuotationTemplateRepository,
   type QuotationTemplateSnapshot,
 } from '../_infrastructure/db/repositories/quotation-template-repository.js';
-import { renderQuotationDocument } from './quotation-document.js';
+import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
+import { renderQuotationPdfHtml } from './quotation-pdf-renderer.js';
+import { isValidPdfBuffer } from './quotation-document-storage.js';
+import { isIssuedQuotationStatus } from './quotation-status.js';
 import {
   issuePublicQuotationToken,
   isRevisionBoundPublicQuotationUrl,
-  renderPublicQuotationPdf,
   type PublicQuotationDependencies,
 } from './public-quotation.js';
 import {
@@ -447,6 +449,7 @@ export async function loadPostgresSendContext(input: {
   store?: PublicQuotationStore;
   token?: () => string;
   renderPdf?: NonNullable<PublicQuotationDependencies['renderPdf']>;
+  renderDocument?: QuotationDocumentRenderer;
   mediaCandidates?: unknown[];
   mediaRecords?: Array<Record<string, unknown>>;
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
@@ -471,7 +474,13 @@ export async function loadPostgresSendContext(input: {
     throw createHttpError(409, 'O número do orçamento não corresponde à revisão PostgreSQL informada.');
   }
 
-  const view = renderQuotationDocument(snapshot).viewModel;
+  let document: ReturnType<QuotationDocumentRenderer>;
+  try {
+    document = (input.renderDocument || renderQuotationDocument)(snapshot);
+  } catch {
+    throw createHttpError(503, 'Não foi possível preparar o documento do orçamento.');
+  }
+  const view = document.viewModel;
   const client = view.client as unknown as Record<string, unknown>;
   const telefone = String(client.phone || client.telefone || '').trim();
   const phone = normalizePhone(telefone);
@@ -502,13 +511,12 @@ export async function loadPostgresSendContext(input: {
   let pdfBase64 = '';
   if (input.needPdf) {
     try {
-      const pdf = Buffer.from(
-        await renderPublicQuotationPdf(revisionId, {
-          repository: input.repository,
-          renderPdf: input.renderPdf,
-        }),
-      );
-      if (!pdf.length) throw createHttpError(503, 'PDF do orçamento veio vazio.');
+      if (!isIssuedQuotationStatus(snapshot.revision.status)) {
+        throw createHttpError(409, 'Emita o orçamento antes de enviar WhatsApp.');
+      }
+      const renderPdf = input.renderPdf || renderQuotationPdfHtml;
+      const pdf = Buffer.from(await renderPdf(document.html));
+      if (!isValidPdfBuffer(pdf)) throw createHttpError(503, 'Não foi possível gerar o PDF do orçamento.');
       if (pdf.length > MAX_QUOTATION_PDF_BYTES) {
         throw createHttpError(413, 'O PDF do orçamento excede o limite permitido.');
       }
@@ -729,6 +737,7 @@ export type SendWhatsappHandlerDependencies = {
   blobToken?: string;
   blobStoreId?: string;
   renderPdf?: NonNullable<PublicQuotationDependencies['renderPdf']>;
+  renderDocument?: QuotationDocumentRenderer;
   mediaRecords?: Array<Record<string, unknown>>;
   readMediaRecords?: () => Promise<Array<Record<string, unknown>>>;
   resolveDeal?: LocalDealResolver;
@@ -821,6 +830,7 @@ export async function handler(
           store: dependencies.store,
           token: dependencies.token,
           renderPdf: dependencies.renderPdf,
+          renderDocument: dependencies.renderDocument,
           mediaCandidates,
           mediaRecords: dependencies.mediaRecords,
           readMediaRecords: dependencies.readMediaRecords,
