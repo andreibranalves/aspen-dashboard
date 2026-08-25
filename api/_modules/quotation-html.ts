@@ -1,20 +1,23 @@
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
-import { renderQuotationDocument } from './quotation-document.js';
+import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
 
 export interface RenderQuotationHtmlOptions {
   includePrintButton?: boolean;
   forPdf?: boolean;
   printFormat?: string;
+  repository?: ReturnType<typeof createQuotationTemplateRepository>;
+  renderDocument?: QuotationDocumentRenderer;
 }
 
 export async function renderQuotationHtml(
   quotationId: string,
   opts: RenderQuotationHtmlOptions = {}
 ): Promise<{ html: string; customerName: string }> {
-  const snapshot = await createQuotationTemplateRepository().get(quotationId);
+  const repository = opts.repository || createQuotationTemplateRepository();
+  const snapshot = await repository.get(quotationId);
   if (!snapshot) throw Object.assign(new Error('Orçamento não encontrado.'), { statusCode: 404 });
 
-  const document = renderQuotationDocument(snapshot);
+  const document = (opts.renderDocument || renderQuotationDocument)(snapshot);
   let html = document.html;
 
   if (opts.includePrintButton !== false && !opts.forPdf) {

@@ -13,6 +13,8 @@ import {
   URGENT_DENOMINATOR,
   URGENT_NUMERATOR,
 } from './pricing-core.js';
+import { applyQuotationSectionPolicy } from './quotation-document.js';
+import { normalizeQuotationSections, type QuotationSectionsSettings } from './quotation-content.js';
 
 export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (
@@ -28,6 +30,7 @@ export interface DraftSnapshotSettings {
   frete_padrao?: string;
   observacoes?: string;
   template_padrao?: string;
+  secoes?: QuotationSectionsSettings;
 }
 
 export interface DraftSnapshotDependencies {
@@ -68,6 +71,7 @@ export interface DraftPreviewInput {
   observacoes?: string;
   frete?: string;
   validade_dias?: number;
+  secoes?: unknown;
   urgente: boolean;
   items: DraftPreviewItem[];
 }
@@ -175,6 +179,7 @@ function parseDraftPreview(value: unknown): DraftPreviewInput {
     observacoes: optionalText('observacoes'),
     frete: freight,
     validade_dias: validityDays,
+    secoes: extracted.secoes,
     urgente: extracted.urgente === true,
     items,
   };
@@ -187,6 +192,57 @@ function addressValue(address: Record<string, unknown> | undefined, ...keys: str
     if (value != null && String(value).trim()) return String(value).trim();
   }
   return '';
+}
+
+function draftSettingsWithLegacyOverrides(
+  source: QuotationSectionsSettings | undefined,
+  legacy: { pagamento?: string; observacoes?: string }
+): QuotationSectionsSettings | undefined {
+  if (!source) return undefined;
+  return {
+    ...source,
+    pagamento: {
+      ...source.pagamento,
+      ...(legacy.pagamento === undefined ? {} : { body: legacy.pagamento }),
+    },
+    condicoes_gerais: {
+      ...source.condicoes_gerais,
+      ...(legacy.observacoes === undefined ? {} : { body: legacy.observacoes }),
+    },
+  };
+}
+
+function normalizeDraftSections(
+  source: unknown,
+  legacy: { pagamento?: string; entrega?: string; observacoes?: string }
+): QuotationSectionsSettings {
+  let settings = source;
+  if (isRecord(source)) {
+    const keys = ['prazo_producao', 'pagamento', 'condicoes_gerais'] as const;
+    const snapshotLike = keys.some((key) => {
+      const section = source[key];
+      return isRecord(section) && ('base' in section || 'current' in section);
+    });
+    if (snapshotLike) {
+      const current = Object.fromEntries(
+        keys.map((key) => {
+          const section = source[key];
+          if (!isRecord(section) || !isRecord(section.current)) {
+            throw new DraftPreviewInputError('Snapshot de seções do orçamento inválido.');
+          }
+          return [key, section.current];
+        })
+      );
+      settings = { schema_version: source.schema_version, ...current };
+    }
+  }
+  try {
+    return normalizeQuotationSections(settings, legacy);
+  } catch (error) {
+    throw new DraftPreviewInputError(
+      error instanceof Error ? error.message : 'Seções do orçamento inválidas.'
+    );
+  }
 }
 
 function draftPreviewViewModel(
@@ -306,11 +362,6 @@ function draftPreviewViewModel(
     freight,
     total,
     frete: freight,
-    secoes: {
-      prazo_producao: { value: extracted.prazo_producao || '' },
-      pagamento: { body_html: extracted.pagamento || '' },
-      condicoes_gerais: { body_html: extracted.observacoes || '' },
-    },
     display: {
       quote_date: formatQuotationDate(current),
       validity_date: formatQuotationDate(validityDate),
@@ -364,10 +415,27 @@ export async function buildDraftQuotationSnapshot(
   }
   const template = await dependencies.resolveTemplate(extracted.template_key || 'padrao');
   if (!template) throw new DraftPreviewInputError('Template do orçamento inválido.');
+  const sections = normalizeDraftSections(
+    extracted.secoes !== undefined
+      ? extracted.secoes
+      : draftSettingsWithLegacyOverrides(settings?.secoes, {
+          pagamento: extracted.pagamento,
+          observacoes: extracted.observacoes,
+        }),
+    {
+      pagamento: extracted.pagamento,
+      entrega: extracted.entrega,
+      observacoes: extracted.observacoes,
+    }
+  );
   const now = dependencies.now || (() => new Date());
+  const viewModel = applyQuotationSectionPolicy(draftPreviewViewModel(extracted, now()), sections, {
+    entrega: extracted.entrega,
+    prazoProducao: extracted.prazo_producao,
+  });
   return {
     template,
-    viewModel: draftPreviewViewModel(extracted, now()),
+    viewModel,
     authoritativeDraft: extracted as unknown as Record<string, unknown>,
     pricingDifferences,
   };

@@ -1,4 +1,5 @@
 import type { QuotationTemplateSnapshot } from '../_infrastructure/db/repositories/quotation-template-repository.js';
+import type { DraftQuotationSnapshot } from './quotation-draft-snapshot.js';
 import {
   formatQuotationClientName,
   formatQuotationCurrency,
@@ -11,10 +12,15 @@ import {
   type QuotationTemplate,
   type QuotationTemplateViewModel,
 } from './quotation-template-catalog.js';
-import { normalizeQuotationSections, toSafeMultilineHtml } from './quotation-content.js';
+import {
+  normalizeQuotationSections,
+  toSafeMultilineHtml,
+  type QuotationSectionsSettings,
+} from './quotation-content.js';
 import { canonicalQuotationStatus } from './quotation-status.js';
 
 export type QuotationDocumentSnapshot = QuotationTemplateSnapshot;
+export type QuotationDocumentInput = QuotationTemplateSnapshot | DraftQuotationSnapshot;
 
 export interface RenderedQuotationDocument {
   html: string;
@@ -23,9 +29,20 @@ export interface RenderedQuotationDocument {
 }
 
 export type QuotationDocumentRenderer = (
-  snapshot: QuotationTemplateSnapshot,
+  snapshot: QuotationDocumentInput,
   template?: QuotationTemplate
 ) => RenderedQuotationDocument;
+
+function renderTemplateDocument(
+  template: QuotationTemplate,
+  viewModel: QuotationTemplateViewModel
+): RenderedQuotationDocument {
+  return {
+    html: renderQuotationTemplate(template, viewModel),
+    template,
+    viewModel,
+  };
+}
 
 function asDate(value: Date | string | null | undefined): Date {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value.getTime());
@@ -123,6 +140,55 @@ export function buildComparison(items: ComparisonItem[]) {
     }));
 
   return { brackets, products };
+}
+
+export function applyQuotationSectionPolicy(
+  viewModel: QuotationTemplateViewModel,
+  sections: QuotationSectionsSettings,
+  legacy: {
+    entrega?: string;
+    prazoProducao?: string;
+  }
+): QuotationTemplateViewModel {
+  const prazoVisible = sections.prazo_producao.enabled;
+  const pagamentoVisible = sections.pagamento.enabled;
+  const condicoesVisible = sections.condicoes_gerais.enabled;
+  return {
+    ...viewModel,
+    secoes: {
+      prazo_producao: {
+        enabled: prazoVisible,
+        title: prazoVisible ? sections.prazo_producao.title : '',
+        value: prazoVisible ? legacy.prazoProducao || '' : '',
+      },
+      pagamento: {
+        enabled: pagamentoVisible,
+        title: pagamentoVisible ? sections.pagamento.title : '',
+        body_html: pagamentoVisible
+          ? toSafeMultilineHtml(sections.pagamento.body)
+          : toSafeMultilineHtml(''),
+      },
+      condicoes_gerais: {
+        enabled: condicoesVisible,
+        title: condicoesVisible ? sections.condicoes_gerais.title : '',
+        body_html: condicoesVisible
+          ? toSafeMultilineHtml(sections.condicoes_gerais.body)
+          : toSafeMultilineHtml(''),
+      },
+    },
+    terms: {
+      pagamento: pagamentoVisible ? sections.pagamento.body : '',
+      entrega: condicoesVisible ? legacy.entrega || '' : '',
+      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
+    },
+    terms_snapshot: {
+      pagamento: pagamentoVisible ? sections.pagamento.body : '',
+      entrega: condicoesVisible ? legacy.entrega || '' : '',
+      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
+    },
+  };
 }
 
 /** Convert the immutable snapshot into the only template-facing model. */
@@ -295,50 +361,25 @@ export function quotationSnapshotViewModel(
         entrega: nullable(revision.entrega),
         observacoes: nullable(revision.observacoes),
       });
-  const prazoVisible = hasCanonicalSections
-    ? sections.prazo_producao.enabled
-    : Boolean(revision.prazoProducao);
-  const pagamentoVisible = sections.pagamento.enabled;
-  const condicoesVisible = sections.condicoes_gerais.enabled;
-  result.secoes = {
-    prazo_producao: {
-      enabled: prazoVisible,
-      title: prazoVisible ? sections.prazo_producao.title : '',
-      value: prazoVisible ? productionDeadline : '',
-    },
-    pagamento: {
-      enabled: pagamentoVisible,
-      title: pagamentoVisible ? sections.pagamento.title : '',
-      body_html: pagamentoVisible
-        ? toSafeMultilineHtml(sections.pagamento.body)
-        : toSafeMultilineHtml(''),
-    },
-    condicoes_gerais: {
-      enabled: condicoesVisible,
-      title: condicoesVisible ? sections.condicoes_gerais.title : '',
-      body_html: condicoesVisible
-        ? toSafeMultilineHtml(sections.condicoes_gerais.body)
-        : toSafeMultilineHtml(''),
-    },
-  };
-  if (hasCanonicalSections) {
-    // Once a canonical snapshot exists, legacy mirror fields must not leak a
-    // disabled section or override its current content in a historical template.
-    result.terms = {
-      pagamento: pagamentoVisible ? sections.pagamento.body : '',
-      entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? productionDeadline : '',
-      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
-    };
-    result.terms_snapshot = {
-      pagamento: pagamentoVisible ? sections.pagamento.body : '',
-      entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? productionDeadline : '',
-      observations: condicoesVisible ? sections.condicoes_gerais.body : '',
-    };
+  const policySections = hasCanonicalSections
+    ? sections
+    : {
+        ...sections,
+        prazo_producao: {
+          ...sections.prazo_producao,
+          enabled: Boolean(revision.prazoProducao),
+        },
+      };
+  const rendered = applyQuotationSectionPolicy(result, policySections, {
+    entrega: revision.entrega,
+    prazoProducao: productionDeadline,
+  });
+  if (!hasCanonicalSections) {
+    // Legacy revisions keep their historical mirror terms; only the section
+    // projection is synthesized for templates that understand the v2 shape.
+    return { ...rendered, terms: result.terms, terms_snapshot: result.terms_snapshot };
   }
-
-  return result;
+  return rendered;
 }
 
 /**
@@ -346,16 +387,20 @@ export function quotationSnapshotViewModel(
  * A caller may provide the resolved template explicitly; otherwise the stored
  * version is preferred and legacy revisions use their stored key/hash pair.
  */
+function isDraftQuotationDocument(
+  snapshot: QuotationDocumentInput
+): snapshot is DraftQuotationSnapshot {
+  return 'viewModel' in snapshot && 'template' in snapshot && !('quotation' in snapshot);
+}
+
 export const renderQuotationDocument: QuotationDocumentRenderer = (snapshot, exactTemplate) => {
+  if (isDraftQuotationDocument(snapshot)) {
+    return renderTemplateDocument(exactTemplate || snapshot.template, snapshot.viewModel);
+  }
   const template =
     exactTemplate ||
     (snapshot.templateVersion
       ? quotationTemplateFromVersion(snapshot.templateVersion)
       : resolveQuotationTemplate(snapshot.revision.templatePadrao, snapshot.revision.templateHash));
-  const viewModel = quotationSnapshotViewModel(snapshot);
-  return {
-    html: renderQuotationTemplate(template, viewModel),
-    template,
-    viewModel,
-  };
+  return renderTemplateDocument(template, quotationSnapshotViewModel(snapshot));
 };

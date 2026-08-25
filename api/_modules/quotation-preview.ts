@@ -8,7 +8,6 @@ import {
 import {
   quotationTemplateFromVersion,
   QuotationTemplateResolutionError,
-  renderQuotationTemplate,
   type QuotationTemplate,
 } from './quotation-template-catalog.js';
 import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
@@ -116,7 +115,7 @@ export function createQuotationPreviewHandler(
           resolvePricing,
           resolveSettings,
         });
-        const html = renderQuotationTemplate(snapshot.template, snapshot.viewModel);
+        const html = renderDocument(snapshot).html;
         if (event.queryStringParameters?.format === 'html') {
           return {
             statusCode: 200,
