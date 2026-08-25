@@ -88,6 +88,25 @@ test('renders an unsaved quotation draft as HTML when requested', async () => {
   assert.equal(renderCalls, 0);
 });
 
+test('passes the selected template version to unsaved draft resolution', async () => {
+  let selectedVersion: string | undefined;
+  const handler = createQuotationPreviewHandler({
+    repository: { get: async () => null },
+    resolveDraftTemplate: async (key, versionId) => {
+      selectedVersion = versionId;
+      return key === template.key ? template : null;
+    },
+    renderPdf: pdfRender,
+  });
+
+  const response = await handler(post({
+    extracted: { ...extracted, template_version_id: '55555555-5555-4555-8555-555555555555' },
+  }, { format: 'html' }));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(selectedVersion, '55555555-5555-4555-8555-555555555555');
+});
+
 test('routes an unsaved draft through the canonical v2 section model', async () => {
   let renderCalls = 0;
   const handler = createQuotationPreviewHandler({

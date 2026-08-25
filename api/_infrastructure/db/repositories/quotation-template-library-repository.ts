@@ -164,6 +164,34 @@ async function current(db: QuoteDatabase, id: string) {
   )[0];
 }
 
+export async function readQuotationTemplateVersion(db: QuoteDatabase, id: string) {
+  const [selected] = await db
+    .select({ model: quotationTemplates, version: quotationTemplateVersions })
+    .from(quotationTemplateVersions)
+    .innerJoin(
+      quotationTemplates,
+      eq(quotationTemplateVersions.templateId, quotationTemplates.id),
+    )
+    .where(eq(quotationTemplateVersions.id, id))
+    .limit(1);
+  if (!selected) return null;
+  return {
+    model: {
+      id: selected.model.id,
+      key: selected.model.key,
+      name: selected.model.name,
+      archived: selected.model.archived,
+    },
+    version: {
+      id: selected.version.id,
+      version: selected.version.version,
+      source: selected.version.source,
+      sourceHash: selected.version.sourceHash,
+      contractVersion: selected.version.contractVersion,
+    },
+  };
+}
+
 export async function readCurrentQuotationTemplateVersion(
   db: QuoteDatabase,
   selection: string | { id?: string; key?: string }

@@ -581,10 +581,10 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
       authoritative = detail({
         status: 'Rascunho',
         status_canonical: 'rascunho',
-        pagamento: savePayload.pagamento,
+        pagamento: savePayload.secoes?.pagamento?.current?.body || detail().pagamento,
         entrega: savePayload.entrega,
         validade_dias: savePayload.validade_dias,
-        observacoes: savePayload.observacoes,
+        observacoes: savePayload.secoes?.condicoes_gerais?.current?.body || detail().observacoes,
         template_key: savePayload.template_key,
         template_version_id: savePayload.template_version_id,
         secoes: savePayload.secoes,
@@ -609,9 +609,9 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
   await page.goto(`/#/quotations/${id}`);
   await expect(page.getByText('Rascunho', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Editar' }).click();
-  await page.getByLabel('Pagamento do orçamento').fill('30 dias após emissão');
+  await page.getByLabel('Condição de pagamento').fill('30 dias após emissão');
   await page.getByLabel('Entrega do orçamento').fill('7 dias úteis');
-  await page.getByLabel('Observações do orçamento').fill('Conteúdo revisado pelo operador');
+  await page.getByLabel('Observações padrão').fill('Conteúdo revisado pelo operador');
   await page.getByLabel('Modelo do orçamento').selectOption('minimalista');
   await page.getByLabel('Título - Pagamento').fill('Pagamento revisado');
   await page.getByRole('button', { name: /Salvar/ }).click();

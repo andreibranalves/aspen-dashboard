@@ -8,6 +8,7 @@ import {
   normalizeQuotationSections,
   toSafeMultilineHtml,
   validateQuotationSections,
+  withQuotationProductionDeadline,
 } from '../../api/_modules/quotation-content.js';
 
 const legacy = {
@@ -36,9 +37,13 @@ test('normaliza três seções e combina campos legados em condições gerais', 
 });
 
 test('cria base e current independentes', () => {
-  const snapshot = createQuotationSectionsSnapshot(DEFAULT_QUOTATION_SECTIONS);
+  const snapshot = createQuotationSectionsSnapshot(
+    withQuotationProductionDeadline(DEFAULT_QUOTATION_SECTIONS, '5 dias')
+  );
   snapshot.pagamento.current.title = 'Alterado';
+  snapshot.prazo_producao.current.value = '7 dias';
   assert.equal(snapshot.pagamento.base.title, DEFAULT_QUOTATION_SECTIONS.pagamento.title);
+  assert.equal(snapshot.prazo_producao.base.value, '5 dias');
 });
 
 test('combina somente os valores legados existentes', () => {
@@ -74,13 +79,15 @@ test('valida seções: rejeita entrada inválida', () => {
 test('normaliza seções com entrada parcial', () => {
   const input = {
     pagamento: { enabled: false, title: 'Pgto Custom' },
+    prazo_producao: { enabled: true, title: 'Prazo', value: '5 dias' },
   };
   const sections = normalizeQuotationSections(input);
   assert.equal(sections.schema_version, 1);
   assert.equal(sections.pagamento.enabled, false);
   assert.equal(sections.pagamento.title, 'Pgto Custom');
   assert.equal(sections.prazo_producao.enabled, DEFAULT_QUOTATION_SECTIONS.prazo_producao.enabled);
-  assert.equal(sections.prazo_producao.title, DEFAULT_QUOTATION_SECTIONS.prazo_producao.title);
+  assert.equal(sections.prazo_producao.title, 'Prazo');
+  assert.equal(sections.prazo_producao.value, '5 dias');
 });
 
 test('não sobrescreve condicoes_gerais existente com legado', () => {
@@ -126,6 +133,17 @@ test('normalização rejeita chaves desconhecidas', () => {
   assert.throws(
     () => normalizeQuotationSections({ unknown_key: { enabled: true, title: 'X' } }),
     /Campo desconhecido "unknown_key"/
+  );
+});
+
+test('normalização rejeita value inválido ou oversized em prazo_producao', () => {
+  assert.throws(
+    () => normalizeQuotationSections({ prazo_producao: { enabled: true, title: 'P', value: 5 } }),
+    /Campo "value" da seção "prazo_producao" deve ser string/
+  );
+  assert.throws(
+    () => normalizeQuotationSections({ prazo_producao: { enabled: true, title: 'P', value: 'x'.repeat(501) } }),
+    /Valor da seção "prazo_producao" excede 500 caracteres/
   );
 });
 
