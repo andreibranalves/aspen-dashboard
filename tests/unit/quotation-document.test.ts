@@ -123,6 +123,30 @@ test('canonical document seam formats, escapes and hides disabled section data',
   assert.equal(document.viewModel.terms.pagamento, '<script>alert(1)</script>\nSaldo');
 });
 
+test('canonical production deadline feeds section and legacy mirrors', () => {
+  const canonicalSnapshot = {
+    ...snapshot,
+    revision: {
+      ...snapshot.revision,
+      sectionsSnapshot: {
+        ...snapshot.revision.sectionsSnapshot,
+        prazo_producao: {
+          ...snapshot.revision.sectionsSnapshot.prazo_producao,
+          current: {
+            ...snapshot.revision.sectionsSnapshot.prazo_producao.current,
+            value: '10 dias úteis',
+          },
+        },
+      },
+    },
+  } as any;
+  const document = renderQuotationDocument(canonicalSnapshot, template);
+
+  assert.equal(document.viewModel.secoes.prazo_producao.value, '10 dias úteis');
+  assert.equal(document.viewModel.terms.production_deadline, '10 dias úteis');
+  assert.equal(document.viewModel.terms_snapshot.production_deadline, '10 dias úteis');
+});
+
 test('canonical seam resolves a historical built-in v1 by key and hash', () => {
   const builtIn = getQuotationTemplate('padrao');
   assert.ok(builtIn);

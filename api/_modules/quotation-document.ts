@@ -262,12 +262,15 @@ export function quotationSnapshotViewModel(
     | Record<string, unknown>
     | undefined;
   const hasCanonicalSections = Boolean(sectionsSnapshot && typeof sectionsSnapshot === 'object');
+  const prazo = (sectionsSnapshot?.prazo_producao || {}) as Record<string, unknown>;
+  const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
+  const productionDeadline = nullable(
+    prazoCurrent.value === undefined ? revision.prazoProducao : prazoCurrent.value
+  );
   const sections = hasCanonicalSections
     ? (() => {
-        const prazo = (sectionsSnapshot!.prazo_producao || {}) as Record<string, unknown>;
         const pagto = (sectionsSnapshot!.pagamento || {}) as Record<string, unknown>;
         const condicoes = (sectionsSnapshot!.condicoes_gerais || {}) as Record<string, unknown>;
-        const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
         const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
         const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
         return normalizeQuotationSections({
@@ -299,7 +302,7 @@ export function quotationSnapshotViewModel(
     prazo_producao: {
       enabled: prazoVisible,
       title: prazoVisible ? sections.prazo_producao.title : '',
-      value: prazoVisible ? nullable(revision.prazoProducao) : '',
+      value: prazoVisible ? productionDeadline : '',
     },
     pagamento: {
       enabled: pagamentoVisible,
@@ -322,13 +325,13 @@ export function quotationSnapshotViewModel(
     result.terms = {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
       entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? revision.prazoProducao : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     };
     result.terms_snapshot = {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
       entrega: condicoesVisible ? revision.entrega : '',
-      production_deadline: prazoVisible ? revision.prazoProducao : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     };
   }
