@@ -46,6 +46,8 @@ const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
     const handleKeyDown = (event: ReactKeyboardEvent<HTMLTableRowElement>) => {
       onKeyDown?.(event);
       if (event.defaultPrevented || !isInteractive || typeof onClick !== 'function') return;
+      const target = event.target as HTMLElement;
+      if (target.closest('a,button,input,select,textarea,summary,[role="button"],[role="menuitem"]')) return;
       if (event.key !== 'Enter' && event.key !== ' ') return;
       event.preventDefault();
       event.currentTarget.click();

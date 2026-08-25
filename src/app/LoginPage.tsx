@@ -35,11 +35,7 @@ export default function LoginPage({ navigate }: LoginPageProps) {
 
   // Se já tem cookie válido, redireciona
   useEffect(() => {
-    fetch('/api/quotations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    })
+    fetch('/api/quotations?limit=1')
       .then((res) => {
         if (res.status === 200 || res.status === 404) {
           navigate('/quotations');

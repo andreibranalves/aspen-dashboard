@@ -360,14 +360,22 @@ export default function AutoQuotePage() {
         setExtracting(false);
         return;
       }
-      let newDrafts = buildDraftsFromOrders(orders, '', templateKey);
+      const newDrafts = buildDraftsFromOrders(orders, '', templateKey);
       const nonUrgent = newDrafts.filter((d) => !d.edited.urgente);
-      if (nonUrgent.length > 0) newDrafts = await fetchPricing(nonUrgent, false);
       const urgent = newDrafts.filter((d) => d.edited.urgente);
-      if (urgent.length > 0) await fetchPricing(urgent, true);
+      const pricedNonUrgent = nonUrgent.length > 0
+        ? await fetchPricing(nonUrgent, false)
+        : [];
+      const pricedUrgent = urgent.length > 0
+        ? await fetchPricing(urgent, true)
+        : [];
+      const pricedByIndex = new Map(
+        [...pricedNonUrgent, ...pricedUrgent].map((draft) => [draft.index, draft])
+      );
+      const pricedDrafts = newDrafts.map((draft) => pricedByIndex.get(draft.index) || draft);
       setDrafts((prev) => {
         const startIndex = prev.length;
-        const appendedDrafts = newDrafts.map((draft, offset) => ({
+        const appendedDrafts = pricedDrafts.map((draft, offset) => ({
           ...draft,
           index: startIndex + offset,
         }));
