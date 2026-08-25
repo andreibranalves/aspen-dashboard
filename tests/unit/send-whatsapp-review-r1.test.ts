@@ -5,6 +5,7 @@ import { handler as sendWhatsapp, loadPostgresSendContext, MAX_QUOTATION_PDF_BYT
 import { sendFrozenStep } from '../../api/_modules/evolution-transport.js';
 import { createDeliveryPlan, type DeliveryFlow } from '../../api/_modules/quotation-delivery-plan.js';
 import { handler as sendWhatsappFlow } from '../../api/_modules/send-whatsapp-flow.js';
+import { renderQuotationDocument } from '../../api/_modules/quotation-document.js';
 import { DEFAULT_QUOTATION_TEMPLATE } from '../../api/_modules/quotation-template-catalog.js';
 import { createFakeWhatsappReservationStore } from '../fixtures/fake-whatsapp-reservation-store.mjs';
 
@@ -840,7 +841,87 @@ test('revision identifier aliases finish uncertain provider failures in reconcil
   }
 });
 
-test('generated PDF is capped and redacted from response', async () => {
+test('direct WhatsApp PDF is produced from the canonical document seam', async () => {
+  let seamCalls = 0;
+  let renderedHtml = '';
+  await loadPostgresSendContext({
+    quotationId: businessNumber,
+    revisionId,
+    needPdf: true,
+    baseUrl: 'https://app.test',
+    repository: repository(),
+    store: store(),
+    token: () => publicToken,
+    renderDocument: (value) => {
+      seamCalls += 1;
+      return renderQuotationDocument(value);
+    },
+    renderPdf: async (html) => {
+      renderedHtml = html;
+      return validPdf();
+    },
+  });
+  assert.equal(seamCalls, 1);
+  assert.match(renderedHtml, /Cliente Teste/);
+  assert.match(renderedHtml, /ORC-20260001/);
+});
+
+test('document rendering failures stay safe before WhatsApp transport', async () => {
+  const result = await sendWhatsapp(event({
+    quotation_id: businessNumber,
+    revision_id: revisionId,
+    sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] },
+  }), {
+    repository: repository(),
+    store: store(),
+    token: () => publicToken,
+    renderDocument: () => {
+      throw Object.assign(new Error('customer personal data and provider secret'), { statusCode: 500 });
+    },
+  });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(JSON.parse(result.body || '{}'), {
+    error: 'Não foi possível preparar o documento do orçamento.',
+  });
+  assert.doesNotMatch(result.body || '', /personal data|provider secret|stack/i);
+});
+
+test('unexpected PDF renderer status codes stay sanitized', async () => {
+  const result = await sendWhatsapp(event({
+    quotation_id: businessNumber,
+    revision_id: revisionId,
+    sequence: { steps: [{ type: 'document', source: 'quotation_pdf' }] },
+  }), {
+    repository: repository(),
+    store: store(),
+    token: () => publicToken,
+    renderPdf: async () => {
+      throw Object.assign(new Error('renderer secret'), { statusCode: 500 });
+    },
+  });
+
+  assert.equal(result.statusCode, 503);
+  assert.deepEqual(JSON.parse(result.body || '{}'), {
+    error: 'Não foi possível preparar o PDF do orçamento.',
+  });
+  assert.doesNotMatch(result.body || '', /renderer secret|stack/i);
+});
+
+test('generated PDF is capped, validated, and redacted from response', async () => {
+  await assert.rejects(
+    loadPostgresSendContext({
+      quotationId: businessNumber,
+      revisionId,
+      needPdf: true,
+      baseUrl: 'https://app.test',
+      repository: repository(),
+      store: store(),
+      token: () => publicToken,
+      renderPdf: async () => Buffer.from('not a pdf'),
+    }),
+    /Não foi possível gerar o PDF/,
+  );
   await assert.rejects(
     loadPostgresSendContext({
       quotationId: businessNumber,

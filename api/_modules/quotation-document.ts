@@ -327,38 +327,59 @@ export function quotationSnapshotViewModel(
   const sectionsSnapshot = (snapshot.sectionsSnapshot || revision.sectionsSnapshot) as unknown as
     | Record<string, unknown>
     | undefined;
-  if (sectionsSnapshot && typeof sectionsSnapshot === 'object') {
-    const prazo = (sectionsSnapshot.prazo_producao || {}) as Record<string, unknown>;
-    const pagto = (sectionsSnapshot.pagamento || {}) as Record<string, unknown>;
-    const condicoes = (sectionsSnapshot.condicoes_gerais || {}) as Record<string, unknown>;
-    const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
-    const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
-    const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
-    const sections = normalizeQuotationSections({
-      prazo_producao: {
-        enabled: prazoCurrent.enabled === true,
-        title: String(prazoCurrent.title || 'Prazo de produção'),
-      },
-      pagamento: {
-        enabled: pagtoCurrent.enabled === true,
-        title: String(pagtoCurrent.title || 'Pagamento'),
-        body: String(pagtoCurrent.body || ''),
-      },
-      condicoes_gerais: {
-        enabled: condicoesCurrent.enabled === true,
-        title: String(condicoesCurrent.title || 'Condições Gerais'),
-        body: String(condicoesCurrent.body || ''),
-      },
-    });
-    // Once a canonical snapshot exists, legacy mirror fields must not leak a
-    // disabled section or override its current content in a historical template.
-    return applyQuotationSectionPolicy(result, sections, {
-      entrega: revision.entrega,
-      prazoProducao: revision.prazoProducao,
-    });
+  const hasCanonicalSections = Boolean(sectionsSnapshot && typeof sectionsSnapshot === 'object');
+  const prazo = (sectionsSnapshot?.prazo_producao || {}) as Record<string, unknown>;
+  const prazoCurrent = (prazo.current || {}) as Record<string, unknown>;
+  const productionDeadline = nullable(
+    prazoCurrent.value === undefined ? revision.prazoProducao : prazoCurrent.value
+  );
+  const sections = hasCanonicalSections
+    ? (() => {
+        const pagto = (sectionsSnapshot!.pagamento || {}) as Record<string, unknown>;
+        const condicoes = (sectionsSnapshot!.condicoes_gerais || {}) as Record<string, unknown>;
+        const pagtoCurrent = (pagto.current || {}) as Record<string, unknown>;
+        const condicoesCurrent = (condicoes.current || {}) as Record<string, unknown>;
+        return normalizeQuotationSections({
+          prazo_producao: {
+            enabled: prazoCurrent.enabled === true,
+            title: String(prazoCurrent.title || 'Prazo de produção'),
+          },
+          pagamento: {
+            enabled: pagtoCurrent.enabled === true,
+            title: String(pagtoCurrent.title || 'Pagamento'),
+            body: String(pagtoCurrent.body || ''),
+          },
+          condicoes_gerais: {
+            enabled: condicoesCurrent.enabled === true,
+            title: String(condicoesCurrent.title || 'Condições Gerais'),
+            body: String(condicoesCurrent.body || ''),
+          },
+        });
+      })()
+    : normalizeQuotationSections(undefined, {
+        pagamento: nullable(revision.pagamento),
+        entrega: nullable(revision.entrega),
+        observacoes: nullable(revision.observacoes),
+      });
+  const policySections = hasCanonicalSections
+    ? sections
+    : {
+        ...sections,
+        prazo_producao: {
+          ...sections.prazo_producao,
+          enabled: Boolean(revision.prazoProducao),
+        },
+      };
+  const rendered = applyQuotationSectionPolicy(result, policySections, {
+    entrega: revision.entrega,
+    prazoProducao: productionDeadline,
+  });
+  if (!hasCanonicalSections) {
+    // Legacy revisions keep their historical mirror terms; only the section
+    // projection is synthesized for templates that understand the v2 shape.
+    return { ...rendered, terms: result.terms, terms_snapshot: result.terms_snapshot };
   }
-
-  return result;
+  return rendered;
 }
 
 /**

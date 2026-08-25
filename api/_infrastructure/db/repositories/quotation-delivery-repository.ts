@@ -2,29 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { getDatabase, type AppDatabase } from '../client.js';
-import {
-  quoteRevisionItems,
-  quoteRevisions,
-  quotationDeliveries,
-  quotationTemplateVersions,
-  quotations,
-} from '../schema.js';
+import { quoteRevisions, quotationDeliveries } from '../schema.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from '../../../_modules/quotation-status.js';
 import {
-  formatQuotationClientName,
-  formatQuotationCurrency,
-  formatQuotationDate,
-  formatQuotationPhone,
-  formatQuotationQuantity,
-  renderQuotationTemplate,
-  type QuotationTemplate,
-  type QuotationTemplateViewModel,
-} from '../../../_modules/quotation-template-catalog.js';
+  renderQuotationDocument,
+  type QuotationDocumentRenderer,
+} from '../../../_modules/quotation-document.js';
 import {
   renderQuotationPdf,
   renderQuotationWebpHtml,
 } from '../../../_modules/quotation-pdf-renderer.js';
-import { buildComparison } from '../../../_modules/quotation-document.js';
+import { readQuotationTemplateSnapshot } from './quotation-template-repository.js';
 import {
   isValidPdfBuffer,
   isValidWebpBuffer,
@@ -34,7 +22,6 @@ import {
   quotationWebpChecksum,
 } from '../../../_modules/quotation-document-storage.js';
 import { normalizeWhatsappPhone } from '../../../_modules/whatsapp-conversations-store.js';
-import { revisionSectionsSnapshot } from '../quotation-revision-invariants.js';
 import type { TransportFailureKind } from '../../../_modules/quotation-delivery-state.js';
 
 type DatabaseProvider = () => AppDatabase;
@@ -182,6 +169,7 @@ export interface QuotationDeliveryRepositoryOptions {
   now?: () => Date;
   randomId?: () => string;
   renderPdf?: (html: string) => Promise<Buffer>;
+  renderDocument?: QuotationDocumentRenderer;
   maxPdfBytes?: number;
   beforeStateUpdate?: () => Promise<void>;
 }
@@ -339,82 +327,6 @@ async function reserveInDatabase(
   return toDelivery(row, now);
 }
 
-function revisionViewModel(
-  revision: typeof quoteRevisions.$inferSelect,
-  items: Array<typeof quoteRevisionItems.$inferSelect>,
-  now: Date,
-): QuotationTemplateViewModel {
-  const until = validUntil(revision);
-  const money = formatQuotationCurrency;
-  const itemView = items.sort((a, b) => a.position - b.position).map((item) => ({
-    id: item.id,
-    position: item.position,
-    sku: item.produtoSku,
-    item_code: item.produtoSku,
-    nome: item.produtoNome,
-    name: item.produtoNome,
-    descricao: item.produtoDescricao,
-    description: item.produtoDescricao,
-    unidade: item.produtoUnidade,
-    unit: item.produtoUnidade,
-    qty: Number(item.quantidade),
-    tier_minimum: item.precoMinimoFaixa || '',
-    quantidade: Number(item.quantidade),
-    quantity: formatQuotationQuantity(item.quantidade),
-    unit_price: money(item.precoAplicado),
-    applied_unit_price: item.precoAplicado,
-    preco_aplicado: item.precoAplicado,
-    line_total: money(item.totalLinha),
-    total_linha: item.totalLinha,
-    display: { unit_price: money(item.precoAplicado), line_total: money(item.totalLinha) },
-  }));
-  const subtotal = money(revision.subtotal);
-  const freight = money(revision.frete);
-  const total = money(revision.total);
-  const client = {
-    name: formatQuotationClientName(revision.clienteNome),
-    nome: formatQuotationClientName(revision.clienteNome),
-    document: revision.clienteDocumento || '',
-    documento: revision.clienteDocumento || '',
-    email: revision.clienteEmail || '',
-    phone: formatQuotationPhone(revision.clienteTelefone),
-    address: [revision.clienteEndereco, revision.clienteNumero, revision.clienteBairro, revision.clienteMunicipio, revision.clienteUf, revision.clienteCep].filter(Boolean).join(', '),
-  };
-  const sectionsSnapshot = revisionSectionsSnapshot(revision);
-  const pagamento = sectionsSnapshot.pagamento.current as unknown as Record<string, unknown>;
-  const condicoes = sectionsSnapshot.condicoes_gerais.current as unknown as Record<string, unknown>;
-  const prazo = sectionsSnapshot.prazo_producao.current as unknown as Record<string, unknown>;
-  const paymentBody = String(pagamento.body_html ?? pagamento.body ?? '');
-  const conditionsBody = String(condicoes.body_html ?? condicoes.body ?? '');
-  const productionDeadline = String(prazo.value ?? revision.prazoProducao ?? '');
-  const sections = {
-    prazo_producao: { value: productionDeadline, enabled: prazo.enabled === true, title: String(prazo.title ?? '') },
-    pagamento: { body_html: paymentBody, enabled: pagamento.enabled === true, title: String(pagamento.title ?? '') },
-    condicoes_gerais: { body_html: conditionsBody, enabled: condicoes.enabled === true, title: String(condicoes.title ?? '') },
-  };
-  const terms = {
-    pagamento: paymentBody,
-    entrega: revision.entrega,
-    production_deadline: productionDeadline,
-    observations: conditionsBody,
-  };
-  const issuedAt = asDate(revision.issuedAt || revision.createdAt, now);
-  return {
-    quote_number: '', quotation_name: '', quote_id: revision.quotationId, revision: revision.version,
-    revision_number: revision.version, status: 'emitido', status_canonical: 'emitido', revision_status: 'emitido',
-    quote_date: issuedAt.toISOString().slice(0, 10), date: issuedAt.toISOString().slice(0, 10),
-    validity_date: until.toISOString().slice(0, 10), validity: until.toISOString().slice(0, 10), validity_days: revision.validadeDias,
-    client, client_snapshot: client, items: itemView, items_snapshot: itemView, terms, terms_snapshot: terms,
-    secoes: sections,
-    sections_snapshot: sections,
-    subtotal: revision.subtotal, freight: revision.frete, frete: revision.frete, total: revision.total,
-    comparison: buildComparison(
-      itemView.map((item) => ({ ...item, qty: String(item.qty) }))
-    ),
-    display: { quote_date: formatQuotationDate(issuedAt), validity_date: formatQuotationDate(until), subtotal, freight, total },
-  };
-}
-
 export function createPostgresQuotationDeliveryRepository(
   getDb: DatabaseProvider = getDatabase,
   options: QuotationDeliveryRepositoryOptions = {},
@@ -422,6 +334,7 @@ export function createPostgresQuotationDeliveryRepository(
   const now = options.now || (() => new Date());
   const randomId = options.randomId || randomUUID;
   const renderPdf = options.renderPdf || renderQuotationPdf;
+  const renderDocument = options.renderDocument || renderQuotationDocument;
   const maxPdfBytes = validPdfLimit(options.maxPdfBytes, MAX_QUOTATION_PDF_BYTES);
 
   async function reserve(input: ReserveQuotationDeliveryInput): Promise<QuotationDelivery> {
@@ -535,9 +448,11 @@ export function createPostgresQuotationDeliveryRepository(
     current: Date,
   ): Promise<{ revision: typeof quoteRevisions.$inferSelect; html: string }> {
     try {
-      const [revision] = await getDb().select().from(quoteRevisions)
-        .where(eq(quoteRevisions.id, revisionId)).limit(1);
-      if (!revision) throw new QuotationDeliveryNotFoundError();
+      const snapshot = await readQuotationTemplateSnapshot(getDb(), revisionId);
+      if (!snapshot || snapshot.revision.id !== revisionId) {
+        throw new QuotationDeliveryNotFoundError();
+      }
+      const { revision } = snapshot;
       let status: ReturnType<typeof canonicalQuotationStatus>;
       try { status = canonicalQuotationStatus(revision.status); }
       catch { throw new QuotationDeliveryConflictError('A revisão do orçamento possui estado inválido.'); }
@@ -545,27 +460,13 @@ export function createPostgresQuotationDeliveryRepository(
       if (current.getTime() >= validUntil(revision).getTime()) {
         throw new QuotationDeliveryConflictError('A revisão do orçamento está vencida. Emita uma nova revisão.');
       }
-      const [version] = await getDb().select().from(quotationTemplateVersions)
-        .where(eq(quotationTemplateVersions.id, revision.templateVersionId || '')).limit(1);
-      if (!version || version.sourceHash !== revision.templateHash) {
+      if (
+        revision.templateVersionId &&
+        (!snapshot.templateVersion || snapshot.templateVersion.sourceHash !== revision.templateHash)
+      ) {
         throw new QuotationDeliveryConflictError('O snapshot do template da revisão não está disponível.');
       }
-      const items = await getDb().select().from(quoteRevisionItems)
-        .where(eq(quoteRevisionItems.revisionId, revisionId));
-      const template: QuotationTemplate = {
-        key: revision.templatePadrao,
-        name: revision.templatePadrao,
-        is_default: false,
-        source: version.source,
-        hash: version.sourceHash,
-      };
-      const viewModel: QuotationTemplateViewModel = revisionViewModel(revision, items, current);
-      const [quotation] = await getDb().select({ businessNumber: quotations.businessNumber })
-        .from(quotations).where(eq(quotations.id, revision.quotationId)).limit(1);
-      if (!quotation) throw new QuotationDeliveryNotFoundError();
-      viewModel.quote_number = quotation.businessNumber;
-      viewModel.quotation_name = quotation.businessNumber;
-      return { revision, html: renderQuotationTemplate(template, viewModel) };
+      return { revision, html: renderDocument(snapshot).html };
     } catch (error) {
       if (isKnownError(error)) throw error;
       throw new QuotationDeliveryRepositoryError();
