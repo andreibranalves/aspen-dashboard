@@ -2665,15 +2665,39 @@ function validateQuotationSourceInternal(
   source: string,
   templateKey: string,
   contractVersion: QuotationTemplateContractVersion,
-  provenance?: symbol
+  provenance?: symbol,
+  allowRenderFragments = false
 ): QuotationTemplateValidationReport {
-  const report = validateQuotationHtmlSourceInternal(
+  // Keep AST errors ahead of contract-field errors for fragment callers while
+  // still validating every v2 source in persistence validation. Rendering
+  // retains support for internal snippets used by existing document helpers.
+  validateQuotationHtmlSourceInternal(source, templateKey, contractVersion, provenance, true);
+  validateQuotationTemplateSource(source, templateKey);
+  return validateQuotationRequiredFields(
     source,
     templateKey,
     contractVersion,
-    provenance
+    provenance,
+    allowRenderFragments
   );
-  validateQuotationTemplateSource(source, templateKey);
+}
+
+function validateQuotationRequiredFields(
+  source: string,
+  templateKey: string,
+  contractVersion: QuotationTemplateContractVersion,
+  provenance?: symbol,
+  allowFragments = false
+): QuotationTemplateValidationReport {
+  const isHtmlDocument = /<html[\s>]/i.test(stripHandlebars(source)) || /<!doctype/i.test(source);
+  if (!isHtmlDocument && (contractVersion === 1 || allowFragments)) {
+    return { contract_version: contractVersion, warnings: [], missing_sections: [] };
+  }
+
+  const { missing, report } = findRequiredFields(source, contractVersion, provenance);
+  if (missing.length > 0) {
+    throw new Error(`Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`);
+  }
   return report;
 }
 
@@ -2681,7 +2705,8 @@ function validateQuotationHtmlSourceInternal(
   source: string,
   templateKey = 'desconhecido',
   contractVersion: QuotationTemplateContractVersion = 2,
-  provenance?: symbol
+  provenance?: symbol,
+  skipRequiredFields = false
 ): QuotationTemplateValidationReport {
   // Reject Handlebars expressions in URL/style contexts on the ORIGINAL source
   // (before stripping, since stripping removes them and bypasses the check)
@@ -2693,17 +2718,10 @@ function validateQuotationHtmlSourceInternal(
   const tokens = tokenizeHtml(stripped);
   checkHtmlPolicy(tokens, templateKey);
 
-  // Required fields check (only for full HTML documents)
-  const isHtmlDocument = /<html[\s>]/i.test(stripped) || /<!doctype/i.test(stripped);
-  if (!isHtmlDocument) {
+  if (skipRequiredFields) {
     return { contract_version: contractVersion, warnings: [], missing_sections: [] };
   }
-
-  const { missing, report } = findRequiredFields(source, contractVersion, provenance);
-  if (missing.length > 0) {
-    throw new Error(`Campo obrigatório ausente no template ${templateKey}: ${missing.join(', ')}`);
-  }
-  return report;
+  return validateQuotationRequiredFields(source, templateKey, contractVersion, provenance);
 }
 
 function validateDefinitions(definitions: readonly QuotationTemplateDefinition[]): void {
@@ -2793,7 +2811,8 @@ export function renderQuotationTemplate(
       template.source,
       template.key,
       template.contract_version,
-      provenance
+      provenance,
+      true
     );
     compiled = environment.compile(template.source, {
       knownHelpers: HELPER_NAMES,

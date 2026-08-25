@@ -183,6 +183,33 @@ test('persisted-template validation previews the production secoes shape', async
   assert.match(result.preview, /Frete FOB<br>Arte aprovada pelo cliente/);
 });
 
+test('v2 persistence validation rejects fragments missing every required field', async () => {
+  const library = createQuotationTemplateLibraryRepository(() => {
+    throw new Error('database must not be used by validation');
+  });
+  const fields = [
+    ['quote_number', '{{quote_number}}'],
+    ['client.name', '{{client.name}}'],
+    ['#each items', '{{#each items}}{{name}}{{/each}}'],
+    ['display.total', '{{display.total}}'],
+  ];
+
+  for (const [missing, field] of fields) {
+    const source = fields
+      .filter(([, candidate]) => candidate !== field)
+      .map(([, candidate]) => candidate)
+      .join(' ');
+    await assert.rejects(
+      () => library.validate({ key: `fragment-${missing.replace(/[^a-z]+/g, '-')}`, source }),
+      (error: unknown) =>
+        error instanceof QuotationTemplateLibraryInputError && error.message.includes(missing)
+    );
+  }
+
+  const validSource = fields.map(([, field]) => field).join(' ');
+  await assert.doesNotReject(() => library.validate({ key: 'fragment-complete', source: validSource }));
+});
+
 test('template library handler rejects malformed JSON and unsupported methods', { concurrency: false }, async () => {
     const handler = createQuotationTemplatesHandler({ repository });
     assert.equal(
