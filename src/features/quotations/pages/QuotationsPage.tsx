@@ -288,6 +288,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const someSelected = selectedCount > 0 && !allSelected;
   const bulkDeleteTotal = selectedRows.reduce((sum, row) => sum + (Number(row.valor) || 0), 0);
   const hasActiveFilters = Boolean(search.trim()) || Boolean(status);
+  const clearFilters = useCallback(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setSearch('');
+    setStatus('');
+    setPage(1);
+    fetchData('', '', 1, limit);
+  }, [fetchData, limit, setPage, setSearch, setStatus]);
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -322,7 +329,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           size="icon"
           aria-label={`Excluir orçamento ${row.id}`}
           title={`Excluir orçamento ${row.id}`}
-          className="text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
+          className="text-destructive hover:bg-destructive/10"
           onClick={() => setDeleteTarget(row.id)}
         >
           <Trash2 />
@@ -357,6 +364,11 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
   const EmailMarker = ({ row }: { row: QuotationRow }) => (
     <div
       className="flex items-center gap-1.5"
+      aria-label={
+        row.email_sent
+          ? `E-mail enviado${row.email_sent_at ? ` em ${formatDate(row.email_sent_at)}` : ''}`
+          : 'E-mail ainda não enviado'
+      }
       title={
         row.email_sent
           ? `Último e-mail enviado em ${formatDate(row.email_sent_at)}`
@@ -373,7 +385,10 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           )}
         </>
       ) : (
-        <span className="text-fg-muted/40" aria-hidden="true">—</span>
+        <>
+          <span className="text-fg-muted/40" aria-hidden="true">—</span>
+          <span className="sr-only">E-mail ainda não enviado</span>
+        </>
       )}
     </div>
   );
@@ -449,14 +464,19 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
       </div>
 
       {/* Loading */}
-      {loading && <SkeletonTable cols={6} rows={8} />}
+      {loading && <SkeletonTable cols={8} rows={8} />}
 
       {/* Error */}
       {!loading && error && (
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <AlertTriangle size={32} className="text-destructive/60" />
-          <p>Erro ao carregar orçamentos</p>
-          <p className="text-sm">{error}</p>
+        <div
+          role="alert"
+          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
+        >
+          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
+          <p className="font-medium">Não foi possível carregar os orçamentos.</p>
+          <p className="max-w-md text-sm text-fg-muted">
+            Verifique sua conexão e tente novamente. Os filtros atuais serão mantidos.
+          </p>
           <Button variant="outline" onClick={() => fetchData(search, status, page, limit)}>
             Tentar novamente
           </Button>
@@ -470,16 +490,20 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           title={hasActiveFilters ? 'Nenhum orçamento encontrado' : 'Nenhum orçamento por aqui ainda'}
           description={
             hasActiveFilters
-              ? 'Tente ajustar os filtros ou criar um novo orçamento.'
+              ? 'Não encontramos propostas com os filtros atuais. Ajuste a busca ou limpe os filtros.'
               : 'Crie seu primeiro orçamento para começar.'
           }
           actions={
-            !hasActiveFilters ? (
+            hasActiveFilters ? (
+              <Button variant="outline" onClick={clearFilters}>
+                Limpar filtros
+              </Button>
+            ) : (
               <Button onClick={() => navigate('/manual')}>
                 <PlusCircle />
                 Novo orçamento
               </Button>
-            ) : undefined
+            )
           }
         />
       )}
@@ -490,7 +514,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-12 px-3">
+                <TableHead className="h-9 w-12 px-3">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -500,13 +524,13 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                   />
                 </TableHead>
-                <TableHead className="w-[160px]">Nº</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="whitespace-nowrap">E-mail</TableHead>
-                <TableHead className="text-right w-[180px]">Ações</TableHead>
+                <TableHead className="h-9 w-[170px]">Nº</TableHead>
+                <TableHead className="h-9 min-w-[180px]">Cliente</TableHead>
+                <TableHead className="h-9">Status</TableHead>
+                <TableHead className="h-9 whitespace-nowrap">Data</TableHead>
+                <TableHead className="h-9 text-right">Total</TableHead>
+                <TableHead className="h-9 whitespace-nowrap">E-mail</TableHead>
+                <TableHead className="h-9 w-[160px] text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -516,7 +540,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   className={`cursor-pointer bg-surface ${selectedIds.includes(row.id) ? 'bg-primary/5' : ''}`}
                   onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
                 >
-                  <TableCell className="w-12 px-3" onClick={(e) => e.stopPropagation()}>
+                  <TableCell className="w-12 px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(row.id)}
@@ -525,17 +549,31 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                       className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
                     />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-sm [font-variant-numeric:tabular-nums]">{row.id}</TableCell>
-                  <TableCell className="whitespace-nowrap text-fg-muted">
-                    {formatDate(row.data)}
+                  <TableCell className="py-2 whitespace-nowrap text-sm [font-variant-numeric:tabular-nums]">
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto max-w-[160px] justify-start truncate p-0 font-mono font-semibold"
+                      title={row.id}
+                      onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
+                    >
+                      {row.id}
+                    </Button>
                   </TableCell>
-                  <TableCell className="max-w-[220px] truncate">{row.cliente}</TableCell>
-                  <TableCell className="whitespace-nowrap text-right [font-variant-numeric:tabular-nums]">{formatBRL(row.valor)}</TableCell>
-                  <TableCell>{statusBadge(row)}</TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="max-w-[260px] py-2" title={row.cliente}>
+                    <span className="block truncate font-medium">{row.cliente || 'Cliente não informado'}</span>
+                  </TableCell>
+                  <TableCell className="py-2">{statusBadge(row)}</TableCell>
+                  <TableCell className="whitespace-nowrap py-2 text-fg-muted">
+                    {formatDate(row.data) || '—'}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-2 text-right font-medium [font-variant-numeric:tabular-nums]">
+                    {formatBRL(row.valor)}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap py-2">
                     <EmailMarker row={row} />
                   </TableCell>
-                  <TableCell className="text-center">{actionButtons(row)}</TableCell>
+                  <TableCell className="py-2 text-center">{actionButtons(row)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -549,12 +587,12 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
           {data.map((row) => (
             <div
               key={row.id}
-              className={`bg-surface rounded-lg border border-line shadow-sm p-4 space-y-3 cursor-pointer ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
+              className={`cursor-pointer space-y-3 rounded-md border border-line bg-surface p-4 ${selectedIds.includes(row.id) ? 'ring-2 ring-primary/30' : ''}`}
               onClick={() => navigate(`/quotations/${encodeURIComponent(row.id)}`)}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                 <div
-                  className="flex items-center gap-2 min-w-0"
+                  className="flex min-w-0 items-center gap-2"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <input
@@ -562,20 +600,35 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                     checked={selectedIds.includes(row.id)}
                     onChange={() => toggleSelected(row.id)}
                     aria-label={`Selecionar orçamento ${row.id}`}
-                    className="h-4 w-4 rounded border-line text-primary focus:ring-primary"
+                    className="h-4 w-4 shrink-0 rounded border-line text-primary focus:ring-primary"
                   />
-                  <span className="font-mono text-sm font-semibold truncate">{row.id}</span>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto min-w-0 justify-start truncate p-0 font-mono text-sm font-semibold"
+                    title={row.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      navigate(`/quotations/${encodeURIComponent(row.id)}`);
+                    }}
+                  >
+                    {row.id}
+                  </Button>
                 </div>
                 {statusBadge(row)}
               </div>
-              <EmailMarker row={row} />
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-fg-muted">{row.cliente || '—'}</span>
-                <span className="text-fg-muted text-xs">{formatDate(row.data)}</span>
+              <div className="min-w-0">
+                <p className="text-xs text-fg-muted">Cliente</p>
+                <p className="break-words font-medium">{row.cliente || 'Cliente não informado'}</p>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-semibold">{formatBRL(row.valor)}</span>
-                <div className="flex items-center gap-0.5">
+              <EmailMarker row={row} />
+              <div className="flex items-end justify-between gap-3 border-t border-line pt-3">
+                <div>
+                  <p className="text-xs text-fg-muted">Data · Total</p>
+                  <p className="text-sm text-fg-muted">{formatDate(row.data) || '—'}</p>
+                  <p className="font-mono font-semibold">{formatBRL(row.valor)}</p>
+                </div>
+                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -608,6 +661,16 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
                   >
                     <Copy />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Excluir orçamento ${row.id}`}
+                    title={`Excluir orçamento ${row.id}`}
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => setDeleteTarget(row.id)}
+                  >
+                    <Trash2 />
+                  </Button>
                 </div>
               </div>
             </div>
@@ -617,7 +680,7 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
 
       {/* Totals bar + Pagination (desktop only, mobile cards are self-contained) */}
       {!loading && !error && data.length > 0 && (
-        <div className="hidden md:flex bg-surface rounded-lg border border-line shadow-sm p-4 items-center justify-between flex-wrap gap-4">
+        <div className="hidden flex-wrap items-center justify-between gap-4 rounded-md border border-line bg-surface p-3 md:flex">
           <div className="flex items-center gap-6">
             <div>
               <span className="text-xs text-fg-muted">Nesta página</span>
@@ -733,7 +796,8 @@ export default function QuotationsPage({ navigate }: QuotationsPageProps) {
             Limpar seleção
           </Button>
           <Button
-            variant="default"
+            variant="outline"
+            className="text-destructive hover:bg-destructive/10"
             onClick={() => setBulkDeleteOpen(true)}
             disabled={selectedCount === 0 || bulkDeleting}
           >

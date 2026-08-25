@@ -35,13 +35,14 @@ import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { useToast } from '@/components/shared/toast';
 import { quotationStatusLabel, quotationStatusBadgeKey } from '@/lib/statusLabels';
-import { TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import SkeletonDetail from '@/components/shared/SkeletonDetail';
 import {
   QuotationSectionsEditor,
   type QuotationSectionsSnapshot,
 } from '@/features/quotations/components/QuotationSectionsEditor';
 import { QuotationEmailDialog } from '@/features/quotations/components/QuotationEmailDialog';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { projectClientRow, projectProduct, projectQuotationDetail, projectQuotationTemplate, type ProjectedQuotationData, type ProjectedQuotationItem } from '@/lib/localProjections';
 
 // Estados legados de conversação (fora do vocabulário canônico de orçamentos).
@@ -921,41 +922,46 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const emailSent = data.email_sent || confirmedEmailAcceptedKey === `${data.id}:${data.revision_id}`;
 
   return (
-    <div className="space-y-4 max-w-[1060px] mx-auto">
-      <div className="bg-surface rounded-lg border border-line shadow-sm">
-        <div className="px-6 py-4 border-b flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-lg font-semibold">{data.id}</span>
-            <StatusBadge {...statusBadgeProps(data.status)} />
-            {data.revision_number && (
-              <span className="text-xs text-fg-muted">Revisão {data.revision_number}</span>
-            )}
+    <div className="mx-auto w-full max-w-[1120px] space-y-4">
+      <div className="overflow-hidden rounded-md border border-line bg-surface">
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 title={data.id} className="truncate font-mono text-xl font-semibold tracking-[-0.2px]">{data.id}</h1>
+              <StatusBadge {...statusBadgeProps(data.status)} />
+              {data.revision_number && (
+                <span className="text-xs text-fg-muted">Revisão {data.revision_number}</span>
+              )}
+            </div>
+            <p className="mt-1 break-words text-sm text-fg-muted">
+              {data.cliente || 'Cliente não informado'}
+            </p>
           </div>
           <button
             onClick={() => navigate('/quotations')}
-            className="text-sm text-primary hover:underline"
+            className="shrink-0 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           >
             ← Voltar
           </button>
-        </div>
+        </header>
 
         {!draftEditable && (
-          <div className="px-6 py-3 border-b bg-page text-sm text-fg-muted">
-            Este orçamento não está em rascunho e não pode ser editado.
+          <div className="border-b border-line bg-surface-subtle px-4 py-3 text-sm text-fg-muted sm:px-6">
+            Este orçamento está somente para leitura porque já foi emitido.
           </div>
         )}
         {conflict && (
-          <div className="px-6 py-3 border-b bg-destructive/10 text-sm text-destructive flex items-center justify-between gap-3">
-            <span>{conflict}</span>
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-destructive/10 px-4 py-3 text-sm text-destructive sm:px-6">
+            <span className="min-w-0 break-words">{conflict}</span>
             <Button variant="outline" size="sm" onClick={reloadAfterConflict}>
               Recarregar
             </Button>
           </div>
         )}
 
-        <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="relative">
-            <span className="text-xs text-fg-muted">Cliente</span>
+        <section aria-label="Dados principais" className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-line px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
+          <div className="relative min-w-0">
+            <span className="text-xs font-medium text-fg-muted">Cliente</span>
             {editing ? (
               <>
                 <div className="relative mt-1">
@@ -975,7 +981,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   )}
                 </div>
                 {clientResults.length > 0 && (
-                  <div className="absolute z-40 left-0 right-0 mt-1 bg-surface border border-line rounded shadow-lg max-h-40 overflow-y-auto">
+                  <div className="absolute left-0 right-0 z-40 mt-1 max-h-40 overflow-y-auto rounded-md border border-line bg-surface shadow-lg">
                     {clientResults.map((client) => (
                       <button
                         key={client.id}
@@ -998,30 +1004,30 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 )}
               </>
             ) : (
-              <p className="font-medium mt-1">{data.cliente || '—'}</p>
+              <p className="mt-1 break-words font-medium">{data.cliente || 'Cliente não informado'}</p>
             )}
           </div>
-          <div>
-            <span className="text-xs text-fg-muted">Data</span>
-            <p>{formatDate(data.data)}</p>
+          <div className="min-w-0">
+            <span className="text-xs font-medium text-fg-muted">Data</span>
+            <p className="mt-1 whitespace-nowrap tabular-nums">{formatDate(data.data) || '—'}</p>
           </div>
-          <div>
-            <span className="text-xs text-fg-muted">Validade</span>
-            <p>
-              {formatDate(data.validade)} ({data.validade_dias ?? '—'} dias)
+          <div className="min-w-0">
+            <span className="text-xs font-medium text-fg-muted">Validade</span>
+            <p className="mt-1 break-words">
+              {formatDate(data.validade) || '—'} ({data.validade_dias ?? '—'} dias)
             </p>
             {(data.derived_expired ||
               data.expiration_derived ||
               data.is_expired ||
               data.expirada) && (
-              <span className="text-xs text-warning">Validade expirada (indicador derivado)</span>
+              <span className="mt-1 block text-xs text-warning">Validade expirada (indicador derivado)</span>
             )}
           </div>
-        </div>
+        </section>
 
-        <div className="px-6 py-4 border-b grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="text-sm">
-            <span className="text-xs text-fg-muted">Pagamento</span>
+        <section aria-label="Condições comerciais" className="grid grid-cols-1 gap-x-6 gap-y-4 border-b border-line px-4 py-4 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
+          <label className="min-w-0 text-sm">
+            <span className="text-xs font-medium text-fg-muted">Pagamento</span>
             {editing ? (
               <Input
                 aria-label="Pagamento do orçamento"
@@ -1029,11 +1035,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setPagamento(event.target.value)}
               />
             ) : (
-              <p>{pagamento || '—'}</p>
+              <p className="mt-1 break-words whitespace-pre-wrap">{pagamento || '—'}</p>
             )}
           </label>
-          <label className="text-sm">
-            <span className="text-xs text-fg-muted">Entrega</span>
+          <label className="min-w-0 text-sm">
+            <span className="text-xs font-medium text-fg-muted">Entrega</span>
             {editing ? (
               <Input
                 aria-label="Entrega do orçamento"
@@ -1041,11 +1047,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setEntrega(event.target.value)}
               />
             ) : (
-              <p>{entrega || '—'}</p>
+              <p className="mt-1 break-words whitespace-pre-wrap">{entrega || '—'}</p>
             )}
           </label>
-          <label className="text-sm">
-            <span className="text-xs text-fg-muted">Validade (dias)</span>
+          <label className="min-w-0 text-sm">
+            <span className="text-xs font-medium text-fg-muted">Validade (dias)</span>
             {editing ? (
               <Input
                 aria-label="Validade do orçamento"
@@ -1056,11 +1062,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setValidadeDias(event.target.value)}
               />
             ) : (
-              <p>{data.validade_dias ?? '—'}</p>
+              <p className="mt-1 tabular-nums">{data.validade_dias ?? '—'}</p>
             )}
           </label>
-          <label className="text-sm">
-            <span className="text-xs text-fg-muted">Frete</span>
+          <label className="min-w-0 text-sm">
+            <span className="text-xs font-medium text-fg-muted">Frete</span>
             {editing ? (
               <Input
                 aria-label="Frete do orçamento"
@@ -1071,11 +1077,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setFrete(event.target.value)}
               />
             ) : (
-              <p>{formatBRL(data.frete)}</p>
+              <p className="mt-1 whitespace-nowrap tabular-nums">{formatBRL(data.frete)}</p>
             )}
           </label>
-          <label className="text-sm md:col-span-2">
-            <span className="text-xs text-fg-muted">Prazo de produção</span>
+          <label className="min-w-0 text-sm sm:col-span-2 lg:col-span-4">
+            <span className="text-xs font-medium text-fg-muted">Prazo de produção</span>
             {editing ? (
               <Input
                 aria-label="Prazo de produção do orçamento"
@@ -1083,27 +1089,27 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setPrazoProducao(event.target.value)}
               />
             ) : (
-              <p>{prazoProducao || '—'}</p>
+              <p className="mt-1 break-words whitespace-pre-wrap">{prazoProducao || '—'}</p>
             )}
           </label>
-          <label className="text-sm md:col-span-2">
-            <span className="text-xs text-fg-muted">Observações</span>
+          <label className="min-w-0 text-sm sm:col-span-2 lg:col-span-4">
+            <span className="text-xs font-medium text-fg-muted">Observações</span>
             {editing ? (
               <textarea
                 aria-label="Observações do orçamento"
-                className="mt-1 w-full min-h-20 rounded border border-line bg-surface px-3 py-2 text-sm"
+                className="mt-1 min-h-24 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm"
                 value={observacoes}
                 onChange={(event) => setObservacoes(event.target.value)}
               />
             ) : (
-              <p className="whitespace-pre-wrap">{observacoes || '—'}</p>
+              <p className="mt-1 break-words whitespace-pre-wrap">{observacoes || '—'}</p>
             )}
           </label>
-        </div>
+        </section>
 
-        <div className="px-6 py-4 border-b space-y-3">
+        <section aria-labelledby="quotation-sections-title" className="space-y-3 border-b border-line px-4 py-4 sm:px-6">
           <div>
-            <h2 className="text-sm font-semibold">Seções do orçamento</h2>
+            <h2 id="quotation-sections-title" className="text-base font-semibold">Seções do orçamento</h2>
             <p className="text-xs text-fg-muted">Conteúdo capturado nesta revisão.</p>
           </div>
           <QuotationSectionsEditor
@@ -1119,32 +1125,38 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               }));
             }}
           />
-        </div>
+        </section>
 
         {(templates.length > 0 || templateError) && (
-          <div className="px-6 py-4 border-b flex flex-wrap items-end gap-3">
+          <section className="flex flex-wrap items-end gap-3 border-b border-line bg-surface-subtle px-4 py-4 sm:px-6">
+            <h2 id="quotation-template-title" className="sr-only">Modelo do orçamento</h2>
             {templates.length > 0 && (
               <>
-                <label className="text-sm min-w-64">
-                  <span className="text-xs text-fg-muted">Modelo do orçamento</span>
-                  <select
-                    aria-label="Modelo do orçamento"
-                    className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
-                    value={selectedTemplate}
-                    disabled={!draftEditable}
-                    onChange={(event) => {
-                      const key = event.target.value;
-                      const template = templates.find((item) => item.key === key);
-                      setSelectedTemplate(key);
-                      setSelectedVersionId(template?.current_version_id || '');
-                    }}
-                  >
-                    {visibleTemplates.map((template) => (
-                      <option key={template.key} value={template.key}>
-                        {template.name}{template.archived ? ' (arquivado)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                <label className="min-w-0 flex-1 text-sm sm:min-w-64">
+                  <span className="text-xs font-medium text-fg-muted">Modelo do orçamento</span>
+                  {draftEditable ? (
+                    <select
+                      aria-label="Modelo do orçamento"
+                      className="mt-1 h-9 w-full rounded-sm border border-line bg-surface px-2 text-sm"
+                      value={selectedTemplate}
+                      onChange={(event) => {
+                        const key = event.target.value;
+                        const template = templates.find((item) => item.key === key);
+                        setSelectedTemplate(key);
+                        setSelectedVersionId(template?.current_version_id || '');
+                      }}
+                    >
+                      {visibleTemplates.map((template) => (
+                        <option key={template.key} value={template.key}>
+                          {template.name}{template.archived ? ' (arquivado)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p aria-label="Modelo do orçamento" className="mt-2 break-words font-medium">
+                      {selectedTemplateMetadata?.name || selectedTemplate || 'Modelo não informado'}
+                    </p>
+                  )}
                 </label>
                 {selectedTemplateMetadata && (
                   <span
@@ -1160,11 +1172,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               </>
             )}
             {templateError && <span className="text-xs text-destructive">{templateError}</span>}
-          </div>
+          </section>
         )}
         {(data.status_canonical === 'emitido' || data.status_canonical === 'enviado') && !editing && (
           <div
-            className="px-6 py-3 border-b flex flex-wrap items-center gap-2"
+            className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6"
             role="group"
             aria-label="Estado comercial"
           >
@@ -1190,17 +1202,25 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           </div>
         )}
 
-        <div className="px-6 py-4 overflow-x-auto">
-          <table className="w-full text-sm">
+        <section aria-labelledby="quotation-items-title" className="space-y-3 px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="quotation-items-title" className="text-base font-semibold">Itens</h2>
+            <span className="text-xs text-fg-muted">
+              {displayItems.length} item{displayItems.length === 1 ? '' : 'ns'}
+            </span>
+          </div>
+          {displayItems.length > 0 ? (
+            <Table>
+              <table className="min-w-[760px] text-sm">
             <TableHeader>
               <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead className="text-center">Qtd</TableHead>
-                <TableHead className="text-right">Sugerido</TableHead>
-                <TableHead className="text-right">Aplicado</TableHead>
-                <TableHead className="text-right">Diferença</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="h-9 whitespace-nowrap">SKU</TableHead>
+                <TableHead className="h-9 min-w-[220px]">Produto</TableHead>
+                <TableHead className="h-9 whitespace-nowrap text-center">Qtd</TableHead>
+                <TableHead className="h-9 whitespace-nowrap text-right">Sugerido</TableHead>
+                <TableHead className="h-9 whitespace-nowrap text-right">Aplicado</TableHead>
+                <TableHead className="h-9 whitespace-nowrap text-right">Diferença</TableHead>
+                <TableHead className="h-9 whitespace-nowrap text-right">Total</TableHead>
                 {editing && <TableHead />}
               </TableRow>
             </TableHeader>
@@ -1209,7 +1229,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 const results = productResults[item._key] || [];
                 return (
                   <TableRow key={item._key}>
-                    <TableCell className="relative font-mono">
+                    <TableCell className="relative whitespace-nowrap py-2 font-mono">
                       {editing ? (
                         <>
                           <Input
@@ -1218,7 +1238,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                             className="h-8 w-32"
                           />
                           {results.length > 0 && (
-                            <div className="absolute z-40 left-0 top-9 w-64 bg-surface border border-line rounded shadow-lg">
+                            <div className="absolute left-0 top-9 z-40 w-64 rounded-md border border-line bg-surface shadow-lg">
                               {results.map((product) => (
                                 <button
                                   type="button"
@@ -1237,10 +1257,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           )}
                         </>
                       ) : (
-                        item.sku
+                        item.sku || '—'
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="max-w-[320px] break-words py-2">
                       {editing ? (
                         <label className="block space-y-1">
                           <Input
@@ -1256,10 +1276,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           />
                         </label>
                       ) : (
-                        item.nome || item.item_name || item.sku
+                        item.nome || item.item_name || item.sku || 'Produto não informado'
                       )}
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="whitespace-nowrap py-2 text-center">
                       {editing ? (
                         <Input
                           aria-label={`Quantidade de ${item.sku}`}
@@ -1279,10 +1299,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                         Number(item.qty)
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="whitespace-nowrap py-2 text-right">
                       {formatBRL(item.suggested_unit_price)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="whitespace-nowrap py-2 text-right">
                       {editing ? (
                         <Input
                           aria-label={`Preço aplicado ${item.sku}`}
@@ -1303,11 +1323,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                       )}
                     </TableCell>
                     <TableCell
-                      className={`text-right ${Number(item.price_difference) > 0 ? 'text-destructive' : ''}`}
+                      className={`whitespace-nowrap py-2 text-right ${Number(item.price_difference) > 0 ? 'text-destructive' : ''}`}
                     >
                       {formatBRL(item.price_difference)}
                     </TableCell>
-                    <TableCell className="text-right font-mono">
+                    <TableCell className="whitespace-nowrap py-2 text-right font-mono">
                       {formatBRL(
                         editing
                           ? Number(item.qty) * Number(item.applied_unit_price)
@@ -1330,19 +1350,40 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 );
               })}
             </TableBody>
-          </table>
+              </table>
+            </Table>
+          ) : (
+            <EmptyState
+              icon={FileText}
+              title="Nenhum item neste orçamento"
+              description={editing ? 'Adicione um item para compor a proposta.' : 'Não há itens registrados nesta revisão.'}
+            />
+          )}
           {editing && (
-            <Button variant="outline" size="sm" className="mt-3" onClick={addItem}>
+            <Button variant="outline" size="sm" onClick={addItem}>
               <Plus size={14} /> Item
             </Button>
           )}
-        </div>
+        </section>
 
-        <div className="px-6 py-3 border-t text-right font-semibold">
-          Subtotal: {formatBRL(displayedSubtotal)} · Frete:{' '}
-          {formatBRL(editing ? frete : data.frete)} · Total: {formatBRL(displayedTotal)}
-        </div>
-        <div className="px-6 py-4 border-t flex items-center gap-3">
+        <section aria-label="Resumo financeiro" className="flex justify-end border-t border-line bg-surface-subtle px-4 py-4 sm:px-6">
+          <dl className="grid w-full max-w-xs gap-2 text-right text-sm">
+            <div className="flex items-center justify-between gap-6">
+              <dt className="text-fg-muted">Subtotal</dt>
+              <dd className="font-mono tabular-nums">{formatBRL(displayedSubtotal)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <dt className="text-fg-muted">Frete</dt>
+              <dd className="font-mono tabular-nums">{formatBRL(editing ? frete : data.frete)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-6 border-t border-line pt-2 text-base font-semibold">
+              <dt>Total</dt>
+              <dd className="font-mono tabular-nums">{formatBRL(displayedTotal)}</dd>
+            </div>
+          </dl>
+        </section>
+        <section aria-label="Ações do orçamento" className="space-y-3 border-t border-line px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
           {draftEditable && !editing && (
             <Button
               variant="outline"
@@ -1391,57 +1432,72 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
               >
                 <Mail size={14} /> {emailSent ? 'Reenviar por e-mail' : 'Enviar por e-mail'}
               </Button>
-              <select
-                aria-label="Fluxo de WhatsApp"
-                className="h-8 rounded-sm border border-line bg-surface px-2 text-xs"
-                value={deliveryFlowId}
-                onChange={(event) => setDeliveryFlowId(event.target.value)}
-                disabled={deliveryPending}
-              >
-                {deliveryFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
-              </select>
-              <QuotationDeliveryStatus
-                delivery={delivery}
-                pending={deliveryPending}
-                onResolve={handleResolveDelivery}
-                className="basis-full"
-              />
-              {deliveryError && (
-                <span role="status" className="basis-full text-xs text-warning">
-                  {deliveryError}
-                </span>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                title={
-                  deliveryPending
-                    ? 'Envio em andamento'
-                    : delivery
-                      ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status ao lado.'
-                      : (data.expirada || data.is_expired || data.derived_expired)
-                        ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
-                        : undefined
-                }
-                disabled={deliveryPending || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
-                onClick={sendIssuedQuotation}
-              >
-                <Phone size={14} /> Enviar WhatsApp
-              </Button>
-              {delivery && !deliveryPending && (
-                <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
-              )}
-              {(data.expirada || data.is_expired || data.derived_expired) && (
-                <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
-              )}
+              <div className="flex min-w-0 basis-full flex-wrap items-end gap-2 border-t border-line pt-3 sm:basis-auto sm:border-0 sm:pt-0">
+                <label className="min-w-0 text-xs font-medium text-fg-muted">
+                  <span className="mb-1 block">Fluxo de WhatsApp</span>
+                  <select
+                    aria-label="Fluxo de WhatsApp"
+                    className="h-9 max-w-full rounded-sm border border-line bg-surface px-2 text-sm font-normal text-fg"
+                    value={deliveryFlowId}
+                    onChange={(event) => setDeliveryFlowId(event.target.value)}
+                    disabled={deliveryPending}
+                  >
+                    {deliveryFlows.length === 0 && <option value="">Nenhum fluxo disponível</option>}
+                    {deliveryFlows.map((flow) => <option key={flow.id} value={flow.id}>{flow.name}</option>)}
+                  </select>
+                </label>
+                {deliveryFlows.length === 0 && (
+                  <span role="status" className="text-xs text-fg-muted">
+                    Não foi possível carregar os fluxos. Tente novamente mais tarde.
+                  </span>
+                )}
+                <QuotationDeliveryStatus
+                  delivery={delivery}
+                  pending={deliveryPending}
+                  onResolve={handleResolveDelivery}
+                  className="basis-full"
+                />
+                {deliveryError && (
+                  <span role="status" className="basis-full break-words text-xs text-warning">
+                    {deliveryError}
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title={
+                    deliveryPending
+                      ? 'Envio em andamento'
+                      : delivery
+                        ? 'Este orçamento já foi enviado pelo WhatsApp. Acompanhe o status ao lado.'
+                        : deliveryError
+                          ? 'Não foi possível verificar o envio. Tente novamente mais tarde.'
+                          : !deliveryFlowId
+                            ? 'Selecione um fluxo de WhatsApp para enviar.'
+                            : (data.expirada || data.is_expired || data.derived_expired)
+                            ? 'Orçamento vencido. Crie uma nova revisão para reenviar.'
+                            : undefined
+                  }
+                  disabled={deliveryPending || Boolean(deliveryError) || !deliveryFlowId || Boolean(delivery) || Boolean(data.expirada || data.is_expired || data.derived_expired)}
+                  onClick={sendIssuedQuotation}
+                >
+                  <Phone size={14} /> Enviar WhatsApp
+                </Button>
+                {delivery && !deliveryPending && (
+                  <span className="text-xs text-fg-muted">Já enviado — acompanhe o status acima.</span>
+                )}
+                {(data.expirada || data.is_expired || data.derived_expired) && (
+                  <span className="text-xs text-warning">Orçamento vencido. Crie uma nova revisão.</span>
+                )}
+              </div>
             </>
           )}
           {draftEditable && !editing && (
             <Button
               onClick={() => setConfirmDeleteOpen(true)}
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="text-destructive border-destructive/20 hover:bg-destructive/10"
+              className="text-destructive hover:bg-destructive/10"
             >
               <Trash2 size={14} /> Excluir
             </Button>
@@ -1455,29 +1511,30 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             <span
               role="status"
               aria-live="polite"
-              className={`text-xs ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
+              className={`basis-full break-words text-xs ${messageTone === 'error' ? 'text-destructive' : 'text-fg-muted'}`}
             >
               {message}
             </span>
           )}
-        </div>
+          </div>
+        </section>
 
         {(data.revision_history || []).length > 0 && (
-          <div className="px-6 py-4 border-t" aria-label="Histórico de revisões">
-            <h2 className="text-sm font-semibold mb-3">Histórico de revisões</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+          <section className="space-y-3 border-t border-line px-4 py-4 sm:px-6" aria-label="Histórico de revisões">
+            <h2 className="text-base font-semibold">Histórico de revisões</h2>
+            <Table>
+              <table className="min-w-[860px] text-sm">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Versão</TableHead>
-                    <TableHead>Criada em</TableHead>
-                    <TableHead>Validade</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Modelo</TableHead>
-                    <TableHead>Versão do modelo</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead>PDF</TableHead>
-                    <TableHead />
+                    <TableHead className="h-9">Versão</TableHead>
+                    <TableHead className="h-9">Criada em</TableHead>
+                    <TableHead className="h-9">Validade</TableHead>
+                    <TableHead className="h-9">Estado</TableHead>
+                    <TableHead className="h-9">Modelo</TableHead>
+                    <TableHead className="h-9">Versão do modelo</TableHead>
+                    <TableHead className="h-9 text-right">Total</TableHead>
+                    <TableHead className="h-9">PDF</TableHead>
+                    <TableHead className="h-9" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1490,10 +1547,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                     const eligible = entry.status_canonical !== 'rascunho' && !draftEditable;
                     return (
                       <TableRow key={entry.revision_id || entry.id}>
-                        <TableCell className="font-medium">R{entry.revision_number}</TableCell>
-                        <TableCell>{formatDate(entry.created_at || entry.createdAt)}</TableCell>
-                        <TableCell>
-                          {formatDate(entry.validity_date || entry.validade)}
+                        <TableCell className="whitespace-nowrap py-2 font-medium">R{entry.revision_number}</TableCell>
+                        <TableCell className="whitespace-nowrap py-2">{formatDate(entry.created_at || entry.createdAt) || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap py-2">
+                          {formatDate(entry.validity_date || entry.validade) || '—'}
                           {expired && <span className="block text-xs text-warning">Expirada</span>}
                         </TableCell>
                         <TableCell>
@@ -1501,9 +1558,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                             {...statusBadgeProps(entry.status)}
                           />
                         </TableCell>
-                        <TableCell>{entry.template_key || '—'}</TableCell>
-                        <TableCell>{entry.template_version ?? '—'}</TableCell>
-                        <TableCell className="text-right font-mono">
+                        <TableCell className="max-w-[180px] break-words py-2">{entry.template_key || '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap py-2">{entry.template_version ?? '—'}</TableCell>
+                        <TableCell className="whitespace-nowrap py-2 text-right font-mono">
                           {formatBRL(entry.total || entry.valor)}
                         </TableCell>
                         <TableCell>
@@ -1542,8 +1599,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                   })}
                 </TableBody>
               </table>
-            </div>
-          </div>
+            </Table>
+          </section>
         )}
       </div>
       <QuotationEmailDialog
@@ -1630,7 +1687,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                 onChange={(event) => setLossReasonDetail(event.target.value)}
                 rows={3}
                 placeholder="Contexto adicional sobre a perda…"
-                className="mt-1 w-full rounded border border-line bg-surface px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-sm border border-line bg-surface px-3 py-2 text-sm"
               />
             </label>
             <div className="mt-5 flex justify-end gap-3">
@@ -1697,13 +1754,21 @@ export default function QuotationDetailPage({ id, navigate }: QuotationDetailPag
   if (error) {
     return (
       <div className="space-y-4 animate-fade-in">
-        <button onClick={() => navigate('/quotations')} className="text-sm text-primary hover:underline">
+        <button
+          onClick={() => navigate('/quotations')}
+          className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page"
+        >
           ← Voltar para Orçamentos
         </button>
-        <div className="flex flex-col items-center py-16 text-fg-muted gap-3">
-          <AlertTriangle size={32} className="text-destructive/60" />
-          <p>Erro ao carregar orçamento</p>
-          <p className="text-sm">{error}</p>
+        <div
+          role="alert"
+          className="flex flex-col items-center gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-12 text-center text-fg"
+        >
+          <AlertTriangle size={32} className="text-destructive" aria-hidden="true" />
+          <p className="font-medium">Erro ao carregar orçamento</p>
+          <p className="max-w-md text-sm text-fg-muted">
+            Verifique sua conexão e tente novamente. Nenhuma alteração foi realizada.
+          </p>
           <Button variant="outline" onClick={() => void loadDetail()}>Tentar novamente</Button>
         </div>
       </div>
