@@ -36,6 +36,7 @@ const MOCK_ORCAMENTO = {
   quotation_uuid: '11111111-1111-4111-8111-111111111101',
   revision_id: '22222222-2222-4222-8222-222222222201',
   revision_number: 1,
+  concurrency_token: '2026-08-13T00:00:00.000Z',
   deal_id: 'CRM-DEAL-2026-00001',
   customer_id: 'CUST-001',
   customer_new: true,
@@ -311,10 +312,10 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
   test('submissão de texto exibe rascunhos para revisão', async ({ page }) => {
     await setupApiMocks(page);
     /** @type {any} */
-    let issueRequest;
-    await page.route('**/api/quotation-issues**', async (route) => {
-      if (route.request().method() === 'POST') issueRequest = route.request().postDataJSON();
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ISSUE) });
+    let orcamentoRequest;
+    await page.route('**/api/orcamento**', async (route) => {
+      if (route.request().method() === 'POST') orcamentoRequest = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_ORCAMENTO) });
     });
     await page.goto('/#/auto');
     await page.waitForSelector('textarea', { timeout: 10000 });
@@ -353,8 +354,10 @@ test.describe('Auto Quote — Fluxo Principal @quotations @smoke', () => {
     expect(previewPayload.extracted.template_key).toBe('minimalista');
 
     await page.getByRole('button', { name: 'Gerar orçamento' }).click();
-    await expect.poll(() => issueRequest?.draft?.extracted?.items?.[0]?.item_name, { timeout: 10000 }).toBe(customItemName);
-    await expect.poll(() => issueRequest?.draft?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
+    // Emission persists the draft first and then issues it by reference; the
+    // reviewed commercial content travels in the draft-save POST only.
+    await expect.poll(() => orcamentoRequest?.extracted?.items?.[0]?.item_name, { timeout: 10000 }).toBe(customItemName);
+    await expect.poll(() => orcamentoRequest?.extracted?.template_key, { timeout: 10000 }).toBe('minimalista');
     const pdfLink = page.getByRole('link', { name: 'Abrir PDF' });
     await expect(pdfLink).toBeVisible();
     await expect(pdfLink).toHaveAttribute('href', MOCK_ISSUE.pdf_url);

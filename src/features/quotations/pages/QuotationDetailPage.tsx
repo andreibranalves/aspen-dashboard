@@ -21,7 +21,7 @@ import {
   Search,
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete, type ApiError } from '@/lib/api/api';
-import { issueQuotation } from '@/lib/api/quotationIssueApi';
+import { issuePersistedDraft } from '@/lib/api/quotationIssueApi';
 import { fetchFlows, type CommunicationFlow } from '@/lib/api/communicationApi';
 import QuotationDeliveryStatus from '@/features/quotations/components/QuotationDeliveryStatus';
 import { useQuotationDeliveries, deliveryIdentityKey } from '@/hooks/useQuotationDeliveries';
@@ -752,27 +752,32 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     showMessage('');
     setConflict('');
     try {
+      const token = concurrencyTokenRef.current;
+      if (!token) {
+        setConflict('Token de concorrência ausente. Recarregue o orçamento antes de emitir.');
+        return;
+      }
+      const revisionId = data.revision_id || '';
+      if (!revisionId) throw new Error('Recarregue o orçamento antes de emitir.');
+      // Emission is by reference: the server loads commercial content, items,
+      // client and template from the persisted revision. Unsaved editor state
+      // is deliberately NOT sent — save first to include it.
       const key = globalThis.crypto.randomUUID();
-      const issue = await issueQuotation({ extracted: {
-        nome: data.cliente || '', email: data.email || null, telefone: data.telefone || null,
-        items: items.map((item) => ({ item_code: item.sku, item_name: item.item_name, qty: Number(item.qty), rate: Number(item.applied_unit_price), manual_rate: item.manual_rate })),
-        prazo_producao: sections.prazo_producao.current.value || undefined, frete: frete || undefined,
-        pagamento: sections.pagamento.current.body,
-        entrega,
-        validade_dias: Number(validadeDias),
-        observacoes: sections.condicoes_gerais.current.body,
-        template_key: selectedTemplate,
-        template_version_id: selectedVersionId || undefined,
-        secoes: sections,
-      } }, key, { sourceQuotationId: data.quotation_uuid || undefined, sourceRevisionId: data.revision_id || undefined });
+      const issue = await issuePersistedDraft(revisionId, token, key);
       toast(`Orçamento ${issue.businessNumber} emitido.`, 'success');
       await onReload();
     } catch (error) {
-      showMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`, 'error');
+      const status = (error as { status?: number }).status;
+      if (status === 409) {
+        setConflict((error as Error).message || 'O orçamento mudou ou não pode mais ser emitido. Recarregue para conferir.');
+        showMessage('');
+      } else {
+        showMessage(`Erro ao emitir: ${(error as Error).message || 'Tente novamente.'}`, 'error');
+      }
     } finally {
       setIssuing(false);
     }
-  }, [data.cliente, data.email, data.quotation_uuid, data.revision_id, entrega, frete, items, onReload, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
+  }, [concurrencyTokenRef, data.revision_id, onReload, showMessage, toast]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido', lossReason?: string) => {

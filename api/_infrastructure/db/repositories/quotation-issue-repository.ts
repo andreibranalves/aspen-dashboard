@@ -1,41 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { getDatabase, type AppDatabase } from '../client.js';
-import { appSettings, clients, productPricingTiers, products, quoteRevisionItems, quoteRevisions, quoteSequences, quotations, quotationIssueRequests, quotationTemplates, quotationTemplateVersions } from '../schema.js';
+import { quoteRevisionItems, quoteRevisions, quotations, quotationIssueRequests, quotationTemplates, quotationTemplateVersions } from '../schema.js';
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
-import { buildDraftQuotationSnapshot, DraftPreviewInputError, type DraftQuotationSnapshot } from '../../../_modules/quotation-draft-snapshot.js';
-import {
-  getQuotationTemplate,
-  parseQuotationTemplateContractVersion,
-  quotationTemplateFromVersion,
-  renderQuotationTemplate,
-} from '../../../_modules/quotation-template-catalog.js';
+import { renderQuotationDocument } from '../../../_modules/quotation-document.js';
 import { renderQuotationPdf } from '../../../_modules/quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from '../../../_modules/quotation-document-storage.js';
-import { normalizeProductPricing, resolveProductPrice, formatMoneyCents, parseMoneyCents, parseScaledInteger, PricingUnavailableError, PricingValidationError } from '../../../_modules/pricing-core.js';
-import {
-  DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
-  normalizeQuotationCompanyConfiguration,
-} from '../../../_modules/quotation-company.js';
-import {
-  normalizeQuotationSections,
-  toSafeMultilineHtml,
-  type QuotationSectionsSnapshot,
-} from '../../../_modules/quotation-content.js';
-import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
-import { convertQuoteLeadInTransaction } from './quote-leads-repository.js';
+import type { QuotationTemplateSnapshot } from './quotation-template-repository.js';
+import { quotationConcurrencyToken } from './quote-draft-management-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
-type Transaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
-export type QuotationIssueDatabase = AppDatabase | Transaction;
+export type QuotationIssueDatabase = AppDatabase;
 
+/** Issue an existing persisted draft by reference: the revision identity,
+ * the quotation concurrency token and the idempotency key are the whole
+ * input. Commercial content is never accepted here — it is loaded from the
+ * revision snapshot so re-sent browser fields cannot participate. */
 export interface QuotationIssueInput {
   idempotencyKey: string;
-  draft: unknown;
-  sourceLeadId?: string;
-  sourceQuotationId?: string;
-  sourceRevisionId?: string;
+  revisionId: string;
+  concurrencyToken: string;
 }
 
 export interface QuotationIssueResult {
@@ -70,54 +55,18 @@ export class QuotationIssueRepositoryError extends Error {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const LEASE_MS = 30_000;
 
-function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return value as Record<string, unknown>;
-}
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.keys(value as Record<string, unknown>).sort().reduce<Record<string, unknown>>((out, key) => {
-    if (!['idempotencyKey', 'idempotency_key', 'createdAt', 'updatedAt', 'timestamp', 'uiState', 'ui_state'].includes(key)) out[key] = canonicalize((value as Record<string, unknown>)[key]);
-    return out;
-  }, {});
-}
-export function quotationIssueFingerprint(input: QuotationIssueInput): string {
-  return createHash('sha256').update(JSON.stringify(canonicalize({
-    draft: input.draft,
-    sourceLeadId: input.sourceLeadId || null,
-    sourceQuotationId: input.sourceQuotationId || null,
-    sourceRevisionId: input.sourceRevisionId || null,
-  }))).digest('hex');
+export function quotationIssueFingerprint(input: Pick<QuotationIssueInput, 'revisionId'>): string {
+  return createHash('sha256').update(JSON.stringify({ revisionId: String(input.revisionId || '').trim() })).digest('hex');
 }
 function date(value: unknown, fallback: Date): Date {
   const parsed = value instanceof Date ? value : new Date(String(value || ''));
   return Number.isNaN(parsed.getTime()) ? new Date(fallback) : new Date(parsed);
 }
 function iso(value: unknown, fallback: Date): string { return date(value, fallback).toISOString(); }
-function validUuid(value: unknown): string {
+function requiredUuid(value: unknown, invalidMessage: string): string {
   const id = String(value || '').trim();
-  if (!UUID.test(id)) throw new QuotationIssueInputError('Chave Idempotency-Key inválida.');
+  if (!UUID.test(id)) throw new QuotationIssueInputError(invalidMessage);
   return id;
-}
-function validityDays(value: unknown, fallback: unknown): number {
-  const days = Number(value ?? fallback);
-  if (!Number.isInteger(days) || days < 1 || days > 365) {
-    throw new QuotationIssueInputError('Validade do orçamento deve estar entre 1 e 365 dias.');
-  }
-  return days;
-}
-function sectionsSnapshot(value: unknown): QuotationSectionsSnapshot | null {
-  const root = record(value);
-  if (root.schema_version !== 1) return null;
-  const valid = ['prazo_producao', 'pagamento', 'condicoes_gerais'].every((key) => {
-    const section = record(root[key]);
-    const current = record(section.current);
-    const base = record(section.base);
-    return typeof current.enabled === 'boolean' && typeof current.title === 'string'
-      && typeof base.enabled === 'boolean' && typeof base.title === 'string';
-  });
-  return valid ? value as QuotationSectionsSnapshot : null;
 }
 function issueResult(quotation: typeof quotations.$inferSelect, revision: typeof quoteRevisions.$inferSelect): QuotationIssueResult {
   const issuedAt = iso(revision.issuedAt || quotation.issuedAt || revision.createdAt, new Date(0));
@@ -136,8 +85,6 @@ export interface QuotationIssueRepositoryOptions {
   idFactory?: () => string;
   leaseMs?: number;
   renderPdf?: (html: string) => Promise<Buffer>;
-  buildSnapshot?: typeof buildDraftQuotationSnapshot;
-  convertLead?: typeof convertQuoteLeadInTransaction;
   database?: DatabaseProvider;
 }
 
@@ -166,13 +113,6 @@ export function quotationIssueLeaseDecision(
   return 'claim';
 }
 
-async function reserveNumber(tx: Transaction, year: number): Promise<string> {
-  const [row] = await tx.insert(quoteSequences).values({ year, lastNumber: 1 }).onConflictDoUpdate({ target: quoteSequences.year, set: { lastNumber: sql`${quoteSequences.lastNumber} + 1` } }).returning({ lastNumber: quoteSequences.lastNumber });
-  const number = Number(row?.lastNumber || 0);
-  if (number < 1 || number > 9999) throw new QuotationIssueConflictError('A numeração anual de orçamentos atingiu o limite.');
-  return `ORC-${year}${String(number).padStart(4, '0')}`;
-}
-
 async function readRequest(db: QuotationIssueDatabase, key: string) {
   const [row] = await db.select().from(quotationIssueRequests).where(eq(quotationIssueRequests.idempotencyKey, key)).limit(1);
   return row || null;
@@ -182,13 +122,11 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
   const now = options.now || (() => new Date());
   const idFactory = options.idFactory || randomUUID;
   const renderPdf = options.renderPdf || renderQuotationPdf;
-  const buildSnapshot = options.buildSnapshot || buildDraftQuotationSnapshot;
-  const convertLead = options.convertLead || convertQuoteLeadInTransaction;
   const leaseMs = options.leaseMs || LEASE_MS;
   const database = options.database || getDb;
 
   async function read(idempotencyKey: string): Promise<QuotationIssueStatus | null> {
-    const key = validUuid(idempotencyKey);
+    const key = requiredUuid(idempotencyKey, 'Chave Idempotency-Key inválida.');
     const row = await readRequest(database(), key);
     if (!row) return null;
     if (row.state === 'processing') return { state: 'processing', retryAfterMs: Math.max(0, date(row.leaseExpiresAt, now()).getTime() - now().getTime()) };
@@ -201,7 +139,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
   }
 
   async function issue(input: QuotationIssueInput): Promise<QuotationIssueResult> {
-    const key = validUuid(input?.idempotencyKey);
+    const key = requiredUuid(input?.idempotencyKey, 'Chave Idempotency-Key inválida.');
     const fingerprint = quotationIssueFingerprint(input);
     const started = date(now(), new Date());
     let requestId = idFactory();
@@ -249,263 +187,48 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
         if (request.state !== 'processing' || !claimedLeaseExpiresAt || !claimedUpdatedAt || date(request.leaseExpiresAt, started).getTime() !== claimedLeaseExpiresAt.getTime() || date(request.updatedAt, started).getTime() !== claimedUpdatedAt.getTime()) {
           throw new QuotationIssueConflictError('A emissão desta chave já foi retomada por outra tentativa. Consulte o estado da emissão.');
         }
-        const inputDraft = record(input.draft);
-        const extracted = record(inputDraft.extracted || inputDraft);
-        const [settingsRow] = await tx.select().from(appSettings).where(eq(appSettings.singletonId, 1)).limit(1);
-        const settings = settingsRow || {
-          validadeDias: 15,
-          pagamento: '',
-          entrega: '',
-          fretePadrao: '0.00',
-          observacoes: '',
-          templatePadrao: 'padrao',
-          quotationSections: null,
-          companyConfiguration: DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
-        };
-        const items = Array.isArray(extracted.items) ? extracted.items : [];
-        if (!String(extracted.nome || '').trim() || items.length === 0) throw new QuotationIssueInputError('Informe o cliente e ao menos um item antes de emitir o orçamento.');
-        const skus = [...new Set(items.map((item) => String(record(item).item_code || record(item).sku || '').trim()).filter(Boolean))];
-        const productRows = await tx.select().from(products).where(and(inArray(products.sku, skus), eq(products.ativo, true)));
-        const productBySku = new Map(productRows.map((p) => [p.sku, p]));
-        if (skus.some((sku) => !productBySku.has(sku))) throw new QuotationIssueConflictError('Um ou mais produtos não estão disponíveis. Atualize os preços e tente novamente.');
-        const tiers = await tx.select().from(productPricingTiers).where(inArray(productPricingTiers.productSku, skus)).orderBy(asc(productPricingTiers.productSku), asc(productPricingTiers.minimumQuantity));
-        const tiersBySku = new Map<string, typeof tiers>();
-        for (const tier of tiers) tiersBySku.set(tier.productSku, [...(tiersBySku.get(tier.productSku) || []), tier]);
-        let subtotal = 0n;
-        const resolved: Array<Record<string, unknown>> = [];
-        for (const raw of items) {
-          const item = record(raw); const sku = String(item.item_code || item.sku || '').trim();
-          const quantity = String(item.qty ?? item.quantidade ?? '0');
-          const pricing = normalizeProductPricing({ preco_base: productBySku.get(sku)!.precoBase, precos: (tiersBySku.get(sku) || []).map((x) => ({ minimum_quantity: String(x.minimumQuantity), unit_price: String(x.unitPrice) })) });
-          let resolution; try { resolution = resolveProductPrice(pricing, quantity, extracted.urgente === true); } catch (error) { if (error instanceof PricingValidationError || error instanceof PricingUnavailableError) throw new QuotationIssueConflictError(`Preço indisponível para o produto "${sku}".`); throw error; }
-          if (item.manual_rate !== true && item.rate !== undefined) {
-            let seen: bigint;
-            try { seen = parseMoneyCents(item.rate, `Preço do item`); } catch { throw new QuotationIssueInputError('Preço do item inválido.'); }
-            if (seen !== resolution.rate_cents) throw new QuotationIssueConflictError(`O preço do produto "${sku}" foi atualizado. Atualize o orçamento e tente novamente.`);
-          }
-          const applied = item.manual_rate === true ? parseMoneyCents(item.rate, `Preço manual do item`) : resolution.rate_cents;
-          const total = (parseScaledInteger(quantity, 3, 'Quantidade') * applied + 500n) / 1000n;
-          subtotal += total;
-          resolved.push({ sku, quantity, item, product: productBySku.get(sku)!, resolution, applied, total });
+        const revisionId = requiredUuid(input.revisionId, 'Revisão do orçamento inválida.');
+        const [revision] = await tx.select().from(quoteRevisions).where(eq(quoteRevisions.id, revisionId)).for('update').limit(1);
+        if (!revision) throw new QuotationIssueConflictError('Revisão do orçamento não encontrada.');
+        const [quotation] = await tx.select().from(quotations).where(eq(quotations.id, revision.quotationId)).for('update').limit(1);
+        if (!quotation) throw new QuotationIssueConflictError('Orçamento de origem não encontrado.');
+        if (revision.status !== 'rascunho') throw new QuotationIssueConflictError('Este orçamento não está mais em rascunho e não pode ser emitido novamente.');
+        // The concurrency token is the quotation's updatedAt. A stale token
+        // means another user changed the draft after this page was loaded.
+        if (quotationConcurrencyToken(quotation.updatedAt) !== input.concurrencyToken.trim()) {
+          throw new QuotationIssueConflictError('O orçamento foi alterado por outro usuário. Recarregue antes de emitir.');
         }
-        const freight = parseMoneyCents(extracted.frete ?? settings.fretePadrao ?? '0.00', 'Frete', true);
-        const total = subtotal + freight;
+        const items = await tx.select().from(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revision.id)).orderBy(asc(quoteRevisionItems.position));
+        if (items.length === 0) throw new QuotationIssueInputError('Informe o cliente e ao menos um item antes de emitir o orçamento.');
+        let templateVersion: QuotationTemplateSnapshot['templateVersion'] = null;
+        if (revision.templateVersionId) {
+          const rows = await tx.select({ version: quotationTemplateVersions, model: quotationTemplates }).from(quotationTemplateVersions)
+            .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
+            .where(eq(quotationTemplateVersions.id, revision.templateVersionId)).limit(1);
+          templateVersion = rows[0] ? { ...rows[0].version, template: rows[0].model } : null;
+        }
+        // Legacy revisions without a stored version render through their
+        // immutable key/hash pair, exactly like the persisted preview seam.
         const issuedAt = date(now(), started);
-        let sourceRevision = input.sourceRevisionId ? (await tx.select().from(quoteRevisions).where(eq(quoteRevisions.id, input.sourceRevisionId)).for('update').limit(1))[0] : null;
-        if (input.sourceRevisionId && !sourceRevision) throw new QuotationIssueConflictError('Revisão de origem não encontrada.');
-        let sourceQuotation = sourceRevision ? (await tx.select().from(quotations).where(eq(quotations.id, sourceRevision.quotationId)).for('update').limit(1))[0] : null;
-        if (input.sourceQuotationId) {
-          const [requestedQuotation] = await tx.select().from(quotations).where(eq(quotations.id, input.sourceQuotationId)).for('update').limit(1);
-          if (!requestedQuotation) throw new QuotationIssueConflictError('Orçamento de origem não encontrado.');
-          if (sourceRevision && sourceRevision.quotationId !== requestedQuotation.id) throw new QuotationIssueConflictError('A revisão de origem não pertence ao orçamento informado.');
-          sourceQuotation = requestedQuotation;
-        }
-        if (sourceRevision && sourceQuotation && sourceRevision.quotationId !== sourceQuotation.id) throw new QuotationIssueConflictError('A revisão de origem não pertence ao orçamento informado.');
-        if (sourceQuotation && !input.sourceRevisionId) sourceRevision = (await tx.select().from(quoteRevisions).where(eq(quoteRevisions.quotationId, sourceQuotation.id)).orderBy(desc(quoteRevisions.version)).for('update').limit(1))[0] || null;
-        const reviewedValidityDays = validityDays(extracted.validade_dias, sourceRevision?.validadeDias ?? settings.validadeDias);
-        const payment = String(extracted.pagamento ?? sourceRevision?.pagamento ?? settings.pagamento ?? '').trim();
-        const deliveryTerms = String(extracted.entrega ?? sourceRevision?.entrega ?? settings.entrega ?? '');
-        const observations = String(extracted.observacoes ?? sourceRevision?.observacoes ?? settings.observacoes ?? '');
-        if (!payment) throw new QuotationIssueConflictError('Pagamento deve ser informado antes de emitir o orçamento.');
-        const quotationId = sourceQuotation?.id || idFactory();
-        const businessNumber = sourceQuotation?.businessNumber || await reserveNumber(tx, issuedAt.getUTCFullYear());
-        const sourceDraft = sourceRevision?.status === 'rascunho' ? sourceRevision : null;
-        const companySnapshot = normalizeQuotationCompanyConfiguration(
-          sourceDraft?.companySnapshot || settings.companyConfiguration,
-        );
-        const version = sourceDraft ? sourceDraft.version : sourceRevision ? sourceRevision.version + 1 : 1;
-        const revisionId = sourceDraft?.id || idFactory(); const clientId = sourceQuotation?.clientId || idFactory();
-        if (![quotationId, revisionId, clientId].every((id) => UUID.test(id))) throw new QuotationIssueRepositoryError('Não foi possível gerar os identificadores do orçamento.');
-        const selectedTemplateKey = String(
-          sourceRevision?.templatePadrao || extracted.template_key || settings.templatePadrao || 'padrao',
-        ).trim();
-        const requestedTemplateVersionId = String(extracted.template_version_id || '').trim();
-        const selectedTemplateVersionId = sourceRevision
-          ? sourceRevision.templateVersionId || ''
-          : requestedTemplateVersionId;
-        const selectedTemplateHash = sourceRevision?.templateHash || '';
-        const requestedSections = extracted.secoes ?? extracted.sections_snapshot;
-        const suppliedSnapshot = sectionsSnapshot(requestedSections);
-        if (requestedSections !== undefined && !suppliedSnapshot) {
-          throw new QuotationIssueInputError('Snapshot de seções do orçamento inválido.');
-        }
-        const persistedSections = sourceRevision?.sectionsSnapshot;
-        const sourceSnapshot = persistedSections == null ? null : sectionsSnapshot(persistedSections);
-        if (persistedSections != null && !sourceSnapshot) {
-          throw new QuotationIssueRepositoryError('Snapshot persistido de seções do orçamento inválido.');
-        }
-        const currentSections = suppliedSnapshot || sourceSnapshot;
-        let normalizedSections: ReturnType<typeof normalizeQuotationSections>;
-        try {
-          normalizedSections = normalizeQuotationSections(currentSections
-            ? {
-                schema_version: currentSections.schema_version,
-                prazo_producao: currentSections.prazo_producao.current,
-                pagamento: currentSections.pagamento.current,
-                condicoes_gerais: currentSections.condicoes_gerais.current,
-              }
-            : settings.quotationSections, {
-            pagamento: payment,
-            entrega: deliveryTerms,
-            observacoes: observations,
-          });
-        } catch (error) {
-          if (requestedSections !== undefined) {
-            throw new QuotationIssueInputError(error instanceof Error ? error.message : 'Snapshot de seções do orçamento inválido.');
-          }
-          throw error;
-        }
-        const sections: QuotationSectionsSnapshot = {
-          schema_version: 1,
-          prazo_producao: {
-            base: sourceSnapshot?.prazo_producao.base || normalizedSections.prazo_producao,
-            current: normalizedSections.prazo_producao,
-          },
-          pagamento: {
-            base: sourceSnapshot?.pagamento.base || normalizedSections.pagamento,
-            current: normalizedSections.pagamento,
-          },
-          condicoes_gerais: {
-            base: sourceSnapshot?.condicoes_gerais.base || normalizedSections.condicoes_gerais,
-            current: normalizedSections.condicoes_gerais,
-          },
-        };
-        const pdfDraft = {
-          ...record(input.draft),
-          extracted: {
-            ...extracted,
-            pagamento: payment,
-            entrega: deliveryTerms,
-            observacoes: observations,
-            template_key: selectedTemplateKey,
-            urgente: false,
-            items: resolved.map((resolvedItem) => ({
-              ...record(resolvedItem.item),
-              rate: Number(resolvedItem.applied as bigint) / 100,
-              manual_rate: true,
-            })),
-          },
-        };
-        let snapshot: DraftQuotationSnapshot;
-        try {
-          snapshot = await buildSnapshot(pdfDraft, {
-            now: () => issuedAt,
-            resolveSettings: async () => ({
-              validade_dias: reviewedValidityDays,
-              pagamento: payment,
-              entrega: deliveryTerms,
-              frete_padrao: formatMoneyCents(freight),
-              observacoes: observations,
-              template_padrao: selectedTemplateKey,
-              empresa: companySnapshot,
-            }),
-            resolveTemplate: async (key) => {
-              const rows = await tx.select({
-                key: quotationTemplates.key,
-                name: quotationTemplates.name,
-                source: quotationTemplateVersions.source,
-                hash: quotationTemplateVersions.sourceHash,
-                contractVersion: quotationTemplateVersions.contractVersion,
-                id: quotationTemplateVersions.id,
-              }).from(quotationTemplateVersions)
-                .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
-                .where(selectedTemplateVersionId
-                  ? and(eq(quotationTemplateVersions.id, selectedTemplateVersionId), eq(quotationTemplates.key, key))
-                  : selectedTemplateHash
-                    ? and(eq(quotationTemplates.key, key), eq(quotationTemplateVersions.sourceHash, selectedTemplateHash))
-                    : eq(quotationTemplates.key, key))
-                .orderBy(desc(quotationTemplateVersions.version)).limit(1);
-              const selected = rows[0];
-              return selected
-                ? quotationTemplateFromVersion({
-                    source: selected.source,
-                    sourceHash: selected.hash,
-                    contractVersion: parseQuotationTemplateContractVersion(selected.contractVersion),
-                    template: { key: selected.key, name: selected.name },
-                  })
-                : selectedTemplateVersionId || selectedTemplateHash
-                  ? null
-                  : getQuotationTemplate(key);
-            },
-          });
-        } catch (error) {
-          if (error instanceof DraftPreviewInputError) throw new QuotationIssueInputError(error.message);
-          throw error;
-        }
-        const paymentSection = sections.pagamento.current;
-        const conditionsSection = sections.condicoes_gerais.current;
-        const deadlineSection = sections.prazo_producao.current;
-        const viewModel = {
-          ...snapshot.viewModel,
-          quote_number: businessNumber, quotation_name: businessNumber, quote_id: quotationId,
-          revision: version, revision_number: version, status: 'emitido', status_canonical: 'emitido', revision_status: 'emitido',
-          subtotal: formatMoneyCents(subtotal), total: formatMoneyCents(total), freight: formatMoneyCents(freight), frete: formatMoneyCents(freight),
-          validity_days: reviewedValidityDays,
-          validity_date: new Date(issuedAt.getTime() + reviewedValidityDays * 86400000).toISOString().slice(0, 10),
-          validity: new Date(issuedAt.getTime() + reviewedValidityDays * 86400000).toISOString().slice(0, 10),
-          terms: { pagamento: payment, entrega: deliveryTerms, production_deadline: String(extracted.prazo_producao || ''), observations },
-          terms_snapshot: { pagamento: payment, entrega: deliveryTerms, production_deadline: String(extracted.prazo_producao || ''), observations },
-          secoes: {
-            prazo_producao: { ...deadlineSection, value: String(extracted.prazo_producao || '') },
-            pagamento: { ...paymentSection, body_html: toSafeMultilineHtml(paymentSection.body) },
-            condicoes_gerais: { ...conditionsSection, body_html: toSafeMultilineHtml(conditionsSection.body) },
-          },
-          sections_snapshot: sections,
-        };
+        const issuedQuotation = { ...quotation, status: 'emitido' as const, issuedAt, updatedAt: issuedAt };
+        const issuedRevision = { ...revision, status: 'emitido' as const, issuedAt };
+        await tx.update(quotations).set({ status: 'emitido', issuedAt, updatedAt: issuedAt }).where(eq(quotations.id, quotation.id));
+        await tx.update(quoteRevisions).set({ status: 'emitido', issuedAt }).where(eq(quoteRevisions.id, revision.id));
+        const html = renderQuotationDocument({ quotation: issuedQuotation, revision: issuedRevision, companySnapshot: revision.companySnapshot, templateVersion, sectionsSnapshot: revision.sectionsSnapshot, items }).html;
         let pdf: Buffer;
-        try {
-          pdf = await renderPdf(renderQuotationTemplate(snapshot.template, viewModel));
-        } catch {
+        try { pdf = await renderPdf(html); } catch {
           throw new QuotationIssueRepositoryError('Não foi possível gerar o PDF do orçamento. Tente novamente.');
         }
         if (!Buffer.isBuffer(pdf) || !isValidPdfBuffer(pdf)) throw new QuotationIssueRepositoryError('O gerador retornou um PDF inválido. Tente novamente.');
-        if (!sourceQuotation) {
-          await tx.insert(clients).values({ id: clientId, nome: String(extracted.nome).trim(), documento: extracted.cnpj ? String(extracted.cnpj).trim() : null, email: extracted.email ? String(extracted.email).trim().toLowerCase() : null, telefone: extracted.telefone ? String(extracted.telefone).replace(/\D/g, '') : null, arquivado: false, createdAt: issuedAt, updatedAt: issuedAt });
-          await tx.insert(quotations).values({ id: quotationId, businessNumber, clientId, status: 'emitido', issuedAt, createdAt: issuedAt, updatedAt: issuedAt });
-        } else await tx.update(quotations).set({ status: 'emitido', issuedAt, updatedAt: issuedAt }).where(eq(quotations.id, quotationId));
-        const metadata = selectedTemplateVersionId
-          ? { templateVersionId: selectedTemplateVersionId }
-          : await resolveQuotationRevisionMetadata(tx, { templatePadrao: selectedTemplateKey, templateHash: snapshot.template.hash, pagamento: payment, entrega: deliveryTerms, observacoes: observations, prazoProducao: String(extracted.prazo_producao || '') });
-        const revisionValues = {
-          quotationId,
-          version,
-          status: 'emitido' as const,
-          issuedAt,
-          validadeDias: reviewedValidityDays,
-          pagamento: payment,
-          entrega: deliveryTerms,
-          fretePadrao: settings.fretePadrao,
-          frete: formatMoneyCents(freight),
-          observacoes: observations,
-          prazoProducao: String(extracted.prazo_producao || ''),
-          templatePadrao: selectedTemplateKey,
-          templateHash: snapshot.template.hash,
-          templateVersionId: metadata.templateVersionId,
-          sectionsSnapshot: sections,
-          companySnapshot,
-          clienteNome: String(extracted.nome).trim(),
-          clienteDocumento: extracted.cnpj ? String(extracted.cnpj).trim() : null,
-          clienteEmail: extracted.email ? String(extracted.email).trim().toLowerCase() : null,
-          clienteTelefone: extracted.telefone ? String(extracted.telefone).replace(/\D/g, '') : null,
-          subtotal: formatMoneyCents(subtotal),
-          total: formatMoneyCents(total),
-        };
-        if (sourceDraft) {
-          await tx.update(quoteRevisions).set(revisionValues).where(eq(quoteRevisions.id, revisionId));
-          await tx.delete(quoteRevisionItems).where(eq(quoteRevisionItems.revisionId, revisionId));
-        } else {
-          await tx.insert(quoteRevisions).values({ id: revisionId, createdAt: issuedAt, ...revisionValues });
-        }
-        await tx.insert(quoteRevisionItems).values(resolved.map((item, position) => { const product = item.product as typeof products.$inferSelect; const resolution = item.resolution as { source: string; minimum_quantity: string; rate: string }; return { id: idFactory(), revisionId, position, productSku: product.sku, quantidade: String(item.quantity), produtoSku: product.sku, produtoNome: String((item.item as Record<string, unknown>).item_name || product.nome), produtoDescricao: product.descricao, produtoUnidade: product.unidade, produtoCategoria: product.categoria, produtoMarca: product.marca, precoFonte: resolution.source === 'tier' ? 'tier' : 'base', precoMinimoFaixa: resolution.minimum_quantity, precoSugerido: resolution.rate, precoAplicado: formatMoneyCents(item.applied as bigint), diferencaPreco: formatMoneyCents((item.applied as bigint) - parseMoneyCents(resolution.rate, 'Preço')), totalLinha: formatMoneyCents(item.total as bigint), manualRate: (item.item as Record<string, unknown>).manual_rate === true }; }));
-        await appendProductActivityEvents(tx, skus.map((sku) => ({ sku, tipo: 'orcamento' as const, texto: `Orçamento ${businessNumber} emitido`, reference_id: `orcamento:${quotationId}:${sku}`, created_at: issuedAt })));
-        if (input.sourceLeadId) await convertLead(tx, input.sourceLeadId, quotationId, issuedAt);
-        await tx.update(quotationIssueRequests).set({ state: 'completed', quotationId, revisionId, leaseExpiresAt: null, publicError: null, updatedAt: issuedAt }).where(eq(quotationIssueRequests.id, request.id));
-        return { quotationId, businessNumber, revisionId, revisionNumber: version, status: 'emitido' as const, issuedAt: issuedAt.toISOString(), validUntil: new Date(issuedAt.getTime() + reviewedValidityDays * 86400000).toISOString().slice(0, 10), pdfUrl: `/api/quotation-preview?id=${encodeURIComponent(quotationId)}&format=pdf` };
+        const skus = [...new Set(items.map((item) => item.productSku))];
+        await appendProductActivityEvents(tx, skus.map((sku) => ({ sku, tipo: 'orcamento' as const, texto: `Orçamento ${issuedQuotation.businessNumber} emitido`, reference_id: `orcamento:${quotation.id}:${sku}`, created_at: issuedAt })));
+        await tx.update(quotationIssueRequests).set({ state: 'completed', quotationId: quotation.id, revisionId: revision.id, leaseExpiresAt: null, publicError: null, updatedAt: issuedAt }).where(eq(quotationIssueRequests.id, request.id));
+        return issueResult(issuedQuotation, issuedRevision);
       });
       return result;
     } catch (error) {
       const message = publicError(error);
-      if (!(error instanceof QuotationIssueInputError) && !(error instanceof QuotationIssueConflictError) && !(error instanceof QuotationIssueRepositoryError)) console.error(`[quotation-issue] failed (${error instanceof Error ? error.message : typeof error})`);
+      if (!(error instanceof QuotationIssueInputError) && !(error instanceof QuotationIssueConflictError) && !(error instanceof QuotationIssueRepositoryError)) console.error(`[quotation-issue] failed (${error instanceof Error ? error.name : typeof error})`);
       try {
         if (claimedLeaseExpiresAt && claimedUpdatedAt) {
           await database().update(quotationIssueRequests).set({ state: 'retryable', publicError: message, leaseExpiresAt: null, updatedAt: date(now(), started) }).where(and(eq(quotationIssueRequests.idempotencyKey, key), eq(quotationIssueRequests.state, 'processing'), eq(quotationIssueRequests.leaseExpiresAt, claimedLeaseExpiresAt), eq(quotationIssueRequests.updatedAt, claimedUpdatedAt)));

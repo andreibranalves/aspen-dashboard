@@ -130,6 +130,16 @@ test('envio parcialmente aceito fica em reconciliação sem reenvio @quotations 
     orders: [{ nome: 'Cliente envio', email: 'cliente@example.test', telefone: '11999990000', origem: 'WhatsApp', items: [{ item_code: 'SKU-1', qty: 10 }] }],
   }));
   await page.route('**/api/pricing-lookup**', (route) => json(route, { success: true, items: [{ rate: 9, item_name: 'Produto' }] }));
+  await page.route('**/api/orcamento**', (route) => json(route, {
+    success: true,
+    quotation_id: 'ORC-20260001',
+    quotation_name: 'ORC-20260001',
+    quotation_uuid: quotationUuid,
+    revision_id: revisionId,
+    quote_revision_id: revisionId,
+    revision_number: 1,
+    concurrency_token: '2026-08-13T00:00:00.000Z',
+  }));
   await page.route('**/api/quotation-issues**', (route) => json(route, {
     quotation_id: quotationUuid,
     business_number: quotationId,
