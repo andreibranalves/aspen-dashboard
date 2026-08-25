@@ -37,6 +37,19 @@ async function setup(page, issueResponse, postResponse = issueResponse, { deferP
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ flows: [] }) });
       return;
     }
+    if (url.pathname.endsWith('/orcamento')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        success: true,
+        quotation_id: 'q-1',
+        quotation_name: 'ORC-20260001',
+        quotation_uuid: '11111111-1111-4111-8111-111111111101',
+        revision_id: 'r-1',
+        quote_revision_id: 'r-1',
+        revision_number: 1,
+        concurrency_token: '2026-08-13T00:00:00.000Z',
+      }) });
+      return;
+    }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
   });
   await page.addInitScript(({ storedDraft, idempotencyKey }) => {

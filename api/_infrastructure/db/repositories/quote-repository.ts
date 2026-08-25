@@ -52,6 +52,7 @@ import {
   HISTORICAL_QUOTATION_TEMPLATES,
 } from '../../../_modules/quotation-template-catalog.js';
 import { resolveQuotationRevisionMetadata } from '../quotation-revision-invariants.js';
+import { quotationConcurrencyToken } from './quote-draft-management-repository.js';
 
 type DatabaseProvider = () => AppDatabase;
 type QuoteTransaction = Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
@@ -211,6 +212,7 @@ export interface QuoteDraftResult {
   template_hash: string;
   template_version_id: string;
   secoes: QuotationSectionsSnapshot;
+  concurrency_token: string;
   created_at: string;
 }
 
@@ -1281,6 +1283,8 @@ export function createPostgresQuoteDraftRepository(
           template_hash: template.version.sourceHash,
           template_version_id: template.version.id || revisionMetadata.templateVersionId,
           secoes: sectionsSnapshot,
+          // Optimistic-concurrency token for issuing this draft by reference.
+          concurrency_token: quotationConcurrencyToken(createdAt),
           created_at: createdAt.toISOString(),
         } satisfies QuoteDraftResult;
       });

@@ -11,7 +11,7 @@ import {
   projectDeliveryFailure,
   projectDeliveryState,
 } from '../../src/lib/api/communicationApi.ts';
-import { getQuotationIssue, issueQuotation, isPriceAuthoritativeConflict, QuotationIssueApiError } from '../../src/lib/api/quotationIssueApi.ts';
+import { getQuotationIssue, issuePersistedDraft, QuotationIssueApiError } from '../../src/lib/api/quotationIssueApi.ts';
 
 const payload = {
   quotation_id: 'ORC-20260001',
@@ -87,7 +87,7 @@ test('createMedia preserves the uploaded Blob metadata write path', async () => 
   }
 });
 
-test('issueQuotation sends the idempotency header and documented draft payload', async () => {
+test('issuePersistedDraft sends only the revision reference and idempotency header', async () => {
   const originalFetch = globalThis.fetch;
   let request: { url: string; method: string; headers: Headers; body?: string };
   globalThis.fetch = (async (input, init) => {
@@ -96,24 +96,16 @@ test('issueQuotation sends the idempotency header and documented draft payload',
   }) as typeof fetch;
   try {
     const key = '550e8400-e29b-41d4-a716-446655440000';
-    await issueQuotation({ extracted: {
-      nome: 'Cliente', email: null, telefone: null, urgente: false, origem: undefined,
-      cnpj: undefined, endereco: undefined, items: [], prazo_producao: undefined,
-    } }, key);
+    await issuePersistedDraft('r-1', '2026-08-10T12:00:00.000Z', key);
     assert.equal(request!.headers.get('Idempotency-Key'), key);
     assert.equal(request!.url, '/api/quotation-issues');
-    assert.deepEqual(JSON.parse(request!.body || '{}'), { draft: { extracted: {
-      nome: 'Cliente', email: null, telefone: null, urgente: false, items: [],
-    } } });
+    assert.deepEqual(JSON.parse(request!.body || '{}'), {
+      revision_id: 'r-1',
+      concurrency_token: '2026-08-10T12:00:00.000Z',
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
-});
-
-test('only price conflicts are authoritative correction conflicts', () => {
-  assert.equal(isPriceAuthoritativeConflict(new QuotationIssueApiError('Preço do produto foi atualizado.', 409, {})), true);
-  assert.equal(isPriceAuthoritativeConflict(new QuotationIssueApiError('Pagamento deve ser informado.', 409, { code: 'payment_required' })), false);
-  assert.equal(isPriceAuthoritativeConflict(new QuotationIssueApiError('A numeração atingiu o limite.', 409, { category: 'number_conflict' })), false);
 });
 
 test('getQuotationIssue preserves processing then completed recovery without posting', async () => {

@@ -407,6 +407,12 @@ function tokenFor(value: Date | string | null | undefined): string {
   return asIso(value);
 }
 
+/** Single spelling of the quotation optimistic-concurrency token: the ISO
+ * updatedAt of the quotation row, shared by draft updates and issuance. */
+export function quotationConcurrencyToken(value: Date | string | null | undefined): string {
+  return tokenFor(value);
+}
+
 async function readTemplateSelection(
   tx: QuoteDatabase,
   input: Record<string, unknown>,

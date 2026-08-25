@@ -625,20 +625,11 @@ test('core lifecycle emission uses the current reviewed commercial fields and te
   await page.getByRole('dialog').getByRole('button', { name: 'Emitir', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Emitir orçamento' })).toHaveCount(0);
   expect(issueKey).toMatch(/^[0-9a-f-]{36}$/i);
-  expect(issuePayload).toMatchObject({
-    sourceQuotationId: detail().quotation_uuid,
-    sourceRevisionId: detail().revision_id,
-    draft: { extracted: {
-      nome: 'Cliente lifecycle',
-      items: [{ item_code: 'SKU-1', qty: 10 }],
-      pagamento: '30 dias após emissão',
-      entrega: '7 dias úteis',
-      validade_dias: 42,
-      observacoes: 'Conteúdo revisado pelo operador',
-      template_key: 'minimalista',
-      template_version_id: '77777777-7777-4777-8777-777777777777',
-      secoes: { pagamento: { current: { title: 'Pagamento revisado' } } },
-    } },
+  // Emission is by reference: only the revision identity and concurrency
+  // token travel in the POST; reviewed commercial fields stay server-side.
+  expect(issuePayload).toStrictEqual({
+    revision_id: detail().revision_id,
+    concurrency_token: token,
   });
 });
 
