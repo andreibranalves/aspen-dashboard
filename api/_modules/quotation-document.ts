@@ -1,4 +1,5 @@
 import type { QuotationTemplateSnapshot } from '../_infrastructure/db/repositories/quotation-template-repository.js';
+import type { DraftQuotationSnapshot } from './quotation-draft-snapshot.js';
 import {
   formatQuotationClientName,
   formatQuotationCurrency,
@@ -26,6 +27,17 @@ export type QuotationDocumentRenderer = (
   snapshot: QuotationTemplateSnapshot,
   template?: QuotationTemplate
 ) => RenderedQuotationDocument;
+
+/** Render a transient draft through the same document execution seam. */
+export function renderQuotationDraftDocument(
+  draft: Pick<DraftQuotationSnapshot, 'template' | 'viewModel'>
+): RenderedQuotationDocument {
+  return {
+    html: renderQuotationTemplate(draft.template, draft.viewModel),
+    template: draft.template,
+    viewModel: draft.viewModel,
+  };
+}
 
 function asDate(value: Date | string | null | undefined): Date {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value.getTime());

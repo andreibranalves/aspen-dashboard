@@ -8,10 +8,13 @@ import {
 import {
   quotationTemplateFromVersion,
   QuotationTemplateResolutionError,
-  renderQuotationTemplate,
   type QuotationTemplate,
 } from './quotation-template-catalog.js';
-import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
+import {
+  renderQuotationDocument,
+  renderQuotationDraftDocument,
+  type QuotationDocumentRenderer,
+} from './quotation-document.js';
 import {
   buildDraftQuotationSnapshot,
   DraftPreviewInputError,
@@ -116,7 +119,7 @@ export function createQuotationPreviewHandler(
           resolvePricing,
           resolveSettings,
         });
-        const html = renderQuotationTemplate(snapshot.template, snapshot.viewModel);
+        const html = renderQuotationDraftDocument(snapshot).html;
         if (event.queryStringParameters?.format === 'html') {
           return {
             statusCode: 200,

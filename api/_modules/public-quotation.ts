@@ -3,7 +3,7 @@ import { getKvClient } from '../_infrastructure/integrations/kv/client.js';
 import type { FunctionEvent, FunctionResult, LegacyHandler } from '../_http/types.js';
 import { canonicalQuotationStatus, isIssuedQuotationStatus } from './quotation-status.js';
 import { createQuotationTemplateRepository } from '../_infrastructure/db/repositories/quotation-template-repository.js';
-import { renderQuotationDocument } from './quotation-document.js';
+import { renderQuotationDocument, type QuotationDocumentRenderer } from './quotation-document.js';
 import { renderQuotationPdfHtml } from './quotation-pdf-renderer.js';
 import {
   isValidPdfBuffer,
@@ -35,6 +35,7 @@ export interface PublicQuotationDependencies {
   repository?: ReturnType<typeof createQuotationTemplateRepository>;
   store?: Kv;
   renderPdf?: (html: string) => Promise<Buffer>;
+  renderDocument?: QuotationDocumentRenderer;
   now?: () => number;
   token?: () => string;
 }
@@ -122,10 +123,11 @@ function assertShareableStatus(value: unknown): void {
 }
 
 function renderSnapshot(
-  snapshot: Awaited<ReturnType<NonNullable<PublicQuotationDependencies['repository']>['get']>>
+  snapshot: Awaited<ReturnType<NonNullable<PublicQuotationDependencies['repository']>['get']>>,
+  renderDocument: QuotationDocumentRenderer = renderQuotationDocument,
 ) {
   if (!snapshot) return null;
-  const document = renderQuotationDocument(snapshot);
+  const document = renderDocument(snapshot);
   return { snapshot, template: document.template, html: document.html };
 }
 
@@ -168,11 +170,11 @@ export async function issuePublicQuotationToken(
 
 export async function renderPublicQuotationPdf(
   revisionId: string,
-  dependencies: Pick<PublicQuotationDependencies, 'repository' | 'renderPdf'> = {},
+  dependencies: Pick<PublicQuotationDependencies, 'repository' | 'renderPdf' | 'renderDocument'> = {},
 ): Promise<Buffer> {
   const repository = dependencies.repository || createQuotationTemplateRepository();
   const snapshot = await repository.get(revisionId);
-  const rendered = renderSnapshot(snapshot);
+  const rendered = renderSnapshot(snapshot, dependencies.renderDocument);
   if (!rendered || canonicalQuotationStatus(rendered.snapshot.revision.status) === 'rascunho') throw new Error('Orçamento não disponível para compartilhamento.');
   const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
   const pdf = await renderPdf(rendered.html);
@@ -186,6 +188,7 @@ export function createPublicQuotationHandler(
   const repository = dependencies.repository || createQuotationTemplateRepository();
   const store = dependencies.store || (kv as unknown as Kv);
   const renderPdf = dependencies.renderPdf || renderQuotationPdfHtml;
+  const renderDocument = dependencies.renderDocument || renderQuotationDocument;
   const now = dependencies.now || (() => Date.now());
   const makeToken = dependencies.token || (() => randomBytes(32).toString('base64url'));
   return async function publicQuotationHandler(event: FunctionEvent): Promise<FunctionResult> {
@@ -238,7 +241,7 @@ export function createPublicQuotationHandler(
       if (!snapshot || snapshot.revision.id !== record.revisionId || canonicalQuotationStatus(snapshot.revision.status) === 'rascunho') {
         return json(404, { error: 'Orçamento não encontrado.' });
       }
-      const rendered = renderSnapshot(snapshot);
+      const rendered = renderSnapshot(snapshot, renderDocument);
       if (!rendered) return json(404, { error: 'Orçamento não encontrado.' });
       if (event.queryStringParameters?.format === 'pdf') {
         const pdf = await renderPdf(rendered.html);
