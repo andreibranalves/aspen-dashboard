@@ -8,7 +8,7 @@ import {
   type SettingsRepository,
 } from '../_infrastructure/db/repositories/settings-repository.js';
 import {
-  normalizeQuotationCompanyConfiguration,
+  normalizeCompleteQuotationCompanyConfiguration,
   QuotationCompanyConfigurationError,
   type QuotationCompanyConfiguration,
 } from './quotation-company.js';
@@ -119,26 +119,31 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
     fields.validade_dias = 'Informe uma validade em dias entre 1 e 365.';
   }
 
-  const pagamento = payload.pagamento === undefined
-    ? ''
-    : validateText(payload.pagamento, 'pagamento', MAX_PAYMENT_LENGTH, fields);
-  const entrega = payload.entrega === undefined
-    ? undefined
-    : validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
+  const pagamento =
+    payload.pagamento === undefined
+      ? ''
+      : validateText(payload.pagamento, 'pagamento', MAX_PAYMENT_LENGTH, fields);
+  const entrega =
+    payload.entrega === undefined
+      ? undefined
+      : validateText(payload.entrega, 'entrega', MAX_DELIVERY_LENGTH, fields);
   const fretePadrao = validateFreight(payload.frete_padrao, fields);
-  const observacoes = payload.observacoes === undefined
-    ? ''
-    : validateText(payload.observacoes, 'observacoes', MAX_NOTES_LENGTH, fields);
-  const templatePadrao = payload.template_padrao === undefined
-    ? undefined
-    : validateText(payload.template_padrao, 'template_padrao', MAX_TEMPLATE_KEY_LENGTH, fields);
-  const settingsVersion = payload.settings_version === undefined
-    ? undefined
-    : typeof payload.settings_version === 'number' &&
-        Number.isInteger(payload.settings_version) &&
-        payload.settings_version >= 1
-      ? payload.settings_version
-      : (fields.settings_version = 'Informe uma versão de configurações válida.', undefined);
+  const observacoes =
+    payload.observacoes === undefined
+      ? ''
+      : validateText(payload.observacoes, 'observacoes', MAX_NOTES_LENGTH, fields);
+  const templatePadrao =
+    payload.template_padrao === undefined
+      ? undefined
+      : validateText(payload.template_padrao, 'template_padrao', MAX_TEMPLATE_KEY_LENGTH, fields);
+  const settingsVersion =
+    payload.settings_version === undefined
+      ? undefined
+      : typeof payload.settings_version === 'number' &&
+          Number.isInteger(payload.settings_version) &&
+          payload.settings_version >= 1
+        ? payload.settings_version
+        : ((fields.settings_version = 'Informe uma versão de configurações válida.'), undefined);
   if (templatePadrao !== null && templatePadrao !== undefined && !templatePadrao.trim()) {
     fields.template_padrao = 'Informe a chave do template padrão.';
   }
@@ -146,7 +151,7 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
   let empresa: QuotationCompanyConfiguration | undefined;
   if (payload.empresa !== undefined) {
     try {
-      empresa = normalizeQuotationCompanyConfiguration(payload.empresa);
+      empresa = normalizeCompleteQuotationCompanyConfiguration(payload.empresa);
     } catch (error) {
       fields.empresa =
         error instanceof QuotationCompanyConfigurationError
@@ -196,7 +201,9 @@ export function validateSettingsPayload(payload: unknown): SettingsInput | Valid
   };
 }
 
-function isValidationFailure(result: Settings | SettingsInput | ValidationFailure): result is ValidationFailure {
+function isValidationFailure(
+  result: Settings | SettingsInput | ValidationFailure
+): result is ValidationFailure {
   return 'fields' in result;
 }
 

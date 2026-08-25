@@ -8,6 +8,11 @@ import test from 'node:test';
 import postgres from 'postgres';
 
 import { QUOTATION_TEMPLATES } from '../../api/_modules/quotation-template-catalog.js';
+import {
+  assertQuotationCompanyBackfill,
+  DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  verifyQuotationCompanyBackfill,
+} from '../../api/_modules/quotation-company.js';
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 const migrationPath = path.resolve(
@@ -81,7 +86,10 @@ async function createFixture(
   `;
   await tx`
     INSERT INTO quote_revisions (id, company_snapshot)
-    VALUES ('00000000-0000-4000-8000-000000000001', ${JSON.stringify({ schema_version: 1 })}::jsonb)
+    VALUES (
+      '00000000-0000-4000-8000-000000000001',
+      ${JSON.stringify(DEFAULT_QUOTATION_COMPANY_CONFIGURATION)}::jsonb
+    )
   `;
 
   if (!legacy) return;
@@ -101,6 +109,11 @@ async function createFixture(
         (${versionId}::uuid, ${templateId}::uuid, 1, ${source}, ${sourceHash(source)}, 1)
     `;
   }
+}
+
+function parseJsonb(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  return JSON.parse(value);
 }
 
 async function officialRows(tx: postgres.TransactionSql) {
@@ -142,6 +155,15 @@ test(
 
           const freshRows = await officialRows(tx);
           assert.equal(freshRows.length, QUOTATION_TEMPLATES.length);
+          const freshSnapshots = await tx<{ company_snapshot: unknown }[]>`
+            SELECT company_snapshot FROM quote_revisions
+          `;
+          const freshVerification = verifyQuotationCompanyBackfill(
+            freshSnapshots.map((row) => parseJsonb(row.company_snapshot))
+          );
+          assert.equal(freshVerification.total, 1);
+          assert.equal(freshVerification.valid_snapshots, 1);
+          assertQuotationCompanyBackfill(freshVerification);
           assert.deepEqual(
             freshRows.map((row) => [row.key, row.version, row.contract_version]),
             QUOTATION_TEMPLATES.map((template) => [template.key, 1, 2]).sort(([left], [right]) =>

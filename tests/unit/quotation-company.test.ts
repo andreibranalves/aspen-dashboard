@@ -13,6 +13,7 @@ import {
 import {
   assertQuotationCompanyBackfill,
   DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+  normalizeCompleteQuotationCompanyConfiguration,
   normalizeQuotationCompanyConfiguration,
   verifyQuotationCompanyBackfill,
 } from '../../api/_modules/quotation-company.js';
@@ -196,4 +197,18 @@ test('company backfill verification reports aggregate semantic preservation with
   ]);
   assert.equal(customized.official_default_mismatches, 1);
   assert.doesNotThrow(() => assertQuotationCompanyBackfill(customized));
+
+  const incomplete = verifyQuotationCompanyBackfill([{ schema_version: 1 }]);
+  assert.deepEqual(incomplete, {
+    total: 1,
+    valid_snapshots: 0,
+    missing_snapshots: 0,
+    invalid_snapshots: 1,
+    official_default_mismatches: 0,
+  });
+  assert.throws(() => assertQuotationCompanyBackfill(incomplete), /snapshots incompletos/);
+  assert.throws(
+    () => normalizeCompleteQuotationCompanyConfiguration({ schema_version: 1 }),
+    /identidade empresarial como objeto completo/
+  );
 });

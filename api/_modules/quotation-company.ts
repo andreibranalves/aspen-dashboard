@@ -223,6 +223,48 @@ export function normalizeQuotationCompanyConfiguration(
   };
 }
 
+const COMPLETE_COMPANY_FIELDS = {
+  identity: ['legal_name', 'document'],
+  banking: ['bank_name', 'bank_code', 'branch', 'account', 'pix_key'],
+  contacts: ['website', 'phone', 'email', 'instagram'],
+} as const;
+
+const COMPLETE_COMPANY_GROUP_LABELS = {
+  identity: 'a identidade empresarial',
+  banking: 'os dados bancários',
+  contacts: 'os contatos institucionais',
+} as const;
+
+/** Rejects omitted groups/fields before normalization can fill them from defaults. */
+export function normalizeCompleteQuotationCompanyConfiguration(
+  value: unknown
+): QuotationCompanyConfiguration {
+  if (!isRecord(value)) {
+    throw new QuotationCompanyConfigurationError('Informe a empresa como objeto completo.');
+  }
+  if (value.schema_version !== QUOTATION_COMPANY_SCHEMA_VERSION) {
+    throw new QuotationCompanyConfigurationError(
+      'Informe uma versão válida da configuração empresarial.'
+    );
+  }
+  for (const [groupName, fields] of Object.entries(COMPLETE_COMPANY_FIELDS)) {
+    const group = value[groupName];
+    if (!isRecord(group)) {
+      throw new QuotationCompanyConfigurationError(
+        `Informe ${COMPLETE_COMPANY_GROUP_LABELS[groupName as keyof typeof COMPLETE_COMPANY_GROUP_LABELS]} como objeto completo.`
+      );
+    }
+    for (const field of fields) {
+      if (!Object.prototype.hasOwnProperty.call(group, field)) {
+        throw new QuotationCompanyConfigurationError(
+          `Informe o campo empresarial ${groupName}.${field}.`
+        );
+      }
+    }
+  }
+  return normalizeQuotationCompanyConfiguration(value);
+}
+
 export function cloneQuotationCompanyConfiguration(
   value: QuotationCompanyConfiguration
 ): QuotationCompanyConfiguration {
@@ -266,7 +308,7 @@ export function verifyQuotationCompanyBackfill(
       continue;
     }
     try {
-      const normalized = normalizeQuotationCompanyConfiguration(value);
+      const normalized = normalizeCompleteQuotationCompanyConfiguration(value);
       validSnapshots += 1;
       if (JSON.stringify(canonical(normalized)) !== expected) officialDefaultMismatches += 1;
     } catch {

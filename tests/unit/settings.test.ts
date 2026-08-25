@@ -3,7 +3,10 @@ import { describe, it } from 'node:test';
 
 import { DEFAULT_QUOTATION_COMPANY_CONFIGURATION } from '../../api/_modules/quotation-company.js';
 import { createHandler } from '../../api/_modules/settings.js';
-import type { Settings, SettingsRepository } from '../../api/_infrastructure/db/repositories/settings-repository.js';
+import type {
+  Settings,
+  SettingsRepository,
+} from '../../api/_infrastructure/db/repositories/settings-repository.js';
 
 const DEFAULT_SETTINGS: Settings = {
   validade_dias: 15,
@@ -53,7 +56,6 @@ function createMemoryRepository(initial: Settings | null = null): SettingsReposi
 }
 
 describe('settings handler', () => {
-
   it('returns documented defaults when the singleton row does not exist', async () => {
     const handler = createHandler({ repository: createMemoryRepository() });
 
@@ -126,11 +128,60 @@ describe('settings handler', () => {
             instagram: 'https://instagram.com/empresa',
           },
         },
-      }),
+      })
     );
     assert.equal(result.statusCode, 200);
     assert.equal(parse(result).empresa.identity.legal_name, 'Empresa de teste');
     assert.equal(parse(result).empresa.banking.pix_key, 'pix@empresa.example');
+  });
+
+  it('rejects null, empty and partial company payloads without resetting saved data', async () => {
+    let writes = 0;
+    const customized = {
+      ...DEFAULT_SETTINGS,
+      empresa: {
+        ...DEFAULT_QUOTATION_COMPANY_CONFIGURATION,
+        identity: {
+          ...DEFAULT_QUOTATION_COMPANY_CONFIGURATION.identity,
+          legal_name: 'Empresa já configurada LTDA',
+        },
+      },
+    };
+    const handler = createHandler({
+      repository: {
+        get: async () => customized,
+        save: async (settings) => {
+          writes += 1;
+          return { ...customized, ...settings };
+        },
+      },
+    });
+    const basePayload = {
+      validade_dias: 30,
+      frete_padrao: '0.00',
+      settings_version: customized.settings_version,
+    };
+
+    for (const empresa of [
+      null,
+      {},
+      {
+        schema_version: 1,
+        identity: {
+          legal_name: 'Empresa parcial LTDA',
+          document: DEFAULT_QUOTATION_COMPANY_CONFIGURATION.identity.document,
+        },
+      },
+    ]) {
+      const result = await handler(event('PUT', { ...basePayload, empresa }));
+      assert.equal(result.statusCode, 400);
+      assert.equal(parse(result).error, 'Dados de configuração inválidos.');
+      assert.match(parse(result).fields.empresa, /empresa|identidade|bancários/i);
+    }
+
+    assert.equal(writes, 0);
+    const reloaded = await handler(event('GET'));
+    assert.equal(parse(reloaded).empresa.identity.legal_name, 'Empresa já configurada LTDA');
   });
 
   it('reports field validation errors in Portuguese without writing invalid data', async () => {
@@ -191,7 +242,11 @@ describe('settings handler', () => {
         get: async () => {
           throw new Error('postgres://usuario:segredo@host/banco');
         },
-        save: async (settings) => ({ ...DEFAULT_SETTINGS, ...settings, entrega: settings.entrega ?? '' }),
+        save: async (settings) => ({
+          ...DEFAULT_SETTINGS,
+          ...settings,
+          entrega: settings.entrega ?? '',
+        }),
       },
     });
 
