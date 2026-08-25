@@ -28,6 +28,7 @@ import { createQuotationPreviewHandler } from '../../api/_modules/quotation-prev
 import {
   createQuotationSectionsSnapshot,
   normalizeQuotationSections,
+  withQuotationProductionDeadline,
   validateQuotationSections,
 } from '../../api/_modules/quotation-content.js';
 import {
@@ -1361,7 +1362,9 @@ test('factory snapshot → view-model round-trip produces correct secoes', () =>
     entrega: '3 dias',
     observacoes: 'Obs.',
   });
-  const snap = createQuotationSectionsSnapshot(settings);
+  const snap = createQuotationSectionsSnapshot(
+    withQuotationProductionDeadline(settings, snapshot.revision.prazoProducao)
+  );
   const model = quotationSnapshotViewModel({
     ...snapshot,
     revision: {

@@ -137,7 +137,20 @@ function parseSections(value: unknown): QuotationSectionsSnapshot | null {
 function normalizeSections(data: QuotationData): QuotationSectionsSnapshot {
   const existing = parseSections(data.secoes) || parseSections(data.sections_snapshot);
   if (!existing) throw new Error('Resposta inválida: seções do orçamento ausentes.');
-  return cloneSections(existing);
+  const normalized = cloneSections(existing);
+  const legacyDeadline = data.prazo_producao || '';
+  const currentValue = normalized.prazo_producao.current.value;
+  const baseValue =
+    typeof normalized.prazo_producao.base.value === 'string'
+      ? normalized.prazo_producao.base.value
+      : typeof currentValue === 'string'
+        ? currentValue
+        : legacyDeadline;
+  normalized.prazo_producao.base.value = baseValue;
+  if (typeof normalized.prazo_producao.current.value !== 'string') {
+    normalized.prazo_producao.current.value = baseValue;
+  }
+  return normalized;
 }
 
 // Comparação determinística de itens: ignora _key (ID de UI gerado aleatoriamente).
@@ -204,17 +217,27 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
   const [items, setItems] = useState<CoreQuotationItem[]>(() => asCoreItems(data.items));
   const [clientId, setClientId] = useState(data.client_id || '');
   const [clientSearch, setClientSearch] = useState(data.cliente || '');
+  const [clientEmail, setClientEmail] = useState(data.email || '');
+  const [clientTelefone, setClientTelefone] = useState(data.telefone || '');
   const [clientResults, setClientResults] = useState<CoreClientResult[]>([]);
   const [clientSearching, setClientSearching] = useState(false);
   const [validadeDias, setValidadeDias] = useState(String(data.validade_dias ?? ''));
   const [entrega, setEntrega] = useState(data.entrega || '');
   const [frete, setFrete] = useState(String(data.frete));
-  const [prazoProducao, setPrazoProducao] = useState(data.prazo_producao || '');
   const [sections, setSections] = useState<QuotationSectionsSnapshot>(() => normalizeSections(data));
   const [templates, setTemplates] = useState<QuotationTemplateMetadata[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState(data.template_version_id || '');
   const [selectedTemplate, setSelectedTemplate] = useState(
     data.template_key || 'padrao'
+  );
+  const clientSnapshot = useMemo(
+    () => ({
+      id: clientId || undefined,
+      nome: clientSearch.trim(),
+      email: clientEmail.trim() || null,
+      telefone: clientTelefone.trim() || null,
+    }),
+    [clientEmail, clientId, clientSearch, clientTelefone]
   );
   const [templateError, setTemplateError] = useState('');
   const [productTerms, setProductTerms] = useState<Record<string, string>>({});
@@ -249,10 +272,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     setItems(asCoreItems(initialData.items));
     setClientId(initialData.client_id || '');
     setClientSearch(initialData.cliente || '');
+    setClientEmail(initialData.email || '');
+    setClientTelefone(initialData.telefone || '');
     setValidadeDias(String(initialData.validade_dias ?? ''));
     setEntrega(initialData.entrega || '');
     setFrete(String(initialData.frete));
-    setPrazoProducao(initialData.prazo_producao || '');
     setSections(normalizeSections(initialData));
     setSelectedTemplate(initialData.template_key || 'padrao');
     setSelectedVersionId(initialData.template_version_id || '');
@@ -385,6 +409,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       const value = event.target.value;
       setClientSearch(value);
       setClientId('');
+      setClientEmail('');
+      setClientTelefone('');
       if (clientTimer.current) clearTimeout(clientTimer.current);
       clientTimer.current = setTimeout(() => searchClients(value), 250);
     },
@@ -536,6 +562,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setItems(asCoreItems(authoritative.items));
       setClientId(authoritative.client_id || '');
       setClientSearch(authoritative.cliente || '');
+      setClientEmail(authoritative.email || '');
+      setClientTelefone(authoritative.telefone || '');
       setClientResults([]);
       setClientSearching(false);
       if (clientTimer.current) clearTimeout(clientTimer.current);
@@ -547,7 +575,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       setValidadeDias(String(authoritative.validade_dias ?? ''));
       setEntrega(authoritative.entrega || '');
       setFrete(String(authoritative.frete));
-      setPrazoProducao(authoritative.prazo_producao || '');
       setSections(normalizeSections(authoritative));
       setSelectedTemplate(authoritative.template_key || 'padrao');
       setSelectedVersionId(authoritative.template_version_id || '');
@@ -566,12 +593,11 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     if (validadeDias !== String(data.validade_dias ?? '')) return true;
     if (entrega !== (data.entrega || '')) return true;
     if (frete !== String(data.frete)) return true;
-    if (prazoProducao !== (data.prazo_producao || '')) return true;
     if (JSON.stringify(sections) !== JSON.stringify(normalizeSections(data))) return true;
     if (selectedTemplate !== (data.template_key || 'padrao')) return true;
     if (selectedVersionId !== (data.template_version_id || '')) return true;
     return false;
-  }, [editing, items, data, clientId, validadeDias, entrega, frete, prazoProducao, sections, selectedTemplate, selectedVersionId]);
+  }, [editing, items, data, clientId, validadeDias, entrega, frete, sections, selectedTemplate, selectedVersionId]);
 
   const save = useCallback(async () => {
     const token = concurrencyTokenRef.current;
@@ -598,7 +624,9 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
           validade_dias: Number(validadeDias),
           entrega,
           frete,
-          prazo_producao: prazoProducao,
+          prazo_producao: sections.prazo_producao.current.enabled
+            ? sections.prazo_producao.current.value
+            : '',
           template_key: selectedTemplate,
           template_version_id: selectedVersionId || undefined,
           secoes: sections,
@@ -631,7 +659,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     entrega,
     frete,
     items,
-    prazoProducao,
     resetEditor,
     selectedTemplate,
     selectedVersionId,
@@ -684,9 +711,10 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       input.name = 'payload';
       input.value = JSON.stringify({
         extracted: {
-          nome: data.cliente || '',
-          email: data.email || null,
-          telefone: data.telefone || null,
+          nome: clientSnapshot.nome,
+          email: clientSnapshot.email,
+          telefone: clientSnapshot.telefone,
+          cliente_snapshot: clientSnapshot,
           urgente: false,
           items: items.map((item) => ({
             item_code: item.sku || item.item_code,
@@ -695,7 +723,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             rate: Number(item.applied_unit_price),
             manual_rate: item.manual_rate,
           })),
-          prazo_producao: prazoProducao || undefined,
+          prazo_producao: sections.prazo_producao.current.value || undefined,
           entrega: entrega || undefined,
           frete: frete || undefined,
           validade_dias: validadeDias ? Number(validadeDias) : undefined,
@@ -717,7 +745,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       '_blank',
       'noopener,noreferrer'
     );
-  }, [data.cliente, data.email, data.id, data.revision_id, draftEditable, entrega, frete, isDirty, items, prazoProducao, sections, selectedTemplate, selectedVersionId, validadeDias]);
+  }, [clientSnapshot, data.id, data.revision_id, draftEditable, entrega, frete, isDirty, items, sections, selectedTemplate, selectedVersionId, validadeDias]);
   const runIssue = useCallback(async () => {
     setConfirmIssueOpen(false);
     setIssuing(true);
@@ -728,7 +756,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
       const issue = await issueQuotation({ extracted: {
         nome: data.cliente || '', email: data.email || null, telefone: data.telefone || null,
         items: items.map((item) => ({ item_code: item.sku, item_name: item.item_name, qty: Number(item.qty), rate: Number(item.applied_unit_price), manual_rate: item.manual_rate })),
-        prazo_producao: prazoProducao || undefined, frete: frete || undefined,
+        prazo_producao: sections.prazo_producao.current.value || undefined, frete: frete || undefined,
         pagamento: sections.pagamento.current.body,
         entrega,
         validade_dias: Number(validadeDias),
@@ -744,7 +772,7 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
     } finally {
       setIssuing(false);
     }
-  }, [data.cliente, data.email, data.quotation_uuid, data.revision_id, entrega, frete, items, onReload, prazoProducao, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
+  }, [data.cliente, data.email, data.quotation_uuid, data.revision_id, entrega, frete, items, onReload, sections, selectedTemplate, selectedVersionId, showMessage, toast, validadeDias]);
 
   const markCommercialStatus = useCallback(
     async (status: 'aprovado' | 'perdido', lossReason?: string) => {
@@ -1010,6 +1038,8 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
                           event.preventDefault();
                           setClientId(client.id);
                           setClientSearch(client.nome);
+                          setClientEmail(client.email || '');
+                          setClientTelefone(client.telefone || '');
                           setClientResults([]);
                         }}
                       >
@@ -1099,8 +1129,6 @@ function CoreQuotationDetail({ data: initialData, navigate, onReload, concurrenc
             sections={sections}
             editable={editing && draftEditable}
             onChange={setSections}
-            productionDeadline={prazoProducao}
-            onProductionDeadlineChange={setPrazoProducao}
             onRestore={(key) => {
               if (!key) return;
               setSections((current) => ({

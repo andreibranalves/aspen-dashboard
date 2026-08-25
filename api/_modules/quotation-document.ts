@@ -153,13 +153,17 @@ export function applyQuotationSectionPolicy(
   const prazoVisible = sections.prazo_producao.enabled;
   const pagamentoVisible = sections.pagamento.enabled;
   const condicoesVisible = sections.condicoes_gerais.enabled;
+  const productionDeadline =
+    sections.prazo_producao.value === undefined
+      ? legacy.prazoProducao || ''
+      : sections.prazo_producao.value;
   return {
     ...viewModel,
     secoes: {
       prazo_producao: {
         enabled: prazoVisible,
         title: prazoVisible ? sections.prazo_producao.title : '',
-        value: prazoVisible ? legacy.prazoProducao || '' : '',
+        value: prazoVisible ? productionDeadline : '',
       },
       pagamento: {
         enabled: pagamentoVisible,
@@ -179,13 +183,13 @@ export function applyQuotationSectionPolicy(
     terms: {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
       entrega: condicoesVisible ? legacy.entrega || '' : '',
-      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     },
     terms_snapshot: {
       pagamento: pagamentoVisible ? sections.pagamento.body : '',
       entrega: condicoesVisible ? legacy.entrega || '' : '',
-      production_deadline: prazoVisible ? legacy.prazoProducao || '' : '',
+      production_deadline: prazoVisible ? productionDeadline : '',
       observations: condicoesVisible ? sections.condicoes_gerais.body : '',
     },
   };
@@ -343,6 +347,7 @@ export function quotationSnapshotViewModel(
           prazo_producao: {
             enabled: prazoCurrent.enabled === true,
             title: String(prazoCurrent.title || 'Prazo de produção'),
+            value: productionDeadline,
           },
           pagamento: {
             enabled: pagtoCurrent.enabled === true,
@@ -372,7 +377,7 @@ export function quotationSnapshotViewModel(
       };
   const rendered = applyQuotationSectionPolicy(result, policySections, {
     entrega: revision.entrega,
-    prazoProducao: productionDeadline,
+    prazoProducao: hasCanonicalSections ? undefined : productionDeadline,
   });
   if (!hasCanonicalSections) {
     // Legacy revisions keep their historical mirror terms; only the section

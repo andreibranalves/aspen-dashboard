@@ -1,9 +1,11 @@
 import type { QuotationSectionsSettings } from '@/lib/api/settingsApi';
 import { Button } from '@/components/ui/button';
 
+type ProductionDeadlineSection = QuotationSectionsSettings['prazo_producao'] & { value: string };
+
 export interface QuotationSectionsSnapshot {
   schema_version: 1;
-  prazo_producao: { base: QuotationSectionsSettings['prazo_producao']; current: QuotationSectionsSettings['prazo_producao'] };
+  prazo_producao: { base: ProductionDeadlineSection; current: ProductionDeadlineSection };
   pagamento: { base: QuotationSectionsSettings['pagamento']; current: QuotationSectionsSettings['pagamento'] };
   condicoes_gerais: { base: QuotationSectionsSettings['condicoes_gerais']; current: QuotationSectionsSettings['condicoes_gerais'] };
 }
@@ -16,8 +18,6 @@ export interface QuotationSectionsEditorProps<T extends EditorSections = EditorS
   sections: T;
   editable: boolean;
   onChange: (sections: T) => void;
-  productionDeadline?: string;
-  onProductionDeadlineChange?: (value: string) => void;
   onRestore?: (key?: SectionKey) => void;
 }
 
@@ -29,8 +29,6 @@ export function QuotationSectionsEditor<T extends EditorSections>({
   sections,
   editable,
   onChange,
-  productionDeadline,
-  onProductionDeadlineChange,
   onRestore,
 }: QuotationSectionsEditorProps<T>) {
   const isSnapshot = mode === 'revision';
@@ -44,7 +42,7 @@ export function QuotationSectionsEditor<T extends EditorSections>({
     : (sections as QuotationSectionsSettings);
   const update = (
     key: SectionKey,
-    field: 'enabled' | 'title' | 'body',
+    field: 'enabled' | 'title' | 'body' | 'value',
     value: string | boolean
   ) => {
     if (isSnapshot) {
@@ -114,15 +112,15 @@ export function QuotationSectionsEditor<T extends EditorSections>({
             {key === 'prazo_producao' && (
               <>
                 <p className="text-xs text-fg-muted">
-                  O prazo de produção usa o campo do orçamento.
+                  O prazo de produção é salvo nesta seção.
                 </p>
-                {mode === 'revision' && onProductionDeadlineChange && (
+                {mode === 'revision' && (
                   <label className="block space-y-1.5 text-sm text-fg">
                     <span className="font-medium">Prazo desta revisão</span>
                     <input
                       aria-label="Prazo de produção do orçamento"
-                      value={productionDeadline || ''}
-                      onChange={(event) => onProductionDeadlineChange(event.target.value)}
+                      value={key === 'prazo_producao' && 'value' in section ? String(section.value || '') : ''}
+                      onChange={(event) => update(key, 'value', event.target.value)}
                       disabled={!editable}
                       className="w-full rounded-md border border-line bg-surface px-3.5 py-2.5 text-[15px] text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page disabled:cursor-not-allowed disabled:opacity-50"
                     />

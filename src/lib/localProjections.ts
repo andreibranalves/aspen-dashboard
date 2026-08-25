@@ -425,13 +425,25 @@ export function projectClientDetail(value: unknown): ProjectedClientDetail | nul
   return result;
 }
 
-function projectSectionSetting(value: unknown, requiresBody: boolean): RecordValue | null {
+function projectSectionSetting(
+  value: unknown,
+  requiresBody: boolean,
+  allowsValue = false
+): RecordValue | null {
   const source = asRecord(value);
   if (!source || typeof source.enabled !== 'boolean') return null;
   if (typeof source.title !== 'string' || !source.title.trim()) return null;
-  const allowed = requiresBody ? ['enabled', 'title', 'body'] : ['enabled', 'title'];
+  const allowed = requiresBody
+    ? ['enabled', 'title', 'body']
+    : allowsValue
+      ? ['enabled', 'title', 'value']
+      : ['enabled', 'title'];
   if (Object.keys(source).some((key) => !allowed.includes(key))) return null;
   const result: RecordValue = { enabled: source.enabled, title: source.title };
+  if (allowsValue && source.value !== undefined) {
+    if (typeof source.value !== 'string' || source.value.length > 500) return null;
+    result.value = source.value;
+  }
   if (requiresBody) {
     if (typeof source.body !== 'string') return null;
     result.body = source.body;
@@ -448,8 +460,16 @@ export function projectQuotationSections(value: unknown): QuotationSectionsSnaps
   const result: RecordValue = { schema_version: 1 };
   for (const key of keys) {
     const section = asRecord(source[key]);
-    const base = projectSectionSetting(section?.base, key !== 'prazo_producao');
-    const current = projectSectionSetting(section?.current, key !== 'prazo_producao');
+    const base = projectSectionSetting(
+      section?.base,
+      key !== 'prazo_producao',
+      key === 'prazo_producao'
+    );
+    const current = projectSectionSetting(
+      section?.current,
+      key !== 'prazo_producao',
+      key === 'prazo_producao'
+    );
     if (!base || !current) return null;
     result[key] = { base, current };
   }

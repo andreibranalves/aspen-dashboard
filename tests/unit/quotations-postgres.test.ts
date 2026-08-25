@@ -85,7 +85,11 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       .where(eq(productActivityEvents.productSku, sku));
     assert.equal(draftActivity.filter((row) => row.tipo === 'orcamento').length, 1);
     const createLater = createPostgresQuoteDraftRepository(() => db, { now: () => new Date('2026-07-02T12:00:00.000Z') });
-    const laterDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
+    const laterDraft = await createLater.createDraft({
+      client_id: clientId,
+      prazo_producao: '5 dias',
+      items: [{ item_code: sku, qty: '30.000' }],
+    });
     const terminalDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     const pendingDraft = await createLater.createDraft({ client_id: clientId, items: [{ item_code: sku, qty: '30.000' }] });
     assert.equal(draft.validade_dias, explicitSettings.validadeDias);
@@ -247,7 +251,7 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
       secoes: {
         pagamento: { enabled: true, title: 'Pagamento', body: 'Seção pagamento' },
         condicoes_gerais: { enabled: true, title: 'Condições', body: 'Seção condição' },
-        prazo_producao: { enabled: false, title: 'Prazo de produção' },
+        prazo_producao: { enabled: false, title: 'Prazo de produção', value: '5 dias' },
       },
     });
     assert.equal(sectionOverride.pagamento, 'Seção pagamento');
@@ -260,21 +264,37 @@ test('PostgreSQL draft management persists terms/manual prices atomically and pr
     assert.deepEqual(sectionOverride.secoes.prazo_producao.base, storedBase.prazo_producao.base);
     assert.deepEqual(sectionOverride.secoes.pagamento.base, storedBase.pagamento.base);
     assert.equal(sectionOverride.secoes.prazo_producao.current.enabled, false);
+    assert.equal(sectionOverride.secoes.prazo_producao.current.value, '5 dias');
     assert.ok(sectionOverride.secoes);
-    const restored = await managementUpdate(laterDraft.quotation_name, {
+    const reenabled = await managementUpdate(laterDraft.quotation_name, {
       concurrency_token: sectionOverride.concurrency_token,
       items: [{ item_code: sku, qty: '30.000' }],
       secoes: {
         current: {
-          pagamento: sectionOverride.secoes.pagamento.base,
-          condicoes_gerais: sectionOverride.secoes.condicoes_gerais.base,
-          prazo_producao: sectionOverride.secoes.prazo_producao.base,
+          pagamento: sectionOverride.secoes.pagamento.current,
+          condicoes_gerais: sectionOverride.secoes.condicoes_gerais.current,
+          prazo_producao: { ...sectionOverride.secoes.prazo_producao.current, enabled: true },
+        },
+      },
+    });
+    assert.ok(reenabled.secoes);
+    assert.equal(reenabled.secoes.prazo_producao.current.value, '5 dias');
+    assert.equal(reenabled.prazo_producao, '5 dias');
+    const restored = await managementUpdate(laterDraft.quotation_name, {
+      concurrency_token: reenabled.concurrency_token,
+      items: [{ item_code: sku, qty: '30.000' }],
+      secoes: {
+        current: {
+          pagamento: reenabled.secoes.pagamento.base,
+          condicoes_gerais: reenabled.secoes.condicoes_gerais.base,
+          prazo_producao: reenabled.secoes.prazo_producao.base,
         },
       },
     });
     assert.ok(restored.secoes);
     assert.deepEqual(restored.secoes.pagamento.current, restored.secoes.pagamento.base);
     assert.deepEqual(restored.secoes.condicoes_gerais.current, restored.secoes.condicoes_gerais.base);
+    assert.equal(restored.secoes.prazo_producao.current.value, '5 dias');
     const currentBeforeUpdate = await managementGet(draft.quotation_name);
     assert.ok(currentBeforeUpdate);
     const customItemName = 'Lenço 100 x 100 cm';

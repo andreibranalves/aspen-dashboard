@@ -14,7 +14,11 @@ import {
   URGENT_NUMERATOR,
 } from './pricing-core.js';
 import { applyQuotationSectionPolicy } from './quotation-document.js';
-import { normalizeQuotationSections, type QuotationSectionsSettings } from './quotation-content.js';
+import {
+  normalizeQuotationSections,
+  withQuotationProductionDeadline,
+  type QuotationSectionsSettings,
+} from './quotation-content.js';
 
 export type ResolvedQuotationTemplate = QuotationTemplate;
 export type PricingResolver = (
@@ -219,7 +223,7 @@ function draftSettingsWithLegacyOverrides(
 
 function normalizeDraftSections(
   source: unknown,
-  legacy: { pagamento?: string; entrega?: string; observacoes?: string }
+  legacy: { pagamento?: string; entrega?: string; observacoes?: string; prazoProducao?: string }
 ): QuotationSectionsSettings {
   let settings = source;
   if (isRecord(source)) {
@@ -242,7 +246,10 @@ function normalizeDraftSections(
     }
   }
   try {
-    return normalizeQuotationSections(settings, legacy);
+    const normalized = normalizeQuotationSections(settings, legacy);
+    return normalized.prazo_producao.value === undefined
+      ? withQuotationProductionDeadline(normalized, legacy.prazoProducao)
+      : normalized;
   } catch (error) {
     throw new DraftPreviewInputError(
       error instanceof Error ? error.message : 'Seções do orçamento inválidas.'
@@ -434,12 +441,12 @@ export async function buildDraftQuotationSnapshot(
       pagamento: extracted.pagamento,
       entrega: extracted.entrega,
       observacoes: extracted.observacoes,
+      prazoProducao: extracted.prazo_producao,
     }
   );
   const now = dependencies.now || (() => new Date());
   const viewModel = applyQuotationSectionPolicy(draftPreviewViewModel(extracted, now()), sections, {
     entrega: extracted.entrega,
-    prazoProducao: extracted.prazo_producao,
   });
   return {
     template,

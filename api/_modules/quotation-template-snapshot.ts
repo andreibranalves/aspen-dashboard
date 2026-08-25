@@ -5,6 +5,7 @@ import {
   DEFAULT_QUOTATION_SECTIONS,
   normalizeQuotationSections,
   createQuotationSectionsSnapshot,
+  withQuotationProductionDeadline,
   type QuotationSectionsSettings,
   type QuotationSectionsSnapshot,
 } from './quotation-content.js';
@@ -61,9 +62,9 @@ export function legacySettingsSections(settings: {
 }
 
 export function snapshotFromLegacyRevision(revision: LegacyRevision): QuotationSectionsSnapshot {
-  const sections = legacySettingsSections(revision);
-  sections.prazo_producao.title = 'Prazo de produção';
   const deadline = revision.prazoProducao ?? revision.prazo_producao;
+  const sections = withQuotationProductionDeadline(legacySettingsSections(revision), deadline);
+  sections.prazo_producao.title = 'Prazo de produção';
   if (deadline !== undefined) {
     sections.prazo_producao.enabled = Boolean(text(deadline));
   }
