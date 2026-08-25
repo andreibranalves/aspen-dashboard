@@ -62,6 +62,20 @@ const PRUNE_CANDIDATES_EMPTY = {
   meta: { threshold_days: 30, protect_recent_days: 7, count: 0 },
 };
 
+function crmDealsForStatus(status) {
+  return {
+    columns: CRM_DEALS_INITIAL.columns.map((column) =>
+      column.status === status
+        ? {
+            ...column,
+            count: 1,
+            deals: [{ ...CRM_DEALS_INITIAL.columns[2].deals[0], status }],
+          }
+        : { ...column, count: 0, deals: [] }
+    ),
+  };
+}
+
 test('reviews and marks stale Kanban deals as Perdido @crm', async ({ page }) => {
   let pruned = false;
   let postedBody = null;
@@ -95,8 +109,8 @@ test('reviews and marks stale Kanban deals as Perdido @crm', async ({ page }) =>
 
   await page.goto('/#/crm');
 
-  await expect(page.getByText('Limpeza de pipeline disponível')).toBeVisible();
-  await page.getByRole('button', { name: 'Revisar e marcar como Perdido' }).click();
+  await expect(page.getByText('Revisar pipeline', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Revisar pipeline (1)' }).click();
 
   await expect(page.getByText('Revisar limpeza de pipeline')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Cliente Antigo', exact: true })).toBeVisible();
@@ -106,5 +120,95 @@ test('reviews and marks stale Kanban deals as Perdido @crm', async ({ page }) =>
 
   await expect.poll(() => postedBody).toEqual({ deal_ids: ['DEAL-OLD'] });
   await expect(page.getByText('1 oportunidades marcadas como Perdido. 0 ignoradas.')).toBeVisible();
-  await expect(page.getByText('Limpeza de pipeline disponível')).toHaveCount(0);
+  await expect(page.getByText('Revisar pipeline', { exact: true }).first()).toHaveCount(0);
+});
+
+test('moves a deal from the accessible Mover para menu and restores focus @crm', async ({
+  page,
+}) => {
+  let persistedStatus = 'Orcamento Enviado';
+  let putBody = null;
+
+  await page.route('**/api/crm-deals**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(crmDealsForStatus(persistedStatus)),
+    });
+  });
+  await page.route('**/api/crm-prune-candidates', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(PRUNE_CANDIDATES_EMPTY),
+    });
+  });
+  await page.route('**/api/crm-update-deal', async (route) => {
+    putBody = route.request().postDataJSON();
+    persistedStatus = putBody.status;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true }),
+    });
+  });
+
+  await page.goto('/#/crm');
+
+  const moveMenu = page.getByRole('combobox', { name: 'Mover para Cliente Antigo' });
+  await expect(moveMenu).toHaveValue('Orcamento Enviado');
+  await moveMenu.selectOption('Em Negociacao');
+
+  await expect
+    .poll(() => putBody)
+    .toEqual({
+      deal_id: 'DEAL-OLD',
+      status: 'Em Negociacao',
+    });
+  await expect(moveMenu).toHaveValue('Em Negociacao');
+  await expect(moveMenu).toBeFocused();
+  await expect(page.locator('[role="status"][aria-live="polite"]')).toHaveText(
+    'Cliente Antigo movido para Em negociação.'
+  );
+
+  await page.getByRole('link', { name: 'Abrir lead Cliente Antigo' }).click();
+  await expect(page).toHaveURL(/#\/leads\?search=Cliente(?:%20|\s)Antigo&status=all/);
+});
+
+test('refetches the server state after a failed deal move @crm', async ({ page }) => {
+  let dealRequests = 0;
+
+  await page.route('**/api/crm-deals**', async (route) => {
+    dealRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(crmDealsForStatus('Orcamento Enviado')),
+    });
+  });
+  await page.route('**/api/crm-prune-candidates', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(PRUNE_CANDIDATES_EMPTY),
+    });
+  });
+  await page.route('**/api/crm-update-deal', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Falha temporária.' }),
+    });
+  });
+
+  await page.goto('/#/crm');
+
+  const moveMenu = page.getByRole('combobox', { name: 'Mover para Cliente Antigo' });
+  await moveMenu.selectOption('Em Negociacao');
+  await expect(moveMenu).toBeFocused();
+  await expect(moveMenu).toHaveValue('Orcamento Enviado');
+  await expect.poll(() => dealRequests).toBeGreaterThan(1);
+  await expect(page.locator('[role="status"][aria-live="polite"]')).toHaveText(
+    'Não foi possível mover Cliente Antigo. O pipeline foi restaurado.'
+  );
 });
