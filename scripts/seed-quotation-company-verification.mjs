@@ -2,6 +2,8 @@
 
 import postgres from 'postgres';
 
+import { isDisposablePostgresUrl } from './test-postgres.mjs';
+
 const VERIFICATION_CLIENT_ID = 'f3000000-0000-4000-8000-000000000001';
 const VERIFICATION_QUOTATION_ID = 'f3000000-0000-4000-8000-000000000002';
 const VERIFICATION_REVISION_ID = 'f3000000-0000-4000-8000-000000000003';
@@ -28,6 +30,9 @@ const VERIFICATION_COMPANY_CONFIGURATION = {
 };
 
 export async function seedQuotationCompanyVerification(databaseUrl) {
+  if (!isDisposablePostgresUrl(databaseUrl)) {
+    throw new Error('O fixture exige um PostgreSQL local descartável.');
+  }
   const sql = postgres(databaseUrl, {
     max: 1,
     prepare: false,
