@@ -85,6 +85,7 @@ const snapshot = {
     version: 7,
     source,
     sourceHash,
+    contractVersion: 2,
     template: { key: 'arquivado', name: 'Template arquivado', archived: true },
   },
   sectionsSnapshot: null,

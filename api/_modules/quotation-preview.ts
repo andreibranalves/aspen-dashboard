@@ -62,6 +62,7 @@ async function resolveCurrentDraftTemplate(key: string): Promise<QuotationTempla
   return quotationTemplateFromVersion({
     source: selected.version.source,
     sourceHash: selected.version.sourceHash,
+    contractVersion: selected.version.contractVersion,
     template: { key: selected.model.key, name: selected.model.name },
   });
 }

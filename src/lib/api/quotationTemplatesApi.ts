@@ -9,6 +9,7 @@ export interface QuotationTemplateMetadata {
   current_version_id: string | null;
   current_version: number | null;
   current_hash: string | null;
+  current_contract_version: 1 | 2 | null;
   /** Legacy detail fixtures may expose the selected version as hash. */
   hash?: string;
   template_version_id?: string | null;
@@ -23,12 +24,14 @@ export interface QuotationTemplateDetail extends QuotationTemplateMetadata {
     id: string;
     version: number;
     source_hash: string;
+    contract_version: 1 | 2;
     created_at: string;
   }>;
 }
 
 export interface QuotationTemplateValidation {
   valid: boolean;
+  contract_version: 2;
   warnings: string[];
   preview: string;
 }

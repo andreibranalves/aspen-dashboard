@@ -14,6 +14,7 @@ const v2Source = '<!doctype html><html><head><title>{{quote_number}}</title></he
 const v2Template = quotationTemplateFromVersion({
   source: v2Source,
   sourceHash: createHash('sha256').update(v2Source, 'utf8').digest('hex'),
+  contractVersion: 2,
   template: { key: 'v2-preview', name: 'Preview v2' },
 });
 const extracted = {

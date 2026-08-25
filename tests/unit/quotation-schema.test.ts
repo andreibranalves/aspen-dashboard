@@ -21,6 +21,7 @@ test('quotation template schema exposes versioned templates and snapshots', () =
   assert.equal(quoteRevisions.sectionsSnapshot.name, 'sections_snapshot');
   assert.equal(quotationTemplates.key.name, 'key');
   assert.equal(quotationTemplateVersions.sourceHash.name, 'source_hash');
+  assert.equal(quotationTemplateVersions.contractVersion.name, 'contract_version');
   assert.ok(quotationIssueRequests.idempotencyKey);
   assert.ok(quotationIssueRequests.fingerprint);
   assert.ok(quotationDeliveries.revisionId);

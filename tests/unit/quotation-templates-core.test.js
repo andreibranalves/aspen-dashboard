@@ -214,6 +214,7 @@ const dynamicVersion = {
   id: '66666666-6666-4666-8666-666666666666',
   templateId: '77777777-7777-4777-8777-777777777777',
   version: 4,
+  contractVersion: 2,
   source: dynamicSource,
   sourceHash: 'a'.repeat(64),
   createdAt: new Date('2026-07-02T12:00:00.000Z'),
@@ -227,13 +228,14 @@ const dynamicModel = {
   updatedAt: dynamicVersion.createdAt,
 };
 
-test('manifest has one default and server-computed hashes without source', () => {
+test('manifest has one default, explicit historical contracts and hashes without source', () => {
   const manifest = getQuotationTemplateManifest();
   assert.equal(manifest.length >= 2, true);
   assert.equal(manifest.filter((template) => template.is_default).length, 1);
   assert.equal(new Set(manifest.map((template) => template.key)).size, manifest.length);
   for (const template of manifest) {
     assert.match(template.hash, /^[0-9a-f]{64}$/);
+    assert.equal(template.contract_version, 1);
     assert.equal('source' in template, false);
   }
 });
@@ -423,6 +425,35 @@ test('quotation display removes zero padding without changing raw quantity', () 
   const html = renderQuotationTemplate(DEFAULT_QUOTATION_TEMPLATE, model);
   assert.match(html, />200<\/td>/);
   assert.doesNotMatch(html, />200\.000<\/td>/);
+});
+
+test('persisted template versions require explicit v1 or v2 metadata', () => {
+  const source = '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}}</body></html>';
+  const sourceHash = 'a'.repeat(64);
+
+  assert.throws(
+    () => quotationTemplateFromVersion({ source, sourceHash, template: { key: 'missing', name: 'Missing' } }),
+    /Contrato de template/
+  );
+  assert.equal(
+    quotationTemplateFromVersion({ source, sourceHash, contractVersion: 1 }).contract_version,
+    1
+  );
+  assert.equal(
+    quotationTemplateFromVersion({ source, sourceHash, contractVersion: 2 }).contract_version,
+    2
+  );
+});
+
+test('v2 validation returns structured warnings from the production section paths', () => {
+  const source = '<html><body>{{quote_number}} {{client.name}} {{#each items}}{{name}}{{/each}} {{display.total}} {{secoes.pagamento.title}} {{secoes.pagamento.body_html}}</body></html>';
+  const result = validateQuotationSource(source, 'v2-warnings', 2);
+
+  assert.deepEqual(result.warnings, [
+    'A seção prazo_producao não é usada pelo template.',
+    'A seção condicoes_gerais não é usada pelo template.',
+  ]);
+  assert.deepEqual(result.missing_sections, ['prazo_producao', 'condicoes_gerais']);
 });
 
 test('template resolution requires exact key and hash', () => {
@@ -1129,6 +1160,7 @@ test('persisted built-in version keeps trusted provenance', () => {
   const persisted = quotationTemplateFromVersion({
     source: branded.source,
     sourceHash: branded.hash,
+    contractVersion: 1,
     template: { key: branded.key, name: branded.name },
   });
   const html = renderQuotationTemplate(persisted, quotationSnapshotViewModel(snapshot));
@@ -1141,6 +1173,7 @@ test('legacy template key keeps trusted provenance for the immutable branded sou
   const persisted = quotationTemplateFromVersion({
     source: branded.source,
     sourceHash: branded.hash,
+    contractVersion: 1,
     template: { key: 'legacy-branded', name: 'Legacy branded' },
   });
   const html = renderQuotationTemplate(persisted, quotationSnapshotViewModel(snapshot));
@@ -1157,11 +1190,11 @@ test('public validators cannot grant the built-in display.total exemption', () =
   const branded = QUOTATION_TEMPLATES.find((t) => t.key === 'branded');
   assert.ok(branded, 'branded template exists');
   assert.throws(
-    () => validateQuotationHtmlSource(branded.source, 'branded', 'branded'),
+    () => validateQuotationHtmlSource(branded.source, 'branded'),
     /display\.total/
   );
   assert.throws(
-    () => validateQuotationSource(branded.source, 'branded', 'branded'),
+    () => validateQuotationSource(branded.source, 'branded'),
     /display\.total/
   );
 });
@@ -1174,6 +1207,7 @@ test('spoofed template object with built-in key/hash is rejected at render', () 
     key: 'branded',
     name: 'Aspen Original',
     is_default: false,
+    contract_version: 1,
     source: branded.source,
     hash: branded.hash,
   };

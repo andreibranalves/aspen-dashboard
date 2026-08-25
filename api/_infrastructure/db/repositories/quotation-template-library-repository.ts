@@ -9,8 +9,7 @@ import {
 } from '../schema.js';
 import {
   renderQuotationTemplate,
-  validateQuotationHtmlSource,
-  validateQuotationTemplateSource,
+  validateQuotationSource,
   QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL,
 } from '../../../_modules/quotation-template-catalog.js';
 import { type QuoteDatabase } from './quote-draft-management-repository.js';
@@ -24,15 +23,23 @@ export interface QuotationTemplateListItem {
   current_version_id: string | null;
   current_version: number | null;
   current_hash: string | null;
+  current_contract_version: 1 | 2 | null;
   updated_at: string;
   usage_count: number;
 }
 export interface QuotationTemplateDetail extends QuotationTemplateListItem {
   current_source: string;
-  versions: Array<{ id: string; version: number; source_hash: string; created_at: string }>;
+  versions: Array<{
+    id: string;
+    version: number;
+    source_hash: string;
+    contract_version: 1 | 2;
+    created_at: string;
+  }>;
 }
 export interface TemplateValidation {
   valid: boolean;
+  contract_version: 2;
   warnings: string[];
   preview: string;
 }
@@ -65,6 +72,10 @@ export class QuotationTemplateLibraryRepositoryError extends Error {
 
 type DatabaseProvider = () => AppDatabase;
 const KEY = /^[a-z0-9][a-z0-9_-]{0,119}$/;
+function contractVersion(value: unknown): 1 | 2 {
+  if (value === 1 || value === 2) return value;
+  throw new QuotationTemplateLibraryRepositoryError();
+}
 function hash(source: string): string {
   return createHash('sha256').update(Buffer.from(source, 'utf8')).digest('hex');
 }
@@ -80,8 +91,7 @@ function normalize(input: { key?: unknown; name?: unknown; source?: unknown }, r
       'Fonte do template inválida ou excede o limite permitido.'
     );
   try {
-    validateQuotationHtmlSource(source, key);
-    validateQuotationTemplateSource(source, key);
+    validateQuotationSource(source, key);
   } catch (error) {
     throw new QuotationTemplateLibraryInputError(
       error instanceof Error ? error.message : 'HTML ou Handlebars inválido.'
@@ -89,17 +99,25 @@ function normalize(input: { key?: unknown; name?: unknown; source?: unknown }, r
   }
   return { key, name, source };
 }
-function warnings(source: string): string[] {
-  return ['prazo_producao', 'pagamento', 'condicoes_gerais']
-    .filter((section) => !new RegExp(`secoes\\.${section}(?:\\.|[}\\s])`).test(source))
-    .map((section) => `A seção ${section} não é usada pelo template.`);
-}
 function preview(key: string, source: string): TemplateValidation {
+  const validation = validateQuotationSource(source, key);
   const html = renderQuotationTemplate(
-    { key, name: key, is_default: false, hash: hash(source), source },
+    {
+      key,
+      name: key,
+      is_default: false,
+      contract_version: 2,
+      hash: hash(source),
+      source,
+    },
     QUOTATION_TEMPLATE_PREVIEW_VIEW_MODEL
   );
-  return { valid: true, warnings: warnings(source), preview: html };
+  return {
+    valid: true,
+    contract_version: 2,
+    warnings: validation.warnings,
+    preview: html,
+  };
 }
 function iso(value: Date): string {
   return value.toISOString();
@@ -119,6 +137,7 @@ function item(
     current_version_id: version?.id || null,
     current_version: version?.version || null,
     current_hash: version?.sourceHash || null,
+    current_contract_version: version ? contractVersion(version.contractVersion) : null,
     updated_at: iso(row.updatedAt),
     usage_count: usage,
   };
@@ -166,6 +185,7 @@ export async function readCurrentQuotationTemplateVersion(
           version: version.version,
           source: version.source,
           sourceHash: version.sourceHash,
+          contractVersion: version.contractVersion,
         },
       }
     : null;
@@ -228,6 +248,7 @@ export function createQuotationTemplateLibraryRepository(
           id: v.id,
           version: v.version,
           source_hash: v.sourceHash,
+          contract_version: contractVersion(v.contractVersion),
           created_at: iso(v.createdAt),
         })),
       };
@@ -255,6 +276,7 @@ export function createQuotationTemplateLibraryRepository(
               version: 1,
               source: n.source,
               sourceHash: hash(n.source),
+              contractVersion: 2,
             });
           return { id };
         });
@@ -300,7 +322,14 @@ export function createQuotationTemplateLibraryRepository(
         const version = Number(latest?.version || 0) + 1;
         await tx
           .insert(quotationTemplateVersions)
-          .values({ id: randomUUID(), templateId: id, version, source: n.source, sourceHash });
+          .values({
+            id: randomUUID(),
+            templateId: id,
+            version,
+            source: n.source,
+            sourceHash,
+            contractVersion: 2,
+          });
         await tx
           .update(quotationTemplates)
           .set({ name: input.name?.trim() || row.name, updatedAt: new Date() })

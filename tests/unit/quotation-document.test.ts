@@ -18,6 +18,7 @@ const sourceHash = createHash('sha256').update(source, 'utf8').digest('hex');
 const template = quotationTemplateFromVersion({
   source,
   sourceHash,
+  contractVersion: 2,
   template: { key: 'historico', name: 'Histórico' },
 });
 
@@ -85,6 +86,7 @@ const snapshot = {
     version: 1,
     source,
     sourceHash,
+    contractVersion: 2,
     template: { key: 'historico', name: 'Histórico', archived: false },
   },
   sectionsSnapshot: null,

@@ -5,7 +5,11 @@ import { appSettings, clients, productPricingTiers, products, quoteRevisionItems
 import { acquireQuotationWriteLock } from '../quotation-write-lock.js';
 import { appendProductActivityEvents } from './product-activity-repository.js';
 import { buildDraftQuotationSnapshot, DraftPreviewInputError, type DraftQuotationSnapshot } from '../../../_modules/quotation-draft-snapshot.js';
-import { getQuotationTemplate, renderQuotationTemplate } from '../../../_modules/quotation-template-catalog.js';
+import {
+  getQuotationTemplate,
+  parseQuotationTemplateContractVersion,
+  renderQuotationTemplate,
+} from '../../../_modules/quotation-template-catalog.js';
 import { renderQuotationPdf } from '../../../_modules/quotation-pdf-renderer.js';
 import { isValidPdfBuffer } from '../../../_modules/quotation-document-storage.js';
 import { normalizeProductPricing, resolveProductPrice, formatMoneyCents, parseMoneyCents, parseScaledInteger, PricingUnavailableError, PricingValidationError } from '../../../_modules/pricing-core.js';
@@ -365,6 +369,7 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
                 name: quotationTemplates.name,
                 source: quotationTemplateVersions.source,
                 hash: quotationTemplateVersions.sourceHash,
+                contractVersion: quotationTemplateVersions.contractVersion,
                 id: quotationTemplateVersions.id,
               }).from(quotationTemplateVersions)
                 .innerJoin(quotationTemplates, eq(quotationTemplateVersions.templateId, quotationTemplates.id))
@@ -374,8 +379,17 @@ export function createQuotationIssueRepository(getDb: DatabaseProvider = getData
                 .orderBy(desc(quotationTemplateVersions.version)).limit(1);
               const selected = rows[0];
               return selected
-                ? { key: selected.key, name: selected.name, is_default: selected.key === settings.templatePadrao, source: selected.source, hash: selected.hash }
-                : selectedTemplateVersionId ? null : getQuotationTemplate(key);
+                ? {
+                    key: selected.key,
+                    name: selected.name,
+                    is_default: selected.key === settings.templatePadrao,
+                    contract_version: parseQuotationTemplateContractVersion(selected.contractVersion),
+                    source: selected.source,
+                    hash: selected.hash,
+                  }
+                : selectedTemplateVersionId
+                  ? null
+                  : getQuotationTemplate(key);
             },
           });
         } catch (error) {
